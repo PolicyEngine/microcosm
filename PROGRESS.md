@@ -11,7 +11,8 @@ The active ledger for the QBI v2 content work is
 - Branch `qbi-v2-content` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
 - The adjudicated live SSTB crosswalk is packaged and wired occupation-first.
-  Evidence-anchored assumptions and replay diagnostics are next.
+  Evidence-anchored qualification, passive SSTB, REIT/PTP, and BDC content is
+  implemented with a passing restricted replay diagnostic.
 
 ## Current done
 
@@ -30,11 +31,21 @@ The active ledger for the QBI v2 content work is
 - Preserved the packaged placeholder fail-closed path and added schema, tier,
   code-format, documentation, and real-crosswalk end-to-end tests.
 - Focused QBI/crosswalk/spec tests and Ruff pass.
+- Replaced the partnership/S-corporation derived flag with the adjudicated
+  0.90 prior and returned that flag to the v2 QRF target set.
+- Derived passive priors as 58.24/221.00 = 0.2635 -> 0.264 below the coarse
+  threshold and 37.54/221.00 = 0.1699 -> 0.170 above it; documented JCT's
+  120.81/216.08 = 55.91% upper-band materiality without misusing it as a rate.
+- Anchored REIT/PTP to Pub 4801's $21.07B income / $4.20B component and JCT's
+  $2.90B comparison component. The fixed-seed replay is $20.943037789B
+  (0.993974x); the provisional diagnostic band is [0.3x, 3x].
+- Retained the v1 BDC scale with an explicit no-published-anchor note; its
+  replay is $0.143270890B.
 
 ## Current next
 
-- Add the derived passive priors, qualification content, REIT/PTP/BDC evidence
-  anchors, restricted replay diagnostic, changelog, and full validation.
+- Add the changelog, run broader focused validation, then execute full
+  workspace pytest and Ruff before writing the final report.
 
 ## State
 

@@ -6,7 +6,7 @@
 - Base: local `repeal-validation-298` at `e45f797`
 - Worktree: `.claude/worktrees/populace-wt-530`
 - Mode: offline; no push, pull, fetch, PR, or stash
-- Status: live SSTB crosswalk complete; assumptions content in progress
+- Status: implementation complete; broader and full validation pending
 
 ## Done
 
@@ -44,13 +44,34 @@
 - Added live-schema, probability-tier, occupation-format, explicit-zero, and
   real-crosswalk host-routing tests. Focused QBI, crosswalk, spec-only, and
   Ruff checks pass.
+- Filled all qualification derivations:
+  - Schedule C and farm operations remain statutory derived sources;
+  - farm rent/rental/estate retain documented 0.80/0.70/0.60 residual priors;
+  - partnership/S-corporation income now uses the required 0.90 prior for
+    guaranteed-payment and reasonable-compensation exclusions, anchored to
+    JCT's 53% S-corporation and 17% partnership shares.
+- Returned the partnership/S-corporation flag to the v2 QRF targets, yielding
+  52 person and 61 total v2 targets.
+- Derived the two passive SSTB priors from OTA WP-118:
+  - `(221.00 - 162.76) / 221.00 = 58.24 / 221.00 = 0.2635`, rounded 0.264;
+  - `(221.00 - 183.46) / 221.00 = 37.54 / 221.00 = 0.1699`, rounded 0.170.
+- Documented JCT's `120.81 / 216.08 = 55.91%` above-threshold dollar share as
+  evidence that the upper band matters, not as a conditional SSTB rate.
+- Re-anchored the REIT/PTP model by changing the partnership/S-corporation
+  receipt probability from 0.05 to provisional 0.09 while retaining the
+  dividend exposure and Beta scales. Restricted fixed-seed replay:
+  `$20.943037789B`, `0.993974x` the Pub 4801 `$21.07B` income anchor.
+- Added strict provisional anchor metadata for Pub 4801's `$4.20B` component,
+  JCT's `$2.90B` 2022 comparison, and the `[0.3x, 3x]` replay band.
+- Retained the v1 BDC parameters with an explicit no-published-anchor finding;
+  restricted replay is `$0.143270890B`.
+- Focused QBI, crosswalk, QRF-chain, spec-only, restricted replay, and Ruff
+  checks pass; the v1 golden replay is unchanged.
 
 ## Next
 
-- Encode and test the two-band passive prior arithmetic directly from the
-  221.00/162.76/183.46 OTA waterfall and JCT above-threshold split.
-- Update qualification derivations, QRF exclusions, REIT/PTP scale and
-  evidence metadata, and the restricted replay diagnostic.
-- Add the changelog, run all focused validation, and commit each coherent step.
-- Run focused tests, Ruff, full workspace pytest with both restricted-data
-  environment variables, then write the final report.
+- Add the changelog and run the broader QBI/builder/manifest contract suites.
+- Run full workspace pytest with both restricted-data environment variables,
+  then full Ruff and repository hygiene checks.
+- Write the final report, including arithmetic, replay result, and any
+  unimplemented adjudication (currently none).

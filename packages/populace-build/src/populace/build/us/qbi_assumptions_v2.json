@@ -24,38 +24,40 @@
     "self_employment_income": {
       "mode": "derived",
       "prior": null,
-      "rationale": "Derived as source != 0: Schedule C net profit or loss is a trade-or-business input, while SSTB routing is classified separately from the host record."
+      "rationale": "Statutory active trade-or-business source: the engine derives the preliminary flag as Schedule C source != 0, then the host gate requires positive Schedule C income before SSTB classification or routing."
     },
     "farm_operations_income": {
       "mode": "derived",
       "prior": null,
-      "rationale": "Derived as source != 0: Schedule F operating profit or loss is a trade-or-business input."
+      "rationale": "Statutory active farm trade-or-business source: the engine derives Schedule F farm operations as source != 0."
     },
     "farm_rent_income": {
       "mode": "prior",
       "prior": {
         "probability": 0.8
       },
-      "rationale": "Farm-rent qualification depends on facts not present on the host record; retain the documented v1 residual prior pending a published replacement."
+      "rationale": "Retain the 0.80 residual prior because farm rent can be a trade or business, but the host record does not identify the participation and operational facts needed to resolve that status."
     },
     "rental_income": {
       "mode": "prior",
       "prior": {
         "probability": 0.7
       },
-      "rationale": "Rental trade-or-business status and safe-harbor facts are not observed; retain the documented v1 residual prior pending a published replacement."
+      "rationale": "Retain the 0.70 residual prior because rental trade-or-business status and the Section 199A rental-real-estate safe-harbor facts are not observed on the host record."
     },
     "estate_income": {
       "mode": "prior",
       "prior": {
         "probability": 0.6
       },
-      "rationale": "The aggregate estate-income amount does not identify whether the distribution retains qualified-business character; retain the documented v1 residual prior pending source evidence."
+      "rationale": "Retain the weakest residual prior, 0.60: aggregate estate income does not identify whether a distribution retains qualified-business character. This is explicitly flagged for v3 evidence work."
     },
     "partnership_s_corp_income": {
-      "mode": "derived",
-      "prior": null,
-      "rationale": "Derived as source != 0: the modeled partnership and S-corporation ordinary-income source is the pass-through business input; host SSTB routing is applied separately."
+      "mode": "prior",
+      "prior": {
+        "probability": 0.9
+      },
+      "rationale": "Retain the 0.90 prior as a proxy for guaranteed-payment and reasonable-compensation exclusions that the aggregate source cannot separate. JCT 2022 entity shares (S corporations 53% and partnerships 17% of QBI deducted) anchor the importance of this combined source pending v3 entity-level treatment."
     }
   },
   "sstb_classification": {
@@ -68,13 +70,12 @@
     "ambiguous_prior_status": "superseded_by_code_specific_live_crosswalk",
     "agi_band_format": "lower_inclusive:upper_exclusive",
     "passive_passthrough_sstb_prior_by_agi": {
-      "-inf:100000": 0.0,
-      "100000:200000": 0.0,
-      "200000:inf": 0.0
+      "-inf:200000": 0.264,
+      "200000:inf": 0.17
     },
-    "passive_passthrough_prior_status": "placeholder_pending_published_priors",
-    "rationale": "Positive Schedule C income uses host industry when configured and detailed occupation otherwise. Qualified passive pass-through income without Schedule C uses AGI-band priors.",
-    "follow_up": "The frozen census_cps person columns include PEIOOCC and AGI but no detailed-industry field. Wire industry as the primary signal after a frozen source column or sidecar is declared."
+    "passive_passthrough_prior_status": "provisional_published_aggregate_derivation",
+    "rationale": "Positive Schedule C income uses per-code probabilities from the live crosswalk: host industry is primary when configured, detailed occupation is the current fallback, and absent codes have probability 0. For passive-only pass-through income, OTA WP-118's ordinary-income-limited deduction falls from $221.00B to $162.76B under an all-income SSTB restriction, so ($221.00B - $162.76B) / $221.00B = $58.24B / $221.00B = 0.2635, rounded to the 0.264 below-threshold population prior. Restoring the income exception raises deductions to $183.46B, leaving ($221.00B - $183.46B) / $221.00B = $37.54B / $221.00B = 0.1699, rounded to the conservative 0.170 above-threshold residual after SSTB selection out. JCT's 2022 split puts $120.81B / $216.08B = 55.91% of deduction dollars above the phaseout, confirming the upper band is material but not identifying its conditional SSTB rate. The $200,000 AGI split is a provisional coarse proxy for filing-status-specific modified-taxable-income thresholds.",
+    "follow_up": "The resource ships the 2017 Census industry map as a future primary seam, but the frozen census_cps person columns currently provide PEIOOCC and AGI without a detailed-industry field, so industry_column remains null."
   },
   "w2": {
     "model": "source_weighted_margin_receipts_logit_labor_share",
@@ -182,6 +183,17 @@
   },
   "investment": {
     "model": "exposure_bernoulli_beta_carveout",
+    "reit_ptp_anchor": {
+      "provisional": true,
+      "published_income_dollars": 21070000000.0,
+      "published_component_dollars": 4200000000.0,
+      "comparison_component_2022_dollars": 2900000000.0,
+      "replay_factor_band": [
+        0.3,
+        3.0
+      ],
+      "rationale": "SOI Publication 4801 TY2023 reports Form 8995 line 6 REIT/PTP income of $21.07B and line 9 component of $4.20B; JCT reports a $2.90B 2022 component. The aggregate identifies receiving probability times Beta share, not their decomposition. Holding the dividend exposure and both v1 Beta scales fixed while raising the partnership/S-corporation receiving probability from 0.05 to a provisional 0.09 produces about $20.94B, or 0.994 times the income anchor, on the fixed-seed PUF replay. The [0.3, 3.0] replay factor band is provisional."
+    },
     "reit_ptp_exposure_order": [
       "non_qualified_dividend_income",
       "partnership_s_corp_income"
@@ -195,12 +207,20 @@
         "shift": 0.0
       },
       "partnership_s_corp_income": {
-        "probability_of_receiving": 0.05,
+        "probability_of_receiving": 0.09,
         "beta_a": 2.0,
         "beta_b": 8.0,
         "scale": 0.6,
         "shift": 0.0
       }
+    },
+    "bdc_anchor": {
+      "provisional": true,
+      "published_income_dollars": null,
+      "published_component_dollars": null,
+      "comparison_component_2022_dollars": null,
+      "replay_factor_band": null,
+      "rationale": "No published BDC aggregate anchor was found in the persisted evidence. Retain the v1 probability and Beta scale because the regulatory economics imply a small dividend carveout; the fixed-seed PUF replay is about $0.143B. This scale remains provisional pending v3."
     },
     "bdc_exposure_order": [
       "non_qualified_dividend_income"

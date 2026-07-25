@@ -204,12 +204,14 @@ def _v2_host_person() -> pd.DataFrame:
     person.loc[103, "self_employment_income_before_lsr"] = 0.0
     person.loc[103, "sstb_self_employment_income_before_lsr"] = 0.0
     person.loc[103, "AGI"] = 50_000.0
+    person.loc[103, "partnership_s_corp_income_would_be_qualified"] = True
 
     # Passive-only estate income in a zero-probability AGI band.
     person.loc[104, "self_employment_income_before_lsr"] = 0.0
     person.loc[104, "sstb_self_employment_income_before_lsr"] = 0.0
     person.loc[104, "estate_income"] = 2_000.0
     person.loc[104, "estate_income_would_be_qualified"] = True
+    person.loc[104, "AGI"] = 250_000.0
 
     # A non-SSTB Schedule C signal takes precedence over the passive prior.
     person.loc[105, "PEIOOCC"] = 2020
@@ -228,7 +230,7 @@ def _host_test_assumptions():
     bands = tuple(
         replace(
             band,
-            probability=1.0 if band.label == "-inf:100000" else 0.0,
+            probability=1.0 if band.label == "-inf:200000" else 0.0,
         )
         for band in classification.passive_passthrough_sstb_prior_by_agi
     )
@@ -460,9 +462,8 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
     ready_sstb_crosswalk: dict[str, object],
 ) -> None:
     person = _v2_host_person()
-    person["partnership_s_corp_income_would_be_qualified"] = True
     assumptions = _host_test_assumptions()
-    prior_partnership = replace(
+    prior_farm_operations = replace(
         assumptions,
         qualification_derivations=tuple(
             replace(
@@ -470,7 +471,7 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
                 mode="prior",
                 prior_probability=1.0,
             )
-            if derivation.source == "partnership_s_corp_income"
+            if derivation.source == "farm_operations_income"
             else derivation
             for derivation in assumptions.qualification_derivations
         ),
@@ -485,13 +486,13 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
     changed = with_host_sstb_classification(
         _frame(person),
         qbi_simulation_version=QBI_SIMULATION_V2,
-        assumptions=prior_partnership,
+        assumptions=prior_farm_operations,
         sstb_crosswalk=ready_sstb_crosswalk,
     ).table("person")
 
     assert not np.array_equal(
-        baseline["partnership_s_corp_income_would_be_qualified"],
-        changed["partnership_s_corp_income_would_be_qualified"],
+        baseline["farm_operations_income_would_be_qualified"],
+        changed["farm_operations_income_would_be_qualified"],
     )
     for column in (
         "business_is_sstb",

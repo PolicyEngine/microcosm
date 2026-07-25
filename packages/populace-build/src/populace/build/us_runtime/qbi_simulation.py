@@ -41,6 +41,7 @@ __all__ = [
     "QBI_SIMULATION_SUPPORTED_VERSIONS",
     "QBI_SIMULATION_VERSION",
     "QBI_SIMULATION_V2",
+    "AggregateEvidenceAnchor",
     "AgiSstbPriorBand",
     "BetaParameters",
     "ExposureBetaParameters",
@@ -146,6 +147,53 @@ class ExposureBetaParameters:
     source: str
     probability_of_receiving: float
     beta: BetaParameters
+
+
+@dataclass(frozen=True)
+class AggregateEvidenceAnchor:
+    """Published aggregate and provisional replay-diagnostic contract."""
+
+    provisional: bool
+    published_income_dollars: float | None
+    published_component_dollars: float | None
+    comparison_component_2022_dollars: float | None
+    replay_factor_band: tuple[float, float] | None
+    rationale: str
+
+    def validate(self, label: str) -> None:
+        """Reject incomplete or internally inconsistent evidence metadata."""
+
+        if self.provisional is not True:
+            raise ValueError(f"{label} aggregate anchor must be provisional.")
+        if not isinstance(self.rationale, str) or not self.rationale.strip():
+            raise ValueError(f"{label} aggregate anchor rationale must be nonempty.")
+        for name, value in (
+            ("published_income_dollars", self.published_income_dollars),
+            ("published_component_dollars", self.published_component_dollars),
+            (
+                "comparison_component_2022_dollars",
+                self.comparison_component_2022_dollars,
+            ),
+        ):
+            if value is not None and (not np.isfinite(value) or value < 0.0):
+                raise ValueError(
+                    f"{label} aggregate anchor {name} must be null or nonnegative."
+                )
+        if self.replay_factor_band is None:
+            if self.published_income_dollars is not None:
+                raise ValueError(
+                    f"{label} published income anchor requires a replay factor band."
+                )
+            return
+        lower, upper = self.replay_factor_band
+        if not 0.0 < lower <= upper:
+            raise ValueError(
+                f"{label} replay factor band must be positive and ordered."
+            )
+        if self.published_income_dollars is None:
+            raise ValueError(
+                f"{label} replay factor band requires a published income anchor."
+            )
 
 
 @dataclass(frozen=True)
@@ -274,9 +322,7 @@ class SstbCrosswalk:
     def mapping_for(self, family: str) -> dict[int, float]:
         """Return one signal family's code-to-probability mapping."""
 
-        return {
-            entry.code: entry.probability for entry in self.entries_for(family)
-        }
+        return {entry.code: entry.probability for entry in self.entries_for(family)}
 
     def validate(self) -> None:
         """Reject malformed instances, including caller-constructed objects."""
@@ -471,6 +517,8 @@ class QbiSimulationAssumptionsV2:
     ubia_multiples: tuple[float, ...]
     capital_intensity_probabilities: tuple[float, ...]
     investment_model: str
+    reit_ptp_anchor: AggregateEvidenceAnchor
+    bdc_anchor: AggregateEvidenceAnchor
     reit_ptp_exposures: tuple[ExposureBetaParameters, ...]
     bdc_exposures: tuple[ExposureBetaParameters, ...]
 
@@ -631,6 +679,8 @@ class QbiSimulationAssumptionsV2:
                         "must lie in [0, 1]."
                     )
                 _validate_beta_parameters(name, exposure.beta)
+        self.reit_ptp_anchor.validate("REIT/PTP")
+        self.bdc_anchor.validate("BDC")
 
 
 @dataclass(frozen=True)
@@ -1092,6 +1142,14 @@ def _parse_v2_qbi_simulation_assumptions(
             "ubia.capital_intensity_probabilities",
         ),
         investment_model=_string(investment.get("model"), "investment.model"),
+        reit_ptp_anchor=_parse_aggregate_evidence_anchor(
+            _child_mapping(investment, "reit_ptp_anchor"),
+            "investment.reit_ptp_anchor",
+        ),
+        bdc_anchor=_parse_aggregate_evidence_anchor(
+            _child_mapping(investment, "bdc_anchor"),
+            "investment.bdc_anchor",
+        ),
         reit_ptp_exposures=_ordered_exposures(
             _child_mapping(investment, "reit_ptp_income_distribution"),
             reit_order,
@@ -2105,8 +2163,10 @@ def _validate_v2_payload_keys(root: Mapping[str, Any]) -> None:
         investment,
         (
             "model",
+            "reit_ptp_anchor",
             "reit_ptp_exposure_order",
             "reit_ptp_income_distribution",
+            "bdc_anchor",
             "bdc_exposure_order",
             "bdc_income_distribution",
         ),
@@ -2164,6 +2224,50 @@ def _validate_strict_exposure_mapping(
             ),
             f"{label}.{source}",
         )
+
+
+def _parse_aggregate_evidence_anchor(
+    values: Mapping[str, Any],
+    label: str,
+) -> AggregateEvidenceAnchor:
+    _require_exact_keys(
+        values,
+        (
+            "provisional",
+            "published_income_dollars",
+            "published_component_dollars",
+            "comparison_component_2022_dollars",
+            "replay_factor_band",
+            "rationale",
+        ),
+        label,
+    )
+    raw_band = values.get("replay_factor_band")
+    factor_band: tuple[float, float] | None = None
+    if raw_band is not None:
+        if not isinstance(raw_band, list) or len(raw_band) != 2:
+            raise ValueError(f"{label}.replay_factor_band must be null or [low, high].")
+        factor_band = (
+            _number(raw_band[0], f"{label}.replay_factor_band[0]"),
+            _number(raw_band[1], f"{label}.replay_factor_band[1]"),
+        )
+
+    def optional_number(key: str) -> float | None:
+        value = values.get(key)
+        return None if value is None else _number(value, f"{label}.{key}")
+
+    anchor = AggregateEvidenceAnchor(
+        provisional=values.get("provisional"),
+        published_income_dollars=optional_number("published_income_dollars"),
+        published_component_dollars=optional_number("published_component_dollars"),
+        comparison_component_2022_dollars=optional_number(
+            "comparison_component_2022_dollars"
+        ),
+        replay_factor_band=factor_band,
+        rationale=_string(values.get("rationale"), f"{label}.rationale"),
+    )
+    anchor.validate(label)
+    return anchor
 
 
 def _parse_agi_prior_bands(
@@ -2269,9 +2373,7 @@ def _parse_crosswalk_entries(
             or len(raw_code) != 4
             or not raw_code.isdigit()
         ):
-            raise ValueError(
-                f"{entry_label}.census_code must use four decimal digits."
-            )
+            raise ValueError(f"{entry_label}.census_code must use four decimal digits.")
         _string(entry.get("census_title"), f"{entry_label}.census_title")
         _string(
             entry.get(classification_system_key),
@@ -2326,8 +2428,7 @@ def _validate_explicit_nonsstb_entries(value: Any, label: str) -> None:
         )
         if probability != 0.0:
             raise ValueError(
-                f"{entry_label}.probability must be 0.0 for documented "
-                "non-SSTB codes."
+                f"{entry_label}.probability must be 0.0 for documented non-SSTB codes."
             )
 
 

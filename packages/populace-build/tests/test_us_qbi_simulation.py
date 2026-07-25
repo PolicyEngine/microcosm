@@ -216,13 +216,54 @@ def test_v2_assumptions_pin_derivations_host_columns_and_family_seeds() -> None:
         "farm_rent_income": "prior",
         "rental_income": "prior",
         "estate_income": "prior",
-        "partnership_s_corp_income": "derived",
+        "partnership_s_corp_income": "prior",
+    }
+    assert {
+        source: derivation.prior_probability
+        for source, derivation in v2.qualification_by_source.items()
+        if derivation.mode == "prior"
+    } == {
+        "farm_rent_income": 0.8,
+        "rental_income": 0.7,
+        "estate_income": 0.6,
+        "partnership_s_corp_income": 0.9,
     }
     assert all(derivation.rationale for derivation in v2.qualification_derivations)
+    rationales = {
+        source: derivation.rationale
+        for source, derivation in v2.qualification_by_source.items()
+    }
+    assert "positive Schedule C income" in rationales["self_employment_income"]
+    assert "active farm trade-or-business" in rationales["farm_operations_income"]
+    assert "trade or business" in rationales["farm_rent_income"]
+    assert "safe-harbor" in rationales["rental_income"]
+    assert "weakest residual prior" in rationales["estate_income"]
+    assert "v3" in rationales["estate_income"]
+    assert "guaranteed-payment" in rationales["partnership_s_corp_income"]
+    assert "reasonable-compensation" in rationales["partnership_s_corp_income"]
+    assert "53%" in rationales["partnership_s_corp_income"]
+    assert "17%" in rationales["partnership_s_corp_income"]
     assert v2.sstb_classification.mode == "crosswalk"
     assert v2.sstb_classification.occupation_column == "PEIOOCC"
     assert v2.sstb_classification.industry_column is None
     assert v2.sstb_classification.agi_column == "AGI"
+    assert {
+        band.label: band.probability
+        for band in v2.sstb_classification.passive_passthrough_sstb_prior_by_agi
+    } == {
+        "-inf:200000": 0.264,
+        "200000:inf": 0.17,
+    }
+    assert "$58.24B / $221.00B = 0.2635" in v2.sstb_classification.rationale
+    assert "$37.54B / $221.00B = 0.1699" in v2.sstb_classification.rationale
+    assert v2.reit_ptp_anchor.provisional
+    assert v2.reit_ptp_anchor.published_income_dollars == 21_070_000_000.0
+    assert v2.reit_ptp_anchor.published_component_dollars == 4_200_000_000.0
+    assert v2.reit_ptp_anchor.comparison_component_2022_dollars == 2_900_000_000.0
+    assert v2.reit_ptp_anchor.replay_factor_band == (0.3, 3.0)
+    assert v2.bdc_anchor.provisional
+    assert v2.bdc_anchor.published_income_dollars is None
+    assert v2.bdc_anchor.replay_factor_band is None
     assert v2.w2_model == v1.w2_model
     assert v2.profit_margin_parameters == v1.profit_margin_parameters
     assert v2.has_employees_slope_per_dollar == v1.has_employees_slope_per_dollar
@@ -233,6 +274,14 @@ def test_v2_assumptions_pin_derivations_host_columns_and_family_seeds() -> None:
     assert v2.ubia_sigma == v1.ubia_sigma
     assert v2.ubia_multiples == v1.ubia_multiples
     assert v2.capital_intensity_probabilities == v1.capital_intensity_probabilities
+    assert {
+        exposure.source: exposure.probability_of_receiving
+        for exposure in v2.reit_ptp_exposures
+    } == {
+        "non_qualified_dividend_income": 0.35,
+        "partnership_s_corp_income": 0.09,
+    }
+    assert v2.bdc_exposures == v1.bdc_exposures
 
 
 @pytest.mark.parametrize(
@@ -785,3 +834,49 @@ def test_pinned_artifact_replay_has_archived_hashes_and_expected_distributions()
     assert not np.array_equal(physical_w2, replay_w2)
     assert not np.any((physical_w2 > 0) & (replay_w2 > 0) & (physical_w2 == replay_w2))
     assert np.count_nonzero((physical_w2 == 0) & (replay_w2 == 0)) == 358_607
+
+
+@requires_puf_2024
+def test_v2_reit_ptp_replay_is_within_provisional_published_anchor_band() -> None:
+    h5py = pytest.importorskip("h5py")
+    assert _PUF_2024_PATH is not None
+    keys = (
+        "tax_unit_id",
+        "household_weight",
+        "person_tax_unit_id",
+        "self_employment_income",
+        "farm_rent_income",
+        "rental_income",
+        "estate_income",
+        "partnership_s_corp_income",
+        "non_qualified_dividend_income",
+    )
+    with h5py.File(_PUF_2024_PATH) as artifact:
+        arrays = {key: artifact[key][:] for key in keys}
+
+    tax_unit_ids = np.asarray(arrays["tax_unit_id"])
+    person_tax_unit_ids = np.asarray(arrays["person_tax_unit_id"])
+    tax_unit_positions = np.searchsorted(tax_unit_ids, person_tax_unit_ids)
+    assert np.all(tax_unit_ids[tax_unit_positions] == person_tax_unit_ids)
+    person_weights = np.asarray(arrays["household_weight"])[tax_unit_positions]
+
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    result = with_qbi_simulation_from_puf_arrays(
+        arrays,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=assumptions,
+    )
+    aggregate = float(
+        np.sum(np.asarray(result["qualified_reit_and_ptp_income"]) * person_weights)
+    )
+    anchor = assumptions.reit_ptp_anchor
+
+    assert anchor.provisional
+    assert anchor.published_income_dollars == 21_070_000_000.0
+    assert anchor.replay_factor_band == (0.3, 3.0)
+    low_factor, high_factor = anchor.replay_factor_band
+    assert (
+        low_factor * anchor.published_income_dollars
+        <= aggregate
+        <= high_factor * anchor.published_income_dollars
+    )
