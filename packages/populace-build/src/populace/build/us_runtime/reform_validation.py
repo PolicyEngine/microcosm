@@ -394,6 +394,12 @@ def repeal_revenue_benchmark_specs(
         parameter_changes = raw.get("parameter_changes")
         if parameter_changes is not None and not isinstance(parameter_changes, dict):
             raise ValueError(f"{context}.parameter_changes must be a JSON object.")
+        budget_measure = raw.get("budget_measure", DEFAULT_BUDGET_MEASURE)
+        if not isinstance(budget_measure, str) or not budget_measure.strip():
+            raise ValueError(f"{context}.budget_measure must be a non-empty string.")
+        description = raw.get("description", "")
+        if not isinstance(description, str):
+            raise ValueError(f"{context}.description must be a string.")
 
         specs.append(
             ReformValidationSpec(
@@ -407,8 +413,8 @@ def repeal_revenue_benchmark_specs(
                 jct_source=source,
                 jct_source_url="",
                 jct_score_type="repeal_revenue",
-                budget_measure=str(raw.get("budget_measure", DEFAULT_BUDGET_MEASURE)),
-                description=str(raw.get("description", "")),
+                budget_measure=budget_measure,
+                description=description,
                 neutralized_variable=neutralized_variable,
                 parameter_changes=parameter_changes,
                 effect_direction="reform_minus_baseline",

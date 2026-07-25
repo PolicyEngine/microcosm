@@ -59,6 +59,10 @@
   publish-guard flag.
 - Focused reform-validation, publish-guard, spec-only, country-spec, and
   release-tool import tests pass; touched-file Ruff and diff checks are clean.
+- Added `changelog.d/repeal-validation-298.added.md`.
+- Tightened `budget_measure` and `description` schema handling so explicit
+  null/non-string metadata is rejected instead of coerced; focused regression
+  tests pass.
 
 ## Next
 

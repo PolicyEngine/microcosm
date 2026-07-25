@@ -34,11 +34,13 @@ The active ledger for the repeal-revenue validation surface is
 - Wired the family into `_write_reform_validation()` on the freshly exported
   release H5 and proved skipped repeal diagnostics do not change the existing
   publication-guard flag.
+- Added the required towncrier fragment and tightened optional metadata types
+  so malformed JSON fails at load time rather than during simulation.
 
 ## Current next
 
-- Add the changelog fragment and run full touched-file checks.
-- Run the full workspace suite, then write and commit the final report.
+- Run full touched-file checks and the complete workspace suite.
+- Write and commit the final report with certification caveats.
 
 ## State
 

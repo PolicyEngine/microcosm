@@ -645,6 +645,32 @@ def test_repeal_revenue_loader_reuses_exactly_one_reform_shape_validator(tmp_pat
         repeal_revenue_benchmark_specs(path, period=2026)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("budget_measure", None, "budget_measure must be a non-empty string"),
+        ("description", 123, "description must be a string"),
+    ),
+)
+def test_repeal_revenue_loader_rejects_non_string_metadata(
+    tmp_path, field, value, message
+):
+    row = {
+        "id": "valid_except_metadata",
+        "name": "Valid except metadata",
+        "period": 2026,
+        "neutralized_variable": "some_variable",
+        "benchmark": 1,
+        "benchmark_source": "source",
+        "provisional": True,
+        field: value,
+    }
+    path = tmp_path / "repeal_revenue_benchmarks.json"
+    path.write_text(json.dumps({"schema_version": 1, "benchmarks": [row]}))
+    with pytest.raises(ValueError, match=message):
+        repeal_revenue_benchmark_specs(path, period=2026)
+
+
 @pytest.mark.skipif(
     importlib.util.find_spec("policyengine_" + "us") is None,
     reason="requires the pinned US rules-engine extra",
