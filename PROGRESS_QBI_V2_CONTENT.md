@@ -6,8 +6,7 @@
 - Base: local `repeal-validation-298` at `e45f797`
 - Worktree: `.claude/worktrees/populace-wt-530`
 - Mode: offline; no push, pull, fetch, PR, or stash
-- Status: implementation and affected validation complete; full validation
-  pending
+- Status: complete; ready for supervisor push
 
 ## Done
 
@@ -71,10 +70,15 @@
 - Added `changelog.d/qbi-v2-content.added.md`.
 - Country-package, US-plan/incumbent, source-runtime, and base-builder
   contract suites pass.
+- Full offline workspace pytest passes with both restricted-data inputs:
+  3,260 passed, 132 skipped, zero failed in 116.70 seconds.
+- Full-workspace `uv run ruff check .`, changed-file formatter checks, and
+  `git diff --check` pass.
+- Wrote the final content report to `FINAL_REPORT_QBI_530.md`, including the
+  passive-prior arithmetic, exact REIT/PTP/BDC replay receipts, and an explicit
+  statement that no binding adjudication remains unimplemented.
 
 ## Next
 
-- Run full workspace pytest with both restricted-data environment variables,
-  then full Ruff and repository hygiene checks.
-- Write the final report, including arithmetic, replay result, and any
-  unimplemented adjudication (currently none).
+- Supervisor pushes `qbi-v2-content` and handles the PR. This worktree remains
+  offline with no local push or PR action.

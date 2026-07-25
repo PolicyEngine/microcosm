@@ -12,7 +12,7 @@ The active ledger for the QBI v2 content work is
   `.claude/worktrees/populace-wt-530` worktree.
 - The adjudicated live SSTB crosswalk is packaged and wired occupation-first.
   Evidence-anchored qualification, passive SSTB, REIT/PTP, and BDC content is
-  implemented with a passing restricted replay diagnostic.
+  implemented and fully validated.
 
 ## Current done
 
@@ -43,11 +43,14 @@ The active ledger for the QBI v2 content work is
   replay is $0.143270890B.
 - Added the QBI v2 content changelog. Country-package, US-plan/incumbent,
   source-runtime, and base-builder contract suites pass.
+- Full offline workspace validation passes: 3,260 tests passed, 132 skipped,
+  and zero failed. Full `ruff check` and changed-file format checks pass.
+- Replaced the prior engine-scaffold output with the final content report in
+  `FINAL_REPORT_QBI_530.md`; no binding adjudication remains unimplemented.
 
 ## Current next
 
-- Execute full workspace pytest and Ruff, then write the final report and
-  commit the completion state.
+- Supervisor push and PR handling; no network action was taken locally.
 
 ## State
 
