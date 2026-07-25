@@ -6,7 +6,7 @@
 - Base: local `repeal-validation-298` at `e45f797`
 - Worktree: `.claude/worktrees/populace-wt-530`
 - Mode: offline; no push, pull, fetch, PR, or stash
-- Status: evidence intake complete; implementation not started
+- Status: live SSTB crosswalk complete; assumptions content in progress
 
 ## Done
 
@@ -29,14 +29,28 @@
   - OTA/JCT-derived passive AGI priors;
   - Pub 4801/JCT-anchored REIT/PTP scale diagnostic;
   - evidence-specific qualification derivations and residual priors.
+- Added and declared `us/sstb_crosswalk_v1.json`:
+  - 27 2017 Census industry entries and 101 2018 Census occupation entries;
+  - 10 industry and 11 occupation explicit non-SSTB documentation rows at
+    probability zero;
+  - exact 1.00/0.10/0.20/0.25/0.30 adjudicated tiers;
+  - provisional §1.199A-5(c)(1) bases on every ambiguous entry;
+  - preserved reputation-or-skill and occupation/industry wiring notes.
+- Updated the strict loader and host classifier to accept the live schema,
+  preserve leading-zero codes, consume code-level probabilities, prefer a
+  configured industry signal, and resolve every unmapped code to zero.
+- Pointed v2 assumptions at the live occupation-first resource while retaining
+  the in-tree placeholder for explicit fail-closed tests.
+- Added live-schema, probability-tier, occupation-format, explicit-zero, and
+  real-crosswalk host-routing tests. Focused QBI, crosswalk, spec-only, and
+  Ruff checks pass.
 
 ## Next
 
-- Trace the v2 loader, post-QRF host transform, package resource contract, and
-  placeholder fail-closed tests.
-- Derive and document the passive-prior arithmetic directly from the
+- Encode and test the two-band passive prior arithmetic directly from the
   221.00/162.76/183.46 OTA waterfall and JCT above-threshold split.
-- Implement the live resource, assumptions changes, tests, changelog, and
-  replay diagnostic in coherent committed steps.
+- Update qualification derivations, QRF exclusions, REIT/PTP scale and
+  evidence metadata, and the restricted replay diagnostic.
+- Add the changelog, run all focused validation, and commit each coherent step.
 - Run focused tests, Ruff, full workspace pytest with both restricted-data
   environment variables, then write the final report.

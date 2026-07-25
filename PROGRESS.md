@@ -10,8 +10,8 @@ The active ledger for the QBI v2 content work is
 
 - Branch `qbi-v2-content` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
-- The adjudicated SSTB crosswalk and Section 199A publications factsheets are
-  read. Runtime-contract tracing and implementation are next.
+- The adjudicated live SSTB crosswalk is packaged and wired occupation-first.
+  Evidence-anchored assumptions and replay diagnostics are next.
 
 ## Current done
 
@@ -22,12 +22,19 @@ The active ledger for the QBI v2 content work is
 - Recorded the binding probability tiers, occupation-primary wiring,
   passive-prior anchors, REIT/PTP diagnostic band, and qualification content
   requirements without adding unsupported facts.
+- Added the live 2017-industry/2018-occupation resource with 128 mapped codes,
+  21 explicit non-SSTB documentation rows, per-code probabilities, and
+  provisional de-minimis bases for all 62 ambiguous entries.
+- Updated the loader and host transform for `status: live`, zero-prefixed
+  codes, per-code probabilities, industry-first fallback, and unmapped p=0.
+- Preserved the packaged placeholder fail-closed path and added schema, tier,
+  code-format, documentation, and real-crosswalk end-to-end tests.
+- Focused QBI/crosswalk/spec tests and Ruff pass.
 
 ## Current next
 
-- Trace the v2 loader, runtime, package declaration, and existing tests.
-- Add the live crosswalk resource, evidence-anchored v2 assumptions, focused
-  tests, changelog, replay diagnostic, and full validation.
+- Add the derived passive priors, qualification content, REIT/PTP/BDC evidence
+  anchors, restricted replay diagnostic, changelog, and full validation.
 
 ## State
 

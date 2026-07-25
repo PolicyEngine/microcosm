@@ -91,17 +91,72 @@ def _synthetic_sstb_crosswalk_payload() -> dict[str, object]:
     return {
         "schema_version": 1,
         "crosswalk_version": "synthetic-test-v1",
-        "status": "ready",
-        "occupation_code_system": "synthetic Census occupation",
-        "industry_code_system": None,
-        "mapping": {
-            "occupation": {
-                "1010": "clear_sstb",
-                "2020": "non_sstb",
-                "3030": "ambiguous",
-            },
-            "industry": {},
+        "status": "live",
+        "meta": {
+            "industry_vintage": "synthetic Census industry",
+            "occupation_vintage": "synthetic Census occupation",
+            "legal_basis": "synthetic Section 199A test basis",
+            "wiring_notes": ["synthetic test wiring"],
+            "sstb_category_values": ["law"],
         },
+        "industry_2017": [
+            {
+                "census_code": "4040",
+                "census_title": "Synthetic non-SSTB industry",
+                "naics": "00",
+                "sstb_category": ["law"],
+                "classification": "non_sstb",
+                "probability": 0.0,
+                "rationale": "Synthetic deterministic non-SSTB entry",
+            },
+        ],
+        "industry_explicit_nonsstb_neighbors": [
+            {
+                "census_code": "0000",
+                "census_title": "Synthetic documented industry",
+                "why": "Synthetic documentation row",
+                "probability": 0.0,
+            }
+        ],
+        "occupation_2018": [
+            {
+                "census_code": "1010",
+                "census_title": "Synthetic clear occupation",
+                "soc": "00-0001",
+                "sstb_category": ["law"],
+                "classification": "clear_sstb",
+                "probability": 1.0,
+                "rationale": "Synthetic deterministic SSTB entry",
+            },
+            {
+                "census_code": "2020",
+                "census_title": "Synthetic non-SSTB occupation",
+                "soc": "00-0002",
+                "sstb_category": ["law"],
+                "classification": "non_sstb",
+                "probability": 0.0,
+                "rationale": "Synthetic deterministic non-SSTB entry",
+            },
+            {
+                "census_code": "3030",
+                "census_title": "Synthetic ambiguous occupation",
+                "soc": "00-0003",
+                "sstb_category": ["law"],
+                "classification": "ambiguous",
+                "probability": 0.3,
+                "rationale": "Synthetic ambiguous entry",
+                "provisional": True,
+                "basis": "Synthetic provisional basis",
+            },
+        ],
+        "occupation_explicit_nonsstb_notes": [
+            {
+                "census_code": "0000",
+                "census_title": "Synthetic documented occupation",
+                "why": "Synthetic documentation row",
+                "probability": 0.0,
+            }
+        ],
     }
 
 
@@ -235,17 +290,17 @@ def test_v2_schema_rejects_unknown_keys_modes_and_invalid_bands(
         )
 
 
-def test_sstb_crosswalk_placeholder_fails_closed_and_ready_fixture_loads() -> None:
+def test_sstb_crosswalk_placeholder_fails_closed_and_live_fixture_loads() -> None:
     with pytest.raises(ValueError, match="status is 'placeholder'"):
         load_sstb_crosswalk("sstb_crosswalk_placeholder.json")
 
     crosswalk = parse_sstb_crosswalk(_synthetic_sstb_crosswalk_payload())
 
-    assert crosswalk.status == "ready"
+    assert crosswalk.status == "live"
     assert crosswalk.mapping_for("occupation") == {
-        1010: "clear_sstb",
-        2020: "non_sstb",
-        3030: "ambiguous",
+        1010: 1.0,
+        2020: 0.0,
+        3030: 0.3,
     }
 
 
@@ -253,7 +308,12 @@ def test_caller_constructed_crosswalk_still_fails_closed() -> None:
     crosswalk = parse_sstb_crosswalk(_synthetic_sstb_crosswalk_payload())
     malformed = replace(
         crosswalk,
-        occupation_mapping=((1010, "unknown_classification"),),
+        occupation_entries=(
+            replace(
+                crosswalk.occupation_entries[0],
+                classification="unknown_classification",
+            ),
+        ),
     )
 
     with pytest.raises(ValueError, match="unknown classification"):
@@ -267,11 +327,19 @@ def test_caller_constructed_crosswalk_still_fails_closed() -> None:
 
 def test_v2_simulation_fails_closed_before_using_placeholder_crosswalk() -> None:
     inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    assumptions = replace(
+        assumptions,
+        sstb_classification=replace(
+            assumptions.sstb_classification,
+            crosswalk_resource="sstb_crosswalk_placeholder.json",
+        ),
+    )
 
     with pytest.raises(ValueError, match="status is 'placeholder'"):
         simulate_qbi_inputs(
             inputs,
-            assumptions=load_qbi_simulation_assumptions(QBI_SIMULATION_V2),
+            assumptions=assumptions,
             qbi_simulation_version=QBI_SIMULATION_V2,
         )
 

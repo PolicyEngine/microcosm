@@ -50,6 +50,7 @@ __all__ = [
     "QbiSimulationInputs",
     "SstbClassificationAssumptions",
     "SstbCrosswalk",
+    "SstbCrosswalkEntry",
     "load_qbi_simulation_assumptions",
     "load_sstb_crosswalk",
     "parse_qbi_simulation_assumptions",
@@ -118,7 +119,7 @@ _SUPPORTED_MODEL_KINDS = {
 _V2_QUALIFICATION_MODES = frozenset({"derived", "prior"})
 _V2_SSTB_CLASSIFICATION_MODE = "crosswalk"
 _SSTB_CROSSWALK_SCHEMA_VERSION = 1
-_SSTB_CROSSWALK_READY_STATUS = "ready"
+_SSTB_CROSSWALK_LIVE_STATUS = "live"
 _SSTB_CLASSIFICATIONS = frozenset(
     {
         "clear_sstb",
@@ -186,25 +187,96 @@ class SstbClassificationAssumptions:
 
 
 @dataclass(frozen=True)
+class SstbCrosswalkEntry:
+    """One validated Census code and its Section 199A SSTB probability."""
+
+    code: int
+    classification: str
+    probability: float
+    provisional: bool
+    basis: str | None
+
+    def validate(self, family: str) -> None:
+        """Validate classification-to-probability and evidence metadata."""
+
+        if isinstance(self.code, bool) or not isinstance(self.code, int):
+            raise ValueError(f"SSTB crosswalk {family} codes must be integers.")
+        if not 0 <= self.code <= 9_999:
+            raise ValueError(
+                f"SSTB crosswalk {family} codes must be four-digit Census codes."
+            )
+        if self.classification not in _SSTB_CLASSIFICATIONS:
+            raise ValueError(
+                f"SSTB crosswalk {family} code {self.code:04d} has unknown "
+                f"classification {self.classification!r}."
+            )
+        _validate_probabilities(
+            f"SSTB crosswalk {family} probability for {self.code:04d}",
+            (self.probability,),
+        )
+        deterministic_probability = {
+            "clear_sstb": 1.0,
+            "non_sstb": 0.0,
+        }.get(self.classification)
+        if (
+            deterministic_probability is not None
+            and self.probability != deterministic_probability
+        ):
+            raise ValueError(
+                f"SSTB crosswalk {self.classification} code {self.code:04d} "
+                f"must have probability {deterministic_probability}."
+            )
+        if self.classification == "ambiguous":
+            if not 0.0 < self.probability < 1.0:
+                raise ValueError(
+                    f"Ambiguous SSTB code {self.code:04d} must have a prior "
+                    "strictly between zero and one."
+                )
+            if self.provisional is not True:
+                raise ValueError(
+                    f"Ambiguous SSTB code {self.code:04d} must be provisional."
+                )
+            if not isinstance(self.basis, str) or not self.basis.strip():
+                raise ValueError(
+                    f"Ambiguous SSTB code {self.code:04d} must cite its basis."
+                )
+        elif self.provisional or self.basis is not None:
+            raise ValueError(
+                f"Deterministic SSTB code {self.code:04d} must not carry "
+                "provisional prior metadata."
+            )
+
+
+@dataclass(frozen=True)
 class SstbCrosswalk:
-    """Validated Census host-code classification crosswalk."""
+    """Validated Census host-code probability crosswalk."""
 
     schema_version: int
     crosswalk_version: str
     status: str
-    occupation_code_system: str
-    industry_code_system: str | None
-    occupation_mapping: tuple[tuple[int, str], ...]
-    industry_mapping: tuple[tuple[int, str], ...]
+    industry_vintage: str
+    occupation_vintage: str
+    legal_basis: str
+    wiring_notes: tuple[str, ...]
+    sstb_category_values: tuple[str, ...]
+    occupation_entries: tuple[SstbCrosswalkEntry, ...]
+    industry_entries: tuple[SstbCrosswalkEntry, ...]
 
-    def mapping_for(self, family: str) -> dict[int, str]:
-        """Return one signal family's code-to-classification mapping."""
+    def entries_for(self, family: str) -> tuple[SstbCrosswalkEntry, ...]:
+        """Return one signal family's validated entries."""
 
         if family == "occupation":
-            return dict(self.occupation_mapping)
+            return self.occupation_entries
         if family == "industry":
-            return dict(self.industry_mapping)
+            return self.industry_entries
         raise ValueError(f"Unknown SSTB crosswalk family {family!r}.")
+
+    def mapping_for(self, family: str) -> dict[int, float]:
+        """Return one signal family's code-to-probability mapping."""
+
+        return {
+            entry.code: entry.probability for entry in self.entries_for(family)
+        }
 
     def validate(self) -> None:
         """Reject malformed instances, including caller-constructed objects."""
@@ -213,44 +285,42 @@ class SstbCrosswalk:
             raise ValueError(
                 f"Unsupported SSTB crosswalk schema_version {self.schema_version!r}."
             )
-        if self.status != _SSTB_CROSSWALK_READY_STATUS:
-            raise ValueError("QBI v2 requires a ready SSTB crosswalk.")
+        if self.status != _SSTB_CROSSWALK_LIVE_STATUS:
+            raise ValueError("QBI v2 requires a live SSTB crosswalk.")
         for name, value in (
             ("crosswalk_version", self.crosswalk_version),
-            ("occupation_code_system", self.occupation_code_system),
+            ("industry_vintage", self.industry_vintage),
+            ("occupation_vintage", self.occupation_vintage),
+            ("legal_basis", self.legal_basis),
         ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"SSTB crosswalk {name} must be a nonempty string.")
-        if self.industry_code_system is not None and (
-            not isinstance(self.industry_code_system, str)
-            or not self.industry_code_system
+        if not self.wiring_notes or not all(
+            isinstance(note, str) and note.strip() for note in self.wiring_notes
+        ):
+            raise ValueError("SSTB crosswalk wiring_notes must be nonempty strings.")
+        if not self.sstb_category_values or not all(
+            isinstance(category, str) and category
+            for category in self.sstb_category_values
         ):
             raise ValueError(
-                "SSTB crosswalk industry_code_system must be null or a nonempty string."
+                "SSTB crosswalk sstb_category_values must be nonempty strings."
             )
-        for family, mapping in (
-            ("occupation", self.occupation_mapping),
-            ("industry", self.industry_mapping),
+        for family, entries in (
+            ("occupation", self.occupation_entries),
+            ("industry", self.industry_entries),
         ):
             seen: set[int] = set()
-            for code, classification in mapping:
-                if isinstance(code, bool) or not isinstance(code, int) or code < 0:
-                    raise ValueError(
-                        f"SSTB crosswalk {family} codes must be nonnegative integers."
-                    )
-                if code in seen:
+            for entry in entries:
+                entry.validate(family)
+                if entry.code in seen:
                     raise ValueError(
                         f"SSTB crosswalk {family} mapping contains duplicate "
-                        f"code {code}."
+                        f"code {entry.code:04d}."
                     )
-                seen.add(code)
-                if classification not in _SSTB_CLASSIFICATIONS:
-                    raise ValueError(
-                        f"SSTB crosswalk {family} code {code} has unknown "
-                        f"classification {classification!r}."
-                    )
-        if not self.occupation_mapping and not self.industry_mapping:
-            raise ValueError("Ready SSTB crosswalk mapping must not be empty.")
+                seen.add(entry.code)
+        if not self.occupation_entries or not self.industry_entries:
+            raise ValueError("Live SSTB crosswalk must carry both Census maps.")
 
 
 @dataclass(frozen=True)
@@ -1049,18 +1119,26 @@ def load_sstb_crosswalk(resource_name: str) -> SstbCrosswalk:
 
 
 def parse_sstb_crosswalk(payload: Any) -> SstbCrosswalk:
-    """Validate a ready SSTB crosswalk mapping, failing closed on placeholders."""
+    """Validate the live SSTB crosswalk, failing closed on placeholders."""
 
     root = _require_mapping(payload, "SSTB crosswalk")
+    status = _string(root.get("status"), "SSTB crosswalk.status")
+    if status == "placeholder":
+        raise ValueError(
+            "SSTB crosswalk status is 'placeholder'; v2 classification fails "
+            "closed until reviewed mapping content is packaged."
+        )
     _require_exact_keys(
         root,
         (
             "schema_version",
             "crosswalk_version",
             "status",
-            "occupation_code_system",
-            "industry_code_system",
-            "mapping",
+            "meta",
+            "industry_2017",
+            "industry_explicit_nonsstb_neighbors",
+            "occupation_2018",
+            "occupation_explicit_nonsstb_notes",
         ),
         "SSTB crosswalk",
     )
@@ -1072,19 +1150,31 @@ def parse_sstb_crosswalk(payload: Any) -> SstbCrosswalk:
         raise ValueError(
             f"Unsupported SSTB crosswalk schema_version {schema_version!r}."
         )
-    status = _string(root.get("status"), "SSTB crosswalk.status")
-    if status == "placeholder":
-        raise ValueError(
-            "SSTB crosswalk status is 'placeholder'; v2 classification fails "
-            "closed until reviewed mapping content is packaged."
-        )
-    if status != _SSTB_CROSSWALK_READY_STATUS:
+    if status != _SSTB_CROSSWALK_LIVE_STATUS:
         raise ValueError(f"Unsupported SSTB crosswalk status {status!r}.")
-    mapping = _child_mapping(root, "mapping")
+    meta = _child_mapping(root, "meta")
     _require_exact_keys(
-        mapping,
-        ("occupation", "industry"),
-        "SSTB crosswalk.mapping",
+        meta,
+        (
+            "industry_vintage",
+            "occupation_vintage",
+            "legal_basis",
+            "wiring_notes",
+            "sstb_category_values",
+        ),
+        "SSTB crosswalk.meta",
+    )
+    categories = _string_tuple(
+        meta.get("sstb_category_values"),
+        "SSTB crosswalk.meta.sstb_category_values",
+    )
+    _validate_explicit_nonsstb_entries(
+        root.get("industry_explicit_nonsstb_neighbors"),
+        "SSTB crosswalk.industry_explicit_nonsstb_neighbors",
+    )
+    _validate_explicit_nonsstb_entries(
+        root.get("occupation_explicit_nonsstb_notes"),
+        "SSTB crosswalk.occupation_explicit_nonsstb_notes",
     )
     crosswalk = SstbCrosswalk(
         schema_version=schema_version,
@@ -1093,21 +1183,34 @@ def parse_sstb_crosswalk(payload: Any) -> SstbCrosswalk:
             "SSTB crosswalk.crosswalk_version",
         ),
         status=status,
-        occupation_code_system=_string(
-            root.get("occupation_code_system"),
-            "SSTB crosswalk.occupation_code_system",
+        industry_vintage=_string(
+            meta.get("industry_vintage"),
+            "SSTB crosswalk.meta.industry_vintage",
         ),
-        industry_code_system=_optional_string(
-            root.get("industry_code_system"),
-            "SSTB crosswalk.industry_code_system",
+        occupation_vintage=_string(
+            meta.get("occupation_vintage"),
+            "SSTB crosswalk.meta.occupation_vintage",
         ),
-        occupation_mapping=_parse_crosswalk_mapping(
-            _child_mapping(mapping, "occupation"),
-            "SSTB crosswalk.mapping.occupation",
+        legal_basis=_string(
+            meta.get("legal_basis"),
+            "SSTB crosswalk.meta.legal_basis",
         ),
-        industry_mapping=_parse_crosswalk_mapping(
-            _child_mapping(mapping, "industry"),
-            "SSTB crosswalk.mapping.industry",
+        wiring_notes=_string_tuple(
+            meta.get("wiring_notes"),
+            "SSTB crosswalk.meta.wiring_notes",
+        ),
+        sstb_category_values=categories,
+        occupation_entries=_parse_crosswalk_entries(
+            root.get("occupation_2018"),
+            family="occupation",
+            classification_system_key="soc",
+            categories=categories,
+        ),
+        industry_entries=_parse_crosswalk_entries(
+            root.get("industry_2017"),
+            family="industry",
+            classification_system_key="naics",
+            categories=categories,
         ),
     )
     crosswalk.validate()
@@ -2128,31 +2231,104 @@ def _validate_agi_prior_bands(bands: tuple[AgiSstbPriorBand, ...]) -> None:
             )
 
 
-def _parse_crosswalk_mapping(
-    values: Mapping[str, Any],
-    label: str,
-) -> tuple[tuple[int, str], ...]:
-    result: list[tuple[int, str]] = []
-    for raw_code, raw_classification in values.items():
+def _parse_crosswalk_entries(
+    value: Any,
+    *,
+    family: str,
+    classification_system_key: str,
+    categories: tuple[str, ...],
+) -> tuple[SstbCrosswalkEntry, ...]:
+    label = f"SSTB crosswalk.{family}_2018"
+    if family == "industry":
+        label = "SSTB crosswalk.industry_2017"
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{label} must be a nonempty list.")
+    result: list[SstbCrosswalkEntry] = []
+    for index, raw_entry in enumerate(value):
+        entry_label = f"{label}[{index}]"
+        entry = _require_mapping(raw_entry, entry_label)
+        classification = _string(
+            entry.get("classification"),
+            f"{entry_label}.classification",
+        )
+        expected_keys = (
+            "census_code",
+            "census_title",
+            classification_system_key,
+            "sstb_category",
+            "classification",
+            "probability",
+            "rationale",
+        )
+        if classification == "ambiguous":
+            expected_keys += ("provisional", "basis")
+        _require_exact_keys(entry, expected_keys, entry_label)
+        raw_code = entry.get("census_code")
         if (
             not isinstance(raw_code, str)
+            or len(raw_code) != 4
             or not raw_code.isdigit()
-            or str(int(raw_code)) != raw_code
         ):
             raise ValueError(
-                f"{label} keys must be canonical nonnegative integer strings."
+                f"{entry_label}.census_code must use four decimal digits."
             )
-        classification = _string(
-            raw_classification,
-            f"{label}.{raw_code}",
+        _string(entry.get("census_title"), f"{entry_label}.census_title")
+        _string(
+            entry.get(classification_system_key),
+            f"{entry_label}.{classification_system_key}",
         )
-        if classification not in _SSTB_CLASSIFICATIONS:
+        entry_categories = _string_tuple(
+            entry.get("sstb_category"),
+            f"{entry_label}.sstb_category",
+        )
+        unknown_categories = sorted(set(entry_categories) - set(categories))
+        if unknown_categories:
             raise ValueError(
-                f"{label}.{raw_code} has unknown SSTB classification "
-                f"{classification!r}."
+                f"{entry_label}.sstb_category has unknown value(s) "
+                f"{unknown_categories}."
             )
-        result.append((int(raw_code), classification))
-    return tuple(sorted(result))
+        _string(entry.get("rationale"), f"{entry_label}.rationale")
+        result.append(
+            SstbCrosswalkEntry(
+                code=int(raw_code),
+                classification=classification,
+                probability=_number(
+                    entry.get("probability"),
+                    f"{entry_label}.probability",
+                ),
+                provisional=entry.get("provisional", False),
+                basis=(
+                    _string(entry.get("basis"), f"{entry_label}.basis")
+                    if "basis" in entry
+                    else None
+                ),
+            )
+        )
+    return tuple(sorted(result, key=lambda entry: entry.code))
+
+
+def _validate_explicit_nonsstb_entries(value: Any, label: str) -> None:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{label} must be a nonempty list.")
+    for index, raw_entry in enumerate(value):
+        entry_label = f"{label}[{index}]"
+        entry = _require_mapping(raw_entry, entry_label)
+        _require_exact_keys(
+            entry,
+            ("census_code", "census_title", "why", "probability"),
+            entry_label,
+        )
+        for key in ("census_code", "census_title", "why"):
+            _string(entry.get(key), f"{entry_label}.{key}")
+        probability = _number(
+            entry.get("probability"),
+            f"{entry_label}.probability",
+        )
+        if probability != 0.0:
+            raise ValueError(
+                f"{entry_label}.probability must be 0.0 for documented "
+                "non-SSTB codes."
+            )
 
 
 def _ordered_scalars(

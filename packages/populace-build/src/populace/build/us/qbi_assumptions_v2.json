@@ -60,12 +60,12 @@
   },
   "sstb_classification": {
     "mode": "crosswalk",
-    "crosswalk_resource": "sstb_crosswalk_placeholder.json",
+    "crosswalk_resource": "sstb_crosswalk_v1.json",
     "occupation_column": "PEIOOCC",
     "industry_column": null,
     "agi_column": "AGI",
     "ambiguous_prior": 0.0,
-    "ambiguous_prior_status": "placeholder_pending_evidence",
+    "ambiguous_prior_status": "superseded_by_code_specific_live_crosswalk",
     "agi_band_format": "lower_inclusive:upper_exclusive",
     "passive_passthrough_sstb_prior_by_agi": {
       "-inf:100000": 0.0,
