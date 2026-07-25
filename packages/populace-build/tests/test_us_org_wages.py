@@ -331,6 +331,74 @@ def test_flsa_treats_non_finite_hours_as_absent() -> None:
     )
 
 
+def test_recipient_income_feature_is_full_year_equivalent(monkeypatch) -> None:
+    """The QRF income predictor must carry the donor's income concept.
+
+    The donor's employment_income is the annualized reference week
+    (pternwa x 52), so recipients feed the full-year-equivalent of their
+    actual annual income: a 26-week worker's income doubles, a full-year
+    worker's is unchanged, and weeks of 0 (or missing) pass income through
+    untouched. The premium derivation keeps actual annual income (populace#529).
+    """
+
+    captured: dict[str, pd.DataFrame] = {}
+
+    class Fitted:
+        def predict(self, features):
+            captured["features"] = features.copy()
+            return pd.DataFrame(
+                {
+                    "hourly_wage": np.full(len(features), 20.0),
+                    "is_paid_hourly": np.ones(len(features)),
+                },
+                index=features.index,
+            )
+
+    class CaptureQRF:
+        def __init__(self, **kwargs):
+            pass
+
+        def fit(self, *args, **kwargs):
+            return Fitted()
+
+    monkeypatch.setattr("populace.fit.QRF", CaptureQRF)
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
+    person = _person(100)
+    # Part-year: $26,000 over 26 weeks -> full-year equivalent $52,000.
+    person.loc[50, "employment_income_before_lsr"] = 26_000.0
+    person.loc[50, "weeks_worked"] = 26.0
+    person.loc[50, "hours_worked_last_week"] = 50.0
+    person.loc[50, "weekly_hours_worked_before_lsr"] = 40.0
+    # Full-year: unchanged.
+    person.loc[51, "employment_income_before_lsr"] = 52_000.0
+    person.loc[51, "weeks_worked"] = 52.0
+    # Zero weeks with positive income: passed through untouched.
+    person.loc[52, "employment_income_before_lsr"] = 10_000.0
+    person.loc[52, "weeks_worked"] = 0.0
+    # Missing weeks: passed through untouched.
+    person.loc[53, "employment_income_before_lsr"] = 30_000.0
+    person.loc[53, "weeks_worked"] = np.nan
+
+    # Strict float errors: zero/missing weeks must never touch the divide.
+    with np.errstate(divide="raise", invalid="raise"):
+        frame = module.with_us_org_wages_inputs(
+            _frame(person), seed=0, time_period=2024, org_donor=_donor()
+        )
+    features = captured["features"]
+    assert features.loc[50, "employment_income"] == 52_000.0
+    assert features.loc[51, "employment_income"] == 52_000.0
+    assert features.loc[52, "employment_income"] == 10_000.0
+    assert features.loc[53, "employment_income"] == 30_000.0
+    # The premium keeps ACTUAL annual income: 26,000 x share(50) = 26,000/11.
+    np.testing.assert_allclose(
+        frame.table("person")["fsla_overtime_premium"].iloc[50],
+        26_000 / 11,
+        rtol=1e-5,
+    )
+
+
 def test_imputation_zeroes_inactive_and_union_is_deterministic(monkeypatch) -> None:
     class Fitted:
         def predict(self, features):
@@ -505,23 +573,37 @@ def test_stage_derives_usual_hours_leg_end_to_end(monkeypatch) -> None:
     assert (premium.to_numpy()[inactive] == 0).all()
 
 
+class _ConstantQRF:
+    """Deterministic stand-in: 25.0/hr, everyone paid hourly."""
+
+    def __init__(self, **kwargs):
+        pass
+
+    def fit(self, *args, **kwargs):
+        return self
+
+    def predict(self, features):
+        return pd.DataFrame(
+            {
+                "hourly_wage": np.full(len(features), 25.0),
+                "is_paid_hourly": np.ones(len(features)),
+            },
+            index=features.index,
+        )
+
+
 def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None:
     """A populated ORG surface must converge to the current estimator.
 
-    The idempotency skip may not silently retain a premium column produced by
-    the retired reference-week-only construction; the QRF family stays
-    skipped (poisoned here to prove it), the premium refreshes, and an
-    already-consistent surface passes through unchanged.
+    The stage re-imputes on every entry: a stale premium column from the
+    retired reference-week-only construction converges, a NaN premium takes
+    the recomputed clean value, and a surface that already matches passes
+    through byte-stable (seeded QRF + deterministic lottery + pure derives).
     """
     monkeypatch.setattr(
         module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
     )
-
-    class PoisonQRF:
-        def __init__(self, **kwargs):
-            raise AssertionError("populated surface must not refit the QRF")
-
-    monkeypatch.setattr("populace.fit.QRF", PoisonQRF)
+    monkeypatch.setattr("populace.fit.QRF", _ConstantQRF)
     person = _person(1_000)
     person["cps_race"] = person["PRDTRACE"]
     person["is_hispanic"] = person["PRDTHSP"].ne(0)
@@ -560,14 +642,22 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     )
     assert np.isfinite(premium.to_numpy()).all()
 
-    # Idempotent second pass: already consistent, returned unchanged.
+    # Idempotent second pass: already consistent, so the SAME frame object
+    # passes through (the fast path, not merely equal values) — including
+    # the hash-lottery union column, proving byte-stable re-entry.
     person_consistent = refreshed.table("person")
+    second_frame = _frame(person_consistent)
     again = module.with_us_org_wages_inputs(
-        _frame(person_consistent), seed=0, time_period=2024, org_donor=_donor()
+        second_frame, seed=0, time_period=2024, org_donor=_donor()
     )
+    assert again is second_frame
     np.testing.assert_array_equal(
         again.table("person")["fsla_overtime_premium"].to_numpy(),
         premium.to_numpy(),
+    )
+    np.testing.assert_array_equal(
+        again.table("person")["is_union_member_or_covered"].to_numpy(),
+        person_consistent["is_union_member_or_covered"].to_numpy(),
     )
 
     # Third pass — the NaN-coercion regression guard: on an OTHERWISE
@@ -585,3 +675,164 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     assert np.isfinite(healed_premium).all()
     assert healed_premium[0] == 0.0
     np.testing.assert_array_equal(healed_premium, premium.to_numpy())
+
+
+def test_stage_reimputes_stale_wages_on_populated_surface(monkeypatch) -> None:
+    """Stale QRF outputs on a populated surface must converge too.
+
+    The #529 concept alignment changes what the QRF sees, so a populated
+    frame whose wages came from the earlier feature construction may not
+    survive re-entry: the stage re-imputes hourly wage, hourly status,
+    union coverage, and occupation carries, not just the premium. The fake
+    QRF divides the income feature by 2,080, so a full-year $52,000 worker
+    reads $25.00/hr and a part-year $26,000-over-26-weeks worker reads
+    $25.00/hr ONLY through the full-year-equivalent scaling — reverting
+    #529 would emit $12.50 and fail the composition assertion.
+    """
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
+
+    class FeatureQRF:
+        def __init__(self, **kwargs):
+            pass
+
+        def fit(self, *args, **kwargs):
+            return self
+
+        def predict(self, features):
+            return pd.DataFrame(
+                {
+                    "hourly_wage": features["employment_income"].to_numpy() / 2_080.0,
+                    "is_paid_hourly": np.ones(len(features)),
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr("populace.fit.QRF", FeatureQRF)
+    person = _person(1_000)
+    # Part-year composition probe: $26,000 over 26 weeks, usual 40 hours.
+    person.loc[10, "employment_income_before_lsr"] = 26_000.0
+    person.loc[10, "weeks_worked"] = 26.0
+    person.loc[10, "weekly_hours_worked_before_lsr"] = 40.0
+    person["cps_race"] = person["PRDTRACE"]
+    person["is_hispanic"] = person["PRDTHSP"].ne(0)
+    carried = derive_us_org_occupation_inputs(person)
+    for column in carried:
+        person[column] = carried[column]
+    pristine = person.copy()
+    active = person["employment_income_before_lsr"].to_numpy() > 0
+    # Stale surface: sub-minimum wages, inverted hourly status, a wrong but
+    # NONCONSTANT union pattern (a constant column would fail
+    # _surface_has_signal and bypass the populated-surface comparison this
+    # test exists to bind), and a poisoned occupation carry.
+    person["hourly_wage"] = np.where(active, 5.0, 0.0)
+    person["is_paid_hourly"] = np.where(active, np.arange(1_000) % 2 == 0, False)
+    person["is_union_member_or_covered"] = np.arange(1_000) % 3 == 0
+    person.loc[20, "is_military"] = True  # POCCU2 is 0 here, not 52
+    person["fsla_overtime_premium"] = 0.0
+    person.loc[950:999, "fsla_overtime_premium"] = 52_000 / 11
+
+    refreshed = module.with_us_org_wages_inputs(
+        _frame(person), seed=0, time_period=2024, org_donor=_donor()
+    )
+    clean = module.with_us_org_wages_inputs(
+        _frame(pristine), seed=0, time_period=2024, org_donor=_donor()
+    )
+    out = refreshed.table("person")
+    reference = clean.table("person")
+    # Full convergence: the poisoned surface reproduces the from-scratch
+    # build column-for-column — union quotas, occupation carries, wages,
+    # hourly status, and premium alike.
+    for column in module.US_ORG_WAGES_OUTPUT_COLUMNS:
+        np.testing.assert_array_equal(
+            out[column].to_numpy(), reference[column].to_numpy(), err_msg=column
+        )
+    np.testing.assert_allclose(
+        out["hourly_wage"].to_numpy(), np.where(active, 25.0, 0.0), rtol=1e-6
+    )
+    assert not out["is_military"].iloc[20]  # carry re-derived from POCCU2
+
+
+def test_outputs_match_rejects_boolean_nan_and_nullable_na(monkeypatch) -> None:
+    """A damaged boolean output takes the rebuild path, never truthy-True.
+
+    np.nan casts to True under astype(bool); the strict 0/1 comparison must
+    instead treat NaN (and nullable pd.NA) as non-matching so the recomputed
+    clean column replaces the damage without crashing.
+    """
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
+    monkeypatch.setattr("populace.fit.QRF", _ConstantQRF)
+    person = _person(1_000)
+    person["cps_race"] = person["PRDTRACE"]
+    person["is_hispanic"] = person["PRDTHSP"].ne(0)
+    carried = derive_us_org_occupation_inputs(person)
+    for column in carried:
+        person[column] = carried[column]
+    consistent = module.with_us_org_wages_inputs(
+        _frame(person), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+
+    damaged = consistent.copy()
+    damaged["is_paid_hourly"] = damaged["is_paid_hourly"].astype(object)
+    damaged.loc[999, "is_paid_hourly"] = np.nan  # active row, recomputes True
+    healed = module.with_us_org_wages_inputs(
+        _frame(damaged), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    assert healed["is_paid_hourly"].to_numpy().dtype == np.dtype(bool)
+    assert bool(healed["is_paid_hourly"].iloc[999])
+
+    nullable = consistent.copy()
+    nullable["is_military"] = nullable["is_military"].astype("boolean")
+    nullable.loc[0, "is_military"] = pd.NA
+    healed = module.with_us_org_wages_inputs(
+        _frame(nullable), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    assert healed["is_military"].to_numpy().dtype == np.dtype(bool)
+    assert not bool(healed["is_military"].iloc[0])
+
+    # Coercible numeric strings must not identity-match either: "0"/"1"
+    # would pass a bare to_numeric comparison while preserving the damaged
+    # str dtype on the fast path.
+    stringy = consistent.copy()
+    stringy["is_paid_hourly"] = stringy["is_paid_hourly"].astype(int).astype(str)
+    healed = module.with_us_org_wages_inputs(
+        _frame(stringy), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    assert healed["is_paid_hourly"].to_numpy().dtype == np.dtype(bool)
+    np.testing.assert_array_equal(
+        healed["is_paid_hourly"].to_numpy(),
+        consistent["is_paid_hourly"].to_numpy(),
+    )
+
+    # Temporal damage coerces to matching 0/1 nanoseconds; the dtype-family
+    # allowlist must rebuild it rather than fast-path the datetime column.
+    temporal = consistent.copy()
+    temporal["is_paid_hourly"] = pd.to_datetime(
+        temporal["is_paid_hourly"].astype(int), unit="ns"
+    )
+    healed = module.with_us_org_wages_inputs(
+        _frame(temporal), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    assert healed["is_paid_hourly"].to_numpy().dtype == np.dtype(bool)
+    np.testing.assert_array_equal(
+        healed["is_paid_hourly"].to_numpy(),
+        consistent["is_paid_hourly"].to_numpy(),
+    )
+
+    # Union-only damage: every other column already matches, so this binds
+    # the union comparison specifically — dropping union from the guard
+    # would identity-pass the inverted (nonconstant) column unchanged.
+    union_only = consistent.copy()
+    inverted = ~union_only["is_union_member_or_covered"].astype(bool)
+    assert inverted.nunique() > 1
+    union_only["is_union_member_or_covered"] = inverted
+    healed = module.with_us_org_wages_inputs(
+        _frame(union_only), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    np.testing.assert_array_equal(
+        healed["is_union_member_or_covered"].to_numpy(),
+        consistent["is_union_member_or_covered"].to_numpy(),
+    )

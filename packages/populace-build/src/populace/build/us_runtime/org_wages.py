@@ -9,7 +9,12 @@ rates, carries the ASEC occupation fields, and derives the intentionally
 misspelled PolicyEngine input ``fsla_overtime_premium``.
 
 The donor build, QRF, union assignment, and occupation carries remain the
-exact retired port.  The premium derivation deliberately deviates from the
+retired port, with one recipient-side concept alignment: the QRF income
+feature is the full-year-equivalent of actual annual income (income x
+52/weeks, untouched when weeks are zero or missing), because the donor's
+income is the annualized reference week — without the alignment, part-year
+workers matched low-wage full-year donors and the imputed sub-minimum wage
+tail was severe (populace#529).  The premium derivation deliberately deviates from the
 retired reference-week-only construction: it adds the usual-weekly-hours
 signal (ASEC HRSWK) as the persistent-overtime leg, so regular overtime
 workers whose March reference week happened to sit at or below the threshold
@@ -583,11 +588,26 @@ def _recipient_features(frame: Frame, carried: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"ORG imputation needs person column(s): {missing}.")
     features = pd.DataFrame(index=person.index)
-    features["employment_income"] = (
+    annual_income = (
         pd.to_numeric(person["employment_income_before_lsr"], errors="coerce")
         .fillna(0)
         .clip(lower=0)
+        .to_numpy(dtype=np.float64)
     )
+    weeks = (
+        pd.to_numeric(person["weeks_worked"], errors="coerce")
+        .fillna(0)
+        .clip(lower=0, upper=52)
+        .to_numpy(dtype=np.float64)
+    )
+    # The donor's employment_income is the annualized reference week
+    # (pternwa x 52), while recipients carry actual annual income. Feeding
+    # the full-year-equivalent aligns the concepts so part-year workers
+    # match same-wage donors instead of low-wage full-year ones; zero or
+    # missing weeks pass income through untouched (populace#529). The
+    # premium derivation keeps actual annual income.
+    factor = np.divide(52.0, weeks, out=np.ones_like(weeks), where=weeks > 0)
+    features["employment_income"] = annual_income * factor
     features["weekly_hours_worked"] = (
         pd.to_numeric(person["weekly_hours_worked_before_lsr"], errors="coerce")
         .fillna(0)
@@ -832,6 +852,52 @@ def _surface_has_signal(person: pd.DataFrame) -> bool:
     )
 
 
+def _outputs_match(person: pd.DataFrame, outputs: dict[str, np.ndarray]) -> bool:
+    """True when every recomputed output equals the stored column exactly.
+
+    Only boolean, integer, and float dtype families may match — anything
+    else (object, string, temporal, categorical) always rebuilds, because a
+    coercible representation ("1" strings, 0/1-ns datetimes) must not let a
+    damaged dtype survive the fast path. Booleans compare through strict
+    0/1 numerics so NaN and pd.NA rebuild rather than casting truthy;
+    numerics compare as float32 (the shipped dtype) where a stored NaN never
+    compares equal. A damaged column therefore always takes the recomputed
+    clean values.
+    """
+
+    for column, values in outputs.items():
+        if column not in person:
+            return False
+        stored_series = person[column]
+        # Positive dtype-family allowlist: shipped surfaces carry only
+        # boolean, integer, and float columns (verified against the cached
+        # Build N/O stores). Rebuild on anything else.
+        if not (
+            pd.api.types.is_bool_dtype(stored_series)
+            or pd.api.types.is_integer_dtype(stored_series)
+            or pd.api.types.is_float_dtype(stored_series)
+        ):
+            return False
+        if values.dtype == bool:
+            # Compare through strict 0/1 numerics: NaN, pd.NA, or any
+            # non-canonical value fails the membership test and takes the
+            # rebuild path instead of casting to a truthy True.
+            stored = pd.to_numeric(stored_series, errors="coerce").to_numpy(
+                dtype=np.float64
+            )
+            if not np.isin(stored, (0.0, 1.0)).all():
+                return False
+            if not np.array_equal(stored.astype(bool), values):
+                return False
+        else:
+            stored = pd.to_numeric(stored_series, errors="coerce").to_numpy(
+                dtype=np.float32
+            )
+            if not np.array_equal(stored, np.asarray(values, dtype=np.float32)):
+                return False
+    return True
+
+
 def with_us_org_wages_inputs(
     frame: Frame,
     *,
@@ -841,55 +907,18 @@ def with_us_org_wages_inputs(
 ) -> Frame:
     """Apply the complete ORG/occupation/FLSA family before calibration.
 
-    On a frame whose ORG surface is already populated, the QRF/union/
-    occupation family is skipped (idempotency) but the FLSA premium is still
-    recomputed with the current estimator and refreshed if the stored column
-    came from an earlier construction — an already-populated surface can
-    never silently pin a retired premium semantics.
+    The family is re-imputed on every entry. A frame whose ORG surface
+    already matches the current estimator passes through unchanged — the
+    seeded QRF, deterministic union lottery, and pure derives make same-code
+    re-entry byte-stable — while any stale construction (wages, hourly
+    status, union coverage, occupation carries, or the FLSA premium)
+    converges instead of silently surviving.
     """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US ORG inputs require the US schema.")
     us_org_wages_stage_spec()
     person = frame.table("person")
-    if _surface_has_signal(person):
-        # The idempotency skip covers the expensive, semantically unchanged
-        # QRF/union/occupation family. The premium derive deviates from the
-        # retired construction, so a populated surface must still converge to
-        # the current estimator: recompute it from the columns already present
-        # and refresh only when the stored values disagree (a stale surface
-        # from an earlier construction), never silently retaining them.
-        refreshed = derive_flsa_overtime_premium(
-            time_period=time_period,
-            employment_income=person["employment_income_before_lsr"],
-            hours_worked_last_week=person["hours_worked_last_week"],
-            usual_weekly_hours=person["weekly_hours_worked_before_lsr"],
-            weeks_worked=person["weeks_worked"],
-            is_paid_hourly=person["is_paid_hourly"],
-            has_never_worked=person["has_never_worked"],
-            is_military=person["is_military"],
-            is_executive_administrative_professional=person[
-                "is_executive_administrative_professional"
-            ],
-            is_farmer_fisher=person["is_farmer_fisher"],
-            is_computer_scientist=person["is_computer_scientist"],
-        )
-        stored = pd.to_numeric(
-            person["fsla_overtime_premium"], errors="coerce"
-        ).to_numpy(dtype=np.float32)
-        # NaN never compares equal, so a non-numeric or NaN-carrying stored
-        # column always takes the recomputed clean values.
-        if np.array_equal(stored, refreshed):
-            return frame
-        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-        tables["person"]["fsla_overtime_premium"] = refreshed
-        return Frame(
-            tables,
-            frame.schema,
-            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-            frame.strata,
-            mass_log=frame.mass_log,
-        )
     carried, wages = impute_us_org_wages(frame, org_donor, seed=seed)
     premium = derive_flsa_overtime_premium(
         time_period=time_period,
@@ -906,12 +935,17 @@ def with_us_org_wages_inputs(
         is_farmer_fisher=carried["is_farmer_fisher"],
         is_computer_scientist=carried["is_computer_scientist"],
     )
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    outputs: dict[str, np.ndarray] = {}
     for column in carried:
-        tables["person"][column] = carried[column].to_numpy()
+        outputs[column] = carried[column].to_numpy()
     for column in wages:
-        tables["person"][column] = wages[column].to_numpy()
-    tables["person"]["fsla_overtime_premium"] = premium
+        outputs[column] = wages[column].to_numpy()
+    outputs["fsla_overtime_premium"] = premium
+    if _surface_has_signal(person) and _outputs_match(person, outputs):
+        return frame
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for column, values in outputs.items():
+        tables["person"][column] = values
     return Frame(
         tables,
         frame.schema,
