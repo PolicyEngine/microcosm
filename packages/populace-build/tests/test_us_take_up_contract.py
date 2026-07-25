@@ -77,11 +77,20 @@ class TestContractLoads:
         assert "aggregate_target" not in calibration
         semantics = calibration["semantics"]
         assert "populace#469" in semantics
+        assert "(band target - reporter floor)" in semantics
+        assert "candidate capacity - reporter floor" in semantics
         assert "never count-matches" in semantics
         assert "saturate" not in semantics
         assert program.raw["scope_owner"] == (
             "ssi_take_up source stage (eCPS exported-input coverage)"
         )
+        notes = program.raw["notes"]
+        assert "one seeded Bernoulli draw" in notes
+        assert "18_64 and 65_plus" in notes
+        assert "hard-fail" in notes
+        assert "under_18 remains explicitly fenced" in notes
+        assert "structural support problems" in notes
+        assert "loss shaping" in notes
 
     def test_head_start_is_owned_by_measured_sipp_stage(self) -> None:
         program = load_take_up_contract().program_map()[

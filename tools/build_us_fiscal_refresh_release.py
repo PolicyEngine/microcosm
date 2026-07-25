@@ -969,18 +969,19 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional us_ssi_take_up.json diagnostics artifact from a prior "
-            "attempt's final release-weight measurement (schema 2 or 3, e.g. "
+            "attempt's final release-weight measurement (schema 2, 3, or 4; e.g. "
             "the certified predecessor release's). The SSI take-up Bernoulli "
             "thresholds are then computed against that attempt's delivered "
-            "per-band candidate capacities instead of this run's "
+            "per-band candidate capacities and reporter floors instead of this run's "
             "pre-calibration weights — the populace#508 fix for the "
             "populace#507 aged-band collapse: thresholds truthful against "
             "release-kind weights, still drawn exactly once, with no "
             "reconcile loop. The artifact must carry the same SSA band "
             "target contract this build compiles; the enforced-band "
-            "delivery gate verifies the landed counts either way, and on "
-            "failure writes this run's us_ssi_take_up.json as the basis for "
-            "the retry."
+            "delivery gate verifies the landed counts either way. An ordinary "
+            "weight-basis miss writes this run's us_ssi_take_up.json for one "
+            "retry; a structural reporter-floor or candidate-support failure "
+            "writes evidence but is not retryable through this flag."
         ),
     )
     parser.add_argument(
@@ -5423,18 +5424,19 @@ def _enforce_ssi_take_up_delivery(
     """Fail the release on an enforced-band delivery miss, via the batch.
 
     populace#507/#508: a miss beyond tolerance on release weights fails the
-    build instead of shipping in the scorecard. The delivered-weight
-    diagnostics are written before returning failures — that artifact IS the
-    remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
-    the thresholds are recomputed exactly once from measured delivery, never
-    iterated in-process (the populace#463-class loop stays deleted,
-    populace#477). Failures return to the caller and join the #437 batched
-    terminal gates rather than raising here: an early raise destroyed the
-    failed run's calibration diagnostics and skipped every other gate group
-    (populace#547 — the 2026-07-25 sparsecd retest left no target-surface
-    evidence). Enforcement is unchanged: any returned failure still aborts
-    the release at the terminal batch and certification manifests are never
-    written.
+    build instead of shipping in the scorecard. Delivered-weight diagnostics
+    are written before returning failures. For an ordinary weight-basis miss,
+    the retained retry path passes that artifact via
+    ``--ssi-take-up-prior-weight-basis`` and recomputes thresholds exactly
+    once. Structural reporter-floor or candidate-support failures are written
+    as evidence but explicitly are not retryable by changing the basis. There
+    is never an in-process iteration (the populace#463-class loop stays
+    deleted, populace#477). Failures return to the caller and join the #437
+    batched terminal gates rather than raising here: an early raise destroyed
+    the failed run's calibration diagnostics and skipped every other gate
+    group (populace#547 — the 2026-07-25 sparsecd retest left no target-surface
+    evidence). Any returned failure still aborts the release at the terminal
+    batch and certification manifests are never written.
     """
 
     delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
@@ -5450,21 +5452,37 @@ def _enforce_ssi_take_up_delivery(
     failures = [
         f"SSI take-up delivery failed: {failure}" for failure in delivery_gate.failures
     ]
+    retry_applicable = bool(
+        delivery_gate.details.get("prior_weight_basis_retry_applicable")
+    )
     try:
         failed_basis_path = write_us_ssi_take_up_diagnostics(
             diagnostics,
             release_dir / "us_ssi_take_up.json",
         )
-        failures.append(
-            "SSI take-up delivered-weight prior basis written to "
-            f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis "
-            "retry."
-        )
+        if retry_applicable:
+            failures.append(
+                "SSI take-up delivered-weight prior basis written to "
+                f"{failed_basis_path} for the "
+                "--ssi-take-up-prior-weight-basis retry."
+            )
+        else:
+            failures.append(
+                "SSI take-up structural-support diagnostics written to "
+                f"{failed_basis_path}; a --ssi-take-up-prior-weight-basis "
+                "retry is not applicable."
+            )
     except Exception as error:
-        failures.append(
-            "SSI take-up delivered-weight prior basis could NOT be written "
-            f"(the retry must recompute delivery itself): {error}"
-        )
+        if retry_applicable:
+            failures.append(
+                "SSI take-up delivered-weight prior basis could NOT be written "
+                f"(the retry must recompute delivery itself): {error}"
+            )
+        else:
+            failures.append(
+                "SSI take-up structural-support diagnostics could NOT be "
+                f"written: {error}"
+            )
     try:
         if telemetry is not None:
             telemetry.stage(
@@ -8866,14 +8884,15 @@ def main() -> None:
             "take_up_final_diagnostics",
             message=(
                 "Applying release weights and measuring the frozen take-up "
-                "assignments (report-only; populace#469)."
+                "assignments before final integrity and delivery gates "
+                "(populace#469/#507)."
             ),
         )
     # SSI take-up was assigned once before target materialization
     # (populace#469): apply the release weights to the same support, measure
-    # the frozen flags for the published diagnostics, and let the gap to the
-    # SSA band counts ship in the scorecard as calibration's residual on the
-    # #470 registry targets — like every other program's take-up miss.
+    # the frozen flags for the published diagnostics, and leave every decision
+    # unchanged. The final delivery gate enforces the 18_64 and 65_plus bands;
+    # under_18 alone remains fenced in the scorecard pending child support.
     if args.dense_default_dataset:
         export_frame = _with_calibrated_weights(
             base_frame,
@@ -8901,7 +8920,8 @@ def main() -> None:
     # output: the Bernoulli-law recheck and anchor/envelope laws are
     # weight-safe, so any downstream transform that corrupted the frozen
     # decisions fails the build here instead of shipping (PR #477 review
-    # finding 3). The SSA-count miss itself stays scorecard-only.
+    # finding 3). Band-count delivery is then judged separately: adult bands
+    # are enforced and under_18 is fenced.
     final_ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_diagnostics, targets=ssi_band_targets
     )

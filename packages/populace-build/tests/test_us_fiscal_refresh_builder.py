@@ -3936,12 +3936,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return dict(fake_band_targets)
 
     fake_stage_priors = {"under_18": 0.3, "18_64": 0.4, "65_plus": 0.5}
-    # Schema-3 shape (populace#507/#508): main() reconstructs the prior
+    # Current-schema shape (populace#507/#508): main() reconstructs the prior
     # weight basis from these stage diagnostics with the REAL module helper
     # and threads it into the final release-weight measurement.
     fake_stage_diagnostics = {
         "checked": True,
-        "schema_version": 3,
+        "schema_version": 4,
         "prior_weight_basis": {
             "kind": "current_frame",
             "source_sha256": None,
@@ -8600,12 +8600,16 @@ def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> 
 
 def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "age_bands": [
             {
                 "age_band": key,
                 "target": _SSI_BAND_TARGETS[key],
                 "selected_recipient_weight": selected[key],
+                "candidate_capacity": 2.0 * _SSI_BAND_TARGETS[key],
+                "reporter_candidate_floor": 0.0,
+                "empty_band": False,
+                "prior_status_recomputed_from_current_weights": "floor_aware",
             }
             for key in _SSI_BAND_TARGETS
         ],
@@ -8668,6 +8672,39 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
 
     assert failures == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_enforce_ssi_delivery_writes_structural_evidence_without_retry_advice(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {
+            "under_18": 120_000.0,
+            "18_64": 0.99 * _SSI_BAND_TARGETS["18_64"],
+            "65_plus": _SSI_BAND_TARGETS["65_plus"],
+        }
+    )
+    adult = diagnostics["age_bands"][1]
+    adult["candidate_capacity"] = 0.99 * _SSI_BAND_TARGETS["18_64"]
+    adult["prior_status_recomputed_from_current_weights"] = "saturated_reporter_rate"
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert any("insufficient candidate support" in failure for failure in failures)
+    assert any("retry is not applicable" in failure for failure in failures)
+    assert not any(
+        "for the --ssi-take-up-prior-weight-basis retry" in failure
+        for failure in failures
+    )
+    assert json.loads((release_dir / "us_ssi_take_up.json").read_text()) == diagnostics
 
 
 def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(

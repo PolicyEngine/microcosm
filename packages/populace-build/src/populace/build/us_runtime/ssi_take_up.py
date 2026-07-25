@@ -9,16 +9,19 @@ to children and working-age disabled people too.
 This stage keeps the source-backed half of that method (the reporter anchor)
 and replaces the scope-invalid rate with per-band priors derived from SSA's
 December 2024 counts of people receiving a *federal payment*, split into the
-three published age bands.  Each prior is the band target over a weighted
-PolicyEngine-US ``uncapped_ssi > 0`` candidate capacity — falling back to the
-observed reporter share of capacity when that ratio reaches one, so the flag
-never degenerates to a constant.  Every source person draws once against the
-band prior, seeded and stable per ``person_source_id``, with the decision
-fanned to every actual support row; direct ASEC reporters stay true
-unconditionally.  There is no count matching here (populace#469): the SSA
-band counts bind only as ordinary calibration registry targets
-(populace#470), the caller passes those same registry values in as
-``targets``, and any post-calibration miss is measured on release weights.
+three published age bands. Each prior solves the anchored selection law:
+``(band target - reporter floor) / (candidate capacity - reporter floor)``
+on a weighted PolicyEngine-US ``uncapped_ssi > 0`` candidate basis. Direct
+reporters are selected unconditionally, so the expected candidate mass is
+``floor + prior * (capacity - floor)``. Saturated bands retain the observed
+reporter-share fallback so the flag does not degenerate to a constant. Every
+source person draws once against the band prior, seeded and stable per
+``person_source_id``, with the decision fanned to every actual support row;
+direct ASEC reporters stay true unconditionally. There is no count matching
+here (populace#469): the SSA band counts bind only as ordinary calibration
+registry targets (populace#470), the caller passes those same registry values
+in as ``targets``, and any post-calibration miss is measured on release
+weights.
 
 **Prior weight basis (populace#507/#508).** The capacity that sets each
 prior is an explicit, documented choice. By default it is measured on the
@@ -147,18 +150,38 @@ _WEIGHTS_BASIS = "current_frame_resolved_person_weights"
 # basis (current frame vs a prior attempt's delivered-weight artifact) and
 # band rows carry the basis capacity/floor that generated assignment_prior,
 # making the prior arithmetic weight-free auditable at final measurement.
-_DIAGNOSTICS_SCHEMA_VERSION = 3
+# Version 4 (populace#507/#508): the unsaturated prior is floor-aware, and
+# band rows name the assignment-basis and current-weight prior regimes,
+# drawable candidate masses, and empty-band status. Schema 3's target/capacity
+# prior double-counted reporters that the selection law forces true.
+_DIAGNOSTICS_SCHEMA_VERSION = 4
 #: Artifact schema versions a delivered-weight prior basis may be read from.
 #: Schema 2 is accepted so the chain can start from Build N's certified
 #: ``us_ssi_take_up.json`` (its band rows already carry release-weight
-#: ``candidate_capacity`` / ``reporter_candidate_floor``).
-_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3)
+#: ``candidate_capacity`` / ``reporter_candidate_floor``). Schema 3 artifacts
+#: remain valid weight bases even though their recorded priors were floor-blind.
+_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3, 4)
 
 US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME = "current_frame"
 US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT = "release_artifact"
 _PRIOR_BASIS_KINDS = (
     US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
     US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT,
+)
+
+_PRIOR_STATUS_FLOOR_AWARE = "floor_aware"
+_PRIOR_STATUS_FLOOR_EXCEEDS_TARGET = "reporter_floor_exceeds_target"
+_PRIOR_STATUS_FLOOR_MEETS_TARGET = "reporter_floor_meets_target"
+_PRIOR_STATUS_NO_DRAWABLE_CAPACITY = "no_drawable_candidate_capacity"
+_PRIOR_STATUS_SATURATED = "saturated_reporter_rate"
+_PRIOR_STATUS_ZERO_CAPACITY = "zero_candidate_capacity"
+_PRIOR_STATUSES = (
+    _PRIOR_STATUS_FLOOR_AWARE,
+    _PRIOR_STATUS_FLOOR_EXCEEDS_TARGET,
+    _PRIOR_STATUS_FLOOR_MEETS_TARGET,
+    _PRIOR_STATUS_NO_DRAWABLE_CAPACITY,
+    _PRIOR_STATUS_SATURATED,
+    _PRIOR_STATUS_ZERO_CAPACITY,
 )
 
 #: Age bands whose delivered weighted recipients must land within
@@ -233,7 +256,7 @@ class SSITakeUpBandPriorBasis:
                 f"US SSI take-up prior basis for age band {self.key!r} has an "
                 f"invalid candidate capacity {capacity!r}."
             )
-        if not np.isfinite(floor) or floor < 0 or floor > capacity + 1e-6:
+        if not np.isfinite(floor) or floor < 0 or floor > capacity:
             raise ValueError(
                 f"US SSI take-up prior basis for age band {self.key!r} has an "
                 f"invalid reporter floor {floor!r} for capacity {capacity!r}."
@@ -325,11 +348,15 @@ _ASSIGN_PARAMETERS: dict[str, object] = {
         "65_plus": "age >= 65",
     },
     "rate_derivation": (
-        "band_target / basis_candidate_capacity(uncapped_ssi > 0); basis = "
-        "this frame's weights, or a prior attempt's delivered-weight "
-        "us_ssi_take_up.json diagnostics (populace#507/#508); "
-        "min(basis_reporter_candidate_floor / capacity, 1) once that ratio "
-        "reaches one"
+        "(band_target - basis_reporter_candidate_floor) / "
+        "(basis_candidate_capacity(uncapped_ssi > 0) - "
+        "basis_reporter_candidate_floor), so reporter floor + prior * "
+        "(capacity - floor) expects the target; basis = this frame's "
+        "weights, or a prior attempt's delivered-weight us_ssi_take_up.json "
+        "diagnostics (populace#507/#508); zero when the reporter floor meets "
+        "or exceeds the target or leaves no drawable candidate capacity; "
+        "basis_reporter_candidate_floor / basis_candidate_capacity when "
+        "capacity cannot subsample the target but drawable mass remains"
     ),
     "rate_target_role": "ssa_ssi_age_band_recipients",
     "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,
@@ -602,23 +629,77 @@ def _source_table(
     return rows, source
 
 
+def _band_prior_status(target: float, capacity: float, reporter_floor: float) -> str:
+    """Classify one band's prior arithmetic without hiding an edge case."""
+
+    target = float(target)
+    capacity = float(capacity)
+    reporter_floor = float(reporter_floor)
+    if not np.isfinite(target) or target <= 0:
+        raise ValueError(
+            f"US SSI take-up band prior target must be finite and positive: {target!r}."
+        )
+    if not np.isfinite(capacity) or capacity < 0:
+        raise ValueError(
+            "US SSI take-up band prior candidate capacity must be finite and "
+            f"nonnegative: {capacity!r}."
+        )
+    if not np.isfinite(reporter_floor) or reporter_floor < 0:
+        raise ValueError(
+            "US SSI take-up band prior reporter floor must be finite and "
+            f"nonnegative: {reporter_floor!r}."
+        )
+    if reporter_floor > capacity:
+        raise ValueError(
+            "US SSI take-up band prior has negative drawable candidate "
+            f"capacity: floor {reporter_floor!r} exceeds capacity {capacity!r}."
+        )
+    if capacity == 0:
+        return _PRIOR_STATUS_ZERO_CAPACITY
+    if reporter_floor > target:
+        return _PRIOR_STATUS_FLOOR_EXCEEDS_TARGET
+    if reporter_floor == target:
+        return _PRIOR_STATUS_FLOOR_MEETS_TARGET
+    if reporter_floor == capacity:
+        return _PRIOR_STATUS_NO_DRAWABLE_CAPACITY
+    if capacity <= target:
+        return _PRIOR_STATUS_SATURATED
+    return _PRIOR_STATUS_FLOOR_AWARE
+
+
 def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
     """Return the documented Bernoulli prior for one SSA age band.
 
-    The target/capacity ratio is a meaningful take-up propensity only while
-    it subsamples (capacity > target). Once it reaches one it would flag the
-    whole band — a constant, signal-free output — so the prior falls back to
-    the observed take-up rate among today's candidates: reporter mass over
-    candidate capacity. Reform-created eligibles then take up at the rate
-    today's modeled eligibles are observed reporting.
+    For an unsaturated band, reporters contribute a forced floor and only
+    non-reporters are stochastic. Solving
+    ``floor + prior * (capacity - floor) = target`` gives the floor-aware
+    prior ``(target - floor) / (capacity - floor)``.
+
+    Every boundary is explicit. A zero-capacity band draws nobody. A reporter
+    floor at or above the target draws no additional identities. If reporters
+    exhaust candidate capacity while the target is higher, no probability can
+    increase candidate delivery; the prior is zero rather than an
+    evidence-free Bernoulli(1) for noncandidate/reform-created identities.
+    More generally, once capacity reaches or falls below the target while
+    drawable mass exists, the existing fallback remains the observed reporter
+    share of capacity so a saturated band does not become Bernoulli(1) merely
+    to chase an unreachable count. Invalid or negative drawable capacity
+    raises instead of clamping.
     """
 
-    if capacity <= 0:
+    status = _band_prior_status(target, capacity, reporter_floor)
+    if status in (
+        _PRIOR_STATUS_ZERO_CAPACITY,
+        _PRIOR_STATUS_FLOOR_EXCEEDS_TARGET,
+        _PRIOR_STATUS_FLOOR_MEETS_TARGET,
+        _PRIOR_STATUS_NO_DRAWABLE_CAPACITY,
+    ):
         return 0.0
-    count_ratio = target / capacity
-    if count_ratio < 1.0:
-        return count_ratio
-    return min(reporter_floor / capacity, 1.0)
+    if status == _PRIOR_STATUS_SATURATED:
+        return float(reporter_floor) / float(capacity)
+    return (float(target) - float(reporter_floor)) / (
+        float(capacity) - float(reporter_floor)
+    )
 
 
 def _current_frame_prior_basis(source: pd.DataFrame) -> SSITakeUpPriorBasis:
@@ -663,7 +744,10 @@ def _age_band_diagnostics(
     finding 4). ``prior_basis`` is the capacity/floor pair those priors were
     computed from (populace#507/#508): republishing it per band keeps the
     prior arithmetic weight-free auditable long after the assignment frame
-    is gone.
+    is gone. ``target_shortfall`` remains the realized selected-mass
+    shortfall and ``anchor_excess`` remains the current-weight reporter floor
+    above target; the named prior statuses separately expose structural
+    assignment-basis and current-weight edge regimes.
     """
 
     bands: list[dict[str, object]] = []
@@ -694,19 +778,34 @@ def _age_band_diagnostics(
                 "source_identity_count": int(in_band.sum()),
                 "candidate_source_identity_count": int(candidate.sum()),
                 "reporter_source_identity_count": int(anchored.sum()),
+                "empty_band": bool(not in_band.any()),
                 "candidate_capacity": capacity,
                 "reporter_candidate_floor": reporter_floor,
+                "drawable_candidate_capacity": capacity - reporter_floor,
                 "selected_recipient_weight": selected_recipient_weight,
                 "signed_target_error": selected_recipient_weight - target,
                 "target_shortfall": max(target - selected_recipient_weight, 0.0),
                 "anchor_excess": max(reporter_floor - target, 0.0),
-                "saturated": bool(capacity < target),
+                # Equality also takes the reporter-rate fallback: capacity
+                # cannot support a nonconstant exact-expectation draw.
+                "saturated": bool(capacity <= target),
                 "assignment_prior": float(assignment_priors[key]),
+                "assignment_prior_status": _band_prior_status(
+                    target,
+                    basis_band.candidate_capacity,
+                    basis_band.reporter_candidate_floor,
+                ),
                 "prior_basis_candidate_capacity": float(basis_band.candidate_capacity),
                 "prior_basis_reporter_candidate_floor": float(
                     basis_band.reporter_candidate_floor
                 ),
+                "prior_basis_drawable_candidate_capacity": float(
+                    basis_band.candidate_capacity - basis_band.reporter_candidate_floor
+                ),
                 "prior_recomputed_from_current_weights": _band_prior(
+                    target, capacity, reporter_floor
+                ),
+                "prior_status_recomputed_from_current_weights": _band_prior_status(
                     target, capacity, reporter_floor
                 ),
                 "max_source_candidate_weight": max_source_weight,
@@ -852,7 +951,7 @@ def ssi_take_up_prior_basis_from_artifact(
                 f"capacity for enforced age band {key!r}; a truthful "
                 "threshold cannot be computed from it."
             )
-        if not np.isfinite(floor) or floor < 0 or floor > capacity + 1e-6:
+        if not np.isfinite(floor) or floor < 0 or floor > capacity:
             raise ValueError(
                 "US SSI take-up prior basis artifact has an invalid reporter "
                 f"floor {floor!r} for age band {key!r}."
@@ -875,7 +974,7 @@ def ssi_take_up_prior_basis_from_artifact(
 def ssi_take_up_prior_basis_from_diagnostics(
     diagnostics: Mapping[str, object],
 ) -> SSITakeUpPriorBasis:
-    """Reconstruct the documented prior basis from schema-3 diagnostics.
+    """Reconstruct the documented prior basis from current-schema diagnostics.
 
     The builder hands the assignment stage's basis to the final
     release-weight measurement through this helper, so the published
@@ -1298,6 +1397,7 @@ def us_ssi_take_up_gate(
             continue
         capacity = float(row.get("candidate_capacity", np.nan))
         floor = float(row.get("reporter_candidate_floor", np.nan))
+        drawable_capacity = float(row.get("drawable_candidate_capacity", np.nan))
         selected = float(row.get("selected_recipient_weight", np.nan))
         signed_error = float(row.get("signed_target_error", np.nan))
         shortfall = float(row.get("target_shortfall", np.nan))
@@ -1305,6 +1405,9 @@ def us_ssi_take_up_gate(
         prior = float(row.get("assignment_prior", np.nan))
         basis_capacity = float(row.get("prior_basis_candidate_capacity", np.nan))
         basis_floor = float(row.get("prior_basis_reporter_candidate_floor", np.nan))
+        basis_drawable_capacity = float(
+            row.get("prior_basis_drawable_candidate_capacity", np.nan)
+        )
         recomputed_prior = float(
             row.get("prior_recomputed_from_current_weights", np.nan)
         )
@@ -1312,6 +1415,7 @@ def us_ssi_take_up_gate(
         numeric_values = (
             capacity,
             floor,
+            drawable_capacity,
             selected,
             signed_error,
             shortfall,
@@ -1319,23 +1423,52 @@ def us_ssi_take_up_gate(
             prior,
             basis_capacity,
             basis_floor,
+            basis_drawable_capacity,
             recomputed_prior,
             max_weight,
         )
         if not all(np.isfinite(value) for value in numeric_values):
             failures.append(f"SSI take-up age band {key!r} has nonfinite diagnostics.")
             continue
-        if capacity <= 0:
+        if capacity < 0:
             failures.append(
-                f"SSI take-up age band {key!r} has zero candidate capacity."
+                f"SSI take-up age band {key!r} has negative candidate capacity."
             )
             continue
-        if floor < 0 or floor > capacity + 1e-6:
+        if floor < 0 or floor > capacity:
             failures.append(
                 f"SSI take-up age band {key!r} has an invalid anchor floor."
             )
             continue
         epsilon = max(1e-6, np.finfo(np.float64).eps * max(capacity, 1.0) * 16.0)
+        if capacity == 0:
+            failures.append(
+                f"SSI take-up age band {key!r} has zero candidate capacity."
+            )
+        if abs(drawable_capacity - (capacity - floor)) > epsilon:
+            failures.append(
+                f"SSI take-up age band {key!r} carries the wrong drawable "
+                "candidate capacity."
+            )
+        empty_band = row.get("empty_band")
+        source_identity_count = row.get("source_identity_count")
+        valid_source_identity_count = (
+            isinstance(source_identity_count, (int, np.integer))
+            and not isinstance(source_identity_count, (bool, np.bool_))
+            and int(source_identity_count) >= 0
+        )
+        if not valid_source_identity_count:
+            failures.append(
+                f"SSI take-up age band {key!r} has an invalid source identity count."
+            )
+        if (
+            not isinstance(empty_band, bool)
+            or not valid_source_identity_count
+            or empty_band != (int(source_identity_count) == 0)
+        ):
+            failures.append(
+                f"SSI take-up age band {key!r} empty-band status is inconsistent."
+            )
         if selected < floor - epsilon or selected > capacity + epsilon:
             # Anchored reporters are always selected, so the selected weight
             # can never fall below the reporter floor nor exceed capacity.
@@ -1356,11 +1489,12 @@ def us_ssi_take_up_gate(
                 f"SSI take-up age band {key!r} carries the wrong anchor excess."
             )
         # The assignment prior is the value that generated the frozen flags;
-        # on release weights it will differ from target/capacity, but it must
-        # equal the documented arithmetic on its own basis capacity/floor —
-        # both are frozen numbers, so this audit is weight-free at any later
-        # measurement (populace#507/#508). The recomputed prior is defined on
-        # THIS row's capacity/floor and must match that arithmetic exactly.
+        # on release weights it can differ from the floor-aware recomputation,
+        # but it must equal the documented arithmetic on its own basis
+        # capacity/floor — both are frozen numbers, so this audit is
+        # weight-free at any later measurement (populace#507/#508). The
+        # recomputed prior is defined on THIS row's capacity/floor and must
+        # match that arithmetic exactly.
         # The band-count MISS is never a failure here: enforced bands are
         # judged by the delivery gate, fenced bands ship in the scorecard.
         if not 0.0 <= prior <= 1.0:
@@ -1368,22 +1502,50 @@ def us_ssi_take_up_gate(
                 f"SSI take-up age band {key!r} assignment prior {prior} is "
                 "outside [0, 1]."
             )
-        if basis_capacity < 0 or basis_floor < 0 or basis_floor > basis_capacity + 1e-6:
+        assignment_status = row.get("assignment_prior_status")
+        current_status = row.get("prior_status_recomputed_from_current_weights")
+        if basis_capacity < 0 or basis_floor < 0 or basis_floor > basis_capacity:
             failures.append(
                 f"SSI take-up age band {key!r} has an invalid prior basis "
                 "capacity/floor pair."
             )
-        elif abs(prior - _band_prior(target, basis_capacity, basis_floor)) > epsilon:
-            failures.append(
-                f"SSI take-up age band {key!r} assignment prior does not "
-                "match the documented arithmetic on its prior basis."
+        else:
+            if abs(basis_drawable_capacity - (basis_capacity - basis_floor)) > epsilon:
+                failures.append(
+                    f"SSI take-up age band {key!r} carries the wrong prior "
+                    "basis drawable candidate capacity."
+                )
+            expected_assignment_status = _band_prior_status(
+                target, basis_capacity, basis_floor
             )
+            if (
+                assignment_status not in _PRIOR_STATUSES
+                or assignment_status != expected_assignment_status
+            ):
+                failures.append(
+                    f"SSI take-up age band {key!r} assignment prior status "
+                    "is inconsistent."
+                )
+            if abs(prior - _band_prior(target, basis_capacity, basis_floor)) > epsilon:
+                failures.append(
+                    f"SSI take-up age band {key!r} assignment prior does not "
+                    "match the documented arithmetic on its prior basis."
+                )
         if abs(recomputed_prior - _band_prior(target, capacity, floor)) > epsilon:
             failures.append(
                 f"SSI take-up age band {key!r} carries the wrong recomputed prior."
             )
+        expected_current_status = _band_prior_status(target, capacity, floor)
+        if (
+            current_status not in _PRIOR_STATUSES
+            or current_status != expected_current_status
+        ):
+            failures.append(
+                f"SSI take-up age band {key!r} current-weight prior status "
+                "is inconsistent."
+            )
         saturated = bool(row.get("saturated"))
-        if saturated != (capacity < target):
+        if saturated != (capacity <= target):
             failures.append(
                 f"SSI take-up age band {key!r} saturation status is inconsistent."
             )
@@ -1440,12 +1602,18 @@ def us_ssi_take_up_delivery_gate(
     under the SSA count because the frozen thresholds' weight basis stopped
     being true after calibration and the band miss was scorecard-only
     (populace#477's cutover). This gate makes an enforced band miss a
-    release failure with one documented remedy — re-run the builder with
+    release failure. An ordinary delivered-weight miss names the documented
+    remedy — re-run the builder with
     ``--ssi-take-up-prior-weight-basis`` pointing at this attempt's
     ``us_ssi_take_up.json``, recomputing the thresholds exactly once from
-    the delivered weights. There is no in-build reconcile loop and no
-    per-target knob (populace#492). The under-18 band stays fenced pending
-    populace#453/#509 and is reported in the details, never enforced.
+    the delivered weights. A reporter floor above target, or a target above
+    a band with no drawable candidate mass, instead fails explicitly as a
+    reporter-identification/support problem: changing the prior cannot repair
+    either condition. Candidate capacity at or below the target is likewise
+    an explicit support failure for enforced bands, not a weight-basis retry.
+    There is no in-build reconcile loop and no per-target knob
+    (populace#492). The under-18 band stays fenced pending populace#453/#509
+    and is reported in the details, never enforced.
     """
 
     expected_targets = _normalize_targets(targets)
@@ -1453,6 +1621,7 @@ def us_ssi_take_up_delivery_gate(
     failures: list[str] = []
     enforced_rows: list[dict[str, object]] = []
     fenced_rows: list[dict[str, object]] = []
+    prior_weight_basis_retry_applicable = False
     rows: Mapping[str, Mapping[str, object]] = {}
     if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
         failures.append(
@@ -1468,23 +1637,61 @@ def us_ssi_take_up_delivery_gate(
         row = rows.get(key)
         if row is None:
             continue
-        selected = float(row.get("selected_recipient_weight", np.nan))
-        if not np.isfinite(selected):
+        try:
+            selected = float(row.get("selected_recipient_weight", np.nan))
+            capacity = float(row.get("candidate_capacity", np.nan))
+            floor = float(row.get("reporter_candidate_floor", np.nan))
+        except (TypeError, ValueError):
+            selected = capacity = floor = float("nan")
+        if not all(np.isfinite(value) for value in (selected, capacity, floor)):
             failures.append(
-                f"SSI take-up age band {key!r} has a nonfinite delivered "
-                "recipient weight."
+                f"SSI take-up age band {key!r} has nonfinite delivered "
+                "recipient/capacity/floor diagnostics."
             )
             continue
         signed_relative = (selected - target) / target
+        floor_excess = max(floor - target, 0.0)
+        empty_band = row.get("empty_band")
+        current_status = row.get("prior_status_recomputed_from_current_weights")
         summary: dict[str, object] = {
             "age_band": key,
             "target": target,
             "selected_recipient_weight": selected,
             "signed_relative_error": signed_relative,
+            "candidate_capacity": capacity,
+            "reporter_candidate_floor": floor,
+            "reporter_floor_excess": floor_excess,
+            "empty_band": empty_band,
+            "prior_status": current_status,
         }
         if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS:
             enforced_rows.append(summary)
-            if abs(selected - target) > tolerance * target + 1e-6:
+            if floor > target + 1e-6:
+                failures.append(
+                    f"SSI take-up enforced age band {key!r} has reporter "
+                    f"candidate floor {floor:,.0f} above ledger target "
+                    f"{target:,.0f}. Forced reporters alone over-deliver the "
+                    "band; no Bernoulli prior can shrink that floor. Repair "
+                    "reporter identification/support rather than changing "
+                    "the target, loss, or prior."
+                )
+            elif capacity <= floor and target > floor + 1e-6:
+                failures.append(
+                    f"SSI take-up enforced age band {key!r} has no drawable "
+                    f"candidate mass: capacity {capacity:,.0f}, reporter "
+                    f"floor {floor:,.0f}, target {target:,.0f}. No Bernoulli "
+                    "prior can close the support shortfall."
+                )
+            elif capacity <= target:
+                failures.append(
+                    f"SSI take-up enforced age band {key!r} has insufficient "
+                    f"candidate support: capacity {capacity:,.0f} does not "
+                    f"exceed target {target:,.0f}. No nonconstant saturated "
+                    "Bernoulli prior can deliver the target; repair modeled "
+                    "eligibility/support."
+                )
+            elif abs(selected - target) > tolerance * target + 1e-6:
+                prior_weight_basis_retry_applicable = True
                 failures.append(
                     f"SSI take-up delivered {selected:,.0f} weighted "
                     f"recipients for enforced age band {key!r} against the "
@@ -1518,6 +1725,9 @@ def us_ssi_take_up_delivery_gate(
             "enforced_band_keys": list(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS),
             "enforced_bands": enforced_rows,
             "fenced_bands": fenced_rows,
+            "prior_weight_basis_retry_applicable": (
+                prior_weight_basis_retry_applicable
+            ),
         },
     )
 

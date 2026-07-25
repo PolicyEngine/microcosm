@@ -30,6 +30,7 @@ from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_STAGE_NAME,
     SSITakeUpBandPriorBasis,
     SSITakeUpPriorBasis,
+    _band_prior,
     _stable_source_draw,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
@@ -51,6 +52,7 @@ _AGES = {"under_18": 12.0, "18_64": 40.0, "65_plus": 72.0}
 # candidate is source 0 (reporter floor 20.0).
 _BAND_CAPACITY = 130.0
 _REPORTER_FLOOR = 20.0
+_UNSATURATED_PRIOR = (50.0 - _REPORTER_FLOOR) / (_BAND_CAPACITY - _REPORTER_FLOOR)
 _ANCHORED_SOURCE_NUMBERS = {"0", "6"}
 
 
@@ -266,17 +268,25 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
         assert bool(flagged) == _expected_bernoulli_flag(source_id, prior)
     for band in diagnostics["age_bands"]:
         assert not band["saturated"]
-        assert band["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
+        assert band["assignment_prior"] == pytest.approx(_UNSATURATED_PRIOR)
         # At assignment time the stored prior and the current-weight
         # recomputation coincide by construction.
         assert band["prior_recomputed_from_current_weights"] == pytest.approx(
             band["assignment_prior"]
         )
+        assert band["assignment_prior_status"] == "floor_aware"
+        assert band["prior_status_recomputed_from_current_weights"] == "floor_aware"
+        assert band["drawable_candidate_capacity"] == pytest.approx(
+            _BAND_CAPACITY - _REPORTER_FLOOR
+        )
+        assert band["prior_basis_drawable_candidate_capacity"] == pytest.approx(
+            _BAND_CAPACITY - _REPORTER_FLOOR
+        )
+        assert band["empty_band"] is False
     assert diagnostics["bernoulli_law_violation_count"] == 0
-    # Schema 3 = the populace#507/#508 shape (schema 2's assignment/recomputed
-    # prior split and law count, plus the explicit prior weight basis); pin
-    # the literal so reverting the constant alone cannot pass.
-    assert diagnostics["schema_version"] == 3
+    # Schema 4 adds floor-aware arithmetic plus explicit edge-regime fields;
+    # pin the literal so reverting only the constant cannot pass.
+    assert diagnostics["schema_version"] == 4
     assert diagnostics["prior_weight_basis"] == {
         "kind": US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
         "source_sha256": None,
@@ -300,7 +310,7 @@ def test_saturated_band_prior_falls_back_to_the_observed_reporter_rate() -> None
     assert child["assignment_prior"] == pytest.approx(_REPORTER_FLOOR / _BAND_CAPACITY)
     assert child["target_shortfall"] > 0
     assert not adult["saturated"]
-    assert adult["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
+    assert adult["assignment_prior"] == pytest.approx(_UNSATURATED_PRIOR)
     assert not aged["saturated"]
     by_source = result.table("person").groupby("person_source_id")[_OUTPUT].first()
     for source_id, flagged in by_source.items():
@@ -361,7 +371,157 @@ def test_reporter_floor_above_target_never_drops_an_anchor() -> None:
     assert diagnostics["reporter_anchor_lost_count"] == 0
     for band in diagnostics["age_bands"]:
         assert band["anchor_excess"] == pytest.approx(_REPORTER_FLOOR - 5.0)
+        assert band["assignment_prior"] == 0.0
+        assert band["assignment_prior_status"] == "reporter_floor_exceeds_target"
+        assert (
+            band["prior_status_recomputed_from_current_weights"]
+            == "reporter_floor_exceeds_target"
+        )
+        assert band["target_shortfall"] == 0.0
+        assert band["selected_recipient_weight"] == pytest.approx(_REPORTER_FLOOR)
         assert band["selected_recipient_weight"] >= band["reporter_candidate_floor"]
+    assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
+
+
+def test_reporter_floor_equal_target_is_explicit_and_exact() -> None:
+    targets = {key: _REPORTER_FLOOR for key in _TARGETS}
+    _, result, _, diagnostics = _assigned(targets=targets)
+    person = result.table("person")
+    expected = (
+        person["person_source_id"]
+        .str.split(":")
+        .str[1]
+        .isin(_ANCHORED_SOURCE_NUMBERS)
+        .to_numpy()
+    )
+    np.testing.assert_array_equal(person[_OUTPUT].to_numpy(dtype=bool), expected)
+    for band in diagnostics["age_bands"]:
+        assert band["assignment_prior"] == 0.0
+        assert band["assignment_prior_status"] == "reporter_floor_meets_target"
+        assert band["anchor_excess"] == 0.0
+        assert band["target_shortfall"] == 0.0
+        assert band["selected_recipient_weight"] == pytest.approx(_REPORTER_FLOOR)
+    assert _band_prior(20.0, 20.0, 20.0) == 0.0
+    assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
+    assert us_ssi_take_up_delivery_gate(diagnostics, targets=targets).passed
+
+
+def test_delivery_gate_fails_reporter_floor_excess_inside_tolerance() -> None:
+    """A small impossible excess is a support defect, not tolerated draw noise."""
+
+    targets = {"under_18": 20.0, "18_64": 19.5, "65_plus": 20.0}
+    _, _, _, diagnostics = _assigned(targets=targets)
+    adult = diagnostics["age_bands"][1]
+    assert adult["assignment_prior_status"] == "reporter_floor_exceeds_target"
+    assert (adult["selected_recipient_weight"] - adult["target"]) / adult[
+        "target"
+    ] < US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
+
+    gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    assert not gate.passed
+    assert any(
+        "18_64" in failure
+        and "Forced reporters alone over-deliver" in failure
+        and "reporter identification/support" in failure
+        for failure in gate.failures
+    )
+    assert not any(
+        "18_64" in failure and "--ssi-take-up-prior-weight-basis" in failure
+        for failure in gate.failures
+    )
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
+
+
+def test_zero_candidate_capacity_is_named_and_fails_the_gate() -> None:
+    frame, potential = _frame()
+    child = frame.table("person")["person_source_id"].str.startswith("under_18:")
+    potential[child.to_numpy()] = 0.0
+    _, diagnostics = with_us_ssi_take_up(
+        frame,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+    )
+    row = diagnostics["age_bands"][0]
+    assert row["empty_band"] is False
+    assert row["source_identity_count"] > 0
+    assert row["candidate_capacity"] == 0.0
+    assert row["drawable_candidate_capacity"] == 0.0
+    assert row["assignment_prior"] == 0.0
+    assert row["assignment_prior_status"] == "zero_candidate_capacity"
+    assert row["prior_status_recomputed_from_current_weights"] == (
+        "zero_candidate_capacity"
+    )
+    assert row["target_shortfall"] == pytest.approx(_TARGETS["under_18"])
+    gate = us_ssi_take_up_gate(diagnostics, targets=_TARGETS)
+    assert not gate.passed
+    assert any("zero candidate capacity" in failure for failure in gate.failures)
+
+
+def test_empty_age_band_is_named_and_fails_the_gate() -> None:
+    frame, potential = _frame()
+    keep = ~frame.table("person")["person_source_id"].str.startswith("under_18:")
+    sparse = frame.select(keep.to_numpy())
+    _, diagnostics = with_us_ssi_take_up(
+        sparse,
+        uncapped_ssi=potential[keep.to_numpy()],
+        seed=17,
+        targets=_TARGETS,
+    )
+    row = diagnostics["age_bands"][0]
+    assert row["empty_band"] is True
+    assert row["source_identity_count"] == 0
+    assert row["candidate_source_identity_count"] == 0
+    assert row["candidate_capacity"] == 0.0
+    assert row["assignment_prior_status"] == "zero_candidate_capacity"
+    gate = us_ssi_take_up_gate(diagnostics, targets=_TARGETS)
+    assert not gate.passed
+    assert any("zero candidate capacity" in failure for failure in gate.failures)
+
+
+def test_no_drawable_candidate_capacity_is_named() -> None:
+    frame, potential = _frame()
+    person = frame.table("person")
+    adult = person["person_source_id"].str.startswith("18_64:")
+    anchored_candidate = person["person_source_id"].eq("18_64:0")
+    potential[(adult & ~anchored_candidate).to_numpy()] = 0.0
+    result, diagnostics = with_us_ssi_take_up(
+        frame,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+    )
+    row = diagnostics["age_bands"][1]
+    assert row["candidate_capacity"] == pytest.approx(_REPORTER_FLOOR)
+    assert row["reporter_candidate_floor"] == pytest.approx(_REPORTER_FLOOR)
+    assert row["drawable_candidate_capacity"] == 0.0
+    assert row["assignment_prior"] == 0.0
+    assert row["assignment_prior_status"] == "no_drawable_candidate_capacity"
+    assert row["saturated"] is True
+    assert row["target_shortfall"] == pytest.approx(30.0)
+    adult_flags = (
+        result.table("person").loc[adult].groupby("person_source_id")[_OUTPUT].first()
+    )
+    assert set(adult_flags.loc[adult_flags].index) == {"18_64:0", "18_64:6"}
+    assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
+    delivered = copy.deepcopy(diagnostics)
+    delivered["age_bands"][2]["selected_recipient_weight"] = 50.0
+    delivery = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
+    assert not delivery.passed
+    assert any(
+        "18_64" in failure and "no drawable candidate mass" in failure
+        for failure in delivery.failures
+    )
+    assert delivery.details["prior_weight_basis_retry_applicable"] is False
+
+
+def test_target_equal_capacity_uses_explicit_saturated_fallback() -> None:
+    targets = {"under_18": _BAND_CAPACITY, "18_64": 50.0, "65_plus": 50.0}
+    _, _, _, diagnostics = _assigned(targets=targets)
+    child = diagnostics["age_bands"][0]
+    assert child["saturated"] is True
+    assert child["assignment_prior_status"] == "saturated_reporter_rate"
+    assert child["assignment_prior"] == pytest.approx(_REPORTER_FLOOR / _BAND_CAPACITY)
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
@@ -376,6 +536,37 @@ def test_assignment_is_deterministic_source_keyed_and_seed_sensitive() -> None:
     assert not np.array_equal(
         first.table("person")[_OUTPUT], alternative.table("person")[_OUTPUT]
     )
+
+
+def test_fixed_seed_selections_are_monotone_in_floor_aware_prior() -> None:
+    low_targets = {key: 35.0 for key in _TARGETS}
+    high_targets = {key: 80.0 for key in _TARGETS}
+    _, low, _, low_diagnostics = _assigned(seed=17, targets=low_targets)
+    _, high, _, high_diagnostics = _assigned(seed=17, targets=high_targets)
+
+    low_selected = set(
+        low.table("person")
+        .groupby("person_source_id")[_OUTPUT]
+        .first()
+        .loc[lambda flag: flag]
+        .index
+    )
+    high_selected = set(
+        high.table("person")
+        .groupby("person_source_id")[_OUTPUT]
+        .first()
+        .loc[lambda flag: flag]
+        .index
+    )
+    assert low_selected <= high_selected
+    low_priors = {
+        row["age_band"]: row["assignment_prior"] for row in low_diagnostics["age_bands"]
+    }
+    high_priors = {
+        row["age_band"]: row["assignment_prior"]
+        for row in high_diagnostics["age_bands"]
+    }
+    assert all(low_priors[key] < high_priors[key] for key in low_priors)
 
 
 def test_stale_output_is_healed_and_exact_rerun_returns_same_frame() -> None:
@@ -492,6 +683,20 @@ def test_gate_rejects_hidden_saturation_and_corrupted_band_arithmetic() -> None:
     invalid_gate = us_ssi_take_up_gate(invalid_probability, targets=_TARGETS)
     assert not invalid_gate.passed
     assert any("outside [0, 1]" in failure for failure in invalid_gate.failures)
+
+    hidden_status = copy.deepcopy(diagnostics)
+    hidden_status["age_bands"][0]["assignment_prior_status"] = (
+        "reporter_floor_exceeds_target"
+    )
+    status_gate = us_ssi_take_up_gate(hidden_status, targets=_TARGETS)
+    assert not status_gate.passed
+    assert any("assignment prior status" in failure for failure in status_gate.failures)
+
+    invalid_count = copy.deepcopy(diagnostics)
+    invalid_count["age_bands"][0]["source_identity_count"] = None
+    count_gate = us_ssi_take_up_gate(invalid_count, targets=_TARGETS)
+    assert not count_gate.passed
+    assert any("source identity count" in failure for failure in count_gate.failures)
 
 
 def test_gate_rejects_duplicate_age_band_diagnostics() -> None:
@@ -628,9 +833,18 @@ def test_enforced_bands_are_the_adult_bands_pending_child_disability_stage() -> 
     assert 0.0 < US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE < 0.1
 
 
-def test_release_artifact_basis_drives_the_band_priors() -> None:
+def test_release_artifact_loader_basis_drives_floor_aware_band_priors() -> None:
     capacities = {"under_18": 200.0, "18_64": 100.0, "65_plus": 500.0}
-    basis = _artifact_basis(capacities=capacities)
+    _, _, _, payload = _assigned()
+    for row in payload["age_bands"]:
+        key = row["age_band"]
+        row["candidate_capacity"] = capacities[key]
+        row["reporter_candidate_floor"] = _REPORTER_FLOOR
+    basis = ssi_take_up_prior_basis_from_artifact(
+        payload,
+        targets=_TARGETS,
+        source_sha256=_BASIS_SHA,
+    )
     frame, potential = _frame()
     result, diagnostics = with_us_ssi_take_up(
         frame,
@@ -639,7 +853,10 @@ def test_release_artifact_basis_drives_the_band_priors() -> None:
         targets=_TARGETS,
         prior_basis=basis,
     )
-    expected = {key: 50.0 / value for key, value in capacities.items()}
+    expected = {
+        key: (50.0 - _REPORTER_FLOOR) / (value - _REPORTER_FLOOR)
+        for key, value in capacities.items()
+    }
     by_source = result.table("person").groupby("person_source_id")[_OUTPUT].first()
     for source_id, flagged in by_source.items():
         prior = expected[source_id.split(":")[0]]
@@ -647,7 +864,7 @@ def test_release_artifact_basis_drives_the_band_priors() -> None:
     assert diagnostics["prior_weight_basis"] == {
         "kind": US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT,
         "source_sha256": _BASIS_SHA,
-        "source_schema_version": 2,
+        "source_schema_version": 4,
     }
     for band in diagnostics["age_bands"]:
         key = band["age_band"]
@@ -659,7 +876,7 @@ def test_release_artifact_basis_drives_the_band_priors() -> None:
         # The current-weight recomputation still measures THIS frame, so the
         # release diagnostics never misdocument where the priors came from.
         assert band["prior_recomputed_from_current_weights"] == pytest.approx(
-            50.0 / _BAND_CAPACITY
+            _UNSATURATED_PRIOR
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
@@ -687,6 +904,119 @@ def test_saturated_artifact_basis_falls_back_to_the_basis_reporter_rate() -> Non
         if source_id.startswith("under_18:"):
             assert bool(flagged) == _expected_bernoulli_flag(source_id, 0.5)
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
+
+
+def test_attempt_5_floor_aware_prior_hits_expected_target() -> None:
+    """Pin the exact attempt-5 inputs that exposed the forced-floor defect."""
+
+    target = 3_905_779.0
+    capacity = 4_840_938.516496049
+    floor = 2_169_544.5101818806
+    prior = _band_prior(target, capacity, floor)
+
+    assert prior == pytest.approx(0.6499358, rel=0.0, abs=5e-8)
+    assert prior == pytest.approx(0.6499357585269396, rel=0.0, abs=1e-15)
+    expected_selected = floor + prior * (capacity - floor)
+    assert expected_selected == pytest.approx(target, rel=0.0, abs=1e-6)
+
+
+def test_attempt_5_seeded_delivery_removes_floor_blind_overshoot() -> None:
+    """The same one-shot draws land inside the gate only with the fixed law."""
+
+    target = 3_905_779.0
+    capacity = 4_840_938.516496049
+    floor = 2_169_544.5101818806
+    prior = _band_prior(target, capacity, floor)
+    old_prior = target / capacity
+
+    old_expected = floor + old_prior * (capacity - floor)
+    old_expected_relative_error = (old_expected - target) / target
+    assert old_expected == pytest.approx(4_324_885.7885, rel=0.0, abs=1e-4)
+    assert old_expected_relative_error == pytest.approx(
+        0.1073043,
+        rel=0.0,
+        abs=1e-7,
+    )
+
+    draws = np.asarray(
+        [
+            _stable_source_draw(
+                f"attempt5:nonreporter:{source_number}",
+                seed=17,
+            )
+            for source_number in range(1_000)
+        ]
+    )
+    nonreporter_weight = (capacity - floor) / len(draws)
+    fixed_selected = floor + float(np.count_nonzero(draws < prior)) * (
+        nonreporter_weight
+    )
+    old_selected = floor + float(np.count_nonzero(draws < old_prior)) * (
+        nonreporter_weight
+    )
+    tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
+    assert abs(fixed_selected - target) <= tolerance * target
+    assert abs(old_selected - target) > tolerance * target
+
+    targets = {"under_18": 50.0, "18_64": target, "65_plus": 50.0}
+
+    def delivery_payload(adult_selected: float) -> dict[str, object]:
+        return {
+            "schema_version": 4,
+            "age_bands": [
+                {
+                    "age_band": "under_18",
+                    "selected_recipient_weight": 50.0,
+                    "candidate_capacity": 100.0,
+                    "reporter_candidate_floor": 0.0,
+                    "empty_band": False,
+                    "prior_status_recomputed_from_current_weights": "floor_aware",
+                },
+                {
+                    "age_band": "18_64",
+                    "selected_recipient_weight": adult_selected,
+                    "candidate_capacity": capacity,
+                    "reporter_candidate_floor": floor,
+                    "empty_band": False,
+                    "prior_status_recomputed_from_current_weights": "floor_aware",
+                },
+                {
+                    "age_band": "65_plus",
+                    "selected_recipient_weight": 50.0,
+                    "candidate_capacity": 100.0,
+                    "reporter_candidate_floor": 0.0,
+                    "empty_band": False,
+                    "prior_status_recomputed_from_current_weights": "floor_aware",
+                },
+            ],
+        }
+
+    assert us_ssi_take_up_delivery_gate(
+        delivery_payload(fixed_selected),
+        targets=targets,
+    ).passed
+    old_gate = us_ssi_take_up_delivery_gate(
+        delivery_payload(old_selected),
+        targets=targets,
+    )
+    assert not old_gate.passed
+    assert old_gate.details["prior_weight_basis_retry_applicable"] is True
+
+
+@pytest.mark.parametrize(
+    ("capacity", "floor", "message"),
+    [
+        (-1.0, 0.0, "candidate capacity"),
+        (40.0, 41.0, "negative drawable candidate capacity"),
+    ],
+)
+def test_band_prior_rejects_invalid_or_negative_drawable_capacity(
+    capacity: float,
+    floor: float,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _band_prior(50.0, capacity, floor)
 
 
 def test_prior_basis_round_trips_through_diagnostics() -> None:
@@ -726,19 +1056,29 @@ def test_prior_basis_round_trips_through_diagnostics() -> None:
     assert ssi_take_up_prior_basis_from_diagnostics(artifact_diagnostics) == artifact
 
 
-def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
+def test_prior_basis_loader_accepts_schema_4_3_and_2_artifacts() -> None:
     _, _, _, diagnostics = _assigned()
+    payload4 = copy.deepcopy(diagnostics)
+    basis4 = ssi_take_up_prior_basis_from_artifact(
+        payload4, targets=_TARGETS, source_sha256=_BASIS_SHA
+    )
+    assert basis4.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
+    assert basis4.source_sha256 == _BASIS_SHA
+    assert basis4.source_schema_version == 4
+    for band in basis4.bands:
+        assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
+        assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
+
+    # Schema-3 artifacts carry the same usable capacity/floor measurements;
+    # only the prior they recorded was floor-blind.
     payload3 = copy.deepcopy(diagnostics)
+    payload3["schema_version"] = 3
     basis3 = ssi_take_up_prior_basis_from_artifact(
         payload3, targets=_TARGETS, source_sha256=_BASIS_SHA
     )
     assert basis3.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
     assert basis3.source_sha256 == _BASIS_SHA
     assert basis3.source_schema_version == 3
-    for band in basis3.bands:
-        assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
-        assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
-
     # Build N's certified artifact predates the basis fields (schema 2); the
     # chain must be able to start from it (populace#507 Build O attempt 2).
     payload2 = copy.deepcopy(diagnostics)
@@ -756,7 +1096,7 @@ def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
         for band in basis2.bands
     ] == [
         (band.key, band.candidate_capacity, band.reporter_candidate_floor)
-        for band in basis3.bands
+        for band in basis4.bands
     ]
 
 
@@ -847,6 +1187,33 @@ def test_delivery_gate_fails_an_enforced_band_miss_and_names_the_remedy() -> Non
         for failure in gate.failures
     )
     assert not any("under_18" in failure for failure in gate.failures)
+    assert gate.details["prior_weight_basis_retry_applicable"] is True
+
+
+def test_delivery_gate_names_saturated_enforced_support_inside_tolerance() -> None:
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(
+        diagnostics,
+        **{"18_64": 49.5, "65_plus": 50.0},
+    )
+    adult = delivered["age_bands"][1]
+    adult["candidate_capacity"] = 49.5
+    adult["reporter_candidate_floor"] = 20.0
+    adult["prior_status_recomputed_from_current_weights"] = "saturated_reporter_rate"
+
+    gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
+    assert not gate.passed
+    assert any(
+        "18_64" in failure
+        and "insufficient candidate support" in failure
+        and "eligibility/support" in failure
+        for failure in gate.failures
+    )
+    assert not any(
+        "18_64" in failure and "--ssi-take-up-prior-weight-basis" in failure
+        for failure in gate.failures
+    )
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
 
 
 def test_delivery_gate_boundary_sits_at_the_documented_tolerance() -> None:
