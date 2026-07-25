@@ -41,7 +41,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1332,6 +1332,21 @@ def _parse_args() -> argparse.Namespace:
         multipliers[family] = value
     args.target_family_loss_multipliers = multipliers
     return args
+
+
+def _finite_or_none(value: float) -> float | None:
+    """A loss for the diagnostics payload, scrubbed the way JSON needs it.
+
+    Mirrors ``populace.calibrate.diagnostics._finite``: the artifact
+    serializes strict JSON (``allow_nan=False``), and a non-finite loss is
+    an EXPECTED batched gate failure — ``_release_gate_failures`` records it
+    and the run continues to the terminal batch. Smuggling the raw value
+    into the payload makes the failure destroy the artifact that reports it
+    (populace#547).
+    """
+
+    value = float(value)
+    return value if math.isfinite(value) else None
 
 
 def _sha256(path: Path) -> str:
@@ -5361,51 +5376,110 @@ def _load_ssi_take_up_prior_weight_basis(
         ) from error
 
 
+def _final_medicaid_diagnostics_or_quarantine(
+    *,
+    ssi_law_degraded: bool,
+    degraded: bool,
+    evaluate: Callable[[], dict],
+) -> tuple[dict, list[str]]:
+    """Final Medicaid diagnostics under the #547 degraded-mode contract.
+
+    A Bernoulli-law violation upstream corrupts the frozen SSI decisions
+    that pe-us Medicaid eligibility consumes (takes_up_ssi_if_eligible ->
+    ssi -> is_ssi_recipient_for_medicaid -> medicaid_category ->
+    is_medicaid_eligible), so on a law failure the evaluation is
+    quarantined — recorded as not evaluated, never mis-measured.
+    Delivery-only degradation still evaluates, but an evaluation crash in
+    degraded mode records a line instead of masking the earlier failures
+    and destroying the diagnostics artifact (populace#547). On the green
+    path a crash raises exactly as before.
+    """
+
+    if ssi_law_degraded:
+        return {}, [
+            "Medicaid final diagnostics not evaluated: SSI decision "
+            "integrity failed upstream (Bernoulli-law violation) and "
+            "Medicaid eligibility consumes the frozen SSI decisions; "
+            "quarantined instead of mis-measured (populace#547)."
+        ]
+    try:
+        return evaluate(), []
+    except Exception as error:
+        if not degraded:
+            raise
+        return {}, [
+            "Medicaid final diagnostics evaluation crashed in degraded "
+            f"mode; recorded instead of masking earlier failures: {error}"
+        ]
+
+
 def _enforce_ssi_take_up_delivery(
     diagnostics: Mapping[str, object],
     *,
     targets: Mapping[str, float],
     release_dir: Path,
     telemetry: StagingTelemetry | None,
-) -> None:
-    """Hard-fail the release on an enforced-band delivery miss.
+) -> list[str]:
+    """Fail the release on an enforced-band delivery miss, via the batch.
 
     populace#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. The delivered-weight
-    diagnostics are written BEFORE raising — that artifact IS the remedy:
-    the retry passes it via ``--ssi-take-up-prior-weight-basis`` so the
-    thresholds are recomputed exactly once from measured delivery, never
+    diagnostics are written before returning failures — that artifact IS the
+    remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
+    the thresholds are recomputed exactly once from measured delivery, never
     iterated in-process (the populace#463-class loop stays deleted,
-    populace#477).
+    populace#477). Failures return to the caller and join the #437 batched
+    terminal gates rather than raising here: an early raise destroyed the
+    failed run's calibration diagnostics and skipped every other gate group
+    (populace#547 — the 2026-07-25 sparsecd retest left no target-surface
+    evidence). Enforcement is unchanged: any returned failure still aborts
+    the release at the terminal batch and certification manifests are never
+    written.
     """
 
     delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
     if delivery_gate.passed:
-        return
-    failed_basis_path = write_us_ssi_take_up_diagnostics(
-        diagnostics,
-        release_dir / "us_ssi_take_up.json",
-    )
-    if telemetry is not None:
-        telemetry.stage(
-            "ssi_take_up_delivery_gate",
-            status="failed",
-            message=(
-                "SSI take-up enforced-band delivery gate failed; "
-                f"delivered-weight prior basis written to {failed_basis_path}."
-            ),
-            failures=list(delivery_gate.failures),
-            force_upload=True,
+        return []
+    # The gate failures are secured FIRST: the retry-artifact write and the
+    # telemetry are reporting conveniences for an already-failed gate, and
+    # neither may destroy the evidence chain by raising. Concretely: a
+    # nonfinite delivered weight both fails the gate AND makes the strict
+    # JSON writer (allow_nan=False) raise — the reporting crash would have
+    # masked the gate failure and skipped the diagnostics artifact
+    # (populace#547, confirm round 2 finding 1).
+    failures = [
+        f"SSI take-up delivery failed: {failure}" for failure in delivery_gate.failures
+    ]
+    try:
+        failed_basis_path = write_us_ssi_take_up_diagnostics(
+            diagnostics,
+            release_dir / "us_ssi_take_up.json",
         )
-    raise RuntimeError(
-        "Release gates failed: "
-        + "; ".join(
-            f"SSI take-up delivery failed: {failure}"
-            for failure in delivery_gate.failures
+        failures.append(
+            "SSI take-up delivered-weight prior basis written to "
+            f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis "
+            "retry."
         )
-        + " Delivered-weight prior basis written to "
-        + f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis retry."
-    )
+    except Exception as error:
+        failures.append(
+            "SSI take-up delivered-weight prior basis could NOT be written "
+            f"(the retry must recompute delivery itself): {error}"
+        )
+    try:
+        if telemetry is not None:
+            telemetry.stage(
+                "ssi_take_up_delivery_gate",
+                status="failed",
+                message="SSI take-up enforced-band delivery gate failed.",
+                failures=list(delivery_gate.failures),
+                force_upload=True,
+            )
+    except Exception as error:
+        failures.append(
+            "SSI delivery-gate failure telemetry crashed; recorded instead "
+            f"of masking the failure: {error}"
+        )
+    return failures
 
 
 def _ssi_assignment_priors_from_diagnostics(
@@ -6927,6 +7001,55 @@ def _staging_telemetry(
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
+
+
+class _TerminalBatchTelemetry:
+    """Turn terminal-batch telemetry crashes into release-gate failures.
+
+    The proxy is deliberately scoped to the post-diagnostics terminal batch.
+    A telemetry crash on an otherwise-green run now fails the release as a
+    recorded batch line rather than causing an opaque abort, and every later
+    gate group still gets a chance to contribute its evidence.
+    """
+
+    def __init__(
+        self,
+        telemetry: StagingTelemetry | None,
+        terminal_gate_failures: list[str],
+    ) -> None:
+        self._telemetry = telemetry
+        self._terminal_gate_failures = terminal_gate_failures
+
+    def _call(
+        self,
+        method_name: str,
+        label: str,
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        if self._telemetry is None:
+            return
+        try:
+            getattr(self._telemetry, method_name)(label, *args, **kwargs)
+        except Exception as error:
+            self._terminal_gate_failures.append(
+                "Terminal-batch telemetry "
+                f"{method_name}({label!r}) crashed; recorded as a release "
+                "failure instead of interrupting the remaining gate "
+                f"evaluations: {type(error).__name__}: {error}"
+            )
+
+    def stage(self, stage: str, **details: Any) -> None:
+        self._call("stage", stage, **details)
+
+    def attach_artifact(
+        self,
+        name: str,
+        path: Path | str,
+        **details: Any,
+    ) -> None:
+        self._call("attach_artifact", name, path, **details)
 
 
 def main() -> None:
@@ -8730,9 +8853,13 @@ def main() -> None:
             "refit_l2_lambda": float(
                 args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
             ),
-            "selection_final_loss": float(result.selection.final_loss),
-            "refit_initial_loss": float(result.initial_loss),
-            "refit_final_loss": float(result.final_loss),
+            # Same scrub as default_dataset["final_loss"] below: these losses
+            # ride the diagnostics build payload, which serializes strict JSON
+            # (allow_nan=False), and a non-finite loss is a BATCHED gate
+            # failure the artifact must survive to report (populace#547).
+            "selection_final_loss": _finite_or_none(result.selection.final_loss),
+            "refit_initial_loss": _finite_or_none(result.initial_loss),
+            "refit_final_loss": _finite_or_none(result.final_loss),
         }
     if telemetry is not None:
         telemetry.stage(
@@ -8778,49 +8905,95 @@ def main() -> None:
     final_ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_diagnostics, targets=ssi_band_targets
     )
+    # SSI gate failures join the #437 batched terminal gates instead of
+    # raising here: an early raise destroyed the failed run's calibration
+    # diagnostics and skipped every other gate group (populace#547). A law
+    # violation additionally quarantines SSI-dependent evaluations below.
+    ssi_law_degraded = not final_ssi_take_up_gate.passed
+    early_terminal_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "ssi_take_up_final_gate",
-                status="failed",
-                message="SSI take-up final export-frame gate failed.",
-                failures=list(final_ssi_take_up_gate.failures),
-                force_upload=True,
-            )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"SSI take-up final measurement failed: {failure}"
-                for failure in final_ssi_take_up_gate.failures
-            )
+        # Failures enter the list BEFORE any reporting: the telemetry stage
+        # performs local writes and must not be able to mask the gate
+        # failure by raising (populace#547, confirm round 2 finding 1).
+        early_terminal_gate_failures.extend(
+            f"SSI take-up final measurement failed: {failure}"
+            for failure in final_ssi_take_up_gate.failures
         )
-    _enforce_ssi_take_up_delivery(
-        ssi_take_up_diagnostics,
-        targets=ssi_band_targets,
-        release_dir=release_dir,
-        telemetry=telemetry,
-    )
-    medicaid_take_up_diagnostics = dict(
-        _medicaid_diagnostics_for_existing_output(
-            export_frame,
-            target_specs,
-            seed=args.seed,
-            substitutions=medicaid_enrollment_substitutions,
-            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        try:
+            if telemetry is not None:
+                telemetry.stage(
+                    "ssi_take_up_final_gate",
+                    status="failed",
+                    message="SSI take-up final export-frame gate failed.",
+                    failures=list(final_ssi_take_up_gate.failures),
+                    force_upload=True,
+                )
+        except Exception as error:
+            early_terminal_gate_failures.append(
+                "SSI final-gate failure telemetry crashed; recorded instead "
+                f"of masking the failure: {error}"
+            )
+    early_terminal_gate_failures.extend(
+        _enforce_ssi_take_up_delivery(
+            ssi_take_up_diagnostics,
+            targets=ssi_band_targets,
+            release_dir=release_dir,
+            telemetry=telemetry,
         )
     )
+    medicaid_take_up_diagnostics, medicaid_guard_failures = (
+        _final_medicaid_diagnostics_or_quarantine(
+            ssi_law_degraded=ssi_law_degraded,
+            degraded=bool(early_terminal_gate_failures),
+            evaluate=lambda: dict(
+                _medicaid_diagnostics_for_existing_output(
+                    export_frame,
+                    target_specs,
+                    seed=args.seed,
+                    substitutions=medicaid_enrollment_substitutions,
+                    maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+                )
+            ),
+        )
+    )
+    early_terminal_gate_failures.extend(medicaid_guard_failures)
     # Signal gates re-check the exported support: sparse selection can drop
     # rows, and a column nonconstant on the candidate base can flatten on the
     # selected support.
-    health_input_gate = _health_input_signal_gate(export_frame)
-    other_health_insurance_gate = us_other_health_insurance_signal_gate(export_frame)
-    if not other_health_insurance_gate.passed:
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Other health insurance signal failed on the export frame: {failure}"
-                for failure in other_health_insurance_gate.failures
-            )
+    try:
+        health_input_gate = _health_input_signal_gate(export_frame)
+    except Exception as error:
+        # Degraded-mode guard (populace#547): record instead of masking; the
+        # downstream gate-failure evaluation is itself guarded, so a None
+        # gate cannot re-destroy the evidence. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        health_input_gate = None
+        early_terminal_gate_failures.append(
+            "Health-input signal evaluation crashed in degraded mode; "
+            f"recorded instead of masking earlier failures: {error}"
+        )
+    try:
+        other_health_insurance_gate = us_other_health_insurance_signal_gate(
+            export_frame
+        )
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        other_health_insurance_gate = None
+        early_terminal_gate_failures.append(
+            "Other-health signal evaluation crashed in degraded mode; "
+            f"recorded instead of masking earlier failures: {error}"
+        )
+    if (
+        other_health_insurance_gate is not None
+        and not other_health_insurance_gate.passed
+    ):
+        # Batched, not raised: an in-place raise here masked co-occurring
+        # SSI failures and destroyed the diagnostics artifact (populace#547).
+        early_terminal_gate_failures.extend(
+            f"Other health insurance signal failed on the export frame: {failure}"
+            for failure in other_health_insurance_gate.failures
         )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
@@ -8831,65 +9004,115 @@ def main() -> None:
         }
     default_dataset = {
         **default_dataset,
-        "final_loss": float(result.final_loss),
+        "final_loss": _finite_or_none(result.final_loss),
     }
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
-    if telemetry is not None:
-        telemetry.stage(
-            "release_gates",
-            message="Evaluating release gates.",
-            final_loss=result.final_loss,
-            n_nonzero=result.n_nonzero,
-            default_dataset=default_dataset,
-            calibration_seconds=timing["calibration_seconds"],
-            elapsed_through_calibration_seconds=timing[
-                "elapsed_through_calibration_seconds"
-            ],
+    try:
+        if telemetry is not None:
+            telemetry.stage(
+                "release_gates",
+                message="Evaluating release gates.",
+                final_loss=result.final_loss,
+                n_nonzero=result.n_nonzero,
+                default_dataset=default_dataset,
+                calibration_seconds=timing["calibration_seconds"],
+                elapsed_through_calibration_seconds=timing[
+                    "elapsed_through_calibration_seconds"
+                ],
+            )
+    except Exception as error:
+        # Degraded-mode guard (populace#547): telemetry writes locally and
+        # sits in the corridor between SSI collection and the diagnostics
+        # write. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        early_terminal_gate_failures.append(
+            "Release-gates telemetry crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
         )
-    incumbent_payload = _load_incumbent_diagnostics_payload(args.incumbent_diagnostics)
-    if args.incumbent_diagnostics is not None:
-        current_target_surface = diagnostics_payload(
-            result,
-            target_registry=registry,
-        )["target_surface"]
-        _assert_incumbent_target_surface_matches(
-            current_target_surface,
-            incumbent_payload,
-            path=args.incumbent_diagnostics,
+    # The path travels separately so the fallback can null it: the
+    # diagnostics writer re-hashes any non-None incumbent path, which would
+    # replay the exact I/O failure the guard just caught (populace#547,
+    # confirm round 2 finding 2).
+    incumbent_diagnostics_path: Path | None = args.incumbent_diagnostics
+    try:
+        incumbent_payload = _load_incumbent_diagnostics_payload(
+            args.incumbent_diagnostics
         )
-    incumbent_diagnostics = (
-        _diagnostics_by_target_name(
-            incumbent_payload,
-            path=args.incumbent_diagnostics,
+        if args.incumbent_diagnostics is not None:
+            current_target_surface = diagnostics_payload(
+                result,
+                target_registry=registry,
+            )["target_surface"]
+            _assert_incumbent_target_surface_matches(
+                current_target_surface,
+                incumbent_payload,
+                path=args.incumbent_diagnostics,
+            )
+        incumbent_diagnostics = (
+            _diagnostics_by_target_name(
+                incumbent_payload,
+                path=args.incumbent_diagnostics,
+            )
+            if args.incumbent_diagnostics is not None
+            else {}
         )
-        if args.incumbent_diagnostics is not None
-        else {}
-    )
+    except Exception as error:
+        # Degraded-mode guard (populace#547): with earlier terminal failures
+        # pending, an incumbent load/validation crash must record a line and
+        # fall back to the no-incumbent gate shape, not mask the failures
+        # and destroy the diagnostics artifact. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        incumbent_diagnostics = {}
+        incumbent_diagnostics_path = None
+        early_terminal_gate_failures.append(
+            "Incumbent diagnostics could not be loaded/validated in "
+            f"degraded mode; recorded instead of masking earlier failures: "
+            f"{error}"
+        )
     enforced_input_mass_reference_gate = (
         None if args.allow_input_mass_drift else input_mass_reference_gate
     )
     enforced_ecps_parity_gate = (
         None if args.allow_ecps_parity_gaps else ecps_parity_gate
     )
-    gate_failures = _release_gate_failures(
-        result,
-        compilation,
-        target_profile_gate,
-        health_input_gate,
-        base_population_gate,
-        incumbent_diagnostics,
-        immigration_gate,
-        enforced_input_mass_reference_gate,
-        degenerate_input_gate,
-        ecps_parity_gate=enforced_ecps_parity_gate,
-        hours_worked_gate=hours_worked_gate,
-        snap_take_up_gate=snap_take_up_gate,
-        eligibility_inputs_gate=eligibility_inputs_gate,
-        pregnancy_gate=pregnancy_gate,
-        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-        target_registry=registry,
-    )
+    try:
+        gate_failures = _release_gate_failures(
+            result,
+            compilation,
+            target_profile_gate,
+            health_input_gate,
+            base_population_gate,
+            incumbent_diagnostics,
+            immigration_gate,
+            enforced_input_mass_reference_gate,
+            degenerate_input_gate,
+            ecps_parity_gate=enforced_ecps_parity_gate,
+            hours_worked_gate=hours_worked_gate,
+            snap_take_up_gate=snap_take_up_gate,
+            eligibility_inputs_gate=eligibility_inputs_gate,
+            pregnancy_gate=pregnancy_gate,
+            snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+            target_registry=registry,
+        )
+    except Exception as error:
+        # Degraded-mode guard (populace#547): the batch must still form and
+        # the diagnostics artifact must still be written when earlier
+        # terminal failures are pending. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        gate_failures = []
+        early_terminal_gate_failures.append(
+            "Release gate evaluation crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
+        )
+    # The early terminal failures (SSI gates, other-health signal, degraded-
+    # mode guard lines) ride the same list as every other gate group, so the
+    # diagnostics artifact records them and the terminal batch aborts on
+    # them (populace#547).
+    gate_failures = [*early_terminal_gate_failures, *gate_failures]
     _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,
@@ -8915,7 +9138,7 @@ def main() -> None:
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         timing=timing,
-        incumbent_diagnostics_path=args.incumbent_diagnostics,
+        incumbent_diagnostics_path=incumbent_diagnostics_path,
         incumbent_diagnostics=incumbent_diagnostics,
         default_dataset=default_dataset,
         degenerate_input_gate=degenerate_input_gate,
@@ -8923,11 +9146,6 @@ def main() -> None:
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
     )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "calibration_diagnostics",
-            release_dir / "calibration_diagnostics.json",
-        )
     # Terminal-gate batching: evaluate EVERY terminal gate
     # group and raise once with the full failure list, instead of aborting at
     # the first failing group. Build M attempts 9/10/11 each burned a full
@@ -8937,19 +9155,28 @@ def main() -> None:
     # an evaluation crash in degraded mode records a line rather than masking
     # the earlier failures) and certification manifests are never written.
     terminal_gate_failures: list[str] = list(gate_failures)
+    terminal_batch_telemetry = _TerminalBatchTelemetry(
+        telemetry,
+        terminal_gate_failures,
+    )
+    terminal_batch_telemetry.attach_artifact(
+        "calibration_diagnostics",
+        release_dir / "calibration_diagnostics.json",
+    )
     if gate_failures:
-        if telemetry is not None:
-            telemetry.stage(
-                "release_gates",
-                status="failed",
-                message="Release gates failed; continuing to evaluate the "
-                "remaining terminal gate groups before aborting.",
-                failures=gate_failures,
-                force_upload=True,
-            )
+        terminal_batch_telemetry.stage(
+            "release_gates",
+            status="failed",
+            message="Release gates failed; continuing to evaluate the "
+            "remaining terminal gate groups before aborting.",
+            failures=gate_failures,
+            force_upload=True,
+        )
 
-    if telemetry is not None:
-        telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
+    terminal_batch_telemetry.stage(
+        "export_dataset",
+        message="Writing PolicyEngine-US H5.",
+    )
     release_engine = PolicyEngineUSEngine()
     # populace#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
@@ -8980,6 +9207,14 @@ def main() -> None:
         )
         input_coverage_gate = None
     if input_coverage_gate is not None:
+        input_coverage_failed = (
+            not input_coverage_gate.passed and not args.allow_input_coverage_gaps
+        )
+        if input_coverage_failed:
+            terminal_gate_failures.extend(
+                f"Input coverage failed: {failure}"
+                for failure in input_coverage_gate.failures
+            )
         input_coverage_path = release_dir / "input_coverage.json"
         input_coverage_path.write_text(
             json.dumps(
@@ -8997,20 +9232,17 @@ def main() -> None:
             )
             + "\n"
         )
-        if telemetry is not None:
-            telemetry.attach_artifact("input_coverage", input_coverage_path)
-        if not input_coverage_gate.passed and not args.allow_input_coverage_gaps:
-            if telemetry is not None:
-                telemetry.stage(
-                    "export_dataset",
-                    status="failed",
-                    message="Release input-column coverage gate failed.",
-                    failures=list(input_coverage_gate.failures),
-                    force_upload=True,
-                )
-            terminal_gate_failures.extend(
-                f"Input coverage failed: {failure}"
-                for failure in input_coverage_gate.failures
+        terminal_batch_telemetry.attach_artifact(
+            "input_coverage",
+            input_coverage_path,
+        )
+        if input_coverage_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Release input-column coverage gate failed.",
+                failures=list(input_coverage_gate.failures),
+                force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
@@ -9057,6 +9289,14 @@ def main() -> None:
         )
         export_input_mass_gate = None
     if export_input_mass_gate is not None:
+        input_mass_parity_failed = (
+            not export_input_mass_gate.passed and not args.allow_input_mass_drift
+        )
+        if input_mass_parity_failed:
+            terminal_gate_failures.extend(
+                f"Input mass parity failed: {failure}"
+                for failure in export_input_mass_gate.failures
+            )
         input_mass_parity_path = release_dir / "input_mass_parity.json"
         input_mass_parity_path.write_text(
             json.dumps(
@@ -9083,20 +9323,17 @@ def main() -> None:
             )
             + "\n"
         )
-        if telemetry is not None:
-            telemetry.attach_artifact("input_mass_parity", input_mass_parity_path)
-        if not export_input_mass_gate.passed and not args.allow_input_mass_drift:
-            if telemetry is not None:
-                telemetry.stage(
-                    "export_dataset",
-                    status="failed",
-                    message="Export input mass parity gate failed.",
-                    failures=list(export_input_mass_gate.failures),
-                    force_upload=True,
-                )
-            terminal_gate_failures.extend(
-                f"Input mass parity failed: {failure}"
-                for failure in export_input_mass_gate.failures
+        terminal_batch_telemetry.attach_artifact(
+            "input_mass_parity",
+            input_mass_parity_path,
+        )
+        if input_mass_parity_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Export input mass parity gate failed.",
+                failures=list(export_input_mass_gate.failures),
+                force_upload=True,
             )
     # populace#462: tail-concentration gate over the sparse QRF-imputed dollar
     # columns at the export's calibrated weights. The Build M defect — 89% of
@@ -9150,6 +9387,14 @@ def main() -> None:
         qrf_tail_gate = None
         qrf_tail_surface = None
     if qrf_tail_gate is not None:
+        qrf_tail_failed = (
+            not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration
+        )
+        if qrf_tail_failed:
+            terminal_gate_failures.extend(
+                f"QRF tail concentration failed: {failure}"
+                for failure in qrf_tail_gate.failures
+            )
         qrf_tail_path = release_dir / "qrf_tail_concentration.json"
         qrf_tail_path.write_text(
             json.dumps(
@@ -9168,20 +9413,17 @@ def main() -> None:
             )
             + "\n"
         )
-        if telemetry is not None:
-            telemetry.attach_artifact("qrf_tail_concentration", qrf_tail_path)
-        if not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration:
-            if telemetry is not None:
-                telemetry.stage(
-                    "export_dataset",
-                    status="failed",
-                    message="QRF tail-concentration gate failed.",
-                    failures=list(qrf_tail_gate.failures),
-                    force_upload=True,
-                )
-            terminal_gate_failures.extend(
-                f"QRF tail concentration failed: {failure}"
-                for failure in qrf_tail_gate.failures
+        terminal_batch_telemetry.attach_artifact(
+            "qrf_tail_concentration",
+            qrf_tail_path,
+        )
+        if qrf_tail_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="QRF tail-concentration gate failed.",
+                failures=list(qrf_tail_gate.failures),
+                force_upload=True,
             )
     # Batched pre-export raise: the calibration battery, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
@@ -9193,14 +9435,13 @@ def main() -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
-        if telemetry is not None:
-            telemetry.stage(
-                "release_gates",
-                status="failed",
-                message="Release gates failed (batched pre-export report).",
-                failures=terminal_gate_failures,
-                force_upload=True,
-            )
+        terminal_batch_telemetry.stage(
+            "release_gates",
+            status="failed",
+            message="Release gates failed (batched pre-export report).",
+            failures=terminal_gate_failures,
+            force_upload=True,
+        )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
     dataset_path = artifact_root / DATASET_FILENAME
     # The export H5 write: everything below (reform smoke, take-up contract,
