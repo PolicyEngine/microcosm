@@ -8919,9 +8919,16 @@ def main() -> None:
                 congressional_district_vintage_crosswalk_metadata
             ),
         }
+    # A non-finite final loss is an EXPECTED batched gate failure, not a
+    # writer bug: _release_gate_failures records it and the run continues to
+    # the terminal batch. The diagnostics writer serializes strict JSON
+    # (allow_nan=False), so the raw value must be scrubbed to null here the
+    # same way the summary scalars are — otherwise the failure destroys the
+    # very artifact that reports it (populace#547, confirm round 3).
+    final_loss_value = float(result.final_loss)
     default_dataset = {
         **default_dataset,
-        "final_loss": float(result.final_loss),
+        "final_loss": (final_loss_value if math.isfinite(final_loss_value) else None),
     }
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
