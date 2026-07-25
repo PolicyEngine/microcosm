@@ -3,6 +3,7 @@
     "All monetary amounts share thousands-of-dollars units, which cancel in the ratios. Finest-industry summary ranges exclude published totals, disclosure-combined/deleted values, and nonpositive receipts; caution estimates remain.",
     "Sole-proprietor Table 1 Payroll is canonical and exactly cross-checks to Table 2 cost of labor plus salaries and wages. Table 1 depreciation is used because it includes Form 8829.",
     "Partnership guaranteed payments are recorded as an excluded diagnostic because partners are not W-2 employees.",
+    "The 18 published partnership sectors are labeled sector totals but treated as finest available because the public table has no finer partnership industry rows. Unallocable categories are excluded from summary ranges for every form.",
     "Partnership balance-sheet aggregates exclude some small partnerships exempt from Schedule L while receipts cover all partnerships, which can bias capital intensity downward.",
     "S-corporation Table 6.1 publishes no separate COGS labor line, so wages embedded in cost of goods sold may be omitted.",
     "Gross depreciable assets are pre-accumulated-depreciation book stocks, not statutory tax UBIA. Land is excluded.",
@@ -34,6 +35,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!B29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!B37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!B31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!B4",
@@ -89,7 +91,7 @@
           "census_bin_hint_basis": "SCF bin 1 covers the published agriculture group.",
           "form": "partnership",
           "industry_key": "002 | Agriculture, forestry, fishing, and hunting",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Agriculture, forestry, fishing, and hunting"
           ],
@@ -104,6 +106,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!C29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!C37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!C31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!C4",
@@ -159,7 +162,7 @@
           "census_bin_hint_basis": "SCF bin 2 covers mining.",
           "form": "partnership",
           "industry_key": "003 | Mining",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Mining"
           ],
@@ -174,6 +177,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!D29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!D37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!D31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!D4",
@@ -229,7 +233,7 @@
           "census_bin_hint_basis": "SCF bin 6 covers utilities.",
           "form": "partnership",
           "industry_key": "004 | Utilities",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Utilities"
           ],
@@ -244,6 +248,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!E29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!E37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!E31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!E4",
@@ -299,7 +304,7 @@
           "census_bin_hint_basis": "SCF bin 2 covers construction.",
           "form": "partnership",
           "industry_key": "005 | Construction",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Construction"
           ],
@@ -314,6 +319,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!F29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!F37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!F31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!F4",
@@ -369,7 +375,7 @@
           "census_bin_hint_basis": "SCF bin 3 covers manufacturing.",
           "form": "partnership",
           "industry_key": "006 | Manufacturing",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Manufacturing"
           ],
@@ -384,6 +390,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!G29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!G37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!G31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!G4",
@@ -439,7 +446,7 @@
           "census_bin_hint_basis": "SCF bin 4 covers wholesale and retail trade.",
           "form": "partnership",
           "industry_key": "007 | Wholesale trade",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Wholesale trade"
           ],
@@ -454,6 +461,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!H29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!H37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!H31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!H4",
@@ -509,7 +517,7 @@
           "census_bin_hint_basis": "SCF bin 4 covers wholesale and retail trade.",
           "form": "partnership",
           "industry_key": "008 | Retail trade",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Retail trade"
           ],
@@ -524,6 +532,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!I29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!I37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!I31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!I4",
@@ -579,7 +588,7 @@
           "census_bin_hint_basis": "SCF bin 6 covers transportation and warehousing.",
           "form": "partnership",
           "industry_key": "009 | Transportation and warehousing",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Transportation and warehousing"
           ],
@@ -594,6 +603,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!J29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!J37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!J31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!J4",
@@ -649,7 +659,7 @@
           "census_bin_hint_basis": "Published information aggregate spans SCF bins 3, 5, and 6.",
           "form": "partnership",
           "industry_key": "010 | Information",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Information"
           ],
@@ -664,6 +674,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!K29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!K37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!K31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!K4",
@@ -719,7 +730,7 @@
           "census_bin_hint_basis": "SCF bin 5 covers finance and insurance.",
           "form": "partnership",
           "industry_key": "011 | Finance and insurance",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Finance and insurance"
           ],
@@ -734,6 +745,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!L29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!L37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!L31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!L4",
@@ -789,7 +801,7 @@
           "census_bin_hint_basis": "Combined real-estate and rental total spans SCF bins 5 and 6.",
           "form": "partnership",
           "industry_key": "012 | Real estate and rental and leasing",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Real estate and rental and leasing"
           ],
@@ -804,6 +816,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!M29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!M37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!M31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!M4",
@@ -859,7 +872,7 @@
           "census_bin_hint_basis": "Broad professional-services total can include veterinary.",
           "form": "partnership",
           "industry_key": "013 | Professional, scientific, and technical services",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Professional, scientific, and technical services"
           ],
@@ -874,6 +887,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!N29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!N37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!N31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!N4",
@@ -929,7 +943,7 @@
           "census_bin_hint_basis": "SCF bin 6 covers management of companies.",
           "form": "partnership",
           "industry_key": "014 | Management of companies (holding companies)",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Management of companies (holding companies)"
           ],
@@ -944,6 +958,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!O29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!O37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!O31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!O4",
@@ -999,7 +1014,7 @@
           "census_bin_hint_basis": "Broad administrative total spans SCF bins 1, 5, and 6.",
           "form": "partnership",
           "industry_key": "015 | Administrative and support and waste management and remediation services",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Administrative and support and waste management and remediation services"
           ],
@@ -1014,6 +1029,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!P29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!P37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!P31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!P4",
@@ -1069,7 +1085,7 @@
           "census_bin_hint_basis": "Published service group maps to SCF bin 6.",
           "form": "partnership",
           "industry_key": "016 | Health care and social assistance",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Health care and social assistance"
           ],
@@ -1084,6 +1100,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!Q29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!Q37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!Q31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!Q4",
@@ -1139,7 +1156,7 @@
           "census_bin_hint_basis": "The SCF codebook's exact 8560 arts seam is ambiguous.",
           "form": "partnership",
           "industry_key": "017 | Arts, entertainment, and recreation",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Arts, entertainment, and recreation"
           ],
@@ -1154,6 +1171,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!R29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!R37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!R31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!R4",
@@ -1209,7 +1227,7 @@
           "census_bin_hint_basis": "Combined accommodation and food total spans bins 4 and 6.",
           "form": "partnership",
           "industry_key": "018 | Accommodation and food services",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Accommodation and food services"
           ],
@@ -1224,6 +1242,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!S29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!S37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!S31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!S4",
@@ -1279,7 +1298,7 @@
           "census_bin_hint_basis": "Combined educational and other-services total spans bins 5 and 6.",
           "form": "partnership",
           "industry_key": "019 | Educational and Other services [5]",
-          "industry_level": "published_detail",
+          "industry_level": "sector_total",
           "industry_path": [
             "Educational and Other services [5]"
           ],
@@ -1294,6 +1313,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!T29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!T37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!T31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!T4",
@@ -1364,6 +1384,7 @@
               "wage_share": "(cost of labor + salaries and wages) / business receipts"
             },
             "capital_cell": "23pa03.xlsx:Sheet1!U29",
+            "depreciation_deduction_cell": "23pa01.xlsx:Sheet1!U37",
             "excluded_wage_cell": "23pa01.xlsx:Sheet1!U31",
             "industry_cells": [
               "23pa01.xlsx:Sheet1!U4",
@@ -1459,6 +1480,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!B21",
+            "depreciation_deduction_cell": "Table 6.1!B57",
             "industry_cells": [
               "Table 6.1!B5"
             ],
@@ -1526,6 +1548,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!C21",
+            "depreciation_deduction_cell": "Table 6.1!C57",
             "industry_cells": [
               "Table 6.1!C5",
               "Table 6.1!C6"
@@ -1594,6 +1617,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!D21",
+            "depreciation_deduction_cell": "Table 6.1!D57",
             "industry_cells": [
               "Table 6.1!C5",
               "Table 6.1!D6"
@@ -1662,6 +1686,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!E21",
+            "depreciation_deduction_cell": "Table 6.1!E57",
             "industry_cells": [
               "Table 6.1!C5",
               "Table 6.1!E6"
@@ -1730,6 +1755,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!F21",
+            "depreciation_deduction_cell": "Table 6.1!F57",
             "industry_cells": [
               "Table 6.1!C5",
               "Table 6.1!F6"
@@ -1797,6 +1823,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!G21",
+            "depreciation_deduction_cell": "Table 6.1!G57",
             "industry_cells": [
               "Table 6.1!G5"
             ],
@@ -1863,6 +1890,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!H21",
+            "depreciation_deduction_cell": "Table 6.1!H57",
             "industry_cells": [
               "Table 6.1!H5"
             ],
@@ -1930,6 +1958,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!I21",
+            "depreciation_deduction_cell": "Table 6.1!I57",
             "industry_cells": [
               "Table 6.1!I5",
               "Table 6.1!I6"
@@ -1998,6 +2027,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!J21",
+            "depreciation_deduction_cell": "Table 6.1!J57",
             "industry_cells": [
               "Table 6.1!I5",
               "Table 6.1!J6"
@@ -2066,6 +2096,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!K21",
+            "depreciation_deduction_cell": "Table 6.1!K57",
             "industry_cells": [
               "Table 6.1!I5",
               "Table 6.1!K6"
@@ -2134,6 +2165,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!L21",
+            "depreciation_deduction_cell": "Table 6.1!L57",
             "industry_cells": [
               "Table 6.1!I5",
               "Table 6.1!L6"
@@ -2202,6 +2234,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!M21",
+            "depreciation_deduction_cell": "Table 6.1!M57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!M6"
@@ -2270,6 +2303,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!N21",
+            "depreciation_deduction_cell": "Table 6.1!N57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!N6"
@@ -2338,6 +2372,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!O21",
+            "depreciation_deduction_cell": "Table 6.1!O57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!O6"
@@ -2406,6 +2441,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!P21",
+            "depreciation_deduction_cell": "Table 6.1!P57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!P6"
@@ -2474,6 +2510,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!Q21",
+            "depreciation_deduction_cell": "Table 6.1!Q57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!Q6"
@@ -2542,6 +2579,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!R21",
+            "depreciation_deduction_cell": "Table 6.1!R57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!R6"
@@ -2610,6 +2648,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!S21",
+            "depreciation_deduction_cell": "Table 6.1!S57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!S6"
@@ -2678,6 +2717,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!T21",
+            "depreciation_deduction_cell": "Table 6.1!T57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!T6"
@@ -2746,6 +2786,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!U21",
+            "depreciation_deduction_cell": "Table 6.1!U57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!U6"
@@ -2814,6 +2855,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!V21",
+            "depreciation_deduction_cell": "Table 6.1!V57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!V6"
@@ -2882,6 +2924,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!W21",
+            "depreciation_deduction_cell": "Table 6.1!W57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!W6"
@@ -2950,6 +2993,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!X21",
+            "depreciation_deduction_cell": "Table 6.1!X57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!X6"
@@ -3018,6 +3062,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!Y21",
+            "depreciation_deduction_cell": "Table 6.1!Y57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!Y6"
@@ -3086,6 +3131,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!Z21",
+            "depreciation_deduction_cell": "Table 6.1!Z57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!Z6"
@@ -3154,6 +3200,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AA21",
+            "depreciation_deduction_cell": "Table 6.1!AA57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AA6"
@@ -3222,6 +3269,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AB21",
+            "depreciation_deduction_cell": "Table 6.1!AB57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AB6"
@@ -3290,6 +3338,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AC21",
+            "depreciation_deduction_cell": "Table 6.1!AC57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AC6"
@@ -3358,6 +3407,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AD21",
+            "depreciation_deduction_cell": "Table 6.1!AD57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AD6"
@@ -3426,6 +3476,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AE21",
+            "depreciation_deduction_cell": "Table 6.1!AE57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AE6"
@@ -3494,6 +3545,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AF21",
+            "depreciation_deduction_cell": "Table 6.1!AF57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AF6"
@@ -3562,6 +3614,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AG21",
+            "depreciation_deduction_cell": "Table 6.1!AG57",
             "industry_cells": [
               "Table 6.1!M5",
               "Table 6.1!AG6"
@@ -3630,6 +3683,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AH21",
+            "depreciation_deduction_cell": "Table 6.1!AH57",
             "industry_cells": [
               "Table 6.1!AH5",
               "Table 6.1!AH6"
@@ -3698,6 +3752,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AI21",
+            "depreciation_deduction_cell": "Table 6.1!AI57",
             "industry_cells": [
               "Table 6.1!AH5",
               "Table 6.1!AI6"
@@ -3766,6 +3821,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AJ21",
+            "depreciation_deduction_cell": "Table 6.1!AJ57",
             "industry_cells": [
               "Table 6.1!AH5",
               "Table 6.1!AJ6"
@@ -3834,6 +3890,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AK21",
+            "depreciation_deduction_cell": "Table 6.1!AK57",
             "industry_cells": [
               "Table 6.1!AH5",
               "Table 6.1!AK6"
@@ -3902,6 +3959,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AL21",
+            "depreciation_deduction_cell": "Table 6.1!AL57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AL6"
@@ -3970,6 +4028,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AM21",
+            "depreciation_deduction_cell": "Table 6.1!AM57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AM6"
@@ -4038,6 +4097,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AN21",
+            "depreciation_deduction_cell": "Table 6.1!AN57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AN6"
@@ -4106,6 +4166,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AO21",
+            "depreciation_deduction_cell": "Table 6.1!AO57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AO6"
@@ -4174,6 +4235,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AP21",
+            "depreciation_deduction_cell": "Table 6.1!AP57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AP6"
@@ -4242,6 +4304,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AQ21",
+            "depreciation_deduction_cell": "Table 6.1!AQ57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AQ6"
@@ -4310,6 +4373,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AR21",
+            "depreciation_deduction_cell": "Table 6.1!AR57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AR6"
@@ -4378,6 +4442,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AS21",
+            "depreciation_deduction_cell": "Table 6.1!AS57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AS6"
@@ -4446,6 +4511,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AT21",
+            "depreciation_deduction_cell": "Table 6.1!AT57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AT6"
@@ -4514,6 +4580,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AU21",
+            "depreciation_deduction_cell": "Table 6.1!AU57",
             "industry_cells": [
               "Table 6.1!AL5",
               "Table 6.1!AU6"
@@ -4582,6 +4649,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AV21",
+            "depreciation_deduction_cell": "Table 6.1!AV57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!AV6"
@@ -4650,6 +4718,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AW21",
+            "depreciation_deduction_cell": "Table 6.1!AW57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!AW6"
@@ -4718,6 +4787,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AX21",
+            "depreciation_deduction_cell": "Table 6.1!AX57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!AX6"
@@ -4786,6 +4856,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AY21",
+            "depreciation_deduction_cell": "Table 6.1!AY57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!AY6"
@@ -4854,6 +4925,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!AZ21",
+            "depreciation_deduction_cell": "Table 6.1!AZ57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!AZ6"
@@ -4922,6 +4994,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BA21",
+            "depreciation_deduction_cell": "Table 6.1!BA57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!BA6"
@@ -4990,6 +5063,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BB21",
+            "depreciation_deduction_cell": "Table 6.1!BB57",
             "industry_cells": [
               "Table 6.1!AV5",
               "Table 6.1!BB6"
@@ -5058,6 +5132,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BC21",
+            "depreciation_deduction_cell": "Table 6.1!BC57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BC6"
@@ -5126,6 +5201,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BD21",
+            "depreciation_deduction_cell": "Table 6.1!BD57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BD6"
@@ -5194,6 +5270,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BE21",
+            "depreciation_deduction_cell": "Table 6.1!BE57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BE6"
@@ -5262,6 +5339,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BF21",
+            "depreciation_deduction_cell": "Table 6.1!BF57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BF6"
@@ -5330,6 +5408,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BG21",
+            "depreciation_deduction_cell": "Table 6.1!BG57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BG6"
@@ -5398,6 +5477,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BH21",
+            "depreciation_deduction_cell": "Table 6.1!BH57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BH6"
@@ -5466,6 +5546,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BI21",
+            "depreciation_deduction_cell": "Table 6.1!BI57",
             "industry_cells": [
               "Table 6.1!BC5",
               "Table 6.1!BI6"
@@ -5534,6 +5615,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BJ21",
+            "depreciation_deduction_cell": "Table 6.1!BJ57",
             "industry_cells": [
               "Table 6.1!BJ5",
               "Table 6.1!BJ6"
@@ -5602,6 +5684,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BK21",
+            "depreciation_deduction_cell": "Table 6.1!BK57",
             "industry_cells": [
               "Table 6.1!BJ5",
               "Table 6.1!BK6"
@@ -5670,6 +5753,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BL21",
+            "depreciation_deduction_cell": "Table 6.1!BL57",
             "industry_cells": [
               "Table 6.1!BJ5",
               "Table 6.1!BL6"
@@ -5738,6 +5822,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BM21",
+            "depreciation_deduction_cell": "Table 6.1!BM57",
             "industry_cells": [
               "Table 6.1!BJ5",
               "Table 6.1!BM6"
@@ -5806,6 +5891,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BN21",
+            "depreciation_deduction_cell": "Table 6.1!BN57",
             "industry_cells": [
               "Table 6.1!BJ5",
               "Table 6.1!BN6"
@@ -5874,6 +5960,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BO21",
+            "depreciation_deduction_cell": "Table 6.1!BO57",
             "industry_cells": [
               "Table 6.1!BJ5",
               "Table 6.1!BO6"
@@ -5942,6 +6029,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BP21",
+            "depreciation_deduction_cell": "Table 6.1!BP57",
             "industry_cells": [
               "Table 6.1!BP5",
               "Table 6.1!BP6"
@@ -6010,6 +6098,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BQ21",
+            "depreciation_deduction_cell": "Table 6.1!BQ57",
             "industry_cells": [
               "Table 6.1!BP5",
               "Table 6.1!BQ6"
@@ -6078,6 +6167,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BR21",
+            "depreciation_deduction_cell": "Table 6.1!BR57",
             "industry_cells": [
               "Table 6.1!BP5",
               "Table 6.1!BR6"
@@ -6146,6 +6236,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BS21",
+            "depreciation_deduction_cell": "Table 6.1!BS57",
             "industry_cells": [
               "Table 6.1!BP5",
               "Table 6.1!BS6"
@@ -6213,6 +6304,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BT21",
+            "depreciation_deduction_cell": "Table 6.1!BT57",
             "industry_cells": [
               "Table 6.1!BT5"
             ],
@@ -6279,6 +6371,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BU21",
+            "depreciation_deduction_cell": "Table 6.1!BU57",
             "industry_cells": [
               "Table 6.1!BU5"
             ],
@@ -6346,6 +6439,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BV21",
+            "depreciation_deduction_cell": "Table 6.1!BV57",
             "industry_cells": [
               "Table 6.1!BV5",
               "Table 6.1!BV6"
@@ -6414,6 +6508,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BW21",
+            "depreciation_deduction_cell": "Table 6.1!BW57",
             "industry_cells": [
               "Table 6.1!BV5",
               "Table 6.1!BW6"
@@ -6482,6 +6577,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BX21",
+            "depreciation_deduction_cell": "Table 6.1!BX57",
             "industry_cells": [
               "Table 6.1!BV5",
               "Table 6.1!BX6"
@@ -6549,6 +6645,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BY21",
+            "depreciation_deduction_cell": "Table 6.1!BY57",
             "industry_cells": [
               "Table 6.1!BY5"
             ],
@@ -6616,6 +6713,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!BZ21",
+            "depreciation_deduction_cell": "Table 6.1!BZ57",
             "industry_cells": [
               "Table 6.1!BZ5",
               "Table 6.1!BZ6"
@@ -6684,6 +6782,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CA21",
+            "depreciation_deduction_cell": "Table 6.1!CA57",
             "industry_cells": [
               "Table 6.1!BZ5",
               "Table 6.1!CA6"
@@ -6752,6 +6851,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CB21",
+            "depreciation_deduction_cell": "Table 6.1!CB57",
             "industry_cells": [
               "Table 6.1!BZ5",
               "Table 6.1!CB6"
@@ -6820,6 +6920,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CC21",
+            "depreciation_deduction_cell": "Table 6.1!CC57",
             "industry_cells": [
               "Table 6.1!BZ5",
               "Table 6.1!CC6"
@@ -6888,6 +6989,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CD21",
+            "depreciation_deduction_cell": "Table 6.1!CD57",
             "industry_cells": [
               "Table 6.1!CD5",
               "Table 6.1!CD6"
@@ -6956,6 +7058,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CE21",
+            "depreciation_deduction_cell": "Table 6.1!CE57",
             "industry_cells": [
               "Table 6.1!CD5",
               "Table 6.1!CE6"
@@ -7024,6 +7127,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CF21",
+            "depreciation_deduction_cell": "Table 6.1!CF57",
             "industry_cells": [
               "Table 6.1!CD5",
               "Table 6.1!CF6"
@@ -7092,6 +7196,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CG21",
+            "depreciation_deduction_cell": "Table 6.1!CG57",
             "industry_cells": [
               "Table 6.1!CG5",
               "Table 6.1!CG6"
@@ -7160,6 +7265,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CH21",
+            "depreciation_deduction_cell": "Table 6.1!CH57",
             "industry_cells": [
               "Table 6.1!CG5",
               "Table 6.1!CH6"
@@ -7228,6 +7334,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CI21",
+            "depreciation_deduction_cell": "Table 6.1!CI57",
             "industry_cells": [
               "Table 6.1!CG5",
               "Table 6.1!CI6"
@@ -7296,6 +7403,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CJ21",
+            "depreciation_deduction_cell": "Table 6.1!CJ57",
             "industry_cells": [
               "Table 6.1!CJ5",
               "Table 6.1!CJ6"
@@ -7364,6 +7472,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CK21",
+            "depreciation_deduction_cell": "Table 6.1!CK57",
             "industry_cells": [
               "Table 6.1!CJ5",
               "Table 6.1!CK6"
@@ -7432,6 +7541,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CL21",
+            "depreciation_deduction_cell": "Table 6.1!CL57",
             "industry_cells": [
               "Table 6.1!CJ5",
               "Table 6.1!CL6"
@@ -7500,6 +7610,7 @@
               "wage_share": "(compensation of officers + salaries and wages) / business receipts"
             },
             "capital_cell": "Table 6.1!CM21",
+            "depreciation_deduction_cell": "Table 6.1!CM57",
             "industry_cells": [
               "Table 6.1!CJ5",
               "Table 6.1!CM6"
@@ -18903,7 +19014,7 @@
           "census_bin_hint_basis": "Aggregate or unclassified category has no SCF-bin hint.",
           "form": "sole_proprietorship",
           "industry_key": "153 | Unclassified establishments",
-          "industry_level": "published_detail",
+          "industry_level": "unallocable",
           "industry_path": [
             "Unclassified establishments"
           ],
@@ -18975,7 +19086,7 @@
         "23sp02is.xls Table 2"
       ],
       "summary": {
-        "finest_industry_count": 127,
+        "finest_industry_count": 126,
         "finest_ubia_intensity_range": {
           "maximum": 0.46706989281069655,
           "minimum": 0.0025446169738327705
@@ -18985,8 +19096,8 @@
           "minimum": 0.004568162094046752
         },
         "published_industry_count": 153,
-        "valid_finest_ubia_intensity_count": 124,
-        "valid_finest_wage_share_count": 104
+        "valid_finest_ubia_intensity_count": 123,
+        "valid_finest_wage_share_count": 103
       },
       "tax_year": 2023,
       "wage_measure": "Published Payroll (salaries and wages plus cost of labor) divided by business receipts"

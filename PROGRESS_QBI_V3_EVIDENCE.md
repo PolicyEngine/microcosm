@@ -53,8 +53,19 @@
   changelog fragment.
 - The focused QBI, packaged-resource, country-spec, spec-only, and retired-name
   guards pass (45 tests); focused Ruff formatting/checking is clean.
+- Two independent read-only audits reproduced both JSON files byte-for-byte
+  and found no numerical, digest, disclosure, proxy, or determinism defect.
+- Resolved their metadata findings by exposing the exact SCF active-management
+  selection and comparison denominators; labeling partnership rows as sector
+  totals; excluding sole-proprietor unclassified establishments from
+  finest-industry summaries; and adding source cells for partnership/S-corp
+  depreciation diagnostics. The rebuilt estimates and reported ranges are
+  unchanged; the sole-proprietor finest universe is now 126 classified rows.
+- The pre-review full workspace baseline completed without failure. The rebuilt
+  focused QBI/spec-only selection passes 19 tests and focused Ruff is clean.
 
 ## Next
 
-- Resolve independent review findings, run Ruff and the full workspace suite,
-  then write the final report.
+- Tighten nested resource-schema validation and add unequal-weight/fallback
+  regression coverage.
+- Run Ruff and the final full workspace suite, then write the final report.

@@ -10495,14 +10495,31 @@
         "difference_from_jct_percentage_points": -48.70805461172757,
         "headcount_le_1_share": 0.3549194538827243,
         "implicate_adjusted_unweighted_n": 1068.2,
+        "legal_form_codes": [
+          1,
+          2,
+          3,
+          11,
+          40
+        ],
+        "numerator_definition": "The denominator sample whose SCF headcount is at most one.",
         "pooled_record_count": 5341,
+        "sample_definition": "Owned net income is greater than zero and the public legal-form code is in [1, 2, 3, 11, 40]. The denominator is pooled household-business-implicate interests weighted by X42001/5.",
         "weighted_business_interests": 13383755.944378844
       },
       "strict_form_sensitivity_excluding_code_40": {
         "difference_from_jct_percentage_points": -49.633863333006886,
         "headcount_le_1_share": 0.34566136666993114,
         "implicate_adjusted_unweighted_n": 1065.0,
+        "legal_form_codes": [
+          1,
+          2,
+          3,
+          11
+        ],
+        "numerator_definition": "The denominator sample whose SCF headcount is at most one.",
         "pooled_record_count": 5325,
+        "sample_definition": "Owned net income is greater than zero and the public legal-form code is in [1, 2, 3, 11]. The denominator is pooled household-business-implicate interests weighted by X42001/5.",
         "weighted_business_interests": 13180529.390506117
       }
     },
@@ -10516,6 +10533,7 @@
   "judgment_calls": [
     "Income bands use the household-owned share of whole-business net income to align with recipient QBI; whole-business income would be a more direct predictor of firm headcount.",
     "Code 40 ('not a formal business type') is grouped with sole proprietorships in the main comparison; a strict sensitivity excludes it.",
+    "The actively managed family-business screen does not require the respondent or spouse to be the working family member; X3113/X3114 and X3213/X3214 are retained only as diagnostics.",
     "Band boundaries, minimum n=30, the nested collapse hierarchy, independent employer-size collapse, and the five-point margin quantile grid are modeling choices pending supervisor review."
   ],
   "methodology": {
@@ -11491,9 +11509,14 @@
       "weight_definition_lines": "1865-1873, 2792-2796"
     },
     "record_scope": "First and second detailed actively managed household businesses",
+    "record_selection": "Require X3103 == 1, X3104 == 1, and X3105 >= the requested business slot (1 or 2). X3113/X3114 and X3213/X3214 describe whether the respondent or spouse works in the business but do not further restrict the family-level actively managed sample.",
     "survey": "2022 Survey of Consumer Finances full public data",
     "survey_year": 2022,
     "variables": {
+      "active_management_screeners": [
+        "X3103",
+        "X3104"
+      ],
       "business_count": "X3105",
       "gross_receipts": [
         "X3131",

@@ -36,11 +36,15 @@ item 8; simulation wiring is out of scope.
   schema/declaration contracts plus the changelog fragment.
 - The focused QBI and country-package contract selection passes all 45 tests;
   focused Ruff formatting/checking is clean.
+- Independent audits found no numerical or reproducibility defect. Their SCF
+  denominator/selection provenance and SOI industry-classification/source-cell
+  findings are resolved in regenerated resources; a pre-review full-suite run
+  also completed without failure.
 
 ## Current next
 
-- Run the focused package contracts and independent reviews, then complete the
-  full workspace verification and final report.
+- Tighten nested schemas and regression coverage, then run final full workspace
+  verification and write the report.
 
 ## Historical progress
 

@@ -72,16 +72,13 @@ SCF_HEADCOUNT_SIZE_BANDS = (
 _LEGAL_FORM_BY_CODE = {
     1: "partnership_or_llc",
     11: "partnership_or_llc",
-    12: "partnership_or_llc",
-    15: "partnership_or_llc",
     2: "sole_or_informal",
     40: "sole_or_informal",
     3: "s_corporation",
     4: "other_or_unknown",
-    6: "other_or_unknown",
     -7: "other_or_unknown",
 }
-_MAIN_QBI_PROXY_CODES = frozenset({1, 2, 3, 11, 12, 15, 40})
+_MAIN_QBI_PROXY_CODES = frozenset({1, 2, 3, 11, 40})
 _STRICT_QBI_PROXY_CODES = frozenset({1, 2, 3, 11})
 
 SOI_ENTITY_FORMS = (
@@ -457,7 +454,12 @@ def _size_estimate(selection: _EstimateSelection) -> dict[str, object]:
     }
 
 
-def _comparison(records: pd.DataFrame, flag: str) -> dict[str, float | int]:
+def _comparison(
+    records: pd.DataFrame,
+    flag: str,
+    *,
+    legal_form_codes: frozenset[int],
+) -> dict[str, object]:
     sample = records.loc[records[flag]]
     if sample.empty:
         raise ValueError(f"SCF comparison flag {flag!r} selected no records.")
@@ -465,6 +467,15 @@ def _comparison(records: pd.DataFrame, flag: str) -> dict[str, float | int]:
     zero_proxy = ~sample["employer_presence_proxy"].to_numpy(dtype=bool)
     share = float(weights[zero_proxy].sum() / weights.sum())
     return {
+        "sample_definition": (
+            "Owned net income is greater than zero and the public legal-form "
+            f"code is in {sorted(legal_form_codes)}. The denominator is pooled "
+            "household-business-implicate interests weighted by X42001/5."
+        ),
+        "numerator_definition": (
+            "The denominator sample whose SCF headcount is at most one."
+        ),
+        "legal_form_codes": sorted(legal_form_codes),
         "pooled_record_count": int(len(sample)),
         "implicate_adjusted_unweighted_n": _unweighted_n(sample),
         "weighted_business_interests": float(weights.sum()),
@@ -612,7 +623,14 @@ def build_qbi_employer_structure_resource(
             "record_scope": (
                 "First and second detailed actively managed household businesses"
             ),
+            "record_selection": (
+                "Require X3103 == 1, X3104 == 1, and X3105 >= the requested "
+                "business slot (1 or 2). X3113/X3114 and X3213/X3214 describe "
+                "whether the respondent or spouse works in the business but do "
+                "not further restrict the family-level actively managed sample."
+            ),
             "variables": {
+                "active_management_screeners": ["X3103", "X3104"],
                 "business_count": "X3105",
                 "weight": "X42001",
                 "industry": ["X3107", "X3207"],
@@ -746,10 +764,14 @@ def build_qbi_employer_structure_resource(
             "partnership_zero_employee_share_statement": "more than 80%",
             "scf_comparison": {
                 "main_proxy_including_informal_code_40": _comparison(
-                    records, "qbi_positive_proxy"
+                    records,
+                    "qbi_positive_proxy",
+                    legal_form_codes=_MAIN_QBI_PROXY_CODES,
                 ),
                 "strict_form_sensitivity_excluding_code_40": _comparison(
-                    records, "qbi_positive_strict_form_proxy"
+                    records,
+                    "qbi_positive_strict_form_proxy",
+                    legal_form_codes=_STRICT_QBI_PROXY_CODES,
                 ),
             },
             "definition_gaps": [
@@ -810,6 +832,11 @@ def build_qbi_employer_structure_resource(
                 "Code 40 ('not a formal business type') is grouped with sole "
                 "proprietorships in the main comparison; a strict sensitivity "
                 "excludes it."
+            ),
+            (
+                "The actively managed family-business screen does not require "
+                "the respondent or spouse to be the working family member; "
+                "X3113/X3114 and X3213/X3214 are retained only as diagnostics."
             ),
             (
                 "Band boundaries, minimum n=30, the nested collapse hierarchy, "
@@ -1396,9 +1423,16 @@ def parse_sole_proprietor_soi_workbooks(
         has_child = (
             position + 1 < len(indents) and indents[position + 1] > indents[position]
         )
+        is_unclassified = path[-1].lower() == "unclassified establishments"
         is_aggregate = is_all or has_child
         level = (
-            "all" if is_all else ("sector_total" if has_child else "published_detail")
+            "all"
+            if is_all
+            else (
+                "sector_total"
+                if has_child
+                else ("unallocable" if is_unclassified else "published_detail")
+            )
         )
 
         tab1_cells = {
@@ -1587,9 +1621,7 @@ def parse_partnership_soi_workbooks(
         is_all = column == 2
         is_unallocable = column == 21
         level = (
-            "all"
-            if is_all
-            else ("unallocable" if is_unallocable else "published_detail")
+            "all" if is_all else ("unallocable" if is_unallocable else "sector_total")
         )
         cells = {
             "receipts": income.cell(18, column),
@@ -1656,6 +1688,9 @@ def parse_partnership_soi_workbooks(
                     ),
                     "capital_cell": (
                         f"{balance_path.name}:{_cell_reference('Sheet1', 29, column)}"
+                    ),
+                    "depreciation_deduction_cell": (
+                        f"{income_path.name}:{_cell_reference('Sheet1', 37, column)}"
                     ),
                     "calculation": {
                         "wage_share": (
@@ -1760,6 +1795,9 @@ def parse_s_corporation_soi_workbook(
                         _cell_reference("Table 6.1", 50, column),
                     ],
                     "capital_cell": _cell_reference("Table 6.1", 21, column),
+                    "depreciation_deduction_cell": _cell_reference(
+                        "Table 6.1", 57, column
+                    ),
                     "calculation": {
                         "wage_share": (
                             "(compensation of officers + salaries and wages) / "
@@ -2003,6 +2041,12 @@ def build_qbi_wage_capital_priors_resource(
             (
                 "Partnership guaranteed payments are recorded as an excluded "
                 "diagnostic because partners are not W-2 employees."
+            ),
+            (
+                "The 18 published partnership sectors are labeled sector totals "
+                "but treated as finest available because the public table has no "
+                "finer partnership industry rows. Unallocable categories are "
+                "excluded from summary ranges for every form."
             ),
             (
                 "Partnership balance-sheet aggregates exclude some small "

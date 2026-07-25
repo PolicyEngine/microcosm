@@ -178,6 +178,24 @@ def test_scf_thin_cells_follow_independent_nested_fallbacks() -> None:
         minimum_unweighted_n=30.0,
     )
 
+    assert payload["source"]["variables"]["active_management_screeners"] == [
+        "X3103",
+        "X3104",
+    ]
+    assert "do not further restrict" in payload["source"]["record_selection"]
+    comparisons = payload["external_anchor"]["scf_comparison"]
+    assert comparisons["main_proxy_including_informal_code_40"]["legal_form_codes"] == [
+        1,
+        2,
+        3,
+        11,
+        40,
+    ]
+    assert (
+        "Owned net income is greater than zero"
+        in comparisons["strict_form_sensitivity_excluding_code_40"]["sample_definition"]
+    )
+
     exact = _employer_cell(
         payload,
         income_band="0_to_25k",
@@ -432,7 +450,11 @@ def test_soi_xlsx_parsers_use_published_cells_and_disclosure_deletions(
 
     assert len(partnership) == 20
     assert partnership[1].receipts == 1_000.0
+    assert partnership[1].industry_level == "sector_total"
     assert partnership[1].guaranteed_payments_excluded == 900.0
+    assert (
+        partnership[1].provenance["depreciation_deduction_cell"].endswith("Sheet1!C37")
+    )
     assert partnership[-1].industry_level == "unallocable"
     assert len(s_corporation) == 4
     assert s_corporation[1].is_aggregate is True
@@ -442,6 +464,7 @@ def test_soi_xlsx_parsers_use_published_cells_and_disclosure_deletions(
     )
     assert s_corporation[3].receipts is None
     assert s_corporation[3].publication_flags["receipts"] == "deleted_for_disclosure"
+    assert s_corporation[1].provenance["depreciation_deduction_cell"] == "Table 6.1!C57"
 
 
 @pytest.mark.parametrize(
@@ -509,6 +532,13 @@ def test_packaged_qbi_v3_resources_validate_and_remain_provisional() -> None:
     validate_qbi_wage_capital_priors_resource(wage_capital)
     assert employer["provisional"] is True
     assert wage_capital["provisional"] is True
+    sole_industries = wage_capital["forms"]["sole_proprietorship"]["industries"]
+    unclassified = next(
+        industry
+        for industry in sole_industries
+        if industry["published_label"] == "Unclassified establishments"
+    )
+    assert unclassified["industry_level"] == "unallocable"
 
 
 def test_qbi_v3_resources_are_declared_as_specs_without_entrypoints() -> None:
