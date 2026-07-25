@@ -30,6 +30,7 @@ from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_STAGE_NAME,
     SSITakeUpBandPriorBasis,
     SSITakeUpPriorBasis,
+    _band_prior,
     _stable_source_draw,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
@@ -52,6 +53,26 @@ _AGES = {"under_18": 12.0, "18_64": 40.0, "65_plus": 72.0}
 _BAND_CAPACITY = 130.0
 _REPORTER_FLOOR = 20.0
 _ANCHORED_SOURCE_NUMBERS = {"0", "6"}
+
+
+def _expected_prior(
+    target: float,
+    capacity: float = _BAND_CAPACITY,
+    floor: float = _REPORTER_FLOOR,
+) -> float:
+    """The anchored-mass-corrected count-truthful threshold (#507/#508).
+
+    Anchors are always selected, so expected delivered mass at non-anchor
+    threshold p is floor + p*(capacity - floor); solving for the target
+    gives (target - floor) / (capacity - floor). Saturated bands fall back
+    to the reporter rate; an anchor floor at/above the target draws zero.
+    """
+
+    if capacity <= target:
+        return min(floor / capacity, 1.0)
+    if floor >= target:
+        return 0.0
+    return (target - floor) / (capacity - floor)
 
 
 def _expected_bernoulli_flag(source_id: str, prior: float, *, seed: int = 17) -> bool:
@@ -269,13 +290,16 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
         assert bool(flagged) == _expected_bernoulli_flag(source_id, prior)
     for band in diagnostics["age_bands"]:
         assert not band["saturated"]
-        assert band["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
+        # Anchored-mass-corrected threshold: (50 - 20) / (130 - 20), so the
+        # anchors plus the drawn non-anchors expect the target exactly.
+        assert band["assignment_prior"] == pytest.approx(_expected_prior(50.0))
         # At assignment time the stored prior and the current-weight
         # recomputation coincide by construction.
         assert band["prior_recomputed_from_current_weights"] == pytest.approx(
             band["assignment_prior"]
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
+    assert diagnostics["measurement_phase"] == "assignment_stage"
     # Schema 3 = the populace#507/#508 shape (schema 2's assignment/recomputed
     # prior split and law count, plus the explicit prior weight basis); pin
     # the literal so reverting the constant alone cannot pass.
@@ -303,7 +327,7 @@ def test_saturated_band_prior_falls_back_to_the_observed_reporter_rate() -> None
     assert child["assignment_prior"] == pytest.approx(_REPORTER_FLOOR / _BAND_CAPACITY)
     assert child["target_shortfall"] > 0
     assert not adult["saturated"]
-    assert adult["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
+    assert adult["assignment_prior"] == pytest.approx(_expected_prior(50.0))
     assert not aged["saturated"]
     by_source = result.table("person").groupby("person_source_id")[_OUTPUT].first()
     for source_id, flagged in by_source.items():
@@ -457,6 +481,7 @@ def test_source_provenance_failures_are_rejected(mutation: str, message: str) ->
         ("source_identity_mismatch_count", 1, "source identity"),
         ("bernoulli_law_violation_count", 2, "Bernoulli law"),
         ("prior_weight_basis", {"kind": "handwave"}, "prior weight basis"),
+        ("measurement_phase", "handwave", "measurement phase"),
     ],
 )
 def test_gate_rejects_tampered_top_level_diagnostics(
@@ -618,14 +643,18 @@ def _artifact_basis(
 
 
 def test_enforced_bands_include_children_after_child_disability_stage() -> None:
-    """populace#453/#509 deliberately lifts the under-18 delivery fence."""
+    """populace#453/#509 deliberately lifts the under-18 delivery fence.
+
+    The tolerance remains pinned exactly: loosening the envelope is a reviewed
+    decision, never a drive-by constant edit.
+    """
 
     assert US_SSI_TAKE_UP_ENFORCED_BAND_KEYS == (
         "under_18",
         "18_64",
         "65_plus",
     )
-    assert 0.0 < US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE < 0.1
+    assert US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE == 0.05
 
 
 def test_release_artifact_basis_drives_the_band_priors() -> None:
@@ -639,7 +668,9 @@ def test_release_artifact_basis_drives_the_band_priors() -> None:
         targets=_TARGETS,
         prior_basis=basis,
     )
-    expected = {key: 50.0 / value for key, value in capacities.items()}
+    expected = {
+        key: _expected_prior(50.0, capacity=value) for key, value in capacities.items()
+    }
     by_source = result.table("person").groupby("person_source_id")[_OUTPUT].first()
     for source_id, flagged in by_source.items():
         prior = expected[source_id.split(":")[0]]
@@ -659,7 +690,7 @@ def test_release_artifact_basis_drives_the_band_priors() -> None:
         # The current-weight recomputation still measures THIS frame, so the
         # release diagnostics never misdocument where the priors came from.
         assert band["prior_recomputed_from_current_weights"] == pytest.approx(
-            50.0 / _BAND_CAPACITY
+            _expected_prior(50.0)
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
@@ -711,6 +742,9 @@ def test_prior_basis_round_trips_through_diagnostics() -> None:
     )
     assert final["prior_weight_basis"] == stage_diagnostics["prior_weight_basis"]
     assert ssi_take_up_prior_basis_from_diagnostics(final) == recovered
+    # The lifecycle marker distinguishes the two measurements forever.
+    assert stage_diagnostics["measurement_phase"] == "assignment_stage"
+    assert final["measurement_phase"] == "release_final"
 
     artifact = _artifact_basis(
         capacities={"under_18": 200.0, "18_64": 100.0, "65_plus": 500.0}
@@ -726,8 +760,26 @@ def test_prior_basis_round_trips_through_diagnostics() -> None:
     assert ssi_take_up_prior_basis_from_diagnostics(artifact_diagnostics) == artifact
 
 
+def _release_final_diagnostics() -> dict[str, object]:
+    """Genuine final-measurement diagnostics — what us_ssi_take_up.json holds."""
+
+    _, result, potential, stage_diagnostics = _assigned()
+    stage_priors = {
+        band["age_band"]: band["assignment_prior"]
+        for band in stage_diagnostics["age_bands"]
+    }
+    return us_ssi_take_up_diagnostics(
+        result,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+        assignment_priors=stage_priors,
+        prior_basis=ssi_take_up_prior_basis_from_diagnostics(stage_diagnostics),
+    )
+
+
 def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
-    _, _, _, diagnostics = _assigned()
+    diagnostics = _release_final_diagnostics()
     payload3 = copy.deepcopy(diagnostics)
     basis3 = ssi_take_up_prior_basis_from_artifact(
         payload3, targets=_TARGETS, source_sha256=_BASIS_SHA
@@ -739,11 +791,13 @@ def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
         assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
         assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
 
-    # Build N's certified artifact predates the basis fields (schema 2); the
-    # chain must be able to start from it (populace#507 Build O attempt 2).
+    # Build N's certified artifact predates the basis fields and the phase
+    # marker (schema 2); the chain must be able to start from it
+    # (populace#507 Build O attempt 2).
     payload2 = copy.deepcopy(diagnostics)
     payload2["schema_version"] = 2
     payload2.pop("prior_weight_basis")
+    payload2.pop("measurement_phase")
     for band in payload2["age_bands"]:
         band.pop("prior_basis_candidate_capacity")
         band.pop("prior_basis_reporter_candidate_floor")
@@ -764,25 +818,30 @@ def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
     ("mutation", "message"),
     [
         ("unknown_schema", "schema version"),
+        ("stage_phase", "measurement phase"),
         ("wrong_table", "target table"),
         ("wrong_period", "target period"),
         ("target_contract_drift", "target contract"),
         ("missing_band", "age band"),
         ("duplicate_band", "age band"),
-        ("zero_enforced_capacity", "candidate capacity"),
+        ("zero_enforced_capacity", "no truthful threshold"),
+        ("infeasible_enforced_capacity", "no truthful threshold"),
         ("floor_above_capacity", "reporter floor"),
         ("nonfinite_capacity", "candidate capacity"),
+        ("integrity_failed_attempt", "diagnostics gate"),
         ("blank_sha", "sha256"),
     ],
 )
 def test_prior_basis_loader_rejects_invalid_artifacts(
     mutation: str, message: str
 ) -> None:
-    _, _, _, diagnostics = _assigned()
-    payload = copy.deepcopy(diagnostics)
+    payload = copy.deepcopy(_release_final_diagnostics())
     sha = _BASIS_SHA
     if mutation == "unknown_schema":
         payload["schema_version"] = 1
+    elif mutation == "stage_phase":
+        # A stage-time payload must never masquerade as delivered weights.
+        payload["measurement_phase"] = "assignment_stage"
     elif mutation == "wrong_table":
         payload["target_table"] = "another_table"
     elif mutation == "wrong_period":
@@ -795,10 +854,20 @@ def test_prior_basis_loader_rejects_invalid_artifacts(
         payload["age_bands"].append(copy.deepcopy(payload["age_bands"][0]))
     elif mutation == "zero_enforced_capacity":
         payload["age_bands"][2]["candidate_capacity"] = 0.0
+        payload["age_bands"][2]["reporter_candidate_floor"] = 0.0
+    elif mutation == "infeasible_enforced_capacity":
+        # Delivered capacity at/below the target admits only the fallback,
+        # guaranteeing another enforced-band miss: fail before the solve.
+        payload["age_bands"][2]["candidate_capacity"] = 50.0
+        payload["age_bands"][2]["reporter_candidate_floor"] = 20.0
     elif mutation == "floor_above_capacity":
         payload["age_bands"][1]["reporter_candidate_floor"] = 1_000.0
     elif mutation == "nonfinite_capacity":
         payload["age_bands"][1]["candidate_capacity"] = float("inf")
+    elif mutation == "integrity_failed_attempt":
+        # A Bernoulli-law-violating attempt's measurements are grounds for
+        # investigation, never a basis to chain from.
+        payload["bernoulli_law_violation_count"] = 1
     else:
         sha = "   "
     with pytest.raises(ValueError, match=message):
@@ -809,6 +878,9 @@ def test_prior_basis_loader_rejects_invalid_artifacts(
 
 def _delivered(diagnostics: dict[str, object], **selected: float) -> dict[str, object]:
     delivered = copy.deepcopy(diagnostics)
+    # Delivery is judged on the final release-weight measurement only; the
+    # tampered fixture emulates that payload.
+    delivered["measurement_phase"] = "release_final"
     for band in delivered["age_bands"]:
         key = str(band["age_band"])
         if key in selected:
@@ -868,14 +940,26 @@ def test_delivery_gate_boundary_sits_at_the_documented_tolerance() -> None:
 
 def test_delivery_gate_rejects_malformed_diagnostics() -> None:
     _, _, _, diagnostics = _assigned()
-    truncated = copy.deepcopy(diagnostics)
+    truncated = _delivered(diagnostics)
     truncated["age_bands"] = truncated["age_bands"][:1]
     gate = us_ssi_take_up_delivery_gate(truncated, targets=_TARGETS)
     assert not gate.passed
 
-    wrong_schema = copy.deepcopy(diagnostics)
+    wrong_schema = _delivered(diagnostics)
     wrong_schema["schema_version"] = 2
     assert not us_ssi_take_up_delivery_gate(wrong_schema, targets=_TARGETS).passed
+
+    # Stage-time diagnostics must never satisfy the delivery gate, no
+    # matter how good the numbers look (populace#507 sol review finding 1).
+    stage_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=_TARGETS)
+    assert not stage_gate.passed
+    assert any("release-final" in failure for failure in stage_gate.failures)
+
+    non_numeric = _delivered(diagnostics)
+    non_numeric["age_bands"][1]["selected_recipient_weight"] = "bad"
+    corrupt_gate = us_ssi_take_up_delivery_gate(non_numeric, targets=_TARGETS)
+    assert not corrupt_gate.passed
+    assert any("non-numeric" in failure for failure in corrupt_gate.failures)
 
 
 def test_gate_rejects_basis_arithmetic_drift() -> None:
@@ -887,6 +971,80 @@ def test_gate_rejects_basis_arithmetic_drift() -> None:
     gate = us_ssi_take_up_gate(drifted, targets=_TARGETS)
     assert not gate.passed
     assert any("prior basis" in failure for failure in gate.failures)
+
+    # The prior comparison uses a dimensionless epsilon, so an absurd
+    # claimed capacity cannot widen the tolerance until any prior passes
+    # (populace#507 sol review finding 6).
+    absurd = copy.deepcopy(diagnostics)
+    absurd["age_bands"][0]["prior_basis_candidate_capacity"] = 1e20
+    absurd_gate = us_ssi_take_up_gate(absurd, targets=_TARGETS)
+    assert not absurd_gate.passed
+    assert any("prior basis" in failure for failure in absurd_gate.failures)
+
+
+def test_capacity_at_the_target_saturates_and_takes_the_fallback() -> None:
+    """capacity == target cannot subsample: fallback prior, saturated=True."""
+
+    targets = {"under_18": _BAND_CAPACITY, "18_64": 50.0, "65_plus": 50.0}
+    _, _, _, diagnostics = _assigned(targets=targets)
+    child = diagnostics["age_bands"][0]
+    assert child["age_band"] == "under_18"
+    assert child["saturated"]
+    assert child["assignment_prior"] == pytest.approx(_REPORTER_FLOOR / _BAND_CAPACITY)
+    assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
+
+
+def test_anchors_meeting_the_target_draw_zero_even_at_the_saturation_corner() -> None:
+    """floor >= target outranks the fallback (sol round 2, finding 4).
+
+    At the degenerate capacity == target == floor corner the fallback
+    would return floor/capacity == 1.0 — a constant, overshooting band —
+    when zero non-anchor draws is the count-truthful answer.
+    """
+
+    assert _band_prior(100.0, 100.0, 100.0) == 0.0
+    assert _band_prior(50.0, 130.0, 60.0) == 0.0
+    assert _band_prior(1_000.0, 130.0, 20.0) == pytest.approx(20.0 / 130.0)
+    assert _band_prior(50.0, 130.0, 20.0) == pytest.approx(30.0 / 110.0)
+
+
+def test_gate_prior_audit_epsilon_is_dimensionless_at_absurd_capacity() -> None:
+    """Regression pin for the mass-scaled-epsilon hole (sol round 2, F10).
+
+    A row claiming 1e20 CURRENT capacity once inflated the shared audit
+    epsilon to ~3.6e5, letting any prior in [0, 1] pass the basis
+    arithmetic check. Every other field here is kept self-consistent, so
+    the drifted assignment prior is the single failure — under the old
+    capacity-scaled comparator this payload passed.
+    """
+
+    _, _, _, diagnostics = _assigned()
+    tampered = copy.deepcopy(diagnostics)
+    row = tampered["age_bands"][0]
+    row["candidate_capacity"] = 1e20
+    row["max_source_candidate_weight"] = 1e20
+    row["saturated"] = False
+    row["prior_recomputed_from_current_weights"] = _expected_prior(50.0, capacity=1e20)
+    row["assignment_prior"] = float(row["assignment_prior"]) + 0.4
+    gate = us_ssi_take_up_gate(tampered, targets=_TARGETS)
+    assert not gate.passed
+    assert gate.failures == tuple(
+        failure for failure in gate.failures if "prior basis" in failure
+    )
+
+
+def test_gate_survives_malformed_payload_types_without_raising() -> None:
+    """Gates report malformed payloads as failures — they never raise
+    (sol round 2, finding 8): a raise upstream of the delivery enforce
+    would skip the retry-artifact write."""
+
+    _, _, _, diagnostics = _assigned()
+    mangled = copy.deepcopy(diagnostics)
+    mangled["missing_or_invalid_count"] = []
+    mangled["unique_count"] = "many"
+    mangled["age_bands"][1]["candidate_capacity"] = {"nested": "junk"}
+    gate = us_ssi_take_up_gate(mangled, targets=_TARGETS)
+    assert not gate.passed
 
 
 def test_writer_emits_strict_json_and_refuses_nan(tmp_path: Path) -> None:

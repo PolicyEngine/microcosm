@@ -1337,7 +1337,7 @@ def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
 
     aged_band_id = (
         "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients."
-        "by_age.65_plus.recipient_count"
+        "by_age.age_65_or_older.recipient_count"
     )
     registry = compile_us_fiscal_target_registry(
         [
@@ -1357,7 +1357,7 @@ def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
                 layout_record_set_id=(
                     "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age"
                 ),
-                groupby_value_id="65_plus",
+                groupby_value_id="age_65_or_older",
                 universe_constraints=[
                     {
                         "operator": ">=",
@@ -1383,6 +1383,116 @@ def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
     assert not [
         spec for spec in registry.specs if spec.value == pytest.approx(1_161_623)
     ]
+
+
+def _ssa_ssi_by_age_fact(
+    *,
+    groupby_value_id: str,
+    value: float,
+    universe_constraints: list[dict[str, object]],
+) -> dict[str, object]:
+    record_set_id = "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age"
+    return _dynamic_ledger_fact(
+        source_record_id=f"{record_set_id}.{groupby_value_id}.recipient_count",
+        source_name="ssa",
+        measure_id="recipient_count",
+        value=value,
+        period_value=2024,
+        layout_record_set_id=record_set_id,
+        groupby_value_id=groupby_value_id,
+        universe_constraints=universe_constraints,
+    )
+
+
+def test_ssa_ssi_by_age_row_with_unknown_groupby_fails_closed() -> None:
+    # populace#508 role separation, second layer: a row wearing the by-age
+    # layout but naming something outside the three-band vocabulary — say a
+    # category label — must fail loudly, never quietly bind as a band.
+    with pytest.raises(ValueError, match="unrecognized band groupby"):
+        compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                _ssa_ssi_by_age_fact(
+                    groupby_value_id="all_areas_aged",
+                    value=1_161_623,
+                    universe_constraints=[
+                        {
+                            "operator": ">=",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 65,
+                            "variable": "age",
+                        },
+                    ],
+                ),
+            ],
+            allow_unaged_dollar_targets=True,
+        )
+
+
+def test_ssa_ssi_by_age_row_with_noncanonical_operators_fails_closed() -> None:
+    # sol round 2, finding 7: _age_bounds erases operator strictness and the
+    # materializer applies lower <= age < upper — a row spelled "> 18" /
+    # "<= 65" would silently bind a different stratum than its face value.
+    with pytest.raises(ValueError, match="non-canonical age constraint"):
+        compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                _ssa_ssi_by_age_fact(
+                    groupby_value_id="age_18_to_64",
+                    value=3_905_779,
+                    universe_constraints=[
+                        {
+                            "operator": ">",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 18,
+                            "variable": "age",
+                        },
+                        {
+                            "operator": "<=",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 65,
+                            "variable": "age",
+                        },
+                    ],
+                ),
+            ],
+            allow_unaged_dollar_targets=True,
+        )
+
+
+def test_ssa_ssi_by_age_row_with_mismatched_bounds_fails_closed() -> None:
+    # A band id whose first-class age constraints disagree with it is a
+    # corrupted upstream fact; refusing beats binding the wrong stratum.
+    with pytest.raises(ValueError, match="disagrees with its age constraints"):
+        compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                _ssa_ssi_by_age_fact(
+                    groupby_value_id="age_65_or_older",
+                    value=2_382_142,
+                    universe_constraints=[
+                        {
+                            "operator": ">=",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 18,
+                            "variable": "age",
+                        },
+                        {
+                            "operator": "<",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 65,
+                            "variable": "age",
+                        },
+                    ],
+                ),
+            ],
+            allow_unaged_dollar_targets=True,
+        )
 
 
 def test_ssa_ssi_state_payment_fact_compiles_as_dollar_sum() -> None:

@@ -2687,6 +2687,58 @@ def _ssa_ssi_reference_from_fact(
         lower, upper = _age_bounds(fact)
         if lower == "-inf" and upper == "inf":
             return None
+        # Role-separation guard, second layer (populace#508 sol review
+        # finding 7): the row's own groupby identity must agree with its
+        # first-class age constraints before it may bind under the band
+        # role. A mislabeled row — say an eligibility-category count
+        # wearing the by-age layout — fails loudly instead of quietly
+        # becoming a band target.
+        groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
+        try:
+            lower_value = float(lower)
+            upper_value = float(upper)
+        except (TypeError, ValueError):
+            lower_value = upper_value = float("nan")
+        # Keys are the pinned feed's actual by-age groupby vocabulary
+        # (consumer facts v9.x): under_18 / age_18_to_64 / age_65_or_older,
+        # with all_ages already returned above as the non-binding total.
+        expected_bounds_by_band: dict[str, tuple[bool, bool]] = {
+            "under_18": (lower_value <= 0, upper_value == 18.0),
+            "age_18_to_64": (lower_value == 18.0, upper_value == 65.0),
+            "age_65_or_older": (lower_value == 65.0, upper_value == float("inf")),
+        }
+        if groupby_value_id not in expected_bounds_by_band:
+            raise ValueError(
+                "SSA SSI by-age fact carries an unrecognized band groupby "
+                f"{groupby_value_id!r}; the three-band contract "
+                "(under_18/age_18_to_64/age_65_or_older, populace#470) "
+                "admits no other binding rows."
+            )
+        if not all(expected_bounds_by_band[groupby_value_id]):
+            raise ValueError(
+                "SSA SSI by-age fact's groupby identity "
+                f"{groupby_value_id!r} disagrees with its age constraints "
+                f"[{lower!r}, {upper!r}); refusing to bind a mislabeled "
+                "row under the band role (populace#508 role separation)."
+            )
+        # _age_bounds erases operator strictness, and the materializer
+        # applies the half-open convention lower <= age < upper — so a row
+        # spelled with "> lower" or "<= upper" would silently bind a
+        # different stratum than its face value (sol review round 2,
+        # finding 7). The pinned feed's band rows use >= / < exclusively.
+        for constraint in _constraint_rows(fact):
+            if not isinstance(constraint, dict):
+                continue
+            if str(constraint.get("variable") or "") != "age":
+                continue
+            operator = str(constraint.get("operator") or "")
+            if operator not in {">=", "<"}:
+                raise ValueError(
+                    "SSA SSI by-age fact carries a non-canonical age "
+                    f"constraint operator {operator!r} (expected '>=' for "
+                    "the lower edge and '<' for the upper edge); refusing "
+                    "to bind a stratum that materialization would reshape."
+                )
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             return None
