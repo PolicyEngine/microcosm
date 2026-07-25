@@ -104,6 +104,13 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E17500": "medical_expense_deduction",
     "E18400": "state_income_tax_paid",
     "E18500": "real_estate_taxes_paid",
+    # Raw E19200 is Schedule A "Interest paid deduction, TOTAL" (home
+    # mortgage + points + QMIP + investment interest), NOT mortgage-only;
+    # the attribute name predates that distinction and stays stable because
+    # it keys raw-source audit payloads. The processed donor carves this
+    # lineage to the mortgage-only concept (populace#515,
+    # US_PUF_E19200_HOME_MORTGAGE_SHARE) -- do not compare this raw audit
+    # figure against carved donor masses without un-carving.
     "E19200": "mortgage_interest_paid",
     "E19800": "charitable_cash_contributions",
     "E20100": "charitable_noncash_contributions",

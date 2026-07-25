@@ -114,6 +114,8 @@ from populace.build.us_runtime import (
     load_sipp_2023_vehicle_donor,
     load_sipp_2023_voluntary_filing_donor,
     resolve_sipp_2023_child_disability_donor,
+    ssi_take_up_prior_basis_from_artifact,
+    ssi_take_up_prior_basis_from_diagnostics,
     us_alimony_signal_gate,
     us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
@@ -160,6 +162,7 @@ from populace.build.us_runtime import (
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
     us_ssi_disability_criteria_signal_gate,
+    us_ssi_take_up_delivery_gate,
     us_ssi_take_up_diagnostics,
     us_ssi_take_up_gate,
     us_ssi_take_up_reporter_source_ids,
@@ -236,7 +239,10 @@ from populace.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
-from populace.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_AGE_TARGETS
+from populace.build.us_runtime.ssi_take_up import (
+    US_SSI_TAKE_UP_AGE_TARGETS,
+    SSITakeUpPriorBasis,
+)
 from populace.build.us_runtime.warm_start_selection import (
     DEFAULT_SELECTION_JOIN_KEY,
     SELECTION_MODES,
@@ -318,7 +324,11 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # (populace#469) — checkpoints materialized from count-matched flags must
 # not survive, or the solve would run on old SSI rows while the frame
 # carries the new assignment (PR #477 review finding 2).
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 7
+# 8: the ORG full-year-equivalence stage (#539) rewrites the staged org-wage
+# inputs before target materialization while the on-disk base hash is
+# unchanged; pre-#539 checkpoints carry the old ORG rows and must not be
+# reused (populace#543, post-merge audit).
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 8
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -955,6 +965,25 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--ssi-take-up-prior-weight-basis",
+        type=Path,
+        help=(
+            "Optional us_ssi_take_up.json diagnostics artifact from a prior "
+            "attempt's final release-weight measurement (schema 2 or 3, e.g. "
+            "the certified predecessor release's). The SSI take-up Bernoulli "
+            "thresholds are then computed against that attempt's delivered "
+            "per-band candidate capacities instead of this run's "
+            "pre-calibration weights — the populace#508 fix for the "
+            "populace#507 aged-band collapse: thresholds truthful against "
+            "release-kind weights, still drawn exactly once, with no "
+            "reconcile loop. The artifact must carry the same SSA band "
+            "target contract this build compiles; the enforced-band "
+            "delivery gate verifies the landed counts either way, and on "
+            "failure writes this run's us_ssi_take_up.json as the basis for "
+            "the retry."
+        ),
+    )
+    parser.add_argument(
         "--selection-source-h5",
         type=Path,
         help=(
@@ -1575,6 +1604,7 @@ def _target_frame_checkpoint_identity(
     weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
     selection_mass_protections: tuple[str, ...] = (),
+    ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
     identity: dict[str, object] = {
         "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
@@ -1591,6 +1621,17 @@ def _target_frame_checkpoint_identity(
             None
             if congressional_district_vintage_crosswalk_sha256 is None
             else str(congressional_district_vintage_crosswalk_sha256)
+        ),
+        # The SSI prior-weight basis (#524) changes the take-up flags the
+        # materialized target frame is built on, but arrives via a flag the
+        # base hash cannot see: O attempt 3 warm-hit attempt 2's checkpoint
+        # and solved on the other basis's rows (populace#543, instance 2).
+        # Unconditional None-able key — v8 starts a fresh checkpoint world,
+        # so no legacy-identity preservation applies.
+        "ssi_take_up_prior_weight_basis_sha256": (
+            None
+            if ssi_take_up_prior_weight_basis_sha256 is None
+            else str(ssi_take_up_prior_weight_basis_sha256)
         ),
     }
     if selection_mass_protections:
@@ -4557,6 +4598,24 @@ def _ecps_parity_gate(
 #                          down toward the band from $474-526B.
 #   first_home_mortgage_interest follows home_mortgage_interest (second-home
 #                          leg un-imputed / 0 per populace#38).
+#   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
+#                          populace#489 adjudication VINDICATED this
+#                          reference: SOI Pub 1304 Table 1.4 puts taxable
+#                          interest at $313.813B TY2023 (23in14ar.xls; a
+#                          x2.349 realized explosion over TY2022's
+#                          $133.597B that the CBO-AGI aging default missed),
+#                          so the reference sits at 102% of the same-year
+#                          official actual. The stale HT2/CD-lineage rows
+#                          that demanded $134.6-149.1B now rebase onto the
+#                          live Table 4.3 control (~$340.4B@2024, +6.3% vs
+#                          the reference — comfortably in-band); a solve
+#                          satisfying the corrected family passes this
+#                          parity check truthfully. The #492 experiment
+#                          arms' failures on this column were the WRONG
+#                          side of the target self-contradiction winning
+#                          (rational arm: ht2-all -4.3% but Table 4.3
+#                          -58.1% and Table 2.1 -63.6%), not a reference
+#                          defect. No exclusion, by adjudication.
 US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
     "rental_income": (
         "Identified by the ACTIVE registry: irs_soi ht2 "
@@ -5253,6 +5312,101 @@ def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, fl
             "by_age rows (populace#470)."
         )
     return band_targets
+
+
+def _load_ssi_take_up_prior_weight_basis(
+    path: Path | None,
+    *,
+    targets: Mapping[str, float],
+) -> SSITakeUpPriorBasis | None:
+    """Load and strictly validate --ssi-take-up-prior-weight-basis.
+
+    Runs right after the target registry compiles (fail-fast: a bad artifact
+    must die before the imputation stages, not hours in). The artifact is a
+    prior attempt's final ``us_ssi_take_up.json``; its per-band
+    ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
+    the weights that attempt delivered, and the module-side validator
+    enforces the same-target-contract and enforced-band-capacity rules
+    (populace#507/#508).
+    """
+
+    if path is None:
+        return None
+    resolved = Path(path)
+    if not resolved.is_file():
+        raise RuntimeError(
+            "--ssi-take-up-prior-weight-basis does not exist or is not a "
+            f"file: {resolved}"
+        )
+    raw = resolved.read_bytes()
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"--ssi-take-up-prior-weight-basis {resolved} is not valid JSON: {error}"
+        ) from error
+    if not isinstance(payload, Mapping):
+        raise RuntimeError(
+            f"--ssi-take-up-prior-weight-basis {resolved} must contain a "
+            "JSON object of us_ssi_take_up diagnostics."
+        )
+    try:
+        return ssi_take_up_prior_basis_from_artifact(
+            payload,
+            targets=targets,
+            source_sha256=hashlib.sha256(raw).hexdigest(),
+        )
+    except ValueError as error:
+        raise RuntimeError(
+            f"--ssi-take-up-prior-weight-basis {resolved} was rejected: {error}"
+        ) from error
+
+
+def _enforce_ssi_take_up_delivery(
+    diagnostics: Mapping[str, object],
+    *,
+    targets: Mapping[str, float],
+    release_dir: Path,
+    telemetry: StagingTelemetry | None,
+) -> None:
+    """Hard-fail the release on an enforced-band delivery miss.
+
+    populace#507/#508: a miss beyond tolerance on release weights fails the
+    build instead of shipping in the scorecard. The delivered-weight
+    diagnostics are written BEFORE raising — that artifact IS the remedy:
+    the retry passes it via ``--ssi-take-up-prior-weight-basis`` so the
+    thresholds are recomputed exactly once from measured delivery, never
+    iterated in-process (the populace#463-class loop stays deleted,
+    populace#477).
+    """
+
+    delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    if delivery_gate.passed:
+        return
+    failed_basis_path = write_us_ssi_take_up_diagnostics(
+        diagnostics,
+        release_dir / "us_ssi_take_up.json",
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "ssi_take_up_delivery_gate",
+            status="failed",
+            message=(
+                "SSI take-up enforced-band delivery gate failed; "
+                f"delivered-weight prior basis written to {failed_basis_path}."
+            ),
+            failures=list(delivery_gate.failures),
+            force_upload=True,
+        )
+    raise RuntimeError(
+        "Release gates failed: "
+        + "; ".join(
+            f"SSI take-up delivery failed: {failure}"
+            for failure in delivery_gate.failures
+        )
+        + " Delivered-weight prior basis written to "
+        + f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis retry."
+    )
 
 
 def _ssi_assignment_priors_from_diagnostics(
@@ -6927,6 +7081,15 @@ def main() -> None:
             if spec.measure not in tax_expenditure_measures
         )
     active_target_registry = TargetRegistry(target_specs, country="us")
+    # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
+    # populace#507/#508): the band targets come from the same ledger-fed
+    # registry rows the solve enforces, and an invalid delivered-weight
+    # basis artifact must fail here, not after the imputation stages.
+    ssi_band_targets = _ssi_take_up_band_targets_from_registry(target_specs)
+    ssi_take_up_prior_basis = _load_ssi_take_up_prior_weight_basis(
+        args.ssi_take_up_prior_weight_basis,
+        targets=ssi_band_targets,
+    )
     target_profile_gate = target_profile_coverage_gate(
         target_specs,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
@@ -7974,12 +8137,18 @@ def main() -> None:
                 "anchors plus a seeded Bernoulli draw at the registry's SSA "
                 "age-band priors."
             ),
+            prior_weight_basis=(
+                "current_frame"
+                if ssi_take_up_prior_basis is None
+                else dict(ssi_take_up_prior_basis.provenance())
+            ),
         )
     # One-shot assignment before any target materialization (populace#469).
     # The priors derive from the same ledger-fed SSA band counts the weight
-    # solve enforces as ordinary targets (populace#470); the flags are frozen
-    # from here and the post-calibration count miss ships in the scorecard.
-    ssi_band_targets = _ssi_take_up_band_targets_from_registry(target_specs)
+    # solve enforces as ordinary targets (populace#470), over either this
+    # frame's capacities or the delivered-weight basis resolved at startup
+    # (populace#507/#508); the flags are frozen from here and the
+    # enforced-band delivery is gated on release weights.
     ssi_uncapped_amount = _ssi_person_uncapped_amount(
         base_frame,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
@@ -7990,6 +8159,7 @@ def main() -> None:
         seed=args.seed,
         targets=ssi_band_targets,
         reporter_source_ids=ssi_reporter_source_ids,
+        prior_basis=ssi_take_up_prior_basis,
     )
     ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_stage_diagnostics, targets=ssi_band_targets
@@ -8011,6 +8181,12 @@ def main() -> None:
             )
         )
     ssi_assignment_priors = _ssi_assignment_priors_from_diagnostics(
+        ssi_take_up_stage_diagnostics
+    )
+    # Reconstruct the basis that actually generated the frozen flags from the
+    # stage's own diagnostics (not from the CLI value), so the final
+    # release-weight artifact documents the assignment as it happened.
+    ssi_assignment_prior_basis = ssi_take_up_prior_basis_from_diagnostics(
         ssi_take_up_stage_diagnostics
     )
     if telemetry is not None:
@@ -8428,6 +8604,11 @@ def main() -> None:
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
         selection_mass_protections=selection_mass_protections,
+        ssi_take_up_prior_weight_basis_sha256=(
+            None
+            if ssi_take_up_prior_basis is None
+            else ssi_take_up_prior_basis.source_sha256
+        ),
     )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
@@ -8617,6 +8798,7 @@ def main() -> None:
             seed=args.seed,
             targets=ssi_band_targets,
             assignment_priors=ssi_assignment_priors,
+            prior_basis=ssi_assignment_prior_basis,
             reporter_source_ids=ssi_reporter_source_ids,
         )
     )
@@ -8644,6 +8826,12 @@ def main() -> None:
                 for failure in final_ssi_take_up_gate.failures
             )
         )
+    _enforce_ssi_take_up_delivery(
+        ssi_take_up_diagnostics,
+        targets=ssi_band_targets,
+        release_dir=release_dir,
+        telemetry=telemetry,
+    )
     medicaid_take_up_diagnostics = dict(
         _medicaid_diagnostics_for_existing_output(
             export_frame,

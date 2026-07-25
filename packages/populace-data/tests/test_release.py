@@ -42,7 +42,7 @@ DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
 CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 18
+TARGET_COUNT = 20
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -65,6 +65,17 @@ DEDUCTION_CRITICAL_TARGETS = (
         80_000_000_000.0,
         69_000_000_000.0,
         "medical_expense_deduction_total",
+    ),
+    # populace#511: the Table 2.1 mortgage amount row is name-registered (its
+    # production target_role is the generic soi_fiscal_distribution).
+    (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount@2024",
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount",
+        186_310_104_604.0,
+        199_110_000_000.0,
+        "soi_fiscal_distribution",
     ),
 )
 
@@ -230,6 +241,16 @@ def additional_critical_credit_rows() -> list[dict]:
             24_475_100.0,
             24_472_900.0,
         ),
+        # populace#511: paired count row for the registered Table 2.1
+        # mortgage amount target (O-1 landed +2.45%).
+        (
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns@2024",
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns",
+            11_644_348.0,
+            11_929_445.0,
+        ),
     ]
     return [
         _target_row(
@@ -333,7 +354,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 16,
+                "target_count": 18,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },

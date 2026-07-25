@@ -9,7 +9,7 @@ to children and working-age disabled people too.
 This stage keeps the source-backed half of that method (the reporter anchor)
 and replaces the scope-invalid rate with per-band priors derived from SSA's
 December 2024 counts of people receiving a *federal payment*, split into the
-three published age bands.  Each prior is the band target over the weighted
+three published age bands.  Each prior is the band target over a weighted
 PolicyEngine-US ``uncapped_ssi > 0`` candidate capacity — falling back to the
 observed reporter share of capacity when that ratio reaches one, so the flag
 never degenerates to a constant.  Every source person draws once against the
@@ -18,8 +18,33 @@ fanned to every actual support row; direct ASEC reporters stay true
 unconditionally.  There is no count matching here (populace#469): the SSA
 band counts bind only as ordinary calibration registry targets
 (populace#470), the caller passes those same registry values in as
-``targets``, and any post-calibration miss ships in the release scorecard
-like every other program's.
+``targets``, and any post-calibration miss is measured on release weights.
+
+**Prior weight basis (populace#507/#508).** The capacity that sets each
+prior is an explicit, documented choice. By default it is measured on the
+assignment frame's current (pre-calibration) weights — which Build N showed
+can be untruthful once the 5,672-target solve moves the weights (the 65+
+threshold froze at 5.9057% against 40.34M pre-solve candidates while release
+weights left 4.00M of capacity, collapsing aged recipients to 0.98M against
+the 2,382,142 target). The caller may instead supply a
+:class:`SSITakeUpPriorBasis` read from a prior attempt's delivered-weight
+``us_ssi_take_up.json`` diagnostics, making the frozen thresholds truthful
+against weights of the same kind the flags will ship under. Assignment
+still happens exactly once per build — there is no reconcile loop (the
+populace#463-class iterate-against-the-solve architecture stays deleted per
+populace#477) — and :func:`us_ssi_take_up_delivery_gate` hard-fails the
+release when an enforced band's delivered recipients miss the ledger target
+beyond :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE`, forcing
+threshold recomputation exactly once from the failed attempt's delivered
+weights. The under-18 band stays honestly fenced (scorecard-only) until the
+SIPP child qualifying-disability stage lands (populace#453/#509).
+
+The band targets are the SSA federal-payment universe (Σ = 7,289,843 in
+December 2024). The separate SSA by-area 7,404,820 count is the broader
+*federally administered* universe — it additionally includes ~115k people
+receiving a state supplementary payment only, with no federal SSI payment —
+and per the populace#508 adjudication (2026-07-23) it is a non-binding
+reference that must never set these priors nor bind engine ``ssi``.
 
 The caller supplies December ``uncapped_ssi`` because the fiscal builder owns
 PolicyEngine simulations and batching.  Assignment is recomputed from the
@@ -52,13 +77,22 @@ __all__ = [
     "SSI_TAKE_UP_ARCHIVED_TARGETS_URL",
     "SSI_TAKE_UP_SSA_SOURCE_URL",
     "SSITakeUpAgeTarget",
+    "SSITakeUpBandPriorBasis",
+    "SSITakeUpPriorBasis",
     "US_SSI_TAKE_UP_AGE_TARGETS",
     "US_SSI_TAKE_UP_ANCHOR",
+    "US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE",
+    "US_SSI_TAKE_UP_ENFORCED_BAND_KEYS",
     "US_SSI_TAKE_UP_NONCONSTANT_PERSON_COLUMNS",
     "US_SSI_TAKE_UP_OUTPUT_COLUMNS",
+    "US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME",
+    "US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT",
     "US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS",
     "US_SSI_TAKE_UP_STAGE_NAME",
     "US_SSI_TAKE_UP_TARGET_TABLE_NAME",
+    "ssi_take_up_prior_basis_from_artifact",
+    "ssi_take_up_prior_basis_from_diagnostics",
+    "us_ssi_take_up_delivery_gate",
     "us_ssi_take_up_diagnostics",
     "us_ssi_take_up_gate",
     "us_ssi_take_up_reporter_source_ids",
@@ -109,7 +143,41 @@ _WEIGHTS_BASIS = "current_frame_resolved_person_weights"
 # gone, band rows split the prior into assignment_prior (the value that
 # generated the frozen flags) and prior_recomputed_from_current_weights, and
 # the top level carries bernoulli_law_violation_count.
-_DIAGNOSTICS_SCHEMA_VERSION = 2
+# Version 3 (populace#507/#508): the top level documents the prior weight
+# basis (current frame vs a prior attempt's delivered-weight artifact) and
+# band rows carry the basis capacity/floor that generated assignment_prior,
+# making the prior arithmetic weight-free auditable at final measurement.
+_DIAGNOSTICS_SCHEMA_VERSION = 3
+#: Artifact schema versions a delivered-weight prior basis may be read from.
+#: Schema 2 is accepted so the chain can start from Build N's certified
+#: ``us_ssi_take_up.json`` (its band rows already carry release-weight
+#: ``candidate_capacity`` / ``reporter_candidate_floor``).
+_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3)
+
+US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME = "current_frame"
+US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT = "release_artifact"
+_PRIOR_BASIS_KINDS = (
+    US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
+    US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT,
+)
+
+#: Age bands whose delivered weighted recipients must land within
+#: :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE` of the ledger
+#: target on release weights, or the release fails
+#: (:func:`us_ssi_take_up_delivery_gate`). ``under_18`` is deliberately
+#: fenced: certified support carries no child qualifying-disability signal
+#: yet (Build N candidate capacity 177,582 against the 1,001,922 target), so
+#: enforcing it would reward saturation, not truth. The fence lifts as a
+#: deliberate roster edit when the SIPP child-disability stage lands
+#: (populace#453 / PR #509) — never as a side effect.
+US_SSI_TAKE_UP_ENFORCED_BAND_KEYS: tuple[str, ...] = ("18_64", "65_plus")
+
+#: Relative envelope for the enforced-band delivery gate. Builds with
+#: truthful thresholds land the adult bands within ~2% of the SSA counts
+#: (Build M, populace#507 table); 5% leaves the solver headroom while any
+#: collapse-class regression (Build N's 65+ shipped 59% under target) fails
+#: loudly. One uniform constant — never a per-target knob (populace#492).
+US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE = 0.05
 
 
 @dataclass(frozen=True)
@@ -142,6 +210,103 @@ US_SSI_TAKE_UP_AGE_TARGETS: tuple[SSITakeUpAgeTarget, ...] = (
     SSITakeUpAgeTarget("65_plus", 65, None, "Ages 65+"),
 )
 
+_BAND_KEY_ORDER = tuple(target.key for target in US_SSI_TAKE_UP_AGE_TARGETS)
+
+
+@dataclass(frozen=True)
+class SSITakeUpBandPriorBasis:
+    """One band's capacity/floor pair the Bernoulli prior is computed from."""
+
+    key: str
+    candidate_capacity: float
+    reporter_candidate_floor: float
+
+    def __post_init__(self) -> None:
+        if self.key not in _BAND_KEY_ORDER:
+            raise ValueError(
+                f"US SSI take-up prior basis names unknown age band {self.key!r}."
+            )
+        capacity = float(self.candidate_capacity)
+        floor = float(self.reporter_candidate_floor)
+        if not np.isfinite(capacity) or capacity < 0:
+            raise ValueError(
+                f"US SSI take-up prior basis for age band {self.key!r} has an "
+                f"invalid candidate capacity {capacity!r}."
+            )
+        if not np.isfinite(floor) or floor < 0 or floor > capacity + 1e-6:
+            raise ValueError(
+                f"US SSI take-up prior basis for age band {self.key!r} has an "
+                f"invalid reporter floor {floor!r} for capacity {capacity!r}."
+            )
+
+
+@dataclass(frozen=True)
+class SSITakeUpPriorBasis:
+    """The weight basis the frozen Bernoulli thresholds are computed against.
+
+    ``current_frame`` is the assignment frame's own weights (the default —
+    truthful only while calibration leaves band capacity roughly alone).
+    ``release_artifact`` is a prior attempt's delivered-weight
+    ``us_ssi_take_up.json`` diagnostics, the populace#508 remedy: thresholds
+    become truthful against weights of the same kind the flags ship under,
+    still drawn exactly once per build with no reconcile loop.
+    """
+
+    kind: str
+    bands: tuple[SSITakeUpBandPriorBasis, ...]
+    source_sha256: str | None = None
+    source_schema_version: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in _PRIOR_BASIS_KINDS:
+            raise ValueError(
+                f"US SSI take-up prior basis kind {self.kind!r} is not one of "
+                f"{list(_PRIOR_BASIS_KINDS)}."
+            )
+        if tuple(band.key for band in self.bands) != _BAND_KEY_ORDER:
+            raise ValueError(
+                "US SSI take-up prior basis requires exactly age bands "
+                f"{list(_BAND_KEY_ORDER)} in order; got "
+                f"{[band.key for band in self.bands]}."
+            )
+        if self.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT:
+            if (
+                not isinstance(self.source_sha256, str)
+                or not self.source_sha256.strip()
+            ):
+                raise ValueError(
+                    "US SSI take-up release-artifact prior basis requires the "
+                    "source artifact sha256."
+                )
+            if self.source_schema_version not in _PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS:
+                raise ValueError(
+                    "US SSI take-up release-artifact prior basis requires a "
+                    f"source schema version in "
+                    f"{list(_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS)}; got "
+                    f"{self.source_schema_version!r}."
+                )
+        elif self.source_sha256 is not None or self.source_schema_version is not None:
+            raise ValueError(
+                "US SSI take-up current-frame prior basis carries no source "
+                "artifact provenance."
+            )
+
+    def band(self, key: str) -> SSITakeUpBandPriorBasis:
+        for band in self.bands:
+            if band.key == key:
+                return band
+        raise KeyError(key)
+
+    def provenance(self) -> dict[str, object]:
+        """The diagnostics ``prior_weight_basis`` payload, published verbatim."""
+
+        return {
+            "kind": self.kind,
+            "source_sha256": self.source_sha256,
+            "source_schema_version": self.source_schema_version,
+        }
+
+
 _READ_PARAMETERS: dict[str, object] = {
     "table": "person",
     "weight": "person_weight",
@@ -160,8 +325,10 @@ _ASSIGN_PARAMETERS: dict[str, object] = {
         "65_plus": "age >= 65",
     },
     "rate_derivation": (
-        "band_target / weighted_candidate_capacity(uncapped_ssi > 0); "
-        "min(reporter_candidate_floor / capacity, 1) once that ratio "
+        "band_target / basis_candidate_capacity(uncapped_ssi > 0); basis = "
+        "this frame's weights, or a prior attempt's delivered-weight "
+        "us_ssi_take_up.json diagnostics (populace#507/#508); "
+        "min(basis_reporter_candidate_floor / capacity, 1) once that ratio "
         "reaches one"
     ),
     "rate_target_role": "ssa_ssi_age_band_recipients",
@@ -454,12 +621,38 @@ def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
     return min(reporter_floor / capacity, 1.0)
 
 
+def _current_frame_prior_basis(source: pd.DataFrame) -> SSITakeUpPriorBasis:
+    """The default basis: capacity/floor measured on this frame's weights."""
+
+    bands = []
+    for target_definition in US_SSI_TAKE_UP_AGE_TARGETS:
+        in_band = source["age_band"].eq(target_definition.key)
+        candidate = in_band & source["candidate_weight"].gt(0.0)
+        anchored = in_band & source["anchor"].astype(bool)
+        bands.append(
+            SSITakeUpBandPriorBasis(
+                key=target_definition.key,
+                candidate_capacity=float(
+                    source.loc[candidate, "candidate_weight"].sum()
+                ),
+                reporter_candidate_floor=float(
+                    source.loc[candidate & anchored, "candidate_weight"].sum()
+                ),
+            )
+        )
+    return SSITakeUpPriorBasis(
+        kind=US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
+        bands=tuple(bands),
+    )
+
+
 def _age_band_diagnostics(
     source: pd.DataFrame,
     selected: pd.Series,
     *,
     targets: Mapping[str, float],
     assignment_priors: Mapping[str, float],
+    prior_basis: SSITakeUpPriorBasis,
 ) -> list[dict[str, object]]:
     """Summarize one existing source-grain assignment on current weights.
 
@@ -467,13 +660,17 @@ def _age_band_diagnostics(
     persisted flags. Each band row publishes them verbatim next to
     ``prior_recomputed_from_current_weights`` so release-weight measurements
     never misdocument the one-shot assignment (populace#469; PR #477 review
-    finding 4).
+    finding 4). ``prior_basis`` is the capacity/floor pair those priors were
+    computed from (populace#507/#508): republishing it per band keeps the
+    prior arithmetic weight-free auditable long after the assignment frame
+    is gone.
     """
 
     bands: list[dict[str, object]] = []
     for target_definition in US_SSI_TAKE_UP_AGE_TARGETS:
         key = target_definition.key
         target = float(targets[key])
+        basis_band = prior_basis.band(key)
         in_band = source["age_band"].eq(key)
         candidate = in_band & source["candidate_weight"].gt(0.0)
         anchored = in_band & source["anchor"].astype(bool)
@@ -505,6 +702,10 @@ def _age_band_diagnostics(
                 "anchor_excess": max(reporter_floor - target, 0.0),
                 "saturated": bool(capacity < target),
                 "assignment_prior": float(assignment_priors[key]),
+                "prior_basis_candidate_capacity": float(basis_band.candidate_capacity),
+                "prior_basis_reporter_candidate_floor": float(
+                    basis_band.reporter_candidate_floor
+                ),
                 "prior_recomputed_from_current_weights": _band_prior(
                     target, capacity, reporter_floor
                 ),
@@ -557,10 +758,171 @@ def _normalize_assignment_priors(
     return {key: actual[key] for key in expected_keys}
 
 
+def _band_rows_by_key(
+    diagnostics: Mapping[str, object],
+) -> dict[str, Mapping[str, object]]:
+    """The three band rows keyed and ordered, failing on drifted structure."""
+
+    rows = diagnostics.get("age_bands")
+    if not isinstance(rows, list):
+        raise ValueError("US SSI take-up diagnostics carry no age band rows.")
+    by_key: dict[str, Mapping[str, object]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("US SSI take-up diagnostics band row is invalid.")
+        key = str(row.get("age_band"))
+        if key in by_key:
+            raise ValueError(f"US SSI take-up diagnostics repeat age band {key!r}.")
+        by_key[key] = row
+    missing = [key for key in _BAND_KEY_ORDER if key not in by_key]
+    unknown = sorted(set(by_key) - set(_BAND_KEY_ORDER))
+    if missing or unknown:
+        raise ValueError(
+            "US SSI take-up diagnostics require exactly age bands "
+            f"{list(_BAND_KEY_ORDER)}; missing {missing}, unknown {unknown}."
+        )
+    return {key: by_key[key] for key in _BAND_KEY_ORDER}
+
+
+def ssi_take_up_prior_basis_from_artifact(
+    payload: Mapping[str, object],
+    *,
+    targets: Mapping[str, float],
+    source_sha256: str,
+) -> SSITakeUpPriorBasis:
+    """Read a delivered-weight prior basis from a prior ``us_ssi_take_up.json``.
+
+    This is the populace#507/#508 remedy path: the payload is a prior
+    attempt's final release-weight diagnostics, whose per-band
+    ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
+    the weights that attempt actually delivered. Schema 2 artifacts are
+    accepted so the chain can start from Build N's certified release; the
+    artifact must have been measured against the same target contract this
+    build compiles (same SSA table, period, measure, and band values —
+    populace#508's "one coherent system"), and every enforced band needs
+    positive delivered capacity for a truthful threshold to exist.
+    """
+
+    if not isinstance(source_sha256, str) or not source_sha256.strip():
+        raise ValueError("US SSI take-up prior basis requires the artifact sha256.")
+    normalized_targets = _normalize_targets(targets)
+    schema_version = payload.get("schema_version")
+    if schema_version not in _PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS:
+        raise ValueError(
+            "US SSI take-up prior basis requires an artifact schema version "
+            f"in {list(_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS)}; got "
+            f"{schema_version!r}."
+        )
+    contract: tuple[tuple[str, object, str], ...] = (
+        ("classification", "release_diagnostics", "classification"),
+        ("variable", _OUTPUT, "output variable"),
+        ("candidate_definition", _CANDIDATE_DEFINITION, "candidate definition"),
+        ("target_table", US_SSI_TAKE_UP_TARGET_TABLE_NAME, "target table"),
+        ("target_source", SSI_TAKE_UP_SSA_SOURCE_URL, "target source"),
+        ("target_period", _TARGET_PERIOD, "target period"),
+        ("target_measure", _TARGET_MEASURE, "target measure"),
+    )
+    for field, expected, label in contract:
+        if payload.get(field) != expected:
+            raise ValueError(
+                f"US SSI take-up prior basis artifact carries the wrong "
+                f"{label}: {payload.get(field)!r} != {expected!r}."
+            )
+    rows = _band_rows_by_key(payload)
+    bands: list[SSITakeUpBandPriorBasis] = []
+    for key, row in rows.items():
+        target = float(normalized_targets[key])
+        recorded_target = float(row.get("target", np.nan))
+        if not np.isfinite(recorded_target) or abs(recorded_target - target) > 1e-6:
+            raise ValueError(
+                "US SSI take-up prior basis artifact was measured against a "
+                f"different target contract for age band {key!r}: "
+                f"{recorded_target!r} != {target!r}."
+            )
+        capacity = float(row.get("candidate_capacity", np.nan))
+        floor = float(row.get("reporter_candidate_floor", np.nan))
+        if not np.isfinite(capacity) or capacity < 0:
+            raise ValueError(
+                "US SSI take-up prior basis artifact has an invalid candidate "
+                f"capacity {capacity!r} for age band {key!r}."
+            )
+        if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS and capacity <= 0:
+            raise ValueError(
+                "US SSI take-up prior basis artifact delivered no candidate "
+                f"capacity for enforced age band {key!r}; a truthful "
+                "threshold cannot be computed from it."
+            )
+        if not np.isfinite(floor) or floor < 0 or floor > capacity + 1e-6:
+            raise ValueError(
+                "US SSI take-up prior basis artifact has an invalid reporter "
+                f"floor {floor!r} for age band {key!r}."
+            )
+        bands.append(
+            SSITakeUpBandPriorBasis(
+                key=key,
+                candidate_capacity=capacity,
+                reporter_candidate_floor=floor,
+            )
+        )
+    return SSITakeUpPriorBasis(
+        kind=US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT,
+        bands=tuple(bands),
+        source_sha256=source_sha256,
+        source_schema_version=int(schema_version),
+    )
+
+
+def ssi_take_up_prior_basis_from_diagnostics(
+    diagnostics: Mapping[str, object],
+) -> SSITakeUpPriorBasis:
+    """Reconstruct the documented prior basis from schema-3 diagnostics.
+
+    The builder hands the assignment stage's basis to the final
+    release-weight measurement through this helper, so the published
+    artifact documents the same basis that generated the frozen flags.
+    """
+
+    if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
+        raise ValueError(
+            "US SSI take-up prior basis requires schema version "
+            f"{_DIAGNOSTICS_SCHEMA_VERSION} diagnostics."
+        )
+    provenance = diagnostics.get("prior_weight_basis")
+    if not isinstance(provenance, Mapping):
+        raise ValueError(
+            "US SSI take-up diagnostics are missing the prior weight basis."
+        )
+    rows = _band_rows_by_key(diagnostics)
+    source_schema_version = provenance.get("source_schema_version")
+    source_sha256 = provenance.get("source_sha256")
+    if source_sha256 is not None and not isinstance(source_sha256, str):
+        raise ValueError("US SSI take-up prior basis sha256 must be a string.")
+    return SSITakeUpPriorBasis(
+        kind=str(provenance.get("kind")),
+        bands=tuple(
+            SSITakeUpBandPriorBasis(
+                key=key,
+                candidate_capacity=float(
+                    row.get("prior_basis_candidate_capacity", np.nan)
+                ),
+                reporter_candidate_floor=float(
+                    row.get("prior_basis_reporter_candidate_floor", np.nan)
+                ),
+            )
+            for key, row in rows.items()
+        ),
+        source_sha256=source_sha256,
+        source_schema_version=(
+            None if source_schema_version is None else int(source_schema_version)
+        ),
+    )
+
+
 def _assign_sources(
     source: pd.DataFrame,
     *,
     targets: Mapping[str, float],
+    prior_basis: SSITakeUpPriorBasis,
 ) -> tuple[pd.Series, list[dict[str, object]], dict[str, float]]:
     """Assign one flag per source identity; return diagnostics and priors."""
 
@@ -570,26 +932,30 @@ def _assign_sources(
         key = target_definition.key
         target = float(targets[key])
         in_band = source["age_band"].eq(key)
-        candidate = in_band & source["candidate_weight"].gt(0.0)
         anchored = in_band & source["anchor"].astype(bool)
-        capacity = float(source.loc[candidate, "candidate_weight"].sum())
-        reporter_floor = float(
-            source.loc[candidate & anchored, "candidate_weight"].sum()
+        basis_band = prior_basis.band(key)
+        prior = _band_prior(
+            target,
+            basis_band.candidate_capacity,
+            basis_band.reporter_candidate_floor,
         )
-        prior = _band_prior(target, capacity, reporter_floor)
         priors[key] = prior
 
         # Seeded Bernoulli at the documented band prior for everyone in the
         # band — candidates and reform-created eligibles alike — with survey
         # reporters anchored unconditionally (populace#469). No count
         # matching: the SSA band counts are ordinary calibration targets
-        # (populace#470) and the post-calibration miss ships in the
-        # scorecard like every other program's.
+        # (populace#470) and the post-calibration delivery is measured on
+        # release weights (populace#507/#508 delivery gate).
         selected.loc[in_band] = source.loc[in_band, "draw"].to_numpy() < prior
         selected.loc[anchored] = True
 
     bands = _age_band_diagnostics(
-        source, selected, targets=targets, assignment_priors=priors
+        source,
+        selected,
+        targets=targets,
+        assignment_priors=priors,
+        prior_basis=prior_basis,
     )
     return selected, bands, priors
 
@@ -603,6 +969,7 @@ def _diagnostics(
     bands: list[dict[str, object]],
     targets: Mapping[str, float],
     law_violation_count: int,
+    prior_basis: SSITakeUpPriorBasis,
 ) -> dict[str, object]:
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     reporter_lost = int(np.count_nonzero(rows["anchor"].to_numpy() & ~assigned))
@@ -643,6 +1010,7 @@ def _diagnostics(
         "target_period": _TARGET_PERIOD,
         "target_measure": _TARGET_MEASURE,
         "weights_basis": _WEIGHTS_BASIS,
+        "prior_weight_basis": prior_basis.provenance(),
         "target_total": target_total,
         "selected_recipient_weight_total": selected_total,
         "target_shortfall_total": float(
@@ -671,13 +1039,18 @@ def with_us_ssi_take_up(
     seed: int,
     targets: Mapping[str, float],
     reporter_source_ids: Collection[str] | None = None,
+    prior_basis: SSITakeUpPriorBasis | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Recompute SSI take-up and return the frame plus band diagnostics.
 
     ``targets`` carries the SSA band recipient counts the caller read from
     the calibration registry (role ``ssa_ssi_age_band_recipients``); they set
     the Bernoulli priors here and bind as ordinary calibration targets
-    downstream (populace#469/#470).
+    downstream (populace#469/#470). ``prior_basis`` optionally replaces the
+    default current-frame capacity basis with a prior attempt's
+    delivered-weight measurements (populace#507/#508), read via
+    :func:`ssi_take_up_prior_basis_from_artifact`; the draw still happens
+    exactly once, against whichever basis is documented.
     """
 
     us_ssi_take_up_stage_spec()
@@ -688,7 +1061,12 @@ def with_us_ssi_take_up(
         seed=int(seed),
         reporter_source_ids=reporter_source_ids,
     )
-    selected, bands, priors = _assign_sources(source, targets=normalized_targets)
+    resolved_basis = (
+        _current_frame_prior_basis(source) if prior_basis is None else prior_basis
+    )
+    selected, bands, priors = _assign_sources(
+        source, targets=normalized_targets, prior_basis=resolved_basis
+    )
     assigned = rows["source_id"].map(selected).to_numpy(dtype=bool)
     diagnostics = _diagnostics(
         frame,
@@ -698,6 +1076,7 @@ def with_us_ssi_take_up(
         bands=bands,
         targets=normalized_targets,
         law_violation_count=_bernoulli_law_violations(source, selected, priors),
+        prior_basis=resolved_basis,
     )
 
     person = frame.table("person")
@@ -733,6 +1112,7 @@ def us_ssi_take_up_diagnostics(
     seed: int,
     targets: Mapping[str, float],
     assignment_priors: Mapping[str, float],
+    prior_basis: SSITakeUpPriorBasis,
     reporter_source_ids: Collection[str] | None = None,
 ) -> dict[str, object]:
     """Diagnose a persisted assignment without changing its decisions.
@@ -740,12 +1120,15 @@ def us_ssi_take_up_diagnostics(
     The fiscal builder assigns take-up once before target materialization and
     publishes these measurements of the frozen flags on the final release
     weights. ``assignment_priors`` are the per-band priors the assignment
-    stage documented (its diagnostics' ``assignment_prior`` fields): they are
-    republished verbatim and every persisted flag is re-verified against the
-    seeded Bernoulli law they define, so silent post-assignment corruption
-    fails the gate. Any gap between the measured recipient mass and the SSA
-    band targets is calibration's residual and ships in the scorecard — it
-    is reported here, never corrected here.
+    stage documented (its diagnostics' ``assignment_prior`` fields) and
+    ``prior_basis`` is the capacity basis that generated them
+    (:func:`ssi_take_up_prior_basis_from_diagnostics` on the stage
+    diagnostics): both are republished verbatim, every persisted flag is
+    re-verified against the seeded Bernoulli law, and the prior arithmetic
+    stays weight-free auditable, so silent post-assignment corruption fails
+    the gate. Any gap between the measured recipient mass and the SSA band
+    targets is reported here, never corrected here — enforced bands are
+    judged by :func:`us_ssi_take_up_delivery_gate` (populace#507/#508).
     """
 
     us_ssi_take_up_stage_spec()
@@ -776,6 +1159,7 @@ def us_ssi_take_up_diagnostics(
         source_assignment,
         targets=normalized_targets,
         assignment_priors=normalized_priors,
+        prior_basis=prior_basis,
     )
     return _diagnostics(
         frame,
@@ -787,6 +1171,7 @@ def us_ssi_take_up_diagnostics(
         law_violation_count=_bernoulli_law_violations(
             source, source_assignment, normalized_priors
         ),
+        prior_basis=prior_basis,
     )
 
 
@@ -821,6 +1206,31 @@ def us_ssi_take_up_gate(
         failures.append("SSI take-up diagnostics carry the wrong target measure.")
     if diagnostics.get("weights_basis") != _WEIGHTS_BASIS:
         failures.append("SSI take-up diagnostics carry the wrong weights basis.")
+    prior_weight_basis = diagnostics.get("prior_weight_basis")
+    if not isinstance(prior_weight_basis, Mapping):
+        failures.append("SSI take-up diagnostics are missing the prior weight basis.")
+        prior_weight_basis = {}
+    basis_kind = prior_weight_basis.get("kind")
+    if basis_kind not in _PRIOR_BASIS_KINDS:
+        failures.append(
+            f"SSI take-up prior weight basis kind {basis_kind!r} is not one "
+            f"of {list(_PRIOR_BASIS_KINDS)}."
+        )
+    elif basis_kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT:
+        source_sha = prior_weight_basis.get("source_sha256")
+        if not isinstance(source_sha, str) or not source_sha.strip():
+            failures.append(
+                "SSI take-up release-artifact prior weight basis is missing "
+                "its source sha256."
+            )
+        if (
+            prior_weight_basis.get("source_schema_version")
+            not in _PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS
+        ):
+            failures.append(
+                "SSI take-up release-artifact prior weight basis carries an "
+                "unknown source schema version."
+            )
     if int(diagnostics.get("missing_or_invalid_count", -1)) != 0:
         failures.append("SSI take-up output contains missing or invalid values.")
     if int(diagnostics.get("unique_count", 0)) < 2:
@@ -893,6 +1303,8 @@ def us_ssi_take_up_gate(
         shortfall = float(row.get("target_shortfall", np.nan))
         anchor_excess = float(row.get("anchor_excess", np.nan))
         prior = float(row.get("assignment_prior", np.nan))
+        basis_capacity = float(row.get("prior_basis_candidate_capacity", np.nan))
+        basis_floor = float(row.get("prior_basis_reporter_candidate_floor", np.nan))
         recomputed_prior = float(
             row.get("prior_recomputed_from_current_weights", np.nan)
         )
@@ -905,6 +1317,8 @@ def us_ssi_take_up_gate(
             shortfall,
             anchor_excess,
             prior,
+            basis_capacity,
+            basis_floor,
             recomputed_prior,
             max_weight,
         )
@@ -942,16 +1356,27 @@ def us_ssi_take_up_gate(
                 f"SSI take-up age band {key!r} carries the wrong anchor excess."
             )
         # The assignment prior is the value that generated the frozen flags;
-        # on release weights it will differ from target/capacity and its
-        # integrity is enforced by the Bernoulli-law recheck above, so the
-        # gate only requires a valid probability here. The recomputed prior
-        # is defined on THIS row's capacity/floor and must match that
-        # arithmetic exactly. The band-count MISS is calibration's to close
-        # (#470 targets) and ships in the scorecard — never a failure here.
+        # on release weights it will differ from target/capacity, but it must
+        # equal the documented arithmetic on its own basis capacity/floor —
+        # both are frozen numbers, so this audit is weight-free at any later
+        # measurement (populace#507/#508). The recomputed prior is defined on
+        # THIS row's capacity/floor and must match that arithmetic exactly.
+        # The band-count MISS is never a failure here: enforced bands are
+        # judged by the delivery gate, fenced bands ship in the scorecard.
         if not 0.0 <= prior <= 1.0:
             failures.append(
                 f"SSI take-up age band {key!r} assignment prior {prior} is "
                 "outside [0, 1]."
+            )
+        if basis_capacity < 0 or basis_floor < 0 or basis_floor > basis_capacity + 1e-6:
+            failures.append(
+                f"SSI take-up age band {key!r} has an invalid prior basis "
+                "capacity/floor pair."
+            )
+        elif abs(prior - _band_prior(target, basis_capacity, basis_floor)) > epsilon:
+            failures.append(
+                f"SSI take-up age band {key!r} assignment prior does not "
+                "match the documented arithmetic on its prior basis."
             )
         if abs(recomputed_prior - _band_prior(target, capacity, floor)) > epsilon:
             failures.append(
@@ -1001,6 +1426,99 @@ def us_ssi_take_up_gate(
         passed=not failures,
         failures=tuple(failures),
         details=dict(diagnostics),
+    )
+
+
+def us_ssi_take_up_delivery_gate(
+    diagnostics: Mapping[str, object],
+    *,
+    targets: Mapping[str, float],
+) -> GateResult:
+    """Hard-fail enforced band misses measured on the release weights.
+
+    populace#507 shipped a certified default whose 65+ SSI baseline ran 59%
+    under the SSA count because the frozen thresholds' weight basis stopped
+    being true after calibration and the band miss was scorecard-only
+    (populace#477's cutover). This gate makes an enforced band miss a
+    release failure with one documented remedy — re-run the builder with
+    ``--ssi-take-up-prior-weight-basis`` pointing at this attempt's
+    ``us_ssi_take_up.json``, recomputing the thresholds exactly once from
+    the delivered weights. There is no in-build reconcile loop and no
+    per-target knob (populace#492). The under-18 band stays fenced pending
+    populace#453/#509 and is reported in the details, never enforced.
+    """
+
+    expected_targets = _normalize_targets(targets)
+    tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
+    failures: list[str] = []
+    enforced_rows: list[dict[str, object]] = []
+    fenced_rows: list[dict[str, object]] = []
+    rows: Mapping[str, Mapping[str, object]] = {}
+    if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
+        failures.append(
+            "SSI take-up delivery gate requires schema version "
+            f"{_DIAGNOSTICS_SCHEMA_VERSION} diagnostics."
+        )
+    else:
+        try:
+            rows = _band_rows_by_key(diagnostics)
+        except ValueError as error:
+            failures.append(str(error))
+    for key, target in expected_targets.items():
+        row = rows.get(key)
+        if row is None:
+            continue
+        selected = float(row.get("selected_recipient_weight", np.nan))
+        if not np.isfinite(selected):
+            failures.append(
+                f"SSI take-up age band {key!r} has a nonfinite delivered "
+                "recipient weight."
+            )
+            continue
+        signed_relative = (selected - target) / target
+        summary: dict[str, object] = {
+            "age_band": key,
+            "target": target,
+            "selected_recipient_weight": selected,
+            "signed_relative_error": signed_relative,
+        }
+        if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS:
+            enforced_rows.append(summary)
+            if abs(selected - target) > tolerance * target + 1e-6:
+                failures.append(
+                    f"SSI take-up delivered {selected:,.0f} weighted "
+                    f"recipients for enforced age band {key!r} against the "
+                    f"ledger target {target:,.0f} ({signed_relative:+.1%} vs "
+                    f"the ±{tolerance:.0%} envelope). The frozen thresholds' "
+                    "weight basis is not true of the release weights: re-run "
+                    "the builder with --ssi-take-up-prior-weight-basis "
+                    "pointing at this attempt's us_ssi_take_up.json so the "
+                    "thresholds are recomputed exactly once from the "
+                    "delivered weights (populace#507/#508)."
+                )
+        else:
+            fenced_rows.append(
+                {
+                    **summary,
+                    "fence": (
+                        "Fenced pending the SIPP child qualifying-disability "
+                        "stage (populace#453 / PR #509): certified support "
+                        "cannot truthfully carry the child band yet, so its "
+                        "miss ships in the scorecard — never as "
+                        "saturation-as-success."
+                    ),
+                }
+            )
+    return GateResult(
+        name="ssi_take_up_delivery",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "relative_tolerance": tolerance,
+            "enforced_band_keys": list(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS),
+            "enforced_bands": enforced_rows,
+            "fenced_bands": fenced_rows,
+        },
     )
 
 

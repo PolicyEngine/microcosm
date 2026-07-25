@@ -300,6 +300,269 @@
     "source_url": "https://www.ftb.ca.gov/tax-pros/law/legislation/2025-2026/AB2591-022026.pdf"
    },
    "tracker_id": "ca-ab2591"
+  },
+  {
+   "id": "state.ks.hb2620",
+   "name": "KS HB2620 \u2014 EITC match 17% \u2192 18%",
+   "category": "State reform",
+   "period": 2026,
+   "budget_measure": "ks_income_tax",
+   "description": "One-point state EITC match increase (17%->18% of federal), TY2026. Fiscal note basis: $80.5M claimed at 17% in TY2024, scaled with IRS credit-amount growth; FY2027 -$5.0M SGF (captures TY2026), growing ~2.5%/yr. First match-change (not repeal) EITC validation row. Bill died in House Taxation without a hearing; the fiscal note stands regardless.",
+   "parameter_changes": {
+    "gov.states.ks.tax.income.credits.eitc_fraction": {
+     "2026-01-01": 0.18
+    }
+   },
+   "benchmark": {
+    "score": -5000000,
+    "window": "FY2027",
+    "source": "Kansas Division of the Budget fiscal note on HB2620 (2/19/2026), incorporating KDOR estimate",
+    "source_url": "https://kslegislature.gov/b2025_26/bills/download/?apn=b2025_26/ds_docs_li/fisc_note_hb2620_00_0000/fisc_note_hb2620_00_0000.pdf",
+    "score_type": "fiscal_note"
+   },
+   "state": "KS"
+  },
+  {
+   "id": "state.ks.hb2629",
+   "name": "KS HB2629 \u2014 standard deduction base increase",
+   "category": "State reform",
+   "period": 2026,
+   "budget_measure": "ks_income_tax",
+   "description": "Raises the base standard deduction to $3,805 single / $8,640 joint / $6,480 HoH for TY2026. Benchmark is KDOR's single-tax-year liability simulation (-$10.4M on TY2024 data); the headline FY2027 figure (-$13.8M) blends TY2026 with 30% of TY2027 withholding and is NOT the comparator. SEPARATE/SURVIVING_SPOUSE amounts follow statutory ratios.",
+   "parameter_changes": {
+    "gov.states.ks.tax.income.deductions.standard.base_amount.JOINT": {
+     "2026-01-01.2100-12-31": 8640
+    },
+    "gov.states.ks.tax.income.deductions.standard.base_amount.SINGLE": {
+     "2026-01-01.2100-12-31": 3805
+    },
+    "gov.states.ks.tax.income.deductions.standard.base_amount.SEPARATE": {
+     "2026-01-01.2100-12-31": 4320
+    },
+    "gov.states.ks.tax.income.deductions.standard.base_amount.SURVIVING_SPOUSE": {
+     "2026-01-01.2100-12-31": 8640
+    },
+    "gov.states.ks.tax.income.deductions.standard.base_amount.HEAD_OF_HOUSEHOLD": {
+     "2026-01-01.2100-12-31": 6480
+    }
+   },
+   "benchmark": {
+    "score": -10400000,
+    "window": "TY2026",
+    "source": "Kansas Division of the Budget fiscal note on HB2629 (2/20/2026): KDOR simulation on TY2024 return data",
+    "source_url": "https://kslegislature.gov/b2025_26/bills/download/?apn=b2025_26/ds_docs_li/fisc_note_hb2629_00_0000/fisc_note_hb2629_00_0000.pdf",
+    "score_type": "fiscal_note"
+   },
+   "state": "KS"
+  },
+  {
+   "id": "state.id.sb1450",
+   "name": "ID SB1450 \u2014 $205/child CTC made permanent",
+   "category": "State reform",
+   "period": 2026,
+   "budget_measure": "id_income_tax",
+   "description": "Removes the 1/1/2026 sunset on Idaho's $205 nonrefundable per-child credit. The SOP frames it as no impact vs the DFM forecast (which assumed continuation) and puts the standalone cost at $63-65M/yr, with general-fund revenue rising ~$66M in FY2027 absent extension - the extension-cost benchmark used here. Sponsor-drafted range, not an independent fiscal-office point estimate.",
+   "parameter_changes": {
+    "gov.contrib.states.id.s1450.in_effect": {
+     "2026-01-01.2100-12-31": true
+    }
+   },
+   "benchmark": {
+    "score": -66000000,
+    "window": "FY2027",
+    "source": "Idaho S1450 Statement of Purpose / Fiscal Note RS33273 (sponsor-prepared under Joint Rule 18)",
+    "source_url": "https://legislature.idaho.gov/wp-content/uploads/sessioninfo/2026/legislation/S1450SOP.pdf",
+    "score_type": "approximation"
+   },
+   "state": "ID"
+  },
+  {
+   "id": "state.ct.sb69",
+   "name": "CT SB69 \u2014 EITC repeal (40% of federal)",
+   "category": "State reform",
+   "period": 2026,
+   "budget_measure": "ct_income_tax",
+   "description": "Eliminates the CT EITC (40% federal match + qualifying-child bonus). SB69 was a Proposed Bill with no fiscal note (OFA only scores bills reported out of committee); the benchmark is OFA's own tax-expenditure repeal figure - fiscal-year expenditure basis, static.",
+   "parameter_changes": {
+    "gov.states.ct.tax.income.credits.eitc.match": {
+     "2026-01-01": 0
+    },
+    "gov.states.ct.tax.income.credits.eitc.qualifying_child_bonus.in_effect": {
+     "2026-01-01": false
+    }
+   },
+   "benchmark": {
+    "score": 240500000,
+    "window": "FY2027",
+    "source": "CT OFA Connecticut Tax Expenditure Report, February 2026, summary table p.5 (detail p.37): EITC revenue gain in FY27 if repealed",
+    "source_url": "https://www.cga.ct.gov/ofa/Documents/year/TER/2026TER-20260202_%20Tax%20Expenditure%20Report%20FY%2026.pdf",
+    "score_type": "fiscal_note"
+   },
+   "state": "CT"
+  },
+  {
+   "id": "state.ct.hb5134",
+   "name": "CT HB5134 \u2014 new $600/child refundable CTC",
+   "category": "State reform",
+   "period": 2026,
+   "budget_measure": "ct_income_tax",
+   "description": "Refundable $600/child CTC (max 3 children), AGI under $100k single / $200k joint. HB5134 itself (a Proposed Bill) has no fiscal note; OFA scored the same credit design in sSB-6 sec. 1 at -$316M/yr from FY27 (income-tax-only). Not enacted in the FY27 budget.",
+   "parameter_changes": {
+    "gov.contrib.states.ct.refundable_ctc.in_effect": {
+     "2026-01-01": true
+    }
+   },
+   "benchmark": {
+    "score": -316000000,
+    "window": "FY2027",
+    "source": "CT OFA fiscal note on sSB-6 sec. 1 (File #705, 4/17/2026) - the identical $600/child, up-to-3-children refundable CTC",
+    "source_url": "https://www.cga.ct.gov/2026/FN/PDF/2026SB-00006-R010705-FN.PDF",
+    "score_type": "fiscal_note"
+   },
+   "state": "CT"
+  },
+  {
+   "id": "state.ct.rebate2026",
+   "name": "CT 2026 one-time tax rebate ($200/$400)",
+   "category": "State reform",
+   "period": 2026,
+   "budget_measure": "ct_income_tax",
+   "description": "Gov. Lamont's proposed one-time $200/person ($400 joint) rebate for AGI under $200k/$400k (~1.6M taxpayers). OPM budgeted -$500.0M one-time in FY27. OPM's design includes a $320/$320k HoH tier and $200/$200k MFS tier - check the contrib parameterization covers them. Dropped from the adopted budget; the OPM estimate stands as the benchmark.",
+   "parameter_changes": {
+    "gov.contrib.states.ct.tax_rebate_2026.in_effect": {
+     "2026-01-01": true
+    }
+   },
+   "benchmark": {
+    "score": -500000000,
+    "window": "FY2027 (one-time)",
+    "source": "CT OPM, Governor's FY2027 Midterm Adjustment Budget (2/4/2026), Refunds of Taxes line; corroborated by OFA's Synopsis of the Governor's Budget",
+    "source_url": "https://portal.ct.gov/-/media/opm/budget/2027-midterm/2027midterm_pp_final-2-4-26.pdf",
+    "score_type": "fiscal_note"
+   },
+   "state": "CT"
+  },
+  {
+   "id": "federal.arpa_ctc_2021",
+   "name": "ARPA 2021 CTC expansion (applied to 2024 data)",
+   "category": "Federal reform",
+   "period": 2024,
+   "budget_measure": "income_tax",
+   "description": "The ARPA $3,000/$3,600 fully-refundable CTC applied as a 2024-period reform and compared to JCT's TY2021 score (the FY21+FY22 sum, since advance payments and filing-season refunds straddle fiscal years). Three-year population/income vintage gap: 2024 incomes are higher (phase-outs bite more) and child counts slightly lower - an approximation band, not an exact target.",
+   "parameter_changes": {
+    "gov.irs.credits.ctc.amount.arpa[0].amount": {
+     "2024-01-01": 3600
+    },
+    "gov.irs.credits.ctc.amount.arpa[1].amount": {
+     "2024-01-01": 3000
+    },
+    "gov.irs.credits.ctc.refundable.fully_refundable": {
+     "2024-01-01": true
+    },
+    "gov.irs.credits.ctc.phase_out.arpa.in_effect": {
+     "2024-01-01": true
+    }
+   },
+   "benchmark": {
+    "score": -105075000000,
+    "window": "FY2021+FY2022 (single tax year 2021)",
+    "source": "JCT JCX-14-21 (3/9/2021), H.R.1319 as amended: Child Tax Credit improvements for 2021, FY21 -$25,826M + FY22 -$79,249M",
+    "source_url": "https://www.jct.gov/publications/2021/jcx-14-21/",
+    "score_type": "approximation"
+   }
+  },
+  {
+   "id": "federal.arpa_childless_eitc",
+   "name": "ARPA 2021 childless EITC expansion (applied to 2024 data)",
+   "category": "Federal reform",
+   "period": 2024,
+   "budget_measure": "income_tax",
+   "description": "ARPA's one-year childless-EITC expansion (max ~$1,502, 15.3% phase-in/out, phase-out start $11,610, age 19+, 65 cap removed) applied at 2024 and compared to JCT's TY2021 score. All amounts are 2021 dollars applied to 2024 wage levels, which systematically shrinks the eligible range relative to the 2021 economy JCT scored - expect the model below the benchmark. Same vintage caveat as the ARPA CTC row.",
+   "parameter_changes": {
+    "gov.irs.credits.eitc.max[0].amount": {
+     "2024-01-01": 1502
+    },
+    "gov.irs.credits.eitc.phase_in_rate[0].amount": {
+     "2024-01-01": 0.153
+    },
+    "gov.irs.credits.eitc.phase_out.rate[0].amount": {
+     "2024-01-01": 0.153
+    },
+    "gov.irs.credits.eitc.eligibility.age.min": {
+     "2024-01-01": 19
+    },
+    "gov.irs.credits.eitc.eligibility.age.max": {
+     "2024-01-01": 100
+    },
+    "gov.irs.credits.eitc.phase_out.start[0].amount": {
+     "2024-01-01": 11610
+    }
+   },
+   "benchmark": {
+    "score": -11882000000,
+    "window": "FY2021-FY2031 (single tax year 2021)",
+    "source": "JCT JCX-14-21 (3/9/2021): strengthening the EITC for individuals with no qualifying children, total -$11,882M (nearly all FY2022)",
+    "source_url": "https://www.jct.gov/publications/2021/jcx-14-21/",
+    "score_type": "approximation"
+   }
+  },
+  {
+   "id": "federal.cbo_rates_plus_1pt",
+   "name": "CBO option \u2014 all individual rates +1pt (applied to 2024 data)",
+   "category": "Federal reform",
+   "period": 2024,
+   "budget_measure": "income_tax",
+   "description": "Raises all seven statutory rates on ordinary income by 1 percentage point. CBO/JCT scored $82.3B in FY2025 and $106.3B in FY2026 (first full year) on a pre-OBBBA baseline with TCJA rates in effect; applied here to 2024 law (also TCJA rates), so the comparison is same-rate-structure but different vintage - an approximation band.",
+   "parameter_changes": {
+    "gov.irs.income.bracket.rates.1": {
+     "2024-01-01": 0.11
+    },
+    "gov.irs.income.bracket.rates.2": {
+     "2024-01-01": 0.13
+    },
+    "gov.irs.income.bracket.rates.3": {
+     "2024-01-01": 0.23
+    },
+    "gov.irs.income.bracket.rates.4": {
+     "2024-01-01": 0.25
+    },
+    "gov.irs.income.bracket.rates.5": {
+     "2024-01-01": 0.33
+    },
+    "gov.irs.income.bracket.rates.6": {
+     "2024-01-01": 0.36
+    },
+    "gov.irs.income.bracket.rates.7": {
+     "2024-01-01": 0.38
+    }
+   },
+   "benchmark": {
+    "score": 106300000000,
+    "window": "FY2026 (first full fiscal year)",
+    "source": "CBO, Options for Reducing the Deficit: 2025 to 2034 (Dec 2024), 'Increase Individual Income Tax Rates on Ordinary Income', alternative 1 (JCT staff estimate)",
+    "source_url": "https://www.cbo.gov/budget-options/60937",
+    "score_type": "approximation"
+   }
+  },
+  {
+   "id": "federal.ubi_mechanical",
+   "name": "UBI mechanical check \u2014 $1,200/person/year",
+   "category": "Mechanical check",
+   "period": 2024,
+   "budget_measure": "basic_income",
+   "description": "A flat $1,200/person/year universal basic income measured on the basic_income spending variable itself (not income_tax). The model total must equal weighted-person-mass x $1,200, so this row directly audits the dataset's calibrated person weights through the reform pathway - a UBI-shaped self-consistency check with an exact external anchor.",
+   "parameter_changes": {
+    "gov.contrib.ubi_center.basic_income.amount.person.flat": {
+     "2024-01-01": 1200
+    }
+   },
+   "benchmark": {
+    "score": 408133185600,
+    "window": "CY2024",
+    "source": "Mechanical: Census PEP Vintage 2024 national resident population (340,110,988) x $1,200",
+    "source_url": "https://www.census.gov/programs-surveys/popest.html",
+    "score_type": "mechanical"
+   }
   }
  ]
 }

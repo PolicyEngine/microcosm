@@ -190,6 +190,105 @@
       "name": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",
       "period": 2024,
       "value_operation": "identity"
+    },
+    {
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "self_employed_health_insurance_ald",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "health_savings_account_ald",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "student_loan_interest_ald",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "concept_note": "JCT's Keogh line is a NET EXCLUSION (contributions + inside buildup), broader than this ALD alone - broad-fit anchor only (ledger#118).",
+        "neutralized_variable": "self_employed_pension_contribution_ald",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "concept_note": "JCT's traditional-IRA line is a NET EXCLUSION (contributions + inside buildup), broader than the contribution deduction alone - broad-fit anchor only (ledger#118).",
+        "neutralized_variable": "traditional_ira_contributions",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "concept_note": "JCT publishes the CDCC COMBINED with the employer-provided child care exclusion (JCX-48-24 fn 11 incl. DCFSA); neutralizing cdcc alone under-covers the line - broad-fit anchor, not a clean credit-only concept (ledger#118).",
+        "neutralized_variable": "cdcc",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
     }
   ]
 }
