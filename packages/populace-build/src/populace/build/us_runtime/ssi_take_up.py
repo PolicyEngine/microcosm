@@ -1619,11 +1619,14 @@ def us_ssi_take_up_delivery_gate(
     expected_targets = _normalize_targets(targets)
     tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     failures: list[str] = []
+    ordinary_delivery_misses: list[str] = []
     enforced_rows: list[dict[str, object]] = []
     fenced_rows: list[dict[str, object]] = []
-    prior_weight_basis_retry_applicable = False
+    structural_support_failure_present = False
+    invalid_diagnostics_failure_present = False
     rows: Mapping[str, Mapping[str, object]] = {}
     if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
+        invalid_diagnostics_failure_present = True
         failures.append(
             "SSI take-up delivery gate requires schema version "
             f"{_DIAGNOSTICS_SCHEMA_VERSION} diagnostics."
@@ -1632,6 +1635,7 @@ def us_ssi_take_up_delivery_gate(
         try:
             rows = _band_rows_by_key(diagnostics)
         except ValueError as error:
+            invalid_diagnostics_failure_present = True
             failures.append(str(error))
     for key, target in expected_targets.items():
         row = rows.get(key)
@@ -1644,6 +1648,7 @@ def us_ssi_take_up_delivery_gate(
         except (TypeError, ValueError):
             selected = capacity = floor = float("nan")
         if not all(np.isfinite(value) for value in (selected, capacity, floor)):
+            invalid_diagnostics_failure_present = True
             failures.append(
                 f"SSI take-up age band {key!r} has nonfinite delivered "
                 "recipient/capacity/floor diagnostics."
@@ -1666,7 +1671,8 @@ def us_ssi_take_up_delivery_gate(
         }
         if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS:
             enforced_rows.append(summary)
-            if floor > target + 1e-6:
+            if floor > target:
+                structural_support_failure_present = True
                 failures.append(
                     f"SSI take-up enforced age band {key!r} has reporter "
                     f"candidate floor {floor:,.0f} above ledger target "
@@ -1675,14 +1681,16 @@ def us_ssi_take_up_delivery_gate(
                     "reporter identification/support rather than changing "
                     "the target, loss, or prior."
                 )
-            elif capacity <= floor and target > floor + 1e-6:
+            elif capacity <= floor and target > floor:
+                structural_support_failure_present = True
                 failures.append(
                     f"SSI take-up enforced age band {key!r} has no drawable "
                     f"candidate mass: capacity {capacity:,.0f}, reporter "
                     f"floor {floor:,.0f}, target {target:,.0f}. No Bernoulli "
                     "prior can close the support shortfall."
                 )
-            elif capacity <= target:
+            elif capacity <= target and floor < target:
+                structural_support_failure_present = True
                 failures.append(
                     f"SSI take-up enforced age band {key!r} has insufficient "
                     f"candidate support: capacity {capacity:,.0f} does not "
@@ -1691,17 +1699,11 @@ def us_ssi_take_up_delivery_gate(
                     "eligibility/support."
                 )
             elif abs(selected - target) > tolerance * target + 1e-6:
-                prior_weight_basis_retry_applicable = True
-                failures.append(
+                ordinary_delivery_misses.append(
                     f"SSI take-up delivered {selected:,.0f} weighted "
                     f"recipients for enforced age band {key!r} against the "
                     f"ledger target {target:,.0f} ({signed_relative:+.1%} vs "
-                    f"the ±{tolerance:.0%} envelope). The frozen thresholds' "
-                    "weight basis is not true of the release weights: re-run "
-                    "the builder with --ssi-take-up-prior-weight-basis "
-                    "pointing at this attempt's us_ssi_take_up.json so the "
-                    "thresholds are recomputed exactly once from the "
-                    "delivered weights (populace#507/#508)."
+                    f"the ±{tolerance:.0%} envelope)."
                 )
         else:
             fenced_rows.append(
@@ -1716,6 +1718,25 @@ def us_ssi_take_up_delivery_gate(
                     ),
                 }
             )
+    prior_weight_basis_retry_applicable = bool(ordinary_delivery_misses) and not (
+        structural_support_failure_present or invalid_diagnostics_failure_present
+    )
+    if prior_weight_basis_retry_applicable:
+        failures.extend(
+            failure + " The frozen thresholds' weight basis is not true of the "
+            "release weights: re-run the builder with "
+            "--ssi-take-up-prior-weight-basis pointing at this attempt's "
+            "us_ssi_take_up.json so the thresholds are recomputed exactly "
+            "once from the delivered weights (populace#507/#508)."
+            for failure in ordinary_delivery_misses
+        )
+    else:
+        failures.extend(
+            failure + " This ordinary delivered-weight miss co-occurs with a "
+            "non-retryable SSI diagnostics/support failure, so changing the "
+            "prior weight basis cannot clear this run."
+            for failure in ordinary_delivery_misses
+        )
     return GateResult(
         name="ssi_take_up_delivery",
         passed=not failures,
@@ -1727,6 +1748,11 @@ def us_ssi_take_up_delivery_gate(
             "fenced_bands": fenced_rows,
             "prior_weight_basis_retry_applicable": (
                 prior_weight_basis_retry_applicable
+            ),
+            "ordinary_delivery_miss_present": bool(ordinary_delivery_misses),
+            "structural_support_failure_present": (structural_support_failure_present),
+            "invalid_diagnostics_failure_present": (
+                invalid_diagnostics_failure_present
             ),
         },
     )

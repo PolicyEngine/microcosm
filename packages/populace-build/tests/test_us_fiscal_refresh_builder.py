@@ -8702,6 +8702,9 @@ def test_enforce_ssi_delivery_writes_structural_evidence_without_retry_advice(
     )
 
     assert any("insufficient candidate support" in failure for failure in failures)
+    assert any(
+        "non-retryable failure diagnostics written" in failure for failure in failures
+    )
     assert any("retry is not applicable" in failure for failure in failures)
     assert not any(
         "for the --ssi-take-up-prior-weight-basis retry" in failure

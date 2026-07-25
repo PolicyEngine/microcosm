@@ -322,7 +322,7 @@ def test_saturated_band_prior_falls_back_to_the_observed_reporter_rate() -> None
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
-def test_every_band_saturated_stays_nonconstant_and_passes_the_gate() -> None:
+def test_every_band_saturated_stays_nonconstant_and_passes_assignment_gate() -> None:
     """Universal saturation must not flag the whole pool.
 
     Build M's first sparse run died here: the restored disability battery put
@@ -331,8 +331,9 @@ def test_every_band_saturated_stays_nonconstant_and_passes_the_gate() -> None:
     Bernoulli(1.0) — a constant, signal-free flag. The prior therefore falls
     back to the observed reporter rate (reporter mass over capacity) and the
     pool keeps signal. Candidates are no longer force-selected to chase the
-    count (populace#469): the SSA-count miss is calibration's to close
-    (populace#470) and ships in the scorecard.
+    count (populace#469), so the assignment-integrity gate accepts the
+    documented fallback. The separate delivery gate still rejects saturated
+    support in enforced adult bands; only under-18 remains fenced.
     """
 
     targets = {"under_18": 1e6, "18_64": 1e6, "65_plus": 1e6}
@@ -404,6 +405,32 @@ def test_reporter_floor_equal_target_is_explicit_and_exact() -> None:
     assert _band_prior(20.0, 20.0, 20.0) == 0.0
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
     assert us_ssi_take_up_delivery_gate(diagnostics, targets=targets).passed
+
+
+def test_reporter_floor_equal_target_and_capacity_passes_delivery_gate() -> None:
+    frame, potential = _frame()
+    person = frame.table("person")
+    adult = person["person_source_id"].str.startswith("18_64:")
+    anchored_candidate = person["person_source_id"].eq("18_64:0")
+    potential[(adult & ~anchored_candidate).to_numpy()] = 0.0
+    targets = {key: _REPORTER_FLOOR for key in _TARGETS}
+
+    _, diagnostics = with_us_ssi_take_up(
+        frame,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=targets,
+    )
+    row = diagnostics["age_bands"][1]
+    assert row["candidate_capacity"] == pytest.approx(_REPORTER_FLOOR)
+    assert row["reporter_candidate_floor"] == pytest.approx(_REPORTER_FLOOR)
+    assert row["selected_recipient_weight"] == pytest.approx(_REPORTER_FLOOR)
+    assert row["assignment_prior"] == 0.0
+    assert row["assignment_prior_status"] == "reporter_floor_meets_target"
+
+    delivery = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    assert delivery.passed
+    assert delivery.details["prior_weight_basis_retry_applicable"] is False
 
 
 def test_delivery_gate_fails_reporter_floor_excess_inside_tolerance() -> None:
@@ -1216,6 +1243,34 @@ def test_delivery_gate_names_saturated_enforced_support_inside_tolerance() -> No
     assert gate.details["prior_weight_basis_retry_applicable"] is False
 
 
+def test_mixed_structural_and_ordinary_misses_are_not_retryable() -> None:
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(
+        diagnostics,
+        **{"18_64": 51.0, "65_plus": 30.0},
+    )
+    adult = delivered["age_bands"][1]
+    adult["reporter_candidate_floor"] = 51.0
+    adult["prior_status_recomputed_from_current_weights"] = (
+        "reporter_floor_exceeds_target"
+    )
+
+    gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
+    assert not gate.passed
+    assert any(
+        "Forced reporters alone over-deliver" in failure for failure in gate.failures
+    )
+    assert any(
+        "65_plus" in failure
+        and "co-occurs with a non-retryable" in failure
+        and "--ssi-take-up-prior-weight-basis" not in failure
+        for failure in gate.failures
+    )
+    assert gate.details["ordinary_delivery_miss_present"] is True
+    assert gate.details["structural_support_failure_present"] is True
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
+
+
 def test_delivery_gate_boundary_sits_at_the_documented_tolerance() -> None:
     _, _, _, diagnostics = _assigned()
     tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
@@ -1237,10 +1292,15 @@ def test_delivery_gate_rejects_malformed_diagnostics() -> None:
     truncated["age_bands"] = truncated["age_bands"][:1]
     gate = us_ssi_take_up_delivery_gate(truncated, targets=_TARGETS)
     assert not gate.passed
+    assert gate.details["invalid_diagnostics_failure_present"] is True
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
 
     wrong_schema = copy.deepcopy(diagnostics)
     wrong_schema["schema_version"] = 2
-    assert not us_ssi_take_up_delivery_gate(wrong_schema, targets=_TARGETS).passed
+    gate = us_ssi_take_up_delivery_gate(wrong_schema, targets=_TARGETS)
+    assert not gate.passed
+    assert gate.details["invalid_diagnostics_failure_present"] is True
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
 
 
 def test_gate_rejects_basis_arithmetic_drift() -> None:

@@ -5468,7 +5468,7 @@ def _enforce_ssi_take_up_delivery(
             )
         else:
             failures.append(
-                "SSI take-up structural-support diagnostics written to "
+                "SSI take-up non-retryable failure diagnostics written to "
                 f"{failed_basis_path}; a --ssi-take-up-prior-weight-basis "
                 "retry is not applicable."
             )
@@ -5480,7 +5480,7 @@ def _enforce_ssi_take_up_delivery(
             )
         else:
             failures.append(
-                "SSI take-up structural-support diagnostics could NOT be "
+                "SSI take-up non-retryable failure diagnostics could NOT be "
                 f"written: {error}"
             )
     try:
