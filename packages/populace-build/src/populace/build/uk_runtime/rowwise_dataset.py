@@ -15,6 +15,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.gates import GateResult
+from populace.build.uk_runtime.geography_ladder import (
+    UK_GEOGRAPHY_LADDER_COLUMNS,
+    UkOaLadder,
+    assign_uk_geography_ladder,
+    uk_geography_ladder_gate,
+)
 from populace.build.uk_runtime.national_build import (
     _mass_log_from_stored,
     _read_weight_metadata,
@@ -24,6 +31,7 @@ from populace.build.uk_runtime.national_build import (
 from populace.build.uk_runtime.rowwise_geography import (
     ROWWISE_GEOGRAPHY_COLUMNS,
     RowwiseGeographyAssignment,
+    _source_household_keys,
     assign_household_geography,
     clone_entity_frame,
     id_multiplier_for_values,
@@ -209,6 +217,278 @@ def clone_uk_dataset_tables_with_rowwise_geography(
     )
     validate_uk_rowwise_dataset_tables(result.person, result.benunit, result.household)
     return result
+
+
+@dataclass(frozen=True)
+class UKLadderRowwiseDatasetResult:
+    """Cloned UK tables with OA-ladder geography and the passed release gate.
+
+    The ladder route is the release path (#495 increment 6a): geography comes
+    from :func:`assign_uk_geography_ladder` under the artifact's vintage
+    discipline, the release-blocking :func:`uk_geography_ladder_gate` must
+    pass before a result exists, and the #501 weight-kind/mass-log fence
+    chain carries unchanged. Declared design delta vs the crosswalk route:
+    no cross-clone constituency collision avoidance — duplicate
+    (source, constituency) pairs are a reported diagnostic.
+    """
+
+    person: pd.DataFrame
+    benunit: pd.DataFrame
+    household: pd.DataFrame
+    time_period: str
+    gate: GateResult
+    n_clones: int
+    id_multiplier: int
+    output_path: Path | None = None
+    household_weight_kind: WeightKind = WeightKind.DESIGN
+    mass_log: tuple[MassChangeRecord, ...] = ()
+
+
+def clone_uk_dataset_tables_with_ladder_geography(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    n_clones: int = 1,
+    seed: int = 42,
+    time_period: int | str | None = None,
+    source_year: int | None = None,
+    id_multiplier: int | None = None,
+    clone_index_column: str | None = "clone_index",
+    expected_constituency_vintage: str | None = None,
+    region_column: str = "region",
+    household_weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
+    source_lineage_modulus: int | None = None,
+) -> UKLadderRowwiseDatasetResult:
+    """Clone UK tables and assign geography through the OA ladder."""
+
+    _validate_weight_metadata(household_weight_kind, mass_log)
+    person_frame = person.copy()
+    benunit_frame = benunit.copy()
+    household_frame = household.copy()
+    _validate_input_tables(
+        person_frame,
+        benunit_frame,
+        household_frame,
+        household_id_column="household_id",
+        household_weight_column="household_weight",
+    )
+    if source_lineage_modulus is not None:
+        household_frame = apply_uk_source_lineage_modulus(
+            household_frame,
+            modulus=source_lineage_modulus,
+        )
+    household_frame = _attach_source_lineage(household_frame, source_year=source_year)
+    input_total = float(
+        np.asarray(
+            pd.to_numeric(household_frame["household_weight"], errors="raise"),
+            dtype=np.float64,
+        ).sum()
+    )
+    if not np.isfinite(input_total):
+        raise ValueError("household weight total must be finite before cloning.")
+    if input_total <= 0.0:
+        raise ValueError(
+            "household weights must carry positive total mass before cloning."
+        )
+    _assert_mass_log_current(mass_log, input_total)
+
+    if id_multiplier is None:
+        id_multiplier = id_multiplier_for_values(
+            household_frame["household_id"],
+            person_frame["person_id"],
+            person_frame["person_household_id"],
+            person_frame["person_benunit_id"],
+            benunit_frame["benunit_id"],
+        )
+    cloned_household = clone_entity_frame(
+        household_frame,
+        id_columns=HOUSEHOLD_ID_COLUMNS,
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        clone_index_column=clone_index_column,
+    ).reset_index(drop=True)
+    cloned_household["household_weight"] = (
+        np.asarray(cloned_household["household_weight"], dtype=np.float64) / n_clones
+    )
+    cloned_person = clone_entity_frame(
+        person_frame,
+        id_columns=PERSON_ID_COLUMNS,
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        clone_index_column=clone_index_column,
+    ).reset_index(drop=True)
+    cloned_benunit = clone_entity_frame(
+        benunit_frame,
+        id_columns=BENUNIT_ID_COLUMNS,
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        clone_index_column=clone_index_column,
+    ).reset_index(drop=True)
+
+    assigned = assign_uk_geography_ladder(
+        cloned_household,
+        ladder,
+        seed=seed,
+        expected_constituency_vintage=expected_constituency_vintage,
+        region_column=region_column,
+    ).reset_index(drop=True)
+
+    output_total = float(
+        np.asarray(assigned["household_weight"], dtype=np.float64).sum()
+    )
+    _assert_household_mass_conserved(input_total, output_total)
+    clone_record = MassChangeRecord(
+        entity="household",
+        old_total=input_total,
+        new_total=output_total,
+        declared_factor=1.0,
+        reason=(
+            f"Rowwise ladder clone at n_clones={n_clones} divides each "
+            f"household weight by {n_clones}; total household mass is "
+            "conserved."
+        ),
+    )
+
+    gate = uk_geography_ladder_gate(
+        assigned,
+        np.asarray(assigned["household_weight"], dtype=np.float64),
+        region_column=region_column,
+    )
+    if not gate.passed:
+        raise ValueError(
+            "UK geography ladder gate failed on the cloned assignment: "
+            + "; ".join(gate.failures)
+        )
+
+    result = UKLadderRowwiseDatasetResult(
+        person=cloned_person,
+        benunit=cloned_benunit,
+        household=assigned,
+        time_period=_normalise_time_period(time_period, source_year=source_year),
+        gate=gate,
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        household_weight_kind=household_weight_kind,
+        mass_log=(*mass_log, clone_record),
+    )
+    validate_uk_ladder_rowwise_dataset_tables(
+        result.person,
+        result.benunit,
+        result.household,
+    )
+    return result
+
+
+def clone_uk_dataset_with_ladder_geography(
+    dataset: Any | str | Path,
+    ladder: UkOaLadder,
+    *,
+    output_path: str | Path | None = None,
+    n_clones: int = 1,
+    seed: int = 42,
+    source_year: int | None = None,
+    id_multiplier: int | None = None,
+    clone_index_column: str | None = "clone_index",
+    expected_constituency_vintage: str | None = None,
+    region_column: str = "region",
+    source_lineage_modulus: int | None = None,
+) -> UKLadderRowwiseDatasetResult:
+    """Clone a UK dataset object or H5 with OA-ladder geography.
+
+    Weight kind and mass log come from the input exactly as in the crosswalk
+    route (absence keeps the national loader's DESIGN semantics; unknown
+    kinds fail closed).
+    """
+
+    tables = _dataset_tables(dataset, source_year=source_year)
+    result = clone_uk_dataset_tables_with_ladder_geography(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        ladder=ladder,
+        n_clones=n_clones,
+        seed=seed,
+        time_period=tables["time_period"],
+        source_year=source_year,
+        id_multiplier=id_multiplier,
+        clone_index_column=clone_index_column,
+        expected_constituency_vintage=expected_constituency_vintage,
+        region_column=region_column,
+        household_weight_kind=tables["household_weight_kind"],
+        mass_log=tables["mass_log"],
+        source_lineage_modulus=source_lineage_modulus,
+    )
+    if output_path is None:
+        return result
+    path = write_uk_rowwise_dataset(result, output_path)
+    return UKLadderRowwiseDatasetResult(
+        person=result.person,
+        benunit=result.benunit,
+        household=result.household,
+        time_period=result.time_period,
+        gate=result.gate,
+        n_clones=result.n_clones,
+        id_multiplier=result.id_multiplier,
+        output_path=path,
+        household_weight_kind=result.household_weight_kind,
+        mass_log=result.mass_log,
+    )
+
+
+def validate_uk_ladder_rowwise_dataset_tables(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+) -> None:
+    """Validate entity IDs, links, and ladder geography columns."""
+
+    _require_columns(person, PERSON_ID_COLUMNS, label="person")
+    _require_columns(benunit, BENUNIT_ID_COLUMNS, label="benunit")
+    _require_columns(household, HOUSEHOLD_ID_COLUMNS, label="household")
+    _require_columns(household, UK_GEOGRAPHY_LADDER_COLUMNS, label="household")
+
+    _require_unique(person, "person_id", label="person")
+    _require_unique(benunit, "benunit_id", label="benunit")
+    _require_unique(household, "household_id", label="household")
+
+    household_ids = set(household["household_id"])
+    missing_households = sorted(set(person["person_household_id"]) - household_ids)
+    if missing_households:
+        raise ValueError(
+            "person.person_household_id contains value(s) absent from household: "
+            f"{missing_households[:5]}."
+        )
+    benunit_ids = set(benunit["benunit_id"])
+    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
+    if missing_benunits:
+        raise ValueError(
+            "person.person_benunit_id contains value(s) absent from benunit: "
+            f"{missing_benunits[:5]}."
+        )
+
+
+def _attach_source_lineage(
+    household: pd.DataFrame,
+    *,
+    source_year: int | None,
+) -> pd.DataFrame:
+    """Default the immediate-layer lineage columns the crosswalk route adds."""
+
+    frame = household
+    if "source_household_id" not in frame.columns:
+        frame["source_household_id"] = frame["household_id"]
+    if "source_year" not in frame.columns and source_year is not None:
+        frame["source_year"] = source_year
+    if "source_household_key" not in frame.columns:
+        frame["source_household_key"] = _source_household_keys(
+            frame["source_year"] if "source_year" in frame.columns else None,
+            frame["source_household_id"],
+            source_year=source_year,
+        )
+    return frame
 
 
 def clone_uk_dataset_with_rowwise_geography(
