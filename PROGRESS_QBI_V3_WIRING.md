@@ -2,11 +2,12 @@
 
 ## State
 
-The offline `qbi-v3-wiring` branch is assembled in
+The offline `qbi-v3-wiring` branch is complete in
 `.claude/worktrees/populace-wt-530`. The evidence-consuming assumptions
 builder, persisted full-artifact calibration, version-3 simulation path, host
-transform, and replay diagnostics are implemented and pass focused validation.
-Full-workspace pytest and Ruff validation remain.
+transform, replay diagnostics, and final report are implemented. Full-workspace
+pytest, Ruff, repository-contract, reproducibility, and offline wheel checks
+are green.
 
 ## Done
 
@@ -65,9 +66,15 @@ Full-workspace pytest and Ruff validation remain.
   `0.020430544809711643`.
 - Rebuilt the committed assumptions resource from the pinned H5 and confirmed
   byte-for-byte equality.
+- Full-workspace pytest passed with 3,293 tests, 132 skips, and zero failures
+  in 121.40 seconds using both required restricted-data environment variables.
+- Full-workspace Ruff, changed-file format, diff, country-spec, manifest,
+  incumbent-reference, and entrypoint-heuristic checks pass.
+- Built the `populace-build` wheel offline from the cached build backend and
+  confirmed that it contains the v3 assumptions and both evidence resources.
+- Wrote `FINAL_REPORT_QBI_V3_WIRING.md` with all required receipts, the one
+  merge conflict, and an explicit no-deviation statement.
 
 ## Next
 
-- Run full-workspace pytest and Ruff plus the final repository-contract sweep.
-- Write the final report to the requested output file and leave every result
-  committed locally.
+- Supervisor pushes the completed local branch and opens the pull request.

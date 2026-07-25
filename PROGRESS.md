@@ -12,8 +12,8 @@ resource lane and remains offline.
 - The prescribed sibling merge is committed in
   `.claude/worktrees/populace-wt-530`.
 - The version-3 assumptions builder, persisted calibration, runtime/host
-  wiring, and diagnostics are implemented and pass focused validation.
-  Full-workspace pytest and Ruff remain.
+  wiring, diagnostics, and final report are complete. Full-workspace pytest,
+  Ruff, repository contracts, reproducibility, and offline wheel checks pass.
 
 ## Current done
 
@@ -27,11 +27,14 @@ resource lane and remains offline.
 - Emitted the reproducible full-artifact assumptions resource, wired the five
   new independent v3 streams, and added unit, host-parity, synthetic, and
   restricted replay coverage.
+- Completed the full-workspace run with 3,293 passes, 132 skips, and zero
+  failures; completed Ruff, formatting, spec-only, manifest, incumbent,
+  entrypoint, reproducibility, and wheel checks.
+- Recorded the complete handoff in `FINAL_REPORT_QBI_V3_WIRING.md`.
 
 ## Current next
 
-- Run full-workspace validation, then write and commit the dedicated final
-  report for the supervisor handoff.
+- Supervisor pushes `qbi-v3-wiring` and opens the pull request.
 
 ## Historical progress
 
