@@ -27,10 +27,12 @@ item 8; simulation wiring is out of scope.
 - Implemented and unit-tested the SOI workbook parsers, publication-flag
   handling, wage/capital ratios, crosswalk hints, and schema validator; the
   audited real workbooks dry-run successfully.
+- Added and tested the deterministic configurable builder with input hashes and
+  SCF DTA/ZIP parity.
 
 ## Current next
 
-- Add and execute the configurable restricted-input builder.
+- Execute the builder and inspect the two derived evidence resources.
 
 ## Historical progress
 

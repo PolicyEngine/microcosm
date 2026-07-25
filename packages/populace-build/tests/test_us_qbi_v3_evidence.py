@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
+import zipfile
 from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,6 +25,19 @@ from populace.build.us_runtime.qbi_v3_evidence import (
     validate_qbi_wage_capital_priors_resource,
     weighted_inverse_cdf,
 )
+
+ROOT = Path(__file__).resolve().parents[3]
+BUILDER_PATH = ROOT / "tools/build_us_qbi_v3_evidence.py"
+
+
+def _load_builder():
+    spec = importlib.util.spec_from_file_location(
+        "qbi_v3_evidence_builder", BUILDER_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    return builder
 
 
 def _scf_fixture(
@@ -107,6 +123,27 @@ def test_scf_implicates_pool_with_weight_divided_by_five() -> None:
     assert first["whole_net_income"] == 0.0
     second = records.loc[records["business_slot"].eq(2)].iloc[0]
     assert second["owned_net_income"] == 2_000.0
+
+
+def test_builder_reads_equivalent_scf_dta_and_zip_fixtures(tmp_path) -> None:
+    source = _scf_fixture([{"weight": 100.0}, {"weight": 200.0, "business_count": 2}])
+    dta_path = tmp_path / "p22i6.dta"
+    zip_path = tmp_path / "scf2022s.zip"
+    source.to_stata(dta_path, write_index=False)
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.write(dta_path, arcname="p22i6.dta")
+    builder = _load_builder()
+
+    dta_frame, dta_inputs = builder.read_scf_source(dta_path)
+    zip_frame, zip_inputs = builder.read_scf_source(zip_path)
+
+    pd.testing.assert_frame_equal(dta_frame, zip_frame)
+    assert [record["role"] for record in dta_inputs] == ["scf_2022_source"]
+    assert [record["role"] for record in zip_inputs] == [
+        "scf_2022_source",
+        "scf_2022_archive_member",
+    ]
+    assert zip_inputs[1]["sha256"] == dta_inputs[0]["sha256"]
 
 
 def test_scf_thin_cells_follow_independent_nested_fallbacks() -> None:

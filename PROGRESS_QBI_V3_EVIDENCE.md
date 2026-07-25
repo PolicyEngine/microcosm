@@ -36,10 +36,14 @@
   suppression, hint, and schema-refusal tests. All 11 focused tests and Ruff
   pass. A real-file dry run reproduces the audited industry counts and
   wage/capital ranges.
+- Added the configurable deterministic builder CLI, strict JSON writer, SCF
+  DTA/ZIP reader, SHA-256 provenance, and all-corporation review-only seam.
+  A synthetic DTA-versus-ZIP test brings the focused total to 12 passing tests.
 
 ## Next
 
-- Add the configurable builder tool and run it on all seven restricted inputs.
+- Run the builder on all seven restricted inputs and inspect the emitted
+  resources.
 - Run the builder on restricted real inputs, commit only derived resources,
   and record commands and input digests.
 - Declare resources, add changelog/tests, run Ruff and the full workspace
