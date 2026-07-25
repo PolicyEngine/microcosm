@@ -3968,9 +3968,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_other_health_insurance_signal_gate(frame):
         captured["health_stage_events"].append("other_health_gate")
         captured["other_health_insurance_gate_called"] = True
+        calls = captured.setdefault("other_health_gate_calls", 0) + 1
+        captured["other_health_gate_calls"] = calls
+        if calls == 1:
+            # Staging call on the base frame passes: the pre-solve gate
+            # fails fast by design (nothing to preserve yet).
+            return builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            )
+        # Export-frame call fails deliberately: the populace#547 cofailure
+        # regression proves a failing post-solve signal gate batches
+        # alongside the SSI delivery failure instead of masking it with an
+        # in-place raise (the sparse-selection signal-flattening scenario).
         return builder.GateResult(
             name="other_health_insurance_premiums_signal",
-            passed=True,
+            passed=False,
+            failures=("premiums signal flattened [cofailure-sentinel]",),
             details={"checked": True},
         )
 
@@ -4076,9 +4091,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_ssi_delivery_gate(diagnostics, *, targets):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
+        # Fails deliberately: the populace#547 cofailure regression proves
+        # the delivery failure reaches the diagnostics artifact and the
+        # terminal batch while other gates also fail, and that the basis
+        # artifact is written for the retry.
         return builder.GateResult(
             name="ssi_take_up_delivery",
-            passed=True,
+            passed=False,
+            failures=("18_64 delivered over envelope [cofailure-sentinel]",),
             details=diagnostics,
         )
 
@@ -4106,16 +4126,42 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     try:
         builder.main()
     except RuntimeError as exc:
-        # The batched pre-write report leads with the calibration battery
-        # failure; degraded-mode coverage/parity evaluation errors on the
-        # fake frame may append further lines after it.
-        assert str(exc).startswith("Release gates failed: ctc failed")
+        # populace#547 cofailure contract: the batched report leads with the
+        # early terminal failures (SSI delivery + its retry-basis note +
+        # other-health signal) and still carries the calibration battery
+        # sentinel; degraded-mode coverage/parity evaluation errors on the
+        # fake frame may append further lines after them.
+        message = str(exc)
+        assert message.startswith(
+            "Release gates failed: SSI take-up delivery failed: "
+            "18_64 delivered over envelope [cofailure-sentinel]"
+        )
+        assert (
+            "Other health insurance signal failed on the export frame: "
+            "premiums signal flattened [cofailure-sentinel]" in message
+        )
+        assert "ctc failed" in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
-    assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    # The SSI retry-basis artifact is written even though the run fails
+    # terminally — it IS the remedy input for the next attempt.
+    assert (release_dir / "us_ssi_take_up.json").exists()
+    # Manifest/H5 exclusion: the failed run leaves evidence, never artifacts.
+    assert not list(release_dir.glob("*.h5"))
+    assert not list(release_dir.glob("*manifest*"))
+    assert captured["diagnostics"]["gate_failures"] == [
+        "SSI take-up delivery failed: 18_64 delivered over envelope "
+        "[cofailure-sentinel]",
+        "SSI take-up delivered-weight prior basis written to "
+        f"{release_dir / 'us_ssi_take_up.json'} for the "
+        "--ssi-take-up-prior-weight-basis retry.",
+        "Other health insurance signal failed on the export frame: "
+        "premiums signal flattened [cofailure-sentinel]",
+        "ctc failed",
+    ]
     assert (
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
@@ -8339,6 +8385,67 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
 
     assert failures == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_final_medicaid_quarantines_on_ssi_law_violation() -> None:
+    """A Bernoulli-law violation must quarantine, never evaluate (#547).
+
+    pe-us Medicaid eligibility consumes the frozen SSI decisions
+    (takes_up_ssi_if_eligible -> ssi -> is_ssi_recipient_for_medicaid ->
+    medicaid_category), so evaluating on corrupted decisions would
+    mis-measure rather than fail.
+    """
+    builder = _load_builder_module()
+
+    def must_not_evaluate() -> dict:
+        raise AssertionError("Medicaid must not be evaluated under quarantine")
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=True,
+        degraded=True,
+        evaluate=must_not_evaluate,
+    )
+
+    assert diagnostics == {}
+    assert len(failures) == 1
+    assert "quarantined" in failures[0]
+    assert "Bernoulli-law violation" in failures[0]
+
+
+def test_final_medicaid_guard_records_crash_only_in_degraded_mode() -> None:
+    builder = _load_builder_module()
+
+    def boom() -> dict:
+        raise RuntimeError("medicaid recompute exploded")
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=False,
+        degraded=True,
+        evaluate=boom,
+    )
+    assert diagnostics == {}
+    assert len(failures) == 1
+    assert "medicaid recompute exploded" in failures[0]
+
+    with pytest.raises(RuntimeError, match="medicaid recompute exploded"):
+        builder._final_medicaid_diagnostics_or_quarantine(
+            ssi_law_degraded=False,
+            degraded=False,
+            evaluate=boom,
+        )
+
+
+def test_final_medicaid_green_path_evaluates_normally() -> None:
+    builder = _load_builder_module()
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=False,
+        degraded=False,
+        evaluate=lambda: {"enrolled": 1},
+    )
+
+    assert diagnostics == {"enrolled": 1}
+    assert failures == []
 
 
 def test_calibration_diagnostics_schema_lockstep() -> None:

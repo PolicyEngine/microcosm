@@ -41,7 +41,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -5356,6 +5356,43 @@ def _load_ssi_take_up_prior_weight_basis(
         ) from error
 
 
+def _final_medicaid_diagnostics_or_quarantine(
+    *,
+    ssi_law_degraded: bool,
+    degraded: bool,
+    evaluate: Callable[[], dict],
+) -> tuple[dict, list[str]]:
+    """Final Medicaid diagnostics under the #547 degraded-mode contract.
+
+    A Bernoulli-law violation upstream corrupts the frozen SSI decisions
+    that pe-us Medicaid eligibility consumes (takes_up_ssi_if_eligible ->
+    ssi -> is_ssi_recipient_for_medicaid -> medicaid_category ->
+    is_medicaid_eligible), so on a law failure the evaluation is
+    quarantined — recorded as not evaluated, never mis-measured.
+    Delivery-only degradation still evaluates, but an evaluation crash in
+    degraded mode records a line instead of masking the earlier failures
+    and destroying the diagnostics artifact (populace#547). On the green
+    path a crash raises exactly as before.
+    """
+
+    if ssi_law_degraded:
+        return {}, [
+            "Medicaid final diagnostics not evaluated: SSI decision "
+            "integrity failed upstream (Bernoulli-law violation) and "
+            "Medicaid eligibility consumes the frozen SSI decisions; "
+            "quarantined instead of mis-measured (populace#547)."
+        ]
+    try:
+        return evaluate(), []
+    except Exception as error:
+        if not degraded:
+            raise
+        return {}, [
+            "Medicaid final diagnostics evaluation crashed in degraded "
+            f"mode; recorded instead of masking earlier failures: {error}"
+        ]
+
+
 def _enforce_ssi_take_up_delivery(
     diagnostics: Mapping[str, object],
     *,
@@ -8770,8 +8807,10 @@ def main() -> None:
     )
     # SSI gate failures join the #437 batched terminal gates instead of
     # raising here: an early raise destroyed the failed run's calibration
-    # diagnostics and skipped every other gate group (populace#547).
-    early_ssi_gate_failures: list[str] = []
+    # diagnostics and skipped every other gate group (populace#547). A law
+    # violation additionally quarantines SSI-dependent evaluations below.
+    ssi_law_degraded = not final_ssi_take_up_gate.passed
+    early_terminal_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -8781,11 +8820,11 @@ def main() -> None:
                 failures=list(final_ssi_take_up_gate.failures),
                 force_upload=True,
             )
-        early_ssi_gate_failures.extend(
+        early_terminal_gate_failures.extend(
             f"SSI take-up final measurement failed: {failure}"
             for failure in final_ssi_take_up_gate.failures
         )
-    early_ssi_gate_failures.extend(
+    early_terminal_gate_failures.extend(
         _enforce_ssi_take_up_delivery(
             ssi_take_up_diagnostics,
             targets=ssi_band_targets,
@@ -8793,27 +8832,59 @@ def main() -> None:
             telemetry=telemetry,
         )
     )
-    medicaid_take_up_diagnostics = dict(
-        _medicaid_diagnostics_for_existing_output(
-            export_frame,
-            target_specs,
-            seed=args.seed,
-            substitutions=medicaid_enrollment_substitutions,
-            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    medicaid_take_up_diagnostics, medicaid_guard_failures = (
+        _final_medicaid_diagnostics_or_quarantine(
+            ssi_law_degraded=ssi_law_degraded,
+            degraded=bool(early_terminal_gate_failures),
+            evaluate=lambda: dict(
+                _medicaid_diagnostics_for_existing_output(
+                    export_frame,
+                    target_specs,
+                    seed=args.seed,
+                    substitutions=medicaid_enrollment_substitutions,
+                    maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+                )
+            ),
         )
     )
+    early_terminal_gate_failures.extend(medicaid_guard_failures)
     # Signal gates re-check the exported support: sparse selection can drop
     # rows, and a column nonconstant on the candidate base can flatten on the
     # selected support.
-    health_input_gate = _health_input_signal_gate(export_frame)
-    other_health_insurance_gate = us_other_health_insurance_signal_gate(export_frame)
-    if not other_health_insurance_gate.passed:
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Other health insurance signal failed on the export frame: {failure}"
-                for failure in other_health_insurance_gate.failures
-            )
+    try:
+        health_input_gate = _health_input_signal_gate(export_frame)
+    except Exception as error:
+        # Degraded-mode guard (populace#547): record instead of masking; the
+        # downstream gate-failure evaluation is itself guarded, so a None
+        # gate cannot re-destroy the evidence. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        health_input_gate = None
+        early_terminal_gate_failures.append(
+            "Health-input signal evaluation crashed in degraded mode; "
+            f"recorded instead of masking earlier failures: {error}"
+        )
+    try:
+        other_health_insurance_gate = us_other_health_insurance_signal_gate(
+            export_frame
+        )
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        other_health_insurance_gate = None
+        early_terminal_gate_failures.append(
+            "Other-health signal evaluation crashed in degraded mode; "
+            f"recorded instead of masking earlier failures: {error}"
+        )
+    if (
+        other_health_insurance_gate is not None
+        and not other_health_insurance_gate.passed
+    ):
+        # Batched, not raised: an in-place raise here masked co-occurring
+        # SSI failures and destroyed the diagnostics artifact (populace#547).
+        early_terminal_gate_failures.extend(
+            f"Other health insurance signal failed on the export frame: {failure}"
+            for failure in other_health_insurance_gate.failures
         )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
@@ -8840,53 +8911,82 @@ def main() -> None:
                 "elapsed_through_calibration_seconds"
             ],
         )
-    incumbent_payload = _load_incumbent_diagnostics_payload(args.incumbent_diagnostics)
-    if args.incumbent_diagnostics is not None:
-        current_target_surface = diagnostics_payload(
-            result,
-            target_registry=registry,
-        )["target_surface"]
-        _assert_incumbent_target_surface_matches(
-            current_target_surface,
-            incumbent_payload,
-            path=args.incumbent_diagnostics,
+    try:
+        incumbent_payload = _load_incumbent_diagnostics_payload(
+            args.incumbent_diagnostics
         )
-    incumbent_diagnostics = (
-        _diagnostics_by_target_name(
-            incumbent_payload,
-            path=args.incumbent_diagnostics,
+        if args.incumbent_diagnostics is not None:
+            current_target_surface = diagnostics_payload(
+                result,
+                target_registry=registry,
+            )["target_surface"]
+            _assert_incumbent_target_surface_matches(
+                current_target_surface,
+                incumbent_payload,
+                path=args.incumbent_diagnostics,
+            )
+        incumbent_diagnostics = (
+            _diagnostics_by_target_name(
+                incumbent_payload,
+                path=args.incumbent_diagnostics,
+            )
+            if args.incumbent_diagnostics is not None
+            else {}
         )
-        if args.incumbent_diagnostics is not None
-        else {}
-    )
+    except Exception as error:
+        # Degraded-mode guard (populace#547): with earlier terminal failures
+        # pending, an incumbent load/validation crash must record a line and
+        # fall back to the no-incumbent gate shape, not mask the failures
+        # and destroy the diagnostics artifact. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        incumbent_diagnostics = {}
+        early_terminal_gate_failures.append(
+            "Incumbent diagnostics could not be loaded/validated in "
+            f"degraded mode; recorded instead of masking earlier failures: "
+            f"{error}"
+        )
     enforced_input_mass_reference_gate = (
         None if args.allow_input_mass_drift else input_mass_reference_gate
     )
     enforced_ecps_parity_gate = (
         None if args.allow_ecps_parity_gaps else ecps_parity_gate
     )
-    gate_failures = _release_gate_failures(
-        result,
-        compilation,
-        target_profile_gate,
-        health_input_gate,
-        base_population_gate,
-        incumbent_diagnostics,
-        immigration_gate,
-        enforced_input_mass_reference_gate,
-        degenerate_input_gate,
-        ecps_parity_gate=enforced_ecps_parity_gate,
-        hours_worked_gate=hours_worked_gate,
-        snap_take_up_gate=snap_take_up_gate,
-        eligibility_inputs_gate=eligibility_inputs_gate,
-        pregnancy_gate=pregnancy_gate,
-        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-        target_registry=registry,
-    )
-    # The early SSI failures ride the same list as every other gate group,
-    # so the diagnostics artifact records them and the terminal batch
-    # aborts on them (populace#547).
-    gate_failures = [*early_ssi_gate_failures, *gate_failures]
+    try:
+        gate_failures = _release_gate_failures(
+            result,
+            compilation,
+            target_profile_gate,
+            health_input_gate,
+            base_population_gate,
+            incumbent_diagnostics,
+            immigration_gate,
+            enforced_input_mass_reference_gate,
+            degenerate_input_gate,
+            ecps_parity_gate=enforced_ecps_parity_gate,
+            hours_worked_gate=hours_worked_gate,
+            snap_take_up_gate=snap_take_up_gate,
+            eligibility_inputs_gate=eligibility_inputs_gate,
+            pregnancy_gate=pregnancy_gate,
+            snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+            target_registry=registry,
+        )
+    except Exception as error:
+        # Degraded-mode guard (populace#547): the batch must still form and
+        # the diagnostics artifact must still be written when earlier
+        # terminal failures are pending. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        gate_failures = []
+        early_terminal_gate_failures.append(
+            "Release gate evaluation crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
+        )
+    # The early terminal failures (SSI gates, other-health signal, degraded-
+    # mode guard lines) ride the same list as every other gate group, so the
+    # diagnostics artifact records them and the terminal batch aborts on
+    # them (populace#547).
+    gate_failures = [*early_terminal_gate_failures, *gate_failures]
     _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,
