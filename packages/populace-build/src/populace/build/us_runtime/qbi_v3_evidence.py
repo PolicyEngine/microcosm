@@ -870,50 +870,345 @@ def _finite_probability(value: object, location: str) -> float:
     return result
 
 
+def _exact_mapping(
+    value: object,
+    expected_keys: set[str] | frozenset[str],
+    location: str,
+) -> Mapping[str, object]:
+    result = _mapping(value, location)
+    if set(result) != set(expected_keys):
+        raise ValueError(
+            f"{location} keys must be exactly {sorted(expected_keys)}; "
+            f"got {sorted(result)}."
+        )
+    return result
+
+
+def _nonempty_text(value: object, location: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{location} must be a nonempty string.")
+    return value
+
+
+def _finite_number(
+    value: object,
+    location: str,
+    *,
+    minimum: float | None = None,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{location} must be numeric.")
+    result = float(value)
+    if not math.isfinite(result) or (minimum is not None and result < minimum):
+        floor = "" if minimum is None else f" and at least {minimum}"
+        raise ValueError(f"{location} must be finite{floor}.")
+    return result
+
+
+def _nonnegative_integer(value: object, location: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{location} must be a nonnegative integer.")
+    return value
+
+
+def _validate_text_list(value: object, location: str) -> list[object]:
+    result = _list(value, location)
+    if not result:
+        raise ValueError(f"{location} must be nonempty.")
+    for index, item in enumerate(result):
+        _nonempty_text(item, f"{location}[{index}]")
+    return result
+
+
+def _validate_provenance(value: object, location: str) -> None:
+    provenance = _mapping(value, location)
+    _nonempty_text(provenance.get("generated_by"), f"{location}.generated_by")
+    _nonempty_text(provenance.get("run_command"), f"{location}.run_command")
+    inputs = _list(provenance.get("inputs"), f"{location}.inputs")
+    if not inputs:
+        raise ValueError(f"{location}.inputs must be nonempty.")
+    for index, raw_input in enumerate(inputs):
+        input_record = _mapping(raw_input, f"{location}.inputs[{index}]")
+        _nonempty_text(
+            input_record.get("filename"), f"{location}.inputs[{index}].filename"
+        )
+        digest = _nonempty_text(
+            input_record.get("sha256"), f"{location}.inputs[{index}].sha256"
+        )
+        if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(
+                f"{location}.inputs[{index}].sha256 must be lowercase SHA-256."
+            )
+
+
+_SCF_COUNT_KEYS = frozenset(
+    {
+        "pooled_record_count",
+        "implicate_adjusted_unweighted_n",
+        "weighted_business_interests",
+        "employer_proxy_pooled_record_count",
+        "employer_proxy_implicate_adjusted_unweighted_n",
+        "weighted_employer_proxy_business_interests",
+    }
+)
+_SCF_SIMPLE_COUNT_KEYS = frozenset(
+    {
+        "pooled_record_count",
+        "implicate_adjusted_unweighted_n",
+        "weighted_business_interests",
+    }
+)
+
+
+def _validate_scf_counts(
+    value: object,
+    location: str,
+    *,
+    include_employer: bool,
+) -> Mapping[str, object]:
+    expected = _SCF_COUNT_KEYS if include_employer else _SCF_SIMPLE_COUNT_KEYS
+    counts = _exact_mapping(value, expected, location)
+    pooled = _nonnegative_integer(
+        counts["pooled_record_count"], f"{location}.pooled_record_count"
+    )
+    unweighted = _finite_number(
+        counts["implicate_adjusted_unweighted_n"],
+        f"{location}.implicate_adjusted_unweighted_n",
+        minimum=0.0,
+    )
+    weighted = _finite_number(
+        counts["weighted_business_interests"],
+        f"{location}.weighted_business_interests",
+        minimum=0.0,
+    )
+    if not math.isclose(
+        unweighted,
+        pooled / SCF_IMPLICATE_COUNT,
+        rel_tol=0.0,
+        abs_tol=1e-9,
+    ):
+        raise ValueError(f"{location} has inconsistent implicate-adjusted n.")
+    if pooled == 0 and weighted != 0.0:
+        raise ValueError(f"{location} gives weight to an empty sample.")
+    if include_employer:
+        employer_pooled = _nonnegative_integer(
+            counts["employer_proxy_pooled_record_count"],
+            f"{location}.employer_proxy_pooled_record_count",
+        )
+        employer_unweighted = _finite_number(
+            counts["employer_proxy_implicate_adjusted_unweighted_n"],
+            f"{location}.employer_proxy_implicate_adjusted_unweighted_n",
+            minimum=0.0,
+        )
+        employer_weighted = _finite_number(
+            counts["weighted_employer_proxy_business_interests"],
+            f"{location}.weighted_employer_proxy_business_interests",
+            minimum=0.0,
+        )
+        if employer_pooled > pooled or employer_weighted > weighted + 1e-9:
+            raise ValueError(f"{location} employer counts exceed total counts.")
+        if not math.isclose(
+            employer_unweighted,
+            employer_pooled / SCF_IMPLICATE_COUNT,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ValueError(
+                f"{location} has inconsistent employer implicate-adjusted n."
+            )
+    return counts
+
+
 def validate_qbi_employer_structure_resource(
     payload: Mapping[str, object],
 ) -> None:
     """Validate the committed SCF evidence-resource contract."""
 
-    root = _mapping(payload, "QBI employer resource")
-    required = {
-        "schema_version",
-        "resource_id",
-        "provisional",
-        "source",
-        "methodology",
-        "dimensions",
-        "external_anchor",
-        "cells",
-        "profit_margin_quantiles",
-        "provenance",
-        "judgment_calls",
-    }
-    if set(root) != required:
-        raise ValueError(
-            "QBI employer resource top-level keys must be exactly "
-            f"{sorted(required)}; got {sorted(root)}."
-        )
+    root = _exact_mapping(
+        payload,
+        {
+            "schema_version",
+            "resource_id",
+            "provisional",
+            "source",
+            "methodology",
+            "dimensions",
+            "external_anchor",
+            "cells",
+            "profit_margin_quantiles",
+            "provenance",
+            "judgment_calls",
+        },
+        "QBI employer resource",
+    )
     if root["schema_version"] != 1:
         raise ValueError("QBI employer resource schema_version must equal 1.")
     if root["resource_id"] != "qbi_employer_structure_v1":
         raise ValueError("QBI employer resource_id is not recognized.")
     if root["provisional"] is not True:
         raise ValueError("QBI employer resource must remain provisional.")
-    _mapping(root["source"], "source")
-    methodology = _mapping(root["methodology"], "methodology")
-    minimum_n = methodology.get("minimum_implicate_adjusted_unweighted_n")
-    if (
-        isinstance(minimum_n, bool)
-        or not isinstance(minimum_n, (int, float))
-        or not math.isfinite(float(minimum_n))
-        or float(minimum_n) <= 0.0
-    ):
+
+    source = _exact_mapping(
+        root["source"],
+        {
+            "survey",
+            "survey_year",
+            "business_flow_year",
+            "record_scope",
+            "record_selection",
+            "variables",
+            "codebook",
+        },
+        "source",
+    )
+    if source["survey_year"] != 2022 or source["business_flow_year"] != 2021:
+        raise ValueError("Employer source years must identify SCF 2022/flows 2021.")
+    _nonempty_text(source["survey"], "source.survey")
+    _nonempty_text(source["record_scope"], "source.record_scope")
+    record_selection = _nonempty_text(
+        source["record_selection"], "source.record_selection"
+    )
+    for variable in ("X3103", "X3104", "X3105"):
+        if variable not in record_selection:
+            raise ValueError(f"source.record_selection must name {variable}.")
+    variables = _exact_mapping(
+        source["variables"],
+        {
+            "active_management_screeners",
+            "business_count",
+            "weight",
+            "industry",
+            "headcount",
+            "legal_form",
+            "ownership_percent_x100",
+            "gross_receipts",
+            "whole_business_net_income",
+            "respondent_or_spouse_works",
+        },
+        "source.variables",
+    )
+    if variables["active_management_screeners"] != ["X3103", "X3104"]:
+        raise ValueError("source.variables has the wrong active-management screeners.")
+    _exact_mapping(
+        source["codebook"],
+        {
+            "url",
+            "implicate_convention_lines",
+            "weight_definition_lines",
+            "business_variable_lines",
+        },
+        "source.codebook",
+    )
+
+    methodology = _exact_mapping(
+        root["methodology"],
+        {
+            "point_estimate_weight",
+            "implicate_count",
+            "implicate_note",
+            "income_measure",
+            "employer_presence_proxy",
+            "employer_proxy_limitation",
+            "minimum_implicate_adjusted_unweighted_n",
+            "presence_collapse_order",
+            "size_collapse_order",
+            "size_collapse_note",
+            "headcount_disclosure",
+        },
+        "methodology",
+    )
+    if methodology["implicate_count"] != SCF_IMPLICATE_COUNT:
+        raise ValueError("Employer methodology implicate_count must equal 5.")
+    minimum_n = _finite_number(
+        methodology["minimum_implicate_adjusted_unweighted_n"],
+        "methodology.minimum_implicate_adjusted_unweighted_n",
+        minimum=0.0,
+    )
+    if minimum_n == 0.0:
         raise ValueError("Employer methodology minimum n must be positive.")
-    _mapping(root["dimensions"], "dimensions")
-    _mapping(root["provenance"], "provenance")
-    if not _list(root["judgment_calls"], "judgment_calls"):
-        raise ValueError("Employer resource judgment_calls must be nonempty.")
+    if methodology["presence_collapse_order"] != [
+        "income_form_industry",
+        "income_form",
+        "form",
+        "all",
+    ]:
+        raise ValueError("Employer presence collapse order is not recognized.")
+    if methodology["size_collapse_order"] != [
+        "income_form_industry_among_headcount_gt_1",
+        "income_form_among_headcount_gt_1",
+        "form_among_headcount_gt_1",
+        "all_among_headcount_gt_1",
+    ]:
+        raise ValueError("Employer size collapse order is not recognized.")
+
+    dimensions = _exact_mapping(
+        root["dimensions"],
+        {
+            "income_bands",
+            "legal_form_groups",
+            "industry_bins",
+            "headcount_size_bands",
+        },
+        "dimensions",
+    )
+    income_dimensions = _list(dimensions["income_bands"], "dimensions.income_bands")
+    if [item.get("id") for item in income_dimensions if isinstance(item, Mapping)] != (
+        list(SCF_INCOME_BANDS)
+    ):
+        raise ValueError("Employer income-band dimensions do not match the contract.")
+    form_dimensions = _list(
+        dimensions["legal_form_groups"], "dimensions.legal_form_groups"
+    )
+    if [item.get("id") for item in form_dimensions if isinstance(item, Mapping)] != (
+        list(SCF_LEGAL_FORM_GROUPS)
+    ):
+        raise ValueError("Employer legal-form dimensions do not match the contract.")
+    industry_dimensions = _list(dimensions["industry_bins"], "dimensions.industry_bins")
+    if [
+        item.get("code") for item in industry_dimensions if isinstance(item, Mapping)
+    ] != list(SCF_INDUSTRY_BINS):
+        raise ValueError("Employer industry dimensions do not match the contract.")
+    size_dimensions = _list(
+        dimensions["headcount_size_bands"], "dimensions.headcount_size_bands"
+    )
+    if [item.get("id") for item in size_dimensions if isinstance(item, Mapping)] != (
+        list(SCF_HEADCOUNT_SIZE_BANDS)
+    ):
+        raise ValueError("Employer size-band dimensions do not match the contract.")
+    _validate_provenance(root["provenance"], "provenance")
+    _validate_text_list(root["judgment_calls"], "judgment_calls")
+
+    fallback_levels = {"exact", "income_form", "form", "all"}
+
+    def expected_dimensions(
+        level: object,
+        income_band: object,
+        legal_form_group: object,
+        industry_code: object,
+    ) -> dict[str, object]:
+        if level == "exact":
+            return {
+                "income_band": income_band,
+                "legal_form_group": legal_form_group,
+                "industry_code": industry_code,
+            }
+        if level == "income_form":
+            return {
+                "income_band": income_band,
+                "legal_form_group": legal_form_group,
+                "industry_code": "all",
+            }
+        if level == "form":
+            return {
+                "income_band": "all",
+                "legal_form_group": legal_form_group,
+                "industry_code": "all",
+            }
+        return {
+            "income_band": "all",
+            "legal_form_group": "all",
+            "industry_code": "all",
+        }
 
     cells = _list(root["cells"], "cells")
     expected_cell_count = (
@@ -926,11 +1221,23 @@ def validate_qbi_employer_structure_resource(
         )
     seen: set[tuple[object, object, object]] = set()
     for index, raw_cell in enumerate(cells):
-        cell = _mapping(raw_cell, f"cells[{index}]")
+        location = f"cells[{index}]"
+        cell = _exact_mapping(
+            raw_cell,
+            {
+                "income_band",
+                "legal_form_group",
+                "industry_code",
+                "requested_counts",
+                "employer_presence",
+                "headcount_size_distribution",
+            },
+            location,
+        )
         key = (
-            cell.get("income_band"),
-            cell.get("legal_form_group"),
-            cell.get("industry_code"),
+            cell["income_band"],
+            cell["legal_form_group"],
+            cell["industry_code"],
         )
         if key in seen:
             raise ValueError(f"Employer resource duplicates cell {key}.")
@@ -941,45 +1248,212 @@ def validate_qbi_employer_structure_resource(
             raise ValueError(f"Employer cell has unknown legal form {key[1]!r}.")
         if key[2] not in SCF_INDUSTRY_BINS:
             raise ValueError(f"Employer cell has unknown industry {key[2]!r}.")
-        _mapping(cell.get("requested_counts"), f"cells[{index}].requested_counts")
-        presence = _mapping(
-            cell.get("employer_presence"), f"cells[{index}].employer_presence"
+        _validate_scf_counts(
+            cell["requested_counts"],
+            f"{location}.requested_counts",
+            include_employer=True,
         )
-        _finite_probability(
-            presence.get("probability_headcount_gt_1"),
-            f"cells[{index}].employer_presence.probability",
+        presence = _exact_mapping(
+            cell["employer_presence"],
+            {
+                "probability_headcount_gt_1",
+                "estimate_level",
+                "source_dimensions",
+                "source_counts",
+            },
+            f"{location}.employer_presence",
         )
-        size = _mapping(
-            cell.get("headcount_size_distribution"),
-            f"cells[{index}].headcount_size_distribution",
+        presence_level = presence["estimate_level"]
+        if presence_level not in fallback_levels:
+            raise ValueError(f"Employer cell {key} has unknown presence fallback.")
+        if dict(
+            _mapping(
+                presence["source_dimensions"],
+                f"{location}.employer_presence.source_dimensions",
+            )
+        ) != expected_dimensions(presence_level, *key):
+            raise ValueError(f"Employer cell {key} has wrong presence dimensions.")
+        presence_counts = _validate_scf_counts(
+            presence["source_counts"],
+            f"{location}.employer_presence.source_counts",
+            include_employer=True,
         )
-        shares = _mapping(size.get("shares"), f"cells[{index}].shares")
-        if set(shares) != set(SCF_HEADCOUNT_SIZE_BANDS):
-            raise ValueError(f"Employer cell {key} has malformed size bands.")
+        if (
+            presence_level != "all"
+            and float(presence_counts["implicate_adjusted_unweighted_n"]) < minimum_n
+        ):
+            raise ValueError(f"Employer cell {key} retains a thin presence sample.")
+        denominator = float(presence_counts["weighted_business_interests"])
+        if denominator <= 0.0:
+            raise ValueError(f"Employer cell {key} has zero presence denominator.")
+        probability = _finite_probability(
+            presence["probability_headcount_gt_1"],
+            f"{location}.employer_presence.probability",
+        )
+        expected_probability = (
+            float(presence_counts["weighted_employer_proxy_business_interests"])
+            / denominator
+        )
+        if not math.isclose(
+            probability, expected_probability, rel_tol=0.0, abs_tol=1e-12
+        ):
+            raise ValueError(f"Employer cell {key} probability disagrees with counts.")
+
+        size = _exact_mapping(
+            cell["headcount_size_distribution"],
+            {
+                "conditional_on",
+                "shares",
+                "estimate_level",
+                "source_dimensions",
+                "source_counts",
+            },
+            f"{location}.headcount_size_distribution",
+        )
+        if size["conditional_on"] != "headcount_gt_1":
+            raise ValueError(f"Employer cell {key} has wrong size conditioning.")
+        size_level = size["estimate_level"]
+        if size_level not in fallback_levels:
+            raise ValueError(f"Employer cell {key} has unknown size fallback.")
+        if dict(
+            _mapping(
+                size["source_dimensions"],
+                f"{location}.headcount_size_distribution.source_dimensions",
+            )
+        ) != expected_dimensions(size_level, *key):
+            raise ValueError(f"Employer cell {key} has wrong size dimensions.")
+        size_counts = _validate_scf_counts(
+            size["source_counts"],
+            f"{location}.headcount_size_distribution.source_counts",
+            include_employer=True,
+        )
+        if size_level != "all" and (
+            float(size_counts["implicate_adjusted_unweighted_n"]) < minimum_n
+        ):
+            raise ValueError(f"Employer cell {key} retains a thin size sample.")
+        if size_counts["pooled_record_count"] != size_counts[
+            "employer_proxy_pooled_record_count"
+        ] or not math.isclose(
+            float(size_counts["weighted_business_interests"]),
+            float(size_counts["weighted_employer_proxy_business_interests"]),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ValueError(f"Employer cell {key} size sample includes nonemployers.")
+        shares = _exact_mapping(
+            size["shares"],
+            set(SCF_HEADCOUNT_SIZE_BANDS),
+            f"{location}.headcount_size_distribution.shares",
+        )
         values = [
-            _finite_probability(shares[band], f"cells[{index}].shares.{band}")
+            _finite_probability(shares[band], f"{location}.shares.{band}")
             for band in SCF_HEADCOUNT_SIZE_BANDS
         ]
         if not math.isclose(sum(values), 1.0, rel_tol=0.0, abs_tol=1e-9):
             raise ValueError(f"Employer cell {key} size shares do not sum to 1.")
 
-    external = _mapping(root["external_anchor"], "external_anchor")
+    external = _exact_mapping(
+        root["external_anchor"],
+        {
+            "source",
+            "source_url",
+            "tax_year",
+            "zero_employee_firm_share",
+            "zero_employee_deduction_dollar_share",
+            "sole_proprietor_zero_employee_share_statement",
+            "partnership_zero_employee_share_statement",
+            "scf_comparison",
+            "definition_gaps",
+        },
+        "external_anchor",
+    )
+    if external["tax_year"] != 2022:
+        raise ValueError("External JCT anchor must identify tax year 2022.")
     _finite_probability(
-        external.get("zero_employee_firm_share"),
+        external["zero_employee_firm_share"],
         "external_anchor.zero_employee_firm_share",
     )
-    comparisons = _mapping(
-        external.get("scf_comparison"), "external_anchor.scf_comparison"
+    _finite_probability(
+        external["zero_employee_deduction_dollar_share"],
+        "external_anchor.zero_employee_deduction_dollar_share",
     )
+    _validate_text_list(external["definition_gaps"], "external_anchor.definition_gaps")
+    comparisons = _exact_mapping(
+        external["scf_comparison"],
+        {
+            "main_proxy_including_informal_code_40",
+            "strict_form_sensitivity_excluding_code_40",
+        },
+        "external_anchor.scf_comparison",
+    )
+    expected_comparison_codes = {
+        "main_proxy_including_informal_code_40": sorted(_MAIN_QBI_PROXY_CODES),
+        "strict_form_sensitivity_excluding_code_40": sorted(_STRICT_QBI_PROXY_CODES),
+    }
     for name, raw_comparison in comparisons.items():
-        comparison = _mapping(raw_comparison, f"external_anchor.scf_comparison.{name}")
-        _finite_probability(
-            comparison.get("headcount_le_1_share"),
-            f"external_anchor.scf_comparison.{name}.headcount_le_1_share",
+        location = f"external_anchor.scf_comparison.{name}"
+        comparison = _exact_mapping(
+            raw_comparison,
+            {
+                "sample_definition",
+                "numerator_definition",
+                "legal_form_codes",
+                "pooled_record_count",
+                "implicate_adjusted_unweighted_n",
+                "weighted_business_interests",
+                "headcount_le_1_share",
+                "difference_from_jct_percentage_points",
+            },
+            location,
         )
+        _nonempty_text(comparison["sample_definition"], f"{location}.sample_definition")
+        _nonempty_text(
+            comparison["numerator_definition"], f"{location}.numerator_definition"
+        )
+        if comparison["legal_form_codes"] != expected_comparison_codes[name]:
+            raise ValueError(f"{location} has the wrong legal-form sample.")
+        _validate_scf_counts(
+            {key: comparison[key] for key in _SCF_SIMPLE_COUNT_KEYS},
+            f"{location}.counts",
+            include_employer=False,
+        )
+        share = _finite_probability(
+            comparison["headcount_le_1_share"],
+            f"{location}.headcount_le_1_share",
+        )
+        difference = _finite_number(
+            comparison["difference_from_jct_percentage_points"],
+            f"{location}.difference_from_jct_percentage_points",
+        )
+        if not math.isclose(
+            difference,
+            100.0 * (share - JCT_ZERO_EMPLOYEE_FIRM_SHARE),
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(f"{location} has an inconsistent JCT difference.")
 
-    margins = _mapping(root["profit_margin_quantiles"], "profit_margin_quantiles")
-    margin_cells = _list(margins.get("cells"), "profit_margin_quantiles.cells")
+    margins = _exact_mapping(
+        root["profit_margin_quantiles"],
+        {
+            "definition",
+            "ownership_note",
+            "support_note",
+            "quantile_method",
+            "probabilities",
+            "minimum_implicate_adjusted_unweighted_n",
+            "collapse_order",
+            "cells",
+        },
+        "profit_margin_quantiles",
+    )
+    if margins["probabilities"] != list(SCF_MARGIN_QUANTILES):
+        raise ValueError("Profit-margin probabilities do not match the contract.")
+    if margins["minimum_implicate_adjusted_unweighted_n"] != minimum_n:
+        raise ValueError("Profit-margin and employer minimum n values differ.")
+    if margins["collapse_order"] != ["form_industry", "form", "all"]:
+        raise ValueError("Profit-margin collapse order is not recognized.")
+    margin_cells = _list(margins["cells"], "profit_margin_quantiles.cells")
     expected_margin_count = len(SCF_LEGAL_FORM_GROUPS) * len(SCF_INDUSTRY_BINS)
     if len(margin_cells) != expected_margin_count:
         raise ValueError(
@@ -988,31 +1462,77 @@ def validate_qbi_employer_structure_resource(
     margin_seen: set[tuple[object, object]] = set()
     quantile_names = [_quantile_name(q) for q in SCF_MARGIN_QUANTILES]
     for index, raw_cell in enumerate(margin_cells):
-        cell = _mapping(raw_cell, f"profit_margin_quantiles.cells[{index}]")
-        key = (cell.get("legal_form_group"), cell.get("industry_code"))
+        location = f"profit_margin_quantiles.cells[{index}]"
+        cell = _exact_mapping(
+            raw_cell,
+            {
+                "legal_form_group",
+                "industry_code",
+                "requested_counts",
+                "estimate_level",
+                "source_dimensions",
+                "source_counts",
+                "quantiles",
+                "source_minimum",
+                "source_maximum",
+            },
+            location,
+        )
+        key = (cell["legal_form_group"], cell["industry_code"])
         if key in margin_seen:
             raise ValueError(f"Profit-margin resource duplicates cell {key}.")
         margin_seen.add(key)
-        quantiles = _mapping(
-            cell.get("quantiles"),
-            f"profit_margin_quantiles.cells[{index}].quantiles",
+        if key[0] not in SCF_LEGAL_FORM_GROUPS or key[1] not in SCF_INDUSTRY_BINS:
+            raise ValueError(f"Profit-margin resource has unknown cell {key}.")
+        _validate_scf_counts(
+            cell["requested_counts"],
+            f"{location}.requested_counts",
+            include_employer=False,
+        )
+        level = cell["estimate_level"]
+        if level not in {"exact", "form", "all"}:
+            raise ValueError(f"Profit-margin cell {key} has unknown fallback.")
+        expected_margin_dimensions = {
+            "legal_form_group": key[0] if level != "all" else "all",
+            "industry_code": key[1] if level == "exact" else "all",
+        }
+        if (
+            dict(_mapping(cell["source_dimensions"], f"{location}.source_dimensions"))
+            != expected_margin_dimensions
+        ):
+            raise ValueError(f"Profit-margin cell {key} has wrong source dimensions.")
+        source_counts = _validate_scf_counts(
+            cell["source_counts"],
+            f"{location}.source_counts",
+            include_employer=False,
+        )
+        if (
+            level != "all"
+            and float(source_counts["implicate_adjusted_unweighted_n"]) < minimum_n
+        ):
+            raise ValueError(f"Profit-margin cell {key} retains a thin sample.")
+        if float(source_counts["weighted_business_interests"]) <= 0.0:
+            raise ValueError(f"Profit-margin cell {key} has zero source weight.")
+        quantiles = _exact_mapping(
+            cell["quantiles"], set(quantile_names), f"{location}.quantiles"
         )
         if list(quantiles) != quantile_names:
             raise ValueError(
-                f"Profit-margin cell {key} must carry ordered quantiles "
-                f"{quantile_names}."
+                f"Profit-margin cell {key} quantiles must be ordered {quantile_names}."
             )
-        values = []
+        values: list[float] = []
         for name in quantile_names:
-            value = quantiles[name]
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"Profit-margin cell {key} {name} is not numeric.")
-            value = float(value)
-            if not math.isfinite(value):
-                raise ValueError(f"Profit-margin cell {key} {name} is not finite.")
-            values.append(value)
+            values.append(_finite_number(quantiles[name], f"{location}.{name}"))
         if values != sorted(values):
             raise ValueError(f"Profit-margin cell {key} quantiles are not monotone.")
+        source_minimum = _finite_number(
+            cell["source_minimum"], f"{location}.source_minimum"
+        )
+        source_maximum = _finite_number(
+            cell["source_maximum"], f"{location}.source_maximum"
+        )
+        if source_minimum > values[0] or values[-1] > source_maximum:
+            raise ValueError(f"Profit-margin cell {key} quantiles exceed source range.")
 
 
 @dataclass(frozen=True)
@@ -2099,79 +2619,225 @@ def validate_qbi_wage_capital_priors_resource(
 ) -> None:
     """Validate the committed SOI evidence-resource contract."""
 
-    root = _mapping(payload, "QBI wage/capital resource")
-    required = {
-        "schema_version",
-        "resource_id",
-        "provisional",
-        "purpose",
-        "forms",
-        "source_exclusions",
-        "derivation_notes",
-        "provenance",
-        "judgment_calls",
-    }
-    if set(root) != required:
-        raise ValueError(
-            "QBI wage/capital top-level keys must be exactly "
-            f"{sorted(required)}; got {sorted(root)}."
-        )
+    root = _exact_mapping(
+        payload,
+        {
+            "schema_version",
+            "resource_id",
+            "provisional",
+            "purpose",
+            "forms",
+            "source_exclusions",
+            "derivation_notes",
+            "provenance",
+            "judgment_calls",
+        },
+        "QBI wage/capital resource",
+    )
     if root["schema_version"] != 1:
         raise ValueError("QBI wage/capital schema_version must equal 1.")
     if root["resource_id"] != "qbi_wage_capital_priors_v1":
         raise ValueError("QBI wage/capital resource_id is not recognized.")
     if root["provisional"] is not True:
         raise ValueError("QBI wage/capital resource must remain provisional.")
-    if not isinstance(root["purpose"], str) or not root["purpose"].strip():
-        raise ValueError("QBI wage/capital resource purpose must be nonempty.")
-    if not _list(root["derivation_notes"], "derivation_notes"):
-        raise ValueError("QBI wage/capital derivation_notes must be nonempty.")
-    if not _list(root["judgment_calls"], "judgment_calls"):
-        raise ValueError("QBI wage/capital judgment_calls must be nonempty.")
-    _mapping(root["provenance"], "provenance")
-    _mapping(root["source_exclusions"], "source_exclusions")
+    _nonempty_text(root["purpose"], "purpose")
+    _validate_text_list(root["derivation_notes"], "derivation_notes")
+    _validate_text_list(root["judgment_calls"], "judgment_calls")
+    _validate_provenance(root["provenance"], "provenance")
+    exclusions = _exact_mapping(
+        root["source_exclusions"],
+        {"all_corporation_minor_industry_table"},
+        "source_exclusions",
+    )
+    all_corporation = _exact_mapping(
+        exclusions["all_corporation_minor_industry_table"],
+        {"filename", "table", "tax_year", "review_status", "reason"},
+        "source_exclusions.all_corporation_minor_industry_table",
+    )
+    if (
+        all_corporation["tax_year"] != 2022
+        or all_corporation["review_status"] != "inspected_not_used"
+    ):
+        raise ValueError("All-corporation exclusion must remain review-only for 2022.")
+    _nonempty_text(
+        all_corporation["reason"],
+        "source_exclusions.all_corporation_minor_industry_table.reason",
+    )
 
-    forms = _mapping(root["forms"], "forms")
-    if set(forms) != set(SOI_ENTITY_FORMS):
-        raise ValueError(f"QBI wage/capital forms must be {list(SOI_ENTITY_FORMS)}.")
+    forms = _exact_mapping(root["forms"], set(SOI_ENTITY_FORMS), "forms")
+    form_specs = {
+        "sole_proprietorship": {
+            "tax_year": 2023,
+            "proxy": True,
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "wage_names": ("payroll",),
+            "capital_names": ("depreciation_deduction",),
+            "provenance_extras": {"wage_component_crosscheck_cells"},
+        },
+        "partnership": {
+            "tax_year": 2023,
+            "proxy": False,
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "wage_names": ("cost_labor", "salaries"),
+            "capital_names": ("gross_depreciable_assets",),
+            "provenance_extras": {
+                "excluded_wage_cell",
+                "depreciation_deduction_cell",
+            },
+        },
+        "s_corporation": {
+            "tax_year": 2022,
+            "proxy": False,
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "wage_names": ("officer_compensation", "salaries"),
+            "capital_names": ("gross_depreciable_assets",),
+            "provenance_extras": {"depreciation_deduction_cell"},
+        },
+    }
+    raw_amount_keys = {
+        "receipts",
+        "salaries",
+        "cost_labor",
+        "officer_compensation",
+        "guaranteed_payments_excluded",
+        "payroll",
+        "gross_depreciable_assets",
+        "depreciation_deduction",
+    }
+    publication_flag_keys = raw_amount_keys | {"wage_share", "ubia_intensity"}
+    industry_keys = {
+        "industry_key",
+        "form",
+        "published_label",
+        "industry_path",
+        "source_ordinal",
+        "industry_level",
+        "is_aggregate",
+        "census_bin_hint",
+        "census_bin_hint_basis",
+        "wage_share",
+        "ubia_intensity",
+        "proxy",
+        "capital_measure",
+        "raw_amounts_thousands",
+        "publication_flags",
+        "null_reasons",
+        "provenance",
+    }
+    form_keys = {
+        "tax_year",
+        "source_tables",
+        "wage_measure",
+        "capital_measure",
+        "summary",
+        "industries",
+    }
+    summary_keys = {
+        "published_industry_count",
+        "finest_industry_count",
+        "valid_finest_wage_share_count",
+        "valid_finest_ubia_intensity_count",
+        "finest_wage_share_range",
+        "finest_ubia_intensity_range",
+    }
+    provenance_keys = {
+        "source_tables",
+        "sheet_names",
+        "tax_year",
+        "units",
+        "industry_cells",
+        "receipts_cell",
+        "wage_cells",
+        "capital_cell",
+        "calculation",
+    }
+
     for form in SOI_ENTITY_FORMS:
-        form_payload = _mapping(forms[form], f"forms.{form}")
-        industries = _list(form_payload.get("industries"), f"forms.{form}.industries")
+        spec = form_specs[form]
+        form_payload = _exact_mapping(forms[form], form_keys, f"forms.{form}")
+        if form_payload["tax_year"] != spec["tax_year"]:
+            raise ValueError(f"forms.{form}.tax_year is not recognized.")
+        _validate_text_list(
+            form_payload["source_tables"], f"forms.{form}.source_tables"
+        )
+        _nonempty_text(form_payload["wage_measure"], f"forms.{form}.wage_measure")
+        _nonempty_text(form_payload["capital_measure"], f"forms.{form}.capital_measure")
+        summary = _exact_mapping(
+            form_payload["summary"], summary_keys, f"forms.{form}.summary"
+        )
+        industries = _list(form_payload["industries"], f"forms.{form}.industries")
         if not industries:
             raise ValueError(f"forms.{form}.industries must be nonempty.")
         seen: set[str] = set()
+        ordinals: list[int] = []
         for index, raw_industry in enumerate(industries):
-            industry = _mapping(raw_industry, f"forms.{form}.industries[{index}]")
-            key = industry.get("industry_key")
-            if not isinstance(key, str) or not key:
-                raise ValueError(f"forms.{form}.industries[{index}] has no key.")
+            location = f"forms.{form}.industries[{index}]"
+            industry = _exact_mapping(raw_industry, industry_keys, location)
+            key = _nonempty_text(industry["industry_key"], f"{location}.industry_key")
             if key in seen:
                 raise ValueError(f"forms.{form} duplicates industry key {key!r}.")
             seen.add(key)
-            if industry.get("form") != form:
+            if industry["form"] != form:
                 raise ValueError(f"Industry {key!r} has the wrong entity form.")
-            hint = industry.get("census_bin_hint")
-            if hint is not None and hint not in range(1, 8):
+            label = _nonempty_text(
+                industry["published_label"], f"{location}.published_label"
+            )
+            path = _validate_text_list(
+                industry["industry_path"], f"{location}.industry_path"
+            )
+            if path[-1] != label:
+                raise ValueError(f"Industry {key!r} label does not match its path.")
+            ordinal = _nonnegative_integer(
+                industry["source_ordinal"], f"{location}.source_ordinal"
+            )
+            if ordinal == 0:
+                raise ValueError(f"Industry {key!r} source ordinal must be positive.")
+            ordinals.append(ordinal)
+            if key != f"{ordinal:03d} | {' > '.join(str(item) for item in path)}":
+                raise ValueError(f"Industry {key!r} has an inconsistent key.")
+            level = industry["industry_level"]
+            if level not in {"all", "sector_total", "published_detail", "unallocable"}:
+                raise ValueError(f"Industry {key!r} has an unknown level.")
+            if not isinstance(industry["is_aggregate"], bool):
+                raise ValueError(f"Industry {key!r} is_aggregate must be boolean.")
+            if (level == "all") != industry["is_aggregate"] and level != "sector_total":
+                raise ValueError(
+                    f"Industry {key!r} has inconsistent aggregate metadata."
+                )
+            hint = industry["census_bin_hint"]
+            if hint is not None and (
+                isinstance(hint, bool)
+                or not isinstance(hint, int)
+                or hint not in range(1, 8)
+            ):
                 raise ValueError(f"Industry {key!r} has invalid SCF-bin hint.")
-            if not isinstance(industry.get("proxy"), bool):
-                raise ValueError(f"Industry {key!r} proxy must be boolean.")
+            _nonempty_text(
+                industry["census_bin_hint_basis"],
+                f"{location}.census_bin_hint_basis",
+            )
+            if industry["proxy"] is not spec["proxy"]:
+                raise ValueError(f"Industry {key!r} has the wrong proxy flag.")
+            if industry["capital_measure"] != spec["capital_measure"]:
+                raise ValueError(f"Industry {key!r} has the wrong capital measure.")
+
             for measure in ("wage_share", "ubia_intensity"):
-                value = industry.get(measure)
+                value = industry[measure]
                 if value is None:
                     continue
-                if (
-                    isinstance(value, bool)
-                    or not isinstance(value, (int, float))
-                    or not math.isfinite(float(value))
-                    or float(value) < 0.0
-                ):
-                    raise ValueError(
-                        f"Industry {key!r} {measure} must be null or "
-                        "finite and nonnegative."
-                    )
-            flags = _mapping(
-                industry.get("publication_flags"),
-                f"forms.{form}.industries[{index}].publication_flags",
+                _finite_number(value, f"{location}.{measure}", minimum=0.0)
+
+            raw_amounts = _exact_mapping(
+                industry["raw_amounts_thousands"],
+                raw_amount_keys,
+                f"{location}.raw_amounts_thousands",
+            )
+            for name, value in raw_amounts.items():
+                if value is not None:
+                    _finite_number(value, f"{location}.raw_amounts_thousands.{name}")
+            flags = _exact_mapping(
+                industry["publication_flags"],
+                publication_flag_keys,
+                f"{location}.publication_flags",
             )
             unknown_flags = set(flags.values()) - SOI_PUBLICATION_FLAGS
             if unknown_flags:
@@ -2179,7 +2845,100 @@ def validate_qbi_wage_capital_priors_resource(
                     f"Industry {key!r} has unknown publication flags "
                     f"{sorted(unknown_flags)}."
                 )
-            _mapping(
-                industry.get("provenance"),
-                f"forms.{form}.industries[{index}].provenance",
+            null_reasons = _exact_mapping(
+                industry["null_reasons"],
+                {"wage_share", "ubia_intensity"},
+                f"{location}.null_reasons",
             )
+            ratio_specs = {
+                "wage_share": spec["wage_names"],
+                "ubia_intensity": spec["capital_names"],
+            }
+            for measure, names in ratio_specs.items():
+                ratio_flags = [str(flags["receipts"])]
+                numerator = 0.0
+                expected_null: str | None = None
+                for name in names:
+                    ratio_flags.append(str(flags[name]))
+                    value = raw_amounts[name]
+                    if value is None:
+                        expected_null = f"{name}_not_published"
+                        break
+                    numerator += float(value)
+                receipts = raw_amounts["receipts"]
+                if expected_null is None:
+                    if receipts is None:
+                        expected_null = "receipts_not_published"
+                    elif float(receipts) <= 0.0:
+                        expected_null = "nonpositive_receipts"
+                expected_flag = _combined_flag(ratio_flags)
+                if flags[measure] != expected_flag:
+                    raise ValueError(
+                        f"Industry {key!r} {measure} publication flag is inconsistent."
+                    )
+                if null_reasons[measure] != expected_null:
+                    raise ValueError(
+                        f"Industry {key!r} {measure} null reason is inconsistent."
+                    )
+                ratio = industry[measure]
+                if expected_null is not None:
+                    if ratio is not None:
+                        raise ValueError(
+                            f"Industry {key!r} {measure} must be null for its inputs."
+                        )
+                else:
+                    expected_ratio = numerator / float(receipts)
+                    if ratio is None or not math.isclose(
+                        float(ratio),
+                        expected_ratio,
+                        rel_tol=0.0,
+                        abs_tol=1e-12,
+                    ):
+                        raise ValueError(
+                            f"Industry {key!r} {measure} disagrees with raw amounts."
+                        )
+
+            expected_provenance_keys = provenance_keys | set(spec["provenance_extras"])
+            provenance = _exact_mapping(
+                industry["provenance"],
+                expected_provenance_keys,
+                f"{location}.provenance",
+            )
+            if provenance["tax_year"] != spec["tax_year"]:
+                raise ValueError(f"Industry {key!r} provenance has the wrong year.")
+            if provenance["units"] != "thousands_of_dollars":
+                raise ValueError(f"Industry {key!r} provenance has the wrong units.")
+            for field in (
+                "source_tables",
+                "sheet_names",
+                "industry_cells",
+                "wage_cells",
+            ):
+                _validate_text_list(provenance[field], f"{location}.provenance.{field}")
+            for field in (
+                "receipts_cell",
+                "capital_cell",
+                *spec["provenance_extras"],
+            ):
+                value = provenance[field]
+                if isinstance(value, list):
+                    _validate_text_list(value, f"{location}.provenance.{field}")
+                else:
+                    _nonempty_text(value, f"{location}.provenance.{field}")
+            calculation = _exact_mapping(
+                provenance["calculation"],
+                {"wage_share", "ubia_intensity"},
+                f"{location}.provenance.calculation",
+            )
+            _nonempty_text(
+                calculation["wage_share"],
+                f"{location}.provenance.calculation.wage_share",
+            )
+            _nonempty_text(
+                calculation["ubia_intensity"],
+                f"{location}.provenance.calculation.ubia_intensity",
+            )
+        if ordinals != list(range(1, len(industries) + 1)):
+            raise ValueError(f"forms.{form} source ordinals must be contiguous.")
+        if dict(summary) != _form_summary(industries):
+            raise ValueError(f"forms.{form}.summary disagrees with its industries.")

@@ -106,6 +106,21 @@ def _employer_cell(
     )
 
 
+def _margin_cell(
+    payload: dict[str, object],
+    *,
+    legal_form_group: str,
+    industry_code: int,
+) -> dict[str, object]:
+    cells = payload["profit_margin_quantiles"]["cells"]
+    return next(
+        cell
+        for cell in cells
+        if cell["legal_form_group"] == legal_form_group
+        and cell["industry_code"] == industry_code
+    )
+
+
 def test_scf_implicates_pool_with_weight_divided_by_five() -> None:
     source = _scf_fixture(
         [
@@ -232,6 +247,59 @@ def test_scf_thin_cells_follow_independent_nested_fallbacks() -> None:
     ) == pytest.approx(1.0)
 
 
+def test_scf_probability_uses_weights_and_margin_fallbacks_are_nested() -> None:
+    businesses = [
+        {
+            "weight": 900.0 if index == 0 else 100.0,
+            "industry": 1,
+            "headcount": 3 if index == 0 else 1,
+            "receipts": 20_000.0,
+            "net_income": 10_000.0,
+        }
+        for index in range(30)
+    ]
+    payload = build_qbi_employer_structure_resource(
+        _scf_fixture(businesses),
+        provenance=_provenance(),
+        minimum_unweighted_n=30.0,
+    )
+
+    cell = _employer_cell(
+        payload,
+        income_band="0_to_25k",
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    assert cell["employer_presence"]["estimate_level"] == "exact"
+    assert cell["employer_presence"]["probability_headcount_gt_1"] == pytest.approx(
+        900.0 / (900.0 + 29 * 100.0)
+    )
+    assert (
+        _margin_cell(
+            payload,
+            legal_form_group="sole_or_informal",
+            industry_code=1,
+        )["estimate_level"]
+        == "exact"
+    )
+    assert (
+        _margin_cell(
+            payload,
+            legal_form_group="sole_or_informal",
+            industry_code=2,
+        )["estimate_level"]
+        == "form"
+    )
+    assert (
+        _margin_cell(
+            payload,
+            legal_form_group="partnership_or_llc",
+            industry_code=1,
+        )["estimate_level"]
+        == "all"
+    )
+
+
 def test_weighted_profit_margin_quantiles_use_inverse_cdf() -> None:
     quantiles = weighted_inverse_cdf(
         np.array([0.1, 0.2, 0.9]),
@@ -287,6 +355,45 @@ def _publication_flags(**overrides: str) -> dict[str, str]:
     return flags
 
 
+def _soi_provenance(form: str) -> dict[str, object]:
+    tax_year = 2022 if form == "s_corporation" else 2023
+    provenance: dict[str, object] = {
+        "source_tables": ["synthetic"],
+        "sheet_names": ["Sheet1"],
+        "tax_year": tax_year,
+        "units": "thousands_of_dollars",
+        "industry_cells": ["Sheet1!B4"],
+        "receipts_cell": "Sheet1!B18",
+        "wage_cells": ["Sheet1!B26"],
+        "capital_cell": "Sheet1!B29",
+        "calculation": {
+            "wage_share": "synthetic numerator / receipts",
+            "ubia_intensity": "synthetic capital / receipts",
+        },
+    }
+    if form == "sole_proprietorship":
+        provenance["wage_component_crosscheck_cells"] = [
+            "Sheet1!B19",
+            "Sheet1!B42",
+        ]
+    elif form == "partnership":
+        provenance["excluded_wage_cell"] = "Sheet1!B31"
+        provenance["depreciation_deduction_cell"] = "Sheet1!B37"
+    else:
+        provenance["depreciation_deduction_cell"] = "Sheet1!B57"
+    return provenance
+
+
+def _all_corporation_review() -> dict[str, object]:
+    return {
+        "filename": "synthetic.xlsx",
+        "table": "Table 5.1",
+        "tax_year": 2022,
+        "review_status": "inspected_not_used",
+        "reason": "Synthetic all-corporation table is review-only.",
+    }
+
+
 def _soi_observation(
     *,
     form: str,
@@ -303,6 +410,22 @@ def _soi_observation(
     flags: dict[str, str] | None = None,
     aggregate: bool = False,
 ) -> SoiIndustryObservation:
+    effective_flags = flags or _publication_flags()
+    absent_by_form = {
+        "sole_proprietorship": {
+            "officer_compensation",
+            "guaranteed_payments_excluded",
+            "gross_depreciable_assets",
+        },
+        "partnership": {"officer_compensation", "payroll"},
+        "s_corporation": {
+            "cost_labor",
+            "guaranteed_payments_excluded",
+            "payroll",
+        },
+    }
+    for name in absent_by_form[form]:
+        effective_flags[name] = "not_published"
     return SoiIndustryObservation(
         form=form,
         tax_year=2022 if form == "s_corporation" else 2023,
@@ -313,23 +436,18 @@ def _soi_observation(
         is_aggregate=aggregate,
         receipts=receipts,
         salaries=salaries,
-        cost_labor=cost_labor,
-        officer_compensation=officer_compensation,
-        guaranteed_payments_excluded=guaranteed_payments,
-        payroll=payroll,
-        gross_depreciable_assets=assets,
+        cost_labor=cost_labor if form != "s_corporation" else None,
+        officer_compensation=(
+            officer_compensation if form == "s_corporation" else None
+        ),
+        guaranteed_payments_excluded=(
+            guaranteed_payments if form == "partnership" else None
+        ),
+        payroll=payroll if form == "sole_proprietorship" else None,
+        gross_depreciable_assets=(assets if form != "sole_proprietorship" else None),
         depreciation_deduction=depreciation,
-        publication_flags=flags or _publication_flags(),
-        provenance={
-            "source_tables": ["synthetic"],
-            "tax_year": 2023,
-            "units": "thousands_of_dollars",
-            "industry_cells": ["Sheet1!B4"],
-            "receipts_cell": "Sheet1!B18",
-            "wage_cells": ["Sheet1!B26"],
-            "capital_cell": "Sheet1!B29",
-            "calculation": {"wage_share": "synthetic"},
-        },
+        publication_flags=effective_flags,
+        provenance=_soi_provenance(form),
     )
 
 
@@ -356,10 +474,7 @@ def test_soi_ratio_builder_uses_form_specific_numerators_and_proxy_flag() -> Non
                 ordinal=1,
             )
         ],
-        all_corporation_review={
-            "filename": "synthetic.xlsx",
-            "review_status": "inspected_not_used",
-        },
+        all_corporation_review=_all_corporation_review(),
         provenance=_provenance(),
     )
 
@@ -506,17 +621,75 @@ def test_wage_capital_schema_rejects_negative_ratio() -> None:
                 ordinal=1,
             )
         ],
-        all_corporation_review={
-            "filename": "synthetic.xlsx",
-            "review_status": "inspected_not_used",
-        },
+        all_corporation_review=_all_corporation_review(),
         provenance=_provenance(),
     )
     broken = deepcopy(payload)
     broken["forms"]["partnership"]["industries"][0]["wage_share"] = -0.1
 
-    with pytest.raises(ValueError, match="finite and nonnegative"):
+    with pytest.raises(ValueError, match="finite and at least 0.0"):
         validate_qbi_wage_capital_priors_resource(broken)
+
+
+def test_nested_resource_schemas_reject_inconsistent_metadata() -> None:
+    employer = build_qbi_employer_structure_resource(
+        _scf_fixture(
+            [
+                {
+                    "industry": 1,
+                    "headcount": 3,
+                    "receipts": 20_000.0,
+                    "net_income": 10_000.0,
+                }
+                for _ in range(30)
+            ]
+        ),
+        provenance=_provenance(),
+    )
+    broken_employer = deepcopy(employer)
+    broken_employer["cells"][0]["employer_presence"]["estimate_level"] = "invented"
+    with pytest.raises(ValueError, match="unknown presence fallback"):
+        validate_qbi_employer_structure_resource(broken_employer)
+
+    wage_capital = build_qbi_wage_capital_priors_resource(
+        sole_proprietorship=[
+            _soi_observation(
+                form="sole_proprietorship",
+                label="Retail trade",
+                ordinal=1,
+            )
+        ],
+        partnership=[
+            _soi_observation(
+                form="partnership",
+                label="Retail trade",
+                ordinal=1,
+            )
+        ],
+        s_corporation=[
+            _soi_observation(
+                form="s_corporation",
+                label="Retail trade",
+                ordinal=1,
+            )
+        ],
+        all_corporation_review=_all_corporation_review(),
+        provenance=_provenance(),
+    )
+    wrong_year = deepcopy(wage_capital)
+    wrong_year["forms"]["s_corporation"]["tax_year"] = 2023
+    with pytest.raises(ValueError, match="tax_year is not recognized"):
+        validate_qbi_wage_capital_priors_resource(wrong_year)
+    wrong_proxy = deepcopy(wage_capital)
+    wrong_proxy["forms"]["partnership"]["industries"][0]["proxy"] = True
+    with pytest.raises(ValueError, match="wrong proxy flag"):
+        validate_qbi_wage_capital_priors_resource(wrong_proxy)
+    wrong_summary = deepcopy(wage_capital)
+    wrong_summary["forms"]["sole_proprietorship"]["summary"][
+        "valid_finest_wage_share_count"
+    ] = 0
+    with pytest.raises(ValueError, match="summary disagrees"):
+        validate_qbi_wage_capital_priors_resource(wrong_summary)
 
 
 def test_packaged_qbi_v3_resources_validate_and_remain_provisional() -> None:

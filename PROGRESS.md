@@ -40,11 +40,13 @@ item 8; simulation wiring is out of scope.
   denominator/selection provenance and SOI industry-classification/source-cell
   findings are resolved in regenerated resources; a pre-review full-suite run
   also completed without failure.
+- Hardened all nested evidence schemas and added unequal-weight, margin-fallback,
+  and malformed-metadata regressions. Forty-seven focused tests pass, Ruff is
+  clean, and a restricted rebuild remains byte-identical.
 
 ## Current next
 
-- Tighten nested schemas and regression coverage, then run final full workspace
-  verification and write the report.
+- Complete final schema review, full workspace verification, and the report.
 
 ## Historical progress
 

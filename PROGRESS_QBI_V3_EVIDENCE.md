@@ -63,9 +63,17 @@
   unchanged; the sole-proprietor finest universe is now 126 classified rows.
 - The pre-review full workspace baseline completed without failure. The rebuilt
   focused QBI/spec-only selection passes 19 tests and focused Ruff is clean.
+- Hardened both validators across nested keys, SCF count/probability identities,
+  collapse enums and source dimensions, comparison definitions, margin support,
+  SOI form years/proxies/capital measures, industry metadata, summaries,
+  publication/null consistency, raw-ratio arithmetic, per-cell provenance, and
+  top-level input digests.
+- Added unequal-weight employer probability, margin fallback, and malformed
+  nested-schema regressions. The expanded focused package selection passes 47
+  tests; Ruff is clean. A restricted real-data rebuild is byte-identical to the
+  post-review committed resources under the hardened validators.
 
 ## Next
 
-- Tighten nested resource-schema validation and add unequal-weight/fallback
-  regression coverage.
-- Run Ruff and the final full workspace suite, then write the final report.
+- Resolve the final schema review, run Ruff and the final full workspace suite,
+  then write the final report.
