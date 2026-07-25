@@ -8,8 +8,9 @@ plan, and builder tests pass. The first full package run returned 1 because one
 ordinary-miss test double omitted the new retry-applicability detail; that
 fixture is corrected and its three parameterized cases now pass. A clean full
 rerun returned `PYTEST_RC=0`. Final audit then found two mixed/boundary gate
-classifications; their fixes and focused regressions pass, and one final full
-rerun plus the report remain.
+classifications; their fixes and focused regressions pass. The final committed
+tree rerun returned `PYTEST_RC=0`, both Ruff gates pass, and the completion
+report is written.
 
 ## Done
 
@@ -61,11 +62,16 @@ rerun plus the report remain.
   and made the builder's non-retry artifact wording truthful for structural,
   invalid, and mixed failures. The complete SSI test module plus focused
   builder regressions pass (`FOCUSED_EDGE_RC=0`).
+- Committed those final-audit corrections as `7197aa0`.
+- Reran the exact required package suite from the committed tree, unpiped and
+  with the return code captured immediately: `PYTEST_RC=0`.
+- Repeated all-six-file Ruff gates after the audit changes:
+  `RUFF_CHECK_RC=0`, `RUFF_FORMAT_RC=0`; `DIFF_CHECK_RC=0`.
+- Replaced the stale output file with the complete floor-aware SSI report in
+  `FINAL_REPORT.md`, including the flag-retirement and 65+ assessments.
 
 ## Next
 
-- Commit the final-audit edge fixes and this journal update.
-- Rerun `uv run pytest packages/populace-build/tests/ -q` after the audit
-  fixes and capture its return code first, then repeat changed-file Ruff
-  gates.
-- Write `FINAL_REPORT.md`, finalize this journal, and commit without pushing.
+- Commit this completed journal and final report.
+- Hand the clean, unpushed branch to human review; a release rebuild is the
+  only remaining way to measure the new post-calibration 65+ delivery.
