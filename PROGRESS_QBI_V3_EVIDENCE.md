@@ -21,10 +21,18 @@
   conventions.
 - Declared the offline-cached `xlrd` reader needed for the two genuine BIFF
   SOI workbooks and regenerated its lock entry without network access.
+- Implemented the pure SCF business-record stack, X42001/5 implicate pooling,
+  owned-net bands, legal-form groups, employer proxy, independent presence/size
+  collapse, weighted margin quantiles, JCT comparison, and strict resource
+  validator.
+- Added synthetic tests for implicate arithmetic, `-1` economic-zero handling,
+  ownership scaling, thin-cell fallback, inverse-CDF margins, and schema
+  refusal. Four focused tests and Ruff pass.
 
 ## Next
 
-- Implement and validate SCF and SOI estimation logic on synthetic fixtures.
+- Implement and validate the SOI workbook parsers and ratio builder on
+  synthetic fixtures.
 - Run the builder on restricted real inputs, commit only derived resources,
   and record commands and input digests.
 - Declare resources, add changelog/tests, run Ruff and the full workspace

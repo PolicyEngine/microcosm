@@ -22,10 +22,12 @@ item 8; simulation wiring is out of scope.
 - Inventoried all three factsheets, the SCF archive, and six SOI workbooks.
 - Mapped repository evidence-resource conventions and added the locked legacy
   workbook reader required by the SOI `.xls` inputs.
+- Implemented and unit-tested the pure SCF employer-structure estimator,
+  thin-cell fallback, margin quantiles, and schema validator.
 
 ## Current next
 
-- Implement the pure SCF/SOI estimation module and synthetic-fixture tests.
+- Implement the SOI workbook parsers, wage/capital ratios, and schema tests.
 
 ## Historical progress
 
