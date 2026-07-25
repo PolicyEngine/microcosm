@@ -137,6 +137,11 @@
               "farm_operations_income_would_be_qualified",
               "self_employment_income_would_be_qualified",
               "sstb_self_employment_income_would_be_qualified"
+            ],
+            "3": [
+              "farm_operations_income_would_be_qualified",
+              "self_employment_income_would_be_qualified",
+              "sstb_self_employment_income_would_be_qualified"
             ]
           }
         },
