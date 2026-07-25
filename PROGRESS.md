@@ -11,7 +11,7 @@ The active ledger for the repeal-revenue validation surface is
 - Branch `repeal-validation-298` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
 - The reform-validation contracts and release hook are mapped; implementation
-  of the declared repeal benchmark resource is next.
+  of the diagnostics-only runner table is next.
 
 ## Current done
 
@@ -23,10 +23,15 @@ The active ledger for the repeal-revenue validation surface is
   release `reform_validation.json`.
 - Confirmed repeal rows must always use independent simulations, never
   calibration estimates, and must remain outside release gates.
+- Added the declared eight-row repeal benchmark resource and manifest entry,
+  with provisional JCX-45-25 transcriptions and null tips/overtime
+  placeholders.
+- Added strict loader/schema checks and proved every neutralization exists in
+  the pinned 1.764.6 variable registry.
 
 ## Current next
 
-- Add the declared benchmark resource, runner family, and contract tests.
+- Add the runner family, payload table, and synthetic arithmetic tests.
 - Run focused checks and the full workspace suite, then write the final report.
 
 ## State

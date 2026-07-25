@@ -53,6 +53,7 @@ __all__ = [
     "ReformValidationSpec",
     "in_sample_reform_specs",
     "out_of_sample_reform_specs",
+    "repeal_revenue_benchmark_specs",
     "tax_expenditure_reform_specs",
     "soi_baseline_level_specs",
     "state_program_level_specs",
@@ -119,6 +120,9 @@ class ReformValidationSpec:
     # provisions are validated by a counterfactual *revert* reform — there the
     # provision's effect is baseline − reform (JCT enactment sign).
     effect_direction: str = "reform_minus_baseline"
+    # Labels benchmarks transcribed ahead of source certification. This is
+    # carried only by diagnostics; it never changes scoring or release gates.
+    provisional: bool = False
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -280,6 +284,121 @@ def _tax_expenditure_config_path() -> Path:
     return Path(
         str(files("populace.build.us").joinpath("tax_expenditure_reforms.json"))
     )
+
+
+def _repeal_revenue_benchmarks_config_path() -> Path:
+    return Path(
+        str(files("populace.build.us").joinpath("repeal_revenue_benchmarks.json"))
+    )
+
+
+def repeal_revenue_benchmark_specs(
+    path: Path | None = None,
+    *,
+    period: int,
+) -> tuple[ReformValidationSpec, ...]:
+    """Standing component-repeal benchmarks from the declarative US resource.
+
+    These are always out-of-sample simulations. In particular, they must never
+    reuse the calibration estimate for an amount target: the independent
+    income-tax delta is the validation surface this family exists to preserve.
+    """
+    config_path = path or _repeal_revenue_benchmarks_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    if payload.get("schema_version") != 1:
+        raise ValueError(f"{config_path}: repeal benchmark schema_version must be 1.")
+    rows = payload.get("benchmarks")
+    if not isinstance(rows, list):
+        raise ValueError(f"{config_path}: benchmarks must be a JSON array.")
+
+    specs: list[ReformValidationSpec] = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(rows):
+        context = f"{config_path}: benchmarks[{index}]"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{context} must be a JSON object.")
+        required_fields = {
+            "id",
+            "name",
+            "period",
+            "benchmark",
+            "benchmark_source",
+            "provisional",
+        }
+        missing_fields = sorted(required_fields - raw.keys())
+        if missing_fields:
+            raise ValueError(f"{context} is missing required fields {missing_fields}.")
+        benchmark_id = raw.get("id")
+        if not isinstance(benchmark_id, str) or not benchmark_id.strip():
+            raise ValueError(f"{context}.id must be a non-empty string.")
+        if benchmark_id in seen_ids:
+            raise ValueError(f"{context}.id duplicates {benchmark_id!r}.")
+        seen_ids.add(benchmark_id)
+        name = raw.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"{context}.name must be a non-empty string.")
+        row_period = raw.get("period")
+        if isinstance(row_period, bool) or not isinstance(row_period, int):
+            raise ValueError(f"{context}.period must be an integer year.")
+
+        benchmark = raw.get("benchmark")
+        if isinstance(benchmark, bool) or (
+            benchmark is not None and not isinstance(benchmark, int | float)
+        ):
+            raise ValueError(f"{context}.benchmark must be a number or null.")
+        if benchmark is not None and (
+            not math.isfinite(float(benchmark)) or float(benchmark) <= 0
+        ):
+            raise ValueError(f"{context}.benchmark must be finite and positive.")
+        source = raw.get("benchmark_source")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"{context}.benchmark_source must be a non-empty string.")
+        provisional = raw.get("provisional")
+        if not isinstance(provisional, bool):
+            raise ValueError(f"{context}.provisional must be a boolean.")
+        neutralized_variable = raw.get("neutralized_variable")
+        if neutralized_variable is not None:
+            if isinstance(neutralized_variable, str):
+                valid_neutralization = bool(neutralized_variable.strip())
+            elif isinstance(neutralized_variable, list):
+                valid_neutralization = bool(neutralized_variable) and all(
+                    isinstance(variable, str) and bool(variable.strip())
+                    for variable in neutralized_variable
+                )
+            else:
+                valid_neutralization = False
+            if not valid_neutralization:
+                raise ValueError(
+                    f"{context}.neutralized_variable must be a non-empty string "
+                    "or array of non-empty strings."
+                )
+        parameter_changes = raw.get("parameter_changes")
+        if parameter_changes is not None and not isinstance(parameter_changes, dict):
+            raise ValueError(f"{context}.parameter_changes must be a JSON object.")
+
+        specs.append(
+            ReformValidationSpec(
+                id=benchmark_id,
+                name=name,
+                category="Repeal revenue benchmark",
+                in_sample=False,
+                period=row_period,
+                jct_score=None if benchmark is None else float(benchmark),
+                jct_window=f"FY{row_period}",
+                jct_source=source,
+                jct_source_url="",
+                jct_score_type="repeal_revenue",
+                budget_measure=str(raw.get("budget_measure", DEFAULT_BUDGET_MEASURE)),
+                description=str(raw.get("description", "")),
+                neutralized_variable=neutralized_variable,
+                parameter_changes=parameter_changes,
+                effect_direction="reform_minus_baseline",
+                provisional=provisional,
+            )
+        )
+    return tuple(specs)
 
 
 def tax_expenditure_reform_specs(

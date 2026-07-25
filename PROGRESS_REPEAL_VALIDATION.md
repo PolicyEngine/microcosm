@@ -5,8 +5,8 @@
 - Active on branch `repeal-validation-298` in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
 - Based on local `qbi-v2-engine` HEAD `807141e`; all work is offline.
-- The existing validation machinery and release seam are mapped. The next
-  coherent step is the declared benchmark resource and loader contracts.
+- The declared benchmark resource and loader contracts are implemented and
+  tested. The next coherent step is the diagnostics-only runner table.
 
 ## Done
 
@@ -32,11 +32,19 @@
   `overtime_income_deduction`.
 - Verified all eight names exist in the installed pinned rules-engine registry
   at version 1.764.6.
+- Added and declared `us/repeal_revenue_benchmarks.json` with eight component
+  rows, the six provisional populace#298 transcriptions, and explicit null
+  tips/overtime placeholders.
+- Added strict resource loading through the existing exact-one reform shape,
+  including schema version, required field, unique ID, scalar benchmark,
+  provenance, provisional-label, period, and neutralization validation.
+- Added shipped-resource and malformed-shape tests plus a live registry
+  contract for all eight neutralized variables.
+- Focused resource/loader/spec-only tests pass; the registry contract also
+  passes separately against the pinned engine-enabled environment.
 
 ## Next
 
-- Add the provisional repeal benchmark resource and its schema/registry
-  contracts.
 - Add diagnostics-only runner output and synthetic arithmetic tests.
 - Run Ruff, focused tests, and the full workspace `uv run pytest`.
 - Write the final handoff report and record all verification results here.

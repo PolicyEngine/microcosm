@@ -6,7 +6,10 @@ the in-sample/out-of-sample split without running a Microsimulation.
 
 from __future__ import annotations
 
+import importlib.util
 import json
+from importlib import import_module
+from importlib.metadata import version
 
 import pytest
 
@@ -17,6 +20,7 @@ from populace.build.us_runtime.reform_validation import (
     in_sample_reform_specs,
     out_of_sample_reform_specs,
     reform_validation_payload,
+    repeal_revenue_benchmark_specs,
     tax_expenditure_reform_specs,
     write_reform_validation,
 )
@@ -440,6 +444,105 @@ def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
     assert eitc.in_sample is True  # calibrated to SOI EITC targets
     std = next(s for s in specs if s.id == "te_standard_deduction")
     assert std.jct_score is None  # baseline in both JCT and Treasury — no benchmark
+
+
+def test_shipped_repeal_revenue_benchmarks_are_well_formed():
+    specs = repeal_revenue_benchmark_specs(period=2026)
+    assert {spec.id for spec in specs} == {
+        "repeal_salt",
+        "repeal_home_mortgage_interest",
+        "repeal_charitable",
+        "repeal_medical",
+        "repeal_casualty",
+        "repeal_qbi",
+        "repeal_tips_exemption",
+        "repeal_overtime_exemption",
+    }
+    expected_benchmarks = {
+        "repeal_salt": 59.5e9,
+        "repeal_home_mortgage_interest": 53.0e9,
+        "repeal_charitable": 81.5e9,
+        "repeal_medical": 13.8e9,
+        "repeal_casualty": 0.2e9,
+        "repeal_qbi": 76.4e9,
+        "repeal_tips_exemption": None,
+        "repeal_overtime_exemption": None,
+    }
+    for spec in specs:
+        assert spec.period == 2026
+        assert spec.in_sample is False
+        assert spec.effect_direction == "reform_minus_baseline"
+        assert spec.neutralized_variable
+        assert spec.parameter_changes is None
+        assert spec.provisional is True
+        assert spec.jct_score == expected_benchmarks[spec.id]
+        assert spec.jct_source
+    sourced = [spec for spec in specs if spec.jct_score is not None]
+    assert all(
+        spec.jct_source
+        == (
+            "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed "
+            "from populace#298; re-verify against the publication before first "
+            "certified use"
+        )
+        for spec in sourced
+    )
+    placeholders = [spec for spec in specs if spec.jct_score is None]
+    assert {spec.id for spec in placeholders} == {
+        "repeal_tips_exemption",
+        "repeal_overtime_exemption",
+    }
+    assert all(
+        "no-published-line placeholder" in spec.jct_source for spec in placeholders
+    )
+
+
+def test_repeal_revenue_loader_reuses_exactly_one_reform_shape_validator(tmp_path):
+    path = tmp_path / "repeal_revenue_benchmarks.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmarks": [
+                    {
+                        "id": "invalid",
+                        "name": "invalid",
+                        "period": 2026,
+                        "neutralized_variable": "some_variable",
+                        "parameter_changes": {"gov.example.value": {"2026-01-01": 0}},
+                        "benchmark": 1,
+                        "benchmark_source": "source",
+                        "provisional": True,
+                    }
+                ],
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="provide exactly one"):
+        repeal_revenue_benchmark_specs(path, period=2026)
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("policyengine_" + "us") is None,
+    reason="requires the pinned US rules-engine extra",
+)
+def test_repeal_revenue_neutralizations_exist_in_pinned_variable_registry():
+    engine_module_name = "policyengine_" + "us"
+    engine_distribution_name = "policyengine-" + "us"
+    engine = import_module(engine_module_name)
+    assert version(engine_distribution_name) == "1.764.6"
+    variables = engine.CountryTaxBenefitSystem().variables
+
+    for spec in repeal_revenue_benchmark_specs(period=2026):
+        neutralized = spec.neutralized_variable
+        names = (
+            [neutralized] if isinstance(neutralized, str) else list(neutralized or ())
+        )
+        assert names, spec.id
+        for name in names:
+            assert name in variables, (
+                f"{spec.id}: unknown neutralized variable {name!r}"
+            )
 
 
 def test_out_of_sample_specs_carry_fy2027_and_emit_it():
@@ -893,14 +996,12 @@ def test_state_reform_specs_shipped_config_loads():
     )
     # Federal rows score federal income tax against JCT/CBO published figures.
     assert all(
-        spec.budget_measure == "income_tax"
-        for spec in by_category["Federal reform"]
+        spec.budget_measure == "income_tax" for spec in by_category["Federal reform"]
     )
     # Mechanical rows measure the reform's own spending variable, so the
     # benchmark is an exact external anchor (population x amount).
     assert all(
-        spec.jct_score_type == "mechanical"
-        for spec in by_category["Mechanical check"]
+        spec.jct_score_type == "mechanical" for spec in by_category["Mechanical check"]
     )
 
 
