@@ -4375,7 +4375,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 if passes
                 else ("18_64 delivered over envelope [cofailure-sentinel]",)
             ),
-            details=diagnostics,
+            details={
+                **diagnostics,
+                "prior_weight_basis_retry_applicable": not passes,
+            },
         )
 
     monkeypatch.setattr(
