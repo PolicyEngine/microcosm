@@ -5420,29 +5420,46 @@ def _enforce_ssi_take_up_delivery(
     delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
     if delivery_gate.passed:
         return []
-    failed_basis_path = write_us_ssi_take_up_diagnostics(
-        diagnostics,
-        release_dir / "us_ssi_take_up.json",
-    )
-    if telemetry is not None:
-        telemetry.stage(
-            "ssi_take_up_delivery_gate",
-            status="failed",
-            message=(
-                "SSI take-up enforced-band delivery gate failed; "
-                f"delivered-weight prior basis written to {failed_basis_path}."
-            ),
-            failures=list(delivery_gate.failures),
-            force_upload=True,
-        )
-    return [
-        *(
-            f"SSI take-up delivery failed: {failure}"
-            for failure in delivery_gate.failures
-        ),
-        "SSI take-up delivered-weight prior basis written to "
-        f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis retry.",
+    # The gate failures are secured FIRST: the retry-artifact write and the
+    # telemetry are reporting conveniences for an already-failed gate, and
+    # neither may destroy the evidence chain by raising. Concretely: a
+    # nonfinite delivered weight both fails the gate AND makes the strict
+    # JSON writer (allow_nan=False) raise — the reporting crash would have
+    # masked the gate failure and skipped the diagnostics artifact
+    # (populace#547, confirm round 2 finding 1).
+    failures = [
+        f"SSI take-up delivery failed: {failure}" for failure in delivery_gate.failures
     ]
+    try:
+        failed_basis_path = write_us_ssi_take_up_diagnostics(
+            diagnostics,
+            release_dir / "us_ssi_take_up.json",
+        )
+        failures.append(
+            "SSI take-up delivered-weight prior basis written to "
+            f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis "
+            "retry."
+        )
+    except Exception as error:
+        failures.append(
+            "SSI take-up delivered-weight prior basis could NOT be written "
+            f"(the retry must recompute delivery itself): {error}"
+        )
+    try:
+        if telemetry is not None:
+            telemetry.stage(
+                "ssi_take_up_delivery_gate",
+                status="failed",
+                message="SSI take-up enforced-band delivery gate failed.",
+                failures=list(delivery_gate.failures),
+                force_upload=True,
+            )
+    except Exception as error:
+        failures.append(
+            "SSI delivery-gate failure telemetry crashed; recorded instead "
+            f"of masking the failure: {error}"
+        )
+    return failures
 
 
 def _ssi_assignment_priors_from_diagnostics(
@@ -8812,18 +8829,27 @@ def main() -> None:
     ssi_law_degraded = not final_ssi_take_up_gate.passed
     early_terminal_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "ssi_take_up_final_gate",
-                status="failed",
-                message="SSI take-up final export-frame gate failed.",
-                failures=list(final_ssi_take_up_gate.failures),
-                force_upload=True,
-            )
+        # Failures enter the list BEFORE any reporting: the telemetry stage
+        # performs local writes and must not be able to mask the gate
+        # failure by raising (populace#547, confirm round 2 finding 1).
         early_terminal_gate_failures.extend(
             f"SSI take-up final measurement failed: {failure}"
             for failure in final_ssi_take_up_gate.failures
         )
+        try:
+            if telemetry is not None:
+                telemetry.stage(
+                    "ssi_take_up_final_gate",
+                    status="failed",
+                    message="SSI take-up final export-frame gate failed.",
+                    failures=list(final_ssi_take_up_gate.failures),
+                    force_upload=True,
+                )
+        except Exception as error:
+            early_terminal_gate_failures.append(
+                "SSI final-gate failure telemetry crashed; recorded instead "
+                f"of masking the failure: {error}"
+            )
     early_terminal_gate_failures.extend(
         _enforce_ssi_take_up_delivery(
             ssi_take_up_diagnostics,
@@ -8899,18 +8925,34 @@ def main() -> None:
     }
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
-    if telemetry is not None:
-        telemetry.stage(
-            "release_gates",
-            message="Evaluating release gates.",
-            final_loss=result.final_loss,
-            n_nonzero=result.n_nonzero,
-            default_dataset=default_dataset,
-            calibration_seconds=timing["calibration_seconds"],
-            elapsed_through_calibration_seconds=timing[
-                "elapsed_through_calibration_seconds"
-            ],
+    try:
+        if telemetry is not None:
+            telemetry.stage(
+                "release_gates",
+                message="Evaluating release gates.",
+                final_loss=result.final_loss,
+                n_nonzero=result.n_nonzero,
+                default_dataset=default_dataset,
+                calibration_seconds=timing["calibration_seconds"],
+                elapsed_through_calibration_seconds=timing[
+                    "elapsed_through_calibration_seconds"
+                ],
+            )
+    except Exception as error:
+        # Degraded-mode guard (populace#547): telemetry writes locally and
+        # sits in the corridor between SSI collection and the diagnostics
+        # write. Green path raises as before.
+        if not early_terminal_gate_failures:
+            raise
+        early_terminal_gate_failures.append(
+            "Release-gates telemetry crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
         )
+    # The path travels separately so the fallback can null it: the
+    # diagnostics writer re-hashes any non-None incumbent path, which would
+    # replay the exact I/O failure the guard just caught (populace#547,
+    # confirm round 2 finding 2).
+    incumbent_diagnostics_path: Path | None = args.incumbent_diagnostics
     try:
         incumbent_payload = _load_incumbent_diagnostics_payload(
             args.incumbent_diagnostics
@@ -8941,6 +8983,7 @@ def main() -> None:
         if not early_terminal_gate_failures:
             raise
         incumbent_diagnostics = {}
+        incumbent_diagnostics_path = None
         early_terminal_gate_failures.append(
             "Incumbent diagnostics could not be loaded/validated in "
             f"degraded mode; recorded instead of masking earlier failures: "
@@ -9012,7 +9055,7 @@ def main() -> None:
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         timing=timing,
-        incumbent_diagnostics_path=args.incumbent_diagnostics,
+        incumbent_diagnostics_path=incumbent_diagnostics_path,
         incumbent_diagnostics=incumbent_diagnostics,
         default_dataset=default_dataset,
         degenerate_input_gate=degenerate_input_gate,

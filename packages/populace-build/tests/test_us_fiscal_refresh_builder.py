@@ -2885,9 +2885,21 @@ def test_release_calibration_diagnostics_include_gate_failures(
     }
 
 
+@pytest.mark.parametrize("terminal_mode", ["merge", "crash"])
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, terminal_mode
 ) -> None:
+    """The populace#547 corridor contract, end to end through main().
+
+    ``merge``: SSI delivery + export other-health + the ctc sentinel all
+    fail in one run — the batch carries every group in corridor order and
+    the diagnostics artifact is written first.
+    ``crash``: the degraded-mode guards themselves are exercised — the
+    health-input evaluation raises, the incumbent path is missing, and
+    ``_release_gate_failures`` raises; each records a line instead of
+    masking the SSI failure, and the incumbent path is nulled for the
+    writer so the caught I/O failure is not replayed at the re-hash.
+    """
     builder = _load_builder_module()
     release_id = "populace-us-2024-gate-failure-test"
     base_h5 = tmp_path / "base.h5"
@@ -2926,25 +2938,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return 4
 
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "build_us_fiscal_refresh_release.py",
-            "--base-h5",
-            str(base_h5),
-            "--ledger-facts",
-            str(facts),
-            "--out",
-            str(out),
-            "--release-id",
-            release_id,
-            "--asec-2023-weeks-unemployed-source",
-            str(weeks_source),
-            "--no-target-frame-checkpoint",
-            "--no-staging",
-        ],
-    )
+    argv = [
+        "build_us_fiscal_refresh_release.py",
+        "--base-h5",
+        str(base_h5),
+        "--ledger-facts",
+        str(facts),
+        "--out",
+        str(out),
+        "--release-id",
+        release_id,
+        "--asec-2023-weeks-unemployed-source",
+        str(weeks_source),
+        "--no-target-frame-checkpoint",
+        "--no-staging",
+    ]
+    if terminal_mode == "crash":
+        # Nonexistent incumbent: the degraded-mode guard must record the
+        # load failure, null the path for the writer (no re-hash replay of
+        # the caught I/O error), and still reach the diagnostics artifact.
+        argv += [
+            "--incumbent-diagnostics",
+            str(tmp_path / "missing-incumbent.json"),
+        ]
+    monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(
         builder,
@@ -3911,14 +3928,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_with_aca_marketplace_source_outputs",
         fake_with_aca_outputs,
     )
-    monkeypatch.setattr(
-        builder,
-        "_health_input_signal_gate",
-        lambda frame: builder.GateResult(
+
+    def fake_health_input_signal_gate(frame):
+        calls = captured.setdefault("health_input_gate_calls", 0) + 1
+        captured["health_input_gate_calls"] = calls
+        # Like other-health, this gate has a staging callsite (base frame)
+        # before the corridor callsite (export frame). The staging call must
+        # succeed — a crash there is green-path and rightly raises; only the
+        # corridor call exercises the #547 degraded-mode guard.
+        if terminal_mode == "crash" and calls > 1:
+            raise RuntimeError("health-input exploded [crash-sentinel]")
+        return builder.GateResult(
             name="health_input_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        fake_health_input_signal_gate,
     )
 
     def fake_with_medicaid_outputs(
@@ -4112,10 +4141,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_medicaid_diagnostics_for_existing_output",
         fake_final_medicaid_diagnostics,
     )
+
+    def fake_release_gate_failures(*args, **kwargs):
+        if terminal_mode == "crash":
+            raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        return ["ctc failed"]
+
     monkeypatch.setattr(
         builder,
         "_release_gate_failures",
-        lambda *args, **kwargs: ["ctc failed"],
+        fake_release_gate_failures,
     )
     monkeypatch.setattr(
         builder,
@@ -4127,10 +4162,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder.main()
     except RuntimeError as exc:
         # populace#547 cofailure contract: the batched report leads with the
-        # early terminal failures (SSI delivery + its retry-basis note +
-        # other-health signal) and still carries the calibration battery
-        # sentinel; degraded-mode coverage/parity evaluation errors on the
-        # fake frame may append further lines after them.
+        # early terminal failures (SSI delivery + its retry-basis note, then
+        # the corridor lines in evaluation order); degraded-mode
+        # coverage/parity evaluation errors on the fake frame may append
+        # further lines after them.
         message = str(exc)
         assert message.startswith(
             "Release gates failed: SSI take-up delivery failed: "
@@ -4140,7 +4175,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "Other health insurance signal failed on the export frame: "
             "premiums signal flattened [cofailure-sentinel]" in message
         )
-        assert "ctc failed" in message
+        if terminal_mode == "merge":
+            assert "ctc failed" in message
+        else:
+            assert "health-input exploded [crash-sentinel]" in message
+            assert "release-gate evaluation exploded [crash-sentinel]" in message
+            assert "ctc failed" not in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
@@ -4149,19 +4189,41 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
-    # Manifest/H5 exclusion: the failed run leaves evidence, never artifacts.
-    assert not list(release_dir.glob("*.h5"))
+    # Artifact exclusion: the failed run leaves evidence, never artifacts.
+    # H5s land under the out root (not the release dir), so sweep the tree.
+    assert not list(out.rglob("*.h5"))
     assert not list(release_dir.glob("*manifest*"))
-    assert captured["diagnostics"]["gate_failures"] == [
-        "SSI take-up delivery failed: 18_64 delivered over envelope "
-        "[cofailure-sentinel]",
-        "SSI take-up delivered-weight prior basis written to "
-        f"{release_dir / 'us_ssi_take_up.json'} for the "
-        "--ssi-take-up-prior-weight-basis retry.",
-        "Other health insurance signal failed on the export frame: "
-        "premiums signal flattened [cofailure-sentinel]",
-        "ctc failed",
-    ]
+    if terminal_mode == "merge":
+        assert captured["diagnostics"]["gate_failures"] == [
+            "SSI take-up delivery failed: 18_64 delivered over envelope "
+            "[cofailure-sentinel]",
+            "SSI take-up delivered-weight prior basis written to "
+            f"{release_dir / 'us_ssi_take_up.json'} for the "
+            "--ssi-take-up-prior-weight-basis retry.",
+            "Other health insurance signal failed on the export frame: "
+            "premiums signal flattened [cofailure-sentinel]",
+            "ctc failed",
+        ]
+    else:
+        # Corridor order: SSI delivery + basis note, health-input crash
+        # guard, other-health gate failure, incumbent guard, release-gate
+        # crash guard. Exact error suffixes vary (OS error text), so pin
+        # order-exact prefixes.
+        expected_prefixes = [
+            "SSI take-up delivery failed: 18_64 delivered over envelope",
+            "SSI take-up delivered-weight prior basis written to",
+            "Health-input signal evaluation crashed in degraded mode",
+            "Other health insurance signal failed on the export frame:",
+            "Incumbent diagnostics could not be loaded/validated in degraded mode",
+            "Release gate evaluation crashed in degraded mode",
+        ]
+        actual = captured["diagnostics"]["gate_failures"]
+        assert len(actual) == len(expected_prefixes), actual
+        for line, prefix in zip(actual, expected_prefixes, strict=True):
+            assert line.startswith(prefix), (line, prefix)
+        # The caught incumbent I/O failure must not be replayed at the
+        # writer's re-hash: the path is nulled for the writer.
+        assert captured["diagnostics"]["incumbent_diagnostics_path"] is None
     assert (
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
@@ -8384,6 +8446,38 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     )
 
     assert failures == []
+    assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
+    tmp_path,
+) -> None:
+    """A nonfinite delivery fails the gate AND breaks the retry writer.
+
+    The strict-JSON basis writer (allow_nan=False) raises on the very
+    diagnostics that fail the gate; the reporting crash must not mask the
+    gate failure or destroy the diagnostics artifact downstream
+    (populace#547, confirm round 2 finding 1). The failure line tells the
+    retry it must recompute delivery itself.
+    """
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {"under_18": 120_000.0, "18_64": float("nan"), "65_plus": 984_000.0}
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert failures
+    assert failures[0].startswith("SSI take-up delivery failed:")
+    assert any("could NOT be written" in failure for failure in failures)
+    # json.dumps runs before write_text, so no partial artifact exists.
     assert not (release_dir / "us_ssi_take_up.json").exists()
 
 
