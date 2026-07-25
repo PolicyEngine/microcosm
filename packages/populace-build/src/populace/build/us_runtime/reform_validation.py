@@ -15,6 +15,10 @@ apart:
 * **out-of-sample** — reforms the calibration never saw (e.g. provisions of
   the 2025 One Big Beautiful Bill Act), curated in ``obbba_reforms.json`` with
   their JCT scores. These are the genuine test of dataset fidelity.
+* **component repeal revenue** — standing independent neutralizations from
+  ``repeal_revenue_benchmarks.json``. These are simulated even when an amount
+  target for the same component is in-sample, and are published as a separate,
+  explicitly diagnostics-only table with signed relative gaps.
 
 The simulation is isolated behind an injected ``simulate`` callable so the
 payload assembly is unit-testable without policyengine-us; the default factory
@@ -53,6 +57,7 @@ __all__ = [
     "ReformValidationSpec",
     "in_sample_reform_specs",
     "out_of_sample_reform_specs",
+    "repeal_revenue_benchmark_specs",
     "tax_expenditure_reform_specs",
     "soi_baseline_level_specs",
     "state_program_level_specs",
@@ -65,8 +70,9 @@ __all__ = [
 ]
 
 #: Schema version of reform_validation.json. The calibration-diagnostics
-#: dashboard keys its reader on it; bump with any shape change.
-REFORM_VALIDATION_SCHEMA_VERSION = 1
+#: dashboard keys its reader on it; v2 adds the standing, diagnostics-only
+#: repeal-revenue benchmark table.
+REFORM_VALIDATION_SCHEMA_VERSION = 2
 
 #: The budget effect of a reform is the weighted-sum change of this variable
 #: between the reform and baseline simulations, unless a spec overrides it. For
@@ -119,6 +125,9 @@ class ReformValidationSpec:
     # provisions are validated by a counterfactual *revert* reform — there the
     # provision's effect is baseline − reform (JCT enactment sign).
     effect_direction: str = "reform_minus_baseline"
+    # Labels benchmarks transcribed ahead of source certification. This is
+    # carried only by diagnostics; it never changes scoring or release gates.
+    provisional: bool = False
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -172,6 +181,18 @@ class ReformValidationSpec:
 def _finite(value: float) -> float | None:
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _relative_gap(modeled: float | None, benchmark: float | None) -> float | None:
+    """Signed gap relative to the benchmark.
+
+    Positive means the modeled repeal raises more revenue than the benchmark;
+    negative means it raises less. A missing or zero benchmark has no defined
+    relative gap.
+    """
+    if modeled is None or benchmark is None or benchmark == 0:
+        return None
+    return _finite((modeled - benchmark) / benchmark)
 
 
 def _is_obbba_spec(spec: ReformValidationSpec) -> bool:
@@ -280,6 +301,127 @@ def _tax_expenditure_config_path() -> Path:
     return Path(
         str(files("populace.build.us").joinpath("tax_expenditure_reforms.json"))
     )
+
+
+def _repeal_revenue_benchmarks_config_path() -> Path:
+    return Path(
+        str(files("populace.build.us").joinpath("repeal_revenue_benchmarks.json"))
+    )
+
+
+def repeal_revenue_benchmark_specs(
+    path: Path | None = None,
+    *,
+    period: int,
+) -> tuple[ReformValidationSpec, ...]:
+    """Standing component-repeal benchmarks from the declarative US resource.
+
+    These are always out-of-sample simulations. In particular, they must never
+    reuse the calibration estimate for an amount target: the independent
+    income-tax delta is the validation surface this family exists to preserve.
+    """
+    config_path = path or _repeal_revenue_benchmarks_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    if payload.get("schema_version") != 1:
+        raise ValueError(f"{config_path}: repeal benchmark schema_version must be 1.")
+    rows = payload.get("benchmarks")
+    if not isinstance(rows, list):
+        raise ValueError(f"{config_path}: benchmarks must be a JSON array.")
+
+    specs: list[ReformValidationSpec] = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(rows):
+        context = f"{config_path}: benchmarks[{index}]"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{context} must be a JSON object.")
+        required_fields = {
+            "id",
+            "name",
+            "period",
+            "benchmark",
+            "benchmark_source",
+            "provisional",
+        }
+        missing_fields = sorted(required_fields - raw.keys())
+        if missing_fields:
+            raise ValueError(f"{context} is missing required fields {missing_fields}.")
+        benchmark_id = raw.get("id")
+        if not isinstance(benchmark_id, str) or not benchmark_id.strip():
+            raise ValueError(f"{context}.id must be a non-empty string.")
+        if benchmark_id in seen_ids:
+            raise ValueError(f"{context}.id duplicates {benchmark_id!r}.")
+        seen_ids.add(benchmark_id)
+        name = raw.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"{context}.name must be a non-empty string.")
+        row_period = raw.get("period")
+        if isinstance(row_period, bool) or not isinstance(row_period, int):
+            raise ValueError(f"{context}.period must be an integer year.")
+
+        benchmark = raw.get("benchmark")
+        if isinstance(benchmark, bool) or (
+            benchmark is not None and not isinstance(benchmark, int | float)
+        ):
+            raise ValueError(f"{context}.benchmark must be a number or null.")
+        if benchmark is not None and (
+            not math.isfinite(float(benchmark)) or float(benchmark) <= 0
+        ):
+            raise ValueError(f"{context}.benchmark must be finite and positive.")
+        source = raw.get("benchmark_source")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"{context}.benchmark_source must be a non-empty string.")
+        provisional = raw.get("provisional")
+        if not isinstance(provisional, bool):
+            raise ValueError(f"{context}.provisional must be a boolean.")
+        neutralized_variable = raw.get("neutralized_variable")
+        if neutralized_variable is not None:
+            if isinstance(neutralized_variable, str):
+                valid_neutralization = bool(neutralized_variable.strip())
+            elif isinstance(neutralized_variable, list):
+                valid_neutralization = bool(neutralized_variable) and all(
+                    isinstance(variable, str) and bool(variable.strip())
+                    for variable in neutralized_variable
+                )
+            else:
+                valid_neutralization = False
+            if not valid_neutralization:
+                raise ValueError(
+                    f"{context}.neutralized_variable must be a non-empty string "
+                    "or array of non-empty strings."
+                )
+        parameter_changes = raw.get("parameter_changes")
+        if parameter_changes is not None and not isinstance(parameter_changes, dict):
+            raise ValueError(f"{context}.parameter_changes must be a JSON object.")
+        budget_measure = raw.get("budget_measure", DEFAULT_BUDGET_MEASURE)
+        if not isinstance(budget_measure, str) or not budget_measure.strip():
+            raise ValueError(f"{context}.budget_measure must be a non-empty string.")
+        description = raw.get("description", "")
+        if not isinstance(description, str):
+            raise ValueError(f"{context}.description must be a string.")
+
+        specs.append(
+            ReformValidationSpec(
+                id=benchmark_id,
+                name=name,
+                category="Repeal revenue benchmark",
+                in_sample=False,
+                period=row_period,
+                jct_score=None if benchmark is None else float(benchmark),
+                jct_window=f"FY{row_period}",
+                jct_source=source,
+                jct_source_url="",
+                jct_score_type="repeal_revenue",
+                budget_measure=budget_measure,
+                description=description,
+                neutralized_variable=neutralized_variable,
+                parameter_changes=parameter_changes,
+                effect_direction="reform_minus_baseline",
+                provisional=provisional,
+            )
+        )
+    return tuple(specs)
 
 
 def tax_expenditure_reform_specs(
@@ -697,6 +839,7 @@ def reform_validation_payload(
     in_sample_estimates: dict[str, float] | None = None,
     in_sample_targets: dict[str, float] | None = None,
     baseline_levels: Sequence[BaselineLevelSpec] = (),
+    repeal_benchmarks: Sequence[ReformValidationSpec] = (),
     release_id: str | None = None,
 ) -> dict[str, Any]:
     """Score each reform on the dataset and render the JSON-stable payload.
@@ -719,6 +862,13 @@ def reform_validation_payload(
     incremental effect given the lines above it — so the per-line effects sum to
     the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
     matches the calibration-diagnostics dashboard's reform_validation reader.
+
+    ``repeal_benchmarks`` is deliberately separate from ``specs``. Every row is
+    independently simulated even when the same component has an in-sample
+    calibration amount target, and the resulting table carries no threshold or
+    pass/fail field. Its simulation-completeness flag is likewise separate from
+    ``out_of_sample_simulated`` so this standing diagnostic cannot gate release
+    publication.
     """
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
@@ -991,6 +1141,31 @@ def reform_validation_payload(
             }
         )
 
+    repeal_rows: list[dict[str, Any]] = []
+    for spec in repeal_benchmarks:
+        effect, base_total, reform_total = simulated_effect(spec)
+        benchmark = spec.jct_score
+        row: dict[str, Any] = {
+            "id": spec.id,
+            "name": spec.name,
+            "period": spec.period,
+            "provisional": spec.provisional,
+            "description": spec.description or None,
+            "benchmark": None if benchmark is None else _finite(benchmark),
+            "benchmark_source": spec.jct_source or None,
+            "benchmark_window": spec.jct_window or None,
+            "budget_measure": spec.budget_measure,
+            "baseline_total": (None if base_total is None else _finite(base_total)),
+            "reform_total": (None if reform_total is None else _finite(reform_total)),
+            "modeled_revenue_delta": None if effect is None else _finite(effect),
+            "relative_gap": _relative_gap(effect, benchmark),
+        }
+        if spec.neutralized_variable is not None:
+            row["neutralized_variable"] = spec.neutralized_variable
+        else:
+            row["parameter_changes"] = spec.parameter_changes
+        repeal_rows.append(row)
+
     # populace#456: the shared baseline simulation has served every reform row
     # and baseline-level row by now; release it before assembling the payload.
     if baseline is not None:
@@ -1005,9 +1180,14 @@ def reform_validation_payload(
     payload: dict[str, Any] = {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
         "baseline_period": int(period),
-        "scoring_window": "see per-reform jct.window",
+        "scoring_window": "see per-row reform or benchmark window",
         "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
+        "repeal_revenue_benchmarks": {
+            "diagnostic_only": True,
+            "simulated": simulate is not None or not repeal_benchmarks,
+            "rows": repeal_rows,
+        },
     }
     if release_id is not None:
         payload["release_id"] = release_id

@@ -1,0 +1,94 @@
+{
+  "_comment": "Standing diagnostics-only repeal-revenue validation surface. Each row independently repeals one component on the calibrated release dataset. Numeric benchmarks are provisional transcriptions from populace#298 and must be checked against JCX-45-25 before certified use. Null benchmarks are explicit placeholders, never inferred values.",
+  "schema_version": 1,
+  "benchmarks": [
+    {
+      "id": "repeal_salt",
+      "name": "State and local tax deduction (SALT)",
+      "period": 2026,
+      "neutralized_variable": "salt_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": 59500000000,
+      "benchmark_source": "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed from populace#298; re-verify against the publication before first certified use",
+      "provisional": true,
+      "description": "Revenue raised by independently repealing the federal individual SALT deduction."
+    },
+    {
+      "id": "repeal_home_mortgage_interest",
+      "name": "Home mortgage interest deduction",
+      "period": 2026,
+      "neutralized_variable": "interest_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": 53000000000,
+      "benchmark_source": "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed from populace#298; re-verify against the publication before first certified use",
+      "provisional": true,
+      "description": "Revenue raised by independently neutralizing the established interest-deduction validation output used for the June mortgage-interest surface."
+    },
+    {
+      "id": "repeal_charitable",
+      "name": "Charitable contribution deduction",
+      "period": 2026,
+      "neutralized_variable": "charitable_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": 81500000000,
+      "benchmark_source": "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed from populace#298; re-verify against the publication before first certified use",
+      "provisional": true,
+      "description": "Revenue raised by independently repealing the itemized charitable contribution deduction."
+    },
+    {
+      "id": "repeal_medical",
+      "name": "Medical expense deduction",
+      "period": 2026,
+      "neutralized_variable": "medical_expense_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": 13800000000,
+      "benchmark_source": "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed from populace#298; re-verify against the publication before first certified use",
+      "provisional": true,
+      "description": "Revenue raised by independently repealing the itemized medical expense deduction."
+    },
+    {
+      "id": "repeal_casualty",
+      "name": "Personal casualty loss deduction",
+      "period": 2026,
+      "neutralized_variable": "casualty_loss_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": 200000000,
+      "benchmark_source": "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed from populace#298; re-verify against the publication before first certified use",
+      "provisional": true,
+      "description": "Revenue raised by independently repealing the personal casualty loss deduction."
+    },
+    {
+      "id": "repeal_qbi",
+      "name": "Section 199A qualified business income deduction",
+      "period": 2026,
+      "neutralized_variable": "qualified_business_income_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": 76400000000,
+      "benchmark_source": "JCT JCX-45-25, FY2026 individuals line — provisional, transcribed from populace#298; re-verify against the publication before first certified use",
+      "provisional": true,
+      "description": "Revenue raised by independently repealing the full Section 199A qualified business income deduction."
+    },
+    {
+      "id": "repeal_tips_exemption",
+      "name": "Qualified tip income exemption",
+      "period": 2026,
+      "neutralized_variable": "tip_income_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": null,
+      "benchmark_source": "No applicable JCT JCX-45-25 FY2026 individuals repeal-revenue line identified; no-published-line placeholder only",
+      "provisional": true,
+      "description": "Standing repeal diagnostic with no substituted benchmark. The separate JCX-35-25 enactment score covers a different scope and is not used here."
+    },
+    {
+      "id": "repeal_overtime_exemption",
+      "name": "Qualified overtime income exemption",
+      "period": 2026,
+      "neutralized_variable": "overtime_income_deduction",
+      "budget_measure": "income_tax",
+      "benchmark": null,
+      "benchmark_source": "No applicable JCT JCX-45-25 FY2026 individuals repeal-revenue line identified; no-published-line placeholder only",
+      "provisional": true,
+      "description": "Standing repeal diagnostic with no substituted benchmark. The separate JCX-35-25 enactment score is not used as a repeal-revenue benchmark."
+    }
+  ]
+}
