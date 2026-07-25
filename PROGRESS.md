@@ -2,48 +2,32 @@
 
 ## Current task
 
-The active ledger for the repeal-revenue validation surface is
-`PROGRESS_REPEAL_VALIDATION.md`. This branch starts from local
-`qbi-v2-engine` HEAD `807141e` and remains offline.
+The active ledger for the QBI v2 content work is
+`PROGRESS_QBI_V2_CONTENT.md`. Branch `qbi-v2-content` starts from local
+`repeal-validation-298` HEAD `e45f797` and remains offline.
 
 ## Current state
 
-- Branch `repeal-validation-298` created in the dedicated
+- Branch `qbi-v2-content` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
-- The reform-validation contracts and release hook are mapped; implementation
-  and all required verification for the diagnostics-only runner table are
-  complete.
+- The adjudicated SSTB crosswalk and Section 199A publications factsheets are
+  read. Runtime-contract tracing and implementation are next.
 
 ## Current done
 
 - Verified the requested branch point and clean starting worktree.
-- Confirmed GitNexus MCP tools are unavailable and selected local source
-  tracing as the documented fallback.
-- Located the diagnostics path:
-  `us_runtime/reform_validation.py` -> `_write_reform_validation()` ->
-  release `reform_validation.json`.
-- Confirmed repeal rows must always use independent simulations, never
-  calibration estimates, and must remain outside release gates.
-- Added the declared eight-row repeal benchmark resource and manifest entry,
-  with provisional JCX-45-25 transcriptions and null tips/overtime
-  placeholders.
-- Added strict loader/schema checks and proved every neutralization exists in
-  the pinned 1.764.6 variable registry.
-- Added schema-v2 `repeal_revenue_benchmarks` output with explicit
-  `diagnostic_only`/`simulated` metadata, per-row modeled deltas and signed
-  relative gaps, and no gate field or threshold.
-- Wired the family into `_write_reform_validation()` on the freshly exported
-  release H5 and proved skipped repeal diagnostics do not change the existing
-  publication-guard flag.
-- Added the required towncrier fragment and tightened optional metadata types
-  so malformed JSON fails at load time rather than during simulation.
-- Full workspace pytest passed: 3,434 passed, 58 skipped, 6 warnings.
-- Wrote the complete handoff to `FINAL_REPORT_REPEAL_VALIDATION.md`.
+- Read the repository instructions and the full adjudicated evidence base:
+  SSTB crosswalk, published Section 199A statistics, SCF business variables,
+  and SOI industry tables.
+- Recorded the binding probability tiers, occupation-primary wiring,
+  passive-prior anchors, REIT/PTP diagnostic band, and qualification content
+  requirements without adding unsupported facts.
 
 ## Current next
 
-- Supervisor: re-verify the provisional JCX-45-25 values and component scope,
-  coordinate the schema-v2 dashboard reader, then push/open the PR.
+- Trace the v2 loader, runtime, package declaration, and existing tests.
+- Add the live crosswalk resource, evidence-anchored v2 assumptions, focused
+  tests, changelog, replay diagnostic, and full validation.
 
 ## State
 
