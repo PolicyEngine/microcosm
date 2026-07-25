@@ -2,48 +2,33 @@
 
 ## Current task
 
-The active ledger for the repeal-revenue validation surface is
-`PROGRESS_REPEAL_VALIDATION.md`. This branch starts from local
-`qbi-v2-engine` HEAD `807141e` and remains offline.
+The active ledger is `PROGRESS_QBI_V3_EVIDENCE.md`. This offline lane estimates
+SCF employer structure and SOI wage/UBIA priors for populace #530 task-board
+item 8; simulation wiring is out of scope.
 
 ## Current state
 
-- Branch `repeal-validation-298` created in the dedicated
-  `.claude/worktrees/populace-wt-530` worktree.
-- The reform-validation contracts and release hook are mapped; implementation
-  and all required verification for the diagnostics-only runner table are
-  complete.
+- Branch `qbi-v3-evidence` is isolated in
+  `.claude/worktrees/populace-wt-530-v3`, based on local
+  `repeal-validation-298`.
+- Verified source factsheets and restricted SCF/SOI inputs are being read in
+  place; no source artifact will be committed.
 
 ## Current done
 
-- Verified the requested branch point and clean starting worktree.
-- Confirmed GitNexus MCP tools are unavailable and selected local source
-  tracing as the documented fallback.
-- Located the diagnostics path:
-  `us_runtime/reform_validation.py` -> `_write_reform_validation()` ->
-  release `reform_validation.json`.
-- Confirmed repeal rows must always use independent simulations, never
-  calibration estimates, and must remain outside release gates.
-- Added the declared eight-row repeal benchmark resource and manifest entry,
-  with provisional JCX-45-25 transcriptions and null tips/overtime
-  placeholders.
-- Added strict loader/schema checks and proved every neutralization exists in
-  the pinned 1.764.6 variable registry.
-- Added schema-v2 `repeal_revenue_benchmarks` output with explicit
-  `diagnostic_only`/`simulated` metadata, per-row modeled deltas and signed
-  relative gaps, and no gate field or threshold.
-- Wired the family into `_write_reform_validation()` on the freshly exported
-  release H5 and proved skipped repeal diagnostics do not change the existing
-  publication-guard flag.
-- Added the required towncrier fragment and tightened optional metadata types
-  so malformed JSON fails at load time rather than during simulation.
-- Full workspace pytest passed: 3,434 passed, 58 skipped, 6 warnings.
-- Wrote the complete handoff to `FINAL_REPORT_REPEAL_VALIDATION.md`.
+- Created the requested branch and dedicated worktree.
+- Read the GitNexus exploration instructions; no GitNexus tool is exposed, so
+  repository conventions will be traced directly.
+- Inventoried all three factsheets, the SCF archive, and six SOI workbooks.
 
 ## Current next
 
-- Supervisor: re-verify the provisional JCX-45-25 values and component scope,
-  coordinate the schema-v2 dashboard reader, then push/open the PR.
+- Extract the verified factsheet findings and map existing resource, builder,
+  and test conventions before implementing the pure estimation module.
+
+## Historical progress
+
+The remaining sections are prior-lane records retained for branch history.
 
 ## State
 
