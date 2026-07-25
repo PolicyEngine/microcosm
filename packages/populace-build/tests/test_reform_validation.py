@@ -137,6 +137,129 @@ def test_out_of_sample_budget_effect_is_reform_minus_baseline(monkeypatch):
     assert row["jct"]["score"] == pytest.approx(-60e9)
 
 
+def test_repeal_benchmark_runner_uses_synthetic_frame_and_emits_table(monkeypatch):
+    import pandas as pd
+
+    spec = ReformValidationSpec(
+        id="repeal_synthetic",
+        name="Synthetic repeal",
+        category="Repeal revenue benchmark",
+        in_sample=False,
+        period=2026,
+        jct_score=50.0,
+        jct_window="FY2026",
+        jct_source="Synthetic benchmark",
+        jct_source_url="",
+        jct_score_type="repeal_revenue",
+        neutralized_variable="synthetic_deduction",
+        provisional=True,
+    )
+    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REPEAL")
+
+    class _FrameSimulation:
+        def __init__(self, frame):
+            self.frame = frame
+
+        def calculate(self, measure, period):  # noqa: ARG002
+            return _FakeSeries(float(self.frame[measure].sum()))
+
+    baseline = pd.DataFrame({"income_tax": [100.0, 200.0]})
+    repeal = pd.DataFrame({"income_tax": [130.0, 210.0]})
+    simulation_calls = []
+
+    def simulate(reform):
+        simulation_calls.append(reform)
+        return _FrameSimulation(repeal if reform == "REPEAL" else baseline)
+
+    payload = reform_validation_payload(
+        (),
+        period=2026,
+        simulate=simulate,
+        in_sample_estimates={"repeal_synthetic": 999.0},
+        repeal_benchmarks=(spec,),
+    )
+    assert payload["reforms"] == []
+    table = payload["repeal_revenue_benchmarks"]
+    assert set(table) == {"diagnostic_only", "simulated", "rows"}
+    assert table["diagnostic_only"] is True
+    assert table["simulated"] is True
+    assert simulation_calls == [None, "REPEAL"]
+    assert len(table["rows"]) == 1
+    row = table["rows"][0]
+    assert set(row) == {
+        "id",
+        "name",
+        "period",
+        "provisional",
+        "description",
+        "neutralized_variable",
+        "benchmark",
+        "benchmark_source",
+        "benchmark_window",
+        "budget_measure",
+        "baseline_total",
+        "reform_total",
+        "modeled_revenue_delta",
+        "relative_gap",
+    }
+    assert row["neutralized_variable"] == "synthetic_deduction"
+    assert row["provisional"] is True
+    assert row["benchmark"] == pytest.approx(50.0)
+    assert row["baseline_total"] == pytest.approx(300.0)
+    assert row["reform_total"] == pytest.approx(340.0)
+    assert row["modeled_revenue_delta"] == pytest.approx(40.0)
+    assert row["relative_gap"] == pytest.approx(-0.2)
+
+
+def test_repeal_benchmark_null_benchmark_has_no_relative_gap(monkeypatch):
+    spec = ReformValidationSpec(
+        id="repeal_placeholder",
+        name="Placeholder repeal",
+        category="Repeal revenue benchmark",
+        in_sample=False,
+        period=2026,
+        jct_score=None,
+        jct_window="FY2026",
+        jct_source="No published line",
+        jct_source_url="",
+        neutralized_variable="placeholder_deduction",
+        provisional=True,
+    )
+    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REPEAL")
+
+    def simulate(reform):
+        total = 125.0 if reform == "REPEAL" else 100.0
+        return _FakeSim({"income_tax": total})
+
+    payload = reform_validation_payload(
+        (),
+        period=2026,
+        simulate=simulate,
+        repeal_benchmarks=(spec,),
+    )
+    row = payload["repeal_revenue_benchmarks"]["rows"][0]
+    assert row["modeled_revenue_delta"] == pytest.approx(25.0)
+    assert row["benchmark"] is None
+    assert row["relative_gap"] is None
+
+
+def test_repeal_benchmark_simulation_status_never_changes_release_gate_flag():
+    spec = repeal_revenue_benchmark_specs(period=2026)[0]
+    payload = reform_validation_payload(
+        (),
+        period=2026,
+        simulate=None,
+        repeal_benchmarks=(spec,),
+    )
+    table = payload["repeal_revenue_benchmarks"]
+    assert table["diagnostic_only"] is True
+    assert table["simulated"] is False
+    assert table["rows"][0]["modeled_revenue_delta"] is None
+    # This pre-existing field drives the publish guard. Repeal diagnostics are
+    # intentionally excluded so their absence cannot fail or gate a release.
+    assert payload["out_of_sample_simulated"] is True
+
+
 def test_counterfactual_revert_flips_sign(monkeypatch):
     # With a single OBBBA row, the pre-OBBBA scoring baseline is the row's
     # revert patch and the component-on reform is the no-reform baseline.

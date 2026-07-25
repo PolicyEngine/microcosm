@@ -11,7 +11,7 @@ The active ledger for the repeal-revenue validation surface is
 - Branch `repeal-validation-298` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
 - The reform-validation contracts and release hook are mapped; implementation
-  of the diagnostics-only runner table is next.
+  and focused tests for the diagnostics-only runner table are complete.
 
 ## Current done
 
@@ -28,11 +28,17 @@ The active ledger for the repeal-revenue validation surface is
   placeholders.
 - Added strict loader/schema checks and proved every neutralization exists in
   the pinned 1.764.6 variable registry.
+- Added schema-v2 `repeal_revenue_benchmarks` output with explicit
+  `diagnostic_only`/`simulated` metadata, per-row modeled deltas and signed
+  relative gaps, and no gate field or threshold.
+- Wired the family into `_write_reform_validation()` on the freshly exported
+  release H5 and proved skipped repeal diagnostics do not change the existing
+  publication-guard flag.
 
 ## Current next
 
-- Add the runner family, payload table, and synthetic arithmetic tests.
-- Run focused checks and the full workspace suite, then write the final report.
+- Add the changelog fragment and run full touched-file checks.
+- Run the full workspace suite, then write and commit the final report.
 
 ## State
 

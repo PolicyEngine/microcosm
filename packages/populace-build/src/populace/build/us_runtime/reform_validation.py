@@ -15,6 +15,10 @@ apart:
 * **out-of-sample** — reforms the calibration never saw (e.g. provisions of
   the 2025 One Big Beautiful Bill Act), curated in ``obbba_reforms.json`` with
   their JCT scores. These are the genuine test of dataset fidelity.
+* **component repeal revenue** — standing independent neutralizations from
+  ``repeal_revenue_benchmarks.json``. These are simulated even when an amount
+  target for the same component is in-sample, and are published as a separate,
+  explicitly diagnostics-only table with signed relative gaps.
 
 The simulation is isolated behind an injected ``simulate`` callable so the
 payload assembly is unit-testable without policyengine-us; the default factory
@@ -66,8 +70,9 @@ __all__ = [
 ]
 
 #: Schema version of reform_validation.json. The calibration-diagnostics
-#: dashboard keys its reader on it; bump with any shape change.
-REFORM_VALIDATION_SCHEMA_VERSION = 1
+#: dashboard keys its reader on it; v2 adds the standing, diagnostics-only
+#: repeal-revenue benchmark table.
+REFORM_VALIDATION_SCHEMA_VERSION = 2
 
 #: The budget effect of a reform is the weighted-sum change of this variable
 #: between the reform and baseline simulations, unless a spec overrides it. For
@@ -176,6 +181,18 @@ class ReformValidationSpec:
 def _finite(value: float) -> float | None:
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _relative_gap(modeled: float | None, benchmark: float | None) -> float | None:
+    """Signed gap relative to the benchmark.
+
+    Positive means the modeled repeal raises more revenue than the benchmark;
+    negative means it raises less. A missing or zero benchmark has no defined
+    relative gap.
+    """
+    if modeled is None or benchmark is None or benchmark == 0:
+        return None
+    return _finite((modeled - benchmark) / benchmark)
 
 
 def _is_obbba_spec(spec: ReformValidationSpec) -> bool:
@@ -816,6 +833,7 @@ def reform_validation_payload(
     in_sample_estimates: dict[str, float] | None = None,
     in_sample_targets: dict[str, float] | None = None,
     baseline_levels: Sequence[BaselineLevelSpec] = (),
+    repeal_benchmarks: Sequence[ReformValidationSpec] = (),
     release_id: str | None = None,
 ) -> dict[str, Any]:
     """Score each reform on the dataset and render the JSON-stable payload.
@@ -838,6 +856,13 @@ def reform_validation_payload(
     incremental effect given the lines above it — so the per-line effects sum to
     the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
     matches the calibration-diagnostics dashboard's reform_validation reader.
+
+    ``repeal_benchmarks`` is deliberately separate from ``specs``. Every row is
+    independently simulated even when the same component has an in-sample
+    calibration amount target, and the resulting table carries no threshold or
+    pass/fail field. Its simulation-completeness flag is likewise separate from
+    ``out_of_sample_simulated`` so this standing diagnostic cannot gate release
+    publication.
     """
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
@@ -1110,6 +1135,31 @@ def reform_validation_payload(
             }
         )
 
+    repeal_rows: list[dict[str, Any]] = []
+    for spec in repeal_benchmarks:
+        effect, base_total, reform_total = simulated_effect(spec)
+        benchmark = spec.jct_score
+        row: dict[str, Any] = {
+            "id": spec.id,
+            "name": spec.name,
+            "period": spec.period,
+            "provisional": spec.provisional,
+            "description": spec.description or None,
+            "benchmark": None if benchmark is None else _finite(benchmark),
+            "benchmark_source": spec.jct_source or None,
+            "benchmark_window": spec.jct_window or None,
+            "budget_measure": spec.budget_measure,
+            "baseline_total": (None if base_total is None else _finite(base_total)),
+            "reform_total": (None if reform_total is None else _finite(reform_total)),
+            "modeled_revenue_delta": None if effect is None else _finite(effect),
+            "relative_gap": _relative_gap(effect, benchmark),
+        }
+        if spec.neutralized_variable is not None:
+            row["neutralized_variable"] = spec.neutralized_variable
+        else:
+            row["parameter_changes"] = spec.parameter_changes
+        repeal_rows.append(row)
+
     # populace#456: the shared baseline simulation has served every reform row
     # and baseline-level row by now; release it before assembling the payload.
     if baseline is not None:
@@ -1124,9 +1174,14 @@ def reform_validation_payload(
     payload: dict[str, Any] = {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
         "baseline_period": int(period),
-        "scoring_window": "see per-reform jct.window",
+        "scoring_window": "see per-row reform or benchmark window",
         "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
+        "repeal_revenue_benchmarks": {
+            "diagnostic_only": True,
+            "simulated": simulate is not None or not repeal_benchmarks,
+            "rows": repeal_rows,
+        },
     }
     if release_id is not None:
         payload["release_id"] = release_id

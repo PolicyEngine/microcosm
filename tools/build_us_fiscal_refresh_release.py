@@ -229,6 +229,7 @@ from populace.build.us_runtime.reform_validation import (
     default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
+    repeal_revenue_benchmark_specs,
     write_reform_validation,
 )
 from populace.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_AGE_TARGETS
@@ -1148,8 +1149,8 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Emit reform_validation.json with the in-sample JCT tax-expenditure "
             "rows only (from the calibration fit), skipping the out-of-sample "
-            "OBBBA simulations. Faster; useful when policyengine-us microsim runs "
-            "are not wanted in the build."
+            "OBBBA and component-repeal simulations. Faster; useful when "
+            "policyengine-us microsim runs are not wanted in the build."
         ),
     )
     parser.add_argument(
@@ -6151,11 +6152,14 @@ def _write_reform_validation(
     """Emit reform_validation.json: populace budget effects vs JCT scores.
 
     In-sample JCT tax-expenditure reforms come straight from the calibration
-    fit; out-of-sample OBBBA provisions are simulated on the freshly written
-    release H5 (skipped if ``simulate_out_of_sample`` is False, e.g. for a fast
-    diagnostics-only build).
+    fit; out-of-sample OBBBA provisions and the standing component-repeal
+    benchmarks are simulated on the freshly written release H5 (skipped if
+    ``simulate_out_of_sample`` is False, e.g. for a fast diagnostics-only
+    build). Repeal gaps are published as diagnostics and never gate the
+    release.
     """
     specs = load_default_reform_specs(period=PERIOD)
+    repeal_benchmarks = repeal_revenue_benchmark_specs(period=PERIOD)
     if not simulate_out_of_sample:
         print(
             "\n".join(
@@ -6163,9 +6167,9 @@ def _write_reform_validation(
                     "",
                     "!" * 72,
                     "WARNING: --skip-out-of-sample-reforms is set.",
-                    "reform_validation.json will publish the in-sample JCT rows only;",
-                    "every out-of-sample (OBBBA / tax-expenditure) row will have a null",
-                    "budget effect and the dashboard will show no fidelity test for them.",
+                    "Only in-sample JCT rows will have populated modeled effects;",
+                    "every out-of-sample (OBBBA / tax-expenditure / repeal benchmark)",
+                    "row will have a null modeled effect.",
                     "Do NOT use this for a publishable release.",
                     "!" * 72,
                     "",
@@ -6183,6 +6187,7 @@ def _write_reform_validation(
         in_sample_estimates=_in_sample_estimates(result),
         in_sample_targets=_in_sample_targets(result),
         baseline_levels=default_baseline_level_specs(),
+        repeal_benchmarks=repeal_benchmarks,
         release_id=release_id,
     )
     write_reform_validation(payload, release_dir / "reform_validation.json")

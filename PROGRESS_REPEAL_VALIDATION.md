@@ -6,7 +6,8 @@
   `.claude/worktrees/populace-wt-530` worktree.
 - Based on local `qbi-v2-engine` HEAD `807141e`; all work is offline.
 - The declared benchmark resource and loader contracts are implemented and
-  tested. The next coherent step is the diagnostics-only runner table.
+  tested. The diagnostics-only runner table is also implemented and focused
+  tests pass; changelog and full verification remain.
 
 ## Done
 
@@ -42,9 +43,24 @@
   contract for all eight neutralized variables.
 - Focused resource/loader/spec-only tests pass; the registry contract also
   passes separately against the pinned engine-enabled environment.
+- Bumped the release validation payload to schema v2 and added the separate
+  `repeal_revenue_benchmarks` table with `diagnostic_only`, independent
+  `simulated` status, and ordered rows.
+- Each row carries the reform definition, period/provisional label, benchmark
+  and provenance, income-tax baseline/reform totals, modeled repeal delta, and
+  signed relative gap `(modeled - benchmark) / benchmark`; null benchmarks
+  retain modeled magnitudes and emit null gaps.
+- Reused the existing lazy baseline cache and transient-simulation release
+  lifecycle; all repeal rows bypass in-sample calibration estimates.
+- Wired `repeal_revenue_benchmark_specs()` into the fiscal-refresh release's
+  `_write_reform_validation()` H5-backed path.
+- Added a synthetic-frame arithmetic/shape test, null-benchmark test, and a
+  regression proving skipped repeal diagnostics never change the existing
+  publish-guard flag.
+- Focused reform-validation, publish-guard, spec-only, country-spec, and
+  release-tool import tests pass; touched-file Ruff and diff checks are clean.
 
 ## Next
 
-- Add diagnostics-only runner output and synthetic arithmetic tests.
 - Run Ruff, focused tests, and the full workspace `uv run pytest`.
 - Write the final handoff report and record all verification results here.
