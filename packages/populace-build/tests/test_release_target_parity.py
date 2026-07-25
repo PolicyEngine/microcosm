@@ -77,6 +77,7 @@ def _manifest(families: tuple[TargetFamily, ...]) -> TargetParityManifest:
 
 _CONTRACT = _manifest(
     (
+        TargetFamily("ssa_ssi_monthly.ssi_federal_payment_recipients", COMPILED_STATUS),
         TargetFamily("ssa_supplement.ssi_recipients", COMPILED_STATUS),
         TargetFamily("bea_nipa.total_wages_salaries", COMPILED_STATUS),
         TargetFamily("usda_snap.state_benefits", COMPILED_STATUS),
@@ -92,10 +93,11 @@ _CONTRACT = _manifest(
 )
 
 #: The feed inventory consistent with ``_CONTRACT`` (every compiled + reviewed
-#: family present, both red-line families declared).
+#: family present, all three red-line families declared).
 _CONTRACT_FEED = {
     "feed_sha256": "abc",
     "families": {
+        "ssa_ssi_monthly.ssi_federal_payment_recipients": 4,
         "ssa_supplement.ssi_recipients": 52,
         "bea_nipa.total_wages_salaries": 1,
         "usda_snap.state_benefits": 51,
@@ -104,6 +106,7 @@ _CONTRACT_FEED = {
 }
 
 _CONTRACT_COMPILED = (
+    "ssa_ssi_monthly.ssi_federal_payment_recipients",
     "ssa_supplement.ssi_recipients",
     "bea_nipa.total_wages_salaries",
     "usda_snap.state_benefits",
@@ -147,7 +150,7 @@ class TestGate:
         result = us_release_target_parity_gate(registry, manifest=_CONTRACT)
         assert result.passed
         assert result.name == "us_release_target_parity"
-        assert result.details["compiled_families"] == 3
+        assert result.details["compiled_families"] == 4
 
     def test_missing_compiled_family_fails_named(self) -> None:
         registry = _registry(["ssa_supplement.ssi_recipients"])
@@ -396,10 +399,7 @@ class TestJctObbbaAdjudication:
         )
         assert "allows only the identity value operation" in fence["purpose"]
         assert "section 45B employer-credit expansion" in fence["purpose"]
-        assert (
-            "must subtract or separately fence that component"
-            in fence["purpose"]
-        )
+        assert "must subtract or separately fence that component" in fence["purpose"]
 
     def test_build_manifest_adjudicates_an_injected_obbba_fact(self) -> None:
         # End-to-end through build_manifest, not just _exclusion_for: a feed

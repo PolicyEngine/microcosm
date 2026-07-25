@@ -116,6 +116,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         target_registry_version="registry-sha",
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
     )
     # 9 = the #374 SIPP+SCF blend changes the pre-materialization frame;
     # SCF-only checkpoints (8 = post-#539 ORG rewrite) must not be reused.
@@ -390,6 +391,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         target_registry_version="registry-sha",
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
     )
     stale_identity = {
         **fresh_identity,
@@ -434,6 +436,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         target_registry_version=registry.version,
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256=None,
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
     )
 
     def fail_materialize(*args, **kwargs):
@@ -3942,6 +3945,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     fake_stage_diagnostics = {
         "checked": True,
         "schema_version": 3,
+        "measurement_phase": "assignment_stage",
         "prior_weight_basis": {
             "kind": "current_frame",
             "source_sha256": None,
@@ -3998,6 +4002,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_with_ssi_take_up)
     monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_take_up_gate)
+    # The digest reads the persisted flag column, which the stub above never
+    # writes; the sentinel keeps the checkpoint/cache-identity threading
+    # observable without a real assignment (populace#507/#508).
+    monkeypatch.setattr(
+        builder,
+        "_ssi_take_up_assignment_digest",
+        lambda frame, *, assignment_priors, prior_basis: "ssi-digest-sentinel",
+    )
 
     def fake_load_voluntary_filing_donor(
         path,
@@ -4581,6 +4593,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert final_basis.band("65_plus").candidate_capacity == pytest.approx(1_000.0)
     assert captured["ssi_delivery_gate_called"] is True
     assert captured["ssi_delivery_gate_targets"] == fake_band_targets
+    # The frozen-assignment digest invalidates the materialization cache on
+    # any retry whose flags differ (populace#507/#508 split-brain fix).
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_context"][
+            "ssi_take_up_assignment_sha256"
+        ]
+        == "ssi-digest-sentinel"
+    )
     assert captured["final_medicaid_diagnostics_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
@@ -8212,6 +8232,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         target_registry_version="registry-sha",
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
     )
     legacy = builder._target_frame_checkpoint_identity(**common)
     default_kwarg = builder._target_frame_checkpoint_identity(
@@ -8226,6 +8247,18 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         default_kwarg
     ) == builder._target_frame_checkpoint_digest(legacy)
     assert protected["selection_mass_protections"] == ["keogh_distributions"]
+
+    # populace#507/#508: a retry whose frozen SSI assignment differs (the
+    # --ssi-take-up-prior-weight-basis path) must MISS the previous
+    # attempt's checkpoint — otherwise the solve runs on stale SSI rows
+    # while the export ships fresh ones (split-brain certification).
+    retried = builder._target_frame_checkpoint_identity(
+        **{**common, "ssi_take_up_assignment_sha256": "ssi-flags-sha-retry"}
+    )
+    assert legacy["ssi_take_up_assignment_sha256"] == "ssi-flags-sha"
+    assert builder._target_frame_checkpoint_digest(
+        retried
+    ) != builder._target_frame_checkpoint_digest(legacy)
     assert builder._target_frame_checkpoint_digest(
         protected
     ) != builder._target_frame_checkpoint_digest(legacy)
@@ -8501,9 +8534,13 @@ _SSI_BAND_TARGETS = {
 
 
 def _ssi_prior_final_artifact_payload() -> dict:
-    """A prior attempt's final us_ssi_take_up.json, schema 2 (Build N shape)."""
+    """A prior attempt's final us_ssi_take_up.json, schema 2 (Build N shape).
 
-    from populace.build.us_runtime import ssi_take_up as ssi_module
+    Contract strings are frozen LITERALS on purpose: this fixture documents
+    what Build N's certified artifact actually carries, so drift in the
+    module constants cannot silently redefine what the loader accepts
+    (populace#507 sol review finding 10).
+    """
 
     bands = [
         ("under_18", 1_001_922.0, 177_582.0, 60_000.0),
@@ -8514,11 +8551,13 @@ def _ssi_prior_final_artifact_payload() -> dict:
         "schema_version": 2,
         "classification": "release_diagnostics",
         "variable": "takes_up_ssi_if_eligible",
-        "candidate_definition": ssi_module._CANDIDATE_DEFINITION,
-        "target_table": ssi_module.US_SSI_TAKE_UP_TARGET_TABLE_NAME,
-        "target_source": ssi_module.SSI_TAKE_UP_SSA_SOURCE_URL,
-        "target_period": ssi_module._TARGET_PERIOD,
-        "target_measure": ssi_module._TARGET_MEASURE,
+        "candidate_definition": "uncapped_ssi > 0 at 2024-12",
+        "target_table": "ssa_ssi_federal_payment_recipients_by_age",
+        "target_source": (
+            "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html"
+        ),
+        "target_period": "2024-12",
+        "target_measure": "Total with—Federal payment",
         "age_bands": [
             {
                 "age_band": key,
@@ -8537,35 +8576,64 @@ def test_ssi_prior_weight_basis_loads_a_prior_final_artifact(tmp_path) -> None:
     builder = _load_builder_module()
     path = tmp_path / "us_ssi_take_up.json"
     path.write_text(json.dumps(_ssi_prior_final_artifact_payload()))
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
 
     basis = builder._load_ssi_take_up_prior_weight_basis(
-        path, targets=_SSI_BAND_TARGETS
+        path, targets=_SSI_BAND_TARGETS, expected_sha256=sha
     )
 
     assert basis.kind == "release_artifact"
     assert basis.source_schema_version == 2
-    assert basis.source_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert basis.source_sha256 == sha
     aged = basis.band("65_plus")
     assert aged.candidate_capacity == pytest.approx(3_995_000.0)
     assert aged.reporter_candidate_floor == pytest.approx(900_000.0)
     assert (
-        builder._load_ssi_take_up_prior_weight_basis(None, targets=_SSI_BAND_TARGETS)
+        builder._load_ssi_take_up_prior_weight_basis(
+            None, targets=_SSI_BAND_TARGETS, expected_sha256=None
+        )
         is None
     )
 
 
 def test_ssi_prior_weight_basis_fails_fast_on_bad_artifacts(tmp_path) -> None:
+    import hashlib
+
     builder = _load_builder_module()
+    valid = tmp_path / "us_ssi_take_up.json"
+    valid.write_text(json.dumps(_ssi_prior_final_artifact_payload()))
+    valid_sha = hashlib.sha256(valid.read_bytes()).hexdigest()
+
+    # The sha256 pin is the trust receipt (populace#507 sol review
+    # finding 1): no pin, wrong pin, and a pin without a path all fail fast.
+    with pytest.raises(RuntimeError, match="companion"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            valid, targets=_SSI_BAND_TARGETS, expected_sha256=None
+        )
+    with pytest.raises(RuntimeError, match="not the pinned"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            valid, targets=_SSI_BAND_TARGETS, expected_sha256="ab" * 32
+        )
+    with pytest.raises(RuntimeError, match="requires"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            None, targets=_SSI_BAND_TARGETS, expected_sha256=valid_sha
+        )
 
     with pytest.raises(RuntimeError, match="does not exist"):
         builder._load_ssi_take_up_prior_weight_basis(
-            tmp_path / "missing.json", targets=_SSI_BAND_TARGETS
+            tmp_path / "missing.json",
+            targets=_SSI_BAND_TARGETS,
+            expected_sha256=valid_sha,
         )
 
     invalid = tmp_path / "invalid.json"
     invalid.write_text("{not json")
     with pytest.raises(RuntimeError, match="not valid JSON"):
-        builder._load_ssi_take_up_prior_weight_basis(invalid, targets=_SSI_BAND_TARGETS)
+        builder._load_ssi_take_up_prior_weight_basis(
+            invalid,
+            targets=_SSI_BAND_TARGETS,
+            expected_sha256=hashlib.sha256(invalid.read_bytes()).hexdigest(),
+        )
 
     # A basis measured against a different SSA band target contract must be
     # refused — one coherent target system (populace#508).
@@ -8574,7 +8642,11 @@ def test_ssi_prior_weight_basis_fails_fast_on_bad_artifacts(tmp_path) -> None:
     drifted = tmp_path / "drifted.json"
     drifted.write_text(json.dumps(drifted_payload))
     with pytest.raises(RuntimeError, match="target contract"):
-        builder._load_ssi_take_up_prior_weight_basis(drifted, targets=_SSI_BAND_TARGETS)
+        builder._load_ssi_take_up_prior_weight_basis(
+            drifted,
+            targets=_SSI_BAND_TARGETS,
+            expected_sha256=hashlib.sha256(drifted.read_bytes()).hexdigest(),
+        )
 
 
 def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> None:
@@ -8593,14 +8665,23 @@ def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(
         sys,
         "argv",
-        [*base_argv, "--ssi-take-up-prior-weight-basis", str(basis_path)],
+        [
+            *base_argv,
+            "--ssi-take-up-prior-weight-basis",
+            str(basis_path),
+            "--ssi-take-up-prior-weight-basis-sha256",
+            "ab" * 32,
+        ],
     )
-    assert builder._parse_args().ssi_take_up_prior_weight_basis == basis_path
+    args = builder._parse_args()
+    assert args.ssi_take_up_prior_weight_basis == basis_path
+    assert args.ssi_take_up_prior_weight_basis_sha256 == "ab" * 32
 
 
 def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
     return {
         "schema_version": 3,
+        "measurement_phase": "release_final",
         "age_bands": [
             {
                 "age_band": key,
@@ -8761,6 +8842,72 @@ def test_final_medicaid_green_path_evaluates_normally() -> None:
 
     assert diagnostics == {"enrolled": 1}
     assert failures == []
+
+
+def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:
+    """Any change to the frozen assignment must invalidate checkpoint/cache."""
+
+    from populace.build.us_runtime.ssi_take_up import (
+        SSITakeUpBandPriorBasis,
+        SSITakeUpPriorBasis,
+    )
+
+    builder = _load_builder_module()
+
+    def _frame_with_flags(flags):
+        tables = {
+            entity: small_frame.table(entity).copy() for entity in small_frame.entities
+        }
+        tables["person"]["takes_up_ssi_if_eligible"] = np.asarray(flags, dtype=bool)
+        return Frame(
+            tables,
+            small_frame.schema,
+            {
+                entity: small_frame.weights_for(entity)
+                for entity in small_frame.weighted_entities
+            },
+        )
+
+    priors = {"under_18": 0.1, "18_64": 0.2, "65_plus": 0.3}
+    basis = SSITakeUpPriorBasis(
+        kind="current_frame",
+        bands=tuple(
+            SSITakeUpBandPriorBasis(
+                key=key, candidate_capacity=100.0, reporter_candidate_floor=10.0
+            )
+            for key in priors
+        ),
+    )
+    baseline = builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline == builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, True, True, False]),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors={**priors, "65_plus": 0.9},
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors=priors,
+        prior_basis=SSITakeUpPriorBasis(
+            kind="release_artifact",
+            bands=basis.bands,
+            source_sha256="cd" * 32,
+            source_schema_version=2,
+        ),
+    )
 
 
 def test_calibration_diagnostics_schema_lockstep() -> None:

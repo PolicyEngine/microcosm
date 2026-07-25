@@ -239,6 +239,7 @@ from populace.build.us_runtime.reform_validation import (
 )
 from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
+    US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
 )
 from populace.build.us_runtime.warm_start_selection import (
@@ -980,7 +981,18 @@ def _parse_args() -> argparse.Namespace:
             "target contract this build compiles; the enforced-band "
             "delivery gate verifies the landed counts either way, and on "
             "failure writes this run's us_ssi_take_up.json as the basis for "
-            "the retry."
+            "the retry. Requires --ssi-take-up-prior-weight-basis-sha256."
+        ),
+    )
+    parser.add_argument(
+        "--ssi-take-up-prior-weight-basis-sha256",
+        help=(
+            "Required companion to --ssi-take-up-prior-weight-basis: the "
+            "expected sha256 of that artifact, read from the producing "
+            "release's manifest (or the failed attempt's error message). "
+            "Pinning the hash in the launch command makes the basis choice "
+            "an auditable receipt instead of whatever bytes sit at the "
+            "path (populace#507/#508)."
         ),
     )
     parser.add_argument(
@@ -1617,6 +1629,7 @@ def _target_frame_checkpoint_identity(
     target_registry_version: str,
     weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
+    ssi_take_up_assignment_sha256: str,
     selection_mass_protections: tuple[str, ...] = (),
     ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
@@ -1631,6 +1644,12 @@ def _target_frame_checkpoint_identity(
         "seed": int(seed),
         "target_period": int(target_period),
         "target_registry_version": str(target_registry_version),
+        # The frozen SSI take-up decisions (flags + priors + basis
+        # provenance) feed the materialized ssi target columns; a retry
+        # under a different prior basis must invalidate the checkpoint
+        # (populace#507/#508). Always present, so every pre-#507 checkpoint
+        # — built on the collapsed Build-N-class flags — also misses once.
+        "ssi_take_up_assignment_sha256": str(ssi_take_up_assignment_sha256),
         "congressional_district_vintage_crosswalk_sha256": (
             None
             if congressional_district_vintage_crosswalk_sha256 is None
@@ -5332,6 +5351,7 @@ def _load_ssi_take_up_prior_weight_basis(
     path: Path | None,
     *,
     targets: Mapping[str, float],
+    expected_sha256: str | None,
 ) -> SSITakeUpPriorBasis | None:
     """Load and strictly validate --ssi-take-up-prior-weight-basis.
 
@@ -5340,12 +5360,26 @@ def _load_ssi_take_up_prior_weight_basis(
     prior attempt's final ``us_ssi_take_up.json``; its per-band
     ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
     the weights that attempt delivered, and the module-side validator
-    enforces the same-target-contract and enforced-band-capacity rules
-    (populace#507/#508).
+    enforces the release-final phase, full diagnostics-gate pass (schema 3),
+    same-target-contract, and enforced-band-feasibility rules
+    (populace#507/#508). The caller must pin the artifact's sha256 in the
+    launch command so the basis is an auditable receipt, never whatever
+    bytes happen to sit at the path.
     """
 
     if path is None:
+        if expected_sha256 is not None:
+            raise RuntimeError(
+                "--ssi-take-up-prior-weight-basis-sha256 requires "
+                "--ssi-take-up-prior-weight-basis."
+            )
         return None
+    if expected_sha256 is None or not str(expected_sha256).strip():
+        raise RuntimeError(
+            "--ssi-take-up-prior-weight-basis requires the companion "
+            "--ssi-take-up-prior-weight-basis-sha256 pin (read it from the "
+            "producing release's manifest or the failed attempt's error)."
+        )
     resolved = Path(path)
     if not resolved.is_file():
         raise RuntimeError(
@@ -5353,6 +5387,13 @@ def _load_ssi_take_up_prior_weight_basis(
             f"file: {resolved}"
         )
     raw = resolved.read_bytes()
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    if actual_sha256 != str(expected_sha256).strip().lower():
+        raise RuntimeError(
+            f"--ssi-take-up-prior-weight-basis {resolved} has sha256 "
+            f"{actual_sha256}, not the pinned "
+            f"{str(expected_sha256).strip().lower()}."
+        )
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -5368,7 +5409,7 @@ def _load_ssi_take_up_prior_weight_basis(
         return ssi_take_up_prior_basis_from_artifact(
             payload,
             targets=targets,
-            source_sha256=hashlib.sha256(raw).hexdigest(),
+            source_sha256=actual_sha256,
         )
     except ValueError as error:
         raise RuntimeError(
@@ -5411,6 +5452,36 @@ def _final_medicaid_diagnostics_or_quarantine(
             "Medicaid final diagnostics evaluation crashed in degraded "
             f"mode; recorded instead of masking earlier failures: {error}"
         ]
+
+
+def _ssi_take_up_assignment_digest(
+    frame: Frame,
+    *,
+    assignment_priors: Mapping[str, float],
+    prior_basis: SSITakeUpPriorBasis,
+) -> str:
+    """Digest of the frozen SSI assignment for checkpoint/cache identity.
+
+    Covers the persisted flag vector plus the priors and basis provenance
+    that generated it, so a retry whose thresholds differ — the
+    --ssi-take-up-prior-weight-basis path — can never reuse a target-frame
+    checkpoint or materialized-column cache built on the previous flags
+    (populace#507 sol review finding 2).
+    """
+
+    flags = frame.table("person")[US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]]
+    return hashlib.sha256(
+        flags.to_numpy(dtype=np.uint8).tobytes()
+        + json.dumps(
+            {
+                "assignment_priors": {
+                    str(key): float(value) for key, value in assignment_priors.items()
+                },
+                "prior_weight_basis": dict(prior_basis.provenance()),
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _enforce_ssi_take_up_delivery(
@@ -7211,6 +7282,7 @@ def main() -> None:
     ssi_take_up_prior_basis = _load_ssi_take_up_prior_weight_basis(
         args.ssi_take_up_prior_weight_basis,
         targets=ssi_band_targets,
+        expected_sha256=args.ssi_take_up_prior_weight_basis_sha256,
     )
     target_profile_gate = target_profile_coverage_gate(
         target_specs,
@@ -8280,6 +8352,17 @@ def main() -> None:
     ssi_assignment_prior_basis = ssi_take_up_prior_basis_from_diagnostics(
         ssi_take_up_stage_diagnostics
     )
+    # populace#507 sol review finding 2: the frozen SSI decisions and their
+    # basis are materialization inputs. A retry with different flags MUST
+    # miss the previous attempt's target-frame checkpoint and target
+    # materialization cache — otherwise the solve runs against the stale
+    # SSI rows while the export carries the fresh ones (split-brain
+    # certification).
+    ssi_take_up_assignment_sha256 = _ssi_take_up_assignment_digest(
+        base_frame,
+        assignment_priors=ssi_assignment_priors,
+        prior_basis=ssi_assignment_prior_basis,
+    )
     if telemetry is not None:
         telemetry.stage(
             "scf_auto_loan_inputs",
@@ -8694,6 +8777,7 @@ def main() -> None:
         congressional_district_vintage_crosswalk_sha256=(
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
+        ssi_take_up_assignment_sha256=ssi_take_up_assignment_sha256,
         selection_mass_protections=selection_mass_protections,
         ssi_take_up_prior_weight_basis_sha256=(
             None
@@ -8721,6 +8805,10 @@ def main() -> None:
             "congressional_district_vintage_crosswalk_sha256": (
                 congressional_district_vintage_crosswalk_metadata or {}
             ).get("sha256"),
+            # Conservative on purpose: a changed SSI assignment invalidates
+            # every cached materialized column, not only the SSI-dependent
+            # ones — correctness over cache warmth (populace#507/#508).
+            "ssi_take_up_assignment_sha256": ssi_take_up_assignment_sha256,
         },
         gate_congressional_district_targets=args.gate_congressional_district_targets,
     )
@@ -8896,6 +8984,15 @@ def main() -> None:
             prior_basis=ssi_assignment_prior_basis,
             reporter_source_ids=ssi_reporter_source_ids,
         )
+    )
+    # The delivered-weight measurement is written the moment it exists —
+    # BEFORE any gate can raise — because this artifact is the retry's
+    # prior basis and the forensic record. A simultaneous integrity and
+    # delivery failure must still leave it on disk (populace#507 sol
+    # review finding 3).
+    write_us_ssi_take_up_diagnostics(
+        ssi_take_up_diagnostics,
+        release_dir / "us_ssi_take_up.json",
     )
     # Gate the persisted flags on the export frame, not just the stage
     # output: the Bernoulli-law recheck and anchor/envelope laws are
@@ -9625,10 +9722,9 @@ def main() -> None:
         medicaid_take_up_diagnostics,
         release_dir / "us_medicaid_take_up.json",
     )
-    write_us_ssi_take_up_diagnostics(
-        ssi_take_up_diagnostics,
-        release_dir / "us_ssi_take_up.json",
-    )
+    # us_ssi_take_up.json was already written the moment the final
+    # measurement existed, ahead of the integrity and delivery gates
+    # (populace#507/#508) — nothing mutates the dict in between.
     write_us_snap_state_take_up_diagnostics(
         snap_state_take_up_diagnostics,
         release_dir / "us_snap_state_take_up.json",
