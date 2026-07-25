@@ -2,10 +2,12 @@
 
 ## State
 
-Floor-aware SSI take-up prior implementation is complete on
+Floor-aware SSI take-up prior implementation is committed on
 `ssi-floor-aware-prior`, branched from `origin/main` at `0ac3422`. Focused SSI,
-plan, and builder tests pass; the full requested package suite and final report
-remain.
+plan, and builder tests pass. The first full package run returned 1 because one
+ordinary-miss test double omitted the new retry-applicability detail; that
+fixture is corrected and its three parameterized cases now pass. A clean full
+rerun and the final report remain.
 
 ## Done
 
@@ -36,10 +38,17 @@ remain.
   empty-band count validation.
 - Focused SSI + plan tests pass; focused builder SSI tests pass. Changed-file
   Ruff check and format check are clean.
+- Committed the coherent implementation as `8c14bed`.
+- Ran the required full package suite without piping and captured
+  `PYTEST_RC=1`; its only failures were the three modes of
+  `test_main_writes_diagnostics_before_post_calibration_gate_failure`.
+- Classified that fixture's deliberately ordinary 18–64 delivery miss as
+  prior-weight-basis retryable. All three focused modes pass (`FOCUSED_RC=0`);
+  production behavior is unchanged.
 
 ## Next
 
-- Commit the coherent implementation step.
-- Run `uv run pytest packages/populace-build/tests/ -q` and capture its return
-  code first, then repeat changed-file Ruff gates.
+- Commit the corrected ordinary-miss fixture and this journal update.
+- Rerun `uv run pytest packages/populace-build/tests/ -q` and capture its
+  return code first, then repeat changed-file Ruff gates.
 - Write `FINAL_REPORT.md`, finalize this journal, and commit without pushing.
