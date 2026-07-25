@@ -212,6 +212,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         target_registry_version="registry-sha",
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
     )
     # 8 = current-main SCF-only-era checkpoints (the #510 review's stale
     # hazard); 7 = pre-#539. Both must miss against expected version 9.
@@ -260,6 +261,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         target_registry_version="registry-sha",
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        # Held equal to the writing run's digest so this case still isolates
+        # the basis-artifact key (populace#543 instance 2). The broader
+        # frozen-assignment digest is covered separately below.
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
         ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
     )
     basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
