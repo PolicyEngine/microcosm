@@ -987,7 +987,14 @@ def test_attempt_5_seeded_delivery_removes_floor_blind_overshoot() -> None:
 
     targets = {"under_18": 50.0, "18_64": target, "65_plus": 50.0}
 
-    def delivery_payload(adult_selected: float) -> dict[str, object]:
+    def delivery_payload(
+        adult_selected: float, adult_assignment_prior: float
+    ) -> dict[str, object]:
+        # The recomputation always applies the fixed law to the current
+        # weights, so an artifact whose flags were drawn under the old
+        # floor-blind prior records assignment_prior ≠ recomputation — the
+        # exact condition under which a basis retry genuinely changes the
+        # thresholds (PR #554 review finding 1).
         return {
             "schema_version": 4,
             "age_bands": [
@@ -997,6 +1004,8 @@ def test_attempt_5_seeded_delivery_removes_floor_blind_overshoot() -> None:
                     "candidate_capacity": 100.0,
                     "reporter_candidate_floor": 0.0,
                     "empty_band": False,
+                    "assignment_prior": 0.5,
+                    "prior_recomputed_from_current_weights": 0.5,
                     "prior_status_recomputed_from_current_weights": "floor_aware",
                 },
                 {
@@ -1005,6 +1014,8 @@ def test_attempt_5_seeded_delivery_removes_floor_blind_overshoot() -> None:
                     "candidate_capacity": capacity,
                     "reporter_candidate_floor": floor,
                     "empty_band": False,
+                    "assignment_prior": adult_assignment_prior,
+                    "prior_recomputed_from_current_weights": prior,
                     "prior_status_recomputed_from_current_weights": "floor_aware",
                 },
                 {
@@ -1013,17 +1024,19 @@ def test_attempt_5_seeded_delivery_removes_floor_blind_overshoot() -> None:
                     "candidate_capacity": 100.0,
                     "reporter_candidate_floor": 0.0,
                     "empty_band": False,
+                    "assignment_prior": 0.5,
+                    "prior_recomputed_from_current_weights": 0.5,
                     "prior_status_recomputed_from_current_weights": "floor_aware",
                 },
             ],
         }
 
     assert us_ssi_take_up_delivery_gate(
-        delivery_payload(fixed_selected),
+        delivery_payload(fixed_selected, prior),
         targets=targets,
     ).passed
     old_gate = us_ssi_take_up_delivery_gate(
-        delivery_payload(old_selected),
+        delivery_payload(old_selected, old_prior),
         targets=targets,
     )
     assert not old_gate.passed
@@ -1106,6 +1119,16 @@ def test_prior_basis_loader_accepts_schema_4_3_and_2_artifacts() -> None:
     assert basis3.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
     assert basis3.source_sha256 == _BASIS_SHA
     assert basis3.source_schema_version == 3
+    # Per-band capacity/floor must survive the schema-3 load byte-for-byte
+    # (PR #554 review finding 2: a mutation adding 1.0 to every loaded
+    # schema-3 capacity passed when only kind/hash/version were pinned).
+    assert [
+        (band.key, band.candidate_capacity, band.reporter_candidate_floor)
+        for band in basis3.bands
+    ] == [
+        (band.key, band.candidate_capacity, band.reporter_candidate_floor)
+        for band in basis4.bands
+    ]
     # Build N's certified artifact predates the basis fields (schema 2); the
     # chain must be able to start from it (populace#507 Build O attempt 2).
     payload2 = copy.deepcopy(diagnostics)
@@ -1202,19 +1225,54 @@ def test_delivery_gate_passes_within_tolerance_and_reports_the_fenced_band() -> 
     assert fenced[0]["selected_recipient_weight"] == pytest.approx(5.0)
 
 
-def test_delivery_gate_fails_an_enforced_band_miss_and_names_the_remedy() -> None:
+def test_delivery_gate_does_not_prescribe_a_no_op_retry() -> None:
+    """PR #554 review finding 1: when the release-weight prior recomputation
+    matches the assignment prior for every missing band, a basis retry
+    regenerates identical flags under the same seed. The gate must say so
+    instead of prescribing an endless no-op ladder."""
+    _, _, _, diagnostics = _assigned()
+    # The fixture's basis IS the current frame, so both priors agree exactly.
+    delivered = _delivered(
+        diagnostics, **{"18_64": 50.0, "65_plus": 30.0}
+    )  # 40% aged miss, realization-only
+    gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
+    assert not gate.passed
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
+    assert any(
+        "65_plus" in failure
+        and "already true of the release weights" in failure
+        and "reproduce identical flags" in failure
+        for failure in gate.failures
+    )
+    assert not any(
+        "is not true of the release weights" in failure for failure in gate.failures
+    )
+    assert not any("under_18" in failure for failure in gate.failures)
+
+
+def test_delivery_gate_names_the_remedy_when_the_basis_would_change() -> None:
     _, _, _, diagnostics = _assigned()
     delivered = _delivered(
         diagnostics, **{"18_64": 50.0, "65_plus": 30.0}
     )  # 40% aged miss
+    # Simulate post-calibration weight drift: the release-weight prior
+    # recomputation now disagrees with the assignment prior, so a basis
+    # retry would genuinely change the enforced band's thresholds.
+    for band in delivered["age_bands"]:
+        if band["age_band"] == "65_plus":
+            band["prior_recomputed_from_current_weights"] = (
+                float(band["assignment_prior"]) + 0.05
+            )
     gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
     assert not gate.passed
+    assert gate.details["prior_weight_basis_retry_applicable"] is True
     assert any(
-        "65_plus" in failure and "--ssi-take-up-prior-weight-basis" in failure
+        "65_plus" in failure
+        and "is not true of the release weights" in failure
+        and "--ssi-take-up-prior-weight-basis" in failure
         for failure in gate.failures
     )
     assert not any("under_18" in failure for failure in gate.failures)
-    assert gate.details["prior_weight_basis_retry_applicable"] is True
 
 
 def test_delivery_gate_names_saturated_enforced_support_inside_tolerance() -> None:

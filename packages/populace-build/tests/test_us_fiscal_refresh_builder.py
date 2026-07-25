@@ -8612,6 +8612,11 @@ def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
                 "candidate_capacity": 2.0 * _SSI_BAND_TARGETS[key],
                 "reporter_candidate_floor": 0.0,
                 "empty_band": False,
+                # Priors differ so a miss takes the classic retry branch —
+                # this fixture exercises batch mechanics, not the PR #554
+                # no-op-retry semantics (covered in test_us_ssi_take_up).
+                "assignment_prior": 0.5,
+                "prior_recomputed_from_current_weights": 0.55,
                 "prior_status_recomputed_from_current_weights": "floor_aware",
             }
             for key in _SSI_BAND_TARGETS

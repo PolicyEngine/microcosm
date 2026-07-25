@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from importlib.resources import files
@@ -1624,6 +1625,7 @@ def us_ssi_take_up_delivery_gate(
     fenced_rows: list[dict[str, object]] = []
     structural_support_failure_present = False
     invalid_diagnostics_failure_present = False
+    retryable_delivery_miss_present = False
     rows: Mapping[str, Mapping[str, object]] = {}
     if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
         invalid_diagnostics_failure_present = True
@@ -1645,8 +1647,13 @@ def us_ssi_take_up_delivery_gate(
             selected = float(row.get("selected_recipient_weight", np.nan))
             capacity = float(row.get("candidate_capacity", np.nan))
             floor = float(row.get("reporter_candidate_floor", np.nan))
+            assignment_prior = float(row.get("assignment_prior", np.nan))
+            recomputed_prior = float(
+                row.get("prior_recomputed_from_current_weights", np.nan)
+            )
         except (TypeError, ValueError):
             selected = capacity = floor = float("nan")
+            assignment_prior = recomputed_prior = float("nan")
         if not all(np.isfinite(value) for value in (selected, capacity, floor)):
             invalid_diagnostics_failure_present = True
             failures.append(
@@ -1699,11 +1706,31 @@ def us_ssi_take_up_delivery_gate(
                     "eligibility/support."
                 )
             elif abs(selected - target) > tolerance * target + 1e-6:
+                # A basis retry only does anything when recomputing the
+                # prior from the release weights would actually change it.
+                # When the two priors already agree, the retry artifact
+                # reproduces identical flags under the same seed — a no-op
+                # ladder (PR #554 review finding 1).
+                basis_would_change = bool(
+                    np.isfinite(assignment_prior)
+                    and np.isfinite(recomputed_prior)
+                    and not math.isclose(
+                        assignment_prior,
+                        recomputed_prior,
+                        rel_tol=1e-9,
+                        abs_tol=1e-12,
+                    )
+                )
+                if basis_would_change:
+                    retryable_delivery_miss_present = True
                 ordinary_delivery_misses.append(
                     f"SSI take-up delivered {selected:,.0f} weighted "
-                    f"recipients for enforced age band {key!r} against the "
-                    f"ledger target {target:,.0f} ({signed_relative:+.1%} vs "
-                    f"the ±{tolerance:.0%} envelope)."
+                    f"recipients for enforced age band {key!r} against "
+                    f"the ledger target {target:,.0f} "
+                    f"({signed_relative:+.1%} vs the ±{tolerance:.0%} "
+                    f"envelope; assignment prior {assignment_prior:.7f}, "
+                    f"release-weight recomputation "
+                    f"{recomputed_prior:.7f})."
                 )
         else:
             fenced_rows.append(
@@ -1718,8 +1745,12 @@ def us_ssi_take_up_delivery_gate(
                     ),
                 }
             )
-    prior_weight_basis_retry_applicable = bool(ordinary_delivery_misses) and not (
-        structural_support_failure_present or invalid_diagnostics_failure_present
+    prior_weight_basis_retry_applicable = (
+        bool(ordinary_delivery_misses)
+        and retryable_delivery_miss_present
+        and not (
+            structural_support_failure_present or invalid_diagnostics_failure_present
+        )
     )
     if prior_weight_basis_retry_applicable:
         failures.extend(
@@ -1728,6 +1759,27 @@ def us_ssi_take_up_delivery_gate(
             "--ssi-take-up-prior-weight-basis pointing at this attempt's "
             "us_ssi_take_up.json so the thresholds are recomputed exactly "
             "once from the delivered weights (populace#507/#508)."
+            for failure in ordinary_delivery_misses
+        )
+    elif (
+        ordinary_delivery_misses
+        and not retryable_delivery_miss_present
+        and not (
+            structural_support_failure_present or invalid_diagnostics_failure_present
+        )
+    ):
+        # The release-weight recomputation reproduces the assignment prior
+        # for every missing enforced band: a basis retry would regenerate
+        # identical flags under the same seed (PR #554 review finding 1).
+        # The residual is draw realization on this support, not a stale
+        # weight basis — no rerun flag can change it.
+        failures.extend(
+            failure + " The weight basis is already true of the release "
+            "weights (the release-weight prior recomputation matches the "
+            "assignment prior), so a --ssi-take-up-prior-weight-basis retry "
+            "would reproduce identical flags. The residual is draw "
+            "realization on the current support; repair support/reporter "
+            "identification rather than re-running."
             for failure in ordinary_delivery_misses
         )
     else:
