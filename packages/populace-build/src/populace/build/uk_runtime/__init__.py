@@ -177,6 +177,11 @@ from populace.build.uk_runtime.hmrc_source_contract import (
     UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE,
     assert_uk_hmrc_income_source_contract_current,
 )
+from populace.build.uk_runtime.ladder_targets import (
+    constituency_household_targets,
+    ladder_target_provenance,
+    local_authority_household_targets,
+)
 from populace.build.uk_runtime.local_doctrine import (
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
@@ -228,6 +233,7 @@ from populace.build.uk_runtime.local_target_census import (
     CENSUS_SCHEMA_VERSION,
     METRIC_STATUS_BOUND_IN_CODE,
     SOURCE_STATUS_DOCUMENTED_UNPINNED,
+    SOURCE_STATUS_PINNED_IN_LADDER,
     assert_uk_local_target_census_current,
     build_uk_local_target_census,
     committed_uk_local_target_census_path,
@@ -393,6 +399,7 @@ __all__ = [
     "EMPLOYMENT_BANDS",
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
+    "SOURCE_STATUS_PINNED_IN_LADDER",
     "EFRS_PARITY_KNOWN_GAPS_RESOURCE",
     "EFRS_PARITY_REFERENCE_RESOURCE",
     "ENGLAND_LAD_REGION_URL",
@@ -564,6 +571,7 @@ __all__ = [
     "expected_uk_rowwise_area_support",
     "classify_hmrc_replay_targets",
     "compute_household_metrics",
+    "constituency_household_targets",
     "create_uk_spi_support_tables",
     "employment_band_name",
     "fill_support_channel_from_source",
@@ -603,7 +611,9 @@ __all__ = [
     "load_uk_postcode_constituency_lookup",
     "load_uk_postcode_oa_lookup",
     "load_uk_dataset",
+    "local_authority_household_targets",
     "load_uk_local_target_census",
+    "ladder_target_provenance",
     "load_uk_national_dataset",
     "load_uk_release_input_coverage_manifest",
     "committed_uk_local_target_census_path",

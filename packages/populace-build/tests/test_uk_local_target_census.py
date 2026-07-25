@@ -90,7 +90,10 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         assert source["publisher"], source["source_id"]
         assert source["product"], source["source_id"]
         assert source["verified_on"], source["source_id"]
-        assert source["status"] == SOURCE_STATUS_DOCUMENTED_UNPINNED
+        assert source["status"] in {
+            SOURCE_STATUS_DOCUMENTED_UNPINNED,
+            "pinned_in_ladder",
+        }
         assert source["geographies"], source["source_id"]
         assert set(source["geographies"]) <= {"constituency", "la", "msoa"}
 
