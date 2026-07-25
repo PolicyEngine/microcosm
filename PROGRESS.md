@@ -9,10 +9,10 @@ resource lane and remains offline.
 
 ## Current state
 
-- The prescribed sibling merge is in progress in
+- The prescribed sibling merge is committed in
   `.claude/worktrees/populace-wt-530`.
-- The v2 simulation/content implementation and v3 evidence resources are both
-  present; the simulation wiring remains to be implemented.
+- The versioned engine, evidence schemas, package contracts, and restricted
+  replay path are mapped; the simulation wiring remains to be implemented.
 
 ## Current done
 
@@ -21,11 +21,13 @@ resource lane and remains offline.
   this shared journal, resolved by retaining both dedicated sibling ledgers.
 - The completed sibling histories remain in `PROGRESS_QBI_V2_CONTENT.md` and
   `PROGRESS_QBI_V3_EVIDENCE.md`.
+- Completed the read-only architecture and evidence inventory, including the
+  byte-identity boundary for all existing random streams.
 
 ## Current next
 
-- Commit the merge, establish the dedicated wiring ledger, then implement and
-  validate the v3 evidence-consuming simulation.
+- Build and persist the v3 assumptions calibration, then implement and
+  validate the evidence-consuming simulation.
 
 ## Historical progress
 
