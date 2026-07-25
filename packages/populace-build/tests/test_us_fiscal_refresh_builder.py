@@ -116,10 +116,9 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    # 8 = the #539 ORG full-year-equivalence stage rewrites staged org-wage
-    # inputs before materialization; pre-#539 checkpoints must not be
-    # reused (populace#543).
-    assert identity["materializer_version"] == 8
+    # 9 = the #374 SIPP+SCF blend changes the pre-materialization frame;
+    # SCF-only checkpoints (8 = post-#539 ORG rewrite) must not be reused.
+    assert identity["materializer_version"] == 9
     # The SSI prior-weight basis is identity-bearing (populace#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -175,7 +174,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     tmp_path,
     small_frame,
 ) -> None:
-    """A checkpoint stored under materializer version 7 must not load.
+    """A checkpoint stored under a superseded materializer version must not load.
 
     #539 rewrote staged org-wage inputs without bumping the materializer
     version, so version-7 checkpoints carry pre-fix ORG rows (populace#543).
@@ -212,7 +211,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    stale_identity = {**dict(identity), "materializer_version": 7}
+    # 8 = current-main SCF-only-era checkpoints (the #510 review's stale
+    # hazard); 7 = pre-#539. Both must miss against expected version 9.
+    stale_identity = {**dict(identity), "materializer_version": 8}
+    older_identity = {**dict(identity), "materializer_version": 7}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -228,6 +230,21 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     )
 
     assert loaded is None
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=older_identity,
+        compilation={"declared_targets": 1},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=identity,
+            target_specs=(target,),
+        )
+        is None
+    )
 
     # Instance 2 of the same class (populace#543): a checkpoint written by a
     # run without --ssi-take-up-prior-weight-basis must not serve a run that
@@ -3515,19 +3532,53 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "load_scf_2022_financial_asset_donor",
         lambda path: pd.DataFrame(),
     )
+
+    def fake_load_sipp_financial_asset_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_financial_asset_donor_path"] = path
+        captured["sipp_financial_asset_donor_sha256"] = expected_sha256
+        captured["sipp_financial_asset_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
     monkeypatch.setattr(
         builder,
-        "with_us_scf_wealth_inputs",
-        lambda frame, *, seed, time_period, scf_donor: frame,
+        "fetch_sipp_2023_financial_asset_donor",
+        lambda *args, **kwargs: Path("pu2023.csv"),
     )
     monkeypatch.setattr(
         builder,
-        "us_scf_wealth_signal_gate",
-        lambda frame: builder.GateResult(
+        "load_sipp_2023_financial_asset_donor",
+        fake_load_sipp_financial_asset_donor,
+    )
+
+    def fake_with_scf_wealth_inputs(
+        frame, *, seed, time_period, scf_donor, sipp_donor=None
+    ):
+        captured["sipp_scf_wealth_blend_called"] = sipp_donor is not None
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_wealth_inputs",
+        fake_with_scf_wealth_inputs,
+    )
+
+    def fake_scf_wealth_signal_gate(frame, *, require_sipp_blend=False):
+        captured["sipp_scf_wealth_blend_gate_required"] = require_sipp_blend
+        return builder.GateResult(
             name="scf_wealth_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_wealth_signal_gate",
+        fake_scf_wealth_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -3564,11 +3615,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             passed=True,
             details={"checked": True},
         ),
-    )
-    monkeypatch.setattr(
-        builder,
-        "fetch_sipp_2023_vehicle_donor",
-        lambda *args, **kwargs: Path("pu2023.csv"),
     )
 
     def fake_load_sipp_vehicle_donor(
@@ -4175,6 +4221,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_financial_asset_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_financial_asset_donor_sha256"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_financial_asset_donor_size_bytes"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_scf_wealth_blend_called"] is True
+    assert captured["sipp_scf_wealth_blend_gate_required"] is True
     assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
     assert (
         captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256

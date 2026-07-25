@@ -669,6 +669,8 @@ from populace.build.us_runtime.scf_auto_loans import (
     with_us_scf_auto_loan_inputs,
 )
 from populace.build.us_runtime.scf_wealth import (
+    FINANCIAL_ASSET_BLEND_AUDIT_KEY,
+    FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
     SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
     SCF_NET_WORTH_TARGET_COMPONENTS,
     SCF_WEALTH_PREDICTORS,
@@ -678,13 +680,31 @@ from populace.build.us_runtime.scf_wealth import (
     US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
     US_SCF_WEALTH_STAGE_NAME,
     fetch_scf_2022_summary_extract,
+    financial_asset_source_is_scf,
     impute_us_scf_financial_assets,
     impute_us_scf_net_worth,
+    impute_us_sipp_scf_financial_assets,
     load_scf_2022_financial_asset_donor,
     us_scf_wealth_signal_gate,
     us_scf_wealth_stage_spec,
     us_scf_wealth_summary,
     with_us_scf_wealth_inputs,
+)
+from populace.build.us_runtime.sipp_financial_assets import (
+    SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_URL,
+    SIPP_FINANCIAL_ASSET_DONOR_WEIGHT_COLUMN,
+    SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS,
+    SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+    SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS,
+    SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS,
+    fetch_sipp_2023_financial_asset_donor,
+    impute_us_sipp_financial_assets,
+    load_sipp_2023_financial_asset_donor,
 )
 from populace.build.us_runtime.sipp_head_start import (
     HEAD_START_SIPP_DICTIONARY_URL,
@@ -1392,6 +1412,8 @@ __all__ = [
     "us_scf_auto_loans_stage_spec",
     "us_scf_auto_loans_summary",
     "with_us_scf_auto_loan_inputs",
+    "FINANCIAL_ASSET_BLEND_AUDIT_KEY",
+    "FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
     "SCF_NET_WORTH_TARGET_COMPONENTS",
     "SCF_WEALTH_PREDICTORS",
@@ -1400,7 +1422,9 @@ __all__ = [
     "US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS",
     "US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS",
     "US_SCF_WEALTH_STAGE_NAME",
+    "financial_asset_source_is_scf",
     "fetch_scf_2022_summary_extract",
+    "impute_us_sipp_scf_financial_assets",
     "impute_us_scf_financial_assets",
     "impute_us_scf_net_worth",
     "load_scf_2022_financial_asset_donor",
@@ -1408,6 +1432,20 @@ __all__ = [
     "us_scf_wealth_stage_spec",
     "us_scf_wealth_summary",
     "with_us_scf_wealth_inputs",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_URL",
+    "SIPP_FINANCIAL_ASSET_DONOR_WEIGHT_COLUMN",
+    "SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS",
+    "SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS",
+    "SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS",
+    "SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS",
+    "fetch_sipp_2023_financial_asset_donor",
+    "impute_us_sipp_financial_assets",
+    "load_sipp_2023_financial_asset_donor",
     "HEAD_START_SIPP_DICTIONARY_URL",
     "SIPP_2023_HEAD_START_DONOR_REVISION",
     "SIPP_2023_HEAD_START_DONOR_SHA256",
@@ -1810,11 +1848,13 @@ class BuildConfig:
 #: the observatory's sources diagram and the dataset card derive from it.
 US_DONORS: Mapping[str, DonorSpec] = {
     "scf_wealth": DonorSpec(
-        survey="Fed SCF 2022",
+        survey="Fed SCF 2022 + Census SIPP 2023",
         source="https://www.federalreserve.gov/econres/scfindex.htm",
         notes=(
-            "Wealth components and debts; household-grain auto loans use the "
-            "full SCF while liquid assets are head-carried to person."
+            "SCF anchors signed net worth and one half of household liquid-asset "
+            "vectors; the immutable SIPP 2023 public-use donor supplies the "
+            "other half and restores low liquid-asset mass. Auto loans use the "
+            "full SCF separately."
         ),
     ),
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME: DonorSpec(
