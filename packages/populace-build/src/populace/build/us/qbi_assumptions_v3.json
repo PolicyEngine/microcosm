@@ -1,0 +1,2214 @@
+{
+  "employer_presence": {
+    "base_probability_by_form": {
+      "partnership": {
+        "0_to_25k": 0.598774083673617,
+        "100k_to_250k": 0.7799534378880195,
+        "250k_to_1m": 0.8869047899647315,
+        "25k_to_100k": 0.6973815387905316,
+        "nonpositive": 0.5717691851538709,
+        "over_1m": 0.8736301797903322
+      },
+      "s_corporation": {
+        "0_to_25k": 0.8086165776302614,
+        "100k_to_250k": 0.9526964513135215,
+        "250k_to_1m": 0.9910026295536019,
+        "25k_to_100k": 0.6376636361544837,
+        "nonpositive": 0.68726306951286,
+        "over_1m": 0.9441866076576505
+      },
+      "sole_proprietorship": {
+        "0_to_25k": 0.3903193913520407,
+        "100k_to_250k": 0.40454231339018715,
+        "250k_to_1m": 0.40454231339018715,
+        "25k_to_100k": 0.5118197817476212,
+        "nonpositive": 0.2854719748561733,
+        "over_1m": 0.40454231339018715
+      }
+    },
+    "base_probability_source_level_by_form": {
+      "partnership": {
+        "0_to_25k": "income_form",
+        "100k_to_250k": "income_form",
+        "250k_to_1m": "income_form",
+        "25k_to_100k": "income_form",
+        "nonpositive": "income_form",
+        "over_1m": "income_form"
+      },
+      "s_corporation": {
+        "0_to_25k": "form",
+        "100k_to_250k": "income_form",
+        "250k_to_1m": "income_form",
+        "25k_to_100k": "income_form",
+        "nonpositive": "income_form",
+        "over_1m": "income_form"
+      },
+      "sole_proprietorship": {
+        "0_to_25k": "income_form",
+        "100k_to_250k": "form",
+        "250k_to_1m": "form",
+        "25k_to_100k": "income_form",
+        "nonpositive": "income_form",
+        "over_1m": "form"
+      }
+    },
+    "calibration": {
+      "expected_overall_zero_employee_share": 0.842,
+      "expected_zero_employee_share_by_form": {
+        "partnership": 0.8000000000000002,
+        "s_corporation": 0.37323240048397105,
+        "sole_proprietorship": 0.95
+      },
+      "log_odds_shift_by_form": {
+        "partnership": -2.3076956692827935,
+        "s_corporation": -0.9906098787763655,
+        "sole_proprietorship": -2.598762342032285
+      },
+      "overall_zero_employee_target": 0.842,
+      "rationale": "The sole-proprietorship and partnership statements 'more than 95%' and 'more than 80%' are encoded at the binding 0.95 and 0.80 targets. The S-corporation target is the residual [0.842*sum(form replay weights) - 0.95*sole weight - 0.80*partnership weight] / S-corporation weight, so the full-artifact expected weighted zero-employee share is exactly 0.842. A single persisted log-odds shift per form preserves the SCF income-band shape. The simulation does not solve calibration parameters.",
+      "replay": {
+        "artifact_bytes": 241045964,
+        "artifact_filename": "puf_2024.h5",
+        "artifact_sha256": "8182579ddfecaf5e5b872e2307b88f03e8e8def993171b648f701a19a847f37b",
+        "form_income_band_record_counts": {
+          "partnership": {
+            "0_to_25k": 3332,
+            "100k_to_250k": 2371,
+            "250k_to_1m": 3995,
+            "25k_to_100k": 2662,
+            "nonpositive": 0,
+            "over_1m": 5655
+          },
+          "s_corporation": {
+            "0_to_25k": 10297,
+            "100k_to_250k": 7373,
+            "250k_to_1m": 12526,
+            "25k_to_100k": 8087,
+            "nonpositive": 0,
+            "over_1m": 17542
+          },
+          "sole_proprietorship": {
+            "0_to_25k": 31037,
+            "100k_to_250k": 4841,
+            "250k_to_1m": 4564,
+            "25k_to_100k": 10700,
+            "nonpositive": 0,
+            "over_1m": 1774
+          }
+        },
+        "form_income_band_weights": {
+          "partnership": {
+            "0_to_25k": 1067372.5538101504,
+            "100k_to_250k": 326916.0507736496,
+            "250k_to_1m": 215162.48532373708,
+            "25k_to_100k": 660391.1109488549,
+            "nonpositive": 0.0,
+            "over_1m": 63990.59496758337
+          },
+          "s_corporation": {
+            "0_to_25k": 3275184.573270716,
+            "100k_to_250k": 961581.2967205928,
+            "250k_to_1m": 656578.9332579599,
+            "25k_to_100k": 2028618.17747515,
+            "nonpositive": 0.0,
+            "over_1m": 200534.61636200157
+          },
+          "sole_proprietorship": {
+            "0_to_25k": 25430444.5113663,
+            "100k_to_250k": 829546.9382608522,
+            "250k_to_1m": 260542.25298536988,
+            "25k_to_100k": 5282308.304772086,
+            "nonpositive": 0.0,
+            "over_1m": 19538.349740357484
+          }
+        },
+        "form_record_counts": {
+          "partnership": 18015,
+          "s_corporation": 55825,
+          "sole_proprietorship": 52916
+        },
+        "form_record_weights": {
+          "partnership": 2333832.7958239755,
+          "s_corporation": 7122497.59708642,
+          "sole_proprietorship": 31822380.35712497
+        },
+        "person_rows": 484015,
+        "person_weight_total": 317181074.5235834,
+        "positive_qbi_record_count": 126756,
+        "positive_qbi_weight": 41278710.75003537,
+        "tax_unit_rows": 207692
+      },
+      "solver": {
+        "iterations": 200,
+        "lower_bound": -100.0,
+        "method": "bisection_on_expected_weighted_zero_share",
+        "probability_clip": 1e-12,
+        "upper_bound": 100.0
+      },
+      "target_zero_employee_share_by_form": {
+        "partnership": 0.8,
+        "s_corporation": 0.37323240048397105,
+        "sole_proprietorship": 0.95
+      }
+    },
+    "income_band_order": [
+      "nonpositive",
+      "0_to_25k",
+      "25k_to_100k",
+      "100k_to_250k",
+      "250k_to_1m",
+      "over_1m"
+    ],
+    "industry_marginalization": "Sum requested SCF counts across all eight industry bins within income band and legal form. Use the grouped income/form rate when effective n is at least 30; otherwise use the grouped form-level rate.",
+    "minimum_effective_n": 30.0,
+    "model": "scf_income_form_log_odds_shift"
+  },
+  "engine": "derived_qualification_host_sstb_evidence_wage_capital_v3",
+  "evidence": {
+    "employer_structure_resource": "qbi_employer_structure_v1.json",
+    "employer_structure_schema_version": 1,
+    "employer_structure_sha256": "76d849a8da425208a2c615cde9667b493e8ab8beb984b2b685243d7073bc3b76",
+    "v2_assumptions_resource": "qbi_assumptions_v2.json",
+    "v2_assumptions_schema_version": 2,
+    "v2_assumptions_sha256": "2fabf4f4a0547418663546bc71106880f3dba0a7a23be81681659790b603ca1f",
+    "wage_capital_resource": "qbi_wage_capital_priors_v1.json",
+    "wage_capital_schema_version": 1,
+    "wage_capital_sha256": "94431bba2b4fab287857786d87e5a86ef509cd06bd6639dfbbf6dbe0b45950b8"
+  },
+  "industry_mixture": {
+    "eligibility": {
+      "exclude_unallocable": true,
+      "nonaggregate": true,
+      "positive_receipts": true,
+      "requires_ubia_intensity": true,
+      "requires_wage_share": true
+    },
+    "forms": {
+      "partnership": {
+        "all_industry_receipts_thousands": 8061139481.0,
+        "capital_measure": "gross_depreciable_assets_over_receipts",
+        "component_count": 18,
+        "components": [
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "002 | Agriculture, forestry, fishing, and hunting",
+            "probability": 0.006913622214879819,
+            "proxy": false,
+            "published_label": "Agriculture, forestry, fishing, and hunting",
+            "ubia_intensity": 4.021152316744556,
+            "wage_share": 0.14617949832584426
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "003 | Mining",
+            "probability": 0.028143259089683122,
+            "proxy": false,
+            "published_label": "Mining",
+            "ubia_intensity": 1.4905545716911335,
+            "wage_share": 0.08566419324839146
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "004 | Utilities",
+            "probability": 0.025819185918410835,
+            "proxy": false,
+            "published_label": "Utilities",
+            "ubia_intensity": 2.5989076483407105,
+            "wage_share": 0.023615131775542565
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "005 | Construction",
+            "probability": 0.07656424930720483,
+            "proxy": false,
+            "published_label": "Construction",
+            "ubia_intensity": 0.13445204432304195,
+            "wage_share": 0.1465303905130043
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "006 | Manufacturing",
+            "probability": 0.1606207848023439,
+            "proxy": false,
+            "published_label": "Manufacturing",
+            "ubia_intensity": 0.4590112555617758,
+            "wage_share": 0.08483205899845037
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "007 | Wholesale trade",
+            "probability": 0.14742049826250606,
+            "proxy": false,
+            "published_label": "Wholesale trade",
+            "ubia_intensity": 0.12021564122924576,
+            "wage_share": 0.050797787984149974
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "008 | Retail trade",
+            "probability": 0.10392146431290344,
+            "proxy": false,
+            "published_label": "Retail trade",
+            "ubia_intensity": 0.13021552351869128,
+            "wage_share": 0.0811637494313635
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "009 | Transportation and warehousing",
+            "probability": 0.043949052338206396,
+            "proxy": false,
+            "published_label": "Transportation and warehousing",
+            "ubia_intensity": 1.7419601325384275,
+            "wage_share": 0.10170798479949053
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "010 | Information",
+            "probability": 0.05246194771152578,
+            "proxy": false,
+            "published_label": "Information",
+            "ubia_intensity": 0.810601028541107,
+            "wage_share": 0.09591438348434059
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "011 | Finance and insurance",
+            "probability": 0.05093002781018,
+            "proxy": false,
+            "published_label": "Finance and insurance",
+            "ubia_intensity": 0.49249656424051225,
+            "wage_share": 0.34957473736625444
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "012 | Real estate and rental and leasing",
+            "probability": 0.03691770359072916,
+            "proxy": false,
+            "published_label": "Real estate and rental and leasing",
+            "ubia_intensity": 23.22214326243929,
+            "wage_share": 0.18680218416771752
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "013 | Professional, scientific, and technical services",
+            "probability": 0.10444876383544507,
+            "proxy": false,
+            "published_label": "Professional, scientific, and technical services",
+            "ubia_intensity": 0.1529636696770001,
+            "wage_share": 0.30497465192757134
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "014 | Management of companies (holding companies)",
+            "probability": 0.007336529051762164,
+            "proxy": false,
+            "published_label": "Management of companies (holding companies)",
+            "ubia_intensity": 0.9415945686482614,
+            "wage_share": 0.31206945109148365
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "015 | Administrative and support and waste management and remediation services",
+            "probability": 0.024345319968500204,
+            "proxy": false,
+            "published_label": "Administrative and support and waste management and remediation services",
+            "ubia_intensity": 0.20036146563722318,
+            "wage_share": 0.42297029080409365
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "016 | Health care and social assistance",
+            "probability": 0.056396048228061164,
+            "proxy": false,
+            "published_label": "Health care and social assistance",
+            "ubia_intensity": 0.3779559994810658,
+            "wage_share": 0.3269331009698196
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "017 | Arts, entertainment, and recreation",
+            "probability": 0.017363764057494322,
+            "proxy": false,
+            "published_label": "Arts, entertainment, and recreation",
+            "ubia_intensity": 0.8562958615841583,
+            "wage_share": 0.33460689531837157
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "018 | Accommodation and food services",
+            "probability": 0.04495998224683739,
+            "proxy": false,
+            "published_label": "Accommodation and food services",
+            "ubia_intensity": 1.1678961489935917,
+            "wage_share": 0.2519927616767467
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "019 | Educational and Other services [5]",
+            "probability": 0.011487797253326326,
+            "proxy": false,
+            "published_label": "Educational and Other services [5]",
+            "ubia_intensity": 0.46393055966381674,
+            "wage_share": 0.28790670058170675
+          }
+        ],
+        "eligible_receipts_thousands": 8061139482.0,
+        "proxy": false,
+        "receipts_coverage": 1.0,
+        "scf_legal_form_group": "partnership_or_llc",
+        "tax_year": 2023
+      },
+      "s_corporation": {
+        "all_industry_receipts_thousands": 10429590929.0,
+        "capital_measure": "gross_depreciable_assets_over_receipts",
+        "component_count": 73,
+        "components": [
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "003 | Agriculture, forestry, fishing, and hunting > Agricultural production",
+            "probability": 0.009584622268069075,
+            "proxy": false,
+            "published_label": "Agricultural production",
+            "ubia_intensity": 0.9468127896114183,
+            "wage_share": 0.11548492737885584
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "004 | Agriculture, forestry, fishing, and hunting > Forestry and logging",
+            "probability": 0.001255562272519957,
+            "proxy": false,
+            "published_label": "Forestry and logging",
+            "ubia_intensity": 0.9939069354985679,
+            "wage_share": 0.11666099911659976
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "005 | Agriculture, forestry, fishing, and hunting > Support activities and fishing, hunting and trapping",
+            "probability": 0.004252145465304824,
+            "proxy": false,
+            "published_label": "Support activities and fishing, hunting and trapping",
+            "ubia_intensity": 0.5335867206227614,
+            "wage_share": 0.14772284475686726
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "006 | Mining",
+            "probability": 0.007009793334946048,
+            "proxy": false,
+            "published_label": "Mining",
+            "ubia_intensity": 0.6653018575392319,
+            "wage_share": 0.09350532902674828
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "007 | Utilities",
+            "probability": 0.0020943500439751695,
+            "proxy": false,
+            "published_label": "Utilities",
+            "ubia_intensity": 0.15941813104160746,
+            "wage_share": 0.04153053049774907
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "009 | Construction > Construction of buildings",
+            "probability": 0.0695025768836551,
+            "proxy": false,
+            "published_label": "Construction of buildings",
+            "ubia_intensity": 0.08783040974800416,
+            "wage_share": 0.061221949259979626
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "010 | Construction > Heavy and civil engineering construction and land subdivision",
+            "probability": 0.019150168323625375,
+            "proxy": false,
+            "published_label": "Heavy and civil engineering construction and land subdivision",
+            "ubia_intensity": 0.4729018129183705,
+            "wage_share": 0.07058179354961445
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "011 | Construction > Specialty trade contractors",
+            "probability": 0.08925526020870968,
+            "proxy": false,
+            "published_label": "Specialty trade contractors",
+            "ubia_intensity": 0.21978172663320575,
+            "wage_share": 0.11032008335980079
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "013 | Manufacturing > Food manufacturing",
+            "probability": 0.017867634882893453,
+            "proxy": false,
+            "published_label": "Food manufacturing",
+            "ubia_intensity": 0.32812501197884003,
+            "wage_share": 0.05568442402891978
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "014 | Manufacturing > Beverage and tobacco product manufacturing",
+            "probability": 0.0022370310959458025,
+            "proxy": false,
+            "published_label": "Beverage and tobacco product manufacturing",
+            "ubia_intensity": 0.726410650713503,
+            "wage_share": 0.12138564907809152
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "015 | Manufacturing > Textile mills and textile product mills",
+            "probability": 0.0016358686417888857,
+            "proxy": false,
+            "published_label": "Textile mills and textile product mills",
+            "ubia_intensity": 0.2487598635524103,
+            "wage_share": 0.11962451025364823
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "016 | Manufacturing > Apparel manufacturing",
+            "probability": 0.0010477882069769777,
+            "proxy": false,
+            "published_label": "Apparel manufacturing",
+            "ubia_intensity": 0.12881821318762823,
+            "wage_share": 0.1322875417197735
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "017 | Manufacturing > Leather and allied product manufacturing",
+            "probability": 0.0005866874683607422,
+            "proxy": false,
+            "published_label": "Leather and allied product manufacturing",
+            "ubia_intensity": 0.3200855928417445,
+            "wage_share": 0.16153149626172572
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "018 | Manufacturing > Wood product manufacturing",
+            "probability": 0.005967184956678335,
+            "proxy": false,
+            "published_label": "Wood product manufacturing",
+            "ubia_intensity": 0.35864586231603296,
+            "wage_share": 0.07284589421811945
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "019 | Manufacturing > Paper manufacturing",
+            "probability": 0.003017579075129927,
+            "proxy": false,
+            "published_label": "Paper manufacturing",
+            "ubia_intensity": 0.47746548747976786,
+            "wage_share": 0.08430575312193417
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "020 | Manufacturing > Printing and related support activities",
+            "probability": 0.0036018291415985913,
+            "proxy": false,
+            "published_label": "Printing and related support activities",
+            "ubia_intensity": 0.40010786365235157,
+            "wage_share": 0.14692189666156452
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "021 | Manufacturing > Petroleum and coal products manufacturing",
+            "probability": 0.0016239983296179132,
+            "proxy": false,
+            "published_label": "Petroleum and coal products manufacturing",
+            "ubia_intensity": 0.3305072699604116,
+            "wage_share": 0.05754613865752347
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "022 | Manufacturing > Chemical manufacturing",
+            "probability": 0.0048846077984467775,
+            "proxy": false,
+            "published_label": "Chemical manufacturing",
+            "ubia_intensity": 0.34979358014135187,
+            "wage_share": 0.1241086118960656
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "023 | Manufacturing > Plastics and rubber products manufacturing",
+            "probability": 0.006805722013465502,
+            "proxy": false,
+            "published_label": "Plastics and rubber products manufacturing",
+            "ubia_intensity": 0.39993175111680473,
+            "wage_share": 0.0760261658989317
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "024 | Manufacturing > Nonmetallic mineral product manufacturing",
+            "probability": 0.0036255237517440536,
+            "proxy": false,
+            "published_label": "Nonmetallic mineral product manufacturing",
+            "ubia_intensity": 0.6472115187976343,
+            "wage_share": 0.08533796713909554
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "025 | Manufacturing > Primary metal manufacturing",
+            "probability": 0.005134764411719604,
+            "proxy": false,
+            "published_label": "Primary metal manufacturing",
+            "ubia_intensity": 0.3242946066444009,
+            "wage_share": 0.053088882424975316
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "026 | Manufacturing > Fabricated metal product manufacturing",
+            "probability": 0.01547625085299926,
+            "proxy": false,
+            "published_label": "Fabricated metal product manufacturing",
+            "ubia_intensity": 0.46054035317536696,
+            "wage_share": 0.09970366973071787
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "027 | Manufacturing > Machinery manufacturing",
+            "probability": 0.007984178769622402,
+            "proxy": false,
+            "published_label": "Machinery manufacturing",
+            "ubia_intensity": 0.37900986745682774,
+            "wage_share": 0.11914639470873623
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "028 | Manufacturing > Computer and electronic product manufacturing",
+            "probability": 0.004230729281378897,
+            "proxy": false,
+            "published_label": "Computer and electronic product manufacturing",
+            "ubia_intensity": 0.2526634341822504,
+            "wage_share": 0.11274842165343192
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "029 | Manufacturing > Electrical equipment, appliance, and component manufacturing",
+            "probability": 0.0032654587091705298,
+            "proxy": false,
+            "published_label": "Electrical equipment, appliance, and component manufacturing",
+            "ubia_intensity": 0.30447594660591404,
+            "wage_share": 0.1176599822634172
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "030 | Manufacturing > Transportation equipment manufacturing",
+            "probability": 0.005729203101706667,
+            "proxy": false,
+            "published_label": "Transportation equipment manufacturing",
+            "ubia_intensity": 0.29410630052195097,
+            "wage_share": 0.08425654816209913
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "031 | Manufacturing > Furniture and related product manufacturing",
+            "probability": 0.003605588028768683,
+            "proxy": false,
+            "published_label": "Furniture and related product manufacturing",
+            "ubia_intensity": 0.2650210578233663,
+            "wage_share": 0.1014116360008449
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "032 | Manufacturing > Miscellaneous manufacturing",
+            "probability": 0.006220274709695908,
+            "proxy": false,
+            "published_label": "Miscellaneous manufacturing",
+            "ubia_intensity": 0.2920911879976261,
+            "wage_share": 0.1682260148329965
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "034 | Wholesale trade > Durable goods",
+            "probability": 0.08867760049418082,
+            "proxy": false,
+            "published_label": "Durable goods",
+            "ubia_intensity": 0.10845909903713573,
+            "wage_share": 0.08767201343525455
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "035 | Wholesale trade > Nondurable goods",
+            "probability": 0.0868772110350766,
+            "proxy": false,
+            "published_label": "Nondurable goods",
+            "ubia_intensity": 0.08920990016751737,
+            "wage_share": 0.05618501875841321
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "036 | Wholesale trade > Wholesale trade agents and brokers",
+            "probability": 0.00035133401760617256,
+            "proxy": false,
+            "published_label": "Wholesale trade agents and brokers",
+            "ubia_intensity": 0.1554596756722918,
+            "wage_share": 0.31576606296936044
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "038 | Retail trade > Motor vehicle dealers and parts dealers",
+            "probability": 0.08766419675727215,
+            "proxy": false,
+            "published_label": "Motor vehicle dealers and parts dealers",
+            "ubia_intensity": 0.06661282291690171,
+            "wage_share": 0.07083080963108217
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "039 | Retail trade > Building material and garden equipment and supplies dealers",
+            "probability": 0.013390435911909564,
+            "proxy": false,
+            "published_label": "Building material and garden equipment and supplies dealers",
+            "ubia_intensity": 0.20198805477918946,
+            "wage_share": 0.10798830653309748
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "040 | Retail trade > Food, beverage, and liquor retailers",
+            "probability": 0.022673515188667625,
+            "proxy": false,
+            "published_label": "Food, beverage, and liquor retailers",
+            "ubia_intensity": 0.18844952090170658,
+            "wage_share": 0.103262759607055
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "041 | Retail trade > Furniture, home furnishings, electronics, and appliance retailers",
+            "probability": 0.011103912930178652,
+            "proxy": false,
+            "published_label": "Furniture, home furnishings, electronics, and appliance retailers",
+            "ubia_intensity": 0.10751405048640518,
+            "wage_share": 0.13140159533860712
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "042 | Retail trade > General merchandise retailers",
+            "probability": 0.002293049280365759,
+            "proxy": false,
+            "published_label": "General merchandise retailers",
+            "ubia_intensity": 0.07703259170534613,
+            "wage_share": 0.09357000340084141
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "043 | Retail trade > Health and personal care retailers",
+            "probability": 0.007437166149869778,
+            "proxy": false,
+            "published_label": "Health and personal care retailers",
+            "ubia_intensity": 0.08507023921977354,
+            "wage_share": 0.10641135629885427
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "044 | Retail trade > Gasoline stations and fuel dealers",
+            "probability": 0.03337627567865186,
+            "proxy": false,
+            "published_label": "Gasoline stations and fuel dealers",
+            "ubia_intensity": 0.16339327028362105,
+            "wage_share": 0.04356287184237745
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "045 | Retail trade > Clothing and clothing accessories retailers",
+            "probability": 0.004539987609030925,
+            "proxy": false,
+            "published_label": "Clothing and clothing accessories retailers",
+            "ubia_intensity": 0.14661765368008656,
+            "wage_share": 0.15151107639937494
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "046 | Retail trade > Sporting goods, hobby, book, music, and miscellaneous retailers",
+            "probability": 0.012898442862400826,
+            "proxy": false,
+            "published_label": "Sporting goods, hobby, book, music, and miscellaneous retailers",
+            "ubia_intensity": 0.12867409843808292,
+            "wage_share": 0.13119217526763652
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "048 | Transportation and warehousing > Air, rail, and water transportation",
+            "probability": 0.00206309675798154,
+            "proxy": false,
+            "published_label": "Air, rail, and water transportation",
+            "ubia_intensity": 1.3561022360691746,
+            "wage_share": 0.16017480114852065
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "049 | Transportation and warehousing > Truck transportation",
+            "probability": 0.026543629475829084,
+            "proxy": false,
+            "published_label": "Truck transportation",
+            "ubia_intensity": 0.35829315288410246,
+            "wage_share": 0.12338293158480826
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "050 | Transportation and warehousing > Transit and ground passenger transportation",
+            "probability": 0.0013916818158311829,
+            "proxy": false,
+            "published_label": "Transit and ground passenger transportation",
+            "ubia_intensity": 0.5097170985180723,
+            "wage_share": 0.2798935832997786
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "051 | Transportation and warehousing > Pipeline transportation",
+            "probability": 1.0034857000173832e-05,
+            "proxy": false,
+            "published_label": "Pipeline transportation",
+            "ubia_intensity": 5.4950348473924535,
+            "wage_share": 0.27997116077865897
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "052 | Transportation and warehousing > Other transportation and support activities",
+            "probability": 0.008581998007830702,
+            "proxy": false,
+            "published_label": "Other transportation and support activities",
+            "ubia_intensity": 0.2310129659894844,
+            "wage_share": 0.16442529895081762
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "053 | Transportation and warehousing > Warehousing and storage",
+            "probability": 0.0017809498598447995,
+            "proxy": false,
+            "published_label": "Warehousing and storage",
+            "ubia_intensity": 0.42483232295044443,
+            "wage_share": 0.12237372398558811
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "055 | Information > Motion picture and sound recording industries",
+            "probability": 0.002371958321712956,
+            "proxy": false,
+            "published_label": "Motion picture and sound recording industries",
+            "ubia_intensity": 0.40370451528164203,
+            "wage_share": 0.1918622574016857
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "056 | Information > Publishing industries",
+            "probability": 0.002411898161930586,
+            "proxy": false,
+            "published_label": "Publishing industries",
+            "ubia_intensity": 0.24549776165448908,
+            "wage_share": 0.27290269071412077
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "057 | Information > Broadcasting & Content Providers",
+            "probability": 0.0004654333080221361,
+            "proxy": false,
+            "published_label": "Broadcasting & Content Providers",
+            "ubia_intensity": 0.6107735532613229,
+            "wage_share": 0.2906095357950876
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "058 | Information > Telecommunications (including wired, wireless, satellite, cable and other program distribution, resellers, agents, other telecommunications, and internet service providers)",
+            "probability": 0.0024968592759379796,
+            "proxy": false,
+            "published_label": "Telecommunications (including wired, wireless, satellite, cable and other program distribution, resellers, agents, other telecommunications, and internet service providers)",
+            "ubia_intensity": 0.2853438601492071,
+            "wage_share": 0.13909022697480855
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "059 | Information > Computing infrastructure providers, data processing, web hosting, and related services",
+            "probability": 0.001278133441717339,
+            "proxy": false,
+            "published_label": "Computing infrastructure providers, data processing, web hosting, and related services",
+            "ubia_intensity": 0.1426136745723399,
+            "wage_share": 0.20677999387000315
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "060 | Information > Web search portals, libraries, archives, and other info. services",
+            "probability": 0.0005381695979674192,
+            "proxy": false,
+            "published_label": "Web search portals, libraries, archives, and other info. services",
+            "ubia_intensity": 0.192090395480226,
+            "wage_share": 0.2609094362059079
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "063 | Finance and insurance > Nondepository credit intermediation",
+            "probability": 0.0038350404723383005,
+            "proxy": false,
+            "published_label": "Nondepository credit intermediation",
+            "ubia_intensity": 0.15458448157261928,
+            "wage_share": 0.4605889212676919
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "064 | Finance and insurance > Securities, commodity contracts, other financial investments, and related activities",
+            "probability": 0.004933949679880673,
+            "proxy": false,
+            "published_label": "Securities, commodity contracts, other financial investments, and related activities",
+            "ubia_intensity": 0.19606496771431622,
+            "wage_share": 0.43932255590186803
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "066 | Finance and insurance > Funds, trusts, and other financial vehicles",
+            "probability": 0.00011467818180609132,
+            "proxy": false,
+            "published_label": "Funds, trusts, and other financial vehicles",
+            "ubia_intensity": 0.30876870379779203,
+            "wage_share": 0.35347948680850205
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "068 | Real estate and rental and leasing > Real estate",
+            "probability": 0.015163411424684723,
+            "proxy": false,
+            "published_label": "Real estate",
+            "ubia_intensity": 1.739178645501144,
+            "wage_share": 0.35082079161128554
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "069 | Real estate and rental and leasing > Rental and leasing services",
+            "probability": 0.004092142914100274,
+            "proxy": false,
+            "published_label": "Rental and leasing services",
+            "ubia_intensity": 1.4660676942463706,
+            "wage_share": 0.12819906983511403
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "070 | Real estate and rental and leasing > Lessors of nonfinancial intangible assets (except copyrighted works)",
+            "probability": 0.0002478612090688454,
+            "proxy": false,
+            "published_label": "Lessors of nonfinancial intangible assets (except copyrighted works)",
+            "ubia_intensity": 0.38136583353441633,
+            "wage_share": 0.15574137353955367
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "071 | Professional, scientific, and technical services",
+            "probability": 0.08010113287185187,
+            "proxy": false,
+            "published_label": "Professional, scientific, and technical services",
+            "ubia_intensity": 0.12032143156355575,
+            "wage_share": 0.2749175636252367
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "072 | Management of companies (holding companies)",
+            "probability": 0.0009042185118658918,
+            "proxy": false,
+            "published_label": "Management of companies (holding companies)",
+            "ubia_intensity": 1.8182920714442692,
+            "wage_share": 0.7842937399850215
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "074 | Administrative and support and waste management and remediation services > Administrative and support services",
+            "probability": 0.03545563165424957,
+            "proxy": false,
+            "published_label": "Administrative and support services",
+            "ubia_intensity": 0.18912616373545985,
+            "wage_share": 0.268009105786806
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "075 | Administrative and support and waste management and remediation services > Waste management and remediation services",
+            "probability": 0.004536929449582529,
+            "proxy": false,
+            "published_label": "Waste management and remediation services",
+            "ubia_intensity": 0.5984349713407858,
+            "wage_share": 0.16575097130174815
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "076 | Educational services",
+            "probability": 0.003050266036151065,
+            "proxy": false,
+            "published_label": "Educational services",
+            "ubia_intensity": 0.27655410751376636,
+            "wage_share": 0.2856848605576933
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "078 | Health care and social assistance > Offices of health practitioners and outpatient care centers",
+            "probability": 0.035061925893085474,
+            "proxy": false,
+            "published_label": "Offices of health practitioners and outpatient care centers",
+            "ubia_intensity": 0.22364188516710512,
+            "wage_share": 0.3716063886304464
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "079 | Health care and social assistance > Miscellaneous health care and social assistance",
+            "probability": 0.00821107110677599,
+            "proxy": false,
+            "published_label": "Miscellaneous health care and social assistance",
+            "ubia_intensity": 0.14734247012957205,
+            "wage_share": 0.41230414118742603
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "080 | Health care and social assistance > Hospitals, nursing, and residential care facilities",
+            "probability": 0.004754629751611553,
+            "proxy": false,
+            "published_label": "Hospitals, nursing, and residential care facilities",
+            "ubia_intensity": 0.36947218962936224,
+            "wage_share": 0.45784843733084196
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "082 | Arts, entertainment, and recreation > Other arts, entertainment, and recreation",
+            "probability": 0.007518893633100889,
+            "proxy": false,
+            "published_label": "Other arts, entertainment, and recreation",
+            "ubia_intensity": 0.18540048758074476,
+            "wage_share": 0.27819105308744835
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "083 | Arts, entertainment, and recreation > Amusement, gambling, and recreation industries",
+            "probability": 0.004260289495753107,
+            "proxy": false,
+            "published_label": "Amusement, gambling, and recreation industries",
+            "ubia_intensity": 0.6377676744622056,
+            "wage_share": 0.21279407622365146
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "085 | Accommodation and food services > Accommodation",
+            "probability": 0.0030346422388959618,
+            "proxy": false,
+            "published_label": "Accommodation",
+            "ubia_intensity": 1.8665137103151317,
+            "wage_share": 0.20763761144466825
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "086 | Accommodation and food services > Food services and drinking places",
+            "probability": 0.03492814718937979,
+            "proxy": false,
+            "published_label": "Food services and drinking places",
+            "ubia_intensity": 0.2881163773472031,
+            "wage_share": 0.23021061795874698
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "088 | Other services > Repair and maintenance",
+            "probability": 0.013777671131683194,
+            "proxy": false,
+            "published_label": "Repair and maintenance",
+            "ubia_intensity": 0.27931070116102935,
+            "wage_share": 0.19456416198296003
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "089 | Other services > Personal and laundry services",
+            "probability": 0.008065131342915687,
+            "proxy": false,
+            "published_label": "Personal and laundry services",
+            "ubia_intensity": 0.31581750676741865,
+            "wage_share": 0.27085197356944146
+          },
+          {
+            "capital_measure": "gross_depreciable_assets_over_receipts",
+            "industry_key": "090 | Other services > Religious, grantmaking, civic, professional, and similar organizations",
+            "probability": 8.298298588775328e-05,
+            "proxy": false,
+            "published_label": "Religious, grantmaking, civic, professional, and similar organizations",
+            "ubia_intensity": 0.22537524760762212,
+            "wage_share": 0.28727482818588473
+          }
+        ],
+        "eligible_receipts_thousands": 10366365958.0,
+        "proxy": false,
+        "receipts_coverage": 0.9939379241783874,
+        "scf_legal_form_group": "s_corporation",
+        "tax_year": 2022
+      },
+      "sole_proprietorship": {
+        "all_industry_receipts_thousands": 2063191945.0,
+        "capital_measure": "depreciation_deduction_flow_over_receipts",
+        "component_count": 103,
+        "components": [
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "003 | Agriculture, forestry, hunting, and fishing > Animal production (including breeding of cats and dogs)",
+            "probability": 0.0012979003963812562,
+            "proxy": true,
+            "published_label": "Animal production (including breeding of cats and dogs)",
+            "ubia_intensity": 0.12371144839254952,
+            "wage_share": 0.045734803365208423
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "004 | Agriculture, forestry, hunting, and fishing > Forestry and logging (including forest nurseries, timber tracts)",
+            "probability": 0.004564829896869313,
+            "proxy": true,
+            "published_label": "Forestry and logging (including forest nurseries, timber tracts)",
+            "ubia_intensity": 0.10977479072217418,
+            "wage_share": 0.0910846412539972
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "005 | Agriculture, forestry, hunting, and fishing > Fishing, hunting, and trapping",
+            "probability": 0.0015626249553097429,
+            "proxy": true,
+            "published_label": "Fishing, hunting, and trapping",
+            "ubia_intensity": 0.20483143061544268,
+            "wage_share": 0.02578508484622146
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "006 | Agriculture, forestry, hunting, and fishing > Support activities for agriculture and forestry",
+            "probability": 0.008289524525648517,
+            "proxy": true,
+            "published_label": "Support activities for agriculture and forestry",
+            "ubia_intensity": 0.08251793363249421,
+            "wage_share": 0.08016815428728405
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "008 | Mining > Oil and gas extraction",
+            "probability": 0.0037968259917333853,
+            "proxy": true,
+            "published_label": "Oil and gas extraction",
+            "ubia_intensity": 0.06164790957633291,
+            "wage_share": 0.057490393340799466
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "009 | Mining > Other mining",
+            "probability": 0.0004928488408964902,
+            "proxy": true,
+            "published_label": "Other mining",
+            "ubia_intensity": 0.10451324338946587,
+            "wage_share": 0.13599678574503432
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "010 | Mining > Support activities for mining",
+            "probability": 0.002229148441188641,
+            "proxy": true,
+            "published_label": "Support activities for mining",
+            "ubia_intensity": 0.08601248429592885,
+            "wage_share": 0.10903478184442524
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "011 | Utilities",
+            "probability": 0.0009780818570623994,
+            "proxy": true,
+            "published_label": "Utilities",
+            "ubia_intensity": 0.17149827538187973,
+            "wage_share": 0.10597135634252415
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "013 | Construction > Construction of buildings",
+            "probability": 0.0596729125022449,
+            "proxy": true,
+            "published_label": "Construction of buildings",
+            "ubia_intensity": 0.031416016117521414,
+            "wage_share": 0.10497404482620899
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "014 | Construction > Heavy and civil engineering construction",
+            "probability": 0.005687244676601245,
+            "proxy": true,
+            "published_label": "Heavy and civil engineering construction",
+            "ubia_intensity": 0.06588811582375342,
+            "wage_share": 0.15593421265334714
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "015 | Construction > Specialty trade contractors",
+            "probability": 0.13502414431482657,
+            "proxy": true,
+            "published_label": "Specialty trade contractors",
+            "ubia_intensity": 0.04312979872647048,
+            "wage_share": 0.11075789413185018
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "017 | Manufacturing > Food manufacturing",
+            "probability": 0.005223504441907772,
+            "proxy": true,
+            "published_label": "Food manufacturing",
+            "ubia_intensity": 0.04031971110548605,
+            "wage_share": 0.12695587274296147
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "021 | Manufacturing > Wood products",
+            "probability": 0.0017979669311240763,
+            "proxy": true,
+            "published_label": "Wood products",
+            "ubia_intensity": 0.04243897819895547,
+            "wage_share": 0.13634532038721803
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "022 | Manufacturing > Paper products",
+            "probability": 8.279393666213607e-05,
+            "proxy": true,
+            "published_label": "Paper products",
+            "ubia_intensity": 0.013679475092852127,
+            "wage_share": 0.08723987168373964
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "023 | Manufacturing > Printing and related support activities",
+            "probability": 0.0008714241647408269,
+            "proxy": true,
+            "published_label": "Printing and related support activities",
+            "ubia_intensity": 0.04557496668127461,
+            "wage_share": 0.09730751034428448
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "026 | Manufacturing > Plastic and rubber products",
+            "probability": 0.0004635233581328415,
+            "proxy": true,
+            "published_label": "Plastic and rubber products",
+            "ubia_intensity": 0.017447438996687496,
+            "wage_share": 0.3090947516412776
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "027 | Manufacturing > Nonmetallic mineral products",
+            "probability": 0.0009399278219404839,
+            "proxy": true,
+            "published_label": "Nonmetallic mineral products",
+            "ubia_intensity": 0.027023035290013025,
+            "wage_share": 0.12693514326622812
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "028 | Manufacturing > Primary metal industries",
+            "probability": 0.0003648838122775142,
+            "proxy": true,
+            "published_label": "Primary metal industries",
+            "ubia_intensity": 0.04190032360229364,
+            "wage_share": 0.1115336796193725
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "029 | Manufacturing > Fabricated metal products",
+            "probability": 0.0028880482444905583,
+            "proxy": true,
+            "published_label": "Fabricated metal products",
+            "ubia_intensity": 0.06365112035019435,
+            "wage_share": 0.15291073748066633
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "030 | Manufacturing > Machinery",
+            "probability": 0.0011630408933311909,
+            "proxy": true,
+            "published_label": "Machinery",
+            "ubia_intensity": 0.0636753699746684,
+            "wage_share": 0.0844293543865465
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "031 | Manufacturing > Computer and electronic products",
+            "probability": 0.00038759351222904926,
+            "proxy": true,
+            "published_label": "Computer and electronic products",
+            "ubia_intensity": 0.02807868790420133,
+            "wage_share": 0.13202997763165897
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "032 | Manufacturing > Electrical equipment, appliances, and components",
+            "probability": 0.0008515616244681133,
+            "proxy": true,
+            "published_label": "Electrical equipment, appliances, and components",
+            "ubia_intensity": 0.03472950602345157,
+            "wage_share": 0.13265742392020488
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "033 | Manufacturing > Transportation equipment",
+            "probability": 0.0009660363023880989,
+            "proxy": true,
+            "published_label": "Transportation equipment",
+            "ubia_intensity": 0.05409617555797289,
+            "wage_share": 0.06510054303324249
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "034 | Manufacturing > Furniture and related products",
+            "probability": 0.0011740612609785449,
+            "proxy": true,
+            "published_label": "Furniture and related products",
+            "ubia_intensity": 0.04094433802771654,
+            "wage_share": 0.11611961329455035
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "035 | Manufacturing > Miscellaneous manufacturing",
+            "probability": 0.003917452315671476,
+            "proxy": true,
+            "published_label": "Miscellaneous manufacturing",
+            "ubia_intensity": 0.0373249739940731,
+            "wage_share": 0.14962778661914658
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "037 | Wholesale trade (merchant wholesalers) > Durable goods, including machinery, woods, metals, etc.",
+            "probability": 0.017879226127708495,
+            "proxy": true,
+            "published_label": "Durable goods, including machinery, woods, metals, etc.",
+            "ubia_intensity": 0.024034448039455713,
+            "wage_share": 0.041518239138034874
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "038 | Wholesale trade (merchant wholesalers) > Nondurable goods, including food, fiber, chemicals, etc.",
+            "probability": 0.015276432899363108,
+            "proxy": true,
+            "published_label": "Nondurable goods, including food, fiber, chemicals, etc.",
+            "ubia_intensity": 0.016856752988736377,
+            "wage_share": 0.049317202194894855
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "039 | Wholesale trade (merchant wholesalers) > Wholesale electronic markets and agents and brokers",
+            "probability": 0.0062448903666224445,
+            "proxy": true,
+            "published_label": "Wholesale electronic markets and agents and brokers",
+            "ubia_intensity": 0.015417419819619098,
+            "wage_share": 0.02181394910291053
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "041 | Retail trade > Motor vehicle and parts dealers",
+            "probability": 0.023889411527931406,
+            "proxy": true,
+            "published_label": "Motor vehicle and parts dealers",
+            "ubia_intensity": 0.012316389446083287,
+            "wage_share": 0.047279042650177974
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "042 | Retail trade > Building material and garden equipment and supplies dealers",
+            "probability": 0.005595278537764962,
+            "proxy": true,
+            "published_label": "Building material and garden equipment and supplies dealers",
+            "ubia_intensity": 0.03753789811925712,
+            "wage_share": 0.0804975105653164
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "043 | Retail trade > Food and beverage stores",
+            "probability": 0.019054566122224482,
+            "proxy": true,
+            "published_label": "Food and beverage stores",
+            "ubia_intensity": 0.01608433931361616,
+            "wage_share": 0.09963541731674821
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "044 | Retail trade > Furniture and home furnishing retailers",
+            "probability": 0.0022526915967149698,
+            "proxy": true,
+            "published_label": "Furniture and home furnishing retailers",
+            "ubia_intensity": 0.015055550801263567,
+            "wage_share": 0.09380755535546187
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "045 | Retail trade > Electronic and appliance retailers (including computers)",
+            "probability": 0.0013904113459012508,
+            "proxy": true,
+            "published_label": "Electronic and appliance retailers (including computers)",
+            "ubia_intensity": 0.01618953320493229,
+            "wage_share": 0.07265924291609022
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "046 | Retail trade > General merchandise retailers",
+            "probability": 0.007631284781444173,
+            "proxy": true,
+            "published_label": "General merchandise retailers",
+            "ubia_intensity": 0.011125441324503457,
+            "wage_share": 0.025609589338248015
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "047 | Retail trade > Health and personal care retailers",
+            "probability": 0.0053929594233735455,
+            "proxy": true,
+            "published_label": "Health and personal care retailers",
+            "ubia_intensity": 0.020895938192830348,
+            "wage_share": 0.06263030941662567
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "048 | Retail trade > Gasoline stations",
+            "probability": 0.007077774414054918,
+            "proxy": true,
+            "published_label": "Gasoline stations",
+            "ubia_intensity": 0.017330149238707546,
+            "wage_share": 0.049020624451137806
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "049 | Retail trade > Clothing and accessories retailers",
+            "probability": 0.0065306959558720235,
+            "proxy": true,
+            "published_label": "Clothing and accessories retailers",
+            "ubia_intensity": 0.0213169197380259,
+            "wage_share": 0.05903304965212581
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "050 | Retail trade > Sporting goods, hobby, book, and music retailers",
+            "probability": 0.004200448986761378,
+            "proxy": true,
+            "published_label": "Sporting goods, hobby, book, and music retailers",
+            "ubia_intensity": 0.022481639235944782,
+            "wage_share": 0.08178170966215995
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "051 | Retail trade > Miscellaneous store retailers",
+            "probability": 0.021487516715348372,
+            "proxy": true,
+            "published_label": "Miscellaneous store retailers",
+            "ubia_intensity": 0.02588705676417276,
+            "wage_share": 0.06897721607247559
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "053 | Transportation and warehousing > Air and rail transportation",
+            "probability": 0.0012178797556417844,
+            "proxy": true,
+            "published_label": "Air and rail transportation",
+            "ubia_intensity": 0.3216318577447432,
+            "wage_share": 0.08082380039873797
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "054 | Transportation and warehousing > Water transportation",
+            "probability": 0.000647594457758468,
+            "proxy": true,
+            "published_label": "Water transportation",
+            "ubia_intensity": 0.16823571475951418,
+            "wage_share": 0.14542883629427458
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "055 | Transportation and warehousing > Truck transportation",
+            "probability": 0.059920871560095006,
+            "proxy": true,
+            "published_label": "Truck transportation",
+            "ubia_intensity": 0.06840730178444568,
+            "wage_share": 0.05188319406039381
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "056 | Transportation and warehousing > Taxi, limousine service, and ridesharing service",
+            "probability": 0.02316984757885459,
+            "proxy": true,
+            "published_label": "Taxi, limousine service, and ridesharing service",
+            "ubia_intensity": 0.03868315148401905,
+            "wage_share": 0.004568162094046752
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "059 | Transportation and warehousing > Scenic and sightseeing transportation",
+            "probability": 0.0003625736054360049,
+            "proxy": true,
+            "published_label": "Scenic and sightseeing transportation",
+            "ubia_intensity": 0.35079407736186,
+            "wage_share": 0.1571582548791835
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "060 | Transportation and warehousing > Support activities for transportation (including motor vehicle towing)",
+            "probability": 0.004627926831889556,
+            "proxy": true,
+            "published_label": "Support activities for transportation (including motor vehicle towing)",
+            "ubia_intensity": 0.08774111303365888,
+            "wage_share": 0.07992083620942
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "061 | Transportation and warehousing > Couriers and messengers",
+            "probability": 0.010058228312923715,
+            "proxy": true,
+            "published_label": "Couriers and messengers",
+            "ubia_intensity": 0.03853653107315266,
+            "wage_share": 0.024304084409281435
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "062 | Transportation and warehousing > Warehousing and storage facilities",
+            "probability": 0.0005628889689955003,
+            "proxy": true,
+            "published_label": "Warehousing and storage facilities",
+            "ubia_intensity": 0.06314692278340825,
+            "wage_share": 0.09787437994993066
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "064 | Information > Motion picture and sound recording",
+            "probability": 0.0033875903989503057,
+            "proxy": true,
+            "published_label": "Motion picture and sound recording",
+            "ubia_intensity": 0.05133114744769269,
+            "wage_share": 0.052388729291986146
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "065 | Information > Publishing industries",
+            "probability": 0.0007855452375821718,
+            "proxy": true,
+            "published_label": "Publishing industries",
+            "ubia_intensity": 0.012287743665903546,
+            "wage_share": 0.1209215074192604
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "068 | Information > Web search portals",
+            "probability": 0.0011170122484039314,
+            "proxy": true,
+            "published_label": "Web search portals",
+            "ubia_intensity": 0.011678540459140819,
+            "wage_share": 0.045050689705466475
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "070 | Finance and insurance > Credit intermediation and related activities",
+            "probability": 0.0019256223605949043,
+            "proxy": true,
+            "published_label": "Credit intermediation and related activities",
+            "ubia_intensity": 0.021446143608881623,
+            "wage_share": 0.048192000835723024
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "074 | Finance and insurance > Securities, commodity contracts, and other financial investments > Securities and commodity exchanges",
+            "probability": 0.0027810772860258513,
+            "proxy": true,
+            "published_label": "Securities and commodity exchanges",
+            "ubia_intensity": 0.0025446169738327705,
+            "wage_share": 0.008820170982287327
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "075 | Finance and insurance > Securities, commodity contracts, and other financial investments > Other financial investment activities (investment advice)",
+            "probability": 0.034755070752229715,
+            "proxy": true,
+            "published_label": "Other financial investment activities (investment advice)",
+            "ubia_intensity": 0.0061937172958741555,
+            "wage_share": 0.03465186770375407
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "077 | Finance and insurance > Insurance agents, brokers, and related activities > Insurance agencies and brokerages",
+            "probability": 0.017360907911204895,
+            "proxy": true,
+            "published_label": "Insurance agencies and brokerages",
+            "ubia_intensity": 0.02214324285896712,
+            "wage_share": 0.07509888781682303
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "078 | Finance and insurance > Insurance agents, brokers, and related activities > Other insurance related activities and other financial vehicles",
+            "probability": 0.004583197350900378,
+            "proxy": true,
+            "published_label": "Other insurance related activities and other financial vehicles",
+            "ubia_intensity": 0.01728457460700744,
+            "wage_share": 0.036753638176527784
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "079 | Finance and insurance > Funds, trusts, and other financial vehicles",
+            "probability": 0.00015244798257470804,
+            "proxy": true,
+            "published_label": "Funds, trusts, and other financial vehicles",
+            "ubia_intensity": 0.0061406613495709785,
+            "wage_share": 0.007790083536361169
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "082 | Real estate and rental and leasing > Real estate > Lessors of real estate (including miniwarehouses and self storage)",
+            "probability": 0.0025948683283230824,
+            "proxy": true,
+            "published_label": "Lessors of real estate (including miniwarehouses and self storage)",
+            "ubia_intensity": 0.1447966203388544,
+            "wage_share": 0.044681467017779315
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "083 | Real estate and rental and leasing > Real estate > Offices of real estate agents, brokers, property managers, and appraisers",
+            "probability": 0.03471126535397714,
+            "proxy": true,
+            "published_label": "Offices of real estate agents, brokers, property managers, and appraisers",
+            "ubia_intensity": 0.03472468009400639,
+            "wage_share": 0.037079684305531754
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "084 | Real estate and rental and leasing > Real estate > Other activities related to real estate",
+            "probability": 0.01508614414780962,
+            "proxy": true,
+            "published_label": "Other activities related to real estate",
+            "ubia_intensity": 0.03334568130929659,
+            "wage_share": 0.059142221250866635
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "086 | Real estate and rental and leasing > Rental and leasing services > Automotive equipment rental and leasing",
+            "probability": 0.0009742660868507091,
+            "proxy": true,
+            "published_label": "Automotive equipment rental and leasing",
+            "ubia_intensity": 0.40543909116913895,
+            "wage_share": 0.03333322579465705
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "087 | Real estate and rental and leasing > Rental and leasing services > Consumer electronics and appliances rental",
+            "probability": 8.284946544336056e-05,
+            "proxy": true,
+            "published_label": "Consumer electronics and appliances rental",
+            "ubia_intensity": 0.29028219508956515,
+            "wage_share": 0.08948296902366695
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "094 | Real estate and rental and leasing > Rental and leasing services > Commercial and industrial machinery and equipment rental and leasing",
+            "probability": 0.002085762650938484,
+            "proxy": true,
+            "published_label": "Commercial and industrial machinery and equipment rental and leasing",
+            "ubia_intensity": 0.46706989281069655,
+            "wage_share": 0.08873821628439549
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "095 | Real estate and rental and leasing > Lessors of nonfinancial intangible assets (except copyrighted works)",
+            "probability": 8.654370096406885e-05,
+            "proxy": true,
+            "published_label": "Lessors of nonfinancial intangible assets (except copyrighted works)",
+            "ubia_intensity": 0.00421294755001362,
+            "wage_share": 0.0050785387851457284
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "097 | Professional, scientific, and technical services > Legal services",
+            "probability": 0.02264628922651525,
+            "proxy": true,
+            "published_label": "Legal services",
+            "ubia_intensity": 0.012211926017779247,
+            "wage_share": 0.10401126034045745
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "098 | Professional, scientific, and technical services > Offices of certified public accountants",
+            "probability": 0.0021904569293729865,
+            "proxy": true,
+            "published_label": "Offices of certified public accountants",
+            "ubia_intensity": 0.014499903979689133,
+            "wage_share": 0.16712556323744615
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "099 | Professional, scientific, and technical services > Other accounting services",
+            "probability": 0.006133253942822028,
+            "proxy": true,
+            "published_label": "Other accounting services",
+            "ubia_intensity": 0.04969417634653415,
+            "wage_share": 0.07118361453826312
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "101 | Professional, scientific, and technical services > Architectural, engineering, and related services > Architectural services",
+            "probability": 0.004647225178790771,
+            "proxy": true,
+            "published_label": "Architectural services",
+            "ubia_intensity": 0.05969791395305766,
+            "wage_share": 0.13436790434103418
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "102 | Professional, scientific, and technical services > Architectural, engineering, and related services > Engineering services",
+            "probability": 0.00454087184705308,
+            "proxy": true,
+            "published_label": "Engineering services",
+            "ubia_intensity": 0.025231072657741358,
+            "wage_share": 0.08670281966382488
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "103 | Professional, scientific, and technical services > Architectural, engineering, and related services > Drafting, building inspections, and geophysical surveying",
+            "probability": 0.0014002881349692363,
+            "proxy": true,
+            "published_label": "Drafting, building inspections, and geophysical surveying",
+            "ubia_intensity": 0.02044415380552016,
+            "wage_share": 0.06454565928355677
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "106 | Professional, scientific, and technical services > Specialized design services",
+            "probability": 0.007508121944688262,
+            "proxy": true,
+            "published_label": "Specialized design services",
+            "ubia_intensity": 0.02888740786263072,
+            "wage_share": 0.03579587904443665
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "107 | Professional, scientific, and technical services > Computer systems design services",
+            "probability": 0.00880061299960797,
+            "proxy": true,
+            "published_label": "Computer systems design services",
+            "ubia_intensity": 0.020209687502120578,
+            "wage_share": 0.1207618651466047
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "109 | Professional, scientific, and technical services > Other professional, scientific, and technical services > Management, scientific, and technical consulting services",
+            "probability": 0.035143987525792474,
+            "proxy": true,
+            "published_label": "Management, scientific, and technical consulting services",
+            "ubia_intensity": 0.02444437123940146,
+            "wage_share": 0.058156327017460596
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "110 | Professional, scientific, and technical services > Other professional, scientific, and technical services > Scientific research and development services",
+            "probability": 0.000998701893728043,
+            "proxy": true,
+            "published_label": "Scientific research and development services",
+            "ubia_intensity": 0.044614522760199365,
+            "wage_share": 0.0698327040633809
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "111 | Professional, scientific, and technical services > Other professional, scientific, and technical services > Advertising and related services",
+            "probability": 0.007139207581064132,
+            "proxy": true,
+            "published_label": "Advertising and related services",
+            "ubia_intensity": 0.02264529016942546,
+            "wage_share": 0.08338254510361474
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "115 | Administrative and support and waste management and remediation services > Management of companies and enterprises",
+            "probability": 0.0002752221178620478,
+            "proxy": true,
+            "published_label": "Management of companies and enterprises",
+            "ubia_intensity": 0.04404836907592072,
+            "wage_share": 0.15596228993655983
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "116 | Administrative and support and waste management and remediation services > Administrative and support services",
+            "probability": 0.0599414434019694,
+            "proxy": true,
+            "published_label": "Administrative and support services",
+            "ubia_intensity": 0.0543975617438944,
+            "wage_share": 0.11233576231453109
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "117 | Administrative and support and waste management and remediation services > Waste management and remediation services",
+            "probability": 0.0022631336268673064,
+            "proxy": true,
+            "published_label": "Waste management and remediation services",
+            "ubia_intensity": 0.10010020506275143,
+            "wage_share": 0.12343231389901395
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "118 | Educational services",
+            "probability": 0.008804958388667,
+            "proxy": true,
+            "published_label": "Educational services",
+            "ubia_intensity": 0.031318016504202975,
+            "wage_share": 0.07001586926576044
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "121 | Health care and social assistance > Ambulatory health care services > Offices of physicians (except mental health specialists)",
+            "probability": 0.014612096514065458,
+            "proxy": true,
+            "published_label": "Offices of physicians (except mental health specialists)",
+            "ubia_intensity": 0.019106436332451317,
+            "wage_share": 0.1214809006442151
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "122 | Health care and social assistance > Ambulatory health care services > Offices of physicians, mental health specialists",
+            "probability": 0.003351719853992141,
+            "proxy": true,
+            "published_label": "Offices of physicians, mental health specialists",
+            "ubia_intensity": 0.017202588554687166,
+            "wage_share": 0.08284578468982903
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "123 | Health care and social assistance > Ambulatory health care services > Offices of dentists",
+            "probability": 0.00940412651063345,
+            "proxy": true,
+            "published_label": "Offices of dentists",
+            "ubia_intensity": 0.032037533997429216,
+            "wage_share": 0.25639708718800003
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "124 | Health care and social assistance > Ambulatory health care services > Offices of chiropractors",
+            "probability": 0.001909229321435868,
+            "proxy": true,
+            "published_label": "Offices of chiropractors",
+            "ubia_intensity": 0.02199548588226966,
+            "wage_share": 0.13176822699877022
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "125 | Health care and social assistance > Ambulatory health care services > Offices of optometrists",
+            "probability": 0.0019787508316724983,
+            "proxy": true,
+            "published_label": "Offices of optometrists",
+            "ubia_intensity": 0.03277281491402404,
+            "wage_share": 0.21734784078583594
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "126 | Health care and social assistance > Ambulatory health care services > Offices of mental health practitioners and social therapists",
+            "probability": 0.010076266785118847,
+            "proxy": true,
+            "published_label": "Offices of mental health practitioners and social therapists",
+            "ubia_intensity": 0.024677216337253956,
+            "wage_share": 0.06668350421556526
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "127 | Health care and social assistance > Ambulatory health care services > Offices of podiatrists",
+            "probability": 0.0005044302587767822,
+            "proxy": true,
+            "published_label": "Offices of podiatrists",
+            "ubia_intensity": 0.008215661370606189,
+            "wage_share": 0.11457789196784354
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "128 | Health care and social assistance > Ambulatory health care services > Outpatient care centers and other miscellaneous health practitioners",
+            "probability": 0.007149562651049646,
+            "proxy": true,
+            "published_label": "Outpatient care centers and other miscellaneous health practitioners",
+            "ubia_intensity": 0.030000858004755736,
+            "wage_share": 0.08831455406869738
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "129 | Health care and social assistance > Ambulatory health care services > Medical and diagnostic laboratories",
+            "probability": 0.0007524940879122162,
+            "proxy": true,
+            "published_label": "Medical and diagnostic laboratories",
+            "ubia_intensity": 0.061461198467612194,
+            "wage_share": 0.1014152240487145
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "130 | Health care and social assistance > Ambulatory health care services > Home health care services",
+            "probability": 0.007340059373604514,
+            "proxy": true,
+            "published_label": "Home health care services",
+            "ubia_intensity": 0.032035773823177474,
+            "wage_share": 0.1760253264691092
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "131 | Health care and social assistance > Ambulatory health care services > Other ambulatory health care services (including ambulance services, blood, and organ banks)",
+            "probability": 0.0013040913316313598,
+            "proxy": true,
+            "published_label": "Other ambulatory health care services (including ambulance services, blood, and organ banks)",
+            "ubia_intensity": 0.028391110168449824,
+            "wage_share": 0.11434976857933178
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "132 | Health care and social assistance > Hospitals",
+            "probability": 0.0006628711588723215,
+            "proxy": true,
+            "published_label": "Hospitals",
+            "ubia_intensity": 0.029394610895802645,
+            "wage_share": 0.3414824778246328
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "133 | Health care and social assistance > Nursing and residential care facilities",
+            "probability": 0.004782324084227813,
+            "proxy": true,
+            "published_label": "Nursing and residential care facilities",
+            "ubia_intensity": 0.03324159712146051,
+            "wage_share": 0.24117265343670125
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "134 | Health care and social assistance > Social assistance",
+            "probability": 0.013439573819411972,
+            "proxy": true,
+            "published_label": "Social assistance",
+            "ubia_intensity": 0.027870084631611426,
+            "wage_share": 0.10528893098756187
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "138 | Arts, entertainment, and recreation > Amusement, gambling, and recreation industries",
+            "probability": 0.007921934994927375,
+            "proxy": true,
+            "published_label": "Amusement, gambling, and recreation industries",
+            "ubia_intensity": 0.05661894918379034,
+            "wage_share": 0.11462657234264009
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "141 | Accommodation, food services, and drinking places > Accommodation > Travel accommodation (including hotels, motels, and bed and breakfast inns)",
+            "probability": 0.0030886538245104155,
+            "proxy": true,
+            "published_label": "Travel accommodation (including hotels, motels, and bed and breakfast inns)",
+            "ubia_intensity": 0.1546682636834881,
+            "wage_share": 0.14911584867892483
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "142 | Accommodation, food services, and drinking places > Accommodation > RV (recreational vehicle) parks and recreational camps",
+            "probability": 0.0005438897441138996,
+            "proxy": true,
+            "published_label": "RV (recreational vehicle) parks and recreational camps",
+            "ubia_intensity": 0.17064133410129814,
+            "wage_share": 0.10952263537787915
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "143 | Accommodation, food services, and drinking places > Accommodation > Rooming and boarding houses",
+            "probability": 0.0003445209891173537,
+            "proxy": true,
+            "published_label": "Rooming and boarding houses",
+            "ubia_intensity": 0.23428868584670265,
+            "wage_share": 0.07750321973411915
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "144 | Accommodation, food services, and drinking places > Restaurants (full & limited service) and drinking places",
+            "probability": 0.0404504593008396,
+            "proxy": true,
+            "published_label": "Restaurants (full & limited service) and drinking places",
+            "ubia_intensity": 0.030369172778579347,
+            "wage_share": 0.18780353055796617
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "147 | Other services > Auto repair and maintenance > Automotive mechanical and electrical repair and maintenance",
+            "probability": 0.011524742901205977,
+            "proxy": true,
+            "published_label": "Automotive mechanical and electrical repair and maintenance",
+            "ubia_intensity": 0.0453057507945977,
+            "wage_share": 0.09689728257677839
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "148 | Other services > Auto repair and maintenance > Automotive body shops",
+            "probability": 0.005049057108696061,
+            "proxy": true,
+            "published_label": "Automotive body shops",
+            "ubia_intensity": 0.039266169383931473,
+            "wage_share": 0.10910398012252437
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "149 | Other services > Auto repair and maintenance > Other auto repair and maintenance (including oil change, lubrication, and car washes)",
+            "probability": 0.005051069765087236,
+            "proxy": true,
+            "published_label": "Other auto repair and maintenance (including oil change, lubrication, and car washes)",
+            "ubia_intensity": 0.04688538416160483,
+            "wage_share": 0.1191803061743473
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "150 | Other services > Miscellaneous repairs",
+            "probability": 0.012802319763659071,
+            "proxy": true,
+            "published_label": "Miscellaneous repairs",
+            "ubia_intensity": 0.037229131418472186,
+            "wage_share": 0.09353361591357673
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "151 | Other services > Personal and laundry services",
+            "probability": 0.05025276436665891,
+            "proxy": true,
+            "published_label": "Personal and laundry services",
+            "ubia_intensity": 0.034120181127390854,
+            "wage_share": 0.06388283582775697
+          },
+          {
+            "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "industry_key": "152 | Other services > Religious, grantmaking, civic, professional, and similar organizations",
+            "probability": 0.0016397397644506084,
+            "proxy": true,
+            "published_label": "Religious, grantmaking, civic, professional, and similar organizations",
+            "ubia_intensity": 0.02074161728642754,
+            "wage_share": 0.014876049955720717
+          }
+        ],
+        "eligible_receipts_thousands": 1908919981.0,
+        "proxy": true,
+        "receipts_coverage": 0.925226557628888,
+        "scf_legal_form_group": "sole_or_informal",
+        "tax_year": 2023
+      }
+    },
+    "model": "receipts_weighted_finest_classified_soi_rows",
+    "rationale": "PUF records carry no industry. Industry heterogeneity is represented distributionally, not assigned: within each latent legal form, the record draws once from finest classified nonaggregate SOI rows with probability proportional to receipts, then uses that component's wage share and UBIA intensity. Receipts coverage is capped at one when independently rounded detail rows exceed the rounded all-industry row."
+  },
+  "investment": {
+    "bdc_anchor": {
+      "comparison_component_2022_dollars": null,
+      "provisional": true,
+      "published_component_dollars": null,
+      "published_income_dollars": null,
+      "rationale": "No published BDC aggregate anchor was found in the persisted evidence. Retain the v1 probability and Beta scale because the regulatory economics imply a small dividend carveout; the fixed-seed PUF replay is about $0.143B. This scale remains provisional pending v3.",
+      "replay_factor_band": null
+    },
+    "bdc_exposure_order": [
+      "non_qualified_dividend_income"
+    ],
+    "bdc_income_distribution": {
+      "non_qualified_dividend_income": {
+        "beta_a": 2.0,
+        "beta_b": 18.0,
+        "probability_of_receiving": 0.05,
+        "scale": 0.3,
+        "shift": 0.0
+      }
+    },
+    "model": "exposure_bernoulli_beta_carveout",
+    "reit_ptp_anchor": {
+      "comparison_component_2022_dollars": 2900000000.0,
+      "provisional": true,
+      "published_component_dollars": 4200000000.0,
+      "published_income_dollars": 21070000000.0,
+      "rationale": "SOI Publication 4801 TY2023 reports Form 8995 line 6 REIT/PTP income of $21.07B and line 9 component of $4.20B; JCT reports a $2.90B 2022 component. The aggregate identifies receiving probability times Beta share, not their decomposition. Holding the dividend exposure and both v1 Beta scales fixed while raising the partnership/S-corporation receiving probability from 0.05 to a provisional 0.09 produces about $20.94B, or 0.994 times the income anchor, on the fixed-seed PUF replay. The [0.3, 3.0] replay factor band is provisional.",
+      "replay_factor_band": [
+        0.3,
+        3.0
+      ]
+    },
+    "reit_ptp_exposure_order": [
+      "non_qualified_dividend_income",
+      "partnership_s_corp_income"
+    ],
+    "reit_ptp_income_distribution": {
+      "non_qualified_dividend_income": {
+        "beta_a": 2.0,
+        "beta_b": 18.0,
+        "probability_of_receiving": 0.35,
+        "scale": 1.0,
+        "shift": 0.0
+      },
+      "partnership_s_corp_income": {
+        "beta_a": 2.0,
+        "beta_b": 8.0,
+        "probability_of_receiving": 0.09,
+        "scale": 0.6,
+        "shift": 0.0
+      }
+    }
+  },
+  "profit_margin": {
+    "interpolation": "piecewise_linear_with_endpoint_clamp",
+    "model": "scf_form_empirical_inverse_cdf",
+    "probabilities": [
+      0.05,
+      0.25,
+      0.5,
+      0.75,
+      0.95
+    ],
+    "quantiles_by_form": {
+      "partnership": [
+        0.04071428571428572,
+        0.2,
+        0.432,
+        0.825,
+        1.0
+      ],
+      "s_corporation": [
+        0.022222222222222223,
+        0.08,
+        0.23076923076923078,
+        0.5,
+        1.0
+      ],
+      "sole_proprietorship": [
+        0.053125,
+        0.3,
+        0.6711111111111111,
+        1.0,
+        1.0
+      ]
+    },
+    "rationale": "Receipts equal positive qualified business income divided by a seeded draw from the persisted form-level SCF empirical profit-margin inverse. Linear interpolation connects q05, q25, q50, q75, and q95; draws below q05 or above q95 clamp to the nearest endpoint. This replaces the v1/v2 invented Beta margins."
+  },
+  "qbi_simulation_version": 3,
+  "qualification_derivations": {
+    "estate_income": {
+      "mode": "prior",
+      "prior": {
+        "probability": 0.6
+      },
+      "rationale": "Retain the weakest residual prior, 0.60: aggregate estate income does not identify whether a distribution retains qualified-business character. This is explicitly flagged for v3 evidence work."
+    },
+    "farm_operations_income": {
+      "mode": "derived",
+      "prior": null,
+      "rationale": "Statutory active farm trade-or-business source: the engine derives Schedule F farm operations as source != 0."
+    },
+    "farm_rent_income": {
+      "mode": "prior",
+      "prior": {
+        "probability": 0.8
+      },
+      "rationale": "Retain the 0.80 residual prior because farm rent can be a trade or business, but the host record does not identify the participation and operational facts needed to resolve that status."
+    },
+    "partnership_s_corp_income": {
+      "mode": "prior",
+      "prior": {
+        "probability": 0.9
+      },
+      "rationale": "Retain the 0.90 prior as a proxy for guaranteed-payment and reasonable-compensation exclusions that the aggregate source cannot separate. JCT 2022 entity shares (S corporations 53% and partnerships 17% of QBI deducted) anchor the importance of this combined source pending v3 entity-level treatment."
+    },
+    "rental_income": {
+      "mode": "prior",
+      "prior": {
+        "probability": 0.7
+      },
+      "rationale": "Retain the 0.70 residual prior because rental trade-or-business status and the Section 199A rental-real-estate safe-harbor facts are not observed on the host record."
+    },
+    "self_employment_income": {
+      "mode": "derived",
+      "prior": null,
+      "rationale": "Statutory active trade-or-business source: the engine derives the preliminary flag as Schedule C source != 0, then the host gate requires positive Schedule C income before SSTB classification or routing."
+    }
+  },
+  "record_form": {
+    "form_order": [
+      "sole_proprietorship",
+      "partnership",
+      "s_corporation"
+    ],
+    "jct_qbi_entity_shares": {
+      "estate_and_trust": 0.02,
+      "partnership": 0.17,
+      "s_corporation": 0.53,
+      "sole_proprietorship": 0.28
+    },
+    "partnership_probability": 0.24285714285714285,
+    "passthrough_source": "partnership_s_corp_income",
+    "rationale": "A positive qualified partnership_s_corp_income component takes record-level precedence and is split using JCT QBI deduction shares 17/(17+53) and 53/(17+53). Every other positive-QBI record uses the sole-proprietorship evidence proxy. This is a latent simulation form, not an assigned observed entity type; the PUF does not identify industry or legal form within its other aggregate business-income sources.",
+    "s_corporation_probability": 0.7571428571428571,
+    "sole_proprietorship_sources": [
+      "self_employment_income",
+      "farm_operations_income",
+      "farm_rent_income",
+      "rental_income",
+      "estate_income"
+    ]
+  },
+  "rng": {
+    "bit_generator": "PCG64",
+    "seeds": {
+      "employer_gate": 3043,
+      "entity_split": 3041,
+      "investment": 2043,
+      "latent_industry": 3042,
+      "margin_quantile": 3044,
+      "qualification": 2041,
+      "sstb": 2064,
+      "ubia_dispersion": 3045
+    }
+  },
+  "schema_version": 3,
+  "source_order": [
+    "self_employment_income",
+    "farm_operations_income",
+    "farm_rent_income",
+    "rental_income",
+    "estate_income",
+    "partnership_s_corp_income"
+  ],
+  "sstb_classification": {
+    "agi_band_format": "lower_inclusive:upper_exclusive",
+    "agi_column": "AGI",
+    "ambiguous_prior": 0.0,
+    "ambiguous_prior_status": "superseded_by_code_specific_live_crosswalk",
+    "crosswalk_resource": "sstb_crosswalk_v1.json",
+    "follow_up": "The resource ships the 2017 Census industry map as a future primary seam, but the frozen census_cps person columns currently provide PEIOOCC and AGI without a detailed-industry field, so industry_column remains null.",
+    "industry_column": null,
+    "mode": "crosswalk",
+    "occupation_column": "PEIOOCC",
+    "passive_passthrough_prior_status": "provisional_published_aggregate_derivation",
+    "passive_passthrough_sstb_prior_by_agi": {
+      "-inf:200000": 0.264,
+      "200000:inf": 0.17
+    },
+    "rationale": "Positive Schedule C income uses per-code probabilities from the live crosswalk: host industry is primary when configured, detailed occupation is the current fallback, and absent codes have probability 0. For passive-only pass-through income, OTA WP-118's ordinary-income-limited deduction falls from $221.00B to $162.76B under an all-income SSTB restriction, so ($221.00B - $162.76B) / $221.00B = $58.24B / $221.00B = 0.2635, rounded to the 0.264 below-threshold population prior. Restoring the income exception raises deductions to $183.46B, leaving ($221.00B - $183.46B) / $221.00B = $37.54B / $221.00B = 0.1699, rounded to the conservative 0.170 above-threshold residual after SSTB selection out. JCT's 2022 split puts $120.81B / $216.08B = 55.91% of deduction dollars above the phaseout, confirming the upper band is material but not identifying its conditional SSTB rate. The $200,000 AGI split is a provisional coarse proxy for filing-status-specific modified-taxable-income thresholds."
+  },
+  "ubia": {
+    "dispersion": {
+      "forms": {
+        "partnership": {
+          "receipts_weight_effective_industry_count": 10.925132136575865,
+          "receipts_weighted_log_intensity_sd": 1.232972002301773,
+          "sigma": 0.3730266549334975
+        },
+        "s_corporation": {
+          "receipts_weight_effective_industry_count": 19.533677794780417,
+          "receipts_weighted_log_intensity_sd": 0.7167581982380723,
+          "sigma": 0.16217378734400031
+        },
+        "sole_proprietorship": {
+          "receipts_weight_effective_industry_count": 23.53513031065801,
+          "receipts_weighted_log_intensity_sd": 0.6163001042648324,
+          "sigma": 0.12703808473210823
+        }
+      },
+      "model": "mean_one_lognormal",
+      "rationale": "For each form, sigma equals the receipts-weighted standard deviation of log SOI industry intensity divided by the square root of the receipts-weight effective industry count (1/sum(weight^2)). This retains modest within-component dispersion while the latent industry mixture carries the observed cross-industry heterogeneity. The runtime multiplier exp(sigma*z - sigma^2/2) has mean one."
+    },
+    "model": "soi_industry_intensity_times_receipts_mean_one_lognormal",
+    "rationale": "UBIA is the latent industry's persisted intensity times SCF-margin-implied receipts and a mean-one seeded multiplier. Sole-proprietor intensity remains explicitly proxy=true because its public evidence is depreciation flow over receipts rather than an asset stock. The v1/v2 lognormal multiple of QBI is not used."
+  },
+  "w2": {
+    "model": "employer_gate_soi_wage_share_times_receipts",
+    "non_employer_wages": 0.0,
+    "plausibility_band": {
+      "all_industry_wage_bill_dollars_by_form": {
+        "partnership": 1308541653000.0,
+        "s_corporation": 1514251813000.0,
+        "sole_proprietorship": 175013634000.0
+      },
+      "formula": "lower=(0.28*sole_proprietorship+0.17*partnership+0.53*s_corporation)/0.98; upper=sole_proprietorship+partnership+s_corporation",
+      "jct_supported_form_shares": {
+        "partnership": 0.17,
+        "s_corporation": 0.53,
+        "sole_proprietorship": 0.28
+      },
+      "lower_dollars": 1095927917775.5103,
+      "rationale": "This provisional magnitude envelope is derived from the persisted SOI all-industry wage bills. Its lower edge is their supported-form JCT QBI-share-weighted composite and its upper edge is their sum. It is a broad plausibility diagnostic, not a confidence interval or calibration target.",
+      "supported_form_share_denominator": 0.98,
+      "upper_dollars": 2997807100000.0
+    },
+    "rationale": "Employer records receive the latent industry's SOI wage share times SCF-margin-implied receipts; non-employers receive zero. Partnership wages include cost of labor and salaries but exclude guaranteed payments. S-corporation wages include officer compensation and salaries.",
+    "s_corporation_officer_compensation_included": true
+  }
+}

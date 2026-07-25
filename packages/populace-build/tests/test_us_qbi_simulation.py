@@ -18,6 +18,7 @@ from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 from populace.build.us_runtime.qbi_simulation import (
     QBI_SIMULATION_SOURCE_NAMES,
     QBI_SIMULATION_V2,
+    QBI_SIMULATION_V3,
     QBI_SIMULATION_VERSION,
     QbiSimulationInputs,
     load_qbi_simulation_assumptions,
@@ -26,6 +27,7 @@ from populace.build.us_runtime.qbi_simulation import (
     parse_sstb_crosswalk,
     qbi_simulation_summary,
     simulate_qbi_inputs,
+    simulate_qbi_v3_wage_capital,
     us_qbi_simulation_stage_spec,
     with_qbi_simulation_from_puf_arrays,
 )
@@ -498,12 +500,75 @@ def test_v2_w2_and_ubia_family_seeds_are_independent() -> None:
     )
 
 
+def test_v3_new_family_streams_are_independent() -> None:
+    arrays = {
+        name: np.tile(values, 64) for name, values in _synthetic_sources().items()
+    }
+    inputs = QbiSimulationInputs.from_puf_arrays(arrays)
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V3)
+
+    def run(**seed_change):
+        return simulate_qbi_v3_wage_capital(
+            inputs,
+            assumptions=replace(assumptions, **seed_change),
+        )
+
+    baseline = run()
+    changed_entity = run(entity_split_seed=assumptions.entity_split_seed + 100)
+    changed_industry = run(latent_industry_seed=assumptions.latent_industry_seed + 100)
+    changed_employer = run(employer_gate_seed=assumptions.employer_gate_seed + 100)
+    changed_margin = run(margin_quantile_seed=assumptions.margin_quantile_seed + 100)
+    changed_ubia = run(ubia_dispersion_seed=assumptions.ubia_dispersion_seed + 100)
+
+    np.testing.assert_array_equal(
+        baseline.positive_qbi,
+        changed_entity.positive_qbi,
+    )
+    assert not np.array_equal(baseline.legal_form, changed_entity.legal_form)
+
+    for changed in (changed_industry, changed_employer, changed_margin, changed_ubia):
+        np.testing.assert_array_equal(baseline.legal_form, changed.legal_form)
+        np.testing.assert_array_equal(baseline.positive_qbi, changed.positive_qbi)
+
+    np.testing.assert_array_equal(
+        baseline.has_employees,
+        changed_industry.has_employees,
+    )
+    np.testing.assert_array_equal(baseline.receipts, changed_industry.receipts)
+    assert not np.array_equal(baseline.w2_wages, changed_industry.w2_wages)
+    assert not np.array_equal(baseline.ubia, changed_industry.ubia)
+
+    np.testing.assert_array_equal(baseline.receipts, changed_employer.receipts)
+    np.testing.assert_array_equal(baseline.ubia, changed_employer.ubia)
+    assert not np.array_equal(
+        baseline.has_employees,
+        changed_employer.has_employees,
+    )
+    assert not np.array_equal(baseline.w2_wages, changed_employer.w2_wages)
+
+    np.testing.assert_array_equal(
+        baseline.has_employees,
+        changed_margin.has_employees,
+    )
+    assert not np.array_equal(baseline.receipts, changed_margin.receipts)
+    assert not np.array_equal(baseline.w2_wages, changed_margin.w2_wages)
+    assert not np.array_equal(baseline.ubia, changed_margin.ubia)
+
+    np.testing.assert_array_equal(
+        baseline.has_employees,
+        changed_ubia.has_employees,
+    )
+    np.testing.assert_array_equal(baseline.receipts, changed_ubia.receipts)
+    np.testing.assert_array_equal(baseline.w2_wages, changed_ubia.w2_wages)
+    assert not np.array_equal(baseline.ubia, changed_ubia.ubia)
+
+
 def test_version_and_random_stream_order_are_strict() -> None:
     assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_VERSION)
     inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
 
     with pytest.raises(ValueError, match="Unsupported qbi_simulation_version"):
-        load_qbi_simulation_assumptions(3)
+        load_qbi_simulation_assumptions(4)
     with pytest.raises(ValueError, match="does not match assumptions"):
         simulate_qbi_inputs(
             inputs,

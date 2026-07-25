@@ -2,12 +2,11 @@
 
 ## State
 
-The offline `qbi-v3-wiring` branch is being assembled in
-`.claude/worktrees/populace-wt-530`. The completed v2 simulation/content lane
-and v3 evidence-resource lane are merged. The engine, host transform, evidence
-schemas, package contracts, and restricted replay path are now mapped;
-evidence-consuming v3 assumptions and simulation paths remain to be
-implemented.
+The offline `qbi-v3-wiring` branch is assembled in
+`.claude/worktrees/populace-wt-530`. The evidence-consuming assumptions
+builder, persisted full-artifact calibration, version-3 simulation path, host
+transform, and replay diagnostics are implemented and pass focused validation.
+Full-workspace pytest and Ruff validation remain.
 
 ## Done
 
@@ -35,19 +34,40 @@ implemented.
   17/53 latent split; remaining positive-QBI records use the sole-proprietor
   proxy. The assumptions resource will state this rule explicitly.
 - Chosen the evidence-preserving UBIA branch allowed by the binding design:
-  deterministic intensity conditional on the latent industry. The industry
-  draw already supplies observed cross-industry heterogeneity, while the SOI
-  aggregate tables do not identify an additional within-industry dispersion
-  scale.
+  a mean-one lognormal residual whose per-form sigma is the
+  receipts-weighted standard deviation of log SOI industry intensities divided
+  by the square root of the receipts-weight effective industry count. The
+  latent industry draw carries the observed cross-industry heterogeneity; this
+  standard-error scale adds only modest residual dispersion and preserves the
+  selected component's intensity in expectation.
 - Confirmed the output-file convention is a committed
   `FINAL_REPORT_QBI_V3_WIRING.md`; no output-path environment variable is
   present.
+- Added a deterministic assumptions-build command that maps tax-unit weights
+  to person rows, consumes the packaged SCF/SOI resources, solves the
+  full-artifact employer shifts, pins all input digests, and emits the strict
+  spec-only `qbi_assumptions_v3.json`.
+- Persisted log-odds shifts of `-2.598762342032285` for sole proprietorships,
+  `-2.3076956692827935` for partnerships, and `-0.9906098787763655` for
+  S corporations.
+- Added independent v3 entity-split, latent-industry, employer-gate,
+  margin-quantile, and UBIA-dispersion streams without changing the v1/v2
+  stream paths or production default.
+- Wired v3 through the public runtime, post-QRF host SSTB transform, source
+  manifest exclusions, and country-package resource declaration.
+- Added assumptions-builder unit tests, new-family independence coverage,
+  v2/v3 host-SSTB byte-parity coverage, synthetic diagnostics, exact restricted
+  replay pins, and evidence/replay digest checks.
+- Restricted replay passes: realized zero-employee shares are
+  `0.9510065290364592`, `0.791442063158404`, and `0.3774158749014317`
+  by form and `0.8430139401618544` overall; W-2 aggregate is
+  `$1,472,347,345,828.11`, and the v3 nonzero share is
+  `0.020430544809711643`.
+- Rebuilt the committed assumptions resource from the pinned H5 and confirmed
+  byte-for-byte equality.
 
 ## Next
 
-- Build and persist the full-artifact employer-gate calibration.
-- Wire version 3 with independent random streams while preserving v1/v2 bytes.
-- Add synthetic and restricted replay diagnostics, then run focused and full
-  validation.
+- Run full-workspace pytest and Ruff plus the final repository-contract sweep.
 - Write the final report to the requested output file and leave every result
   committed locally.

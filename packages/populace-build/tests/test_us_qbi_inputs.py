@@ -29,6 +29,7 @@ from populace.build.us_runtime.qbi_inputs import (
 )
 from populace.build.us_runtime.qbi_simulation import (
     QBI_SIMULATION_V2,
+    QBI_SIMULATION_V3,
     load_qbi_simulation_assumptions,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -456,6 +457,27 @@ def test_host_sstb_classification_routes_host_and_passive_records(
     assert all(count == 0 for count in summary["invariants"].values())
     gate = us_qbi_inputs_signal_gate(first)
     assert gate.passed, gate.failures
+
+
+def test_v3_host_sstb_classification_is_byte_identical_to_v2(
+    ready_sstb_crosswalk: dict[str, object],
+) -> None:
+    source = _frame(_v2_host_person())
+
+    v2 = with_host_sstb_classification(
+        source,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=load_qbi_simulation_assumptions(QBI_SIMULATION_V2),
+        sstb_crosswalk=ready_sstb_crosswalk,
+    ).table("person")
+    v3 = with_host_sstb_classification(
+        source,
+        qbi_simulation_version=QBI_SIMULATION_V3,
+        assumptions=load_qbi_simulation_assumptions(QBI_SIMULATION_V3),
+        sstb_crosswalk=ready_sstb_crosswalk,
+    ).table("person")
+
+    pd.testing.assert_frame_equal(v3, v2)
 
 
 def test_host_sstb_stream_is_independent_of_qualification_mode(

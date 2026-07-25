@@ -32,6 +32,7 @@ from populace.frame import US_SCHEMA, Frame
 if TYPE_CHECKING:
     from populace.build.us_runtime.qbi_simulation import (
         QbiSimulationAssumptionsV2,
+        QbiSimulationAssumptionsV3,
         SstbCrosswalk,
     )
 
@@ -240,10 +241,10 @@ def with_host_sstb_classification(
     frame: Frame,
     *,
     qbi_simulation_version: int,
-    assumptions: QbiSimulationAssumptionsV2 | None = None,
+    assumptions: QbiSimulationAssumptionsV2 | QbiSimulationAssumptionsV3 | None = None,
     sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> Frame:
-    """Apply v2 qualification derivations and host-conditioned SSTB routing.
+    """Apply v2/v3 qualification derivations and host-conditioned SSTB routing.
 
     This pure post-QRF transform classifies positive qualified Schedule C
     income from host industry when configured, falling back to detailed
@@ -256,20 +257,31 @@ def with_host_sstb_classification(
 
     from populace.build.us_runtime.qbi_simulation import (
         QBI_SIMULATION_V2,
+        QBI_SIMULATION_V3,
         QbiSimulationAssumptionsV2,
+        QbiSimulationAssumptionsV3,
         load_qbi_simulation_assumptions,
         resolve_sstb_crosswalk,
     )
 
-    if qbi_simulation_version != QBI_SIMULATION_V2:
-        raise ValueError("Host SSTB classification requires qbi_simulation_version=2.")
+    if qbi_simulation_version not in (QBI_SIMULATION_V2, QBI_SIMULATION_V3):
+        raise ValueError(
+            "Host SSTB classification requires qbi_simulation_version=2 or 3."
+        )
     if frame.schema != US_SCHEMA:
         raise ValueError("Host SSTB classification requires the US schema.")
     resolved_assumptions = assumptions or load_qbi_simulation_assumptions(
         qbi_simulation_version
     )
-    if not isinstance(resolved_assumptions, QbiSimulationAssumptionsV2):
-        raise TypeError("Host SSTB classification requires v2 assumptions.")
+    if not isinstance(
+        resolved_assumptions,
+        (QbiSimulationAssumptionsV2, QbiSimulationAssumptionsV3),
+    ):
+        raise TypeError("Host SSTB classification requires v2 or v3 assumptions.")
+    if resolved_assumptions.qbi_simulation_version != qbi_simulation_version:
+        raise ValueError(
+            "Host SSTB classification version does not match its assumptions."
+        )
     resolved_assumptions.validate()
     crosswalk = resolve_sstb_crosswalk(
         resolved_assumptions,
@@ -422,7 +434,7 @@ def _mapped_sstb_values(
 
 def _passive_sstb_probabilities(
     agi: np.ndarray,
-    assumptions: QbiSimulationAssumptionsV2,
+    assumptions: QbiSimulationAssumptionsV2 | QbiSimulationAssumptionsV3,
 ) -> np.ndarray:
     result = np.zeros(len(agi), dtype=np.float64)
     assigned = np.zeros(len(agi), dtype=bool)
@@ -431,7 +443,7 @@ def _passive_sstb_probabilities(
         result[in_band] = band.probability
         assigned |= in_band
     if not np.all(assigned):
-        raise ValueError("QBI v2 passive SSTB AGI bands did not cover every record.")
+        raise ValueError("QBI passive SSTB AGI bands did not cover every record.")
     return result
 
 

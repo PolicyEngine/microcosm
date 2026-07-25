@@ -11,8 +11,9 @@ resource lane and remains offline.
 
 - The prescribed sibling merge is committed in
   `.claude/worktrees/populace-wt-530`.
-- The versioned engine, evidence schemas, package contracts, and restricted
-  replay path are mapped; the simulation wiring remains to be implemented.
+- The version-3 assumptions builder, persisted calibration, runtime/host
+  wiring, and diagnostics are implemented and pass focused validation.
+  Full-workspace pytest and Ruff remain.
 
 ## Current done
 
@@ -23,11 +24,14 @@ resource lane and remains offline.
   `PROGRESS_QBI_V3_EVIDENCE.md`.
 - Completed the read-only architecture and evidence inventory, including the
   byte-identity boundary for all existing random streams.
+- Emitted the reproducible full-artifact assumptions resource, wired the five
+  new independent v3 streams, and added unit, host-parity, synthetic, and
+  restricted replay coverage.
 
 ## Current next
 
-- Build and persist the v3 assumptions calibration, then implement and
-  validate the evidence-consuming simulation.
+- Run full-workspace validation, then write and commit the dedicated final
+  report for the supervisor handoff.
 
 ## Historical progress
 

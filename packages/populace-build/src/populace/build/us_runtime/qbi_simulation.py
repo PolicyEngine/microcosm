@@ -6,14 +6,10 @@ artifact appear to contain the current 15-leaf QBI surface by simulating the
 missing inputs and writing them into the downloaded file during ``load()``.
 
 This module ports that version-1 model into Populace as pure, seeded NumPy
-logic. The assumptions, source order, exposure order, bit generator, and four
-independent seeds are packaged in ``qbi_assumptions_v1.json``. Callers must
-name ``qbi_simulation_version`` explicitly; no version is inferred from an
-unversioned artifact.
-
-The simulation core accepts a normalized assumptions object. A future v2 can
-load a different, evidence-anchored assumptions object without changing the
-source normalization, orchestration, output contract, or donor-stage wrapper.
+logic, retains the opt-in v2 qualification/SSTB route, and adds opt-in v3
+evidence-based employer, wage, and capital machinery. Callers must name
+``qbi_simulation_version`` explicitly; no version is inferred from an
+unversioned artifact, and version 1 remains the production default.
 """
 
 from __future__ import annotations
@@ -41,6 +37,7 @@ __all__ = [
     "QBI_SIMULATION_SUPPORTED_VERSIONS",
     "QBI_SIMULATION_VERSION",
     "QBI_SIMULATION_V2",
+    "QBI_SIMULATION_V3",
     "AggregateEvidenceAnchor",
     "AgiSstbPriorBand",
     "BetaParameters",
@@ -48,7 +45,12 @@ __all__ = [
     "QualificationDerivation",
     "QbiSimulationAssumptions",
     "QbiSimulationAssumptionsV2",
+    "QbiSimulationAssumptionsV3",
     "QbiSimulationInputs",
+    "QbiV3FormAssumptions",
+    "QbiV3IndustryComponent",
+    "QbiV3WageCapitalResult",
+    "QbiV3WagePlausibilityBand",
     "SstbClassificationAssumptions",
     "SstbCrosswalk",
     "SstbCrosswalkEntry",
@@ -60,6 +62,7 @@ __all__ = [
     "qbi_simulation_summary",
     "resolve_sstb_crosswalk",
     "simulate_qbi_inputs",
+    "simulate_qbi_v3_wage_capital",
     "us_qbi_simulation_stage_spec",
     "with_qbi_simulation_from_puf_arrays",
 ]
@@ -85,14 +88,17 @@ QBI_SIMULATION_ARCHIVED_ASSUMPTIONS_URL = (
 
 QBI_SIMULATION_VERSION = 1
 QBI_SIMULATION_V2 = 2
+QBI_SIMULATION_V3 = 3
 QBI_SIMULATION_SUPPORTED_VERSIONS = (
     QBI_SIMULATION_VERSION,
     QBI_SIMULATION_V2,
+    QBI_SIMULATION_V3,
 )
 QBI_SIMULATION_ASSUMPTIONS_RESOURCE = "qbi_assumptions_v1.json"
 QBI_SIMULATION_ASSUMPTIONS_RESOURCES = {
     QBI_SIMULATION_VERSION: QBI_SIMULATION_ASSUMPTIONS_RESOURCE,
     QBI_SIMULATION_V2: "qbi_assumptions_v2.json",
+    QBI_SIMULATION_V3: "qbi_assumptions_v3.json",
 }
 QBI_SIMULATION_SOURCE_NAMES: tuple[str, ...] = (
     "self_employment_income",
@@ -119,6 +125,23 @@ _SUPPORTED_MODEL_KINDS = {
 }
 _V2_QUALIFICATION_MODES = frozenset({"derived", "prior"})
 _V2_SSTB_CLASSIFICATION_MODE = "crosswalk"
+_V3_ENGINE = "derived_qualification_host_sstb_evidence_wage_capital_v3"
+_V3_LEGAL_FORMS = (
+    "sole_proprietorship",
+    "partnership",
+    "s_corporation",
+)
+_V3_INCOME_BANDS = (
+    "nonpositive",
+    "0_to_25k",
+    "25k_to_100k",
+    "100k_to_250k",
+    "250k_to_1m",
+    "over_1m",
+)
+_V3_MARGIN_PROBABILITIES = (0.05, 0.25, 0.5, 0.75, 0.95)
+_V3_PARTNERSHIP_PROBABILITY = 17.0 / 70.0
+_V3_S_CORPORATION_PROBABILITY = 53.0 / 70.0
 _SSTB_CROSSWALK_SCHEMA_VERSION = 1
 _SSTB_CROSSWALK_LIVE_STATUS = "live"
 _SSTB_CLASSIFICATIONS = frozenset(
@@ -684,6 +707,159 @@ class QbiSimulationAssumptionsV2:
 
 
 @dataclass(frozen=True)
+class QbiV3IndustryComponent:
+    """One receipts-weighted latent SOI industry component."""
+
+    industry_key: str
+    published_label: str
+    probability: float
+    wage_share: float
+    ubia_intensity: float
+    proxy: bool
+    capital_measure: str
+
+
+@dataclass(frozen=True)
+class QbiV3FormAssumptions:
+    """Evidence parameters for one latent v3 legal form."""
+
+    legal_form: str
+    tax_year: int
+    scf_legal_form_group: str
+    capital_measure: str
+    proxy: bool
+    eligible_receipts_thousands: float
+    all_industry_receipts_thousands: float
+    receipts_coverage: float
+    industry_components: tuple[QbiV3IndustryComponent, ...]
+    employer_base_probabilities: tuple[float, ...]
+    zero_employee_target: float
+    employer_log_odds_shift: float
+    expected_zero_employee_share: float
+    margin_quantiles: tuple[float, ...]
+    ubia_log_intensity_sd: float
+    ubia_effective_industry_count: float
+    ubia_sigma: float
+
+
+@dataclass(frozen=True)
+class QbiV3WagePlausibilityBand:
+    """Persisted SOI-derived aggregate W-2 replay band."""
+
+    lower_dollars: float
+    upper_dollars: float
+    rationale: str
+
+
+@dataclass(frozen=True)
+class QbiSimulationAssumptionsV3:
+    """Strict v3 assumptions with evidence-based wage and capital machinery."""
+
+    schema_version: int
+    qbi_simulation_version: int
+    engine: str
+    bit_generator: str
+    qualification_seed: int
+    sstb_seed: int
+    investment_seed: int
+    entity_split_seed: int
+    latent_industry_seed: int
+    employer_gate_seed: int
+    margin_quantile_seed: int
+    ubia_dispersion_seed: int
+    source_order: tuple[str, ...]
+    qualification_derivations: tuple[QualificationDerivation, ...]
+    sstb_classification: SstbClassificationAssumptions
+    employer_structure_resource: str
+    wage_capital_resource: str
+    form_order: tuple[str, ...]
+    sole_proprietorship_sources: tuple[str, ...]
+    passthrough_source: str
+    partnership_probability: float
+    s_corporation_probability: float
+    industry_model: str
+    employer_model: str
+    income_band_order: tuple[str, ...]
+    overall_zero_employee_target: float
+    expected_overall_zero_employee_share: float
+    forms: tuple[QbiV3FormAssumptions, ...]
+    margin_model: str
+    margin_probabilities: tuple[float, ...]
+    margin_interpolation: str
+    w2_model: str
+    wage_plausibility_band: QbiV3WagePlausibilityBand
+    ubia_model: str
+    investment_model: str
+    reit_ptp_anchor: AggregateEvidenceAnchor
+    bdc_anchor: AggregateEvidenceAnchor
+    reit_ptp_exposures: tuple[ExposureBetaParameters, ...]
+    bdc_exposures: tuple[ExposureBetaParameters, ...]
+
+    @property
+    def qualification_by_source(self) -> dict[str, QualificationDerivation]:
+        """Return the source-indexed qualification contract."""
+
+        return {
+            derivation.source: derivation
+            for derivation in self.qualification_derivations
+        }
+
+    @property
+    def form_by_name(self) -> dict[str, QbiV3FormAssumptions]:
+        """Return the legal-form-indexed evidence contract."""
+
+        return {form.legal_form: form for form in self.forms}
+
+    def validate(self) -> None:
+        """Reject malformed v3 assumptions before consuming any family stream."""
+
+        _validate_v3_assumptions(self)
+
+
+@dataclass(frozen=True)
+class QbiV3WageCapitalResult:
+    """Read-only v3 wage/capital draw diagnostics outside the 15-leaf output."""
+
+    w2_wages: np.ndarray
+    ubia: np.ndarray
+    positive_qbi: np.ndarray
+    legal_form: np.ndarray
+    has_employees: np.ndarray
+    receipts: np.ndarray
+
+    def __post_init__(self) -> None:
+        arrays = {
+            "w2_wages": np.asarray(self.w2_wages, dtype=np.float64),
+            "ubia": np.asarray(self.ubia, dtype=np.float64),
+            "positive_qbi": np.asarray(self.positive_qbi, dtype=bool),
+            "legal_form": np.asarray(self.legal_form, dtype=str),
+            "has_employees": np.asarray(self.has_employees, dtype=bool),
+            "receipts": np.asarray(self.receipts, dtype=np.float64),
+        }
+        lengths: set[int] = set()
+        for name, values in arrays.items():
+            if values.ndim != 1:
+                raise ValueError(f"QBI v3 diagnostic {name!r} must be one-dimensional.")
+            lengths.add(len(values))
+            object.__setattr__(self, name, values)
+        if len(lengths) != 1:
+            raise ValueError("QBI v3 diagnostic arrays must have one common length.")
+        for name in ("w2_wages", "ubia", "receipts"):
+            values = arrays[name]
+            if np.any(~np.isfinite(values)) or np.any(values < 0.0):
+                raise ValueError(
+                    f"QBI v3 diagnostic {name!r} must be finite and nonnegative."
+                )
+        unknown_forms = set(arrays["legal_form"]) - {*_V3_LEGAL_FORMS, "none"}
+        if unknown_forms:
+            raise ValueError(
+                f"QBI v3 diagnostics contain unknown legal forms {unknown_forms!r}."
+            )
+        if np.any(arrays["has_employees"] & ~arrays["positive_qbi"]):
+            raise ValueError("QBI v3 employer gates require positive QBI.")
+
+
+@dataclass(frozen=True)
 class QbiSimulationInputs:
     """Normalized one-dimensional sources required by every model version."""
 
@@ -828,10 +1004,10 @@ class QbiSimulationInputs:
         )
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=3)
 def load_qbi_simulation_assumptions(
     qbi_simulation_version: int,
-) -> QbiSimulationAssumptions | QbiSimulationAssumptionsV2:
+) -> QbiSimulationAssumptions | QbiSimulationAssumptionsV2 | QbiSimulationAssumptionsV3:
     """Load and strictly validate one packaged QBI assumptions version."""
 
     if qbi_simulation_version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
@@ -855,7 +1031,7 @@ def parse_qbi_simulation_assumptions(
     payload: Any,
     *,
     qbi_simulation_version: int,
-) -> QbiSimulationAssumptions | QbiSimulationAssumptionsV2:
+) -> QbiSimulationAssumptions | QbiSimulationAssumptionsV2 | QbiSimulationAssumptionsV3:
     """Parse one assumptions mapping under its requested versioned schema."""
 
     if qbi_simulation_version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
@@ -877,7 +1053,9 @@ def parse_qbi_simulation_assumptions(
         )
     if qbi_simulation_version == QBI_SIMULATION_VERSION:
         return _parse_v1_qbi_simulation_assumptions(root)
-    return _parse_v2_qbi_simulation_assumptions(root)
+    if qbi_simulation_version == QBI_SIMULATION_V2:
+        return _parse_v2_qbi_simulation_assumptions(root)
+    return _parse_v3_qbi_simulation_assumptions(root)
 
 
 def _parse_v1_qbi_simulation_assumptions(
@@ -1165,6 +1343,418 @@ def _parse_v2_qbi_simulation_assumptions(
     return assumptions
 
 
+def _parse_v3_qbi_simulation_assumptions(
+    root: Mapping[str, Any],
+) -> QbiSimulationAssumptionsV3:
+    """Parse the strictly validated evidence-consuming v3 resource."""
+
+    # Keep the resource builder and runtime on one complete schema contract.
+    # This import is deliberately local: the builder imports selected simulation
+    # helpers lazily when producing the resource.
+    from populace.build.us_runtime.qbi_v3_assumptions import (
+        validate_qbi_v3_assumptions_payload,
+    )
+
+    validate_qbi_v3_assumptions_payload(root)
+    rng = _child_mapping(root, "rng")
+    seeds = _child_mapping(rng, "seeds")
+    derivations = _child_mapping(root, "qualification_derivations")
+    classification = _child_mapping(root, "sstb_classification")
+    evidence = _child_mapping(root, "evidence")
+    record_form = _child_mapping(root, "record_form")
+    industry_mixture = _child_mapping(root, "industry_mixture")
+    mixture_forms = _child_mapping(industry_mixture, "forms")
+    employer = _child_mapping(root, "employer_presence")
+    employer_base = _child_mapping(employer, "base_probability_by_form")
+    calibration = _child_mapping(employer, "calibration")
+    zero_targets = _child_mapping(
+        calibration,
+        "target_zero_employee_share_by_form",
+    )
+    employer_shifts = _child_mapping(calibration, "log_odds_shift_by_form")
+    expected_zero_shares = _child_mapping(
+        calibration,
+        "expected_zero_employee_share_by_form",
+    )
+    profit_margin = _child_mapping(root, "profit_margin")
+    margin_curves = _child_mapping(profit_margin, "quantiles_by_form")
+    w2 = _child_mapping(root, "w2")
+    wage_band = _child_mapping(w2, "plausibility_band")
+    ubia = _child_mapping(root, "ubia")
+    ubia_dispersion = _child_mapping(ubia, "dispersion")
+    dispersion_forms = _child_mapping(ubia_dispersion, "forms")
+    investment = _child_mapping(root, "investment")
+    source_order = _string_tuple(root.get("source_order"), "source_order")
+    form_order = _string_tuple(record_form.get("form_order"), "record_form.form_order")
+    income_band_order = _string_tuple(
+        employer.get("income_band_order"),
+        "employer_presence.income_band_order",
+    )
+    margin_probabilities = _number_tuple(
+        profit_margin.get("probabilities"),
+        "profit_margin.probabilities",
+    )
+    reit_order = _string_tuple(
+        investment.get("reit_ptp_exposure_order"),
+        "investment.reit_ptp_exposure_order",
+    )
+    bdc_order = _string_tuple(
+        investment.get("bdc_exposure_order"),
+        "investment.bdc_exposure_order",
+    )
+
+    qualification_derivations: list[QualificationDerivation] = []
+    for source in source_order:
+        entry = _require_mapping(
+            derivations[source],
+            f"qualification_derivations.{source}",
+        )
+        prior_payload = entry.get("prior")
+        prior_probability: float | None = None
+        if prior_payload is not None:
+            prior = _require_mapping(
+                prior_payload,
+                f"qualification_derivations.{source}.prior",
+            )
+            prior_probability = _number(
+                prior.get("probability"),
+                f"qualification_derivations.{source}.prior.probability",
+            )
+        qualification_derivations.append(
+            QualificationDerivation(
+                source=source,
+                mode=_string(
+                    entry.get("mode"),
+                    f"qualification_derivations.{source}.mode",
+                ),
+                prior_probability=prior_probability,
+                rationale=_string(
+                    entry.get("rationale"),
+                    f"qualification_derivations.{source}.rationale",
+                ),
+            )
+        )
+
+    forms: list[QbiV3FormAssumptions] = []
+    for legal_form in form_order:
+        mixture = _require_mapping(
+            mixture_forms[legal_form],
+            f"industry_mixture.forms.{legal_form}",
+        )
+        raw_components = mixture.get("components")
+        if not isinstance(raw_components, list):
+            raise ValueError(
+                f"industry_mixture.forms.{legal_form}.components must be a list."
+            )
+        components: list[QbiV3IndustryComponent] = []
+        for index, raw_component in enumerate(raw_components):
+            component = _require_mapping(
+                raw_component,
+                f"industry_mixture.forms.{legal_form}.components[{index}]",
+            )
+            components.append(
+                QbiV3IndustryComponent(
+                    industry_key=_string(
+                        component.get("industry_key"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].industry_key",
+                    ),
+                    published_label=_string(
+                        component.get("published_label"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].published_label",
+                    ),
+                    probability=_number(
+                        component.get("probability"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].probability",
+                    ),
+                    wage_share=_number(
+                        component.get("wage_share"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].wage_share",
+                    ),
+                    ubia_intensity=_number(
+                        component.get("ubia_intensity"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].ubia_intensity",
+                    ),
+                    proxy=_boolean(
+                        component.get("proxy"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].proxy",
+                    ),
+                    capital_measure=_string(
+                        component.get("capital_measure"),
+                        f"industry_mixture.forms.{legal_form}."
+                        f"components[{index}].capital_measure",
+                    ),
+                )
+            )
+        form_dispersion = _require_mapping(
+            dispersion_forms[legal_form],
+            f"ubia.dispersion.forms.{legal_form}",
+        )
+        forms.append(
+            QbiV3FormAssumptions(
+                legal_form=legal_form,
+                tax_year=_integer(
+                    mixture.get("tax_year"),
+                    f"industry_mixture.forms.{legal_form}.tax_year",
+                ),
+                scf_legal_form_group=_string(
+                    mixture.get("scf_legal_form_group"),
+                    f"industry_mixture.forms.{legal_form}.scf_legal_form_group",
+                ),
+                capital_measure=_string(
+                    mixture.get("capital_measure"),
+                    f"industry_mixture.forms.{legal_form}.capital_measure",
+                ),
+                proxy=_boolean(
+                    mixture.get("proxy"),
+                    f"industry_mixture.forms.{legal_form}.proxy",
+                ),
+                eligible_receipts_thousands=_number(
+                    mixture.get("eligible_receipts_thousands"),
+                    f"industry_mixture.forms.{legal_form}.eligible_receipts_thousands",
+                ),
+                all_industry_receipts_thousands=_number(
+                    mixture.get("all_industry_receipts_thousands"),
+                    f"industry_mixture.forms.{legal_form}."
+                    "all_industry_receipts_thousands",
+                ),
+                receipts_coverage=_number(
+                    mixture.get("receipts_coverage"),
+                    f"industry_mixture.forms.{legal_form}.receipts_coverage",
+                ),
+                industry_components=tuple(components),
+                employer_base_probabilities=_ordered_scalars(
+                    _require_mapping(
+                        employer_base[legal_form],
+                        f"employer_presence.base_probability_by_form.{legal_form}",
+                    ),
+                    income_band_order,
+                    f"employer_presence.base_probability_by_form.{legal_form}",
+                ),
+                zero_employee_target=_number(
+                    zero_targets.get(legal_form),
+                    "employer_presence.calibration."
+                    f"target_zero_employee_share_by_form.{legal_form}",
+                ),
+                employer_log_odds_shift=_number(
+                    employer_shifts.get(legal_form),
+                    "employer_presence.calibration."
+                    f"log_odds_shift_by_form.{legal_form}",
+                ),
+                expected_zero_employee_share=_number(
+                    expected_zero_shares.get(legal_form),
+                    "employer_presence.calibration."
+                    f"expected_zero_employee_share_by_form.{legal_form}",
+                ),
+                margin_quantiles=_number_tuple(
+                    margin_curves.get(legal_form),
+                    f"profit_margin.quantiles_by_form.{legal_form}",
+                ),
+                ubia_log_intensity_sd=_number(
+                    form_dispersion.get("receipts_weighted_log_intensity_sd"),
+                    f"ubia.dispersion.forms.{legal_form}."
+                    "receipts_weighted_log_intensity_sd",
+                ),
+                ubia_effective_industry_count=_number(
+                    form_dispersion.get("receipts_weight_effective_industry_count"),
+                    f"ubia.dispersion.forms.{legal_form}."
+                    "receipts_weight_effective_industry_count",
+                ),
+                ubia_sigma=_number(
+                    form_dispersion.get("sigma"),
+                    f"ubia.dispersion.forms.{legal_form}.sigma",
+                ),
+            )
+        )
+
+    assumptions = QbiSimulationAssumptionsV3(
+        schema_version=_integer(root.get("schema_version"), "schema_version"),
+        qbi_simulation_version=_integer(
+            root.get("qbi_simulation_version"),
+            "qbi_simulation_version",
+        ),
+        engine=_string(root.get("engine"), "engine"),
+        bit_generator=_string(rng.get("bit_generator"), "rng.bit_generator"),
+        qualification_seed=_integer(
+            seeds.get("qualification"),
+            "rng.seeds.qualification",
+        ),
+        sstb_seed=_integer(seeds.get("sstb"), "rng.seeds.sstb"),
+        investment_seed=_integer(
+            seeds.get("investment"),
+            "rng.seeds.investment",
+        ),
+        entity_split_seed=_integer(
+            seeds.get("entity_split"),
+            "rng.seeds.entity_split",
+        ),
+        latent_industry_seed=_integer(
+            seeds.get("latent_industry"),
+            "rng.seeds.latent_industry",
+        ),
+        employer_gate_seed=_integer(
+            seeds.get("employer_gate"),
+            "rng.seeds.employer_gate",
+        ),
+        margin_quantile_seed=_integer(
+            seeds.get("margin_quantile"),
+            "rng.seeds.margin_quantile",
+        ),
+        ubia_dispersion_seed=_integer(
+            seeds.get("ubia_dispersion"),
+            "rng.seeds.ubia_dispersion",
+        ),
+        source_order=source_order,
+        qualification_derivations=tuple(qualification_derivations),
+        sstb_classification=SstbClassificationAssumptions(
+            mode=_string(
+                classification.get("mode"),
+                "sstb_classification.mode",
+            ),
+            crosswalk_resource=_string(
+                classification.get("crosswalk_resource"),
+                "sstb_classification.crosswalk_resource",
+            ),
+            occupation_column=_string(
+                classification.get("occupation_column"),
+                "sstb_classification.occupation_column",
+            ),
+            industry_column=_optional_string(
+                classification.get("industry_column"),
+                "sstb_classification.industry_column",
+            ),
+            agi_column=_string(
+                classification.get("agi_column"),
+                "sstb_classification.agi_column",
+            ),
+            ambiguous_prior=_number(
+                classification.get("ambiguous_prior"),
+                "sstb_classification.ambiguous_prior",
+            ),
+            ambiguous_prior_status=_string(
+                classification.get("ambiguous_prior_status"),
+                "sstb_classification.ambiguous_prior_status",
+            ),
+            agi_band_format=_string(
+                classification.get("agi_band_format"),
+                "sstb_classification.agi_band_format",
+            ),
+            passive_passthrough_sstb_prior_by_agi=_parse_agi_prior_bands(
+                _child_mapping(
+                    classification,
+                    "passive_passthrough_sstb_prior_by_agi",
+                )
+            ),
+            passive_passthrough_prior_status=_string(
+                classification.get("passive_passthrough_prior_status"),
+                "sstb_classification.passive_passthrough_prior_status",
+            ),
+            rationale=_string(
+                classification.get("rationale"),
+                "sstb_classification.rationale",
+            ),
+            follow_up=_string(
+                classification.get("follow_up"),
+                "sstb_classification.follow_up",
+            ),
+        ),
+        employer_structure_resource=_string(
+            evidence.get("employer_structure_resource"),
+            "evidence.employer_structure_resource",
+        ),
+        wage_capital_resource=_string(
+            evidence.get("wage_capital_resource"),
+            "evidence.wage_capital_resource",
+        ),
+        form_order=form_order,
+        sole_proprietorship_sources=_string_tuple(
+            record_form.get("sole_proprietorship_sources"),
+            "record_form.sole_proprietorship_sources",
+        ),
+        passthrough_source=_string(
+            record_form.get("passthrough_source"),
+            "record_form.passthrough_source",
+        ),
+        partnership_probability=_number(
+            record_form.get("partnership_probability"),
+            "record_form.partnership_probability",
+        ),
+        s_corporation_probability=_number(
+            record_form.get("s_corporation_probability"),
+            "record_form.s_corporation_probability",
+        ),
+        industry_model=_string(
+            industry_mixture.get("model"),
+            "industry_mixture.model",
+        ),
+        employer_model=_string(
+            employer.get("model"),
+            "employer_presence.model",
+        ),
+        income_band_order=income_band_order,
+        overall_zero_employee_target=_number(
+            calibration.get("overall_zero_employee_target"),
+            "employer_presence.calibration.overall_zero_employee_target",
+        ),
+        expected_overall_zero_employee_share=_number(
+            calibration.get("expected_overall_zero_employee_share"),
+            "employer_presence.calibration.expected_overall_zero_employee_share",
+        ),
+        forms=tuple(forms),
+        margin_model=_string(
+            profit_margin.get("model"),
+            "profit_margin.model",
+        ),
+        margin_probabilities=margin_probabilities,
+        margin_interpolation=_string(
+            profit_margin.get("interpolation"),
+            "profit_margin.interpolation",
+        ),
+        w2_model=_string(w2.get("model"), "w2.model"),
+        wage_plausibility_band=QbiV3WagePlausibilityBand(
+            lower_dollars=_number(
+                wage_band.get("lower_dollars"),
+                "w2.plausibility_band.lower_dollars",
+            ),
+            upper_dollars=_number(
+                wage_band.get("upper_dollars"),
+                "w2.plausibility_band.upper_dollars",
+            ),
+            rationale=_string(
+                wage_band.get("rationale"),
+                "w2.plausibility_band.rationale",
+            ),
+        ),
+        ubia_model=_string(ubia.get("model"), "ubia.model"),
+        investment_model=_string(investment.get("model"), "investment.model"),
+        reit_ptp_anchor=_parse_aggregate_evidence_anchor(
+            _child_mapping(investment, "reit_ptp_anchor"),
+            "investment.reit_ptp_anchor",
+        ),
+        bdc_anchor=_parse_aggregate_evidence_anchor(
+            _child_mapping(investment, "bdc_anchor"),
+            "investment.bdc_anchor",
+        ),
+        reit_ptp_exposures=_ordered_exposures(
+            _child_mapping(investment, "reit_ptp_income_distribution"),
+            reit_order,
+            "investment.reit_ptp_income_distribution",
+        ),
+        bdc_exposures=_ordered_exposures(
+            _child_mapping(investment, "bdc_income_distribution"),
+            bdc_order,
+            "investment.bdc_income_distribution",
+        ),
+    )
+    assumptions.validate()
+    return assumptions
+
+
 def load_sstb_crosswalk(resource_name: str) -> SstbCrosswalk:
     """Load one packaged SSTB crosswalk and reject placeholder content."""
 
@@ -1341,8 +1931,11 @@ def qbi_qrf_excluded_targets(
     if qbi_simulation_version == QBI_SIMULATION_VERSION:
         return ()
     assumptions = load_qbi_simulation_assumptions(qbi_simulation_version)
-    if not isinstance(assumptions, QbiSimulationAssumptionsV2):
-        raise TypeError("QBI v2 target selection requires v2 assumptions.")
+    if not isinstance(
+        assumptions,
+        (QbiSimulationAssumptionsV2, QbiSimulationAssumptionsV3),
+    ):
+        raise TypeError("QBI v2/v3 target selection requires modern assumptions.")
     excluded = {
         _QUALIFICATION_FLAG_BY_SOURCE[derivation.source]
         for derivation in assumptions.qualification_derivations
@@ -1355,7 +1948,11 @@ def qbi_qrf_excluded_targets(
 def simulate_qbi_inputs(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2,
+    assumptions: (
+        QbiSimulationAssumptions
+        | QbiSimulationAssumptionsV2
+        | QbiSimulationAssumptionsV3
+    ),
     qbi_simulation_version: int,
     sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> dict[str, np.ndarray]:
@@ -1409,7 +2006,7 @@ def simulate_qbi_inputs(
             assumptions=assumptions,
             rng=_rng(assumptions.sstb_seed, assumptions.bit_generator),
         )
-    else:
+    elif qbi_simulation_version == QBI_SIMULATION_V2:
         if not isinstance(assumptions, QbiSimulationAssumptionsV2):
             raise TypeError("QBI v2 simulation requires v2 assumptions.")
         resolve_sstb_crosswalk(assumptions, sstb_crosswalk)
@@ -1438,6 +2035,26 @@ def simulate_qbi_inputs(
         # The PUF donor has no host occupation or industry. V2 emits a neutral
         # preliminary route; the authoritative SSTB classifier runs after QRF
         # placement on the cloned host record.
+        business_is_sstb = np.zeros(inputs.n, dtype=bool)
+    else:
+        if not isinstance(assumptions, QbiSimulationAssumptionsV3):
+            raise TypeError("QBI v3 simulation requires v3 assumptions.")
+        resolve_sstb_crosswalk(assumptions, sstb_crosswalk)
+        qualification_flags = _derive_v2_qualification_flags(
+            inputs,
+            assumptions=assumptions,
+        )
+        wage_capital = simulate_qbi_v3_wage_capital(
+            inputs,
+            assumptions=assumptions,
+            qualification_flags=qualification_flags,
+        )
+        w2_wages = wage_capital.w2_wages
+        ubia = wage_capital.ubia
+        flag_by_source = dict(
+            zip(assumptions.source_order, qualification_flags, strict=True)
+        )
+        # V3 carries v2's host-authoritative SSTB route unchanged.
         business_is_sstb = np.zeros(inputs.n, dtype=bool)
 
     qualified_reit_and_ptp_income, qualified_bdc_income = _simulate_investment_qbi(
@@ -1488,7 +2105,12 @@ def with_qbi_simulation_from_puf_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
     qbi_simulation_version: int,
-    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2 | None = None,
+    assumptions: (
+        QbiSimulationAssumptions
+        | QbiSimulationAssumptionsV2
+        | QbiSimulationAssumptionsV3
+        | None
+    ) = None,
     sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> dict[str, Sequence[Any]]:
     """Return PUF arrays with a repository-owned QBI simulation applied.
@@ -1566,7 +2188,7 @@ def qbi_simulation_summary(
 
 
 def resolve_sstb_crosswalk(
-    assumptions: QbiSimulationAssumptionsV2,
+    assumptions: QbiSimulationAssumptionsV2 | QbiSimulationAssumptionsV3,
     crosswalk: SstbCrosswalk | Mapping[str, Any] | None,
 ) -> SstbCrosswalk:
     resolved = (
@@ -1585,7 +2207,7 @@ def resolve_sstb_crosswalk(
 def _derive_v2_qualification_flags(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptionsV2,
+    assumptions: QbiSimulationAssumptionsV2 | QbiSimulationAssumptionsV3,
 ) -> tuple[np.ndarray, ...]:
     rng = _rng(assumptions.qualification_seed, assumptions.bit_generator)
     flags: list[np.ndarray] = []
@@ -1599,6 +2221,180 @@ def _derive_v2_qualification_flags(
             )
         flags.append(rng.random(inputs.n) < derivation.prior_probability)
     return tuple(flags)
+
+
+def simulate_qbi_v3_wage_capital(
+    inputs: QbiSimulationInputs,
+    *,
+    assumptions: QbiSimulationAssumptionsV3,
+    qualification_flags: tuple[np.ndarray, ...] | None = None,
+) -> QbiV3WageCapitalResult:
+    """Run the evidence-based v3 wage/capital families with diagnostics."""
+
+    assumptions.validate()
+    resolved_flags = (
+        _derive_v2_qualification_flags(inputs, assumptions=assumptions)
+        if qualification_flags is None
+        else _validated_qualification_flags(
+            qualification_flags,
+            source_count=len(assumptions.source_order),
+            n=inputs.n,
+        )
+    )
+    qualified_components = _qualified_components(
+        inputs,
+        source_order=assumptions.source_order,
+        qualification_flags=resolved_flags,
+    )
+    qbi = qualified_components.sum(axis=1)
+    positive_qbi = qbi > 0.0
+
+    entity_draw = _rng(
+        assumptions.entity_split_seed,
+        assumptions.bit_generator,
+    ).random(inputs.n)
+    passthrough_index = assumptions.source_order.index(assumptions.passthrough_source)
+    has_positive_passthrough = qualified_components[:, passthrough_index] > 0.0
+    partnership = (
+        positive_qbi
+        & has_positive_passthrough
+        & (entity_draw < assumptions.partnership_probability)
+    )
+    s_corporation = positive_qbi & has_positive_passthrough & ~partnership
+    sole_proprietorship = positive_qbi & ~has_positive_passthrough
+    legal_form = np.full(inputs.n, "none", dtype="<U32")
+    legal_form[sole_proprietorship] = "sole_proprietorship"
+    legal_form[partnership] = "partnership"
+    legal_form[s_corporation] = "s_corporation"
+
+    industry_draw = _rng(
+        assumptions.latent_industry_seed,
+        assumptions.bit_generator,
+    ).random(inputs.n)
+    wage_share = np.zeros(inputs.n, dtype=np.float64)
+    ubia_intensity = np.zeros(inputs.n, dtype=np.float64)
+    for form in assumptions.forms:
+        mask = legal_form == form.legal_form
+        if not np.any(mask):
+            continue
+        cumulative_probability = np.cumsum(
+            [component.probability for component in form.industry_components],
+            dtype=np.float64,
+        )
+        component_index = np.searchsorted(
+            cumulative_probability,
+            industry_draw[mask],
+            side="right",
+        )
+        component_index = np.minimum(
+            component_index,
+            len(form.industry_components) - 1,
+        )
+        component_wage_share = np.asarray(
+            [component.wage_share for component in form.industry_components],
+            dtype=np.float64,
+        )
+        component_ubia_intensity = np.asarray(
+            [component.ubia_intensity for component in form.industry_components],
+            dtype=np.float64,
+        )
+        wage_share[mask] = component_wage_share[component_index]
+        ubia_intensity[mask] = component_ubia_intensity[component_index]
+
+    margin_draw = _rng(
+        assumptions.margin_quantile_seed,
+        assumptions.bit_generator,
+    ).random(inputs.n)
+    margin = np.ones(inputs.n, dtype=np.float64)
+    form_by_name = assumptions.form_by_name
+    for legal_form_name in assumptions.form_order:
+        mask = legal_form == legal_form_name
+        if not np.any(mask):
+            continue
+        form = form_by_name[legal_form_name]
+        margin[mask] = np.interp(
+            margin_draw[mask],
+            assumptions.margin_probabilities,
+            form.margin_quantiles,
+        )
+    receipts = np.divide(
+        qbi,
+        margin,
+        out=np.zeros_like(qbi, dtype=np.float64),
+        where=positive_qbi & (margin > 0.0),
+    )
+
+    # V3 persists the full SCF order, including a nonpositive donor band.
+    # Positive-QBI simulation records therefore occupy indices 1 through 5.
+    income_band_index = 1 + np.searchsorted(
+        np.asarray((25_000.0, 100_000.0, 250_000.0, 1_000_000.0)),
+        qbi,
+        side="left",
+    )
+    employee_probability = np.zeros(inputs.n, dtype=np.float64)
+    for legal_form_name in assumptions.form_order:
+        mask = legal_form == legal_form_name
+        if not np.any(mask):
+            continue
+        form = form_by_name[legal_form_name]
+        base_probability = np.asarray(
+            form.employer_base_probabilities,
+            dtype=np.float64,
+        )[income_band_index[mask]]
+        base_log_odds = np.log(base_probability / (1.0 - base_probability))
+        employee_probability[mask] = _logistic(
+            base_log_odds + form.employer_log_odds_shift
+        )
+    employer_draw = _rng(
+        assumptions.employer_gate_seed,
+        assumptions.bit_generator,
+    ).random(inputs.n)
+    has_employees = positive_qbi & (employer_draw < employee_probability)
+    w2_wages = receipts * wage_share * has_employees
+
+    ubia_standard_normal = _rng(
+        assumptions.ubia_dispersion_seed,
+        assumptions.bit_generator,
+    ).standard_normal(inputs.n)
+    ubia_dispersion = np.ones(inputs.n, dtype=np.float64)
+    for legal_form_name in assumptions.form_order:
+        mask = legal_form == legal_form_name
+        if not np.any(mask):
+            continue
+        sigma = form_by_name[legal_form_name].ubia_sigma
+        ubia_dispersion[mask] = np.exp(
+            sigma * ubia_standard_normal[mask] - (sigma**2 / 2.0)
+        )
+    ubia = receipts * ubia_intensity * ubia_dispersion
+    return QbiV3WageCapitalResult(
+        w2_wages=w2_wages,
+        ubia=ubia,
+        positive_qbi=positive_qbi,
+        legal_form=legal_form,
+        has_employees=has_employees,
+        receipts=receipts,
+    )
+
+
+def _validated_qualification_flags(
+    qualification_flags: tuple[np.ndarray, ...],
+    *,
+    source_count: int,
+    n: int,
+) -> tuple[np.ndarray, ...]:
+    if len(qualification_flags) != source_count:
+        raise ValueError(
+            "QBI v3 qualification flags must align one-for-one with source_order."
+        )
+    result: list[np.ndarray] = []
+    for values in qualification_flags:
+        flag = np.asarray(values, dtype=bool)
+        if flag.ndim != 1 or len(flag) != n:
+            raise ValueError(
+                f"QBI v3 qualification flags must be one-dimensional length {n}."
+            )
+        result.append(flag)
+    return tuple(result)
 
 
 def _qualified_components(
@@ -1773,7 +2569,11 @@ def _simulate_business_is_sstb(
 def _simulate_investment_qbi(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2,
+    assumptions: (
+        QbiSimulationAssumptions
+        | QbiSimulationAssumptionsV2
+        | QbiSimulationAssumptionsV3
+    ),
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
     exposure_bases = {
@@ -2026,9 +2826,21 @@ def _number(value: Any, label: str) -> float:
     return result
 
 
+def _number_tuple(value: Any, label: str) -> tuple[float, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a list of numbers.")
+    return tuple(_number(item, f"{label}[{index}]") for index, item in enumerate(value))
+
+
 def _integer(value: Any, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{label} must be an integer.")
+    return value
+
+
+def _boolean(value: Any, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be boolean.")
     return value
 
 
@@ -2036,6 +2848,316 @@ def _optional_string(value: Any, label: str) -> str | None:
     if value is None:
         return None
     return _string(value, label)
+
+
+def _validate_v3_assumptions(assumptions: QbiSimulationAssumptionsV3) -> None:
+    if assumptions.schema_version != 3:
+        raise ValueError(
+            "Unsupported QBI v3 assumptions schema_version "
+            f"{assumptions.schema_version!r}."
+        )
+    if assumptions.qbi_simulation_version != QBI_SIMULATION_V3:
+        raise ValueError(
+            "QBI v3 assumptions carry unsupported qbi_simulation_version "
+            f"{assumptions.qbi_simulation_version!r}."
+        )
+    if assumptions.engine != _V3_ENGINE:
+        raise ValueError(
+            f"QBI v3 engine must be {_V3_ENGINE!r}, got {assumptions.engine!r}."
+        )
+    if assumptions.bit_generator != "PCG64":
+        raise ValueError("QBI v3 requires NumPy PCG64 family streams.")
+    if assumptions.source_order != QBI_SIMULATION_SOURCE_NAMES:
+        raise ValueError(
+            "QBI v3 source_order must preserve the engine order "
+            f"{QBI_SIMULATION_SOURCE_NAMES!r}, got {assumptions.source_order!r}."
+        )
+    family_seeds = {
+        "qualification": assumptions.qualification_seed,
+        "sstb": assumptions.sstb_seed,
+        "investment": assumptions.investment_seed,
+        "entity_split": assumptions.entity_split_seed,
+        "latent_industry": assumptions.latent_industry_seed,
+        "employer_gate": assumptions.employer_gate_seed,
+        "margin_quantile": assumptions.margin_quantile_seed,
+        "ubia_dispersion": assumptions.ubia_dispersion_seed,
+    }
+    if any(seed < 0 for seed in family_seeds.values()):
+        raise ValueError("QBI v3 family seeds must be nonnegative integers.")
+    if len(set(family_seeds.values())) != len(family_seeds):
+        raise ValueError("QBI v3 family seeds must be distinct.")
+    if (
+        assumptions.qualification_seed,
+        assumptions.sstb_seed,
+        assumptions.investment_seed,
+    ) != (2041, 2064, 2043):
+        raise ValueError(
+            "QBI v3 must retain the exact v2 qualification, SSTB, and "
+            "investment family seeds."
+        )
+
+    derivation_sources = tuple(
+        derivation.source for derivation in assumptions.qualification_derivations
+    )
+    if derivation_sources != assumptions.source_order:
+        raise ValueError("QBI v3 qualification derivations must follow source_order.")
+    for derivation in assumptions.qualification_derivations:
+        if derivation.mode not in _V2_QUALIFICATION_MODES:
+            raise ValueError(
+                "Unknown QBI v3 qualification mode "
+                f"{derivation.mode!r} for {derivation.source!r}."
+            )
+        if not derivation.rationale.strip():
+            raise ValueError(
+                f"QBI v3 qualification rationale for "
+                f"{derivation.source!r} must be nonempty."
+            )
+        if derivation.mode == "derived":
+            if derivation.prior_probability is not None:
+                raise ValueError(
+                    f"Derived QBI source {derivation.source!r} must not "
+                    "declare a prior."
+                )
+        elif derivation.prior_probability is None:
+            raise ValueError(
+                f"Prior-mode QBI source {derivation.source!r} must declare "
+                "a probability."
+            )
+        else:
+            _validate_probabilities(
+                f"qualification prior for {derivation.source!r}",
+                (derivation.prior_probability,),
+            )
+
+    classification = assumptions.sstb_classification
+    if classification.mode != _V2_SSTB_CLASSIFICATION_MODE:
+        raise ValueError(
+            f"Unknown QBI v3 SSTB classification mode {classification.mode!r}."
+        )
+    if not classification.crosswalk_resource.endswith(".json"):
+        raise ValueError("QBI v3 SSTB crosswalk_resource must name a JSON file.")
+    if "/" in classification.crosswalk_resource:
+        raise ValueError("QBI v3 SSTB crosswalk_resource must be a package basename.")
+    if classification.industry_column == classification.occupation_column:
+        raise ValueError(
+            "QBI v3 SSTB industry and occupation columns must be distinct."
+        )
+    _validate_probabilities(
+        "ambiguous SSTB prior",
+        (classification.ambiguous_prior,),
+    )
+    if classification.agi_band_format != "lower_inclusive:upper_exclusive":
+        raise ValueError("Unsupported QBI v3 AGI band format.")
+    _validate_agi_prior_bands(classification.passive_passthrough_sstb_prior_by_agi)
+
+    for resource_name in (
+        assumptions.employer_structure_resource,
+        assumptions.wage_capital_resource,
+    ):
+        if not resource_name.endswith(".json") or "/" in resource_name:
+            raise ValueError(
+                "QBI v3 evidence resources must be package JSON basenames."
+            )
+    if assumptions.form_order != _V3_LEGAL_FORMS:
+        raise ValueError(f"QBI v3 form_order must be {_V3_LEGAL_FORMS!r}.")
+    if assumptions.sole_proprietorship_sources != assumptions.source_order[:-1]:
+        raise ValueError(
+            "QBI v3 sole-proprietorship sources must be the first five "
+            "source_order entries."
+        )
+    if assumptions.passthrough_source != assumptions.source_order[-1]:
+        raise ValueError(
+            "QBI v3 passthrough source must be the final source_order entry."
+        )
+    if not np.isclose(
+        assumptions.partnership_probability,
+        _V3_PARTNERSHIP_PROBABILITY,
+        rtol=0.0,
+        atol=1e-15,
+    ):
+        raise ValueError("QBI v3 partnership probability must equal 17 / 70.")
+    if not np.isclose(
+        assumptions.s_corporation_probability,
+        _V3_S_CORPORATION_PROBABILITY,
+        rtol=0.0,
+        atol=1e-15,
+    ):
+        raise ValueError("QBI v3 S-corporation probability must equal 53 / 70.")
+    if not np.isclose(
+        assumptions.partnership_probability + assumptions.s_corporation_probability,
+        1.0,
+        rtol=0.0,
+        atol=1e-15,
+    ):
+        raise ValueError("QBI v3 passthrough entity probabilities must sum to one.")
+    if assumptions.income_band_order != _V3_INCOME_BANDS:
+        raise ValueError(
+            "QBI v3 employer income bands must preserve the complete SCF order."
+        )
+    _validate_probabilities(
+        "overall zero-employee target",
+        (assumptions.overall_zero_employee_target,),
+    )
+    _validate_probabilities(
+        "expected overall zero-employee share",
+        (assumptions.expected_overall_zero_employee_share,),
+    )
+    if (
+        abs(
+            assumptions.expected_overall_zero_employee_share
+            - assumptions.overall_zero_employee_target
+        )
+        > 0.02
+    ):
+        raise ValueError(
+            "QBI v3 expected overall zero-employee share misses its target by "
+            "more than two percentage points."
+        )
+    if assumptions.margin_probabilities != _V3_MARGIN_PROBABILITIES:
+        raise ValueError(
+            "QBI v3 margin probabilities must preserve the SCF five-point grid."
+        )
+    expected_models = {
+        "industry": "receipts_weighted_finest_classified_soi_rows",
+        "employer": "scf_income_form_log_odds_shift",
+        "margin": "scf_form_empirical_inverse_cdf",
+        "margin interpolation": "piecewise_linear_with_endpoint_clamp",
+        "w2": "employer_gate_soi_wage_share_times_receipts",
+        "ubia": "soi_industry_intensity_times_receipts_mean_one_lognormal",
+        "investment": _SUPPORTED_MODEL_KINDS["investment"],
+    }
+    observed_models = {
+        "industry": assumptions.industry_model,
+        "employer": assumptions.employer_model,
+        "margin": assumptions.margin_model,
+        "margin interpolation": assumptions.margin_interpolation,
+        "w2": assumptions.w2_model,
+        "ubia": assumptions.ubia_model,
+        "investment": assumptions.investment_model,
+    }
+    for family, expected in expected_models.items():
+        if observed_models[family] != expected:
+            raise ValueError(
+                f"QBI v3 {family} model must be {expected!r}, "
+                f"got {observed_models[family]!r}."
+            )
+
+    form_names = tuple(form.legal_form for form in assumptions.forms)
+    if form_names != assumptions.form_order:
+        raise ValueError("QBI v3 form assumptions must follow form_order.")
+    for form in assumptions.forms:
+        if form.tax_year <= 0:
+            raise ValueError(f"QBI v3 {form.legal_form} tax year must be positive.")
+        if not form.scf_legal_form_group:
+            raise ValueError(
+                f"QBI v3 {form.legal_form} SCF legal-form group must be nonempty."
+            )
+        if (
+            form.eligible_receipts_thousands <= 0.0
+            or form.all_industry_receipts_thousands <= 0.0
+            or not 0.0 < form.receipts_coverage <= 1.0
+        ):
+            raise ValueError(f"QBI v3 {form.legal_form} receipts metadata is invalid.")
+        if not form.industry_components:
+            raise ValueError(
+                f"QBI v3 {form.legal_form} industry mixture must be nonempty."
+            )
+        component_keys = tuple(
+            component.industry_key for component in form.industry_components
+        )
+        if len(component_keys) != len(set(component_keys)):
+            raise ValueError(f"QBI v3 {form.legal_form} industry keys must be unique.")
+        probabilities = tuple(
+            component.probability for component in form.industry_components
+        )
+        if any(probability <= 0.0 for probability in probabilities) or not np.isclose(
+            sum(probabilities),
+            1.0,
+            rtol=0.0,
+            atol=1e-12,
+        ):
+            raise ValueError(
+                f"QBI v3 {form.legal_form} industry probabilities must be "
+                "positive and sum to one."
+            )
+        for component in form.industry_components:
+            if component.wage_share < 0.0 or component.ubia_intensity < 0.0:
+                raise ValueError(
+                    f"QBI v3 {form.legal_form} wage and UBIA intensities "
+                    "must be nonnegative."
+                )
+            if (
+                component.proxy != form.proxy
+                or component.capital_measure != form.capital_measure
+            ):
+                raise ValueError(
+                    f"QBI v3 {form.legal_form} industry metadata disagrees "
+                    "with its form."
+                )
+        if len(form.employer_base_probabilities) != len(
+            assumptions.income_band_order
+        ) or any(
+            not 0.0 < probability < 1.0
+            for probability in form.employer_base_probabilities
+        ):
+            raise ValueError(
+                f"QBI v3 {form.legal_form} employer base probabilities "
+                "must align to the SCF income bands and lie in (0, 1)."
+            )
+        _validate_probabilities(
+            f"{form.legal_form} zero-employee target",
+            (form.zero_employee_target, form.expected_zero_employee_share),
+        )
+        if abs(form.expected_zero_employee_share - form.zero_employee_target) > 0.02:
+            raise ValueError(
+                f"QBI v3 {form.legal_form} expected zero-employee share "
+                "misses its target by more than two percentage points."
+            )
+        if (
+            len(form.margin_quantiles) != len(assumptions.margin_probabilities)
+            or any(value <= 0.0 for value in form.margin_quantiles)
+            or any(
+                right < left
+                for left, right in zip(
+                    form.margin_quantiles,
+                    form.margin_quantiles[1:],
+                    strict=False,
+                )
+            )
+        ):
+            raise ValueError(
+                f"QBI v3 {form.legal_form} margin quantiles must be positive, "
+                "ordered, and align to the probability grid."
+            )
+        if (
+            form.ubia_log_intensity_sd < 0.0
+            or form.ubia_effective_industry_count <= 0.0
+            or form.ubia_sigma < 0.0
+        ):
+            raise ValueError(
+                f"QBI v3 {form.legal_form} UBIA dispersion metadata is invalid."
+            )
+
+    band = assumptions.wage_plausibility_band
+    if (
+        band.lower_dollars < 0.0
+        or band.upper_dollars < band.lower_dollars
+        or not band.rationale.strip()
+    ):
+        raise ValueError("QBI v3 W-2 plausibility band is invalid.")
+    for name, exposures in (
+        ("REIT/PTP", assumptions.reit_ptp_exposures),
+        ("BDC", assumptions.bdc_exposures),
+    ):
+        for exposure in exposures:
+            if not 0.0 <= exposure.probability_of_receiving <= 1.0:
+                raise ValueError(
+                    f"QBI {name} receipt probability for {exposure.source!r} "
+                    "must lie in [0, 1]."
+                )
+            _validate_beta_parameters(name, exposure.beta)
+    assumptions.reit_ptp_anchor.validate("REIT/PTP")
+    assumptions.bdc_anchor.validate("BDC")
 
 
 def _validate_v2_payload_keys(root: Mapping[str, Any]) -> None:
