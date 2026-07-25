@@ -8,9 +8,9 @@ requires-python = ">=3.13"
 members = ["packages/*"]
 
 [dependency-groups]
-# openpyxl parses the OMB CBSA delineation workbook in
-# tools/build_us_block_ladder_artifact.py.
-dev = ["ruff>=0.8", "openpyxl>=3.1"]
+# openpyxl parses modern source workbooks; xlrd is retained only for the
+# historical BIFF .xls tables still published by IRS SOI.
+dev = ["ruff>=0.8", "openpyxl>=3.1", "xlrd>=2.0"]
 
 [tool.ruff]
 line-length = 88

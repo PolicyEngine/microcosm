@@ -2,55 +2,34 @@
 
 ## Current task
 
-The active ledger for the QBI v2 content work is
-`PROGRESS_QBI_V2_CONTENT.md`. Branch `qbi-v2-content` starts from local
-`repeal-validation-298` HEAD `e45f797` and remains offline.
+The active ledger for the QBI v3 wiring work is
+`PROGRESS_QBI_V3_WIRING.md`. Branch `qbi-v3-wiring` combines the completed
+`qbi-v2-content` engine/content lane with the completed `qbi-v3-evidence`
+resource lane and remains offline.
 
 ## Current state
 
-- Branch `qbi-v2-content` created in the dedicated
-  `.claude/worktrees/populace-wt-530` worktree.
-- The adjudicated live SSTB crosswalk is packaged and wired occupation-first.
-  Evidence-anchored qualification, passive SSTB, REIT/PTP, and BDC content is
-  implemented and fully validated.
+- The prescribed sibling merge is in progress in
+  `.claude/worktrees/populace-wt-530`.
+- The v2 simulation/content implementation and v3 evidence resources are both
+  present; the simulation wiring remains to be implemented.
 
 ## Current done
 
-- Verified the requested branch point and clean starting worktree.
-- Read the repository instructions and the full adjudicated evidence base:
-  SSTB crosswalk, published Section 199A statistics, SCF business variables,
-  and SOI industry tables.
-- Recorded the binding probability tiers, occupation-primary wiring,
-  passive-prior anchors, REIT/PTP diagnostic band, and qualification content
-  requirements without adding unsupported facts.
-- Added the live 2017-industry/2018-occupation resource with 128 mapped codes,
-  21 explicit non-SSTB documentation rows, per-code probabilities, and
-  provisional de-minimis bases for all 62 ambiguous entries.
-- Updated the loader and host transform for `status: live`, zero-prefixed
-  codes, per-code probabilities, industry-first fallback, and unmapped p=0.
-- Preserved the packaged placeholder fail-closed path and added schema, tier,
-  code-format, documentation, and real-crosswalk end-to-end tests.
-- Focused QBI/crosswalk/spec tests and Ruff pass.
-- Replaced the partnership/S-corporation derived flag with the adjudicated
-  0.90 prior and returned that flag to the v2 QRF target set.
-- Derived passive priors as 58.24/221.00 = 0.2635 -> 0.264 below the coarse
-  threshold and 37.54/221.00 = 0.1699 -> 0.170 above it; documented JCT's
-  120.81/216.08 = 55.91% upper-band materiality without misusing it as a rate.
-- Anchored REIT/PTP to Pub 4801's $21.07B income / $4.20B component and JCT's
-  $2.90B comparison component. The fixed-seed replay is $20.943037789B
-  (0.993974x); the provisional diagnostic band is [0.3x, 3x].
-- Retained the v1 BDC scale with an explicit no-published-anchor note; its
-  replay is $0.143270890B.
-- Added the QBI v2 content changelog. Country-package, US-plan/incumbent,
-  source-runtime, and base-builder contract suites pass.
-- Full offline workspace validation passes: 3,260 tests passed, 132 skipped,
-  and zero failed. Full `ruff check` and changed-file format checks pass.
-- Replaced the prior engine-scaffold output with the final content report in
-  `FINAL_REPORT_QBI_530.md`; no binding adjudication remains unimplemented.
+- Created `qbi-v3-wiring` from `qbi-v2-content`.
+- Merged the evidence branch; the only conflict was the expected adjacency in
+  this shared journal, resolved by retaining both dedicated sibling ledgers.
+- The completed sibling histories remain in `PROGRESS_QBI_V2_CONTENT.md` and
+  `PROGRESS_QBI_V3_EVIDENCE.md`.
 
 ## Current next
 
-- Supervisor push and PR handling; no network action was taken locally.
+- Commit the merge, establish the dedicated wiring ledger, then implement and
+  validate the v3 evidence-consuming simulation.
+
+## Historical progress
+
+The remaining sections are prior-lane records retained for branch history.
 
 ## State
 
