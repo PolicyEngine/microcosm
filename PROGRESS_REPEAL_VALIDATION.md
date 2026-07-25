@@ -5,9 +5,8 @@
 - Active on branch `repeal-validation-298` in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
 - Based on local `qbi-v2-engine` HEAD `807141e`; all work is offline.
-- The declared benchmark resource and loader contracts are implemented and
-  tested. The diagnostics-only runner table is also implemented and focused
-  tests pass; changelog and full verification remain.
+- Implementation and required verification are complete. The supervisor owns
+  source re-verification, dashboard coordination, push, and PR creation.
 
 ## Done
 
@@ -63,8 +62,18 @@
 - Tightened `budget_measure` and `description` schema handling so explicit
   null/non-string metadata is rejected instead of coerced; focused regression
   tests pass.
+- Full touched-file Ruff format/check, JSON parsing, and `git diff --check`
+  pass.
+- Full workspace pytest passed against the supplied restricted PUF and pinned
+  engine environment: 3,434 passed, 58 skipped, 6 warnings in 16m41s.
+- Wrote `FINAL_REPORT_REPEAL_VALIDATION.md` with the release hook, exact
+  schema-v2 payload shape, arithmetic, verification receipts, and all
+  certification/scope caveats.
 
 ## Next
 
-- Run Ruff, focused tests, and the full workspace `uv run pytest`.
-- Write the final handoff report and record all verification results here.
+- Supervisor: verify the six provisional JCX-45-25 values and their component
+  scope before certified use.
+- Supervisor: confirm the external dashboard reads schema v2 and the additive
+  repeal table.
+- Supervisor: push `repeal-validation-298` and open the PR.

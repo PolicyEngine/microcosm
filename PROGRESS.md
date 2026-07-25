@@ -11,7 +11,8 @@ The active ledger for the repeal-revenue validation surface is
 - Branch `repeal-validation-298` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
 - The reform-validation contracts and release hook are mapped; implementation
-  and focused tests for the diagnostics-only runner table are complete.
+  and all required verification for the diagnostics-only runner table are
+  complete.
 
 ## Current done
 
@@ -36,11 +37,13 @@ The active ledger for the repeal-revenue validation surface is
   publication-guard flag.
 - Added the required towncrier fragment and tightened optional metadata types
   so malformed JSON fails at load time rather than during simulation.
+- Full workspace pytest passed: 3,434 passed, 58 skipped, 6 warnings.
+- Wrote the complete handoff to `FINAL_REPORT_REPEAL_VALIDATION.md`.
 
 ## Current next
 
-- Run full touched-file checks and the complete workspace suite.
-- Write and commit the final report with certification caveats.
+- Supervisor: re-verify the provisional JCX-45-25 values and component scope,
+  coordinate the schema-v2 dashboard reader, then push/open the PR.
 
 ## State
 
