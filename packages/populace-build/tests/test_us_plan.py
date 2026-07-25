@@ -368,13 +368,16 @@ class TestUsSources:
             },
             "rate_derivation": (
                 "(band_target - basis_reporter_candidate_floor) / "
-                "(basis_candidate_capacity - basis_reporter_candidate_floor) "
-                "over uncapped_ssi > 0 candidates, so anchored-plus-drawn "
-                "mass expects the target; basis = this frame's weights, or "
-                "a prior attempt's delivered-weight us_ssi_take_up.json "
-                "diagnostics (populace#507/#508); zero once the reporter "
-                "floor meets the target; min(basis_reporter_candidate_floor "
-                "/ capacity, 1) once capacity cannot subsample the target"
+                "(basis_candidate_capacity(uncapped_ssi > 0) - "
+                "basis_reporter_candidate_floor), so reporter floor + prior "
+                "* (capacity - floor) expects the target; basis = this "
+                "frame's weights, or a prior attempt's delivered-weight "
+                "us_ssi_take_up.json diagnostics (populace#507/#508); zero "
+                "when the reporter floor meets or exceeds the target or "
+                "leaves no drawable candidate capacity; "
+                "basis_reporter_candidate_floor / basis_candidate_capacity "
+                "when capacity cannot subsample the target but drawable mass "
+                "remains"
             ),
             "rate_target_role": "ssa_ssi_age_band_recipients",
             "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,

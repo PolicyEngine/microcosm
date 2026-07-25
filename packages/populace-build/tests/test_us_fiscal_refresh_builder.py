@@ -8864,6 +8864,10 @@ def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
                 "age_band": key,
                 "target": _SSI_BAND_TARGETS[key],
                 "selected_recipient_weight": selected[key],
+                "candidate_capacity": 2.0 * _SSI_BAND_TARGETS[key],
+                "reporter_candidate_floor": 0.0,
+                "empty_band": False,
+                "prior_status_recomputed_from_current_weights": "floor_aware",
             }
             for key in _SSI_BAND_TARGETS
         ],
@@ -8934,6 +8938,39 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
 
     assert failures == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_enforce_ssi_delivery_writes_structural_evidence_without_retry_advice(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {
+            "under_18": 120_000.0,
+            "18_64": 0.99 * _SSI_BAND_TARGETS["18_64"],
+            "65_plus": _SSI_BAND_TARGETS["65_plus"],
+        }
+    )
+    adult = diagnostics["age_bands"][1]
+    adult["candidate_capacity"] = 0.99 * _SSI_BAND_TARGETS["18_64"]
+    adult["prior_status_recomputed_from_current_weights"] = "saturated_reporter_rate"
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert any("insufficient candidate support" in failure for failure in failures)
+    assert any("retry is not applicable" in failure for failure in failures)
+    assert not any(
+        "for the --ssi-take-up-prior-weight-basis retry" in failure
+        for failure in failures
+    )
+    assert json.loads((release_dir / "us_ssi_take_up.json").read_text()) == diagnostics
 
 
 def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(

@@ -2,11 +2,10 @@
 
 ## State
 
-Implementing a floor-aware SSI take-up assignment prior on
-`ssi-floor-aware-prior`, branched from `origin/main` at `0ac3422`. The
-one-shot seeded Bernoulli law and stable per-source-identity draws remain
-unchanged; only the expectation arithmetic and explicit edge-case diagnostics
-are in scope.
+Floor-aware SSI take-up prior implementation is complete on
+`ssi-floor-aware-prior`, branched from `origin/main` at `0ac3422`. Focused SSI,
+plan, and builder tests pass; the full requested package suite and final report
+remain.
 
 ## Done
 
@@ -14,13 +13,33 @@ are in scope.
   release-build worktree.
 - Read the repository guidance.
 - Created `ssi-floor-aware-prior` directly from `origin/main`.
-- Began the required impact audit for `_band_prior`, SSI diagnostics/schema,
-  the prior-weight-basis flag, and seeded stable-draw tests.
+- Audited all `_band_prior` consumers, SSI artifact pins, the
+  prior-weight-basis flag path, and seeded stable-draw semantics. GitNexus was
+  unavailable without creating an index, so the audit used direct call sites.
+- Replaced the floor-blind `target / capacity` law with
+  `(target - floor) / (capacity - floor)` for the feasible unsaturated regime.
+- Preserved the one-shot source-keyed Bernoulli draw and saturation fallback.
+- Added explicit assignment-basis/current-weight prior statuses, drawable
+  capacities, and empty-band diagnostics; bumped the SSI artifact schema to 4
+  while retaining schema 2/3 basis compatibility.
+- Made enforced reporter-floor excess and no-drawable-support conditions fail
+  the delivery gate with support-specific guidance.
+- Updated the runtime/source/take-up contracts, CLI schema help, builder
+  fixtures, and the existing tests that encoded the old expectation.
+- Added exact attempt-5 arithmetic and seeded overshoot regressions, every
+  requested edge-case test, and fixed-seed monotone-selection coverage.
+- Resolved independent diff-review findings: tightened exact numeric
+  assertions, chained artifact loading into floor-aware assignment, made the
+  no-drawable prior reporter-only rather than Bernoulli(1), made all saturated
+  enforced capacity shortages explicit support failures, distinguished
+  retryable weight drift from structural failures, and hardened malformed
+  empty-band count validation.
+- Focused SSI + plan tests pass; focused builder SSI tests pass. Changed-file
+  Ruff check and format check are clean.
 
 ## Next
 
-- Map current prior semantics and artifact pins.
-- Implement explicit floor-aware cases and diagnostics.
-- Add the required exact-input, edge-case, overshoot, and determinism tests.
-- Run the requested package pytest and changed-file Ruff gates, then write the
-  final report and commit all results without pushing.
+- Commit the coherent implementation step.
+- Run `uv run pytest packages/populace-build/tests/ -q` and capture its return
+  code first, then repeat changed-file Ruff gates.
+- Write `FINAL_REPORT.md`, finalize this journal, and commit without pushing.
