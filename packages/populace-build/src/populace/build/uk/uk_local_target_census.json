@@ -13,12 +13,12 @@
       "age/50_60",
       "age/60_70",
       "age/70_80",
-      "households",
       "uc_households",
       "uc_hh_0_children",
       "uc_hh_1_child",
       "uc_hh_2_children",
-      "uc_hh_3plus_children"
+      "uc_hh_3plus_children",
+      "households"
     ],
     "la": [
       "hmrc/self_employment_income/amount",
@@ -33,7 +33,6 @@
       "age/50_60",
       "age/60_70",
       "age/70_80",
-      "households",
       "uc_households",
       "ons/equiv_net_income_bhc",
       "ons/equiv_net_income_ahc",
@@ -42,7 +41,8 @@
       "tenure/owned_mortgage",
       "tenure/private_rent",
       "tenure/social_rent",
-      "rent/private_rent"
+      "rent/private_rent",
+      "households"
     ]
   },
   "area_types": [
@@ -86,6 +86,13 @@
       "rule": "The runtime maps benefit-unit-level UC receipt to household grain: a physical household containing two UC benefit units contributes 2 to uc_households but 1 to a child band. DWP UC statistics count UC claim households, which align with benefit units rather than physical FRS households. Binding must declare the grain crosswalk (or change the runtime metric) before either UC family enters a solve."
     },
     {
+      "authority": "ONS/NRS/NISRA statistical disclosure control documentation; populace#495 scoping (cross-family review measurement).",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "census_disclosure_control_noise",
+      "fenced_fact_count": null,
+      "rule": "All three census household-count legs are disclosure-controlled (ONS/NRS cell-key perturbation; NISRA flexible-table-builder controls), so area counts carry small deliberate noise and do not add exactly across grains (measured constituency-sum vs national-total deltas at review: E&W +105, Scotland -554, NI +3). Binding treats the published counts as the target values with that noise documented \u2014 never as exact controls \u2014 and any cross-grain reconciliation must name which grain wins."
+    },
+    {
       "authority": "FRS background and methodology (private-household universe); ONS population estimates methodology (communal-establishment population); populace#495 scoping (cross-family review finding).",
       "enforcement": "review_required_before_binding",
       "fence_id": "population_universe_private_households",
@@ -118,7 +125,9 @@
       ]
     },
     {
-      "adjudications": [],
+      "adjudications": [
+        "census_disclosure_control_noise"
+      ],
       "description": "Weighted household counts by area, bound to census occupied-household totals summed from the sha-pinned UK OA ladder artifact (constituency_household_targets / local_authority_household_targets). Universe-compatible with the FRS instrument: census occupied households match the survey's own household frame, so the person-universe adjudication does not bind here.",
       "family": "census_households",
       "sources": [
@@ -438,7 +447,7 @@
         "la"
       ],
       "latest_vintage": "Census Day 2021-03-21",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py (source_files + per-layer metadata).",
+      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py (recorded in the artifact's source_files map).",
       "product": "Census 2021 table TS041 (number of households), England and Wales, output-area grain \u2014 the E&W leg of the ladder's household counts.",
       "publisher": "Office for National Statistics (via Nomis)",
       "source_id": "nomis_ts041_ew_oa_households",

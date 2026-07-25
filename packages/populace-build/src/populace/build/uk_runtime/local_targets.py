@@ -61,12 +61,14 @@ def metric_names(
         names.append(f"hmrc/{income_variable}/amount")
         names.append(f"hmrc/{income_variable}/count")
     names.extend(f"age/{lower}_{upper}" for lower, upper in AGE_BANDS)
-    names.append("households")
     names.append("uc_households")
     if area_type == "constituency":
         names.extend(CONSTITUENCY_UC_CHILDREN_METRICS)
     else:
         names.extend(LA_EXTRA_METRICS)
+    # Appended last deliberately: adding a metric must never renumber the
+    # incumbent within-area metric indices for positional consumers.
+    names.append("households")
     return tuple(names)
 
 

@@ -20,9 +20,10 @@ Design rules:
   Ledger target-profile-driven surfaces are governed by their profile
   contract and are explicitly out of scope here.
 * **Reviewed pointers, not scraped claims.** Source rows document official
-  products verified by a human-reviewed fetch on ``verified_on``; they are
-  ``documented_unpinned`` until a binding increment pins exact tables with
-  hashes, mirroring the HMRC/SPI source-contract discipline.
+  products verified by a human-reviewed fetch on ``verified_on``. They start
+  ``documented_unpinned`` and move to ``pinned_in_ladder`` when a build
+  artifact sha-pins them per build, mirroring the HMRC/SPI source-contract
+  discipline.
 * **Fences by reference, enforcement declared.** The banded HMRC facts stay
   fenced exactly as the national replay adjudicated them
   (``FULL_FRS_TI_BAND_FENCE_ID``, ``HMRC_SPI_TARGET_RECORD_COUNT`` are
@@ -50,6 +51,7 @@ __all__ = [
     "CENSUS_SCHEMA_VERSION",
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
+    "SOURCE_STATUS_PINNED_IN_LADDER",
     "assert_uk_local_target_census_current",
     "build_uk_local_target_census",
     "committed_uk_local_target_census_path",
@@ -75,6 +77,7 @@ _FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"
 _BHC_AHC_FENCE_ID = "ons_bhc_ahc_noncomparable"
 _UC_GRAIN_FENCE_ID = "uc_unit_vs_household_grain"
 _POPULATION_UNIVERSE_FENCE_ID = "population_universe_private_households"
+_CENSUS_DISCLOSURE_FENCE_ID = "census_disclosure_control_noise"
 
 #: Exact metric names mapping to a census family. Matching is equality only,
 #: so a near-miss such as ``uc_householdsX`` fails closed instead of
@@ -136,7 +139,7 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "nrs_census_2022_index",
             "nisra_dz21_households",
         ],
-        "adjudications": [],
+        "adjudications": [_CENSUS_DISCLOSURE_FENCE_ID],
     },
     {
         "family": "uc_households",
@@ -260,7 +263,7 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
             "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py "
-            "(source_files + per-layer metadata)."
+            "(recorded in the artifact's source_files map)."
         ),
     },
     {
@@ -487,6 +490,25 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "populace.build.uk_runtime.local_targets.compute_household_metrics "
             "(benunit-to-household mapping); populace#495 scoping "
             "(cross-family review finding)."
+        ),
+    },
+    {
+        "fence_id": _CENSUS_DISCLOSURE_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "All three census household-count legs are disclosure-controlled "
+            "(ONS/NRS cell-key perturbation; NISRA flexible-table-builder "
+            "controls), so area counts carry small deliberate noise and do "
+            "not add exactly across grains (measured constituency-sum vs "
+            "national-total deltas at review: E&W +105, Scotland -554, NI "
+            "+3). Binding treats the published counts as the target values "
+            "with that noise documented — never as exact controls — and any "
+            "cross-grain reconciliation must name which grain wins."
+        ),
+        "authority": (
+            "ONS/NRS/NISRA statistical disclosure control documentation; "
+            "populace#495 scoping (cross-family review measurement)."
         ),
     },
     {

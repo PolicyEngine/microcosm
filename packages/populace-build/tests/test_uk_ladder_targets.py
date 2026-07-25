@@ -161,3 +161,71 @@ def test_census_family_and_pinned_sources() -> None:
     metrics = {row["name"]: row for row in census["metrics"]}
     assert metrics["households"]["family"] == "census_households"
     assert set(metrics["households"]["area_types"]) == {"constituency", "la"}
+
+
+def test_household_targets_refuse_missing_and_normalize_padded_codes(
+    tmp_path,
+) -> None:
+    ladder = _ladder(tmp_path)
+
+    class Doctored:
+        households = ladder.households
+        constituency_code = np.asarray(
+            ["E14000001", None, "E14000002", "S14000001"], dtype=object
+        )
+
+    with pytest.raises(ValueError, match="missing"):
+        constituency_household_targets(Doctored())
+
+    class Padded:
+        households = ladder.households
+        constituency_code = np.asarray(
+            ["E14000001", " E14000001 ", "E14000002", "S14000001"],
+            dtype=object,
+        )
+
+    targets = constituency_household_targets(Padded())
+    rows = dict(zip(targets["code"], targets["households"], strict=True))
+    # Padded variants collapse into one area instead of splitting it.
+    assert rows["E14000001"] == pytest.approx(55.0)
+
+
+def test_household_targets_schema_is_stable_for_both_grains(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    for targets in (
+        constituency_household_targets(ladder),
+        local_authority_household_targets(ladder),
+    ):
+        assert list(targets.columns) == ["code", "households"]
+        assert targets["code"].tolist() == sorted(targets["code"].tolist())
+
+
+def test_ladder_target_provenance_names_the_pairing(tmp_path) -> None:
+    from populace.build.uk_runtime import ladder_target_provenance
+
+    ladder = _ladder(tmp_path)
+    provenance = ladder_target_provenance(ladder)
+    assert provenance["kind"] == "uk_oa_ladder"
+    assert provenance["coverage"] == "uk"
+    assert provenance["layer_vintages"]["constituency"] == "2024_pcon"
+    assert provenance["output_areas"] == 4
+    assert provenance["households_total"] == pytest.approx(120.0)
+
+
+def test_households_metric_is_appended_last() -> None:
+    # Positional stability: adding the metric must not renumber incumbents.
+    for area_type in ("constituency", "la"):
+        assert metric_names(area_type)[-1] == "households"
+
+
+def test_census_disclosure_fence_gates_the_household_family() -> None:
+    from populace.build.uk_runtime import build_uk_local_target_census
+
+    census = build_uk_local_target_census()
+    families = {row["family"]: row for row in census["families"]}
+    assert (
+        "census_disclosure_control_noise"
+        in families["census_households"]["adjudications"]
+    )
+    fences = {row["fence_id"]: row for row in census["binding_fences"]}
+    assert "cell-key" in fences["census_disclosure_control_noise"]["rule"]
