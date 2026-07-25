@@ -2,9 +2,11 @@
 
 ## State
 
-Populace #548 round 4 is in progress on `ssi-gate-batch-547` at the requested
-worktree. The production guard and both required regressions are implemented;
-the complete requested pytest/Ruff gates and final report remain.
+Populace #548 round 4 completed on 2026-07-25 on `ssi-gate-batch-547` in the
+requested worktree. Live telemetry can no longer interrupt the terminal gate
+batch: its exception becomes a release-failing batch line, later gate groups
+still evaluate, and failed runs still write neither the H5 nor certification
+manifests. Nothing was pushed.
 
 ## Done
 
@@ -43,11 +45,16 @@ the complete requested pytest/Ruff gates and final report remain.
   an actual `CalibrationResult` and the real diagnostics writer.
 - Both new paths and the existing `merge|crash` paths pass in isolated pytest
   runs; the changed test file is Ruff-clean and formatted.
+- The full requested builder test file passes with pytest rc 0.
+- Ruff check and format-check pass over both changed Python files; `git diff
+  --check` also passes.
+- Wrote `FINAL_REPORT.md` with the functional commits, design, exact tests,
+  gate return codes, enforcement boundary, and explicitly unmodified corridor
+  findings.
 
 ## Next
 
-- Commit the regression step.
-- Run the full requested pytest file and both Ruff gates over every changed
-  source/test file.
-- Write and commit `FINAL_REPORT.md`, historicize this journal, and verify the
-  final worktree/commit chain without pushing.
+- Review the round-4 commits for PR #548.
+- Track the three explicitly out-of-scope corridor risks listed in
+  `FINAL_REPORT.md`, especially sparse `refit_final_loss` strict-JSON handling
+  and failures from the three direct report writers.
