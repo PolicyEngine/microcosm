@@ -174,7 +174,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     tmp_path,
     small_frame,
 ) -> None:
-    """A checkpoint stored under materializer version 7 must not load.
+    """A checkpoint stored under a superseded materializer version must not load.
 
     #539 rewrote staged org-wage inputs without bumping the materializer
     version, so version-7 checkpoints carry pre-fix ORG rows (populace#543).
