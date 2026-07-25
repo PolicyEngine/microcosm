@@ -2,81 +2,47 @@
 
 ## State
 
-Floor-aware SSI take-up prior implementation is committed on
-`ssi-floor-aware-prior`, branched from `origin/main` at `0ac3422`. Focused SSI,
-plan, and builder tests pass. The first full package run returned 1 because one
-ordinary-miss test double omitted the new retry-applicability detail; that
-fixture is corrected and its three parameterized cases now pass. A clean full
-rerun returned `PYTEST_RC=0`. Final audit then found two mixed/boundary gate
-classifications; their fixes and focused regressions pass. The final committed
-tree rerun returned `PYTEST_RC=0`, both Ruff gates pass, and the completion
-report is written.
-
-The shared `origin/main` ref advanced afterward by one unrelated UK-only
-commit; this branch remains pinned to the recorded task-start tip `0ac3422`.
+Populace #516 whole-row donor outlier screen is complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
+whose grouped raw mortgage interest reaches $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuild.
 
 ## Done
 
-- Confirmed the designated worktree was clean and did not touch the active
-  release-build worktree.
-- Read the repository guidance.
-- Created `ssi-floor-aware-prior` directly from `origin/main`.
-- Audited all `_band_prior` consumers, SSI artifact pins, the
-  prior-weight-basis flag path, and seeded stable-draw semantics. GitNexus was
-  unavailable without creating an index, so the audit used direct call sites.
-- Replaced the floor-blind `target / capacity` law with
-  `(target - floor) / (capacity - floor)` for the feasible unsaturated regime.
-- Preserved the one-shot source-keyed Bernoulli draw and saturation fallback.
-- Added explicit assignment-basis/current-weight prior statuses, drawable
-  capacities, and empty-band diagnostics; bumped the SSI artifact schema to 4
-  while retaining schema 2/3 basis compatibility.
-- Made enforced reporter-floor excess and no-drawable-support conditions fail
-  the delivery gate with support-specific guidance.
-- Updated the runtime/source/take-up contracts, CLI schema help, builder
-  fixtures, and the existing tests that encoded the old expectation.
-- Added exact attempt-5 arithmetic and seeded overshoot regressions, every
-  requested edge-case test, and fixed-seed monotone-selection coverage.
-- Resolved independent diff-review findings: tightened exact numeric
-  assertions, chained artifact loading into floor-aware assignment, made the
-  no-drawable prior reporter-only rather than Bernoulli(1), made all saturated
-  enforced capacity shortages explicit support failures, distinguished
-  retryable weight drift from structural failures, and hardened malformed
-  empty-band count validation.
-- Focused SSI + plan tests pass; focused builder SSI tests pass. Changed-file
-  Ruff check and format check are clean.
-- Committed the coherent implementation as `8c14bed`.
-- Ran the required full package suite without piping and captured
-  `PYTEST_RC=1`; its only failures were the three modes of
-  `test_main_writes_diagnostics_before_post_calibration_gate_failure`.
-- Classified that fixture's deliberately ordinary 18–64 delivery miss as
-  prior-weight-basis retryable. All three focused modes pass (`FOCUSED_RC=0`);
-  production behavior is unchanged.
-- Committed the corrected ordinary-miss fixture as `c6b5b55`.
-- Reran the complete required package suite unpiped and captured
-  `PYTEST_RC=0`.
-- Ran both required Ruff gates on all six changed Python files:
-  `RUFF_CHECK_RC=0` and `RUFF_FORMAT_RC=0`.
-- The final independent audit caught two uncovered interactions: an exact
-  reporter-only `target == floor == capacity` band was incorrectly classified
-  as insufficient support, and a mixed structural/ordinary failure could
-  advertise a retry incapable of clearing the run.
-- Made triple equality an exact pass; made a run retryable only when it has
-  ordinary delivery misses and no structural or invalid-diagnostics blocker;
-  and made the builder's non-retry artifact wording truthful for structural,
-  invalid, and mixed failures. The complete SSI test module plus focused
-  builder regressions pass (`FOCUSED_EDGE_RC=0`).
-- Committed those final-audit corrections as `7197aa0`.
-- Reran the exact required package suite from the committed tree, unpiped and
-  with the return code captured immediately: `PYTEST_RC=0`.
-- Repeated all-six-file Ruff gates after the audit changes:
-  `RUFF_CHECK_RC=0`, `RUFF_FORMAT_RC=0`; `DIFF_CHECK_RC=0`.
-- Replaced the stale output file with the complete floor-aware SSI report in
-  `FINAL_REPORT.md`, including the flag-retirement and 65+ assessments.
-- Confirmed the later `origin/main` commit `929f1cc` adds only the UK rowwise
-  candidate builder and its tests, with no overlap in this branch's files.
+- Confirmed a clean starting worktree at `aef1c56`.
+- Read the repository guidance and established the #515 donor carve as the
+  screen's required downstream boundary.
+- Started source-level audits of every donor-frame consumer, checkpoint
+  validation, row-count pins, and existing donor-fact summaries.
+- Attempted the requested GitNexus impact workflow; the managed filesystem
+  denied its global registry write. Its local index also exposed a broad
+  `build/` ignore mismatch, so the completed impact audit uses direct source
+  call sites and tests.
+- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
+  structural rationale and pinned-artifact receipts.
+- Added a whole-row screen on grouped raw person `home_mortgage_interest`
+  after tax-unit assembly, before the #515 carve, with retained-index reset.
+- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
+  or carries a stale donor-length vector; values and weights always originate
+  from the same screened frame.
+- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
+  checkpoint regression track the live constant while retaining literal-v1
+  corruptions.
+- Added regression coverage for the exact grouped boundary, whole-row removal,
+  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
+- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
+  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
+  audit, expected 208,611-row real-artifact effect, verification results, count
+  sweep, and deliberately untouched surfaces.
 
 ## Next
 
-- Commit this completed journal and final report.
-- Hand the clean, unpushed branch to human review; a release rebuild is the
-  only remaining way to measure the new post-calibration 65+ delivery.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on populace#515.
