@@ -8283,9 +8283,16 @@ def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
     }
 
 
-def test_enforce_ssi_delivery_writes_the_basis_artifact_before_failing(
+def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     tmp_path,
 ) -> None:
+    """A delivery miss returns batchable failures instead of raising.
+
+    populace#547: the old in-place raise destroyed the failed run's
+    calibration diagnostics and skipped every other terminal gate group.
+    The failures now join the #437 batch; the basis artifact write — the
+    retry remedy — is unchanged.
+    """
     builder = _load_builder_module()
     # Build N's measured delivery: 65+ landed 0.98M against 2.38M — the
     # populace#507 collapse — while under-18 stays fenced (#453/#509).
@@ -8295,14 +8302,16 @@ def test_enforce_ssi_delivery_writes_the_basis_artifact_before_failing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    with pytest.raises(RuntimeError, match="ssi-take-up-prior-weight-basis"):
-        builder._enforce_ssi_take_up_delivery(
-            diagnostics,
-            targets=_SSI_BAND_TARGETS,
-            release_dir=release_dir,
-            telemetry=None,
-        )
+    failures = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
 
+    assert failures
+    assert all(failure.startswith("SSI take-up deliver") for failure in failures)
+    assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
     written = json.loads((release_dir / "us_ssi_take_up.json").read_text())
     assert written == diagnostics
 
@@ -8321,13 +8330,14 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    builder._enforce_ssi_take_up_delivery(
+    failures = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
         telemetry=None,
     )
 
+    assert failures == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
 
 

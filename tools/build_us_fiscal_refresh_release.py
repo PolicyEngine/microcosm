@@ -5362,21 +5362,27 @@ def _enforce_ssi_take_up_delivery(
     targets: Mapping[str, float],
     release_dir: Path,
     telemetry: StagingTelemetry | None,
-) -> None:
-    """Hard-fail the release on an enforced-band delivery miss.
+) -> list[str]:
+    """Fail the release on an enforced-band delivery miss, via the batch.
 
     populace#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. The delivered-weight
-    diagnostics are written BEFORE raising — that artifact IS the remedy:
-    the retry passes it via ``--ssi-take-up-prior-weight-basis`` so the
-    thresholds are recomputed exactly once from measured delivery, never
+    diagnostics are written before returning failures — that artifact IS the
+    remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
+    the thresholds are recomputed exactly once from measured delivery, never
     iterated in-process (the populace#463-class loop stays deleted,
-    populace#477).
+    populace#477). Failures return to the caller and join the #437 batched
+    terminal gates rather than raising here: an early raise destroyed the
+    failed run's calibration diagnostics and skipped every other gate group
+    (populace#547 — the 2026-07-25 sparsecd retest left no target-surface
+    evidence). Enforcement is unchanged: any returned failure still aborts
+    the release at the terminal batch and certification manifests are never
+    written.
     """
 
     delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
     if delivery_gate.passed:
-        return
+        return []
     failed_basis_path = write_us_ssi_take_up_diagnostics(
         diagnostics,
         release_dir / "us_ssi_take_up.json",
@@ -5392,15 +5398,14 @@ def _enforce_ssi_take_up_delivery(
             failures=list(delivery_gate.failures),
             force_upload=True,
         )
-    raise RuntimeError(
-        "Release gates failed: "
-        + "; ".join(
+    return [
+        *(
             f"SSI take-up delivery failed: {failure}"
             for failure in delivery_gate.failures
-        )
-        + " Delivered-weight prior basis written to "
-        + f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis retry."
-    )
+        ),
+        "SSI take-up delivered-weight prior basis written to "
+        f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis retry.",
+    ]
 
 
 def _ssi_assignment_priors_from_diagnostics(
@@ -8763,6 +8768,10 @@ def main() -> None:
     final_ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_diagnostics, targets=ssi_band_targets
     )
+    # SSI gate failures join the #437 batched terminal gates instead of
+    # raising here: an early raise destroyed the failed run's calibration
+    # diagnostics and skipped every other gate group (populace#547).
+    early_ssi_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -8772,18 +8781,17 @@ def main() -> None:
                 failures=list(final_ssi_take_up_gate.failures),
                 force_upload=True,
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"SSI take-up final measurement failed: {failure}"
-                for failure in final_ssi_take_up_gate.failures
-            )
+        early_ssi_gate_failures.extend(
+            f"SSI take-up final measurement failed: {failure}"
+            for failure in final_ssi_take_up_gate.failures
         )
-    _enforce_ssi_take_up_delivery(
-        ssi_take_up_diagnostics,
-        targets=ssi_band_targets,
-        release_dir=release_dir,
-        telemetry=telemetry,
+    early_ssi_gate_failures.extend(
+        _enforce_ssi_take_up_delivery(
+            ssi_take_up_diagnostics,
+            targets=ssi_band_targets,
+            release_dir=release_dir,
+            telemetry=telemetry,
+        )
     )
     medicaid_take_up_diagnostics = dict(
         _medicaid_diagnostics_for_existing_output(
@@ -8875,6 +8883,10 @@ def main() -> None:
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         target_registry=registry,
     )
+    # The early SSI failures ride the same list as every other gate group,
+    # so the diagnostics artifact records them and the terminal batch
+    # aborts on them (populace#547).
+    gate_failures = [*early_ssi_gate_failures, *gate_failures]
     _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,
