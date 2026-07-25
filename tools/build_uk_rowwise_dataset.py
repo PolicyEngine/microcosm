@@ -17,20 +17,27 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from populace.build.uk_runtime import (
     MASS_CONSERVATION_RELATIVE_TOLERANCE,
     PERSON_ID_COLUMNS,
     POOL_SOURCE_LINEAGE_COLUMN,
+    UK_GEOGRAPHY_LADDER_COLUMNS,
     apply_uk_source_lineage_modulus,
     assign_household_geography,
+    assign_uk_geography_ladder,
     build_official_uk_geography_crosswalk,
+    clone_entity_frame,
+    clone_uk_dataset_with_ladder_geography,
     clone_uk_dataset_with_rowwise_geography,
     expected_uk_rowwise_area_support,
     geography_coverage_summary,
     id_multiplier_for_values,
+    load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
+    uk_geography_ladder_gate,
     validate_geography_coverage,
     write_geography_crosswalk,
 )
@@ -63,6 +70,24 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Optional existing official geography crosswalk CSV/CSV.GZ. If omitted, "
             "the driver downloads public source tables and builds one."
+        ),
+    )
+    parser.add_argument(
+        "--ladder",
+        type=Path,
+        help=(
+            "UK OA-ladder NPZ artifact (tools/build_uk_oa_ladder_artifact.py). "
+            "When set, geography is assigned through the ratified ladder route "
+            "with its release-blocking gate, instead of the crosswalk sampler. "
+            "Mutually exclusive with --crosswalk and the coverage-code checks."
+        ),
+    )
+    parser.add_argument(
+        "--expected-constituency-vintage",
+        default="2024_pcon",
+        help=(
+            "Constituency vintage the ladder artifact must declare "
+            "(vintage_policy: error). Applies to the --ladder route."
         ),
     )
     parser.add_argument(
@@ -150,6 +175,37 @@ def main() -> int:
         source_year=source_year,
     )
     _validate_output_paths(input_h5=input_h5, output_h5=output_h5, args=args)
+    if args.ladder is not None:
+        if args.crosswalk is not None:
+            raise ValueError("--ladder and --crosswalk are mutually exclusive.")
+        if args.constituency_codes is not None or args.la_codes is not None:
+            raise ValueError(
+                "--ladder does not take coverage-code checks; the ladder gate "
+                "validates coverage."
+            )
+        sidecars = {
+            (args.out / MANIFEST_FILENAME).resolve(),
+            (args.out / COVERAGE_FILENAME).resolve(),
+            (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
+            (args.out / CROSSWALK_FILENAME).resolve(),
+        }
+        if args.ladder.resolve() in sidecars:
+            raise ValueError(
+                "--ladder must not point at a build sidecar path inside "
+                "--out; it would be overwritten."
+            )
+        # A reused crosswalk output directory must not leave stale sidecars
+        # beside a ladder manifest that reports no coverage output.
+        (args.out / COVERAGE_FILENAME).unlink(missing_ok=True)
+        (args.out / CROSSWALK_FILENAME).unlink(missing_ok=True)
+        return _run_ladder_route(
+            args,
+            input_h5=input_h5,
+            input_artifact=input_artifact,
+            output_h5=output_h5,
+            base_summary=base_summary,
+            source_year=source_year,
+        )
     crosswalk_source = _load_or_build_crosswalk(args)
     crosswalk = crosswalk_source.frame
     crosswalk_path = crosswalk_source.path
@@ -274,6 +330,8 @@ def _validate_output_paths(
         input_h5,
         *output_sidecars,
     }
+    if getattr(args, "ladder", None) is not None:
+        reserved_paths.add(args.ladder.resolve())
     if args.crosswalk is None:
         reserved_paths.add(generated_crosswalk_path)
     else:
@@ -364,15 +422,30 @@ def _validate_optional_coverage(
 
 
 def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
+    ladder_route = getattr(args, "ladder", None) is not None
     return {
         "n_clones": args.n_clones,
         "seed": args.seed,
         "source_year": source_year,
-        "require_all_countries": not args.allow_missing_country,
-        "require_constituency": not args.allow_blank_constituency,
-        "constrain_to_region": not args.allow_cross_region_assignment,
-        "avoid_constituency_collisions": not args.allow_constituency_collisions,
+        # Crosswalk-sampler knobs are meaningless on the ladder route and are
+        # recorded as null rather than falsely claimed effective.
+        "require_all_countries": (
+            None if ladder_route else not args.allow_missing_country
+        ),
+        "require_constituency": (
+            None if ladder_route else not args.allow_blank_constituency
+        ),
+        "constrain_to_region": (
+            None if ladder_route else not args.allow_cross_region_assignment
+        ),
+        "avoid_constituency_collisions": (
+            None if ladder_route else not args.allow_constituency_collisions
+        ),
         "source_lineage_modulus": args.source_lineage_modulus,
+        "assignment_route": "ladder" if ladder_route else "crosswalk",
+        "expected_constituency_vintage": (
+            args.expected_constituency_vintage if ladder_route else None
+        ),
     }
 
 
@@ -517,6 +590,239 @@ def _dry_run_plan(
         ),
         "coverage": coverage.to_dict("records") if not coverage.empty else [],
     }
+
+
+def _run_ladder_route(
+    args: argparse.Namespace,
+    *,
+    input_h5: Path,
+    input_artifact: dict[str, Any],
+    output_h5: Path,
+    base_summary: dict[str, Any],
+    source_year: int,
+) -> int:
+    """Build (or dry-run plan) the rowwise dataset through the OA ladder."""
+
+    ladder_path = args.ladder.resolve()
+    ladder_artifact = _artifact_info(ladder_path)
+    ladder = load_uk_oa_ladder(ladder_path)
+
+    if args.dry_run:
+        plan = _ladder_dry_run_plan(
+            args,
+            input_h5=input_h5,
+            input_artifact=input_artifact,
+            output_h5=output_h5,
+            base_summary=base_summary,
+            source_year=source_year,
+            ladder=ladder,
+            ladder_artifact=ladder_artifact,
+        )
+        plan_path = args.out / DRY_RUN_PLAN_FILENAME
+        plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+        print(json.dumps(plan, indent=2, sort_keys=True))
+        return 0
+
+    result = clone_uk_dataset_with_ladder_geography(
+        input_h5,
+        ladder,
+        output_path=output_h5,
+        n_clones=args.n_clones,
+        seed=args.seed,
+        source_year=source_year,
+        expected_constituency_vintage=args.expected_constituency_vintage,
+        source_lineage_modulus=args.source_lineage_modulus,
+    )
+    rowwise_summary = _rowwise_summary(
+        result,
+        base_summary=base_summary,
+        source_lineage_modulus=args.source_lineage_modulus,
+        geo_columns=UK_GEOGRAPHY_LADDER_COLUMNS,
+        constituency_column="constituency_code",
+        la_column="local_authority_code",
+    )
+    rowwise_summary["gate"] = {
+        "name": "uk_geography_ladder",
+        "passed": bool(result.gate.passed),
+        "details": dict(result.gate.details),
+    }
+    manifest = {
+        "schema_version": 1,
+        "build_kind": "uk_rowwise_local_geography_dataset",
+        "created_at": datetime.now(UTC).isoformat(),
+        "git_commit": _git_commit(),
+        "parameters": _parameters(args, source_year=source_year),
+        "inputs": {
+            "dataset": input_artifact,
+            "ladder": ladder_artifact,
+        },
+        "outputs": {
+            "dataset": _artifact_info(output_h5),
+            "crosswalk": None,
+            "coverage_summary": None,
+        },
+        "base_dataset": base_summary,
+        "rowwise_dataset": rowwise_summary,
+        "coverage": [],
+    }
+    manifest_path = args.out / MANIFEST_FILENAME
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(manifest, indent=2, sort_keys=True))
+    return 0
+
+
+def _ladder_dry_run_plan(
+    args: argparse.Namespace,
+    *,
+    input_h5: Path,
+    input_artifact: dict[str, Any],
+    output_h5: Path,
+    base_summary: dict[str, Any],
+    source_year: int,
+    ladder: Any,
+    ladder_artifact: dict[str, Any],
+) -> dict[str, Any]:
+    """Exact ladder-route plan: the real cloned assignment at the build seed."""
+
+    with pd.HDFStore(input_h5, mode="r") as store:
+        household = store["household"]
+        person_ids = _select_h5_columns(store, "person", list(PERSON_ID_COLUMNS))
+        benunit_ids = _select_h5_columns(store, "benunit", ["benunit_id"])
+    _validate_dry_run_input(
+        input_h5,
+        household=household,
+        person_ids=person_ids,
+        benunit_ids=benunit_ids,
+    )
+    id_multiplier = id_multiplier_for_values(
+        household["household_id"],
+        person_ids["person_id"],
+        person_ids["person_household_id"],
+        person_ids["person_benunit_id"],
+        benunit_ids["benunit_id"],
+    )
+    if args.source_lineage_modulus is not None:
+        household = apply_uk_source_lineage_modulus(
+            household,
+            modulus=args.source_lineage_modulus,
+        )
+    # Fence parity with the real build (a plan must never bless a build that
+    # would raise): weight validity, mass-chain currency, then the release
+    # gate on the divided-weight assignment.
+    from populace.build.uk_runtime.rowwise_dataset import _assert_mass_log_current
+
+    weight_values = pd.to_numeric(
+        household["household_weight"], errors="raise"
+    ).to_numpy(dtype=float)
+    if not (weight_values >= 0).all() or not np.isfinite(weight_values).all():
+        raise ValueError("household weights must be finite and non-negative.")
+    if float(weight_values.sum()) <= 0.0:
+        raise ValueError("household weights must carry positive total mass.")
+    _kind, mass_log = read_uk_single_year_weight_metadata(input_h5)
+    _assert_mass_log_current(mass_log, float(weight_values.sum()))
+    cloned = clone_entity_frame(
+        household,
+        id_columns=("household_id",),
+        n_clones=args.n_clones,
+        id_multiplier=id_multiplier,
+        clone_index_column="clone_index",
+    ).reset_index(drop=True)
+    cloned["household_weight"] = (
+        pd.to_numeric(cloned["household_weight"], errors="raise").to_numpy(dtype=float)
+        / args.n_clones
+    )
+    assigned = assign_uk_geography_ladder(
+        cloned,
+        ladder,
+        seed=args.seed,
+        expected_constituency_vintage=args.expected_constituency_vintage,
+    )
+    gate = uk_geography_ladder_gate(
+        assigned,
+        assigned["household_weight"].to_numpy(dtype=float),
+    )
+    if not gate.passed:
+        raise ValueError(
+            "UK geography ladder gate would fail this build: "
+            + "; ".join(gate.failures)
+        )
+    realized = _ladder_realized_support(assigned, ladder)
+    table_rows = {
+        name: base_summary["tables"][name][0]
+        for name in ("person", "benunit", "household")
+    }
+    input_bytes = input_h5.stat().st_size
+    return {
+        "schema_version": 1,
+        "build_kind": "uk_rowwise_local_geography_dry_run",
+        "created_at": datetime.now(UTC).isoformat(),
+        "git_commit": _git_commit(),
+        "parameters": _parameters(args, source_year=source_year),
+        "input": {
+            "dataset": input_artifact,
+            "ladder": ladder_artifact,
+            "tables": base_summary["tables"],
+            "household_weight_sum": base_summary["household_weight_sum"],
+            "time_period": base_summary["time_period"],
+            "household_weight_kind": base_summary["household_weight_kind"],
+            "mass_log_records": base_summary["mass_log_records"],
+        },
+        "plan": {
+            "n_clones": args.n_clones,
+            "id_multiplier": id_multiplier,
+            "output_h5": str(output_h5),
+            "rows": {name: rows * args.n_clones for name, rows in table_rows.items()},
+            "output_bytes_estimate": input_bytes * args.n_clones,
+            "output_bytes_estimate_basis": (
+                "lower-bound estimate: linear scaling of the input H5 byte "
+                "size by n_clones; added geography/lineage columns and HDF "
+                "table overhead increase the actual size"
+            ),
+        },
+        "realized_support": {
+            "basis": (
+                f"realized ladder assignment at seed {args.seed} — identical "
+                "draws to the real build under these parameters; zero-row "
+                "ladder areas included"
+            ),
+            **{
+                area_type: _support_summary(realized, area_type)
+                for area_type in ("constituency", "la")
+            },
+        },
+        "source_lineage": _source_lineage_report(
+            household,
+            modulus=args.source_lineage_modulus,
+        ),
+        "coverage": [],
+    }
+
+
+def _ladder_realized_support(
+    assigned_household: pd.DataFrame,
+    ladder: Any,
+) -> pd.DataFrame:
+    """Realized rows per ladder area, zeros included for unassigned areas."""
+
+    import numpy as _np
+
+    rows: list[dict[str, Any]] = []
+    for assigned_column, ladder_codes, area_type in (
+        ("constituency_code", ladder.constituency_code, "constituency"),
+        ("local_authority_code", ladder.local_authority_code, "la"),
+    ):
+        assigned = assigned_household[assigned_column].astype(str).str.strip()
+        counts = assigned[assigned != ""].value_counts()
+        codes = sorted(set(_np.unique(ladder_codes).tolist()) | set(counts.index))
+        rows.extend(
+            {
+                "area_type": area_type,
+                "area_code": code,
+                "expected_rows": float(counts.get(code, 0)),
+            }
+            for code in codes
+        )
+    return pd.DataFrame(rows)
 
 
 def _validate_dry_run_input(
@@ -690,26 +996,28 @@ def _rowwise_summary(
     *,
     base_summary: dict[str, Any],
     source_lineage_modulus: int | None = None,
-) -> dict[str, Any]:
-    household = result.household
-    geo_columns = (
+    geo_columns: tuple[str, ...] = (
         "oa_code",
         "lsoa_code",
         "msoa_code",
         "la_code_oa",
         "constituency_code_oa",
         "region_code_oa",
-    )
+    ),
+    constituency_column: str = "constituency_code_oa",
+    la_column: str = "la_code_oa",
+) -> dict[str, Any]:
+    household = result.household
     missing_geography = household[list(geo_columns)].isna().any(axis=1)
     for column in geo_columns:
         missing_geography |= household[column].fillna("").astype(str).str.strip().eq("")
     assigned_constituencies = household.loc[
-        _nonblank_string_mask(household["constituency_code_oa"]),
-        "constituency_code_oa",
+        _nonblank_string_mask(household[constituency_column]),
+        constituency_column,
     ]
     assigned_las = household.loc[
-        _nonblank_string_mask(household["la_code_oa"]),
-        "la_code_oa",
+        _nonblank_string_mask(household[la_column]),
+        la_column,
     ]
     by_constituency = assigned_constituencies.groupby(assigned_constituencies).size()
     by_la = assigned_las.groupby(assigned_las).size()
@@ -767,7 +1075,10 @@ def _rowwise_summary(
         "median_household_rows_by_constituency": constituency_rows["median"],
         "median_household_rows_by_local_authority": la_rows["median"],
         "duplicate_source_household_constituency_pairs": (
-            _duplicate_source_household_constituency_pairs(household)
+            _duplicate_source_household_constituency_pairs(
+                household,
+                constituency_column=constituency_column,
+            )
         ),
     }
 
@@ -782,13 +1093,15 @@ def _area_row_summary(counts: pd.Series) -> dict[str, int | float]:
     return {"min": int(counts.min()), "median": float(counts.median())}
 
 
-def _duplicate_source_household_constituency_pairs(household: pd.DataFrame) -> int:
+def _duplicate_source_household_constituency_pairs(
+    household: pd.DataFrame,
+    *,
+    constituency_column: str = "constituency_code_oa",
+) -> int:
     if "source_household_id" not in household.columns:
         return 0
-    assigned = household[_nonblank_string_mask(household["constituency_code_oa"])]
-    return int(
-        assigned.duplicated(["source_household_id", "constituency_code_oa"]).sum()
-    )
+    assigned = household[_nonblank_string_mask(household[constituency_column])]
+    return int(assigned.duplicated(["source_household_id", constituency_column]).sum())
 
 
 def _artifact_info(path: Path) -> dict[str, Any]:
