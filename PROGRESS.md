@@ -2,41 +2,47 @@
 
 ## State
 
-Populace #550 focused rebuild is complete locally on
-`ssi-507-takeup-stabilizer`, based on merged #549 at `f964356`. The work
-follows the integration verdict's KEEP/DROP/fix-in-A lists and preserves
-#548's collect, merge, write, then single-batched-raise terminal flow.
+Populace #516 whole-row donor outlier screen is complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
+whose grouped raw mortgage interest reaches $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuild.
 
 ## Done
 
-- Confirmed the clean `f964356` baseline, read `CLAUDE.md` and the complete
-  integration adjudication, and committed this journal before implementation.
-- Attempted the GitNexus exploration workflow; its index/tools were not
-  available in this session, so the audit used current source/test call sites
-  and `stabilizer-v1-archive` directly.
-- Advanced SSI take-up diagnostics to schema 4 with a version-history note
-  explaining schema 3's ambiguous floor-blind/floor-aware prior semantics.
-- Restricted schemas 2 and 3 to legacy target/capacity/floor seeds, allowed an
-  absent schema-3 phase marker, rejected explicit non-final legacy phases, and
-  retained release-final plus full-gate requirements for schema 4.
-- Added the frozen-support identities digest beside the SSI assignment digest
-  in the target-frame checkpoint identity and #217 reform-vector cache
-  context, wired directly from the selection source.
-- Added failing-first regressions for the new schema and selection behavior,
-  the real Build O attempts 2/3 floor-aware arithmetic receipt, and an isolated
-  final-integrity Bernoulli-law failure that reaches the written calibration
-  receipt before the single terminal batch raises.
-- Added the requested towncrier fragment. `_band_prior`, per-target knobs,
-  reconcile loops, dedicated post-write raises, and AST ordering pins remain
-  untouched.
-- Applied Ruff formatting to the four touched Python files.
-- Passed the exact requested pytest command over
-  `test_us_ssi_take_up.py`, `test_us_fiscal_refresh_builder.py`, and
-  `test_us_plan.py`; `uv run ruff check .` and `git diff --check` are clean.
+- Confirmed a clean starting worktree at `aef1c56`.
+- Read the repository guidance and established the #515 donor carve as the
+  screen's required downstream boundary.
+- Started source-level audits of every donor-frame consumer, checkpoint
+  validation, row-count pins, and existing donor-fact summaries.
+- Attempted the requested GitNexus impact workflow; the managed filesystem
+  denied its global registry write. Its local index also exposed a broad
+  `build/` ignore mismatch, so the completed impact audit uses direct source
+  call sites and tests.
+- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
+  structural rationale and pinned-artifact receipts.
+- Added a whole-row screen on grouped raw person `home_mortgage_interest`
+  after tax-unit assembly, before the #515 carve, with retained-index reset.
+- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
+  or carries a stale donor-length vector; values and weights always originate
+  from the same screened frame.
+- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
+  checkpoint regression track the live constant while retaining literal-v1
+  corruptions.
+- Added regression coverage for the exact grouped boundary, whole-row removal,
+  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
+- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
+  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
+  audit, expected 208,611-row real-artifact effect, verification results, count
+  sweep, and deliberately untouched surfaces.
 
 ## Next
 
-- Review and open the focused #550 PR when authorized. Nothing was pushed
-  during this work.
-- Treat green PR tests as code-contract evidence only; restricted-data release
-  certification remains a separate human-run workflow.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on populace#515.
