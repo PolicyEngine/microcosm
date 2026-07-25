@@ -195,6 +195,13 @@ from populace.build.uk_runtime.local_geography import (
     stacked_weights_to_long,
     write_long_geography_weights,
 )
+from populace.build.uk_runtime.local_rowwise import (
+    UKRowwiseLocalMatrix,
+    build_uk_rowwise_local_matrix,
+    rowwise_area_support_summary,
+    rowwise_calibration_mass_record,
+    solve_uk_rowwise_weights_under_doctrine,
+)
 from populace.build.uk_runtime.local_runner import (
     UKLocalCandidateResult,
     build_local_candidate,
@@ -212,6 +219,7 @@ from populace.build.uk_runtime.local_runner import (
 from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
     past_cap_census,
+    solve_prepared_local_weights,
     solve_stacked_local_weights,
 )
 from populace.build.uk_runtime.local_target_census import (
@@ -495,6 +503,7 @@ __all__ = [
     "UKLadderRowwiseDatasetResult",
     "UKLocalCandidateResult",
     "UKLocalSolveDoctrine",
+    "UKRowwiseLocalMatrix",
     "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
     "UKCertifiedCandidateIdentity",
     "UKHMRCIncomeCalibration",
@@ -546,6 +555,7 @@ __all__ = [
     "build_official_uk_geography_crosswalk",
     "build_scotland_crosswalk",
     "build_stacked_local_matrix",
+    "build_uk_rowwise_local_matrix",
     "clone_entity_frame",
     "clone_uk_dataset_tables_with_ladder_geography",
     "clone_uk_dataset_tables_with_rowwise_geography",
@@ -614,8 +624,12 @@ __all__ = [
     "set_simulation_area_group",
     "solve_firm_weights",
     "past_cap_census",
+    "rowwise_area_support_summary",
+    "rowwise_calibration_mass_record",
+    "solve_prepared_local_weights",
     "solve_stacked_local_weights",
     "solve_uk_local_weights_under_doctrine",
+    "solve_uk_rowwise_weights_under_doctrine",
     "sort_households_by_id",
     "stacked_design_weights",
     "stacked_weights_to_long",
