@@ -61,6 +61,7 @@ def metric_names(
         names.append(f"hmrc/{income_variable}/amount")
         names.append(f"hmrc/{income_variable}/count")
     names.extend(f"age/{lower}_{upper}" for lower, upper in AGE_BANDS)
+    names.append("households")
     names.append("uc_households")
     if area_type == "constituency":
         names.extend(CONSTITUENCY_UC_CHILDREN_METRICS)
@@ -205,6 +206,8 @@ def compute_household_metrics(
             "person",
             "household",
         )
+
+    matrix["households"] = np.ones(len(matrix), dtype=float)
 
     on_uc = (_values(_calculate(sim, "universal_credit", period)) > 0).astype(float)
     on_uc_hh = _map_result(sim, on_uc, "benunit", "household")
