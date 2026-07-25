@@ -37,7 +37,10 @@ from typing import BinaryIO
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
+from populace.build.us_runtime.full_sipp_donor import (
+    FullSIPPDonorMutationError,
+    full_sipp_sha256,
+)
 
 __all__ = [
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
@@ -231,6 +234,7 @@ def _file_matches(
     *,
     expected_sha256: str | None,
     expected_size_bytes: int | None,
+    implicit: bool = False,
 ) -> bool:
     try:
         if not path.is_file():
@@ -241,10 +245,12 @@ def _file_matches(
         ):
             return False
         return expected_sha256 is None or _sha256_file(path) == expected_sha256
-    except OSError:
+    except (OSError, FullSIPPDonorMutationError):
+        if not implicit:
+            raise
         # Implicit candidates are optional fast paths. An unreadable or
-        # concurrently removed candidate must fall through to the immutable
-        # pinned fetch rather than blocking every full-SIPP consumer.
+        # concurrently removed or mutated candidate must fall through to the
+        # immutable pinned fetch rather than blocking every full-SIPP consumer.
         return False
 
 
@@ -283,6 +289,7 @@ def fetch_sipp_2023_financial_asset_donor(
             candidate,
             expected_sha256=expected_sha256,
             expected_size_bytes=expected_size_bytes,
+            implicit=True,
         ):
             return candidate
 

@@ -6,7 +6,9 @@ import hashlib
 
 import numpy as np
 import pandas as pd
+import pytest
 
+import populace.build.us_runtime.full_sipp_donor as full_sipp_donor_module
 import populace.build.us_runtime.sipp_financial_assets as sipp_financial_assets_module
 from populace.build.us_runtime.sipp_financial_assets import (
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
@@ -317,6 +319,96 @@ def test_fetch_skips_an_unreadable_implicit_local_candidate(
         )
         == downloaded
     )
+
+
+def test_fetch_skips_an_implicit_candidate_mutated_during_hash(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+
+    local = tmp_path / "mutating-pu2023.csv"
+    downloaded = tmp_path / "downloaded-pu2023.csv"
+    local.write_bytes(b"good")
+    downloaded.write_bytes(b"good")
+    expected_sha256 = hashlib.sha256(b"good").hexdigest()
+    download_calls: list[dict[str, object]] = []
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
+    real_hash = full_sipp_donor_module._hash_file_contents
+    mutated = False
+
+    def mutate_after_hash(path, *, chunk_size):
+        nonlocal mutated
+        digest = real_hash(path, chunk_size=chunk_size)
+        if path == local and not mutated:
+            path.write_bytes(b"changed-size")
+            mutated = True
+        return digest
+
+    def fake_hf_hub_download(**kwargs):
+        download_calls.append(kwargs)
+        return str(downloaded)
+
+    monkeypatch.setattr(
+        full_sipp_donor_module,
+        "_hash_file_contents",
+        mutate_after_hash,
+    )
+    monkeypatch.setattr(
+        huggingface_hub,
+        "hf_hub_download",
+        fake_hf_hub_download,
+    )
+
+    resolved = fetch_sipp_2023_financial_asset_donor(
+        cache_dir=tmp_path / "cache",
+        local_path=local,
+        expected_sha256=expected_sha256,
+        expected_size_bytes=4,
+    )
+
+    assert resolved == downloaded
+    assert local.read_bytes() == b"changed-size"
+    assert len(download_calls) == 1
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
+
+
+def test_fetch_fails_fast_when_downloaded_file_mutates_during_hash(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+
+    downloaded = tmp_path / "downloaded-pu2023.csv"
+    downloaded.write_bytes(b"good")
+    expected_sha256 = hashlib.sha256(b"good").hexdigest()
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
+    real_hash = full_sipp_donor_module._hash_file_contents
+
+    def mutate_after_hash(path, *, chunk_size):
+        digest = real_hash(path, chunk_size=chunk_size)
+        path.write_bytes(b"changed-size")
+        return digest
+
+    monkeypatch.setattr(
+        full_sipp_donor_module,
+        "_hash_file_contents",
+        mutate_after_hash,
+    )
+    monkeypatch.setattr(
+        huggingface_hub,
+        "hf_hub_download",
+        lambda **kwargs: str(downloaded),
+    )
+
+    with pytest.raises(
+        full_sipp_donor_module.FullSIPPDonorMutationError,
+        match="changed during SHA-256 verification",
+    ):
+        fetch_sipp_2023_financial_asset_donor(
+            cache_dir=tmp_path / "cache",
+            expected_sha256=expected_sha256,
+            expected_size_bytes=4,
+        )
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
 
 
 def test_target_balanced_cap_pins_archived_sampling_seed() -> None:

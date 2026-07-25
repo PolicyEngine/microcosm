@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Lock
 
 __all__ = [
+    "FullSIPPDonorMutationError",
     "cache_verified_full_sipp_sha256",
     "clear_full_sipp_sha256_cache",
     "full_sipp_sha256",
@@ -37,6 +38,10 @@ class _FileFingerprint:
 
 _SHA256_BY_FINGERPRINT: dict[_FileFingerprint, str] = {}
 _CACHE_LOCK = Lock()
+
+
+class FullSIPPDonorMutationError(RuntimeError):
+    """Raised when a full-SIPP file changes while its SHA-256 is computed."""
 
 
 def _fingerprint(path: Path) -> _FileFingerprint:
@@ -78,7 +83,7 @@ def full_sipp_sha256(
         digest = _hash_file_contents(source_path, chunk_size=chunk_size)
         final = _fingerprint(source_path)
         if final != initial:
-            raise RuntimeError(
+            raise FullSIPPDonorMutationError(
                 "Full SIPP donor changed during SHA-256 verification; refusing "
                 "to cache a digest not bound to stable bytes."
             )
