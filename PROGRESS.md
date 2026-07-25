@@ -11,8 +11,8 @@ item 8; simulation wiring is out of scope.
 - Branch `qbi-v3-evidence` is isolated in
   `.claude/worktrees/populace-wt-530-v3`, based on local
   `repeal-validation-298`.
-- Verified source factsheets and restricted SCF/SOI inputs are being read in
-  place; no source artifact will be committed.
+- The provisional evidence lane is complete; no restricted source artifact was
+  committed. The full handoff is in `FINAL_REPORT_QBI_V3_EVIDENCE.md`.
 
 ## Current done
 
@@ -47,10 +47,13 @@ item 8; simulation wiring is out of scope.
   leaks and donor-count/fallback linkage. The real rebuild remains
   byte-identical; 48 focused tests, full Ruff check, targeted format check, and
   offline lock validation pass.
+- Final workspace verification passes 3,450 tests with 59 expected skips and
+  six known unrelated warnings. The final report records all results, digests,
+  landmines, and judgment calls.
 
 ## Current next
 
-- Run the final full workspace suite and write the report.
+- Supervisor review and push; simulation wiring remains out of scope.
 
 ## Historical progress
 

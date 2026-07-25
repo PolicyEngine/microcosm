@@ -9,6 +9,8 @@
 - Offline, local commits only. This lane produces provisional evidence
   resources and reproducible estimation code; simulation wiring remains out
   of scope.
+- Implementation, real-data artifacts, adversarial reviews, and verification
+  are complete. The handoff is in `FINAL_REPORT_QBI_V3_EVIDENCE.md`.
 
 ## Done
 
@@ -81,7 +83,13 @@
 - The real builder remains byte-identical after these checks. Full Ruff check,
   targeted format check, offline 118-package lock resolution, and the expanded
   48-test focused selection pass.
+- Final full workspace verification passes: 3,450 passed, 59 skipped, and six
+  known unrelated warnings in 1,096.65 seconds.
+- Wrote the final report with exact SCF/JCT comparisons, wage/capital ranges,
+  all input and output digests, parsing landmines, every supervisor
+  re-adjudication item, reproduction command, and verification receipts.
 
 ## Next
 
-- Run the final full workspace suite, then write and commit the final report.
+- Supervisor review and local-branch push. Simulation wiring remains a later
+  task.
