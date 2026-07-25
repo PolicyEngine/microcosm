@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import numpy as np
 import pandas as pd
 import pytest
 
 import populace.build.us_runtime.child_disability as child_disability_module
+import populace.build.us_runtime.ssi_disability_criteria as ssi_criteria_module
 from populace.build.us_runtime import (
     SIPP_CHILD_DISABILITY_SOURCE_COLUMNS,
     SSA_SSI_AGE_0_4_CASELOAD_TARGET,
@@ -25,6 +28,11 @@ from populace.build.us_runtime import (
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 TIME_PERIOD = 2024
+_policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
+requires_us = pytest.mark.skipif(
+    not _policyengine_us_installed,
+    reason="requires the policyengine-us [us] extra",
+)
 
 
 @pytest.fixture
@@ -136,19 +144,34 @@ def test_manifest_declares_child_disability_stage() -> None:
     )
 
 
-def test_sipp_resolver_prefers_explicit_then_local_then_pinned_fetch(
+def test_sipp_resolver_uses_only_a_verified_local_file_then_falls_through(
     tmp_path, monkeypatch
 ) -> None:
     explicit = tmp_path / "explicit.csv"
     local = tmp_path / "local.csv"
     fetched = tmp_path / "fetched.csv"
-    local.touch()
+    local.write_bytes(b"good")
     fetch_calls: list[bool] = []
 
     monkeypatch.setattr(
         child_disability_module,
         "SIPP_2023_CHILD_DISABILITY_LOCAL_PATH",
         local,
+    )
+    monkeypatch.setattr(
+        child_disability_module,
+        "SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES",
+        4,
+    )
+    monkeypatch.setattr(
+        child_disability_module,
+        "SIPP_2023_CHILD_DISABILITY_DONOR_SHA256",
+        "valid-sha",
+    )
+    monkeypatch.setattr(
+        child_disability_module,
+        "_sha256_file",
+        lambda path: "valid-sha" if path.read_bytes() == b"good" else "stale-sha",
     )
     monkeypatch.setattr(
         child_disability_module,
@@ -160,9 +183,15 @@ def test_sipp_resolver_prefers_explicit_then_local_then_pinned_fetch(
     assert resolve_sipp_2023_child_disability_donor() == local
     assert fetch_calls == []
 
-    local.unlink()
+    # A same-size, wrong-SHA developer file must not block the shared pin.
+    local.write_bytes(b"evil")
     assert resolve_sipp_2023_child_disability_donor() == fetched
     assert fetch_calls == [True]
+
+    # Nor may a stale byte length short-circuit the pinned fetch chain.
+    local.write_bytes(b"x")
+    assert resolve_sipp_2023_child_disability_donor() == fetched
+    assert fetch_calls == [True, True]
 
 
 def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
@@ -177,7 +206,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "TAGE": 35,
                 "ESEX": 2,
                 "TPTOTINC": 1_000,
-                "RSSI_YRYN": 2,
+                "RSSI_MNYN": 2,
                 "ECOGNIT": 2,
                 "EHEARING": 2,
                 "ESEEING": 2,
@@ -193,7 +222,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "TAGE": 8,
                 "ESEX": 1,
                 "TPTOTINC": np.nan,
-                "RSSI_YRYN": 2,
+                "RSSI_MNYN": 2,
                 "ECOGNIT": 1,
                 "EHEARING": 2,
                 "ESEEING": 2,
@@ -209,7 +238,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "TAGE": 12,
                 "ESEX": 2,
                 "TPTOTINC": 500,
-                "RSSI_YRYN": 1,
+                "RSSI_MNYN": 1,
                 "ECOGNIT": 2,
                 "EHEARING": 2,
                 "ESEEING": 2,
@@ -225,7 +254,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "TAGE": 12,
                 "ESEX": 2,
                 "TPTOTINC": 99_999,
-                "RSSI_YRYN": 1,
+                "RSSI_MNYN": 1,
                 "ECOGNIT": 1,
                 "EHEARING": 1,
                 "ESEEING": 1,
@@ -241,7 +270,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "TAGE": 9,
                 "ESEX": 1,
                 "TPTOTINC": np.nan,
-                "RSSI_YRYN": 2,
+                "RSSI_MNYN": 2,
                 "ECOGNIT": 1,
                 "EHEARING": 2,
                 "ESEEING": 2,
@@ -264,6 +293,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
     assert donor["age"].tolist() == [8.0, 12.0]
     assert donor["is_disabled"].tolist() == [True, False]
     assert donor.attrs["source_audit"]["age_5_14_rows"] == 3
+    assert donor.attrs["source_audit"]["age_5_14_monthly_ssi_rows"] == 1
     # The adult in h1 supplies the proxy.  The child-only h2 residence remains
     # zero even when the child reports TPTOTINC, preventing SSI label leakage;
     # the January row must not enter either residence aggregate.
@@ -308,7 +338,7 @@ def test_classifier_preserves_a_strong_sex_gradient() -> None:
     assert assigned_share[True] > assigned_share[False] + 0.08
 
 
-def test_rows_age_15_and_over_are_byte_identical(
+def test_rows_age_15_and_over_keep_all_values(
     sipp_child_disability_donor: pd.DataFrame,
 ) -> None:
     frame = _frame()
@@ -322,6 +352,61 @@ def test_rows_age_15_and_over_are_byte_identical(
         check_exact=True,
     )
     assert us_child_disability_signal_gate(result, input_frame=frame).passed
+
+
+def test_noncanonical_adult_boolean_storage_is_not_rewritten(
+    sipp_child_disability_donor: pd.DataFrame,
+) -> None:
+    frame = _frame()
+    person = frame.table("person").copy()
+    adult_positions = np.flatnonzero(person["age"].to_numpy() >= 15)
+    poisoned_storage = person["is_disabled"].to_numpy(dtype=np.uint8)
+    poisoned_storage[adult_positions[0]] = 0x02
+    person["is_disabled"] = poisoned_storage.view(np.bool_)
+    frame = _replace_person(frame, person)
+    before = (
+        frame.table("person")["is_disabled"]
+        .to_numpy(copy=False)
+        .view(np.uint8)[adult_positions]
+    ).copy()
+    assert before[0] == 0x02
+
+    result = _run(frame, sipp_child_disability_donor)
+
+    after = (
+        result.table("person")["is_disabled"]
+        .to_numpy(copy=False)
+        .view(np.uint8)[adult_positions]
+    )
+    np.testing.assert_array_equal(after, before)
+
+
+def test_gate_measures_weighted_child_share_before_and_after(
+    sipp_child_disability_donor: pd.DataFrame,
+) -> None:
+    frame = _frame()
+    result = _run(frame, sipp_child_disability_donor)
+    gate = us_child_disability_signal_gate(result, input_frame=frame)
+    changes = gate.details["weighted_child_is_disabled_share_change"]
+    weights = result.resolve_weights("person").values
+
+    for key, lower, upper in (("age_0_4", 0, 4), ("age_5_14", 5, 14)):
+        mask = result.table("person")["age"].between(lower, upper).to_numpy()
+        before = float(
+            np.average(
+                frame.table("person").loc[mask, "is_disabled"],
+                weights=weights[mask],
+            )
+        )
+        after = float(
+            np.average(
+                result.table("person").loc[mask, "is_disabled"],
+                weights=weights[mask],
+            )
+        )
+        assert changes[key]["before"] == pytest.approx(before)
+        assert changes[key]["after"] == pytest.approx(after)
+        assert changes[key]["absolute_change"] == pytest.approx(after - before)
 
 
 def test_age_5_14_share_lands_inside_sipp_gate_band(
@@ -355,7 +440,7 @@ def test_age_0_4_share_tracks_explicit_anchor_rate(
     assert share == pytest.approx(US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE, abs=0.015)
     assert US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE == pytest.approx(
         0.110253387732
-        * ((SSA_SSI_AGE_0_4_CASELOAD_TARGET / 17_166_422.199210) / 0.017932560598),
+        * ((SSA_SSI_AGE_0_4_CASELOAD_TARGET / 17_166_422.199210) / 0.017142704601),
         abs=1e-12,
     )
 
@@ -404,3 +489,88 @@ def test_signal_gate_fails_when_an_adult_row_changes(
 
     assert not gate.passed
     assert "age 15+: output rows differ from the stage input." in gate.failures
+
+
+@requires_us
+def test_seeded_young_child_assignment_controls_policyengine_ssi(
+    sipp_child_disability_donor: pd.DataFrame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seeded child signal must reach PolicyEngine's SSI criterion leaf."""
+
+    from policyengine_us import Simulation
+
+    staged = _run(
+        _frame(n_age_0_4=10, n_age_5_14=50),
+        sipp_child_disability_donor,
+        seed=453,
+    )
+    monkeypatch.setattr(
+        ssi_criteria_module,
+        "us_ssi_disability_criteria_stage_spec",
+        lambda: None,
+    )
+
+    def all_false_qrf(frame, donor, *, seed, n_estimators):
+        del donor, seed, n_estimators
+        return pd.Series(
+            False,
+            index=frame.table("person").index,
+            name="meets_ssi_disability_criteria",
+            dtype=bool,
+        )
+
+    monkeypatch.setattr(
+        ssi_criteria_module,
+        "impute_us_ssi_disability_criteria",
+        all_false_qrf,
+    )
+    criteria_frame = ssi_criteria_module.with_us_ssi_disability_criteria(
+        staged,
+        seed=42,
+        time_period=TIME_PERIOD,
+        sipp_donor=pd.DataFrame(),
+    )
+    person = criteria_frame.table("person")
+    age_eight = person["age"].eq(8)
+    selected = person.loc[age_eight & person["is_disabled"]]
+    not_selected = person.loc[age_eight & ~person["is_disabled"]]
+    assert not selected.empty
+    assert not not_selected.empty
+    assert selected["meets_ssi_disability_criteria"].all()
+    assert not not_selected["meets_ssi_disability_criteria"].any()
+
+    def child_ssi(criterion: bool) -> float:
+        situation = {
+            "people": {
+                "parent": {"age": {"2024": 35}},
+                "child": {
+                    "age": {"2024": 8},
+                    "is_tax_unit_dependent": {"2024": True},
+                    "meets_ssi_disability_criteria": {"2024": criterion},
+                    "takes_up_ssi_if_eligible": {"2024": True},
+                },
+            },
+            "tax_units": {
+                "unit": {
+                    "members": ["parent", "child"],
+                    "filing_status": {"2024": "HEAD_OF_HOUSEHOLD"},
+                }
+            },
+            "families": {"family": {"members": ["parent", "child"]}},
+            "spm_units": {"spm": {"members": ["parent", "child"]}},
+            "households": {
+                "household": {
+                    "members": ["parent", "child"],
+                    "state_code": {"2024": "CA"},
+                }
+            },
+            "marital_units": {
+                "parent_unit": {"members": ["parent"]},
+                "child_unit": {"members": ["child"]},
+            },
+        }
+        return float(Simulation(situation=situation).calculate("ssi", "2024-12")[1])
+
+    assert child_ssi(True) > 0.0
+    assert child_ssi(False) == 0.0

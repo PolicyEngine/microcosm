@@ -614,17 +614,14 @@ def _artifact_basis(
     )
 
 
-def test_enforced_bands_are_the_adult_bands_pending_child_disability_stage() -> None:
-    """The under-18 band is honestly fenced until populace#453/#509 lands.
+def test_enforced_bands_include_children_after_child_disability_stage() -> None:
+    """populace#453/#509 deliberately lifts the under-18 delivery fence."""
 
-    Build N's under-18 candidate capacity was 177,582 against the 1,001,922
-    ledger target — no seeding basis can truthfully reconcile that band, and
-    treating saturation as success would defeat the delivery gate. Flipping
-    this roster is a deliberate act for the child-disability lane, not a
-    side effect.
-    """
-
-    assert US_SSI_TAKE_UP_ENFORCED_BAND_KEYS == ("18_64", "65_plus")
+    assert US_SSI_TAKE_UP_ENFORCED_BAND_KEYS == (
+        "under_18",
+        "18_64",
+        "65_plus",
+    )
     assert 0.0 < US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE < 0.1
 
 
@@ -816,11 +813,11 @@ def _delivered(diagnostics: dict[str, object], **selected: float) -> dict[str, o
     return delivered
 
 
-def test_delivery_gate_passes_within_tolerance_and_reports_the_fenced_band() -> None:
+def test_delivery_gate_passes_when_all_bands_are_within_tolerance() -> None:
     _, _, _, diagnostics = _assigned()
     delivered = _delivered(
         diagnostics,
-        under_18=5.0,  # 90% miss — fenced, must not fail (populace#453/#509)
+        under_18=52.4,
         **{"18_64": 52.4, "65_plus": 47.6},  # within the 5% envelope
     )
     gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
@@ -829,24 +826,24 @@ def test_delivery_gate_passes_within_tolerance_and_reports_the_fenced_band() -> 
     assert gate.details["relative_tolerance"] == pytest.approx(
         US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     )
-    fenced = gate.details["fenced_bands"]
-    assert [row["age_band"] for row in fenced] == ["under_18"]
-    assert "#453" in fenced[0]["fence"] and "#509" in fenced[0]["fence"]
-    assert fenced[0]["selected_recipient_weight"] == pytest.approx(5.0)
+    assert gate.details["fenced_bands"] == []
 
 
-def test_delivery_gate_fails_an_enforced_band_miss_and_names_the_remedy() -> None:
+def test_delivery_gate_fails_child_and_adult_misses_and_names_the_remedy() -> None:
     _, _, _, diagnostics = _assigned()
     delivered = _delivered(
-        diagnostics, **{"18_64": 50.0, "65_plus": 30.0}
-    )  # 40% aged miss
+        diagnostics, under_18=5.0, **{"18_64": 50.0, "65_plus": 30.0}
+    )
     gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
     assert not gate.passed
+    assert any(
+        "under_18" in failure and "--ssi-take-up-prior-weight-basis" in failure
+        for failure in gate.failures
+    )
     assert any(
         "65_plus" in failure and "--ssi-take-up-prior-weight-basis" in failure
         for failure in gate.failures
     )
-    assert not any("under_18" in failure for failure in gate.failures)
 
 
 def test_delivery_gate_boundary_sits_at_the_documented_tolerance() -> None:
@@ -854,11 +851,13 @@ def test_delivery_gate_boundary_sits_at_the_documented_tolerance() -> None:
     tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     inside = _delivered(
         diagnostics,
+        under_18=50.0,
         **{"18_64": 50.0 * (1.0 + tolerance) - 0.01, "65_plus": 50.0},
     )
     assert us_ssi_take_up_delivery_gate(inside, targets=_TARGETS).passed
     outside = _delivered(
         diagnostics,
+        under_18=50.0,
         **{"18_64": 50.0 * (1.0 + tolerance) + 0.01, "65_plus": 50.0},
     )
     assert not us_ssi_take_up_delivery_gate(outside, targets=_TARGETS).passed

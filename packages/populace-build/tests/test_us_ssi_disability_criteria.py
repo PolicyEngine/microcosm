@@ -151,6 +151,7 @@ def _frame(n: int = 20) -> Frame:
             "person_marital_unit_id": ids + 400,
             "age": np.full(n, 40.0),
             "is_female": ids % 2 == 0,
+            "is_disabled": np.zeros(n, dtype=bool),
             "A_MARITL": np.full(n, 5),
             "employment_income_before_lsr": np.zeros(n),
             # Deliberately omit the aggregate leaves: the receiver must use
@@ -305,6 +306,7 @@ def test_stage_manifest_pins_exact_runtime_contract() -> None:
     ]
     assert dict(spec.operations[0].parameters) == SIPP_SSI_DISABILITY_READ_PARAMETERS
     assert dict(spec.operations[1].parameters) == SIPP_SSI_DISABILITY_FIT_PARAMETERS
+    assert spec.operations[1].parameters["consume_under_15_is_disabled"] is True
     assert SIPP_SSI_DISABILITY_FIT_PARAMETERS["training_sample_seed"] == (
         8_386_123_572_872_638_692
     )

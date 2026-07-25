@@ -3,7 +3,8 @@
 CPS ASEC's six-question disability battery starts at age 15.  The certified
 Populace base therefore carries ``is_disabled = False`` for every younger
 child, making child SSI structurally absent (populace #453).  This stage
-augments the ASEC-derived ``is_disabled`` surface without replacing it:
+owns the generic under-15 ``is_disabled`` repair without replacing the adult
+ASEC surface:
 
 * Ages 5--14 receive seeded Bernoulli draws from a survey-weighted logistic
   classifier fit to the December 2023 SIPP.  Its outcome is any affirmative
@@ -14,15 +15,27 @@ augments the ASEC-derived ``is_disabled`` surface without replacing it:
   analogue is household-summed ``employment_income_before_lsr`` for members
   aged 15+.  Excluding younger members avoids using a child's own mostly-blank
   ``TPTOTINC`` as a near-direct SSI-receipt indicator.
-* Ages 0--4 receive seeded Bernoulli draws at an explicit 8.596% calibration
+* Ages 0--4 receive seeded Bernoulli draws at an explicit 8.991746% calibration
   target.  SIPP does not ask the full functional battery in that age band, so
   the target carries SIPP's observed 5--14 ratio of any-item disability to SSI
   receipt into the issue-specified 240,000 youngest-child caseload allocation.
-  The 240,000 value is a model target, not an observed SSA age-0--4 count.
+  Receipt is measured on the matching monthly concept: December rows with
+  ``RSSI_MNYN == 1``, weighted by ``WPFINWGT``.  The 240,000 value is a model
+  target, not an observed SSA age-0--4 count.
 
 Draws are keyed by stable person source identity, so support clones and row
-reordering do not change assignment.  Existing ``True`` values are never
-cleared, and ages 15+ are copied byte-for-byte from the input frame.
+reordering do not change assignment.  Existing child ``True`` values are never
+cleared, and writes are restricted to under-15 rows so adult stored values are
+untouched even when a source uses noncanonical boolean bytes.
+
+The later ``ssi_disability_criteria`` stage remains the sole owner of
+``meets_ssi_disability_criteria``.  It consumes this exact under-15 assignment
+after its adult SIPP/QRF pass, so SSI sees the same seeded draw without a
+second random decision.  The generic signal also intentionally reaches the
+other PolicyEngine-US program families for which child disability is a real
+input: HUD housing, SNAP, Medicaid, TANF, child-care assistance, and tax
+provisions.  The stage gate reports weighted before/after shares so that
+deliberate blast radius is measured rather than silent.
 """
 
 from __future__ import annotations
@@ -129,7 +142,7 @@ SIPP_CHILD_DISABILITY_SOURCE_COLUMNS: tuple[str, ...] = (
     "TAGE",
     "ESEX",
     "TPTOTINC",
-    "RSSI_YRYN",
+    "RSSI_MNYN",
     *_OUTCOME_SOURCE_COLUMNS,
 )
 SIPP_CHILD_DISABILITY_MODEL_PREDICTORS: tuple[str, ...] = (
@@ -159,9 +172,9 @@ _PINNED_AGE_5_14_WEIGHT = 40_772_887.197600
 _PINNED_ANY_ITEM_ROWS = 495
 _PINNED_ANY_ITEM_WEIGHT = 4_495_348.941131
 _PINNED_ANY_ITEM_RATE = 0.110253387732
-_PINNED_AGE_5_14_SSI_ROWS = 72
-_PINNED_AGE_5_14_SSI_WEIGHT = 731_162.270423
-_PINNED_AGE_5_14_SSI_RATE = 0.017932560598
+_PINNED_AGE_5_14_MONTHLY_SSI_ROWS = 70
+_PINNED_AGE_5_14_MONTHLY_SSI_WEIGHT = 698_957.560971
+_PINNED_AGE_5_14_MONTHLY_SSI_RATE = 0.017142704601
 _PINNED_AGE_0_4_ROWS = 1_654
 _PINNED_AGE_0_4_WEIGHT = 17_166_422.199210
 _PINNED_FLOAT_RTOL = 1e-10
@@ -169,21 +182,28 @@ _PINNED_FLOAT_RTOL = 1e-10
 # Carry SIPP's observed functional-disability / SSI-receipt relationship into
 # the youngest band after replacing the SIPP receipt prevalence with #453's
 # explicit SSA caseload allocation:
-#   0.110253387732 * [(240,000 / 17,166,422.199210) / 0.017932560598]
+#   0.110253387732 * [(240,000 / 17,166,422.199210) / 0.017142704601]
+# The receipt denominator is the December monthly concept matching SSA's
+# monthly table:
+#   MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1,
+#   weighted by WPFINWGT.
+# The pinned pu2023.csv query yields 70 recipient rows with weighted mass
+# 698,957.560971 over 40,772,887.197600 age-5--14 person-weight.
 # This is a calibration choice, not a survey estimate or statutory threshold.
 US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE = round(
     _PINNED_ANY_ITEM_RATE
     * (
         (SSA_SSI_AGE_0_4_CASELOAD_TARGET / _PINNED_AGE_0_4_WEIGHT)
-        / _PINNED_AGE_5_14_SSI_RATE
+        / _PINNED_AGE_5_14_MONTHLY_SSI_RATE
     ),
     12,
 )
 
 # The 5--14 gate directly brackets the SIPP any-item observation.  The 0--4
-# band brackets the explicit target generously enough for finite seeded draws.
+# band preserves the reviewed +/-1.5 percentage-point finite-draw tolerance
+# around the corrected monthly-concept target.
 US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND = (0.10, 0.13)
-US_CHILD_DISABILITY_AGE_0_4_SHARE_BAND = (0.07, 0.10)
+US_CHILD_DISABILITY_AGE_0_4_SHARE_BAND = (0.075, 0.105)
 
 SIPP_CHILD_DISABILITY_READ_PARAMETERS: dict[str, object] = {
     "table": "sipp_person",
@@ -217,7 +237,10 @@ SIPP_CHILD_DISABILITY_AGE_0_4_PARAMETERS: dict[str, object] = {
     "ssa_age_0_4_caseload_target": SSA_SSI_AGE_0_4_CASELOAD_TARGET,
     "ssa_source": SSA_SSI_MONTHLY_MAY_2024_URL,
     "sipp_any_item_rate_age_5_14": _PINNED_ANY_ITEM_RATE,
-    "sipp_ssi_receipt_rate_age_5_14": _PINNED_AGE_5_14_SSI_RATE,
+    "sipp_monthly_ssi_receipt_rate_age_5_14": (_PINNED_AGE_5_14_MONTHLY_SSI_RATE),
+    "sipp_monthly_ssi_receipt_query": (
+        "MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1, weighted by WPFINWGT"
+    ),
     "sipp_weighted_population_age_0_4": _PINNED_AGE_0_4_WEIGHT,
     "assignment": "seeded_bernoulli_by_person_source_id",
     "seed_from_build_config": True,
@@ -281,17 +304,27 @@ def us_child_disability_stage_spec() -> SourceStageSpec:
 def resolve_sipp_2023_child_disability_donor(
     path: str | Path | None = None,
 ) -> Path:
-    """Resolve an explicit path, the requested local file, then the pin.
+    """Resolve an explicit path, a verified local file, then the pinned fetch.
 
-    The returned path is verified by
-    :func:`load_sipp_2023_child_disability_donor`; this helper only chooses the
-    source so the 3.73 GB file is not hashed twice.
+    Explicit paths fail closed in the loader so a caller typo is never hidden.
+    The hard-coded developer fast path is only preferred when both its byte
+    length and SHA-256 match the immutable artifact.  A missing, stale, or
+    unreadable local file falls through to the shared pinned donor chain.
     """
 
     if path is not None:
         return Path(path).expanduser()
-    if SIPP_2023_CHILD_DISABILITY_LOCAL_PATH.is_file():
-        return SIPP_2023_CHILD_DISABILITY_LOCAL_PATH
+    local_path = SIPP_2023_CHILD_DISABILITY_LOCAL_PATH
+    try:
+        local_is_pinned = (
+            local_path.is_file()
+            and local_path.stat().st_size == SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES
+            and _sha256_file(local_path) == SIPP_2023_CHILD_DISABILITY_DONOR_SHA256
+        )
+    except OSError:
+        local_is_pinned = False
+    if local_is_pinned:
+        return local_path
     return fetch_sipp_2023_voluntary_filing_donor()
 
 
@@ -313,7 +346,7 @@ def _assert_pinned_audit(audit: dict[str, int | float]) -> None:
         "december_rows": _PINNED_DECEMBER_ROWS,
         "age_5_14_rows": _PINNED_AGE_5_14_ROWS,
         "any_item_rows": _PINNED_ANY_ITEM_ROWS,
-        "age_5_14_ssi_rows": _PINNED_AGE_5_14_SSI_ROWS,
+        "age_5_14_monthly_ssi_rows": _PINNED_AGE_5_14_MONTHLY_SSI_ROWS,
         "age_0_4_rows": _PINNED_AGE_0_4_ROWS,
     }
     mismatches: dict[str, tuple[int | float, int | float]] = {
@@ -325,8 +358,8 @@ def _assert_pinned_audit(audit: dict[str, int | float]) -> None:
         "age_5_14_weight": _PINNED_AGE_5_14_WEIGHT,
         "any_item_weight": _PINNED_ANY_ITEM_WEIGHT,
         "any_item_rate": _PINNED_ANY_ITEM_RATE,
-        "age_5_14_ssi_weight": _PINNED_AGE_5_14_SSI_WEIGHT,
-        "age_5_14_ssi_rate": _PINNED_AGE_5_14_SSI_RATE,
+        "age_5_14_monthly_ssi_weight": _PINNED_AGE_5_14_MONTHLY_SSI_WEIGHT,
+        "age_5_14_monthly_ssi_rate": _PINNED_AGE_5_14_MONTHLY_SSI_RATE,
         "age_0_4_weight": _PINNED_AGE_0_4_WEIGHT,
     }
     for key, expected in expected_floats.items():
@@ -434,7 +467,7 @@ def load_sipp_2023_child_disability_donor(
         [_numeric(december, column).eq(1.0) for column in _OUTCOME_SOURCE_COLUMNS]
     )
     any_item = outcome_matrix.any(axis=1)
-    received_ssi = _numeric(december, "RSSI_YRYN").eq(1.0).to_numpy()
+    received_monthly_ssi = _numeric(december, "RSSI_MNYN").eq(1.0).to_numpy()
     age_5_14 = age.between(_MIN_MODEL_AGE, _MAX_MODEL_AGE, inclusive="both")
     age_0_4 = age.between(0, _MAX_YOUNGEST_AGE, inclusive="both")
     model_eligible = age_5_14 & weight.gt(0.0)
@@ -457,7 +490,7 @@ def load_sipp_2023_child_disability_donor(
 
     band_weight = float(weight.loc[age_5_14].sum())
     positive_weight = float(weight.loc[age_5_14 & any_item].sum())
-    ssi_weight = float(weight.loc[age_5_14 & received_ssi].sum())
+    monthly_ssi_weight = float(weight.loc[age_5_14 & received_monthly_ssi].sum())
     audit: dict[str, int | float] = {
         "raw_rows": raw_rows,
         "december_rows": len(december),
@@ -466,9 +499,11 @@ def load_sipp_2023_child_disability_donor(
         "any_item_rows": int(np.count_nonzero(age_5_14.to_numpy() & any_item)),
         "any_item_weight": positive_weight,
         "any_item_rate": positive_weight / band_weight,
-        "age_5_14_ssi_rows": int(np.count_nonzero(age_5_14.to_numpy() & received_ssi)),
-        "age_5_14_ssi_weight": ssi_weight,
-        "age_5_14_ssi_rate": ssi_weight / band_weight,
+        "age_5_14_monthly_ssi_rows": int(
+            np.count_nonzero(age_5_14.to_numpy() & received_monthly_ssi)
+        ),
+        "age_5_14_monthly_ssi_weight": monthly_ssi_weight,
+        "age_5_14_monthly_ssi_rate": monthly_ssi_weight / band_weight,
         "age_0_4_rows": int(age_0_4.sum()),
         "age_0_4_weight": float(weight.loc[age_0_4].sum()),
     }
@@ -769,7 +804,7 @@ def with_us_child_disability_inputs(
     time_period: int,
     sipp_donor: pd.DataFrame,
 ) -> Frame:
-    """Augment ``is_disabled`` for ages 0--14 from SIPP and the SSA target."""
+    """Augment under-15 ``is_disabled`` without writing the adult slice."""
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US child-disability inputs require the US schema.")
@@ -781,9 +816,16 @@ def with_us_child_disability_inputs(
     current_numeric = pd.to_numeric(person[_OUTPUT], errors="coerce").to_numpy(
         np.float64
     )
-    if not (np.isfinite(current_numeric) & np.isin(current_numeric, [0.0, 1.0])).all():
-        raise ValueError("US child-disability input is_disabled must be boolean.")
-    current = current_numeric.astype(bool)
+    under_15 = (age >= 0.0) & (age <= _MAX_MODEL_AGE)
+    valid_child = np.isfinite(current_numeric) & np.isin(current_numeric, [0.0, 1.0])
+    if not valid_child[under_15].all():
+        raise ValueError(
+            "US child-disability input is_disabled must be boolean for under-15 rows."
+        )
+    # Adult storage is outside this stage's ownership.  Keep an internal
+    # child-only boolean vector and never normalize or assign the adult slice.
+    current = np.zeros(len(person), dtype=bool)
+    current[under_15] = current_numeric[under_15].astype(bool)
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     if not (np.isfinite(weights) & (weights >= 0.0)).all():
         raise ValueError("US child-disability person weights must be nonnegative.")
@@ -829,13 +871,13 @@ def with_us_child_disability_inputs(
     result[age_0_4] |= draws_0_4 < probability_0_4
 
     # The operation is additive: no pre-existing True is ever cleared.
-    if np.any(current & ~result):
+    if np.any(current[under_15] & ~result[under_15]):
         raise AssertionError("Child-disability stage cleared an existing True value.")
-    if np.array_equal(current, result):
+    if np.array_equal(current[under_15], result[under_15]):
         return frame
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables["person"][_OUTPUT] = result.astype(bool)
+    tables["person"].loc[under_15, _OUTPUT] = result[under_15]
     adult = age >= 15.0
     if not tables["person"].loc[adult].equals(person.loc[adult]):
         raise AssertionError("Child-disability stage changed a row aged 15 or over.")
@@ -857,6 +899,7 @@ def us_child_disability_summary(frame: Frame) -> dict[str, object]:
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     if not (np.isfinite(weights) & (weights >= 0.0)).all():
         raise ValueError("Child-disability gate weights must be nonnegative.")
+    owned = (age >= 0.0) & (age <= _MAX_MODEL_AGE)
     finite_boolean = np.isfinite(values) & np.isin(values, [0.0, 1.0])
     disabled = finite_boolean & (values == 1.0)
 
@@ -882,9 +925,11 @@ def us_child_disability_summary(frame: Frame) -> dict[str, object]:
         "age_5_14_unique_count": unique_5_14,
         "age_5_14_sipp_observed_rate": _PINNED_ANY_ITEM_RATE,
         "age_5_14_share_band": list(US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND),
-        "missing_or_nonfinite_count": int(np.count_nonzero(~np.isfinite(values))),
+        "missing_or_nonfinite_count": int(
+            np.count_nonzero(owned & ~np.isfinite(values))
+        ),
         "invalid_boolean_count": int(
-            np.count_nonzero(np.isfinite(values) & ~finite_boolean)
+            np.count_nonzero(owned & np.isfinite(values) & ~finite_boolean)
         ),
     }
 
@@ -962,6 +1007,26 @@ def us_child_disability_signal_gate(
         if not adult_unchanged:
             failures.append("age 15+: output rows differ from the stage input.")
     details = dict(summary)
+    if input_frame is not None:
+        input_summary = us_child_disability_summary(input_frame)
+        details["weighted_child_is_disabled_share_change"] = {
+            "age_0_4": {
+                "before": input_summary["age_0_4_disabled_share"],
+                "after": summary["age_0_4_disabled_share"],
+                "absolute_change": (
+                    float(summary["age_0_4_disabled_share"])
+                    - float(input_summary["age_0_4_disabled_share"])
+                ),
+            },
+            "age_5_14": {
+                "before": input_summary["age_5_14_disabled_share"],
+                "after": summary["age_5_14_disabled_share"],
+                "absolute_change": (
+                    float(summary["age_5_14_disabled_share"])
+                    - float(input_summary["age_5_14_disabled_share"])
+                ),
+            },
+        }
     details["age_15_plus_unchanged"] = adult_unchanged
     return GateResult(
         name="child_disability_signal",

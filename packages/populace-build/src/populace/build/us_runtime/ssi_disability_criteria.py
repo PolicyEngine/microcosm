@@ -19,9 +19,18 @@ The source transform also retains two distinctions that are easy to lose:
 The extended-CPS pipeline predicted its ASEC and PUF-support people separately,
 because the latter carried separately imputed income and asset predictors.  We
 do the same.  Direct under-65 ASEC ``SSI_VAL`` reporters are then preserved as
-positive anchors; that anchor is not copied onto the PUF channel.  An arbitrary
-pre-existing criterion column is never trusted: every run recomputes the full
-source-backed surface and uses an equality check only for idempotent return.
+positive anchors; that anchor is not copied onto the PUF channel.
+
+This stage remains the sole owner of ``meets_ssi_disability_criteria``.  After
+the adult SIPP/QRF pass, it replaces the under-15 slice with the upstream
+``child_disability`` stage's ``is_disabled`` assignment.  That stage runs
+first in the fiscal builder and owns the stable seeded draw; consuming its
+boolean here makes child SSI use the exact same decision without a second
+draw or overlapping output ownership.  Ages 15+ retain the archived
+SIPP/QRF, disability-signal screen, and reporter-anchor contract.  An
+arbitrary pre-existing criterion column is never trusted: every run
+recomputes this complete source-backed surface and uses an equality check
+only for idempotent return.
 
 The full 2023 SIPP public-use file is the same immutable 3.73 GB artifact
 already pinned by the vehicle and voluntary-filing stages.  It contains 39,513
@@ -292,6 +301,7 @@ SIPP_SSI_DISABILITY_FIT_PARAMETERS: dict[str, object] = {
         "has_disability_income",
     ],
     "preserve_under_65_asec_ssi_reporters": True,
+    "consume_under_15_is_disabled": True,
 }
 
 
@@ -1051,7 +1061,7 @@ def with_us_ssi_disability_criteria(
     sipp_donor: pd.DataFrame,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
 ) -> Frame:
-    """Recompute and materialize the source-backed person input."""
+    """Recompute the adult criterion and consume upstream child assignment."""
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US SSI disability criteria require the US schema.")
@@ -1064,6 +1074,24 @@ def with_us_ssi_disability_criteria(
         n_estimators=int(n_estimators),
     )
     person = frame.table("person")
+    if "is_disabled" not in person:
+        raise ValueError(
+            "US SSI disability criteria require upstream person.is_disabled."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    child = np.isfinite(age) & (age >= 0.0) & (age < 15.0)
+    child_disabled = pd.to_numeric(person["is_disabled"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid_child = np.isfinite(child_disabled) & np.isin(child_disabled, [0.0, 1.0])
+    if not valid_child[child].all():
+        raise ValueError(
+            "US SSI disability criteria require boolean is_disabled for under-15 rows."
+        )
+    # The child stage owns this exact stable seeded assignment.  Replace,
+    # rather than re-draw or independently predict, the QRF result below 15.
+    predicted = predicted.copy()
+    predicted.loc[child] = child_disabled[child].astype(bool)
     if _OUTPUT in person:
         current = pd.to_numeric(person[_OUTPUT], errors="coerce").to_numpy(
             dtype=np.float64

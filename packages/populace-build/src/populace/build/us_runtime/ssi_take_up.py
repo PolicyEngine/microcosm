@@ -37,7 +37,8 @@ release when an enforced band's delivered recipients miss the ledger target
 beyond :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE`, forcing
 threshold recomputation exactly once from the failed attempt's delivered
 weights. The under-18 band stays honestly fenced (scorecard-only) until the
-SIPP child qualifying-disability stage lands (populace#453/#509).
+SIPP child qualifying-disability stage lands (populace#453/#509).  That stage
+is now in the fiscal build, so all three age bands are release-enforced.
 
 The band targets are the SSA federal-payment universe (Σ = 7,289,843 in
 December 2024). The separate SSA by-area 7,404,820 count is the broader
@@ -164,13 +165,15 @@ _PRIOR_BASIS_KINDS = (
 #: Age bands whose delivered weighted recipients must land within
 #: :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE` of the ledger
 #: target on release weights, or the release fails
-#: (:func:`us_ssi_take_up_delivery_gate`). ``under_18`` is deliberately
-#: fenced: certified support carries no child qualifying-disability signal
-#: yet (Build N candidate capacity 177,582 against the 1,001,922 target), so
-#: enforcing it would reward saturation, not truth. The fence lifts as a
-#: deliberate roster edit when the SIPP child-disability stage lands
-#: (populace#453 / PR #509) — never as a side effect.
-US_SSI_TAKE_UP_ENFORCED_BAND_KEYS: tuple[str, ...] = ("18_64", "65_plus")
+#: (:func:`us_ssi_take_up_delivery_gate`). ``under_18`` is deliberately added
+#: by the child-disability lane (populace#453 / PR #509): the upstream stage
+#: now supplies qualifying child support, so the former scorecard-only fence
+#: is no longer truthful.
+US_SSI_TAKE_UP_ENFORCED_BAND_KEYS: tuple[str, ...] = (
+    "under_18",
+    "18_64",
+    "65_plus",
+)
 
 #: Relative envelope for the enforced-band delivery gate. Builds with
 #: truthful thresholds land the adult bands within ~2% of the SSA counts
@@ -1444,8 +1447,8 @@ def us_ssi_take_up_delivery_gate(
     ``--ssi-take-up-prior-weight-basis`` pointing at this attempt's
     ``us_ssi_take_up.json``, recomputing the thresholds exactly once from
     the delivered weights. There is no in-build reconcile loop and no
-    per-target knob (populace#492). The under-18 band stays fenced pending
-    populace#453/#509 and is reported in the details, never enforced.
+    per-target knob (populace#492). All three SSA age bands are enforced now
+    that populace#453/#509 supplies child qualifying-disability support.
     """
 
     expected_targets = _normalize_targets(targets)
@@ -1501,11 +1504,8 @@ def us_ssi_take_up_delivery_gate(
                 {
                     **summary,
                     "fence": (
-                        "Fenced pending the SIPP child qualifying-disability "
-                        "stage (populace#453 / PR #509): certified support "
-                        "cannot truthfully carry the child band yet, so its "
-                        "miss ships in the scorecard — never as "
-                        "saturation-as-success."
+                        "This age band is outside the explicit release-"
+                        "enforcement roster and remains scorecard-only."
                     ),
                 }
             )

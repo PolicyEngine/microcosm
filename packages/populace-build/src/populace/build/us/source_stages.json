@@ -1117,13 +1117,14 @@
             "social_security_disability",
             "has_disability_income"
           ],
-          "preserve_under_65_asec_ssi_reporters": true
+          "preserve_under_65_asec_ssi_reporters": true,
+          "consume_under_15_is_disabled": true
         }
       ],
       "outputs": [
         "meets_ssi_disability_criteria"
       ],
-      "notes": "Exact final retired eCPS SSI disability-criterion method at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 63-105 and 404-428 define the output, nineteen predictors, source columns, and allocation flags; lines 541-562 require observed receipt and, for recipients, observed benefit reason; lines 565-630 apply the source-time SSI resource, countable-income, and SGA candidate screen; lines 633-703 construct December labels and predictors; lines 724-795 require a measured difficulty, SSDI, or disability-income signal after prediction; and lines 892-949 perform the fixed weighted bootstrap and QRF fit. The immutable donor yields 9,346 candidates (577 positive, 8,769 negative), 88,690,359.47893329 of total source weight, and a 0.05566746987074994 weighted true share. Its archived fixed WPFINWGT bootstrap seed 8386123572872638692 resamples 9,346 rows with replacement (5,314 unique source rows; 524 positive) before an unweighted 100-tree MicroImpute QRF with model seed 42. datasets/cps/cps.py lines 2853-2886 and calibration/source_impute.py lines 869-990 predict the ASEC receiver and preserve direct under-65 ASEC SSI reporters. datasets/cps/extended_cps.py lines 140-170, 392-424, and 981-992 separately predict PUF-support people from their imputed income, asset, and disability-signal inputs; the ASEC reporter anchor is never copied to PUF support."
+      "notes": "Exact final retired eCPS SSI disability-criterion method at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 63-105 and 404-428 define the output, nineteen predictors, source columns, and allocation flags; lines 541-562 require observed receipt and, for recipients, observed benefit reason; lines 565-630 apply the source-time SSI resource, countable-income, and SGA candidate screen; lines 633-703 construct December labels and predictors; lines 724-795 require a measured difficulty, SSDI, or disability-income signal after prediction; and lines 892-949 perform the fixed weighted bootstrap and QRF fit. The immutable donor yields 9,346 candidates (577 positive, 8,769 negative), 88,690,359.47893329 of total source weight, and a 0.05566746987074994 weighted true share. Its archived fixed WPFINWGT bootstrap seed 8386123572872638692 resamples 9,346 rows with replacement (5,314 unique source rows; 524 positive) before an unweighted 100-tree MicroImpute QRF with model seed 42. datasets/cps/cps.py lines 2853-2886 and calibration/source_impute.py lines 869-990 predict the ASEC receiver and preserve direct under-65 ASEC SSI reporters. datasets/cps/extended_cps.py lines 140-170, 392-424, and 981-992 separately predict PUF-support people from their imputed income, asset, and disability-signal inputs; the ASEC reporter anchor is never copied to PUF support. Populace extends this output-owner contract below age 15 by replacing the QRF slice with the preceding child_disability stage's exact seeded is_disabled assignment; ages 15+ retain the archived method."
     },
     {
       "stage": "sipp_head_start",
@@ -2030,7 +2031,7 @@
             "TAGE",
             "ESEX",
             "TPTOTINC",
-            "RSSI_YRYN",
+            "RSSI_MNYN",
             "ECOGNIT",
             "EHEARING",
             "ESEEING",
@@ -2059,13 +2060,14 @@
         {
           "kind": "assign_binary_from_rate",
           "age_domain": [0, 4],
-          "rate": 0.085956967972,
+          "rate": 0.089917464767,
           "rate_role": "calibration_target_not_survey_observation",
           "ssa_under_18_recipient_target": 983176,
           "ssa_age_0_4_caseload_target": 240000,
           "ssa_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-05/table01.html",
           "sipp_any_item_rate_age_5_14": 0.110253387732,
-          "sipp_ssi_receipt_rate_age_5_14": 0.017932560598,
+          "sipp_monthly_ssi_receipt_rate_age_5_14": 0.017142704601,
+          "sipp_monthly_ssi_receipt_query": "MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1, weighted by WPFINWGT",
           "sipp_weighted_population_age_0_4": 17166422.19921,
           "assignment": "seeded_bernoulli_by_person_source_id",
           "seed_from_build_config": true
@@ -2074,7 +2076,7 @@
       "outputs": [
         "is_disabled"
       ],
-      "notes": "Additive child-disability repair for populace#453. The December SIPP donor observes the five functional-difficulty items for ages 5-14; their weighted any-item rate is 11.0253%. A survey-weighted logistic classifier uses only age, sex, and a residence-level annual-income proxy, summing TPTOTINC only for age-15+ residence members to exclude the under-15 SSI-conditioned personal-income field. Predictions are calibrated to the SIPP rate and assigned by stable seeded Bernoulli. Ages 0-4 use the explicit 8.5957% target obtained by carrying SIPP's age-5-14 any-item/SSI-receipt ratio into the 240,000 youngest-band caseload allocation. That 240,000 allocation is a model target, not an observed SSA monthly-table subtotal. Existing True values are preserved and ages 15+ remain byte-identical to the ASEC eligibility-input stage."
+      "notes": "Additive child-disability repair for populace#453. The December SIPP donor observes the five functional-difficulty items for ages 5-14; their weighted any-item rate is 11.0253%. A survey-weighted logistic classifier uses only age, sex, and a residence-level annual-income proxy, summing TPTOTINC only for age-15+ residence members to exclude the under-15 SSI-conditioned personal-income field. Predictions are calibrated to the SIPP rate and assigned by stable seeded Bernoulli. Ages 0-4 use the explicit 8.991746% target obtained by carrying SIPP's age-5-14 any-item/monthly-SSI-receipt ratio into the 240,000 youngest-band caseload allocation. The pinned query is December (MONTHCODE == 12), ages 5-14, RSSI_MNYN == 1, weighted by WPFINWGT: 70 rows and 698,957.560971 weighted recipients over 40,772,887.197600 person-weight. That monthly receipt concept matches the cited SSA monthly table; the 240,000 allocation remains a model target, not an observed SSA subtotal. Existing child True values are preserved and writes are restricted to under-15 rows, leaving adult stored values untouched. The later ssi_disability_criteria output owner consumes the same child assignment so SSI receives no second draw. Generic is_disabled intentionally informs HUD housing, SNAP, Medicaid, TANF, child-care assistance, and tax program families; the stage gate records weighted before/after shares."
     },
     {
       "stage": "pregnancy",
