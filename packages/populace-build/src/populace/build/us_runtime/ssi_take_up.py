@@ -186,6 +186,29 @@ _MEASUREMENT_PHASES = (
 #: (populace#507 sol review finding 6).
 _PRIOR_EPSILON = 1e-9
 
+
+def _checked_int(value: object, *, default: int) -> int:
+    """Coerce a diagnostics integer; malformed values take the failing default.
+
+    Gates return failed :class:`GateResult`s — they never raise out of the
+    release flow on a malformed payload (sol review round 2, finding 8).
+    """
+
+    try:
+        return int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return default
+
+
+def _finite_float(value: object) -> float:
+    """Coerce a diagnostics number; malformed values become NaN and fail."""
+
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 #: Age bands whose delivered weighted recipients must land within
 #: :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE` of the ledger
 #: target on release weights, or the release fails
@@ -663,14 +686,16 @@ def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
 
     if capacity <= 0:
         return 0.0
-    if capacity <= target:
-        return min(reporter_floor / capacity, 1.0)
+    # Anchors-meet-target outranks the saturation fallback: at the
+    # degenerate capacity == target == floor corner the fallback would
+    # return floor/capacity == 1.0 — a constant, count-overshooting band —
+    # when zero non-anchor draws is the truthful answer (sol review round
+    # 2, finding 4).
     if reporter_floor >= target:
         return 0.0
-    non_anchor_capacity = capacity - reporter_floor
-    if non_anchor_capacity <= 0:  # pragma: no cover - floor<target<=capacity
-        return 0.0
-    return (target - reporter_floor) / non_anchor_capacity
+    if capacity <= target:
+        return min(reporter_floor / capacity, 1.0)
+    return (target - reporter_floor) / (capacity - reporter_floor)
 
 
 def _current_frame_prior_basis(source: pd.DataFrame) -> SSITakeUpPriorBasis:
@@ -1329,15 +1354,15 @@ def us_ssi_take_up_gate(
                 "SSI take-up release-artifact prior weight basis carries an "
                 "unknown source schema version."
             )
-    if int(diagnostics.get("missing_or_invalid_count", -1)) != 0:
+    if _checked_int(diagnostics.get("missing_or_invalid_count"), default=-1) != 0:
         failures.append("SSI take-up output contains missing or invalid values.")
-    if int(diagnostics.get("unique_count", 0)) < 2:
+    if _checked_int(diagnostics.get("unique_count"), default=0) < 2:
         failures.append("SSI take-up output is constant and carries no signal.")
-    if int(diagnostics.get("reporter_anchor_lost_count", -1)) != 0:
+    if _checked_int(diagnostics.get("reporter_anchor_lost_count"), default=-1) != 0:
         failures.append("SSI take-up lost one or more direct ASEC reporter anchors.")
-    if int(diagnostics.get("source_identity_mismatch_count", -1)) != 0:
+    if _checked_int(diagnostics.get("source_identity_mismatch_count"), default=-1) != 0:
         failures.append("SSI take-up support rows disagree within a source identity.")
-    if int(diagnostics.get("bernoulli_law_violation_count", -1)) != 0:
+    if _checked_int(diagnostics.get("bernoulli_law_violation_count"), default=-1) != 0:
         failures.append(
             "SSI take-up persisted flags violate the seeded Bernoulli law "
             "(anchored, or draw below the documented assignment prior)."
@@ -1356,11 +1381,11 @@ def us_ssi_take_up_gate(
         values = channels.get(channel)
         if not isinstance(values, Mapping):
             continue
-        if int(values.get("rows", 0)) <= 0:
+        if _checked_int(values.get("rows"), default=0) <= 0:
             failures.append(f"SSI take-up channel {channel!r} has no rows.")
-        if int(values.get("unique_count", 0)) < 2:
+        if _checked_int(values.get("unique_count"), default=0) < 2:
             failures.append(f"SSI take-up channel {channel!r} is constant.")
-        share = float(values.get("weighted_true_share", np.nan))
+        share = _finite_float(values.get("weighted_true_share", np.nan))
         if not np.isfinite(share) or not 0 < share < 1:
             failures.append(
                 f"SSI take-up channel {channel!r} has an invalid weighted share."
@@ -1387,26 +1412,30 @@ def us_ssi_take_up_gate(
         row = by_key.get(key)
         if row is None:
             continue
-        recorded_target = float(row.get("target", np.nan))
+        recorded_target = _finite_float(row.get("target", np.nan))
         if not np.isclose(recorded_target, target, rtol=0.0, atol=1e-6):
             failures.append(
                 f"SSI take-up age band {key!r} target {recorded_target} does "
                 f"not match {target}."
             )
             continue
-        capacity = float(row.get("candidate_capacity", np.nan))
-        floor = float(row.get("reporter_candidate_floor", np.nan))
-        selected = float(row.get("selected_recipient_weight", np.nan))
-        signed_error = float(row.get("signed_target_error", np.nan))
-        shortfall = float(row.get("target_shortfall", np.nan))
-        anchor_excess = float(row.get("anchor_excess", np.nan))
-        prior = float(row.get("assignment_prior", np.nan))
-        basis_capacity = float(row.get("prior_basis_candidate_capacity", np.nan))
-        basis_floor = float(row.get("prior_basis_reporter_candidate_floor", np.nan))
-        recomputed_prior = float(
+        capacity = _finite_float(row.get("candidate_capacity", np.nan))
+        floor = _finite_float(row.get("reporter_candidate_floor", np.nan))
+        selected = _finite_float(row.get("selected_recipient_weight", np.nan))
+        signed_error = _finite_float(row.get("signed_target_error", np.nan))
+        shortfall = _finite_float(row.get("target_shortfall", np.nan))
+        anchor_excess = _finite_float(row.get("anchor_excess", np.nan))
+        prior = _finite_float(row.get("assignment_prior", np.nan))
+        basis_capacity = _finite_float(
+            row.get("prior_basis_candidate_capacity", np.nan)
+        )
+        basis_floor = _finite_float(
+            row.get("prior_basis_reporter_candidate_floor", np.nan)
+        )
+        recomputed_prior = _finite_float(
             row.get("prior_recomputed_from_current_weights", np.nan)
         )
-        max_weight = float(row.get("max_source_candidate_weight", np.nan))
+        max_weight = _finite_float(row.get("max_source_candidate_weight", np.nan))
         numeric_values = (
             capacity,
             floor,
@@ -1492,18 +1521,18 @@ def us_ssi_take_up_gate(
             )
 
     expected_total = float(sum(expected_targets.values()))
-    recorded_total = float(diagnostics.get("target_total", np.nan))
+    recorded_total = _finite_float(diagnostics.get("target_total", np.nan))
     if not np.isclose(recorded_total, expected_total, rtol=0.0, atol=1e-6):
         failures.append(
             "SSI take-up aggregate target is not the sum of its disjoint age bands."
         )
     selected_total = float(
         sum(
-            float(row.get("selected_recipient_weight", np.nan))
+            _finite_float(row.get("selected_recipient_weight", np.nan))
             for row in by_key.values()
         )
     )
-    recorded_selected_total = float(
+    recorded_selected_total = _finite_float(
         diagnostics.get("selected_recipient_weight_total", np.nan)
     )
     if not np.isclose(
@@ -1514,9 +1543,14 @@ def us_ssi_take_up_gate(
     ):
         failures.append("SSI take-up aggregate selected count drifted from age bands.")
     shortfall_total = float(
-        sum(float(row.get("target_shortfall", np.nan)) for row in by_key.values())
+        sum(
+            _finite_float(row.get("target_shortfall", np.nan))
+            for row in by_key.values()
+        )
     )
-    recorded_shortfall_total = float(diagnostics.get("target_shortfall_total", np.nan))
+    recorded_shortfall_total = _finite_float(
+        diagnostics.get("target_shortfall_total", np.nan)
+    )
     if not np.isclose(
         recorded_shortfall_total,
         shortfall_total,

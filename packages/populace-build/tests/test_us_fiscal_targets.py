@@ -1430,6 +1430,39 @@ def test_ssa_ssi_by_age_row_with_unknown_groupby_fails_closed() -> None:
         )
 
 
+def test_ssa_ssi_by_age_row_with_noncanonical_operators_fails_closed() -> None:
+    # sol round 2, finding 7: _age_bounds erases operator strictness and the
+    # materializer applies lower <= age < upper — a row spelled "> 18" /
+    # "<= 65" would silently bind a different stratum than its face value.
+    with pytest.raises(ValueError, match="non-canonical age constraint"):
+        compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                _ssa_ssi_by_age_fact(
+                    groupby_value_id="age_18_to_64",
+                    value=3_905_779,
+                    universe_constraints=[
+                        {
+                            "operator": ">",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 18,
+                            "variable": "age",
+                        },
+                        {
+                            "operator": "<=",
+                            "role": "filter",
+                            "unit": "years",
+                            "value": 65,
+                            "variable": "age",
+                        },
+                    ],
+                ),
+            ],
+            allow_unaged_dollar_targets=True,
+        )
+
+
 def test_ssa_ssi_by_age_row_with_mismatched_bounds_fails_closed() -> None:
     # A band id whose first-class age constraints disagree with it is a
     # corrupted upstream fact; refusing beats binding the wrong stratum.

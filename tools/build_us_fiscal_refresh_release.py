@@ -300,6 +300,13 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "policyengine_us_version",
     "target_period",
     "congressional_district_vintage_crosswalk_sha256",
+    # The frozen SSI take-up assignment is a base-frame input to every
+    # materialized vector. Whether any JCT reform income-tax estimate can
+    # actually move with takes_up_ssi_if_eligible is an engine-graph
+    # question this build must not answer by assumption, so the digest
+    # invalidates reform vectors too — correctness over cache warmth
+    # (populace#507/#508 sol review round 2, finding 2).
+    "ssi_take_up_assignment_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 2: the medicaid_take_up stage (populace #331) changed base_frame's
@@ -5526,10 +5533,18 @@ def _enforce_ssi_take_up_delivery(
             diagnostics,
             release_dir / "us_ssi_take_up.json",
         )
+        # The written artifact IS the retry's basis; its sha256 is the
+        # required --ssi-take-up-prior-weight-basis-sha256 pin, so the
+        # failure itself hands the operator both halves of the remedy (a
+        # failed attempt never reaches the release manifest that would
+        # otherwise carry the hash).
+        failed_basis_sha256 = hashlib.sha256(
+            failed_basis_path.read_bytes()
+        ).hexdigest()
         failures.append(
             "SSI take-up delivered-weight prior basis written to "
-            f"{failed_basis_path} for the --ssi-take-up-prior-weight-basis "
-            "retry."
+            f"{failed_basis_path} (sha256 {failed_basis_sha256}) for the "
+            "--ssi-take-up-prior-weight-basis retry."
         )
     except Exception as error:
         failures.append(

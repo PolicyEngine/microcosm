@@ -3984,6 +3984,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured.setdefault("ssi_take_up_gate_calls", []).append(
             {"diagnostics": diagnostics, "targets": dict(targets)}
         )
+        captured.setdefault("ssi_event_order", []).append("integrity_gate")
         return builder.GateResult(
             name="ssi_take_up",
             passed=True,
@@ -4333,6 +4334,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # the delivery failure reaches the diagnostics artifact and the
         # terminal batch while other gates also fail, and that the basis
         # artifact is written for the retry.
+        captured.setdefault("ssi_event_order", []).append("delivery_gate")
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=False,
@@ -4344,6 +4346,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder,
         "us_ssi_take_up_delivery_gate",
         fake_ssi_delivery_gate,
+    )
+
+    real_ssi_write = builder.write_us_ssi_take_up_diagnostics
+
+    def recording_ssi_write(diagnostics, path):
+        captured.setdefault("ssi_event_order", []).append(f"write:{Path(path).name}")
+        return real_ssi_write(diagnostics, path)
+
+    monkeypatch.setattr(
+        builder,
+        "write_us_ssi_take_up_diagnostics",
+        recording_ssi_write,
     )
     monkeypatch.setattr(
         builder,
@@ -4601,6 +4615,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
         == "ssi-digest-sentinel"
     )
+    # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
+    # the #548 batched terminal gates): the final measurement hits disk
+    # BEFORE the final integrity gate runs, so an integrity+delivery
+    # cofailure still leaves the retry basis; the deliberately-failing
+    # delivery gate then rewrites the same artifact inside the enforce
+    # helper (its failure line carries the sha pin).
+    assert captured["ssi_event_order"] == [
+        "integrity_gate",  # stage diagnostics, at assignment time
+        "write:us_ssi_take_up.json",  # final measurement, written first
+        "integrity_gate",  # persisted-flag recheck on the export frame
+        "delivery_gate",  # enforced-band delivery, after the artifact exists
+        "write:us_ssi_take_up.json",  # enforce rewrites the retry basis
+    ]
     assert captured["final_medicaid_diagnostics_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
@@ -8722,8 +8749,16 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     assert failures
     assert all(failure.startswith("SSI take-up deliver") for failure in failures)
     assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
-    written = json.loads((release_dir / "us_ssi_take_up.json").read_text())
+    written_path = release_dir / "us_ssi_take_up.json"
+    written = json.loads(written_path.read_text())
     assert written == diagnostics
+    # The failure itself hands the operator BOTH halves of the retry remedy:
+    # the artifact path and its sha256 pin (a failed attempt never reaches
+    # the release manifest that would otherwise carry the hash).
+    import hashlib
+
+    written_sha = hashlib.sha256(written_path.read_bytes()).hexdigest()
+    assert any(written_sha in failure for failure in failures)
 
 
 def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
@@ -8842,6 +8877,31 @@ def test_final_medicaid_green_path_evaluates_normally() -> None:
 
     assert diagnostics == {"enrolled": 1}
     assert failures == []
+
+
+def test_reform_vector_cache_context_tracks_the_ssi_assignment_digest() -> None:
+    """The #217 reform-vector cache whitelist must carry the SSI digest.
+
+    Whether a JCT reform income-tax estimate can move with
+    takes_up_ssi_if_eligible is an engine-graph question the build must not
+    answer by assumption — the digest invalidates reform vectors too
+    (sol round 2, finding 2)."""
+
+    builder = _load_builder_module()
+    base = {
+        "base_dataset_sha256": "b",
+        "weeks_unemployed_source_sha256": "w",
+        "policyengine_us_version": "1",
+        "target_period": 2024,
+        "congressional_district_vintage_crosswalk_sha256": None,
+        "build_commit": "irrelevant-to-reform-vectors",
+        "ssi_take_up_assignment_sha256": "digest-a",
+    }
+    changed = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
+    assert builder._reform_vector_cache_context(
+        base
+    ) != builder._reform_vector_cache_context(changed)
+    assert "build_commit" not in builder._reform_vector_cache_context(base)
 
 
 def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:

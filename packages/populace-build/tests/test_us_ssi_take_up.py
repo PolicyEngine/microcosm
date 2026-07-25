@@ -30,6 +30,7 @@ from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_STAGE_NAME,
     SSITakeUpBandPriorBasis,
     SSITakeUpPriorBasis,
+    _band_prior,
     _stable_source_draw,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
@@ -986,6 +987,59 @@ def test_capacity_at_the_target_saturates_and_takes_the_fallback() -> None:
     assert child["saturated"]
     assert child["assignment_prior"] == pytest.approx(_REPORTER_FLOOR / _BAND_CAPACITY)
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
+
+
+def test_anchors_meeting_the_target_draw_zero_even_at_the_saturation_corner() -> None:
+    """floor >= target outranks the fallback (sol round 2, finding 4).
+
+    At the degenerate capacity == target == floor corner the fallback
+    would return floor/capacity == 1.0 — a constant, overshooting band —
+    when zero non-anchor draws is the count-truthful answer.
+    """
+
+    assert _band_prior(100.0, 100.0, 100.0) == 0.0
+    assert _band_prior(50.0, 130.0, 60.0) == 0.0
+    assert _band_prior(1_000.0, 130.0, 20.0) == pytest.approx(20.0 / 130.0)
+    assert _band_prior(50.0, 130.0, 20.0) == pytest.approx(30.0 / 110.0)
+
+
+def test_gate_prior_audit_epsilon_is_dimensionless_at_absurd_capacity() -> None:
+    """Regression pin for the mass-scaled-epsilon hole (sol round 2, F10).
+
+    A row claiming 1e20 CURRENT capacity once inflated the shared audit
+    epsilon to ~3.6e5, letting any prior in [0, 1] pass the basis
+    arithmetic check. Every other field here is kept self-consistent, so
+    the drifted assignment prior is the single failure — under the old
+    capacity-scaled comparator this payload passed.
+    """
+
+    _, _, _, diagnostics = _assigned()
+    tampered = copy.deepcopy(diagnostics)
+    row = tampered["age_bands"][0]
+    row["candidate_capacity"] = 1e20
+    row["max_source_candidate_weight"] = 1e20
+    row["saturated"] = False
+    row["prior_recomputed_from_current_weights"] = _expected_prior(50.0, capacity=1e20)
+    row["assignment_prior"] = float(row["assignment_prior"]) + 0.4
+    gate = us_ssi_take_up_gate(tampered, targets=_TARGETS)
+    assert not gate.passed
+    assert gate.failures == tuple(
+        failure for failure in gate.failures if "prior basis" in failure
+    )
+
+
+def test_gate_survives_malformed_payload_types_without_raising() -> None:
+    """Gates report malformed payloads as failures — they never raise
+    (sol round 2, finding 8): a raise upstream of the delivery enforce
+    would skip the retry-artifact write."""
+
+    _, _, _, diagnostics = _assigned()
+    mangled = copy.deepcopy(diagnostics)
+    mangled["missing_or_invalid_count"] = []
+    mangled["unique_count"] = "many"
+    mangled["age_bands"][1]["candidate_capacity"] = {"nested": "junk"}
+    gate = us_ssi_take_up_gate(mangled, targets=_TARGETS)
+    assert not gate.passed
 
 
 def test_writer_emits_strict_json_and_refuses_nan(tmp_path: Path) -> None:

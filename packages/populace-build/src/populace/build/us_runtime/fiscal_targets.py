@@ -2721,6 +2721,24 @@ def _ssa_ssi_reference_from_fact(
                 f"[{lower!r}, {upper!r}); refusing to bind a mislabeled "
                 "row under the band role (populace#508 role separation)."
             )
+        # _age_bounds erases operator strictness, and the materializer
+        # applies the half-open convention lower <= age < upper — so a row
+        # spelled with "> lower" or "<= upper" would silently bind a
+        # different stratum than its face value (sol review round 2,
+        # finding 7). The pinned feed's band rows use >= / < exclusively.
+        for constraint in _constraint_rows(fact):
+            if not isinstance(constraint, dict):
+                continue
+            if str(constraint.get("variable") or "") != "age":
+                continue
+            operator = str(constraint.get("operator") or "")
+            if operator not in {">=", "<"}:
+                raise ValueError(
+                    "SSA SSI by-age fact carries a non-canonical age "
+                    f"constraint operator {operator!r} (expected '>=' for "
+                    "the lower edge and '<' for the upper edge); refusing "
+                    "to bind a stratum that materialization would reshape."
+                )
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             return None
