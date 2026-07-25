@@ -152,14 +152,17 @@ _WEIGHTS_BASIS = "current_frame_resolved_person_weights"
 # the top level carries bernoulli_law_violation_count.
 # Version 3 (populace#507/#508): the top level documents the prior weight
 # basis (current frame vs a prior attempt's delivered-weight artifact) and
-# band rows carry the basis capacity/floor that generated assignment_prior,
-# making the prior arithmetic weight-free auditable at final measurement.
-_DIAGNOSTICS_SCHEMA_VERSION = 3
+# band rows carry the basis capacity/floor that generated assignment_prior.
+# Main later changed assignment_prior from floor-blind target/capacity to the
+# floor-aware arithmetic while retaining the schema-3 stamp, so a schema-3
+# artifact is ambiguous about which arithmetic produced its frozen priors.
+# Version 4: assignment_prior unambiguously uses the floor-aware arithmetic.
+_DIAGNOSTICS_SCHEMA_VERSION = 4
 #: Artifact schema versions a delivered-weight prior basis may be read from.
-#: Schema 2 is accepted so the chain can start from Build N's certified
-#: ``us_ssi_take_up.json`` (its band rows already carry release-weight
-#: ``candidate_capacity`` / ``reporter_candidate_floor``).
-_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3)
+#: Schemas 2 and 3 are legacy seeds only: the loader consumes their target,
+#: candidate capacity, and reporter floor, never their old assignment prior.
+#: Schema 4 is the current, fully gated release-final artifact.
+_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3, 4)
 
 US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME = "current_frame"
 US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT = "release_artifact"
@@ -168,12 +171,12 @@ _PRIOR_BASIS_KINDS = (
     US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT,
 )
 
-#: Schema-3 diagnostics say which lifecycle point measured them, so a
+#: Current diagnostics say which lifecycle point measured them, so a
 #: stage-time payload can never masquerade as a delivered-weight basis and
-#: the delivery gate can refuse to judge anything but the final measurement
-#: (populace#507 sol review finding 1). Schema-2 artifacts predate the
-#: marker; only the shipped final measurement was ever written to
-#: ``us_ssi_take_up.json``, which is why the loader may accept them.
+#: the delivery gate can refuse to judge anything but the final measurement.
+#: Legacy artifacts may predate the marker; an explicit assignment-stage
+#: marker is still proof that the artifact is not a delivered-weight basis
+#: (populace#507 sol review finding 1).
 US_SSI_TAKE_UP_PHASE_ASSIGNMENT = "assignment_stage"
 US_SSI_TAKE_UP_PHASE_RELEASE_FINAL = "release_final"
 _MEASUREMENT_PHASES = (
@@ -875,12 +878,12 @@ def ssi_take_up_prior_basis_from_artifact(
     This is the populace#507/#508 remedy path: the payload is a prior
     attempt's final release-weight diagnostics, whose per-band
     ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
-    the weights that attempt actually delivered. Schema 2 artifacts are
-    accepted so the chain can start from Build N's certified release; the
-    artifact must have been measured against the same target contract this
-    build compiles (same SSA table, period, measure, and band values —
-    populace#508's "one coherent system"), and every enforced band needs
-    positive delivered capacity for a truthful threshold to exist.
+    the weights that attempt actually delivered. Schemas 2 and 3 are accepted
+    only as legacy capacity/floor seeds; their stored assignment priors are
+    never consumed. The artifact must have been measured against the same
+    target contract this build compiles (same SSA table, period, measure, and
+    band values — populace#508's "one coherent system"), and every enforced
+    band needs positive delivered capacity for a truthful threshold to exist.
     """
 
     if not isinstance(source_sha256, str) or not source_sha256.strip():
@@ -893,19 +896,28 @@ def ssi_take_up_prior_basis_from_artifact(
             f"in {list(_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS)}; got "
             f"{schema_version!r}."
         )
-    if (
-        schema_version == _DIAGNOSTICS_SCHEMA_VERSION
-        and payload.get("measurement_phase") != US_SSI_TAKE_UP_PHASE_RELEASE_FINAL
+    measurement_phase = payload.get("measurement_phase")
+    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION and (
+        measurement_phase != US_SSI_TAKE_UP_PHASE_RELEASE_FINAL
     ):
         # Current-schema artifacts must be the final release-weight
-        # measurement — a stage-time payload is not a delivered-weight
-        # basis (sol review finding 1). Schema-2 artifacts predate the
-        # phase marker; only their shipped final measurement was ever
-        # written to ``us_ssi_take_up.json``.
+        # measurement — a stage-time payload is not a delivered-weight basis
+        # (sol review finding 1).
         raise ValueError(
             "US SSI take-up prior basis artifact must be the release-"
             "final measurement; got measurement phase "
-            f"{payload.get('measurement_phase')!r}."
+            f"{measurement_phase!r}."
+        )
+    if schema_version == 3 and measurement_phase not in (
+        None,
+        US_SSI_TAKE_UP_PHASE_RELEASE_FINAL,
+    ):
+        # Some schema-3 artifacts predate the phase marker, but an explicit
+        # assignment-stage marker cannot masquerade as delivered weights.
+        raise ValueError(
+            "US SSI take-up prior basis artifact must be the release-"
+            "final measurement; got measurement phase "
+            f"{measurement_phase!r}."
         )
     contract: tuple[tuple[str, object, str], ...] = (
         ("classification", "release_diagnostics", "classification"),
@@ -989,7 +1001,7 @@ def ssi_take_up_prior_basis_from_artifact(
 def ssi_take_up_prior_basis_from_diagnostics(
     diagnostics: Mapping[str, object],
 ) -> SSITakeUpPriorBasis:
-    """Reconstruct the documented prior basis from schema-3 diagnostics.
+    """Reconstruct the documented prior basis from current diagnostics.
 
     The builder hands the assignment stage's basis to the final
     release-weight measurement through this helper, so the published
