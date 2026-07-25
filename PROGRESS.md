@@ -32,11 +32,15 @@ item 8; simulation wiring is out of scope.
 - Ran the restricted real-data build and validated both emitted resources,
   including input digests, derivation metadata, JCT comparison, and finest-level
   SOI summary ranges.
+- Declared both evidence artifacts as spec-only resources and added packaged
+  schema/declaration contracts plus the changelog fragment.
+- The focused QBI and country-package contract selection passes all 45 tests;
+  focused Ruff formatting/checking is clean.
 
 ## Current next
 
-- Commit the derived resources, declare and contract-test them, then run the
-  full workspace verification and write the final report.
+- Run the focused package contracts and independent reviews, then complete the
+  full workspace verification and final report.
 
 ## Historical progress
 

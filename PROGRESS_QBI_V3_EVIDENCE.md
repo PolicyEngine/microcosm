@@ -48,10 +48,13 @@
 - Finest-industry wage-share ranges are 0.4568%–34.1482% for sole
   proprietorships, 2.3615%–42.2970% for partnerships, and
   4.1531%–78.4294% for S corporations.
+- Declared both JSON files in the spec-only US country package and added
+  packaged-resource validation, provisional/declaration contracts, and the
+  changelog fragment.
+- The focused QBI, packaged-resource, country-spec, spec-only, and retired-name
+  guards pass (45 tests); focused Ruff formatting/checking is clean.
 
 ## Next
 
-- Commit the inspected derived resources.
-- Declare resources and add packaged-resource, declaration, and contract
-  tests plus the changelog fragment.
-- Run Ruff and the full workspace suite, then write the final report.
+- Resolve independent review findings, run Ruff and the full workspace suite,
+  then write the final report.

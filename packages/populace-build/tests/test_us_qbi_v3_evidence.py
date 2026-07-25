@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import zipfile
 from copy import deepcopy
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +30,10 @@ from populace.build.us_runtime.qbi_v3_evidence import (
 
 ROOT = Path(__file__).resolve().parents[3]
 BUILDER_PATH = ROOT / "tools/build_us_qbi_v3_evidence.py"
+RESOURCE_NAMES = {
+    "qbi_employer_structure_v1.json",
+    "qbi_wage_capital_priors_v1.json",
+}
 
 
 def _load_builder():
@@ -488,3 +494,31 @@ def test_wage_capital_schema_rejects_negative_ratio() -> None:
 
     with pytest.raises(ValueError, match="finite and nonnegative"):
         validate_qbi_wage_capital_priors_resource(broken)
+
+
+def test_packaged_qbi_v3_resources_validate_and_remain_provisional() -> None:
+    package = files("populace.build.us")
+    employer = json.loads(
+        package.joinpath("qbi_employer_structure_v1.json").read_text(encoding="utf-8")
+    )
+    wage_capital = json.loads(
+        package.joinpath("qbi_wage_capital_priors_v1.json").read_text(encoding="utf-8")
+    )
+
+    validate_qbi_employer_structure_resource(employer)
+    validate_qbi_wage_capital_priors_resource(wage_capital)
+    assert employer["provisional"] is True
+    assert wage_capital["provisional"] is True
+
+
+def test_qbi_v3_resources_are_declared_as_specs_without_entrypoints() -> None:
+    package = files("populace.build.us")
+    manifest = json.loads(
+        package.joinpath("country_package.json").read_text(encoding="utf-8")
+    )
+
+    assert RESOURCE_NAMES.issubset(manifest["resources"])
+    for resource_name in RESOURCE_NAMES:
+        assert resource_name.endswith(".json")
+        rendered = package.joinpath(resource_name).read_text(encoding="utf-8")
+        assert ".py:" not in rendered
