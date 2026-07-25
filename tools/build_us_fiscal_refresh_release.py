@@ -6983,6 +6983,55 @@ def _staging_telemetry(
     )
 
 
+class _TerminalBatchTelemetry:
+    """Turn terminal-batch telemetry crashes into release-gate failures.
+
+    The proxy is deliberately scoped to the post-diagnostics terminal batch.
+    A telemetry crash on an otherwise-green run now fails the release as a
+    recorded batch line rather than causing an opaque abort, and every later
+    gate group still gets a chance to contribute its evidence.
+    """
+
+    def __init__(
+        self,
+        telemetry: StagingTelemetry | None,
+        terminal_gate_failures: list[str],
+    ) -> None:
+        self._telemetry = telemetry
+        self._terminal_gate_failures = terminal_gate_failures
+
+    def _call(
+        self,
+        method_name: str,
+        label: str,
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        if self._telemetry is None:
+            return
+        try:
+            getattr(self._telemetry, method_name)(label, *args, **kwargs)
+        except Exception as error:
+            self._terminal_gate_failures.append(
+                "Terminal-batch telemetry "
+                f"{method_name}({label!r}) crashed; recorded as a release "
+                "failure instead of interrupting the remaining gate "
+                f"evaluations: {type(error).__name__}: {error}"
+            )
+
+    def stage(self, stage: str, **details: Any) -> None:
+        self._call("stage", stage, **details)
+
+    def attach_artifact(
+        self,
+        name: str,
+        path: Path | str,
+        **details: Any,
+    ) -> None:
+        self._call("attach_artifact", name, path, **details)
+
+
 def main() -> None:
     args = _parse_args()
     if _git_dirty():
@@ -9070,11 +9119,6 @@ def main() -> None:
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
     )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "calibration_diagnostics",
-            release_dir / "calibration_diagnostics.json",
-        )
     # Terminal-gate batching: evaluate EVERY terminal gate
     # group and raise once with the full failure list, instead of aborting at
     # the first failing group. Build M attempts 9/10/11 each burned a full
@@ -9084,19 +9128,28 @@ def main() -> None:
     # an evaluation crash in degraded mode records a line rather than masking
     # the earlier failures) and certification manifests are never written.
     terminal_gate_failures: list[str] = list(gate_failures)
+    terminal_batch_telemetry = _TerminalBatchTelemetry(
+        telemetry,
+        terminal_gate_failures,
+    )
+    terminal_batch_telemetry.attach_artifact(
+        "calibration_diagnostics",
+        release_dir / "calibration_diagnostics.json",
+    )
     if gate_failures:
-        if telemetry is not None:
-            telemetry.stage(
-                "release_gates",
-                status="failed",
-                message="Release gates failed; continuing to evaluate the "
-                "remaining terminal gate groups before aborting.",
-                failures=gate_failures,
-                force_upload=True,
-            )
+        terminal_batch_telemetry.stage(
+            "release_gates",
+            status="failed",
+            message="Release gates failed; continuing to evaluate the "
+            "remaining terminal gate groups before aborting.",
+            failures=gate_failures,
+            force_upload=True,
+        )
 
-    if telemetry is not None:
-        telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
+    terminal_batch_telemetry.stage(
+        "export_dataset",
+        message="Writing PolicyEngine-US H5.",
+    )
     release_engine = PolicyEngineUSEngine()
     # populace#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
@@ -9127,6 +9180,14 @@ def main() -> None:
         )
         input_coverage_gate = None
     if input_coverage_gate is not None:
+        input_coverage_failed = (
+            not input_coverage_gate.passed and not args.allow_input_coverage_gaps
+        )
+        if input_coverage_failed:
+            terminal_gate_failures.extend(
+                f"Input coverage failed: {failure}"
+                for failure in input_coverage_gate.failures
+            )
         input_coverage_path = release_dir / "input_coverage.json"
         input_coverage_path.write_text(
             json.dumps(
@@ -9144,20 +9205,17 @@ def main() -> None:
             )
             + "\n"
         )
-        if telemetry is not None:
-            telemetry.attach_artifact("input_coverage", input_coverage_path)
-        if not input_coverage_gate.passed and not args.allow_input_coverage_gaps:
-            if telemetry is not None:
-                telemetry.stage(
-                    "export_dataset",
-                    status="failed",
-                    message="Release input-column coverage gate failed.",
-                    failures=list(input_coverage_gate.failures),
-                    force_upload=True,
-                )
-            terminal_gate_failures.extend(
-                f"Input coverage failed: {failure}"
-                for failure in input_coverage_gate.failures
+        terminal_batch_telemetry.attach_artifact(
+            "input_coverage",
+            input_coverage_path,
+        )
+        if input_coverage_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Release input-column coverage gate failed.",
+                failures=list(input_coverage_gate.failures),
+                force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
@@ -9204,6 +9262,14 @@ def main() -> None:
         )
         export_input_mass_gate = None
     if export_input_mass_gate is not None:
+        input_mass_parity_failed = (
+            not export_input_mass_gate.passed and not args.allow_input_mass_drift
+        )
+        if input_mass_parity_failed:
+            terminal_gate_failures.extend(
+                f"Input mass parity failed: {failure}"
+                for failure in export_input_mass_gate.failures
+            )
         input_mass_parity_path = release_dir / "input_mass_parity.json"
         input_mass_parity_path.write_text(
             json.dumps(
@@ -9230,20 +9296,17 @@ def main() -> None:
             )
             + "\n"
         )
-        if telemetry is not None:
-            telemetry.attach_artifact("input_mass_parity", input_mass_parity_path)
-        if not export_input_mass_gate.passed and not args.allow_input_mass_drift:
-            if telemetry is not None:
-                telemetry.stage(
-                    "export_dataset",
-                    status="failed",
-                    message="Export input mass parity gate failed.",
-                    failures=list(export_input_mass_gate.failures),
-                    force_upload=True,
-                )
-            terminal_gate_failures.extend(
-                f"Input mass parity failed: {failure}"
-                for failure in export_input_mass_gate.failures
+        terminal_batch_telemetry.attach_artifact(
+            "input_mass_parity",
+            input_mass_parity_path,
+        )
+        if input_mass_parity_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Export input mass parity gate failed.",
+                failures=list(export_input_mass_gate.failures),
+                force_upload=True,
             )
     # populace#462: tail-concentration gate over the sparse QRF-imputed dollar
     # columns at the export's calibrated weights. The Build M defect — 89% of
@@ -9297,6 +9360,14 @@ def main() -> None:
         qrf_tail_gate = None
         qrf_tail_surface = None
     if qrf_tail_gate is not None:
+        qrf_tail_failed = (
+            not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration
+        )
+        if qrf_tail_failed:
+            terminal_gate_failures.extend(
+                f"QRF tail concentration failed: {failure}"
+                for failure in qrf_tail_gate.failures
+            )
         qrf_tail_path = release_dir / "qrf_tail_concentration.json"
         qrf_tail_path.write_text(
             json.dumps(
@@ -9315,20 +9386,17 @@ def main() -> None:
             )
             + "\n"
         )
-        if telemetry is not None:
-            telemetry.attach_artifact("qrf_tail_concentration", qrf_tail_path)
-        if not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration:
-            if telemetry is not None:
-                telemetry.stage(
-                    "export_dataset",
-                    status="failed",
-                    message="QRF tail-concentration gate failed.",
-                    failures=list(qrf_tail_gate.failures),
-                    force_upload=True,
-                )
-            terminal_gate_failures.extend(
-                f"QRF tail concentration failed: {failure}"
-                for failure in qrf_tail_gate.failures
+        terminal_batch_telemetry.attach_artifact(
+            "qrf_tail_concentration",
+            qrf_tail_path,
+        )
+        if qrf_tail_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="QRF tail-concentration gate failed.",
+                failures=list(qrf_tail_gate.failures),
+                force_upload=True,
             )
     # Batched pre-export raise: the calibration battery, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
@@ -9340,14 +9408,13 @@ def main() -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
-        if telemetry is not None:
-            telemetry.stage(
-                "release_gates",
-                status="failed",
-                message="Release gates failed (batched pre-export report).",
-                failures=terminal_gate_failures,
-                force_upload=True,
-            )
+        terminal_batch_telemetry.stage(
+            "release_gates",
+            status="failed",
+            message="Release gates failed (batched pre-export report).",
+            failures=terminal_gate_failures,
+            force_upload=True,
+        )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
     dataset_path = artifact_root / DATASET_FILENAME
     # The export H5 write: everything below (reform smoke, take-up contract,
