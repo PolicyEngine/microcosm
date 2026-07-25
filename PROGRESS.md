@@ -24,10 +24,13 @@ item 8; simulation wiring is out of scope.
   workbook reader required by the SOI `.xls` inputs.
 - Implemented and unit-tested the pure SCF employer-structure estimator,
   thin-cell fallback, margin quantiles, and schema validator.
+- Implemented and unit-tested the SOI workbook parsers, publication-flag
+  handling, wage/capital ratios, crosswalk hints, and schema validator; the
+  audited real workbooks dry-run successfully.
 
 ## Current next
 
-- Implement the SOI workbook parsers, wage/capital ratios, and schema tests.
+- Add and execute the configurable restricted-input builder.
 
 ## Historical progress
 

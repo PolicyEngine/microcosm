@@ -9,8 +9,10 @@ evidence into a simulation.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -81,6 +83,21 @@ _LEGAL_FORM_BY_CODE = {
 }
 _MAIN_QBI_PROXY_CODES = frozenset({1, 2, 3, 11, 12, 15, 40})
 _STRICT_QBI_PROXY_CODES = frozenset({1, 2, 3, 11})
+
+SOI_ENTITY_FORMS = (
+    "sole_proprietorship",
+    "partnership",
+    "s_corporation",
+)
+SOI_PUBLICATION_FLAGS = frozenset(
+    {
+        "published",
+        "caution",
+        "combined_for_disclosure",
+        "deleted_for_disclosure",
+        "not_published",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -969,3 +986,1156 @@ def validate_qbi_employer_structure_resource(
             values.append(value)
         if values != sorted(values):
             raise ValueError(f"Profit-margin cell {key} quantiles are not monotone.")
+
+
+@dataclass(frozen=True)
+class SoiIndustryObservation:
+    """One published SOI industry column or row before ratio derivation."""
+
+    form: str
+    tax_year: int
+    published_label: str
+    industry_path: tuple[str, ...]
+    source_ordinal: int
+    industry_level: str
+    is_aggregate: bool
+    receipts: float | None
+    salaries: float | None
+    cost_labor: float | None
+    officer_compensation: float | None
+    guaranteed_payments_excluded: float | None
+    payroll: float | None
+    gross_depreciable_assets: float | None
+    depreciation_deduction: float | None
+    publication_flags: Mapping[str, str]
+    provenance: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        if self.form not in SOI_ENTITY_FORMS:
+            raise ValueError(f"Unknown SOI entity form {self.form!r}.")
+        if self.tax_year not in (2022, 2023):
+            raise ValueError(f"Unsupported SOI tax year {self.tax_year!r}.")
+        if not self.published_label.strip() or not self.industry_path:
+            raise ValueError("SOI observations require a published industry path.")
+        if self.source_ordinal <= 0:
+            raise ValueError("SOI source ordinals must be positive.")
+        if self.industry_level not in {
+            "all",
+            "sector_total",
+            "published_detail",
+            "unallocable",
+        }:
+            raise ValueError(f"Unknown SOI industry level {self.industry_level!r}.")
+        unknown_flags = set(self.publication_flags.values()) - SOI_PUBLICATION_FLAGS
+        if unknown_flags:
+            raise ValueError(
+                f"SOI observation has unknown publication flags "
+                f"{sorted(unknown_flags)}."
+            )
+        for name in (
+            "receipts",
+            "salaries",
+            "cost_labor",
+            "officer_compensation",
+            "guaranteed_payments_excluded",
+            "payroll",
+            "gross_depreciable_assets",
+            "depreciation_deduction",
+        ):
+            value = getattr(self, name)
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"SOI observation {name} must be finite or null.")
+
+
+def _clean_label(value: object) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\u2014", "-").split())
+
+
+def _comparable_label(value: object) -> str:
+    return re.sub(r"\s*\[\d+\]\s*$", "", _clean_label(value))
+
+
+def _excel_column(column: int) -> str:
+    if column <= 0:
+        raise ValueError("Excel columns are one-based positive integers.")
+    letters = ""
+    while column:
+        column, remainder = divmod(column - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def _cell_reference(sheet: str, row: int, column: int) -> str:
+    return f"{sheet}!{_excel_column(column)}{row}"
+
+
+def _format_flag(format_string: str, value: object) -> str:
+    text = str(value).strip().lower() if isinstance(value, str) else ""
+    if text in {"d", "[d]"}:
+        return "deleted_for_disclosure"
+    if text.startswith("**") or '"** "' in format_string:
+        return "combined_for_disclosure"
+    if text.startswith("*") or '"* "' in format_string:
+        return "caution"
+    return "published"
+
+
+def _numeric_with_flag(
+    value: object,
+    flag: str,
+) -> float | None:
+    if flag in {"combined_for_disclosure", "deleted_for_disclosure"}:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    return numeric if math.isfinite(numeric) else None
+
+
+def _combined_flag(flags: Sequence[str]) -> str:
+    if "deleted_for_disclosure" in flags:
+        return "deleted_for_disclosure"
+    if "combined_for_disclosure" in flags:
+        return "combined_for_disclosure"
+    if "not_published" in flags:
+        return "not_published"
+    if "caution" in flags:
+        return "caution"
+    return "published"
+
+
+def _ratio(
+    observation: SoiIndustryObservation,
+    *,
+    numerator_names: Sequence[str],
+) -> tuple[float | None, str, str | None]:
+    receipt_flag = observation.publication_flags.get("receipts", "not_published")
+    flags = [receipt_flag]
+    numerator = 0.0
+    for name in numerator_names:
+        flags.append(observation.publication_flags.get(name, "not_published"))
+        value = getattr(observation, name)
+        if value is None:
+            return None, _combined_flag(flags), f"{name}_not_published"
+        numerator += value
+    if observation.receipts is None:
+        return None, _combined_flag(flags), "receipts_not_published"
+    if observation.receipts <= 0.0:
+        return None, _combined_flag(flags), "nonpositive_receipts"
+    return (
+        float(numerator / observation.receipts),
+        _combined_flag(flags),
+        None,
+    )
+
+
+def census_bin_hint(
+    industry_path: Sequence[str],
+) -> tuple[int | None, str]:
+    """Map a published SOI label conservatively to an SCF seven-bin hint."""
+
+    path = tuple(_clean_label(label) for label in industry_path if _clean_label(label))
+    if not path:
+        return None, "No published industry label."
+    label = path[-1].lower()
+    text = " > ".join(path).lower()
+    if any(
+        token in text
+        for token in (
+            "all industries",
+            "all nonfarm industries",
+            "unclassified",
+            "not allocable",
+            "unallocable",
+        )
+    ):
+        return None, "Aggregate or unclassified category has no SCF-bin hint."
+
+    if "veterinary" in label or "landscap" in label:
+        return 1, "Exact SCF bin-1 specialization."
+    if "agriculture" in text or "forestry" in text or "fishing" in text:
+        return 1, "SCF bin 1 covers the published agriculture group."
+    if "mining" in text:
+        return 2, "SCF bin 2 covers mining."
+    if "construction" in text:
+        return 2, "SCF bin 2 covers construction."
+    if "manufactur" in text:
+        return 3, "SCF bin 3 covers manufacturing."
+    if "wholesale" in text or "retail" in text:
+        return 4, "SCF bin 4 covers wholesale and retail trade."
+
+    if "information" in text or "publishing" in text:
+        if "software publishing" in label:
+            return 5, "Software publishing is an exact SCF bin-5 specialization."
+        if any(
+            token in label for token in ("newspaper", "periodical", "book", "directory")
+        ):
+            return 3, "Selected publishing is an exact SCF bin-3 specialization."
+        if "data processing" in label or "hosting" in label:
+            return 5, "Data processing and hosting map to SCF bin 5."
+        if label in {"information", "publishing industries"} or label == "total":
+            return None, "Published information aggregate spans SCF bins 3, 5, and 6."
+        return 6, "Remaining detailed information services map to SCF bin 6."
+
+    if "finance" in text or "insurance" in text:
+        return 5, "SCF bin 5 covers finance and insurance."
+    if "real estate" in label and ("rental" in label or "leasing" in label):
+        return None, "Combined real-estate and rental total spans SCF bins 5 and 6."
+    if "real estate" in label:
+        return 5, "SCF bin 5 covers real estate."
+    if "rental" in text or "leasing" in text:
+        if any(
+            token in label
+            for token in (
+                "automotive",
+                "commercial",
+                "industrial",
+                "intangible",
+                "lessors of nonfinancial",
+            )
+        ):
+            return 5, "Exact rental specialization maps to SCF bin 5."
+        if any(
+            token in label
+            for token in (
+                "consumer",
+                "formal wear",
+                "video",
+                "home health",
+                "recreational",
+                "general rental",
+            )
+        ):
+            return 6, "Exact consumer-rental specialization maps to SCF bin 6."
+        return None, "Published rental aggregate spans SCF bins 5 and 6."
+
+    if "utility" in text or "utilities" in text:
+        return 6, "SCF bin 6 covers utilities."
+    if "transportation" in text or "warehousing" in text:
+        return 6, "SCF bin 6 covers transportation and warehousing."
+    if "professional" in text or "scientific" in text or "technical" in text:
+        if label in {
+            "professional, scientific, and technical services",
+            "professional services",
+            "other professional, scientific, and technical services",
+            "other miscellaneous services",
+            "total",
+        }:
+            return None, "Broad professional-services total can include veterinary."
+        return 6, "Detailed non-veterinary professional services map to SCF bin 6."
+    if "management of companies" in text or "holding companies" in text:
+        return 6, "SCF bin 6 covers management of companies."
+
+    if "administrative" in text or "support" in text or "waste" in text:
+        if "landscap" in label:
+            return 1, "Landscaping is an exact SCF bin-1 specialization."
+        if any(
+            token in label
+            for token in (
+                "employment",
+                "business support",
+                "investigation",
+                "security",
+            )
+        ):
+            return 5, "Exact administrative specialization maps to SCF bin 5."
+        if label in {
+            "administrative and support and waste management and remediation services",
+            "administrative and support services",
+            "total",
+        }:
+            return None, "Broad administrative total spans SCF bins 1, 5, and 6."
+        return 6, "Remaining detailed administrative or waste services map to bin 6."
+
+    if "accommodation" in label and "food service" in label:
+        return None, "Combined accommodation and food total spans bins 4 and 6."
+    if "restaurant" in label or "drinking place" in label or "food service" in label:
+        return 4, "Restaurants and drinking places map to SCF bin 4."
+    if "accommodation" in text or any(
+        token in label for token in ("hotel", "motel", "rooming", "boarding")
+    ):
+        return 6, "Accommodation maps to SCF bin 6."
+
+    if "repair" in text or "maintenance" in text:
+        return 5, "Repair and maintenance map to SCF bin 5."
+    if "educational" in label and "other services" in label:
+        return None, "Combined educational and other-services total spans bins 5 and 6."
+    if "other services" in text:
+        if label in {"other services", "total"}:
+            return None, "Other-services total spans SCF bins 5 and 6."
+        return 6, "Detailed non-repair other services map to SCF bin 6."
+
+    if "arts" in text or "entertainment" in text or "recreation" in text:
+        if "museum" in label or "amusement" in label:
+            return 6, "Museums and amusement map to SCF bin 6."
+        return None, "The SCF codebook's exact 8560 arts seam is ambiguous."
+    if any(
+        token in text
+        for token in (
+            "education",
+            "health care",
+            "social assistance",
+            "personal and laundry",
+            "religious",
+            "private household",
+        )
+    ):
+        return 6, "Published service group maps to SCF bin 6."
+    if "public administration" in text:
+        return 7, "SCF bin 7 covers public administration."
+    return None, "Published label cannot be mapped deterministically to an SCF bin."
+
+
+def _xlrd_format_string(book: object, sheet: object, row: int, column: int) -> str:
+    xf_index = sheet.cell_xf_index(row, column)
+    xf = book.xf_list[xf_index]
+    return book.format_map[xf.format_key].format_str
+
+
+def _xlrd_header_anchors(
+    sheet: object,
+    *,
+    column: int,
+    rows: range,
+) -> list[str]:
+    coordinates: list[str] = []
+    for row in rows:
+        anchor_row, anchor_column = row, column
+        for row_low, row_high, column_low, column_high in sheet.merged_cells:
+            if row_low <= row < row_high and column_low <= column < column_high:
+                anchor_row, anchor_column = row_low, column_low
+                break
+        reference = _cell_reference(sheet.name, anchor_row + 1, anchor_column + 1)
+        label = _clean_label(sheet.cell_value(anchor_row, anchor_column))
+        if label and reference not in coordinates:
+            coordinates.append(reference)
+    return coordinates
+
+
+def parse_sole_proprietor_soi_workbooks(
+    business_table_path: Path | str,
+    income_statement_path: Path | str,
+) -> list[SoiIndustryObservation]:
+    """Parse SOI sole-proprietor Tables 1 and 2 with disclosure flags."""
+
+    try:
+        import xlrd
+    except ImportError as error:  # pragma: no cover - dependency contract
+        raise RuntimeError(
+            "Reading IRS SOI .xls workbooks requires the declared xlrd dependency."
+        ) from error
+
+    business_path = Path(business_table_path)
+    income_path = Path(income_statement_path)
+    business_book = xlrd.open_workbook(business_path, formatting_info=True)
+    income_book = xlrd.open_workbook(income_path, formatting_info=True)
+    if business_book.sheet_names() != ["TAB1"]:
+        raise ValueError("Sole-proprietor business workbook must contain TAB1.")
+    if income_book.sheet_names() != ["TAB2"]:
+        raise ValueError("Sole-proprietor income workbook must contain TAB2.")
+    tab1 = business_book.sheet_by_name("TAB1")
+    tab2 = income_book.sheet_by_name("TAB2")
+    if "Tax Year 2023" not in str(tab1.cell_value(0, 0)):
+        raise ValueError("Sole-proprietor TAB1 title does not identify tax year 2023.")
+    if "Tax Year 2023" not in str(tab2.cell_value(0, 0)):
+        raise ValueError("Sole-proprietor TAB2 title does not identify tax year 2023.")
+
+    start_row = next(
+        row
+        for row in range(tab1.nrows)
+        if _clean_label(tab1.cell_value(row, 0)) == "All nonfarm industries"
+    )
+    end_row = next(
+        row
+        for row in range(start_row + 1, tab1.nrows)
+        if _clean_label(tab1.cell_value(row, 0)).startswith(
+            "Estimate should be used with caution"
+        )
+    )
+    source_rows = list(range(start_row, end_row))
+    tab2_columns: list[int] = []
+    expected = 1
+    for column in range(1, tab2.ncols):
+        value = tab2.cell_value(9, column)
+        if isinstance(value, (int, float)) and int(value) == expected:
+            tab2_columns.append(column)
+            expected += 1
+        elif tab2_columns:
+            break
+    if len(source_rows) != len(tab2_columns):
+        raise ValueError(
+            "Sole-proprietor table alignment failed: TAB1 industry rows and "
+            "TAB2 industry columns differ."
+        )
+
+    paths: list[tuple[str, ...]] = []
+    indents: list[int] = []
+    stack: list[tuple[int, str]] = []
+    for position, row in enumerate(source_rows):
+        raw_label = str(tab1.cell_value(row, 0))
+        label = _clean_label(raw_label)
+        indent = len(raw_label) - len(raw_label.lstrip())
+        if position == 0:
+            path = (label,)
+            stack = []
+        else:
+            while stack and stack[-1][0] >= indent:
+                stack.pop()
+            path = tuple(item[1] for item in stack) + (label,)
+            stack.append((indent, label))
+        paths.append(path)
+        indents.append(indent)
+
+    observations: list[SoiIndustryObservation] = []
+    for position, (row, tab2_column, path) in enumerate(
+        zip(source_rows, tab2_columns, paths, strict=True)
+    ):
+        is_all = position == 0
+        has_child = (
+            position + 1 < len(indents) and indents[position + 1] > indents[position]
+        )
+        is_aggregate = is_all or has_child
+        level = (
+            "all" if is_all else ("sector_total" if has_child else "published_detail")
+        )
+
+        tab1_cells = {
+            "receipts": (row, 2),
+            "depreciation_deduction": (row, 3),
+            "payroll": (row, 7),
+        }
+        tab2_cells = {
+            "receipts_crosscheck": (12, tab2_column),
+            "cost_labor": (18, tab2_column),
+            "salaries": (41, tab2_column),
+        }
+        values: dict[str, float | None] = {}
+        flags: dict[str, str] = {}
+        for name, (cell_row, cell_column) in tab1_cells.items():
+            raw = tab1.cell_value(cell_row, cell_column)
+            flag = _format_flag(
+                _xlrd_format_string(business_book, tab1, cell_row, cell_column),
+                raw,
+            )
+            values[name] = _numeric_with_flag(raw, flag)
+            flags[name] = flag
+        component_values: dict[str, float | None] = {}
+        for name, (cell_row, cell_column) in tab2_cells.items():
+            raw = tab2.cell_value(cell_row, cell_column)
+            flag = _format_flag(
+                _xlrd_format_string(income_book, tab2, cell_row, cell_column),
+                raw,
+            )
+            component_values[name] = _numeric_with_flag(raw, flag)
+            flags[name] = flag
+
+        receipt_raw = tab1.cell_value(row, 2)
+        tab2_receipt_raw = tab2.cell_value(12, tab2_column)
+        if not math.isclose(
+            float(receipt_raw),
+            float(tab2_receipt_raw),
+            rel_tol=0.0,
+            abs_tol=0.0,
+        ):
+            raise ValueError(
+                f"Sole-proprietor receipts mismatch at source ordinal {position + 1}."
+            )
+        labor_raw = tab2.cell_value(18, tab2_column)
+        salary_raw = tab2.cell_value(41, tab2_column)
+        payroll_raw = tab1.cell_value(row, 7)
+        if all(
+            isinstance(value, (int, float))
+            for value in (labor_raw, salary_raw, payroll_raw)
+        ) and not math.isclose(
+            float(labor_raw) + float(salary_raw),
+            float(payroll_raw),
+            rel_tol=0.0,
+            abs_tol=0.5,
+        ):
+            raise ValueError(
+                f"Sole-proprietor payroll identity failed at source ordinal "
+                f"{position + 1}."
+            )
+
+        observations.append(
+            SoiIndustryObservation(
+                form="sole_proprietorship",
+                tax_year=2023,
+                published_label=path[-1],
+                industry_path=path,
+                source_ordinal=position + 1,
+                industry_level=level,
+                is_aggregate=is_aggregate,
+                receipts=values["receipts"],
+                salaries=component_values["salaries"],
+                cost_labor=component_values["cost_labor"],
+                officer_compensation=None,
+                guaranteed_payments_excluded=None,
+                payroll=values["payroll"],
+                gross_depreciable_assets=None,
+                depreciation_deduction=values["depreciation_deduction"],
+                publication_flags={
+                    "receipts": flags["receipts"],
+                    "salaries": flags["salaries"],
+                    "cost_labor": flags["cost_labor"],
+                    "officer_compensation": "not_published",
+                    "guaranteed_payments_excluded": "not_published",
+                    "payroll": flags["payroll"],
+                    "gross_depreciable_assets": "not_published",
+                    "depreciation_deduction": flags["depreciation_deduction"],
+                },
+                provenance={
+                    "source_tables": [
+                        f"{business_path.name} Table 1",
+                        f"{income_path.name} Table 2",
+                    ],
+                    "sheet_names": ["TAB1", "TAB2"],
+                    "tax_year": 2023,
+                    "units": "thousands_of_dollars",
+                    "industry_cells": [
+                        _cell_reference("TAB1", row + 1, 1),
+                        *_xlrd_header_anchors(
+                            tab2, column=tab2_column, rows=range(2, 9)
+                        ),
+                    ],
+                    "receipts_cell": _cell_reference("TAB1", row + 1, 3),
+                    "wage_cells": [_cell_reference("TAB1", row + 1, 8)],
+                    "wage_component_crosscheck_cells": [
+                        _cell_reference("TAB2", 19, tab2_column + 1),
+                        _cell_reference("TAB2", 42, tab2_column + 1),
+                    ],
+                    "capital_cell": _cell_reference("TAB1", row + 1, 4),
+                    "calculation": {
+                        "wage_share": "TAB1 payroll / TAB1 business receipts",
+                        "ubia_intensity": (
+                            "TAB1 depreciation deduction / TAB1 business "
+                            "receipts (flow proxy)"
+                        ),
+                    },
+                },
+            )
+        )
+    return observations
+
+
+def _xlsx_anchor(sheet: object, row: int, column: int) -> tuple[int, int]:
+    for merged_range in sheet.merged_cells.ranges:
+        if (
+            merged_range.min_row <= row <= merged_range.max_row
+            and merged_range.min_col <= column <= merged_range.max_col
+        ):
+            return merged_range.min_row, merged_range.min_col
+    return row, column
+
+
+def _xlsx_path(
+    sheet: object,
+    *,
+    column: int,
+    rows: range,
+) -> tuple[tuple[str, ...], list[str]]:
+    labels: list[str] = []
+    references: list[str] = []
+    for row in rows:
+        anchor_row, anchor_column = _xlsx_anchor(sheet, row, column)
+        label = _clean_label(sheet.cell(anchor_row, anchor_column).value)
+        reference = _cell_reference(sheet.title, anchor_row, anchor_column)
+        if label and (not labels or labels[-1] != label):
+            labels.append(label)
+        if label and reference not in references:
+            references.append(reference)
+    return tuple(labels), references
+
+
+def _xlsx_amount(cell: object) -> tuple[float | None, str]:
+    flag = _format_flag(str(cell.number_format), cell.value)
+    return _numeric_with_flag(cell.value, flag), flag
+
+
+def parse_partnership_soi_workbooks(
+    income_table_path: Path | str,
+    balance_sheet_path: Path | str,
+) -> list[SoiIndustryObservation]:
+    """Parse sector-level partnership wage and depreciable-asset anchors."""
+
+    from openpyxl import load_workbook
+
+    income_path = Path(income_table_path)
+    balance_path = Path(balance_sheet_path)
+    income_book = load_workbook(income_path, data_only=True, read_only=False)
+    balance_book = load_workbook(balance_path, data_only=True, read_only=False)
+    if income_book.sheetnames != ["Sheet1"] or balance_book.sheetnames != ["Sheet1"]:
+        raise ValueError("Partnership workbooks must contain exactly Sheet1.")
+    income = income_book["Sheet1"]
+    balance = balance_book["Sheet1"]
+    if "Tax Year 2023" not in str(income["A1"].value):
+        raise ValueError("Partnership income title does not identify tax year 2023.")
+    if "Tax Year 2023" not in str(balance["A1"].value):
+        raise ValueError("Partnership balance title does not identify tax year 2023.")
+
+    observations: list[SoiIndustryObservation] = []
+    for column in range(2, 22):
+        label = _clean_label(income.cell(4, column).value)
+        balance_label = _clean_label(balance.cell(4, column).value)
+        if _comparable_label(label) != _comparable_label(balance_label):
+            raise ValueError(
+                f"Partnership workbook industry mismatch in column "
+                f"{_excel_column(column)}."
+            )
+        is_all = column == 2
+        is_unallocable = column == 21
+        level = (
+            "all"
+            if is_all
+            else ("unallocable" if is_unallocable else "published_detail")
+        )
+        cells = {
+            "receipts": income.cell(18, column),
+            "cost_labor": income.cell(26, column),
+            "salaries": income.cell(30, column),
+            "guaranteed_payments_excluded": income.cell(31, column),
+            "depreciation_deduction": income.cell(37, column),
+            "gross_depreciable_assets": balance.cell(29, column),
+        }
+        values: dict[str, float | None] = {}
+        flags: dict[str, str] = {}
+        for name, cell in cells.items():
+            values[name], flags[name] = _xlsx_amount(cell)
+        observations.append(
+            SoiIndustryObservation(
+                form="partnership",
+                tax_year=2023,
+                published_label=label,
+                industry_path=(label,),
+                source_ordinal=column - 1,
+                industry_level=level,
+                is_aggregate=is_all,
+                receipts=values["receipts"],
+                salaries=values["salaries"],
+                cost_labor=values["cost_labor"],
+                officer_compensation=None,
+                guaranteed_payments_excluded=values["guaranteed_payments_excluded"],
+                payroll=None,
+                gross_depreciable_assets=values["gross_depreciable_assets"],
+                depreciation_deduction=values["depreciation_deduction"],
+                publication_flags={
+                    "receipts": flags["receipts"],
+                    "salaries": flags["salaries"],
+                    "cost_labor": flags["cost_labor"],
+                    "officer_compensation": "not_published",
+                    "guaranteed_payments_excluded": flags[
+                        "guaranteed_payments_excluded"
+                    ],
+                    "payroll": "not_published",
+                    "gross_depreciable_assets": flags["gross_depreciable_assets"],
+                    "depreciation_deduction": flags["depreciation_deduction"],
+                },
+                provenance={
+                    "source_tables": [
+                        f"{income_path.name} Table 1",
+                        f"{balance_path.name} Table 3",
+                    ],
+                    "sheet_names": ["Sheet1", "Sheet1"],
+                    "tax_year": 2023,
+                    "units": "thousands_of_dollars",
+                    "industry_cells": [
+                        f"{income_path.name}:{_cell_reference('Sheet1', 4, column)}",
+                        f"{balance_path.name}:{_cell_reference('Sheet1', 4, column)}",
+                    ],
+                    "receipts_cell": (
+                        f"{income_path.name}:{_cell_reference('Sheet1', 18, column)}"
+                    ),
+                    "wage_cells": [
+                        f"{income_path.name}:{_cell_reference('Sheet1', 26, column)}",
+                        f"{income_path.name}:{_cell_reference('Sheet1', 30, column)}",
+                    ],
+                    "excluded_wage_cell": (
+                        f"{income_path.name}:{_cell_reference('Sheet1', 31, column)}"
+                    ),
+                    "capital_cell": (
+                        f"{balance_path.name}:{_cell_reference('Sheet1', 29, column)}"
+                    ),
+                    "calculation": {
+                        "wage_share": (
+                            "(cost of labor + salaries and wages) / business receipts"
+                        ),
+                        "ubia_intensity": (
+                            "gross depreciable assets / business receipts"
+                        ),
+                    },
+                },
+            )
+        )
+    return observations
+
+
+def parse_s_corporation_soi_workbook(
+    workbook_path: Path | str,
+) -> list[SoiIndustryObservation]:
+    """Parse Form 1120-S Table 6.1 at its published major-industry detail."""
+
+    from openpyxl import load_workbook
+
+    path = Path(workbook_path)
+    book = load_workbook(path, data_only=True, read_only=False)
+    if book.sheetnames != ["Table 6.1"]:
+        raise ValueError("S-corporation workbook must contain Table 6.1.")
+    sheet = book["Table 6.1"]
+    if "Tax Year 2022" not in str(sheet["A2"].value):
+        raise ValueError("S-corporation title does not identify tax year 2022.")
+
+    columns: list[int] = []
+    expected = 1
+    for column in range(2, sheet.max_column + 1):
+        value = sheet.cell(8, column).value
+        if isinstance(value, (int, float)) and int(value) == expected:
+            columns.append(column)
+            expected += 1
+        elif columns:
+            break
+    if not columns:
+        raise ValueError("S-corporation workbook has no numbered industries.")
+
+    observations: list[SoiIndustryObservation] = []
+    for position, column in enumerate(columns):
+        path_labels, header_cells = _xlsx_path(sheet, column=column, rows=range(5, 8))
+        if not path_labels:
+            raise ValueError(
+                f"S-corporation column {_excel_column(column)} has no header."
+            )
+        is_all = position == 0
+        is_total = any(label.lower() == "total" for label in path_labels)
+        level = (
+            "all" if is_all else ("sector_total" if is_total else "published_detail")
+        )
+        cells = {
+            "gross_depreciable_assets": sheet.cell(21, column),
+            "receipts": sheet.cell(43, column),
+            "officer_compensation": sheet.cell(49, column),
+            "salaries": sheet.cell(50, column),
+            "depreciation_deduction": sheet.cell(57, column),
+        }
+        values: dict[str, float | None] = {}
+        flags: dict[str, str] = {}
+        for name, cell in cells.items():
+            values[name], flags[name] = _xlsx_amount(cell)
+        observations.append(
+            SoiIndustryObservation(
+                form="s_corporation",
+                tax_year=2022,
+                published_label=path_labels[-1],
+                industry_path=path_labels,
+                source_ordinal=position + 1,
+                industry_level=level,
+                is_aggregate=is_all or is_total,
+                receipts=values["receipts"],
+                salaries=values["salaries"],
+                cost_labor=None,
+                officer_compensation=values["officer_compensation"],
+                guaranteed_payments_excluded=None,
+                payroll=None,
+                gross_depreciable_assets=values["gross_depreciable_assets"],
+                depreciation_deduction=values["depreciation_deduction"],
+                publication_flags={
+                    "receipts": flags["receipts"],
+                    "salaries": flags["salaries"],
+                    "cost_labor": "not_published",
+                    "officer_compensation": flags["officer_compensation"],
+                    "guaranteed_payments_excluded": "not_published",
+                    "payroll": "not_published",
+                    "gross_depreciable_assets": flags["gross_depreciable_assets"],
+                    "depreciation_deduction": flags["depreciation_deduction"],
+                },
+                provenance={
+                    "source_tables": [f"{path.name} Table 6.1"],
+                    "sheet_names": ["Table 6.1"],
+                    "tax_year": 2022,
+                    "units": "thousands_of_dollars",
+                    "industry_cells": header_cells,
+                    "receipts_cell": _cell_reference("Table 6.1", 43, column),
+                    "wage_cells": [
+                        _cell_reference("Table 6.1", 49, column),
+                        _cell_reference("Table 6.1", 50, column),
+                    ],
+                    "capital_cell": _cell_reference("Table 6.1", 21, column),
+                    "calculation": {
+                        "wage_share": (
+                            "(compensation of officers + salaries and wages) / "
+                            "business receipts"
+                        ),
+                        "ubia_intensity": (
+                            "gross depreciable assets / business receipts"
+                        ),
+                    },
+                },
+            )
+        )
+    return observations
+
+
+def inspect_all_corporation_soi_workbook(
+    workbook_path: Path | str,
+) -> dict[str, object]:
+    """Validate and document why all-corporation Table 5.1 is not used."""
+
+    from openpyxl import load_workbook
+
+    path = Path(workbook_path)
+    book = load_workbook(path, data_only=True, read_only=False)
+    if book.sheetnames != ["Table 5.1"]:
+        raise ValueError("All-corporation workbook must contain Table 5.1.")
+    title = _clean_label(book["Table 5.1"]["A2"].value)
+    if "Tax Year 2022" not in title or "Minor Industry" not in title:
+        raise ValueError("All-corporation Table 5.1 title is not recognized.")
+    return {
+        "filename": path.name,
+        "table": "Table 5.1",
+        "tax_year": 2022,
+        "review_status": "inspected_not_used",
+        "reason": (
+            "The table covers all active corporations, including C corporations. "
+            "Its finer minor-industry detail cannot identify S-corporation priors; "
+            "Form 1120-S Table 6.1 is used instead."
+        ),
+    }
+
+
+def _industry_key(observation: SoiIndustryObservation) -> str:
+    path = " > ".join(observation.industry_path)
+    return f"{observation.source_ordinal:03d} | {path}"
+
+
+def _observation_to_industry(
+    observation: SoiIndustryObservation,
+) -> dict[str, object]:
+    if observation.form == "sole_proprietorship":
+        wage_names = ("payroll",)
+        capital_names = ("depreciation_deduction",)
+        capital_measure = "depreciation_deduction_flow_over_receipts"
+        proxy = True
+    elif observation.form == "partnership":
+        wage_names = ("cost_labor", "salaries")
+        capital_names = ("gross_depreciable_assets",)
+        capital_measure = "gross_depreciable_assets_over_receipts"
+        proxy = False
+    else:
+        wage_names = ("officer_compensation", "salaries")
+        capital_names = ("gross_depreciable_assets",)
+        capital_measure = "gross_depreciable_assets_over_receipts"
+        proxy = False
+
+    wage_share, wage_flag, wage_null = _ratio(observation, numerator_names=wage_names)
+    ubia_intensity, capital_flag, capital_null = _ratio(
+        observation, numerator_names=capital_names
+    )
+    hint, hint_basis = census_bin_hint(observation.industry_path)
+    raw_amounts = {
+        "receipts": observation.receipts,
+        "salaries": observation.salaries,
+        "cost_labor": observation.cost_labor,
+        "officer_compensation": observation.officer_compensation,
+        "guaranteed_payments_excluded": (observation.guaranteed_payments_excluded),
+        "payroll": observation.payroll,
+        "gross_depreciable_assets": observation.gross_depreciable_assets,
+        "depreciation_deduction": observation.depreciation_deduction,
+    }
+    return {
+        "industry_key": _industry_key(observation),
+        "form": observation.form,
+        "published_label": observation.published_label,
+        "industry_path": list(observation.industry_path),
+        "source_ordinal": observation.source_ordinal,
+        "industry_level": observation.industry_level,
+        "is_aggregate": observation.is_aggregate,
+        "census_bin_hint": hint,
+        "census_bin_hint_basis": hint_basis,
+        "wage_share": wage_share,
+        "ubia_intensity": ubia_intensity,
+        "proxy": proxy,
+        "capital_measure": capital_measure,
+        "raw_amounts_thousands": raw_amounts,
+        "publication_flags": {
+            **dict(observation.publication_flags),
+            "wage_share": wage_flag,
+            "ubia_intensity": capital_flag,
+        },
+        "null_reasons": {
+            "wage_share": wage_null,
+            "ubia_intensity": capital_null,
+        },
+        "provenance": dict(observation.provenance),
+    }
+
+
+def _range(values: Sequence[float]) -> dict[str, float] | None:
+    if not values:
+        return None
+    return {"minimum": float(min(values)), "maximum": float(max(values))}
+
+
+def _form_summary(industries: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    finest = [
+        industry
+        for industry in industries
+        if not industry["is_aggregate"] and industry["industry_level"] != "unallocable"
+    ]
+    wages = [
+        float(industry["wage_share"])
+        for industry in finest
+        if industry["wage_share"] is not None
+    ]
+    capital = [
+        float(industry["ubia_intensity"])
+        for industry in finest
+        if industry["ubia_intensity"] is not None
+    ]
+    return {
+        "published_industry_count": len(industries),
+        "finest_industry_count": len(finest),
+        "valid_finest_wage_share_count": len(wages),
+        "valid_finest_ubia_intensity_count": len(capital),
+        "finest_wage_share_range": _range(wages),
+        "finest_ubia_intensity_range": _range(capital),
+    }
+
+
+def build_qbi_wage_capital_priors_resource(
+    *,
+    sole_proprietorship: Sequence[SoiIndustryObservation],
+    partnership: Sequence[SoiIndustryObservation],
+    s_corporation: Sequence[SoiIndustryObservation],
+    all_corporation_review: Mapping[str, object],
+    provenance: Mapping[str, object],
+) -> dict[str, object]:
+    """Build the provisional SOI wage-share and capital-intensity resource."""
+
+    observations = {
+        "sole_proprietorship": list(sole_proprietorship),
+        "partnership": list(partnership),
+        "s_corporation": list(s_corporation),
+    }
+    for form, form_observations in observations.items():
+        if not form_observations:
+            raise ValueError(f"SOI {form} observations must be nonempty.")
+        if any(observation.form != form for observation in form_observations):
+            raise ValueError(f"SOI {form} observations contain another form.")
+
+    industries_by_form = {
+        form: [_observation_to_industry(observation) for observation in values]
+        for form, values in observations.items()
+    }
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "resource_id": "qbi_wage_capital_priors_v1",
+        "provisional": True,
+        "purpose": (
+            "Estimated public SOI industry priors for total wage expense over "
+            "business receipts and gross depreciable assets over receipts. "
+            "Simulation wiring and crosswalk adjudication occur later."
+        ),
+        "forms": {
+            "sole_proprietorship": {
+                "tax_year": 2023,
+                "source_tables": [
+                    "23sp01br.xls Table 1",
+                    "23sp02is.xls Table 2",
+                ],
+                "wage_measure": (
+                    "Published Payroll (salaries and wages plus cost of labor) "
+                    "divided by business receipts"
+                ),
+                "capital_measure": (
+                    "Depreciation deduction including Form 8829 divided by "
+                    "business receipts; a flow proxy, not UBIA"
+                ),
+                "summary": _form_summary(industries_by_form["sole_proprietorship"]),
+                "industries": industries_by_form["sole_proprietorship"],
+            },
+            "partnership": {
+                "tax_year": 2023,
+                "source_tables": [
+                    "23pa01.xlsx Table 1",
+                    "23pa03.xlsx Table 3",
+                ],
+                "wage_measure": (
+                    "Cost of labor plus salaries and wages, excluding guaranteed "
+                    "payments to partners, divided by business receipts"
+                ),
+                "capital_measure": (
+                    "Gross depreciable assets divided by business receipts; "
+                    "closest public book-value analog to UBIA"
+                ),
+                "summary": _form_summary(industries_by_form["partnership"]),
+                "industries": industries_by_form["partnership"],
+            },
+            "s_corporation": {
+                "tax_year": 2022,
+                "source_tables": ["22co61ccr.xlsx Table 6.1"],
+                "wage_measure": (
+                    "Compensation of officers plus salaries and wages divided "
+                    "by business receipts"
+                ),
+                "capital_measure": (
+                    "Gross depreciable assets divided by business receipts; "
+                    "closest public book-value analog to UBIA"
+                ),
+                "summary": _form_summary(industries_by_form["s_corporation"]),
+                "industries": industries_by_form["s_corporation"],
+            },
+        },
+        "source_exclusions": {
+            "all_corporation_minor_industry_table": dict(all_corporation_review)
+        },
+        "derivation_notes": [
+            (
+                "All monetary amounts share thousands-of-dollars units, which "
+                "cancel in the ratios. Finest-industry summary ranges exclude "
+                "published totals, disclosure-combined/deleted values, and "
+                "nonpositive receipts; caution estimates remain."
+            ),
+            (
+                "Sole-proprietor Table 1 Payroll is canonical and exactly "
+                "cross-checks to Table 2 cost of labor plus salaries and wages. "
+                "Table 1 depreciation is used because it includes Form 8829."
+            ),
+            (
+                "Partnership guaranteed payments are recorded as an excluded "
+                "diagnostic because partners are not W-2 employees."
+            ),
+            (
+                "Partnership balance-sheet aggregates exclude some small "
+                "partnerships exempt from Schedule L while receipts cover all "
+                "partnerships, which can bias capital intensity downward."
+            ),
+            (
+                "S-corporation Table 6.1 publishes no separate COGS labor line, "
+                "so wages embedded in cost of goods sold may be omitted."
+            ),
+            (
+                "Gross depreciable assets are pre-accumulated-depreciation book "
+                "stocks, not statutory tax UBIA. Land is excluded."
+            ),
+            (
+                "Legacy XLS disclosure and caution markers are read from custom "
+                "number formats. Underlying numeric values marked ** are never "
+                "treated as industry-specific estimates."
+            ),
+            (
+                "census_bin_hint is a conservative seam to the SCF seven-bin "
+                "industry collapse. Mixed published groups remain null rather "
+                "than being forced into a bin."
+            ),
+        ],
+        "provenance": dict(provenance),
+        "judgment_calls": [
+            (
+                "The resource preserves published aggregates and finest detail; "
+                "summary ranges use only nonaggregate published detail."
+            ),
+            (
+                "Payroll, cost-of-labor inclusion, officer compensation, "
+                "guaranteed-payment exclusion, gross-book-assets treatment, and "
+                "the conservative SCF-bin hints should be re-adjudicated before "
+                "simulation use."
+            ),
+            (
+                "Sole-proprietor and partnership evidence use tax year 2023; "
+                "the latest available S-corporation table is tax year 2022."
+            ),
+        ],
+    }
+    validate_qbi_wage_capital_priors_resource(payload)
+    return payload
+
+
+def validate_qbi_wage_capital_priors_resource(
+    payload: Mapping[str, object],
+) -> None:
+    """Validate the committed SOI evidence-resource contract."""
+
+    root = _mapping(payload, "QBI wage/capital resource")
+    required = {
+        "schema_version",
+        "resource_id",
+        "provisional",
+        "purpose",
+        "forms",
+        "source_exclusions",
+        "derivation_notes",
+        "provenance",
+        "judgment_calls",
+    }
+    if set(root) != required:
+        raise ValueError(
+            "QBI wage/capital top-level keys must be exactly "
+            f"{sorted(required)}; got {sorted(root)}."
+        )
+    if root["schema_version"] != 1:
+        raise ValueError("QBI wage/capital schema_version must equal 1.")
+    if root["resource_id"] != "qbi_wage_capital_priors_v1":
+        raise ValueError("QBI wage/capital resource_id is not recognized.")
+    if root["provisional"] is not True:
+        raise ValueError("QBI wage/capital resource must remain provisional.")
+    if not isinstance(root["purpose"], str) or not root["purpose"].strip():
+        raise ValueError("QBI wage/capital resource purpose must be nonempty.")
+    if not _list(root["derivation_notes"], "derivation_notes"):
+        raise ValueError("QBI wage/capital derivation_notes must be nonempty.")
+    if not _list(root["judgment_calls"], "judgment_calls"):
+        raise ValueError("QBI wage/capital judgment_calls must be nonempty.")
+    _mapping(root["provenance"], "provenance")
+    _mapping(root["source_exclusions"], "source_exclusions")
+
+    forms = _mapping(root["forms"], "forms")
+    if set(forms) != set(SOI_ENTITY_FORMS):
+        raise ValueError(f"QBI wage/capital forms must be {list(SOI_ENTITY_FORMS)}.")
+    for form in SOI_ENTITY_FORMS:
+        form_payload = _mapping(forms[form], f"forms.{form}")
+        industries = _list(form_payload.get("industries"), f"forms.{form}.industries")
+        if not industries:
+            raise ValueError(f"forms.{form}.industries must be nonempty.")
+        seen: set[str] = set()
+        for index, raw_industry in enumerate(industries):
+            industry = _mapping(raw_industry, f"forms.{form}.industries[{index}]")
+            key = industry.get("industry_key")
+            if not isinstance(key, str) or not key:
+                raise ValueError(f"forms.{form}.industries[{index}] has no key.")
+            if key in seen:
+                raise ValueError(f"forms.{form} duplicates industry key {key!r}.")
+            seen.add(key)
+            if industry.get("form") != form:
+                raise ValueError(f"Industry {key!r} has the wrong entity form.")
+            hint = industry.get("census_bin_hint")
+            if hint is not None and hint not in range(1, 8):
+                raise ValueError(f"Industry {key!r} has invalid SCF-bin hint.")
+            if not isinstance(industry.get("proxy"), bool):
+                raise ValueError(f"Industry {key!r} proxy must be boolean.")
+            for measure in ("wage_share", "ubia_intensity"):
+                value = industry.get(measure)
+                if value is None:
+                    continue
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    or float(value) < 0.0
+                ):
+                    raise ValueError(
+                        f"Industry {key!r} {measure} must be null or "
+                        "finite and nonnegative."
+                    )
+            flags = _mapping(
+                industry.get("publication_flags"),
+                f"forms.{form}.industries[{index}].publication_flags",
+            )
+            unknown_flags = set(flags.values()) - SOI_PUBLICATION_FLAGS
+            if unknown_flags:
+                raise ValueError(
+                    f"Industry {key!r} has unknown publication flags "
+                    f"{sorted(unknown_flags)}."
+                )
+            _mapping(
+                industry.get("provenance"),
+                f"forms.{form}.industries[{index}].provenance",
+            )

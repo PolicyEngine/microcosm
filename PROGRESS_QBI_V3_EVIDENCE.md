@@ -28,11 +28,18 @@
 - Added synthetic tests for implicate arithmetic, `-1` economic-zero handling,
   ownership scaling, thin-cell fallback, inverse-CDF margins, and schema
   refusal. Four focused tests and Ruff pass.
+- Implemented legacy-XLS and XLSX SOI parsers with merged-header resolution,
+  number-format disclosure/caution flags, finest-leaf classification,
+  form-specific wage/capital arithmetic, source-cell provenance, conservative
+  SCF-bin hints, and a strict resource validator.
+- Added synthetic partnership/S-corporation workbook fixtures and form-arithmetic,
+  suppression, hint, and schema-refusal tests. All 11 focused tests and Ruff
+  pass. A real-file dry run reproduces the audited industry counts and
+  wage/capital ranges.
 
 ## Next
 
-- Implement and validate the SOI workbook parsers and ratio builder on
-  synthetic fixtures.
+- Add the configurable builder tool and run it on all seven restricted inputs.
 - Run the builder on restricted real inputs, commit only derived resources,
   and record commands and input digests.
 - Declare resources, add changelog/tests, run Ruff and the full workspace
