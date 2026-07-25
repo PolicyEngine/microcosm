@@ -2,59 +2,47 @@
 
 ## State
 
-Populace #548 round 4 completed on 2026-07-25 on `ssi-gate-batch-547` in the
-requested worktree. Live telemetry can no longer interrupt the terminal gate
-batch: its exception becomes a release-failing batch line, later gate groups
-still evaluate, and failed runs still write neither the H5 nor certification
-manifests. Nothing was pushed.
+Populace #516 whole-row donor outlier screen is complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
+whose grouped raw mortgage interest reaches $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuild.
 
 ## Done
 
-- Confirmed the clean requested worktree, branch, and starting HEAD
-  `012733eaad2bd426d6fc42f5a9359dd63e8ecaa0`.
-- Read `CLAUDE.md` and the GitNexus debugging workflow.
-- Confirmed that the prior `PROGRESS.md` described an unrelated completed
-  branch and replaced it with this round-4 journal.
-- Located the repository convention for a root `FINAL_REPORT.md`; the final
-  outcome will be written there.
-- Attempted the required GitNexus debugging workflow. Its analyzer could not
-  update the managed global registry, and its local graph resolved to an
-  unrelated repository, so no graph result was trusted; the generated local
-  index was removed and the corridor audit used direct source call sites.
-- Verified that all 10 telemetry calls in the scoped terminal section precede
-  the terminal raise, which itself precedes both the H5 write and certification
-  manifest construction.
-- Added a section-local `_TerminalBatchTelemetry` proxy. It turns any
-  `stage`/`attach_artifact` exception into a release-failing batch line and
-  continues evaluation, including when the run had otherwise been green.
-- Moved input-coverage, input-mass-parity, and QRF-tail failure collection
-  ahead of each block's reporting writes.
-- Ruff check/format-check and `git diff --check` pass for the production file
-  using a task-local uv cache.
-- Verified the committed `012733e` `final_loss` scrub. The audit also found
-  unscoped strict-JSON risks in sparse-only sibling loss keys; these will be
-  named in the final report rather than silently changed.
-- Added live-telemetry coverage to
-  `test_main_writes_diagnostics_before_post_calibration_gate_failure` as the
-  `telemetry` parameter. Its double crashes the calibration-diagnostics
-  attachment, and the test pins the pre-existing failure, recorded telemetry
-  line, later coverage/mass/QRF evaluations, terminal raise, and absence of H5
-  and manifests.
-- Added
-  `test_release_calibration_diagnostics_writes_nan_final_loss_as_null`, using
-  an actual `CalibrationResult` and the real diagnostics writer.
-- Both new paths and the existing `merge|crash` paths pass in isolated pytest
-  runs; the changed test file is Ruff-clean and formatted.
-- The full requested builder test file passes with pytest rc 0.
-- Ruff check and format-check pass over both changed Python files; `git diff
-  --check` also passes.
-- Wrote `FINAL_REPORT.md` with the functional commits, design, exact tests,
-  gate return codes, enforcement boundary, and explicitly unmodified corridor
-  findings.
+- Confirmed a clean starting worktree at `aef1c56`.
+- Read the repository guidance and established the #515 donor carve as the
+  screen's required downstream boundary.
+- Started source-level audits of every donor-frame consumer, checkpoint
+  validation, row-count pins, and existing donor-fact summaries.
+- Attempted the requested GitNexus impact workflow; the managed filesystem
+  denied its global registry write. Its local index also exposed a broad
+  `build/` ignore mismatch, so the completed impact audit uses direct source
+  call sites and tests.
+- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
+  structural rationale and pinned-artifact receipts.
+- Added a whole-row screen on grouped raw person `home_mortgage_interest`
+  after tax-unit assembly, before the #515 carve, with retained-index reset.
+- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
+  or carries a stale donor-length vector; values and weights always originate
+  from the same screened frame.
+- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
+  checkpoint regression track the live constant while retaining literal-v1
+  corruptions.
+- Added regression coverage for the exact grouped boundary, whole-row removal,
+  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
+- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
+  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
+  audit, expected 208,611-row real-artifact effect, verification results, count
+  sweep, and deliberately untouched surfaces.
 
 ## Next
 
-- Review the round-4 commits for PR #548.
-- Track the three explicitly out-of-scope corridor risks listed in
-  `FINAL_REPORT.md`, especially sparse `refit_final_loss` strict-JSON handling
-  and failures from the three direct report writers.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on populace#515.

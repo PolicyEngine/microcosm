@@ -1329,6 +1329,21 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
+def _finite_or_none(value: float) -> float | None:
+    """A loss for the diagnostics payload, scrubbed the way JSON needs it.
+
+    Mirrors ``populace.calibrate.diagnostics._finite``: the artifact
+    serializes strict JSON (``allow_nan=False``), and a non-finite loss is
+    an EXPECTED batched gate failure — ``_release_gate_failures`` records it
+    and the run continues to the terminal batch. Smuggling the raw value
+    into the payload makes the failure destroy the artifact that reports it
+    (populace#547).
+    """
+
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -8823,9 +8838,13 @@ def main() -> None:
             "refit_l2_lambda": float(
                 args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
             ),
-            "selection_final_loss": float(result.selection.final_loss),
-            "refit_initial_loss": float(result.initial_loss),
-            "refit_final_loss": float(result.final_loss),
+            # Same scrub as default_dataset["final_loss"] below: these losses
+            # ride the diagnostics build payload, which serializes strict JSON
+            # (allow_nan=False), and a non-finite loss is a BATCHED gate
+            # failure the artifact must survive to report (populace#547).
+            "selection_final_loss": _finite_or_none(result.selection.final_loss),
+            "refit_initial_loss": _finite_or_none(result.initial_loss),
+            "refit_final_loss": _finite_or_none(result.final_loss),
         }
     if telemetry is not None:
         telemetry.stage(
@@ -8968,16 +8987,9 @@ def main() -> None:
                 congressional_district_vintage_crosswalk_metadata
             ),
         }
-    # A non-finite final loss is an EXPECTED batched gate failure, not a
-    # writer bug: _release_gate_failures records it and the run continues to
-    # the terminal batch. The diagnostics writer serializes strict JSON
-    # (allow_nan=False), so the raw value must be scrubbed to null here the
-    # same way the summary scalars are — otherwise the failure destroys the
-    # very artifact that reports it (populace#547, confirm round 3).
-    final_loss_value = float(result.final_loss)
     default_dataset = {
         **default_dataset,
-        "final_loss": (final_loss_value if math.isfinite(final_loss_value) else None),
+        "final_loss": _finite_or_none(result.final_loss),
     }
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started

@@ -1,101 +1,111 @@
-# Final report: populace #548 round 4
-
-Date: 2026-07-25
+# Final report: populace #462 register alignment
 
 ## Outcome
 
-Round 4 is complete on `ssi-gate-batch-547` in the requested worktree. No
-push, release publication, certification, or other worktree/branch mutation
-was performed.
+Completed the split-PR remediation on `loss-contract-alignment`, based on
+`origin/main` at `7b6e10b`. The change is now register alignment only: one
+shared critical-target register, one shared congressional-district classifier,
+two consumers, builder contract-row gating, and behavioral containment of the
+publish contract.
 
-Functional commits:
+The critical-row loss multiplier was removed entirely per
+[populace#492](https://github.com/PolicyEngine/populace/issues/492). There is no
+constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
+provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
+source-identical to `origin/main`, and its output therefore preserves main's
+bit-level behavior for the same registry and family multipliers.
 
-- `01926dddd156d153ef837c4b27970725bdddf049` — guard terminal-batch
-  telemetry and secure gate lines before reporting.
-- `49b65a110cfd9789feb349b543b561e178ff4588` — add the live-telemetry and
-  real diagnostics-writer regressions.
+## Sol round-1 findings
 
-## Design
+1. **Table 1.4 selector parity:** removed the builder-only
+   `accepted_name_prefixes=("irs_soi.",)` constraint. The adapter now has
+   exactly the shared requirement's substring and suffix selectors. The
+   outside-prefix reproduction is builder-rejected.
+2. **Congressional-district parity:** added exported, stdlib-only
+   `is_congressional_district_target(name, metadata)` and made the publisher
+   and builder classifiers thin wrappers. It ORs layout dimension, source-id
+   token, geography level, geography scope, truthy CD GEOID, and name token.
+   The builder's exact/semantic, Table 1.4, and zero-support paths now see the
+   same registry metadata.
+3. **Recorded relative-error shape:** a matched row with missing/`None`
+   `relative_error` now fails with the publish-contract message instead of
+   silently passing after recomputation. Existing non-numeric and stale-value
+   checks remain.
+4. **Behavioral anti-drift:** the load-bearing test now runs adversarial rows
+   through both consumers for exact-name, family+role, Table pattern,
+   missing/non-finite values, and a disallowed incumbent escape at the 0.25
+   hard stop. A production Ledger compile supplies six separate CD evidence
+   rows; builder and publisher exclude identical six-name sets and counts.
+   Field comparisons remain as fast checks, and any added conjunctive prefix
+   is proven to trip the guard.
 
-The builder now creates a section-local `_TerminalBatchTelemetry` proxy
-immediately before attaching `calibration_diagnostics.json`. Every current
-`stage(...)` and `attach_artifact(...)` call through the terminal raise goes
-through that proxy. If the underlying live telemetry raises, the proxy appends
-an operation-labelled failure to `terminal_gate_failures` and returns, allowing
-the remaining input-coverage, input-mass-parity, and QRF-tail gate groups to
-run.
+The [#490](https://github.com/PolicyEngine/populace/issues/490) medical 0.25
+adjudication tolerance and its adjacent comment in `us_critical_targets.py`
+remain byte-for-byte unchanged, as required.
 
-This is intentionally release-failing even when all substantive gates were
-green: a telemetry crash becomes a recorded batch line and reaches the normal
-terminal `RuntimeError`, rather than producing an opaque early abort.
-Telemetry outside this narrowly scoped section retains its prior behavior.
+## Reproduction receipts
 
-For the three gate-result blocks, enforced failure lines now enter
-`terminal_gate_failures` before the block writes or attaches its report and
-before it emits a failed telemetry stage. This matches the already-established
-SSI secure-first pattern.
+The Table 1.4 prefix reproduction now returns:
 
-Enforcement remains strict. Any collected substantive or telemetry line reaches
-the terminal raise. That raise remains before `write_dataset(...)`, and
-`_build_manifests(...)` remains later still, so a failure path writes neither
-the release H5 nor certification manifests. The end-to-end regression also
-asserts both absences.
+```text
+SOI Table 1.4 national dollar fit failed: other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 for SOI Pub 1304 Table 1.4 national dollar rows (soi_table_1_4_national_dollar_rows); target=100.0, final_estimate=200.0.
+```
 
-## Tests added
+The missing-relative-error reproduction now returns:
 
-- `test_main_writes_diagnostics_before_post_calibration_gate_failure[telemetry]`
-  uses a live telemetry double that raises while attaching the already-written
-  calibration diagnostics. It proves the terminal message contains both the
-  pre-existing `ctc failed` line and the recorded telemetry-crash line, proves
-  later coverage, mass-parity, and QRF-tail evaluations occur in order, and
-  proves no H5 or manifest is written.
-- `test_release_calibration_diagnostics_writes_nan_final_loss_as_null` creates
-  an actual `CalibrationResult` with `final_loss = NaN`, calls the real
-  `_write_release_calibration_diagnostics`, and verifies both the top-level
-  diagnostic and `build.default_dataset.final_loss` serialize as JSON `null`.
-  The test preserves the committed `012733e` boundary: `main()` supplies the
-  already-scrubbed default-dataset value to the writer.
+```text
+SOI Table 1.4 national dollar fit failed: irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: missing recorded relative_error; the publish contract requires a numeric value.
+```
+
+The CD reproduction has the owner-mandated exclusion result:
+
+```text
+builder_excluded=True
+publisher_excluded=True
+builder_failures=[]
+```
+
+Calling that row "rejected" would contradict the required OR-union exclusion
+semantics. The two malformed critical rows are rejected; the CD row is
+symmetrically excluded by both consumers.
 
 ## Verification
 
-- `uv run pytest packages/populace-build/tests/test_us_fiscal_refresh_builder.py -q`
-  — **rc 0**.
-- `uv run ruff check tools/build_us_fiscal_refresh_release.py packages/populace-build/tests/test_us_fiscal_refresh_builder.py`
-  — **rc 0**.
-- `uv run ruff format --check tools/build_us_fiscal_refresh_release.py packages/populace-build/tests/test_us_fiscal_refresh_builder.py`
-  — **rc 0**.
-- `git diff --check` — **rc 0**.
+The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
+environment in the network-restricted sandbox:
 
-The managed sandbox denied the global uv cache, so the same commands used
-`UV_CACHE_DIR=/private/tmp/populace-548-uv-cache`; no repository files were
-created by that override.
+```text
+uv run --package populace-build --extra us --group dev python -m pytest packages/populace-data/tests packages/populace-build/tests/test_us_fiscal_refresh_builder.py packages/populace-build/tests/test_us_state_files_scorer.py -q
+264 passed, 3 skipped (267 collected)
+```
 
-## Unanticipated corridor findings
+Additional receipts:
 
-These were named and deliberately not changed outside the round-3-finding-2
-scope:
+- Complete `test_gates.py`: passed.
+- Required multiplier grep: zero Python hits.
+- Ruff check: clean on all ten touched Python files.
+- Ruff format check: clean on the eight non-exempt touched Python files; the
+  two historical experiment files were not reformatted, as instructed.
+- `git diff --check`: clean.
+- The medical adjudication block compares byte-for-byte equal to pre-fix
+  commit `068854d`.
+- Pytest emitted non-failing macOS temporary-directory cleanup warnings; no
+  test failed.
 
-1. The direct report writes for `input_coverage.json`,
-   `input_mass_parity.json`, and `qrf_tail_concentration.json` remain
-   unguarded. Their gate lines are now secured first, but a filesystem or
-   serialization exception at those writes can still prevent later groups and
-   the terminal raise.
-2. Commit `012733e` correctly scrubs
-   `build.default_dataset.final_loss`. The normal sparse payload separately
-   retains `selection_final_loss`, `refit_initial_loss`, and
-   `refit_final_loss`; in particular, the same non-finite `result.final_loss`
-   still enters `refit_final_loss` and can trip strict JSON. This sibling-key
-   issue was not silently repaired because the brief explicitly scoped finding
-   1 out of this round.
-3. `PolicyEngineUSEngine()` construction immediately before input coverage is
-   outside the degraded evaluation guards. A constructor exception would still
-   interrupt an already-degraded batch; it is evaluation infrastructure, not
-   the optional telemetry surface requested here.
+## Remediation commits
 
-## Tooling note
+- `5077f95` — start populace#462 Sol remediation progress.
+- `c48ba37` — remove the populace#462 loss multiplier per populace#492.
+- `afa910a` — fix Sol finding 1 selector parity.
+- `89f74f4` — fix Sol finding 2 CD classifier parity.
+- `77040fb` — fix Sol finding 3 relative-error shape.
+- `bad7145` — fix Sol finding 4 behavioral containment.
+- `3c96514` — apply the finding-2 classifier's required Ruff formatting.
 
-The GitNexus debugging workflow was attempted. Its analyzer could not update
-the managed global registry, and the resulting local graph resolved to an
-unrelated repository, so no graph output was trusted. The generated local
-index was removed, and all conclusions above came from direct source call-site
-and test inspection.
+Nothing was pushed at the time of this report; the branch was subsequently
+pushed and merged as #491 (2026-07-22).
+
+The sandbox rejected writing
+`/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
+permitted`; the full completion report is therefore committed here and will be
+printed to stdout as the requested fallback.
