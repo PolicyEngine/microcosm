@@ -3,8 +3,8 @@
 ## State
 
 Populace #548 round 4 is in progress on `ssi-gate-batch-547` at the requested
-worktree. The production guard is implemented and locally lint-clean; required
-regressions and the full targeted gates remain.
+worktree. The production guard and both required regressions are implemented;
+the complete requested pytest/Ruff gates and final report remain.
 
 ## Done
 
@@ -32,10 +32,22 @@ regressions and the full targeted gates remain.
 - Verified the committed `012733e` `final_loss` scrub. The audit also found
   unscoped strict-JSON risks in sparse-only sibling loss keys; these will be
   named in the final report rather than silently changed.
+- Added live-telemetry coverage to
+  `test_main_writes_diagnostics_before_post_calibration_gate_failure` as the
+  `telemetry` parameter. Its double crashes the calibration-diagnostics
+  attachment, and the test pins the pre-existing failure, recorded telemetry
+  line, later coverage/mass/QRF evaluations, terminal raise, and absence of H5
+  and manifests.
+- Added
+  `test_release_calibration_diagnostics_writes_nan_final_loss_as_null`, using
+  an actual `CalibrationResult` and the real diagnostics writer.
+- Both new paths and the existing `merge|crash` paths pass in isolated pytest
+  runs; the changed test file is Ruff-clean and formatted.
 
 ## Next
 
-- Commit the production guard.
-- Add the live-telemetry crash regression and the real diagnostics-writer NaN
-  regression.
-- Run the full requested pytest and Ruff gates, then write `FINAL_REPORT.md`.
+- Commit the regression step.
+- Run the full requested pytest file and both Ruff gates over every changed
+  source/test file.
+- Write and commit `FINAL_REPORT.md`, historicize this journal, and verify the
+  final worktree/commit chain without pushing.

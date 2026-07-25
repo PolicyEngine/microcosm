@@ -2,6 +2,7 @@ import builtins
 import importlib.util
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.calibrate import TargetRegistry, TargetSpec
+from populace.calibrate import TargetRegistry, TargetSpec, calibrate
 from populace.frame import Frame, WeightKind
 
 
@@ -2885,7 +2886,63 @@ def test_release_calibration_diagnostics_include_gate_failures(
     }
 
 
-@pytest.mark.parametrize("terminal_mode", ["merge", "crash"])
+def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
+    small_frame,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_bytes(b"h5")
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="income",
+                entity="person",
+                measure="income",
+                value=500_000.0,
+                source="fixture",
+            ),
+        ),
+        country="us",
+    )
+    result = replace(
+        calibrate(
+            small_frame,
+            registry.to_target_set(),
+            epochs=1,
+            seed=0,
+        ),
+        closing_loss=float("nan"),
+    )
+    passing_gate = builder.GateResult(
+        name="passing",
+        passed=True,
+        details={"checked": True},
+    )
+
+    builder._write_release_calibration_diagnostics(
+        result=result,
+        release_dir=tmp_path,
+        registry=registry,
+        base_h5=base_h5,
+        compilation={"dropped_target_names": []},
+        target_profile_gate=passing_gate,
+        health_input_gate=passing_gate,
+        base_population_gate=passing_gate,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=["Calibration final loss is non-finite."],
+        # main() applies the committed 012733e scrub before invoking this real
+        # writer; keep that call boundary explicit rather than moving the fix.
+        default_dataset={"method": "dense_no_l0", "final_loss": None},
+    )
+
+    diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
+    assert diagnostics["final_loss"] is None
+    assert diagnostics["build"]["default_dataset"]["final_loss"] is None
+
+
+@pytest.mark.parametrize("terminal_mode", ["merge", "crash", "telemetry"])
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
 ) -> None:
@@ -2899,6 +2956,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``_release_gate_failures`` raises; each records a line instead of
     masking the SSI failure, and the incumbent path is nulled for the
     writer so the caught I/O failure is not replayed at the re-hash.
+    ``telemetry``: live telemetry raises while attaching the already-written
+    calibration diagnostics; the exception becomes a batch line and every
+    later terminal gate group still evaluates before the terminal raise.
     """
     builder = _load_builder_module()
     release_id = "populace-us-2024-gate-failure-test"
@@ -2931,6 +2991,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     captured: dict[str, object] = {
         "health_stage_events": [],
         "source_stage_events": [],
+        "terminal_gate_events": [],
     }
 
     class FakeFrame:
@@ -2951,8 +3012,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "--asec-2023-weeks-unemployed-source",
         str(weeks_source),
         "--no-target-frame-checkpoint",
-        "--no-staging",
     ]
+    if terminal_mode != "telemetry":
+        argv.append("--no-staging")
     if terminal_mode == "crash":
         # Nonexistent incumbent: the degraded-mode guard must record the
         # load failure, null the path for the writer (no re-hash replay of
@@ -2969,6 +3031,95 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         lambda path: "weeks-source-sha" if Path(path) == weeks_source else "base-sha",
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    if terminal_mode == "telemetry":
+
+        class LiveTelemetry:
+            run_id = "live-telemetry-test"
+
+            def stage(self, stage, **details):
+                captured.setdefault("telemetry_events", []).append(("stage", stage))
+
+            def attach_artifact(self, name, path, **details):
+                captured.setdefault("telemetry_events", []).append(
+                    ("attach_artifact", name)
+                )
+                if name == "calibration_diagnostics" and not captured.get(
+                    "telemetry_crashed"
+                ):
+                    captured["telemetry_crashed"] = True
+                    raise RuntimeError(
+                        "calibration diagnostics attach exploded "
+                        "[telemetry-crash-sentinel]"
+                    )
+
+            def calibration_progress(self, event):
+                captured.setdefault("telemetry_events", []).append(
+                    ("calibration_progress", event.get("kind"))
+                )
+
+            def complete(self):
+                captured.setdefault("telemetry_events", []).append(
+                    ("complete", "complete")
+                )
+
+        live_telemetry = LiveTelemetry()
+        monkeypatch.setattr(
+            builder,
+            "_staging_telemetry",
+            lambda *args, **kwargs: live_telemetry,
+        )
+        monkeypatch.setattr(
+            builder,
+            "PolicyEngineUSEngine",
+            lambda: SimpleNamespace(),
+        )
+
+        def fake_input_coverage_gate(frame, engine):
+            captured["terminal_gate_events"].append("input_coverage")
+            return builder.GateResult(
+                name="input_coverage",
+                passed=True,
+                details={"checked": True},
+            )
+
+        def fake_export_input_mass_gate(export_frame, base_frame, **kwargs):
+            captured["terminal_gate_events"].append("input_mass_parity")
+            return builder.GateResult(
+                name="export_input_mass_parity",
+                passed=True,
+                details={"checked": True},
+            )
+
+        def fake_qrf_tail_concentration_gate(
+            export_frame,
+            *,
+            reviewed_exclusions,
+        ):
+            captured["terminal_gate_events"].append("qrf_tail_concentration")
+            return (
+                builder.GateResult(
+                    name="qrf_tail_concentration",
+                    passed=True,
+                    details={"reviewed_exclusions": []},
+                ),
+                {"checked": True},
+            )
+
+        monkeypatch.setattr(
+            builder,
+            "us_release_input_coverage_gate",
+            fake_input_coverage_gate,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_export_input_mass_gate",
+            fake_export_input_mass_gate,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_qrf_tail_concentration_gate",
+            fake_qrf_tail_concentration_gate,
+        )
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
     monkeypatch.setattr(
@@ -4175,8 +4326,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "Other health insurance signal failed on the export frame: "
             "premiums signal flattened [cofailure-sentinel]" in message
         )
-        if terminal_mode == "merge":
+        if terminal_mode != "crash":
             assert "ctc failed" in message
+            if terminal_mode == "telemetry":
+                assert (
+                    "Terminal-batch telemetry "
+                    "attach_artifact('calibration_diagnostics') crashed" in message
+                )
+                assert "telemetry-crash-sentinel" in message
         else:
             assert "health-input exploded [crash-sentinel]" in message
             assert "release-gate evaluation exploded [crash-sentinel]" in message
@@ -4193,7 +4350,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # H5s land under the out root (not the release dir), so sweep the tree.
     assert not list(out.rglob("*.h5"))
     assert not list(release_dir.glob("*manifest*"))
-    if terminal_mode == "merge":
+    if terminal_mode == "telemetry":
+        assert captured["telemetry_crashed"] is True
+        assert captured["terminal_gate_events"] == [
+            "input_coverage",
+            "input_mass_parity",
+            "qrf_tail_concentration",
+        ]
+    if terminal_mode != "crash":
         assert captured["diagnostics"]["gate_failures"] == [
             "SSI take-up delivery failed: 18_64 delivered over envelope "
             "[cofailure-sentinel]",
