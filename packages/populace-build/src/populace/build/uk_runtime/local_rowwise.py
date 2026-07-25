@@ -28,10 +28,12 @@ from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
     solve_prepared_local_weights,
 )
+from populace.frame import MassChangeRecord
 
 __all__ = [
     "UKRowwiseLocalMatrix",
     "build_uk_rowwise_local_matrix",
+    "rowwise_calibration_mass_record",
     "rowwise_area_support_summary",
     "solve_uk_rowwise_weights_under_doctrine",
 ]
@@ -90,6 +92,20 @@ def build_uk_rowwise_local_matrix(
         raise ValueError(
             "metrics household index must be unique; duplicate value(s): "
             f"{list(map(str, duplicates[:5]))}."
+        )
+    metric_labels = [str(column) for column in metrics.columns]
+    duplicate_labels = sorted(
+        {label for label in metric_labels if metric_labels.count(label) > 1}
+    )
+    if duplicate_labels:
+        raise ValueError(f"metrics has duplicate column label(s): {duplicate_labels}.")
+    from populace.build.uk_runtime.local_geography import _AREA_METADATA_COLUMNS
+
+    metadata_collisions = sorted(set(metric_labels) & set(_AREA_METADATA_COLUMNS))
+    if metadata_collisions:
+        raise ValueError(
+            "metric column(s) collide with target-frame metadata names and "
+            f"would silently calibrate metadata: {metadata_collisions}."
         )
     values = metrics.to_numpy(dtype=np.float64)
     if not np.isfinite(values).all():
@@ -191,6 +207,23 @@ def build_uk_rowwise_local_matrix(
         dtype=np.float64,
     )
     target_frame = pd.DataFrame(target_rows)
+    # Fail closed on unreachable rows: a nonzero target whose area has no
+    # supporting entries can never be hit and would sit invisibly inside the
+    # loss cap. Misses are support or target work, never silent exclusion.
+    row_support = np.diff(matrix.indptr)
+    unreachable = (row_support == 0) & (
+        target_frame["value"].to_numpy(dtype=np.float64) != 0.0
+    )
+    if unreachable.any():
+        examples = [
+            f"{row.area_code}/{row.metric}"
+            for row in target_frame.loc[unreachable].head(5).itertuples(index=False)
+        ]
+        raise ValueError(
+            f"{int(unreachable.sum())} target row(s) have a nonzero target "
+            f"but zero household support: {examples}. Add support (clones, "
+            "assignment) or fix the target surface."
+        )
     return UKRowwiseLocalMatrix(
         matrix=matrix,
         targets=target_frame["value"].to_numpy(dtype=np.float64),
@@ -221,7 +254,13 @@ def solve_uk_rowwise_weights_under_doctrine(
     parameters and no doctrine parameter — the bounds always come from
     :data:`UK_LOCAL_SOLVE_DOCTRINE`. Initial weights are the household base
     weights floored at ``min_initial_weight``; a rowwise household exists in
-    exactly one area, so nothing is split.
+    exactly one area, so nothing is split. Zero base weights are refused —
+    the floor must not resurrect dead rows.
+
+    Calibration changes total mass. Writing solved weights through
+    :func:`write_uk_rowwise_dataset` requires appending the record from
+    :func:`rowwise_calibration_mass_record` to the dataset's mass log first;
+    the writer's chain-currency fence refuses an unrecorded mass change.
     """
 
     from populace.build.uk_runtime.local_doctrine import (
@@ -240,8 +279,14 @@ def solve_uk_rowwise_weights_under_doctrine(
         )
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError("base_weights must be finite and non-negative.")
-    if not np.isfinite(min_initial_weight) or min_initial_weight <= 0:
-        raise ValueError("min_initial_weight must be a positive finite number.")
+    if (weights == 0).any():
+        raise ValueError(
+            f"base_weights contains {int((weights == 0).sum())} zero "
+            "weight(s); the doctrine floor must not resurrect dead rows — "
+            "drop them or revive them upstream with a recorded mass change."
+        )
+    if not np.isfinite(min_initial_weight) or min_initial_weight < 0:
+        raise ValueError("min_initial_weight must be finite and non-negative.")
     initial_weights = np.maximum(weights, min_initial_weight)
     return solve_prepared_local_weights(
         matrix=problem.matrix,
@@ -269,6 +314,8 @@ def rowwise_area_support_summary(
     """Per-area support of a rowwise weight vector, all target areas included."""
 
     values = np.asarray(weights, dtype=np.float64)
+    if values.ndim != 1:
+        raise ValueError(f"weights must be one-dimensional, got shape {values.shape}.")
     if len(values) != problem.n_households:
         raise ValueError(
             "weights must align with households, got "
@@ -276,16 +323,19 @@ def rowwise_area_support_summary(
         )
     if not np.isfinite(values).all() or (values < 0).any():
         raise ValueError("weights must be finite and non-negative.")
-    sources = (
-        np.asarray(problem.household_ids, dtype=object)
+    sources_list = (
+        list(problem.household_ids)
         if source_household_ids is None
-        else np.asarray(list(source_household_ids), dtype=object)
+        else list(source_household_ids)
     )
-    if len(sources) != problem.n_households:
+    if len(sources_list) != problem.n_households:
         raise ValueError(
             "source_household_ids must align with households, got "
-            f"{len(sources)} for {problem.n_households}."
+            f"{len(sources_list)} for {problem.n_households}."
         )
+    sources = np.empty(problem.n_households, dtype=object)
+    for index, source in enumerate(sources_list):
+        sources[index] = source
     assigned = np.asarray(problem.assigned_areas, dtype=object)
     rows: list[dict[str, Any]] = []
     for area_code in problem.area_codes:
@@ -310,3 +360,41 @@ def rowwise_area_support_summary(
             }
         )
     return pd.DataFrame(rows)
+
+
+def rowwise_calibration_mass_record(
+    base_weights: Sequence[float],
+    solved_weights: Sequence[float],
+    *,
+    bound_families: Sequence[str],
+) -> MassChangeRecord:
+    """The mass-change record a rowwise calibration must append before write.
+
+    :func:`write_uk_rowwise_dataset`'s chain-currency fence refuses weights
+    whose total disagrees with the latest household record, so a calibration
+    that skips this record cannot ship silently.
+    """
+
+    base = np.asarray(base_weights, dtype=np.float64)
+    solved = np.asarray(solved_weights, dtype=np.float64)
+    if base.ndim != 1 or solved.ndim != 1 or base.shape != solved.shape:
+        raise ValueError(
+            "base_weights and solved_weights must be aligned one-dimensional "
+            f"vectors, got shapes {base.shape} vs {solved.shape}."
+        )
+    if not np.isfinite(base).all() or not np.isfinite(solved).all():
+        raise ValueError("weights must be finite.")
+    families = [str(name) for name in bound_families]
+    if not families or any(not name.strip() for name in families):
+        raise ValueError("bound_families must name at least one target family.")
+    return MassChangeRecord(
+        entity="household",
+        old_total=float(base.sum()),
+        new_total=float(solved.sum()),
+        declared_factor=None,
+        reason=(
+            "Rowwise doctrine calibration to bound target family(ies) "
+            f"{', '.join(families)}; total household mass moved with the "
+            "targets."
+        ),
+    )

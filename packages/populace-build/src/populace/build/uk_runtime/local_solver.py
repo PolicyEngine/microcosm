@@ -171,6 +171,11 @@ def solve_stacked_local_weights(
         problem.n_areas,
         min_weight=min_initial_weight,
     )
+    if len(initial_weights) != problem.matrix.shape[1]:
+        raise ValueError(
+            "base_weights expanded to the wrong stacked length: "
+            f"{len(initial_weights)} vs {problem.matrix.shape[1]}."
+        )
     return solve_prepared_local_weights(
         matrix=problem.matrix,
         targets=problem.targets,
@@ -219,6 +224,27 @@ def solve_prepared_local_weights(
     constraint_matrix = matrix
     initial_weights = np.asarray(initial_weights, dtype=np.float64)
     targets = np.asarray(targets, dtype=np.float64)
+    if initial_weights.ndim != 1:
+        raise ValueError(
+            f"initial weights must be one-dimensional, got shape "
+            f"{initial_weights.shape}."
+        )
+    if not np.isfinite(initial_weights).all():
+        raise ValueError("initial weights must be finite.")
+    if targets.ndim != 1:
+        raise ValueError(f"targets must be one-dimensional, got {targets.shape}.")
+    if constraint_matrix.shape[0] != len(targets):
+        raise ValueError(
+            "constraint matrix rows must match targets, got "
+            f"{constraint_matrix.shape[0]} vs {len(targets)}."
+        )
+    if len(target_frame) != len(targets):
+        raise ValueError(
+            "target_frame must align with targets, got "
+            f"{len(target_frame)} rows vs {len(targets)}."
+        )
+    if len(targets) == 0:
+        raise ValueError("the target surface must not be empty.")
     scales = (
         default_target_loss_scales(targets)
         if target_loss_scales is None

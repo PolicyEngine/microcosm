@@ -194,3 +194,90 @@ def test_solver_refactor_preserves_stacked_behaviour() -> None:
     assert result.weights.shape == (4,)
     assert result.initial_weights.tolist() == [0.5, 0.5, 0.5, 0.5]
     assert result.past_cap_census is not None
+
+
+def test_matrix_builder_fails_closed_on_unreachable_nonzero_targets() -> None:
+    # A target area with no assigned households cannot be hit; a nonzero
+    # target there must refuse at build time, while a zero target is fine.
+    targets = pd.DataFrame(
+        {
+            "code": ["E001", "S001", "W001"],
+            "population": [4.0, 2.0, 5.0],
+            "uc_households": [1.0, 1.0, 0.0],
+        }
+    )
+    with pytest.raises(ValueError, match="W001/population"):
+        build_uk_rowwise_local_matrix(_metrics(), _assigned(), targets)
+
+    zero_ok = targets.copy()
+    zero_ok.loc[zero_ok["code"] == "W001", "population"] = 0.0
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), zero_ok)
+    assert problem.n_areas == 3
+
+
+def test_matrix_builder_refuses_duplicate_and_metadata_metric_labels() -> None:
+    duplicated = _metrics()
+    duplicated.columns = ["population", "population"]
+    with pytest.raises(ValueError, match="duplicate column label"):
+        build_uk_rowwise_local_matrix(duplicated, _assigned(), _targets())
+
+    metadata = _metrics().rename(columns={"uc_households": "area_index"})
+    targets = _targets().rename(columns={"uc_households": "area_index"})
+    with pytest.raises(ValueError, match="metadata"):
+        build_uk_rowwise_local_matrix(metadata, _assigned(), targets)
+
+
+def test_rowwise_solve_refuses_dead_rows_and_bad_core_inputs() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    with pytest.raises(ValueError, match="zero"):
+        solve_uk_rowwise_weights_under_doctrine(problem, [1.0, 0.0, 1.0], epochs=1)
+
+    from populace.build.uk_runtime import solve_prepared_local_weights
+
+    with pytest.raises(ValueError, match="finite"):
+        solve_prepared_local_weights(
+            matrix=problem.matrix,
+            targets=problem.targets,
+            target_frame=problem.target_frame,
+            initial_weights=np.array([1.0, np.nan, 1.0]),
+            epochs=1,
+        )
+    with pytest.raises(ValueError, match="one-dimensional"):
+        solve_prepared_local_weights(
+            matrix=problem.matrix,
+            targets=problem.targets,
+            target_frame=problem.target_frame,
+            initial_weights=np.ones((3, 1)),
+            epochs=1,
+        )
+
+
+def test_calibration_mass_record_names_families_and_totals() -> None:
+    from populace.build.uk_runtime import rowwise_calibration_mass_record
+
+    record = rowwise_calibration_mass_record(
+        [1.0, 2.0],
+        [1.5, 2.5],
+        bound_families=["census_households/constituency"],
+    )
+    assert record.entity == "household"
+    assert record.old_total == pytest.approx(3.0)
+    assert record.new_total == pytest.approx(4.0)
+    assert "census_households/constituency" in record.reason
+
+    with pytest.raises(ValueError, match="bound_families"):
+        rowwise_calibration_mass_record([1.0], [1.0], bound_families=[])
+
+
+def test_support_summary_normalizes_inputs() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    with pytest.raises(ValueError, match="one-dimensional"):
+        rowwise_area_support_summary(problem, np.ones((3, 1)))
+    # Composite (tuple) source ids must be handled, not coerced into 2-D.
+    support = rowwise_area_support_summary(
+        problem,
+        [1.0, 1.0, 1.0],
+        source_household_ids=[(2023, 1), (2023, 1), (2023, 2)],
+    )
+    rows = {row.area_code: row for row in support.itertuples(index=False)}
+    assert rows["E001"].nonzero_source_households == 1

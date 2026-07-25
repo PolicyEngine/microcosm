@@ -199,6 +199,7 @@ from populace.build.uk_runtime.local_rowwise import (
     UKRowwiseLocalMatrix,
     build_uk_rowwise_local_matrix,
     rowwise_area_support_summary,
+    rowwise_calibration_mass_record,
     solve_uk_rowwise_weights_under_doctrine,
 )
 from populace.build.uk_runtime.local_runner import (
@@ -617,6 +618,7 @@ __all__ = [
     "solve_firm_weights",
     "past_cap_census",
     "rowwise_area_support_summary",
+    "rowwise_calibration_mass_record",
     "solve_prepared_local_weights",
     "solve_stacked_local_weights",
     "solve_uk_local_weights_under_doctrine",
