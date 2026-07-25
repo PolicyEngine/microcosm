@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
+from scipy import sparse as sp
 
 from populace.build.uk_runtime.local_geography import (
     StackedLocalMatrix,
@@ -170,7 +171,54 @@ def solve_stacked_local_weights(
         problem.n_areas,
         min_weight=min_initial_weight,
     )
-    targets = np.asarray(problem.targets, dtype=np.float64)
+    return solve_prepared_local_weights(
+        matrix=problem.matrix,
+        targets=problem.targets,
+        target_frame=problem.target_frame,
+        initial_weights=initial_weights,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        max_weight_ratio=max_weight_ratio,
+        conserve_mass=conserve_mass,
+        target_records=target_records,
+        l0_lambda=l0_lambda,
+        target_loss_weights=target_loss_weights,
+        target_loss_scales=target_loss_scales,
+        target_loss_cap=target_loss_cap,
+        budget_iters=budget_iters,
+        seed=seed,
+    )
+
+
+def solve_prepared_local_weights(
+    *,
+    matrix: sp.csr_matrix,
+    targets: np.ndarray,
+    target_frame: pd.DataFrame,
+    initial_weights: np.ndarray,
+    epochs: int = 512,
+    learning_rate: float = 0.15,
+    max_weight_ratio: float | None = 100.0,
+    conserve_mass: bool = False,
+    target_records: int | None = None,
+    l0_lambda: float = 0.0,
+    target_loss_weights: Sequence[float] | None = None,
+    target_loss_scales: Sequence[float] | None = None,
+    target_loss_cap: float = 10.0,
+    budget_iters: int = 10,
+    seed: int = 0,
+) -> StackedLocalSolveResult:
+    """Shared solve core: prepared initial weights against a target matrix.
+
+    Both local shapes route here — the stacked path after splitting base
+    weights across areas, and the rowwise path with the household base
+    weights directly (a rowwise household exists in exactly one area, so
+    there is nothing to split). The past-cap census rides on every result.
+    """
+
+    constraint_matrix = matrix
+    initial_weights = np.asarray(initial_weights, dtype=np.float64)
+    targets = np.asarray(targets, dtype=np.float64)
     scales = (
         default_target_loss_scales(targets)
         if target_loss_scales is None
@@ -191,10 +239,10 @@ def solve_stacked_local_weights(
             "target_loss_weights must align with targets, got "
             f"{loss_weights.shape} vs {targets.shape}."
         )
-    if len(initial_weights) != problem.matrix.shape[1]:
+    if len(initial_weights) != constraint_matrix.shape[1]:
         raise ValueError(
-            "base_weights expanded to the wrong stacked length: "
-            f"{len(initial_weights)} vs {problem.matrix.shape[1]}."
+            "initial weights have the wrong length for the constraint "
+            f"matrix: {len(initial_weights)} vs {constraint_matrix.shape[1]}."
         )
     if (initial_weights <= 0).any():
         raise ValueError(
@@ -204,7 +252,7 @@ def solve_stacked_local_weights(
         )
 
     torch.manual_seed(seed)
-    matrix = _calibrate_torch_constraint_matrix(problem.matrix)
+    matrix_tensor = _calibrate_torch_constraint_matrix(constraint_matrix)
     target_tensor = torch.tensor(targets, dtype=torch.float32)
     loss_weight_tensor = (
         None
@@ -220,7 +268,7 @@ def solve_stacked_local_weights(
         prune_atol = 1e-6 * float(np.mean(initial_weights))
         weights, trajectory, _realized_l0_lambda, _realized_nonzero = (
             _calibrate_search_l0_lambda_for_budget(
-                matrix,
+                matrix_tensor,
                 target_tensor,
                 loss_weight_tensor,
                 scale_tensor,
@@ -242,7 +290,7 @@ def solve_stacked_local_weights(
         )
     else:
         weights, trajectory = _calibrate_optimize(
-            matrix,
+            matrix_tensor,
             target_tensor,
             loss_weight_tensor,
             scale_tensor,
@@ -258,8 +306,8 @@ def solve_stacked_local_weights(
             init_mean=0.999,
             temperature=0.25,
         )
-    initial_estimates = problem.matrix @ initial_weights
-    final_estimates = problem.matrix @ weights
+    initial_estimates = constraint_matrix @ initial_weights
+    final_estimates = constraint_matrix @ weights
     initial_loss = relative_error_loss(
         initial_estimates,
         targets,
@@ -274,7 +322,7 @@ def solve_stacked_local_weights(
         target_loss_scales=scales,
         target_loss_cap=target_loss_cap,
     )
-    diagnostics = problem.target_frame.copy()
+    diagnostics = target_frame.copy()
     diagnostics["target"] = targets
     diagnostics["initial_estimate"] = initial_estimates
     diagnostics["final_estimate"] = final_estimates
@@ -292,7 +340,7 @@ def solve_stacked_local_weights(
         targets,
         target_loss_cap=target_loss_cap,
         target_loss_scales=scales,
-        target_frame=problem.target_frame,
+        target_frame=target_frame,
     )
     return StackedLocalSolveResult(
         weights=weights,
