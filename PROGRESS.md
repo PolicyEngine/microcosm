@@ -41,11 +41,13 @@ The active ledger for the QBI v2 content work is
   (0.993974x); the provisional diagnostic band is [0.3x, 3x].
 - Retained the v1 BDC scale with an explicit no-published-anchor note; its
   replay is $0.143270890B.
+- Added the QBI v2 content changelog. Country-package, US-plan/incumbent,
+  source-runtime, and base-builder contract suites pass.
 
 ## Current next
 
-- Add the changelog, run broader focused validation, then execute full
-  workspace pytest and Ruff before writing the final report.
+- Execute full workspace pytest and Ruff, then write the final report and
+  commit the completion state.
 
 ## State
 

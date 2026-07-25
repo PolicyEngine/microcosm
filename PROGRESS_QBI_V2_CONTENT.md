@@ -6,7 +6,8 @@
 - Base: local `repeal-validation-298` at `e45f797`
 - Worktree: `.claude/worktrees/populace-wt-530`
 - Mode: offline; no push, pull, fetch, PR, or stash
-- Status: implementation complete; broader and full validation pending
+- Status: implementation and affected validation complete; full validation
+  pending
 
 ## Done
 
@@ -67,10 +68,12 @@
   restricted replay is `$0.143270890B`.
 - Focused QBI, crosswalk, QRF-chain, spec-only, restricted replay, and Ruff
   checks pass; the v1 golden replay is unchanged.
+- Added `changelog.d/qbi-v2-content.added.md`.
+- Country-package, US-plan/incumbent, source-runtime, and base-builder
+  contract suites pass.
 
 ## Next
 
-- Add the changelog and run the broader QBI/builder/manifest contract suites.
 - Run full workspace pytest with both restricted-data environment variables,
   then full Ruff and repository hygiene checks.
 - Write the final report, including arithmetic, replay result, and any
