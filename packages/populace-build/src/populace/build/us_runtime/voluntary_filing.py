@@ -37,6 +37,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.full_sipp_donor import (
+    cache_verified_full_sipp_sha256,
+    full_sipp_sha256,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -215,8 +219,7 @@ def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> st
 
 
 def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
+    return full_sipp_sha256(path)
 
 
 def _file_matches(
@@ -307,6 +310,7 @@ def fetch_sipp_2023_voluntary_filing_donor(
                 f"expected {expected_sha256}, got {actual_sha256}."
             )
         partial.replace(target)
+        cache_verified_full_sipp_sha256(target, actual_sha256)
     except Exception:
         partial.unlink(missing_ok=True)
         raise

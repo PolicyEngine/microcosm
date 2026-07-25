@@ -50,6 +50,7 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
 from populace.build.us_runtime.voluntary_filing import (
     SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
@@ -357,13 +358,7 @@ def us_ssi_disability_criteria_stage_spec() -> SourceStageSpec:
 
 
 def _sha256_file(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return full_sipp_sha256(path)
 
 
 def fetch_sipp_2023_ssi_disability_donor(

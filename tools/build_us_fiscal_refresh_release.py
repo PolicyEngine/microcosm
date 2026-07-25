@@ -72,6 +72,8 @@ from populace.build.us_runtime import (
     ORG_2024_DONOR_CONTENT_SHA256,
     SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
     SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
     SIPP_2023_HEAD_START_DONOR_SHA256,
     SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
@@ -108,6 +110,7 @@ from populace.build.us_runtime import (
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_child_disability_donor,
+    load_sipp_2023_financial_asset_donor,
     load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
@@ -328,11 +331,13 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # inputs before target materialization while the on-disk base hash is
 # unchanged; pre-#539 checkpoints carry the old ORG rows and must not be
 # reused (populace#543, post-merge audit).
-# 9: the child-disability stage (#453/#509) rewrites staged under-15
+# 9: #374 SIPP+SCF financial-asset blend changes the pre-materialization
+# frame; warm SCF-only checkpoints must not calibrate the blended frame.
+# 10: the child-disability stage (#453/#509) rewrites staged under-15
 # is_disabled and the downstream meets_ssi_disability_criteria input before
 # target materialization while the on-disk base hash remains unchanged;
-# version-8 checkpoints therefore miss the child SSI eligibility surface.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 9
+# version-9 checkpoints therefore miss the child SSI eligibility surface.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 10
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -1078,8 +1083,9 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
-            "file that feeds child disability, SSI disability criteria, "
-            "household vehicle count/value, and measured voluntary tax filing. "
+            "file that feeds financial assets, child disability, SSI disability "
+            "criteria, Head Start, household vehicle count/value, and measured "
+            "voluntary tax filing. "
             "When omitted the issue-453 local path is checked before the "
             "immutable donor revision is fetched and verified."
         ),
@@ -1630,7 +1636,7 @@ def _target_frame_checkpoint_identity(
         # materialized target frame is built on, but arrives via a flag the
         # base hash cannot see: O attempt 3 warm-hit attempt 2's checkpoint
         # and solved on the other basis's rows (populace#543, instance 2).
-        # Unconditional None-able key — v9 starts a fresh checkpoint world,
+        # Unconditional None-able key — v10 starts a fresh checkpoint world,
         # so no legacy-identity preservation applies.
         "ssi_take_up_prior_weight_basis_sha256": (
             None
@@ -7895,11 +7901,11 @@ def main() -> None:
     # augments that stage's ASEC is_disabled output below age 15. Resolve the
     # shared immutable SIPP file here (explicit CLI path, requested local path,
     # then verified remote cache) and reuse it for the later SIPP families.
-    sipp_vehicle_donor_path = resolve_sipp_2023_child_disability_donor(
+    sipp_full_donor_path = resolve_sipp_2023_child_disability_donor(
         args.sipp_vehicle_donor
     )
     child_disability_donor = load_sipp_2023_child_disability_donor(
-        sipp_vehicle_donor_path,
+        sipp_full_donor_path,
         expected_sha256=SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
         expected_size_bytes=SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
     )
@@ -8048,29 +8054,42 @@ def main() -> None:
             "scf_wealth_inputs",
             message=(
                 "Imputing signed household net worth and SSI countable-resource "
-                "assets (bank/stock/bond) from the Federal Reserve SCF 2022 "
-                "summary extract."
+                "assets (bank/stock/bond) from the seeded SIPP 2023 / SCF 2022 "
+                "household blend."
             ),
         )
-    # populace#49/#356/#368: restore signed household net_worth plus the three
+    # populace#49/#356/#368/#374: restore signed household net_worth plus the three
     # SSI countable-resource asset inputs (bank_account_assets / stock_assets /
-    # bond_assets) from their direct SCF summary-extract targets. Without the
-    # latter, ssi_countable_resources is 0 for every record and SSI resource-
-    # limit reforms silently score $0. A CLI-supplied extract path is used when
-    # given; otherwise the fixed-vintage public extract is fetched and cached.
+    # bond_assets). One seeded household source draw selects all three leaves
+    # from either the SCF or SIPP donor; SCF still anchors signed net worth.
+    # Without the leaves, ssi_countable_resources is 0 for every record and SSI
+    # resource-limit reforms silently score $0.
     scf_summary_extract_path = (
         Path(args.scf_summary_extract)
         if args.scf_summary_extract is not None
         else fetch_scf_2022_summary_extract()
     )
+    # The child stage already resolved and verified the one immutable full-SIPP
+    # artifact. Every later family reuses that path; the shared fingerprint
+    # cache lets their explicit per-stage SHA contracts compare one digest
+    # without rescanning 3.73 GB.
     scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
+    sipp_financial_asset_donor = load_sipp_2023_financial_asset_donor(
+        sipp_full_donor_path,
+        expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+    )
     base_frame = with_us_scf_wealth_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
         scf_donor=scf_wealth_donor,
+        sipp_donor=sipp_financial_asset_donor,
     )
-    scf_wealth_gate = us_scf_wealth_signal_gate(base_frame)
+    scf_wealth_gate = us_scf_wealth_signal_gate(
+        base_frame,
+        require_sipp_blend=True,
+    )
     if not scf_wealth_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -8089,6 +8108,7 @@ def main() -> None:
         )
     # Reuse the immutable full SIPP path resolved by child_disability above;
     # this criterion still waits until SCF asset leaves are materialized.
+    sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
             "ssi_disability_criteria",

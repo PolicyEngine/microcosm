@@ -1,10 +1,11 @@
-"""US SCF wealth and SSI countable-resource tests (#49/#356/#368).
+"""US SIPP/SCF wealth and SSI countable-resource tests (#49/#356/#368/#374).
 
 The three asset leaves ``bank_account_assets`` / ``stock_assets`` /
 ``bond_assets`` are what ``ssi_countable_resources`` sums; with them absent the
 SSI resource-limit reform class scores $0 (the #356 failure). This stage
-SCF-imputes them onto the household reference person and restores signed
-household ``net_worth`` from the retired pipeline's direct SCF anchor.
+draws them from one SIPP or SCF source per household reference person and
+restores signed household ``net_worth`` from the retired pipeline's direct SCF
+anchor.
 """
 
 from __future__ import annotations
@@ -16,18 +17,26 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.us_runtime.scf_wealth as scf_wealth_runtime
 from populace.build.source_manifest import SourceStageSpec
 from populace.build.us_runtime import (
+    FINANCIAL_ASSET_BLEND_AUDIT_KEY,
+    FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
     SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
     SCF_NET_WORTH_TARGET_COMPONENTS,
     SCF_WEALTH_PREDICTORS,
+    SIPP_FINANCIAL_ASSET_DONOR_WEIGHT_COLUMN,
+    SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS,
     US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
     US_SCF_NET_WORTH_OUTPUT_COLUMNS,
     US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS,
     US_SCF_WEALTH_STAGE_NAME,
     fetch_scf_2022_summary_extract,
+    financial_asset_source_is_scf,
     impute_us_scf_financial_assets,
     impute_us_scf_net_worth,
+    impute_us_sipp_financial_assets,
+    impute_us_sipp_scf_financial_assets,
     load_scf_2022_financial_asset_donor,
     us_scf_wealth_signal_gate,
     us_scf_wealth_stage_spec,
@@ -108,6 +117,52 @@ def _donor_table() -> pd.DataFrame:
     net_worth[indebted] = -rng.gamma(2.0, 20_000.0, indebted.sum())
     frame["net_worth"] = net_worth
     frame[_DONOR_WEIGHT_COLUMN] = rng.uniform(500.0, 2_000.0, n)
+    return frame
+
+
+def _sipp_donor_table() -> pd.DataFrame:
+    """Small low-liquid-asset donor; unit tests never read ``pu2023.csv``."""
+
+    rng = np.random.default_rng(374)
+    n = 400
+    frame = pd.DataFrame(
+        {
+            predictor: rng.normal(size=n)
+            for predictor in SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS
+        }
+    )
+    frame["age"] = rng.integers(18, 90, n).astype(float)
+    frame["is_female"] = rng.integers(0, 2, n).astype(float)
+    frame["is_married"] = rng.integers(0, 2, n).astype(float)
+    frame["count_under_18"] = rng.integers(0, 4, n).astype(float)
+    frame["count_under_6"] = rng.integers(0, 2, n).astype(float)
+    frame["household_size"] = rng.integers(1, 6, n).astype(float)
+    frame["employment_income"] = rng.gamma(1.5, 10_000.0, n)
+    frame["social_security"] = rng.gamma(0.8, 4_000.0, n)
+    frame["retirement_income"] = rng.gamma(0.8, 5_000.0, n)
+    frame["non_ssi_income"] = (
+        frame["employment_income"]
+        + frame["social_security"]
+        + frame["retirement_income"]
+    )
+    frame["bank_account_assets"] = np.where(
+        rng.random(n) < 0.65,
+        rng.uniform(50.0, 1_500.0, n),
+        0.0,
+    )
+    frame["stock_assets"] = np.where(
+        rng.random(n) < 0.10,
+        rng.uniform(50.0, 1_000.0, n),
+        0.0,
+    )
+    frame["bond_assets"] = np.where(
+        rng.random(n) < 0.04,
+        rng.uniform(25.0, 500.0, n),
+        0.0,
+    )
+    frame[SIPP_FINANCIAL_ASSET_DONOR_WEIGHT_COLUMN] = rng.uniform(1.0, 4.0, n)
+    for target in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+        frame[f"{target}_is_observed"] = True
     return frame
 
 
@@ -197,6 +252,47 @@ def _us_frame(
             )
         },
     )
+
+
+@pytest.fixture(scope="module")
+def sipp_scf_blend_case() -> dict[str, object]:
+    """Fast synthetic case shared by the #374 block-blend tests."""
+
+    person = _person_rows(240)
+    scf_donor = _donor_table()
+    sipp_donor = _sipp_donor_table()
+    seed = 23
+    n_estimators = 8
+    blended = impute_us_sipp_scf_financial_assets(
+        person,
+        scf_donor,
+        sipp_donor,
+        seed=seed,
+        time_period=TIME_PERIOD,
+        n_estimators=n_estimators,
+    )
+    scf = impute_us_scf_financial_assets(
+        person,
+        scf_donor,
+        seed=seed,
+        n_estimators=n_estimators,
+    )
+    sipp = impute_us_sipp_financial_assets(
+        person,
+        sipp_donor,
+        seed=seed,
+        n_estimators=n_estimators,
+    )
+    return {
+        "person": person,
+        "scf_donor": scf_donor,
+        "sipp_donor": sipp_donor,
+        "seed": seed,
+        "n_estimators": n_estimators,
+        "blended": blended,
+        "scf": scf,
+        "sipp": sipp,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -351,6 +447,95 @@ def test_impute_is_deterministic_for_a_seed() -> None:
         np.testing.assert_array_equal(a[column].to_numpy(), b[column].to_numpy())
 
 
+def test_sipp_scf_blend_is_deterministic_for_fixed_seed(
+    sipp_scf_blend_case: dict[str, object],
+) -> None:
+    person = sipp_scf_blend_case["person"]
+    blended = sipp_scf_blend_case["blended"]
+    assert isinstance(person, pd.DataFrame)
+    assert isinstance(blended, pd.DataFrame)
+    repeated = impute_us_sipp_scf_financial_assets(
+        person,
+        sipp_scf_blend_case["scf_donor"],
+        sipp_scf_blend_case["sipp_donor"],
+        seed=int(sipp_scf_blend_case["seed"]),
+        time_period=TIME_PERIOD,
+        n_estimators=int(sipp_scf_blend_case["n_estimators"]),
+    )
+    np.testing.assert_array_equal(blended.to_numpy(), repeated.to_numpy())
+    assert (
+        blended.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+        == repeated.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+    )
+
+
+def test_seeded_household_source_share_is_50_50_within_tolerance(
+    sipp_scf_blend_case: dict[str, object],
+) -> None:
+    blended = sipp_scf_blend_case["blended"]
+    assert isinstance(blended, pd.DataFrame)
+    audit = blended.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+    assert audit["scf_probability"] == FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY
+    assert audit["scf_household_count"] > 0
+    assert audit["sipp_household_count"] > 0
+    assert 0.4 <= audit["scf_household_share"] <= 0.6
+
+    household_ids = np.arange(1, 401)
+    selected = financial_asset_source_is_scf(
+        household_ids,
+        seed=23,
+        time_period=TIME_PERIOD,
+    )
+    reversed_selected = financial_asset_source_is_scf(
+        household_ids[::-1],
+        seed=23,
+        time_period=TIME_PERIOD,
+    )
+    np.testing.assert_array_equal(selected, reversed_selected[::-1])
+    assert 0.4 <= selected.mean() <= 0.6
+
+
+def test_sipp_draws_have_lower_median_bank_assets_and_raise_low_tail(
+    sipp_scf_blend_case: dict[str, object],
+) -> None:
+    blended = sipp_scf_blend_case["blended"]
+    assert isinstance(blended, pd.DataFrame)
+    audit = blended.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+    assert audit["sipp_selected_bank_median"] < audit["scf_selected_bank_median"]
+    assert audit["blended_bank_low_tail_share"] > audit["scf_only_bank_low_tail_share"]
+
+
+def test_blend_uses_one_complete_source_vector_and_reference_person_carry(
+    sipp_scf_blend_case: dict[str, object],
+) -> None:
+    person = sipp_scf_blend_case["person"]
+    blended = sipp_scf_blend_case["blended"]
+    scf = sipp_scf_blend_case["scf"]
+    sipp = sipp_scf_blend_case["sipp"]
+    assert isinstance(person, pd.DataFrame)
+    assert isinstance(blended, pd.DataFrame)
+    assert isinstance(scf, pd.DataFrame)
+    assert isinstance(sipp, pd.DataFrame)
+    head_mask = _household_head_mask(person)
+    selected_scf = financial_asset_source_is_scf(
+        person.loc[head_mask, "person_household_id"],
+        seed=int(sipp_scf_blend_case["seed"]),
+        time_period=TIME_PERIOD,
+    )
+    source_mask = np.zeros(len(person), dtype=bool)
+    source_mask[np.flatnonzero(head_mask)] = selected_scf
+    expected = sipp.copy()
+    expected.loc[source_mask, list(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS)] = scf.loc[
+        source_mask, list(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS)
+    ].to_numpy()
+    np.testing.assert_array_equal(blended.to_numpy(), expected.to_numpy())
+    assert (
+        blended.loc[~head_mask, list(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS)]
+        .eq(0.0)
+        .all(axis=None)
+    )
+
+
 def test_impute_missing_donor_column_raises() -> None:
     person = _person_rows(10)
     donor = _donor_table().drop(columns=["bond_assets"])
@@ -397,6 +582,68 @@ def test_with_inputs_writes_asset_and_net_worth_columns() -> None:
     assert (net_worth < 0).any()
 
 
+def test_carry_signal_tolerates_a_single_constant_leaf() -> None:
+    # Bond holdings are ~97% zero in the donor: a healthy draw on a small
+    # frame can produce an all-zero bond column. That must NOT read as an
+    # engine-default surface (per-leaf nonconstancy made pass-through
+    # platform-dependent — the #510 CI failure). Only an all-leaves-constant
+    # surface forces re-imputation.
+    frame = _us_frame(_person_rows(60))
+    donor = _donor_table()
+    once = with_us_scf_wealth_inputs(
+        frame, seed=42, time_period=TIME_PERIOD, scf_donor=donor
+    )
+
+    def _with_person(base, mutate):
+        tables = {entity: base.table(entity).copy() for entity in base.entities}
+        mutate(tables["person"])
+        return Frame(
+            tables,
+            base.schema,
+            {entity: base.weights_for(entity) for entity in base.weighted_entities},
+        )
+
+    def _zero_bond(person):
+        person["bond_assets"] = 0.0
+
+    degenerate_bond = _with_person(once, _zero_bond)
+    twice = with_us_scf_wealth_inputs(
+        degenerate_bond, seed=99, time_period=TIME_PERIOD, scf_donor=donor
+    )
+    np.testing.assert_array_equal(
+        degenerate_bond.table("person")["bank_account_assets"].to_numpy(),
+        twice.table("person")["bank_account_assets"].to_numpy(),
+    )
+
+    def _zero_all(person):
+        for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+            person[column] = 0.0
+
+    redrawn = with_us_scf_wealth_inputs(
+        _with_person(once, _zero_all),
+        seed=99,
+        time_period=TIME_PERIOD,
+        scf_donor=donor,
+    )
+    assert redrawn.table("person")["bank_account_assets"].to_numpy().sum() > 0
+
+    def _distinct_constants(person):
+        person["bank_account_assets"] = 5.0
+        person["stock_assets"] = 3.0
+        person["bond_assets"] = 0.0
+
+    # Three DISTINCT constant leaves are still an untrustworthy surface:
+    # flattened cross-leaf uniqueness would wave it through.
+    reimputed = with_us_scf_wealth_inputs(
+        _with_person(once, _distinct_constants),
+        seed=99,
+        time_period=TIME_PERIOD,
+        scf_donor=donor,
+    )
+    bank = reimputed.table("person")["bank_account_assets"].to_numpy()
+    assert np.unique(bank).size >= 2
+
+
 def test_with_inputs_is_idempotent_when_signal_present() -> None:
     frame = _us_frame(_person_rows(60))
     donor = _donor_table()
@@ -429,6 +676,71 @@ def test_with_inputs_reimputes_when_bank_assets_constant() -> None:
         frame, seed=42, time_period=TIME_PERIOD, scf_donor=donor
     )
     assert out.table("person")["bank_account_assets"].to_numpy().sum() > 0
+
+
+def test_with_inputs_sipp_donor_heals_scf_only_surface_and_preserves_audit(
+    monkeypatch,
+) -> None:
+    person = _person_rows(60)
+    head_mask = _household_head_mask(person)
+    for offset, column in enumerate(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS, start=1):
+        person[column] = np.where(head_mask, np.arange(len(person)) + offset, 0.0)
+    net_worth = np.linspace(10_000.0, 100_000.0, 60)
+    net_worth[:6] *= -1.0
+    frame = _us_frame(person, household_extra={"net_worth": net_worth})
+    calls: list[tuple[int, int]] = []
+
+    def fake_blend(
+        recipient,
+        scf_donor,
+        sipp_donor,
+        *,
+        seed,
+        time_period,
+        n_estimators=100,
+    ):
+        del scf_donor, sipp_donor, n_estimators
+        calls.append((seed, time_period))
+        result = pd.DataFrame(
+            {
+                column: np.where(head_mask, 100.0 + position, 0.0)
+                for position, column in enumerate(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS)
+            },
+            index=recipient.index,
+        )
+        result.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY] = {
+            "schema_version": 1,
+            "seed": seed,
+            "time_period": time_period,
+            "scf_probability": FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
+        }
+        return result
+
+    monkeypatch.setattr(
+        scf_wealth_runtime,
+        "impute_us_sipp_scf_financial_assets",
+        fake_blend,
+    )
+    out = with_us_scf_wealth_inputs(
+        frame,
+        seed=23,
+        time_period=TIME_PERIOD,
+        scf_donor=pd.DataFrame(),
+        sipp_donor=pd.DataFrame(),
+    )
+
+    assert calls == [(23, TIME_PERIOD)]
+    assert out.table("person").attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]["seed"] == 23
+    assert (out.table("person").loc[~head_mask, "bank_account_assets"] == 0.0).all()
+    repeated = with_us_scf_wealth_inputs(
+        out,
+        seed=23,
+        time_period=TIME_PERIOD,
+        scf_donor=pd.DataFrame(),
+        sipp_donor=pd.DataFrame(),
+    )
+    assert repeated is out
+    assert calls == [(23, TIME_PERIOD)]
 
 
 def test_with_inputs_heals_nonfinite_net_worth_without_redrawing_assets() -> None:
@@ -471,6 +783,55 @@ def test_signal_gate_passes_on_imputed_surface() -> None:
     )
     gate = us_scf_wealth_signal_gate(out)
     assert gate.passed, gate.failures
+
+
+def test_signal_gate_observes_seeded_sipp_scf_blend(
+    sipp_scf_blend_case: dict[str, object],
+) -> None:
+    person = sipp_scf_blend_case["person"]
+    blended = sipp_scf_blend_case["blended"]
+    assert isinstance(person, pd.DataFrame)
+    assert isinstance(blended, pd.DataFrame)
+    base = _us_frame(person)
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+        tables["person"][column] = blended[column].to_numpy(dtype=np.float64)
+    tables["person"].attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY] = dict(
+        blended.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+    )
+    net_worth = np.linspace(10_000.0, 250_000.0, len(tables["household"]))
+    net_worth[:24] *= -1.0
+    tables["household"]["net_worth"] = net_worth
+    frame = Frame(
+        tables,
+        base.schema,
+        {entity: base.weights_for(entity) for entity in base.weighted_entities},
+    )
+
+    gate = us_scf_wealth_signal_gate(frame, require_sipp_blend=True)
+    assert gate.passed, gate.failures
+    assert gate.details["financial_asset_blend"]["scf_household_count"] > 0
+    assert gate.details["financial_asset_blend"]["sipp_household_count"] > 0
+
+    failed_tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    failed_audit = dict(failed_tables["person"].attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY])
+    failed_audit["scf_only_bank_low_tail_share"] = failed_audit[
+        "blended_bank_low_tail_share"
+    ]
+    failed_tables["person"].attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY] = failed_audit
+    no_low_tail_gain = Frame(
+        failed_tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+    failed_gate = us_scf_wealth_signal_gate(
+        no_low_tail_gain,
+        require_sipp_blend=True,
+    )
+    assert not failed_gate.passed
+    assert any(
+        "low-tail share did not increase" in failure for failure in failed_gate.failures
+    )
 
 
 def test_signal_gate_fails_when_columns_missing() -> None:

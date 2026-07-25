@@ -116,10 +116,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    # 9 = the child-disability stage rewrites under-15 is_disabled and the
-    # downstream SSI criterion before materialization; version-8 checkpoints
-    # do not carry that eligibility surface (populace#453/#509).
-    assert identity["materializer_version"] == 9
+    # 10 = the child-disability stage rewrites under-15 is_disabled and the
+    # downstream SSI criterion before materialization; version-9 SIPP+SCF
+    # blend checkpoints do not carry that eligibility surface (#453/#509).
+    assert identity["materializer_version"] == 10
     # The SSI prior-weight basis is identity-bearing (populace#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -175,10 +175,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     tmp_path,
     small_frame,
 ) -> None:
-    """A checkpoint stored under materializer version 8 must not load.
+    """A checkpoint stored under a superseded materializer version must not load.
 
     The child-disability stage changes pre-materialization input rows without
-    changing the on-disk base hash, so version-8 checkpoints lack child
+    changing the on-disk base hash, so version-9 checkpoints lack child
     disability and SSI-criteria signal.  The version constant participates in
     the identity comparison; this pins the immediately previous version miss.
     """
@@ -212,7 +212,11 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    stale_identity = {**dict(identity), "materializer_version": 8}
+    # 9 = the #374 SIPP+SCF blend; 8 = the post-#539 ORG rewrite; and
+    # 7 = pre-#539. All must miss against expected materializer version 10.
+    stale_identity = {**dict(identity), "materializer_version": 9}
+    older_identity = {**dict(identity), "materializer_version": 8}
+    oldest_identity = {**dict(identity), "materializer_version": 7}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -228,6 +232,36 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     )
 
     assert loaded is None
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=older_identity,
+        compilation={"declared_targets": 1},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=identity,
+            target_specs=(target,),
+        )
+        is None
+    )
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=oldest_identity,
+        compilation={"declared_targets": 1},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=identity,
+            target_specs=(target,),
+        )
+        is None
+    )
 
     # Instance 2 of the same class (populace#543): a checkpoint written by a
     # run without --ssi-take-up-prior-weight-basis must not serve a run that
@@ -3375,10 +3409,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "with_us_snap_take_up_inputs",
         lambda frame, *, seed, time_period: frame,
     )
+
+    def fake_with_eligibility_inputs(frame, *, seed, time_period):
+        captured["source_stage_events"].append("eligibility_inputs")
+        return frame
+
     monkeypatch.setattr(
         builder,
         "with_us_eligibility_inputs",
-        lambda frame, *, seed, time_period: frame,
+        fake_with_eligibility_inputs,
     )
     monkeypatch.setattr(
         builder,
@@ -3552,19 +3591,49 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "load_scf_2022_financial_asset_donor",
         lambda path: pd.DataFrame(),
     )
+
+    def fake_load_sipp_financial_asset_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_financial_asset_donor_path"] = path
+        captured["sipp_financial_asset_donor_sha256"] = expected_sha256
+        captured["sipp_financial_asset_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_financial_asset_donor",
+        fake_load_sipp_financial_asset_donor,
+    )
+
+    def fake_with_scf_wealth_inputs(
+        frame, *, seed, time_period, scf_donor, sipp_donor=None
+    ):
+        captured["sipp_scf_wealth_blend_called"] = sipp_donor is not None
+        captured["source_stage_events"].append("sipp_scf_financial_assets")
+        return frame
+
     monkeypatch.setattr(
         builder,
         "with_us_scf_wealth_inputs",
-        lambda frame, *, seed, time_period, scf_donor: frame,
+        fake_with_scf_wealth_inputs,
     )
-    monkeypatch.setattr(
-        builder,
-        "us_scf_wealth_signal_gate",
-        lambda frame: builder.GateResult(
+
+    def fake_scf_wealth_signal_gate(frame, *, require_sipp_blend=False):
+        captured["sipp_scf_wealth_blend_gate_required"] = require_sipp_blend
+        return builder.GateResult(
             name="scf_wealth_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_wealth_signal_gate",
+        fake_scf_wealth_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -3602,10 +3671,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_resolve_sipp_full_donor(path=None):
+        captured["sipp_full_donor_resolution_calls"] = (
+            int(captured.get("sipp_full_donor_resolution_calls", 0)) + 1
+        )
+        captured["sipp_full_donor_resolution_arg"] = path
+        return Path("pu2023.csv")
+
     monkeypatch.setattr(
         builder,
         "resolve_sipp_2023_child_disability_donor",
-        lambda path=None: Path("pu2023.csv"),
+        fake_resolve_sipp_full_donor,
     )
 
     def fake_load_child_disability_donor(
@@ -4260,6 +4337,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_full_donor_resolution_calls"] == 1
+    assert captured["sipp_full_donor_resolution_arg"] is None
     assert captured["child_disability_donor_path"] == Path("pu2023.csv")
     assert (
         captured["child_disability_donor_sha256"]
@@ -4278,15 +4357,32 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert child_gate_frames[0] is not None
     assert child_gate_frames[1] is None
     source_stage_events = captured["source_stage_events"]
-    assert source_stage_events.index("child_disability") < source_stage_events.index(
-        "ssi_disability_criteria"
+    assert source_stage_events.index("eligibility_inputs") < source_stage_events.index(
+        "child_disability"
     )
+    assert source_stage_events.index("child_disability") < source_stage_events.index(
+        "sipp_scf_financial_assets"
+    )
+    assert source_stage_events.index(
+        "sipp_scf_financial_assets"
+    ) < source_stage_events.index("ssi_disability_criteria")
     assert source_stage_events.index(
         "ssi_disability_criteria"
     ) < source_stage_events.index("ssi_take_up")
     assert source_stage_events.index("ssi_take_up") < source_stage_events.index(
         "materialize_target_frame"
     )
+    assert captured["sipp_financial_asset_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_financial_asset_donor_sha256"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_financial_asset_donor_size_bytes"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_scf_wealth_blend_called"] is True
+    assert captured["sipp_scf_wealth_blend_gate_required"] is True
     assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
     assert (
         captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256

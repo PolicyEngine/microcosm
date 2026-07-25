@@ -9,7 +9,12 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.child_disability as child_disability_module
+import populace.build.us_runtime.full_sipp_donor as full_sipp_donor_module
+import populace.build.us_runtime.sipp_financial_assets as sipp_financial_assets_module
+import populace.build.us_runtime.sipp_head_start as sipp_head_start_module
+import populace.build.us_runtime.sipp_vehicles as sipp_vehicles_module
 import populace.build.us_runtime.ssi_disability_criteria as ssi_criteria_module
+import populace.build.us_runtime.voluntary_filing as voluntary_filing_module
 from populace.build.us_runtime import (
     SIPP_CHILD_DISABILITY_SOURCE_COLUMNS,
     SSA_SSI_AGE_0_4_CASELOAD_TARGET,
@@ -142,6 +147,12 @@ def test_manifest_declares_child_disability_stage() -> None:
     assert US_STAGE_NAMES.index(US_CHILD_DISABILITY_STAGE_NAME) == (
         US_STAGE_NAMES.index("eligibility_inputs") + 1
     )
+    assert US_STAGE_NAMES.index(US_CHILD_DISABILITY_STAGE_NAME) < (
+        US_STAGE_NAMES.index("scf_wealth")
+    )
+    assert US_STAGE_NAMES.index("scf_wealth") < US_STAGE_NAMES.index(
+        "ssi_disability_criteria"
+    )
 
 
 def test_sipp_resolver_uses_only_a_verified_local_file_then_falls_through(
@@ -150,8 +161,9 @@ def test_sipp_resolver_uses_only_a_verified_local_file_then_falls_through(
     explicit = tmp_path / "explicit.csv"
     local = tmp_path / "local.csv"
     fetched = tmp_path / "fetched.csv"
+    explicit.write_bytes(b"good")
     local.write_bytes(b"good")
-    fetch_calls: list[bool] = []
+    fetch_calls: list[dict[str, object]] = []
 
     monkeypatch.setattr(
         child_disability_module,
@@ -173,25 +185,93 @@ def test_sipp_resolver_uses_only_a_verified_local_file_then_falls_through(
         "_sha256_file",
         lambda path: "valid-sha" if path.read_bytes() == b"good" else "stale-sha",
     )
+
+    def fake_fetch(*, local_path, expected_sha256, expected_size_bytes):
+        fetch_calls.append(
+            {
+                "local_path": local_path,
+                "expected_sha256": expected_sha256,
+                "expected_size_bytes": expected_size_bytes,
+            }
+        )
+        if (
+            local_path.is_file()
+            and local_path.stat().st_size == expected_size_bytes
+            and child_disability_module._sha256_file(local_path) == expected_sha256
+        ):
+            return local_path
+        return fetched
+
     monkeypatch.setattr(
         child_disability_module,
-        "fetch_sipp_2023_voluntary_filing_donor",
-        lambda: fetch_calls.append(True) or fetched,
+        "fetch_sipp_2023_financial_asset_donor",
+        fake_fetch,
     )
 
     assert resolve_sipp_2023_child_disability_donor(explicit) == explicit
     assert resolve_sipp_2023_child_disability_donor() == local
-    assert fetch_calls == []
+    assert fetch_calls == [
+        {
+            "local_path": local,
+            "expected_sha256": "valid-sha",
+            "expected_size_bytes": 4,
+        }
+    ]
+
+    # An explicit user path is fail-fast and may never fall through.
+    explicit.write_bytes(b"evil")
+    with pytest.raises(ValueError, match="SHA-256 verification"):
+        resolve_sipp_2023_child_disability_donor(explicit)
+    assert len(fetch_calls) == 1
 
     # A same-size, wrong-SHA developer file must not block the shared pin.
     local.write_bytes(b"evil")
     assert resolve_sipp_2023_child_disability_donor() == fetched
-    assert fetch_calls == [True]
+    assert len(fetch_calls) == 2
 
     # Nor may a stale byte length short-circuit the pinned fetch chain.
     local.write_bytes(b"x")
     assert resolve_sipp_2023_child_disability_donor() == fetched
-    assert fetch_calls == [True, True]
+    assert len(fetch_calls) == 3
+
+
+def test_full_sipp_sha256_is_shared_across_all_stage_loaders_and_rechecks_mutation(
+    tmp_path, monkeypatch
+) -> None:
+    path = tmp_path / "pu2023.csv"
+    path.write_bytes(b"good")
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
+    scans: list[bytes] = []
+    real_hash = full_sipp_donor_module._hash_file_contents
+
+    def counting_hash(source_path, *, chunk_size):
+        scans.append(source_path.read_bytes())
+        return real_hash(source_path, chunk_size=chunk_size)
+
+    monkeypatch.setattr(
+        full_sipp_donor_module,
+        "_hash_file_contents",
+        counting_hash,
+    )
+    wrappers = (
+        child_disability_module._sha256_file,
+        sipp_financial_assets_module._sha256_file,
+        ssi_criteria_module._sha256_file,
+        sipp_head_start_module._sha256_file,
+        sipp_vehicles_module._sha256_file,
+        voluntary_filing_module._sha256_file,
+    )
+
+    digests = [wrapper(path) for wrapper in wrappers]
+
+    assert len(set(digests)) == 1
+    assert scans == [b"good"]
+
+    # Same-size replacement bytes change the filesystem fingerprint and
+    # therefore cannot reuse the attestation cached for the old file.
+    path.write_bytes(b"evil")
+    assert wrappers[0](path) != digests[0]
+    assert scans == [b"good", b"evil"]
 
 
 def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:

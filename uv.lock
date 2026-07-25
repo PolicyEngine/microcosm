@@ -1163,6 +1163,7 @@ name = "populace-build"
 version = "0.1.0"
 source = { editable = "packages/populace-build" }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "populace-calibrate" },
@@ -1194,6 +1195,7 @@ dev = [
 requires-dist = [
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
+    { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2" },

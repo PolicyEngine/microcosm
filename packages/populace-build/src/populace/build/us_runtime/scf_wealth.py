@@ -1,4 +1,4 @@
-"""SCF-imputed financial-asset inputs and household net worth.
+"""SIPP/SCF-blended financial assets and SCF-anchored household net worth.
 
 Without this stage the published dataset stores none of the liquid-asset
 input columns SSI's resource test reads, so each silently takes the
@@ -10,23 +10,17 @@ SSI resource-limit reform silently scores $0. That is the failure of
 populace issues #356/#368 (the dropped-column counterpart of #278's zeroed
 input bases).
 
-The three person columns are the SSI countable-resource leaves in PolicyEngine-US
-(``policyengine_us/parameters/gov/ssa/ssi/eligibility/resources/
-countable.yaml``: ``bank_account_assets`` / ``stock_assets`` /
-``bond_assets``). They are imputed from the Federal Reserve Survey of
-Consumer Finances 2022 public summary extract (``rscfp2022.dta``), using
-the regime-gated weighted QRF (``populace.fit.QRF``) — the same imputer the
-PUF support stage uses. Each output is a summation of SCF summary-extract
-balance-sheet components — the SCF half of the retired enhanced-CPS
-construction (cited against the retired pipeline @ 42ed5d45:
-``utils/asset_imputation.py`` ``SCF_FINANCIAL_ASSET_TARGETS`` and
-``datasets/scf/scf.py``; the component tuples below match it exactly; nothing
-is invented). The retired pipeline additionally draws these three leaves from
-a SIPP donor and blends the two sources per household
-(``FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY = 0.5``), where SIPP supplies the
-realistic low liquid-asset mass at the bottom of the distribution. This stage
-ships the SCF draw only; the consequence is quantified in the baseline note
-below, and the SIPP blend is the populace #356 follow-up:
+The three person columns are the SSI countable-resource leaves in
+PolicyEngine-US (``bank_account_assets`` / ``stock_assets`` / ``bond_assets``).
+Populace issue #374 restores the retired enhanced-CPS source blend: each
+recipient household makes one seeded 50/50 source draw, then receives its full
+three-leaf vector from either the Federal Reserve Survey of Consumer Finances
+2022 or Census SIPP 2023. Leaves are never mixed within a household. SIPP
+restores the realistic low liquid-asset mass absent from the SCF-only stage.
+
+The SCF side uses the public summary extract (``rscfp2022.dta``) and the
+regime-gated weighted QRF (``populace.fit.QRF``). Its targets exactly match
+archived commit ``42ed5d45`` (``utils/asset_imputation.py``):
 
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
   call accounts).
@@ -35,37 +29,39 @@ below, and the SIPP blend is the populace #356 follow-up:
   canonical pipeline applies).
 - ``bond_assets`` ← SCF ``bond`` (savings bonds plus other bonds).
 
-Predictors (the eight the ``scf_wealth`` manifest stage declares, matching
-the retired SCF QRF's predictor set): age, is_female, cps_race, is_married,
-own_children_in_household, employment_income, interest_dividend_income,
-social_security_pension_income. SCF-side predictors are the head/household
-values in the summary extract (``age``, ``hhsex``, ``racecl5``, ``married``,
-``kids``, ``wageinc``, ``intdivinc``, ``ssretinc``); the donor weight is
-``wgt``. SCF missing-data sentinels (-1, -7, -8, -9) are replaced with 0 at
-the source boundary, per the manifest's ``replace_sentinels`` operation.
+The SCF QRF's eight predictors are age, sex, race, marriage, own children,
+employment income, interest/dividend income, and Social Security/pension
+income. SCF-side values are ``age``, ``hhsex``, ``racecl5``, ``married``,
+``kids``, ``wageinc``, ``intdivinc``, and ``ssretinc``; ``wgt`` is the survey
+weight. Missing-data sentinels (-1, -7, -8, -9) become 0 at the source boundary.
 
-Grain (the manifest's ``head_carry`` operation, and the canonical
-SCF-source rule): the SCF summary extract is household-grain, so the QRF is
-fit on household records (head demographics + household income). It draws
-one liquid-wealth vector per recipient household — conditioned on the
-reference person's own characteristics — which is carried onto that
-reference person; every other household member takes $0. This mirrors the
-retired pipeline's reference-person carry
-(``combine_sipp_and_scf_financial_assets``: the reference person carries the
-household total). Imputing per person instead — drawing a full household-grain
-asset value for every member from a donor that is 98.6% nonzero — would put
-liquid wealth on children and non-earners and inflate the per-person incidence
-far past the incumbent's.
+The SIPP side is the SHA-pinned ``pu2023.csv`` artifact and December
+(``MONTHCODE == 12``) person records. It maps the three leaves directly from
+``TVAL_BANK`` / ``TVAL_STMF`` / ``TVAL_BOND``. Its predictor mapping matches
+the *final* asset QRF at ``42ed5d45``: employment, interest, dividend, rental,
+Social Security, retirement, non-SSI income, age, sex, marriage, under-18
+count, under-6 count, and household size. That is the reviewed 13-field mapping,
+not the later ten-field shorthand quoted in #374. The pinned 2023 bytes plus
+the final 13-field transform are intentional: the archived commit had already
+changed its default file to ``pu2024.csv``, while #374 explicitly names the
+earlier 2023 donor. See :mod:`populace.build.us_runtime.sipp_financial_assets`
+for the exact annualization, target-quality masks, and target-balanced cap.
 
-Head-carry is the retired grain and a necessary floor, but on its own it does
-not reproduce the dense-native baseline. Measured by the populace #368
-acceptance probe (seed 0, policyengine-us 1.764.6): imputing onto the Build H
-dense frame makes ``ssi_countable_resources`` nonzero for 40.3% of people (the
-dense-native reference is 42.5%) and the $10k/$20k reform scores +$9.7B at 2026
-— comfortably above the $1B reform-coverage floor, so the reform binds and the
-gate turns green. The delta runs above the dense-native +$1.6B / +$16.1B
-reference (restored baseline 4.74M recipients vs 8.05M) for two documented
-reasons, both #356 follow-ups, neither a bug in this stage:
+Grain is one three-leaf draw per household, carried by the CPS reference person;
+every other member receives $0 from either source. This is the explicit #374
+contract and fixes a literal archive asymmetry: archived
+``combine_sipp_and_scf_financial_assets`` zeroed non-reference SCF values but
+left person-level SIPP predictions in place. Populace applies the requested
+reference-person carry to both sources. The selector consumes the build seed
+and period; the archive instead used an unseeded stable hash of period and
+household id. Using the stage seed is likewise an explicit #374 requirement.
+
+Pre-blend measured baseline (retained for comparison): the populace #368
+acceptance probe (seed 0, PolicyEngine-US 1.764.6) overlaid the former SCF-only
+stage onto the Build H dense frame. ``ssi_countable_resources`` became nonzero
+for 40.3% of people versus 42.5% in the dense-native reference, and the 2026
+$10k/$20k reform scored +$9.7B versus the dense-native +$1.6B. Those figures
+predate this #374 SIPP blend. Two effects explained the gap:
 
 1. The probe overlays assets onto a frame whose weights were already calibrated
    with *no* assets, so the SSI caseload was absorbed by the weight solve;
@@ -74,31 +70,29 @@ reasons, both #356 follow-ups, neither a bug in this stage:
    $10k/$20k delta of +$9-26B (#356) — this probe's +$9.7B sits in that band.
    The stage itself runs in-build *before* calibration (the correct location),
    so a full certified rebuild re-solves the weights with assets present.
-2. It ships the SCF draw *without* the retired SIPP blend above, assigning more
-   liquid wealth to the SSI-marginal population than the SIPP+SCF reference.
+2. The probe used the former SCF-only draw, assigning more liquid wealth to the
+   SSI-marginal population than the SIPP+SCF construction now shipped here.
 
 The nonzero *incidence* already matches the dense-native reference (40.3% vs
 42.5%); the gap is amount and calibration, not the grain.
 
-The stage also restores the household ``net_worth`` input from the SCF
-``networth`` summary-extract field. At archived commit ``42ed5d45``,
-``utils/asset_imputation.py`` lines 15-19 and 182-184 make that field the direct
-``scf_net_worth`` QRF anchor; ``calibration/source_impute.py`` lines 1146-1164
-fits it, and lines 1324-1338 reconcile construction-only balance-sheet
-components to the anchor before exporting their signed sum as ``net_worth``.
-Persisting the source-backed anchor is therefore the policy-facing result of
-the retired reconciliation without manufacturing or exporting its internal
-``scf_*`` component columns. ``net_worth`` is signed: indebted households may
-have negative values, so it must never be clipped at zero.
+Household ``net_worth`` stays exactly as before: a signed QRF draw from SCF
+``networth``. At ``42ed5d45`` the blended leaves entered an internal component
+reconciliation, but they were protected while SCF-only components were adjusted
+until the signed sum equaled the direct ``scf_net_worth`` anchor. Populace does
+not manufacture those construction-only components, so retaining the direct
+SCF anchor preserves the archive's observable result. Indebted households may
+have negative net worth; it is never clipped.
 
-Healing behavior: a frame already carrying all three person columns and the
-household net-worth column *with signal* passes through untouched (idempotent).
-A constant ``bank_account_assets`` or ``net_worth`` column — indistinguishable
-from an engine broadcast default — is re-imputed rather than trusted.
+Healing behavior: a frame already carrying all three person columns, the blend
+audit, and household net worth with signal passes through untouched. Supplying
+a SIPP donor to an old SCF-only frame (no audit) redraws the three leaves; a
+constant asset or net-worth surface is likewise healed.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib.resources import files
 from pathlib import Path
 
@@ -108,6 +102,18 @@ import pandas as pd
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
 from populace.build.us_runtime.eligibility_inputs import _own_children_in_household
+from populace.build.us_runtime.sipp_financial_assets import (
+    SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+    SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS,
+    SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+    SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS,
+    SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS,
+    impute_us_sipp_financial_assets,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -119,12 +125,16 @@ __all__ = [
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
     "SCF_NET_WORTH_TARGET_COMPONENTS",
     "SCF_WEALTH_PREDICTORS",
+    "FINANCIAL_ASSET_BLEND_AUDIT_KEY",
+    "FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY",
     "US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS",
     "US_SCF_NET_WORTH_OUTPUT_COLUMNS",
     "US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS",
     "US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS",
     "US_SCF_WEALTH_STAGE_NAME",
+    "financial_asset_source_is_scf",
     "fetch_scf_2022_summary_extract",
+    "impute_us_sipp_scf_financial_assets",
     "impute_us_scf_financial_assets",
     "impute_us_scf_net_worth",
     "load_scf_2022_financial_asset_donor",
@@ -135,6 +145,11 @@ __all__ = [
 ]
 
 US_SCF_WEALTH_STAGE_NAME = "scf_wealth"
+
+#: One household chooses one source for its complete three-leaf vector.
+FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY = 0.5
+#: DataFrame ``attrs`` key carrying scalar diagnostics for the seeded blend.
+FINANCIAL_ASSET_BLEND_AUDIT_KEY = "sipp_scf_financial_asset_blend"
 
 #: The Federal Reserve SCF 2022 public summary extract (SAS/Stata ``.dta``
 #: inside a zip). The stage is fit on this fixed-vintage public file; the
@@ -215,6 +230,8 @@ _SCF_SENTINELS: tuple[int, ...] = (-1, -7, -8, -9)
 _SCF_RACECL5_TO_CPS_RACE: dict[int, int] = {1: 1, 2: 2, 3: 3, 4: 4, 5: 7}
 
 _DEFAULT_N_ESTIMATORS = 100
+_BANK_LOW_TAIL_THRESHOLD = 2_000.0
+_SCF_SOURCE_SHARE_BAND = (0.4, 0.6)
 
 #: The donor weight column name handed to the QRF DataFrame fit (kept
 #: distinct from every predictor/target name so it is never read as a
@@ -284,6 +301,121 @@ def us_scf_wealth_stage_spec() -> SourceStageSpec:
             f"{US_SCF_WEALTH_STAGE_NAME!r} manifest stage does not declare "
             f"output(s) {missing}; the runtime and manifest have drifted."
         )
+    sipp_artifacts = [
+        artifact
+        for artifact in spec.artifacts
+        if artifact.get("member") == "pu2023.csv"
+    ]
+    if len(sipp_artifacts) != 1:
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} manifest must declare exactly one "
+            "pu2023.csv artifact."
+        )
+    sipp_artifact = sipp_artifacts[0]
+    expected_pin = {
+        "revision": SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
+        "sha256": SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+        "size_bytes": SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+    }
+    pin_drift = {
+        key: (sipp_artifact.get(key), expected)
+        for key, expected in expected_pin.items()
+        if sipp_artifact.get(key) != expected
+    }
+    if pin_drift:
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP artifact pin drift: {pin_drift}."
+        )
+    repository = sipp_artifact.get("repository")
+    if not isinstance(repository, Mapping):
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP artifact repository is missing."
+        )
+    name_parts = repository.get("name_parts", ())
+    if not isinstance(name_parts, list) or not all(
+        isinstance(part, str) for part in name_parts
+    ):
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP repository name parts are invalid."
+        )
+    declared_repo_id = f"{repository.get('owner', '')}/{''.join(name_parts)}"
+    expected_repo_id = "".join(SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS)
+    if (
+        repository.get("provider") != "huggingface_hub"
+        or declared_repo_id != expected_repo_id
+        or repository.get("repo_type")
+        != SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE
+    ):
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP repository declaration has drifted."
+        )
+    sipp_reads = [
+        operation
+        for operation in spec.operations
+        if operation.kind == "read_table"
+        and operation.parameters.get("table") == "sipp_2023_person"
+    ]
+    if len(sipp_reads) != 1:
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} manifest must declare exactly one "
+            "SIPP person-table read."
+        )
+    sipp_read = sipp_reads[0].parameters
+    declared_source_columns = tuple(sipp_read.get("source_columns", ()))
+    if len(declared_source_columns) != len(set(declared_source_columns)) or set(
+        declared_source_columns
+    ) != set(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS):
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP source columns have drifted."
+        )
+    declared_allocation_columns = {
+        target: tuple(columns)
+        for target, columns in sipp_read.get(
+            "target_allocation_status_columns", {}
+        ).items()
+    }
+    if (
+        sipp_read.get("delimiter") != "|"
+        or sipp_read.get("month_column") != "MONTHCODE"
+        or sipp_read.get("month") != 12
+        or sipp_read.get("weight") != "WPFINWGT"
+        or sipp_read.get("targets") != SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS
+        or sipp_read.get("allocation_status_observed_values") != [0, 1, 9]
+        or declared_allocation_columns != SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS
+    ):
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP read/mask declaration has drifted."
+        )
+    sipp_fits = [
+        operation
+        for operation in spec.operations
+        if operation.kind == "fit_weighted_qrf"
+        and operation.parameters.get("donor") == "sipp_2023_person"
+    ]
+    if len(sipp_fits) != 1:
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} manifest must declare exactly one "
+            "SIPP financial-asset QRF."
+        )
+    sipp_fit = sipp_fits[0].parameters
+    if tuple(sipp_fit.get("predictors", ())) != SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS:
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP predictor mapping has drifted."
+        )
+    if sipp_fit.get("targets") != SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS:
+        raise ValueError(
+            f"{US_SCF_WEALTH_STAGE_NAME!r} SIPP target mapping has drifted."
+        )
+    blends = [
+        operation
+        for operation in spec.operations
+        if operation.kind == "derive"
+        and operation.parameters.get("method") == "seeded_household_source_block_blend"
+    ]
+    if len(blends) != 1 or blends[0].parameters.get("scf_probability") != (
+        FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY
+    ):
+        raise ValueError(f"{US_SCF_WEALTH_STAGE_NAME!r} 50/50 block blend has drifted.")
     return spec
 
 
@@ -695,6 +827,133 @@ def impute_us_scf_financial_assets(
     return result
 
 
+def financial_asset_source_is_scf(
+    household_ids: pd.Series | np.ndarray,
+    *,
+    seed: int,
+    time_period: int,
+    scf_probability: float = FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
+) -> np.ndarray:
+    """Draw one reproducible financial-asset source per household.
+
+    Household ids are sorted before drawing, so reordering people does not
+    change a household's source.  The build seed and period feed a dedicated
+    #374 seed stream; the returned mask is therefore independent of either
+    source model's QRF draw stream.
+    """
+
+    probability = float(scf_probability)
+    if not 0.0 <= probability <= 1.0:
+        raise ValueError("scf_probability must lie in [0, 1].")
+    numeric_ids = pd.to_numeric(pd.Series(household_ids), errors="coerce")
+    ids = numeric_ids.to_numpy()
+    if numeric_ids.isna().any() or not np.isfinite(ids).all():
+        raise ValueError("Financial-asset source selection requires household ids.")
+    unique_ids = np.unique(ids)
+    rng = np.random.default_rng(
+        np.random.SeedSequence([int(seed), int(time_period), 374])
+    )
+    source_by_household = pd.Series(
+        rng.random(len(unique_ids)) < probability,
+        index=unique_ids,
+    )
+    selected = source_by_household.reindex(ids)
+    if selected.isna().any():  # pragma: no cover - guarded by the same id vector.
+        raise ValueError("Financial-asset source selection failed to map a household.")
+    return selected.to_numpy(dtype=bool)
+
+
+def impute_us_sipp_scf_financial_assets(
+    person: pd.DataFrame,
+    scf_donor: pd.DataFrame,
+    sipp_donor: pd.DataFrame,
+    *,
+    seed: int,
+    time_period: int,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> pd.DataFrame:
+    """Blend complete SIPP or SCF leaf vectors at recipient-household grain.
+
+    Both source models first produce their own reference-person-carried
+    vectors.  A single seeded household mask then chooses all three columns
+    from one of those vectors.  Scalar diagnostics in
+    :data:`FINANCIAL_ASSET_BLEND_AUDIT_KEY` let the release gate compare the
+    shipped blend with its parallel SCF-only draw without persisting a
+    policy-facing source-indicator column.
+    """
+
+    scf = impute_us_scf_financial_assets(
+        person,
+        scf_donor,
+        seed=int(seed),
+        n_estimators=int(n_estimators),
+    )
+    sipp = impute_us_sipp_financial_assets(
+        person,
+        sipp_donor,
+        seed=int(seed),
+        n_estimators=int(n_estimators),
+    )
+    head_mask = _household_head_mask(person)
+    head_positions = np.flatnonzero(head_mask)
+    head_household_ids = person.loc[head_mask, _HOUSEHOLD_ID_COLUMN]
+    head_source_is_scf = financial_asset_source_is_scf(
+        head_household_ids,
+        seed=int(seed),
+        time_period=int(time_period),
+    )
+    source_is_scf = np.zeros(len(person), dtype=bool)
+    source_is_scf[head_positions] = head_source_is_scf
+
+    result = pd.DataFrame(index=person.index)
+    for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+        result[column] = np.where(
+            source_is_scf,
+            scf[column].to_numpy(dtype=np.float64),
+            sipp[column].to_numpy(dtype=np.float64),
+        )
+
+    scf_head_bank = scf.loc[head_mask, "bank_account_assets"].to_numpy(dtype=np.float64)
+    blended_head_bank = result.loc[head_mask, "bank_account_assets"].to_numpy(
+        dtype=np.float64
+    )
+    selected_scf_bank = blended_head_bank[head_source_is_scf]
+    selected_sipp_bank = blended_head_bank[~head_source_is_scf]
+
+    def _median_or_nan(values: np.ndarray) -> float:
+        return float(np.median(values)) if len(values) else float("nan")
+
+    household_count = int(len(head_positions))
+    scf_count = int(np.count_nonzero(head_source_is_scf))
+    sipp_count = household_count - scf_count
+    result.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY] = {
+        "schema_version": 1,
+        "seed": int(seed),
+        "time_period": int(time_period),
+        "scf_probability": FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
+        "household_count": household_count,
+        "scf_household_count": scf_count,
+        "sipp_household_count": sipp_count,
+        "scf_household_share": (
+            float(scf_count / household_count) if household_count else float("nan")
+        ),
+        "bank_low_tail_threshold": _BANK_LOW_TAIL_THRESHOLD,
+        "scf_only_bank_low_tail_share": (
+            float(np.mean(scf_head_bank <= _BANK_LOW_TAIL_THRESHOLD))
+            if household_count
+            else float("nan")
+        ),
+        "blended_bank_low_tail_share": (
+            float(np.mean(blended_head_bank <= _BANK_LOW_TAIL_THRESHOLD))
+            if household_count
+            else float("nan")
+        ),
+        "scf_selected_bank_median": _median_or_nan(selected_scf_bank),
+        "sipp_selected_bank_median": _median_or_nan(selected_sipp_bank),
+    }
+    return result
+
+
 def impute_us_scf_net_worth(
     person: pd.DataFrame,
     household: pd.DataFrame,
@@ -746,15 +1005,31 @@ def impute_us_scf_net_worth(
     )
 
 
-def _bank_assets_carry_signal(person: pd.DataFrame) -> bool:
-    """Whether the persisted bank-assets column is trustworthy as-is.
+def _financial_assets_carry_signal(person: pd.DataFrame) -> bool:
+    """Whether the persisted financial-asset surface is trustworthy as-is.
 
-    A constant column (one observed value) is indistinguishable from the
-    engine's broadcast 0 default and must be re-imputed, not passed through.
+    Nonfinite values mark a corrupted surface and force re-imputation. The
+    engine-default check is JOINT across the three leaves: a surface where
+    every leaf is constant (the all-zero engine default) must be re-imputed,
+    but a single legitimately constant leaf must not force a redraw — bond
+    holdings are ~97% zero in the donor, so a small or chunked frame can
+    draw a constant bond column from a perfectly healthy imputation. A
+    per-leaf nonconstancy test made pass-through platform-dependent (the
+    #510 CI failure) and would silently redraw small production chunks;
+    flattened cross-leaf uniqueness would accept three DISTINCT constant
+    leaves, so the check requires at least one genuinely nonconstant leaf.
     """
 
-    values = pd.to_numeric(person["bank_account_assets"], errors="coerce").dropna()
-    return values.nunique() > 1
+    any_nonconstant = False
+    for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+        values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        if len(values) != len(person) or not np.isfinite(values).all():
+            return False
+        if np.unique(values).size >= 2:
+            any_nonconstant = True
+    return any_nonconstant
 
 
 def _net_worth_carries_signal(household: pd.DataFrame) -> bool:
@@ -773,28 +1048,50 @@ def _net_worth_carries_signal(household: pd.DataFrame) -> bool:
     )
 
 
+def _blend_audit_matches(
+    person: pd.DataFrame,
+    *,
+    seed: int,
+    time_period: int,
+) -> bool:
+    audit = person.attrs.get(FINANCIAL_ASSET_BLEND_AUDIT_KEY)
+    return (
+        isinstance(audit, Mapping)
+        and audit.get("schema_version") == 1
+        and audit.get("seed") == int(seed)
+        and audit.get("time_period") == int(time_period)
+        and audit.get("scf_probability") == FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY
+    )
+
+
 def with_us_scf_wealth_inputs(
     frame: Frame,
     *,
     seed: int,
     time_period: int,
     scf_donor: pd.DataFrame,
+    sipp_donor: pd.DataFrame | None = None,
 ) -> Frame:
-    """Impute SSI financial assets and signed household net worth.
+    """Impute blended financial assets and SCF-anchored household net worth.
 
     A frame already carrying all three person outputs and household net worth
-    with nonconstant signal passes through untouched (idempotent). Missing or
-    default-valued surfaces are independently healed from the SCF donor, so an
-    existing liquid-asset draw is not replaced merely because net worth is new.
+    with nonconstant signal passes through untouched (idempotent). When a SIPP
+    donor is supplied, the frame must also carry the matching blend audit;
+    this makes a former SCF-only checkpoint heal into the #374 blend. Missing
+    or default-valued surfaces are independently healed, so an existing asset
+    draw is not replaced merely because net worth is new.
 
     Args:
         frame: A US-schema frame whose person table carries the recipient
             source columns.
         seed: Build-wide imputation seed.
-        time_period: The dataset's time period (recorded; the derivation is
-            time-invariant given the donor vintage).
+        time_period: The dataset's time period, used with ``seed`` for the
+            household source selector.
         scf_donor: The SCF financial-asset donor table (from
             :func:`load_scf_2022_financial_asset_donor`).
+        sipp_donor: Optional SIPP financial-asset donor table. Supplying it
+            enables the seeded 50/50 SIPP/SCF blend; omitting it preserves the
+            historical SCF-only behavior for existing callers.
 
     Returns:
         A new frame whose person table carries all three asset columns and
@@ -814,18 +1111,45 @@ def with_us_scf_wealth_inputs(
     have_all_assets = all(
         column in person.columns for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS
     )
-    assets_carry_signal = have_all_assets and _bank_assets_carry_signal(person)
+    blend_requested = sipp_donor is not None
+    blend_carries_signal = not blend_requested or _blend_audit_matches(
+        person,
+        seed=int(seed),
+        time_period=int(time_period),
+    )
+    assets_carry_signal = (
+        have_all_assets
+        and _financial_assets_carry_signal(person)
+        and blend_carries_signal
+    )
     net_worth_carries_signal = _net_worth_carries_signal(household)
     if assets_carry_signal and net_worth_carries_signal:
         return frame
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     if not assets_carry_signal:
-        imputed_assets = impute_us_scf_financial_assets(
-            person, scf_donor, seed=int(seed)
-        )
+        if sipp_donor is None:
+            imputed_assets = impute_us_scf_financial_assets(
+                person,
+                scf_donor,
+                seed=int(seed),
+            )
+        else:
+            imputed_assets = impute_us_sipp_scf_financial_assets(
+                person,
+                scf_donor,
+                sipp_donor,
+                seed=int(seed),
+                time_period=int(time_period),
+            )
         for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
             tables["person"][column] = imputed_assets[column].to_numpy(dtype=np.float64)
+        if FINANCIAL_ASSET_BLEND_AUDIT_KEY in imputed_assets.attrs:
+            tables["person"].attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY] = dict(
+                imputed_assets.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+            )
+        else:
+            tables["person"].attrs.pop(FINANCIAL_ASSET_BLEND_AUDIT_KEY, None)
     if not net_worth_carries_signal:
         tables["household"]["net_worth"] = impute_us_scf_net_worth(
             person,
@@ -847,6 +1171,7 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
 
     person = frame.table("person")
     household = frame.table("household")
+    blend_audit = person.attrs.get(FINANCIAL_ASSET_BLEND_AUDIT_KEY)
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
     household_weights = np.asarray(
@@ -932,10 +1257,17 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
         "net_worth_nonzero_share_band": list(_NET_WORTH_NONZERO_SHARE_BAND),
         "net_worth_positive_share_band": list(_NET_WORTH_POSITIVE_SHARE_BAND),
         "net_worth_negative_share_band": list(_NET_WORTH_NEGATIVE_SHARE_BAND),
+        "financial_asset_blend": (
+            dict(blend_audit) if isinstance(blend_audit, Mapping) else None
+        ),
     }
 
 
-def us_scf_wealth_signal_gate(frame: Frame) -> GateResult:
+def us_scf_wealth_signal_gate(
+    frame: Frame,
+    *,
+    require_sipp_blend: bool = False,
+) -> GateResult:
     """Require financial assets and net worth to carry plausible distributions.
 
     Fails when a column is missing or constant, or when a weighted
@@ -1019,6 +1351,119 @@ def us_scf_wealth_signal_gate(frame: Frame) -> GateResult:
                 f"net_worth {label} share {share:.3f} outside plausibility "
                 f"band [{low}, {high}]."
             )
+    if require_sipp_blend:
+        audit = summary["financial_asset_blend"]
+        if not isinstance(audit, Mapping):
+            failures.append(
+                "SIPP/SCF blend audit is missing; assets may still be SCF-only."
+            )
+        else:
+            try:
+                head_mask = _household_head_mask(person)
+                expected_source_is_scf = financial_asset_source_is_scf(
+                    person.loc[head_mask, _HOUSEHOLD_ID_COLUMN],
+                    seed=int(audit["seed"]),
+                    time_period=int(audit["time_period"]),
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                failures.append(f"SIPP/SCF blend audit cannot be verified: {error}")
+                expected_source_is_scf = np.asarray([], dtype=bool)
+                head_mask = np.zeros(len(person), dtype=bool)
+            household_count = int(len(expected_source_is_scf))
+            scf_count = int(np.count_nonzero(expected_source_is_scf))
+            sipp_count = household_count - scf_count
+            if household_count <= 0 or scf_count <= 0 or sipp_count <= 0:
+                failures.append(
+                    "SIPP/SCF blend did not select both sources: "
+                    f"households={household_count}, SCF={scf_count}, "
+                    f"SIPP={sipp_count}."
+                )
+            recorded_counts = (
+                int(audit.get("household_count", 0)),
+                int(audit.get("scf_household_count", 0)),
+                int(audit.get("sipp_household_count", 0)),
+            )
+            actual_counts = (household_count, scf_count, sipp_count)
+            if recorded_counts != actual_counts:
+                failures.append(
+                    "SIPP/SCF blend audit source counts do not match the seeded "
+                    f"household selector: recorded={recorded_counts}, "
+                    f"actual={actual_counts}."
+                )
+            scf_share = (
+                float(scf_count / household_count) if household_count else float("nan")
+            )
+            low, high = _SCF_SOURCE_SHARE_BAND
+            if not np.isfinite(scf_share) or not low <= scf_share <= high:
+                failures.append(
+                    f"SCF household source share {scf_share:.3f} outside seeded "
+                    f"blend band [{low}, {high}]."
+                )
+            head_bank = person.loc[head_mask, "bank_account_assets"].to_numpy(
+                dtype=np.float64
+            )
+            if scf_count > 0 and sipp_count > 0:
+                actual_scf_median = float(np.median(head_bank[expected_source_is_scf]))
+                actual_sipp_median = float(
+                    np.median(head_bank[~expected_source_is_scf])
+                )
+                recorded_scf_median = float(
+                    audit.get("scf_selected_bank_median", float("nan"))
+                )
+                recorded_sipp_median = float(
+                    audit.get("sipp_selected_bank_median", float("nan"))
+                )
+                if not np.isclose(recorded_scf_median, actual_scf_median):
+                    failures.append(
+                        "SIPP/SCF blend audit SCF bank median does not match "
+                        f"shipped SCF-selected heads: recorded="
+                        f"{recorded_scf_median:,.2f}, actual={actual_scf_median:,.2f}."
+                    )
+                if not np.isclose(recorded_sipp_median, actual_sipp_median):
+                    failures.append(
+                        "SIPP/SCF blend audit SIPP bank median does not match "
+                        f"shipped SIPP-selected heads: recorded="
+                        f"{recorded_sipp_median:,.2f}, "
+                        f"actual={actual_sipp_median:,.2f}."
+                    )
+                if actual_sipp_median >= actual_scf_median:
+                    failures.append(
+                        "SIPP-selected household bank median is not below the "
+                        f"SCF-selected median: SIPP=${actual_sipp_median:,.2f}, "
+                        f"SCF=${actual_scf_median:,.2f}."
+                    )
+            scf_only_low_tail = float(
+                audit.get("scf_only_bank_low_tail_share", float("nan"))
+            )
+            blended_low_tail = float(
+                audit.get("blended_bank_low_tail_share", float("nan"))
+            )
+            actual_blended_low_tail = (
+                float(np.mean(head_bank <= _BANK_LOW_TAIL_THRESHOLD))
+                if household_count
+                else float("nan")
+            )
+            if not np.isclose(
+                blended_low_tail,
+                actual_blended_low_tail,
+                equal_nan=False,
+            ):
+                failures.append(
+                    "SIPP/SCF blend audit low-tail share does not match the "
+                    f"shipped heads: recorded={blended_low_tail:.3f}, "
+                    f"actual={actual_blended_low_tail:.3f}."
+                )
+            if (
+                not np.isfinite(scf_only_low_tail)
+                or not np.isfinite(actual_blended_low_tail)
+                or actual_blended_low_tail <= scf_only_low_tail
+            ):
+                failures.append(
+                    "Blended bank-asset low-tail share did not increase over "
+                    f"SCF-only at ${_BANK_LOW_TAIL_THRESHOLD:,.0f}: "
+                    f"blend={actual_blended_low_tail:.3f}, "
+                    f"SCF-only={scf_only_low_tail:.3f}."
+                )
     return GateResult(
         name="scf_wealth_signal",
         passed=not failures,

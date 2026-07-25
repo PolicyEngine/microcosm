@@ -50,12 +50,15 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
+from populace.build.us_runtime.sipp_financial_assets import (
+    fetch_sipp_2023_financial_asset_donor,
+)
 from populace.build.us_runtime.voluntary_filing import (
     SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
     SIPP_2023_VOLUNTARY_FILING_DONOR_URL,
-    fetch_sipp_2023_voluntary_filing_donor,
 )
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
@@ -304,36 +307,42 @@ def us_child_disability_stage_spec() -> SourceStageSpec:
 def resolve_sipp_2023_child_disability_donor(
     path: str | Path | None = None,
 ) -> Path:
-    """Resolve an explicit path, a verified local file, then the pinned fetch.
+    """Resolve and verify the one full-SIPP path shared by all six stages.
 
-    Explicit paths fail closed in the loader so a caller typo is never hidden.
-    The hard-coded developer fast path is only preferred when both its byte
-    length and SHA-256 match the immutable artifact.  A missing, stale, or
-    unreadable local file falls through to the shared pinned donor chain.
+    An explicit user path is fail-fast: missing, stale, or wrong bytes raise
+    here without falling back.  The implicit developer path instead enters the
+    pinned financial-asset fetch chain, where an invalid candidate falls
+    through to the immutable Hugging Face revision.
     """
 
     if path is not None:
-        return Path(path).expanduser()
-    local_path = SIPP_2023_CHILD_DISABILITY_LOCAL_PATH
-    try:
-        local_is_pinned = (
-            local_path.is_file()
-            and local_path.stat().st_size == SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES
-            and _sha256_file(local_path) == SIPP_2023_CHILD_DISABILITY_DONOR_SHA256
-        )
-    except OSError:
-        local_is_pinned = False
-    if local_is_pinned:
-        return local_path
-    return fetch_sipp_2023_voluntary_filing_donor()
+        explicit = Path(path).expanduser()
+        if not explicit.is_file():
+            raise FileNotFoundError(explicit)
+        actual_size = explicit.stat().st_size
+        if actual_size != SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES:
+            raise ValueError(
+                "Explicit full SIPP donor failed byte-length verification: "
+                f"expected {SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES}, "
+                f"got {actual_size}."
+            )
+        actual_sha256 = _sha256_file(explicit)
+        if actual_sha256 != SIPP_2023_CHILD_DISABILITY_DONOR_SHA256:
+            raise ValueError(
+                "Explicit full SIPP donor failed SHA-256 verification: "
+                f"expected {SIPP_2023_CHILD_DISABILITY_DONOR_SHA256}, "
+                f"got {actual_sha256}."
+            )
+        return explicit
+    return fetch_sipp_2023_financial_asset_donor(
+        local_path=SIPP_2023_CHILD_DISABILITY_LOCAL_PATH,
+        expected_sha256=SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
+    )
 
 
 def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return full_sipp_sha256(path)
 
 
 def _numeric(frame: pd.DataFrame, column: str) -> pd.Series:

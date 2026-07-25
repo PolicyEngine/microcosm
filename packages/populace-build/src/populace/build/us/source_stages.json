@@ -811,7 +811,7 @@
     },
     {
       "stage": "scf_wealth",
-      "survey": "Fed SCF 2022",
+      "survey": "Fed SCF 2022 + Census SIPP 2023",
       "source": "https://www.federalreserve.gov/econres/scfindex.htm",
       "grain": "household",
       "artifacts": [
@@ -832,6 +832,25 @@
           "member": "p22i6.dta",
           "expected_rows": 22975,
           "integrity_note": "Full-file SHA-256 pending one network-enabled provisioning fetch; do not reuse the unrelated summary-extract hashes. Runtime validates the exact member plus a complete one-to-one (y1, yy1) implicate join."
+        },
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "repository": {
+            "provider": "huggingface_hub",
+            "owner": "PolicyEngine",
+            "name_parts": [
+              "policyengine-",
+              "us-data"
+            ],
+            "repo_type": "model"
+          },
+          "member": "pu2023.csv",
+          "revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
         }
       ],
       "operations": [
@@ -842,6 +861,105 @@
             "scf_full_extract"
           ],
           "weight": "wgt"
+        },
+        {
+          "kind": "read_table",
+          "table": "sipp_2023_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "weight": "WPFINWGT",
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EMS",
+            "TSSSAMT",
+            "TRETINCAMT",
+            "TVAL_BANK",
+            "TVAL_STMF",
+            "TVAL_BOND",
+            "TINC_BANK",
+            "TINC_STMF",
+            "TINC_BOND",
+            "TINC_RENT",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM",
+            "AJSSAVVAL",
+            "AJOSAVVAL",
+            "AOSAVVAL",
+            "AJSMMVAL",
+            "AJOMMVAL",
+            "AOMMVAL",
+            "AJSCDVAL",
+            "AJOCDVAL",
+            "AOCDVAL",
+            "AJSCHKVAL",
+            "AJOCHKVAL",
+            "AOCHKVAL",
+            "AJSSTVAL",
+            "AJOSTVAL",
+            "AOSTVAL",
+            "AJSMFVAL",
+            "AJOMFVAL",
+            "AOMFVAL",
+            "AJSGOVSVAL",
+            "AJOGOVSVAL",
+            "AOGOVSVAL",
+            "AJSMCBDVAL",
+            "AJOMCBDVAL",
+            "AOMCBDVAL"
+          ],
+          "targets": {
+            "bank_account_assets": "TVAL_BANK",
+            "stock_assets": "TVAL_STMF",
+            "bond_assets": "TVAL_BOND"
+          },
+          "target_allocation_status_columns": {
+            "bank_account_assets": [
+              "AJSSAVVAL",
+              "AJOSAVVAL",
+              "AOSAVVAL",
+              "AJSMMVAL",
+              "AJOMMVAL",
+              "AOMMVAL",
+              "AJSCDVAL",
+              "AJOCDVAL",
+              "AOCDVAL",
+              "AJSCHKVAL",
+              "AJOCHKVAL",
+              "AOCHKVAL"
+            ],
+            "stock_assets": [
+              "AJSSTVAL",
+              "AJOSTVAL",
+              "AOSTVAL",
+              "AJSMFVAL",
+              "AJOMFVAL",
+              "AOMFVAL"
+            ],
+            "bond_assets": [
+              "AJSGOVSVAL",
+              "AJOGOVSVAL",
+              "AOGOVSVAL",
+              "AJSMCBDVAL",
+              "AJOMCBDVAL",
+              "AOMCBDVAL"
+            ]
+          },
+          "allocation_status_observed_values": [
+            0,
+            1,
+            9
+          ]
         },
         {
           "kind": "replace_sentinels",
@@ -900,6 +1018,7 @@
         },
         {
           "kind": "fit_weighted_qrf",
+          "donor": "scf_2022_summary_extract",
           "predictors": [
             "age",
             "is_female",
@@ -910,8 +1029,70 @@
             "interest_dividend_income",
             "social_security_pension_income"
           ],
+          "financial_asset_targets": [
+            "bank_account_assets",
+            "stock_assets",
+            "bond_assets"
+          ],
+          "weight": "wgt",
           "net_worth_target": "networth",
           "net_worth_signed": true
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "donor": "sipp_2023_person",
+          "predictors": [
+            "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "social_security",
+            "retirement_income",
+            "non_ssi_income",
+            "age",
+            "is_female",
+            "is_married",
+            "count_under_18",
+            "count_under_6",
+            "household_size"
+          ],
+          "predictor_mapping": {
+            "employment_income": "12 * sum(TJB1_MSUM..TJB7_MSUM)",
+            "interest_income": "12 * (TINC_BANK + TINC_BOND)",
+            "dividend_income": "12 * TINC_STMF",
+            "rental_income": "12 * TINC_RENT",
+            "social_security": "12 * TSSSAMT",
+            "retirement_income": "12 * TRETINCAMT",
+            "non_ssi_income": "employment_income + social_security + retirement_income",
+            "age": "TAGE",
+            "is_female": "ESEX == 2",
+            "is_married": "EMS == 1",
+            "count_under_18": "household count(TAGE < 18)",
+            "count_under_6": "household count(TAGE < 6)",
+            "household_size": "household count(PNUM)"
+          },
+          "targets": {
+            "bank_account_assets": "TVAL_BANK",
+            "stock_assets": "TVAL_STMF",
+            "bond_assets": "TVAL_BOND"
+          },
+          "weight": "WPFINWGT",
+          "target_specific_allocation_status_masks": true,
+          "target_balanced_max_train_samples": 20000,
+          "seed_from_build_config": true
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "bank_account_assets",
+            "bond_assets",
+            "stock_assets"
+          ],
+          "method": "seeded_household_source_block_blend",
+          "scf_probability": 0.5,
+          "one_source_per_household": true,
+          "seed_from_build_config": true,
+          "period_in_seed": true
         },
         {
           "kind": "head_carry",
@@ -960,9 +1141,12 @@
       "nonnegative_outputs": [
         "auto_loan_balance",
         "auto_loan_interest",
-        "qualified_passenger_vehicle_loan_interest"
+        "qualified_passenger_vehicle_loan_interest",
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets"
       ],
-      "notes": "The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45 utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth QRF anchor; calibration/source_impute.py lines 1146-1164 fits that anchor with these eight predictors and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting net_worth. Populace therefore persists that signed household anchor directly, including indebted households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped."
+      "notes": "Populace #374 restores the retired 50/50 SIPP/SCF financial-asset blend: a seeded recipient-household draw selects one complete three-leaf vector, and the reference person carries it while all other people receive zero. The SIPP mapping matches archived commit 42ed5d45's final 13-predictor asset QRF, while the explicitly requested immutable pu2023.csv artifact replaces that commit's later pu2024 default. The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45 utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth QRF anchor; calibration/source_impute.py lines 1146-1164 fits that anchor with these eight predictors and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting net_worth. Populace therefore persists that signed household anchor directly, including indebted households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped."
     },
     {
       "stage": "ssi_disability_criteria",
