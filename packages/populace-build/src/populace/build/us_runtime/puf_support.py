@@ -32,6 +32,8 @@ __all__ = [
     "PufTaxDetailChainInputs",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
+    "US_PUF_E19200_HOME_MORTGAGE_SHARE",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
@@ -55,9 +57,43 @@ US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 #: this fit by name.
 US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
 
+# Interim populace#515 carve: SOI Pub 1304 TY2015 Table 2.1 reports
+# $283,004,465 thousand of home-mortgage interest within $304,461,163 thousand
+# of total interest paid. Apply that concept share per donor record before the
+# QRF learns levels and realized support. The #486 ``support_value_repairs``
+# surface is instead a release-time total pin, so it cannot express this
+# donor-column concept correction (#492). A uniform carve cannot identify the
+# records carrying the removed points, qualified mortgage-insurance premiums,
+# or investment interest, so ``investment_interest_expense`` remains all-zero.
+US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163
+
+# populace#516 donor outlier screen: $10M of annual home-mortgage interest
+# implies roughly a $250M mortgage at 4%, not a genuine Schedule A return; the
+# pinned artifact's maximum REAL-scale unit values are only low single-digit
+# millions. Its grouped-raw >=$10M intersection contains 3,066 tax units (max
+# $235.97B; weight 3,684 of 161M) and $2.947T of phantom mortgage-interest mass,
+# versus $418B retained; 1,823 have synthetic IDs >= 1,000,000 and 1,243 have
+# ordinary IDs.
+# The cohort uniquely sets 20 upper and 3 lower realized-range endpoints across
+# the 64 donor targets, so every column of each row must be removed. This is an
+# outlier screen, NOT aggregate-lineage removal: an ID-range union would delete
+# 2,162 healthy synthetic donors to remove only about $0.7B more.
+US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0
+
+# Reserved internal column used to thread the grouped RAW mortgage value to
+# the outlier screen; never a legal requested output (populace#516).
+_MORTGAGE_OUTLIER_SCREEN_COLUMN = "_raw_home_mortgage_interest_for_outlier_screen"
+
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+)
+
+_US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
+    "home_mortgage_interest",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "interest_deduction",
 )
 
 
@@ -510,6 +546,17 @@ def puf_tax_unit_donor_from_arrays(
         }
     )
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in (*person_outputs, *tax_unit_outputs):
+        raise ValueError(
+            f"{_MORTGAGE_OUTLIER_SCREEN_COLUMN!r} is reserved for the donor "
+            "mortgage outlier screen and cannot be a requested output."
+        )
+    raw_home_mortgage_interest = _person_source_values(
+        arrays,
+        "home_mortgage_interest",
+    )
+    if raw_home_mortgage_interest is not None:
+        person[_MORTGAGE_OUTLIER_SCREEN_COLUMN] = raw_home_mortgage_interest
 
     engine = _formula_owned_engine()
     assert_formula_owned_blocklist_current(engine)
@@ -551,8 +598,42 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in tax_unit:
+        # The screen thresholds the grouped RAW person value: screening the
+        # CARVED value at the same literal would miss 49 corrupt rows in the
+        # $10M-to-$10.75M raw band (the semantic contract, pinned by the
+        # 10.5M-raw regression). Because the raw value rides its own reserved
+        # helper column -- outside the carve lineage tuple -- the returned
+        # frame is identical whether the screen runs before or after the
+        # carve; it runs first so the carve never touches rows the screen
+        # discards.
+        retained = (
+            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN]
+            < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+        )
+        tax_unit = (
+            tax_unit.loc[retained]
+            .drop(columns=[_MORTGAGE_OUTLIER_SCREEN_COLUMN])
+            .reset_index(drop=True)
+        )
+    # Keep the carve BEFORE _add_predictor_aliases: no mortgage predictor
+    # alias exists today, but if one is ever added it must derive from the
+    # carved column (aliases skip already-present columns, so a post-alias
+    # carve would leave a stale uncarved predictor copy).
+    _carve_us_puf_e19200_home_mortgage_share(tax_unit)
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
+
+
+def _carve_us_puf_e19200_home_mortgage_share(donor: pd.DataFrame) -> None:
+    """Carve E19200-lineage donor columns to the mortgage-only concept."""
+
+    for column in _US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
+        if column in donor:
+            donor[column] = (
+                donor[column].to_numpy(dtype=np.float64, copy=False)
+                * US_PUF_E19200_HOME_MORTGAGE_SHARE
+            )
 
 
 def impute_us_puf_tax_detail_support(

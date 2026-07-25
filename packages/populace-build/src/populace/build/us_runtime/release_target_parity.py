@@ -95,14 +95,24 @@ SOURCE_ABSENT_CLASSIFICATION = "source_absent"
 #: let any of them be downgraded, mirroring the #368 SSI countable-resource asset
 #: red line on the input-coverage side.
 #:
-#: - ``ssa_supplement.ssi_recipients``: the SSA SSI recipient count
-#:   (``nation/ssa/ssi_recipients``).
+#: - ``ssa_ssi_monthly.ssi_federal_payment_recipients``: the SSA SSI
+#:   *federal-payment* caseload by age (Σ = 7,289,843, December 2024) — since
+#:   the populace#508 owner adjudication (2026-07-23) the three by-age band
+#:   targets are the national SSI caseload anchor, so losing this family is
+#:   losing the national SSI recipient count.
+#: - ``ssa_supplement.ssi_recipients``: the SSA by-area recipient counts
+#:   (``nation/ssa/ssi_recipients``). Its national ``all_areas_total``
+#:   (7,404,820 — the broader *federally administered* universe, including
+#:   ~115k state-supplement-only recipients) is a non-binding reference per
+#:   the same adjudication; the family stays compiled through its state
+#:   rows, the only state-grain SSI caseload signal.
 #: - ``bea_nipa.total_wages_salaries``: the BEA NIPA all-population wage total
 #:   (``nation/bea/nipa_wages_and_salaries``, PR #994) — economy-wide wages
 #:   including nonfilers, the ~$12.4T universe that tax-return / CPS-reported
 #:   wages undercount by two-thirds. Silent loss of it is the exact failure the
 #:   Chesterton's-fence audit surfaced.
 RED_LINE_COMPILED_FAMILIES = (
+    "ssa_ssi_monthly.ssi_federal_payment_recipients",
     "ssa_supplement.ssi_recipients",
     "bea_nipa.total_wages_salaries",
 )

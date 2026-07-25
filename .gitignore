@@ -14,3 +14,4 @@ out/
 
 # Release alert webhooks (real file is machine-local; .example is tracked)
 tools/release.env
+/inputs/
