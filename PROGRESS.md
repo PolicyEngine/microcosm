@@ -20,11 +20,12 @@ item 8; simulation wiring is out of scope.
 - Read the GitNexus exploration instructions; no GitNexus tool is exposed, so
   repository conventions will be traced directly.
 - Inventoried all three factsheets, the SCF archive, and six SOI workbooks.
+- Mapped repository evidence-resource conventions and added the locked legacy
+  workbook reader required by the SOI `.xls` inputs.
 
 ## Current next
 
-- Extract the verified factsheet findings and map existing resource, builder,
-  and test conventions before implementing the pure estimation module.
+- Implement the pure SCF/SOI estimation module and synthetic-fixture tests.
 
 ## Historical progress
 

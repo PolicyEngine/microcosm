@@ -17,11 +17,13 @@
   session, so codebase exploration will use direct repository searches.
 - Read/inventoried the SCF, SOI, and Section 199A factsheets plus the restricted
   SCF archive and six SOI workbooks in place.
+- Mapped the package-resource, spec-only, restricted-builder, and schema-test
+  conventions.
+- Declared the offline-cached `xlrd` reader needed for the two genuine BIFF
+  SOI workbooks and regenerated its lock entry without network access.
 
 ## Next
 
-- Extract the verified factsheet findings without transcript noise.
-- Map country-package, resource, builder, and testing conventions.
 - Implement and validate SCF and SOI estimation logic on synthetic fixtures.
 - Run the builder on restricted real inputs, commit only derived resources,
   and record commands and input digests.
