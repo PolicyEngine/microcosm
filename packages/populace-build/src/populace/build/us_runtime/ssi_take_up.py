@@ -36,9 +36,9 @@ populace#477) — and :func:`us_ssi_take_up_delivery_gate` hard-fails the
 release when an enforced band's delivered recipients miss the ledger target
 beyond :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE`, forcing
 threshold recomputation exactly once from the failed attempt's delivered
-weights. The under-18 band stays honestly fenced (scorecard-only) until the
-SIPP child qualifying-disability stage lands (populace#453/#509).  That stage
-is now in the fiscal build, so all three age bands are release-enforced.
+weights. The under-18 band was honestly fenced (scorecard-only) until the SIPP
+child qualifying-disability stage landed (populace#453/#509).  That stage is
+now in the fiscal build, so all three age bands are release-enforced.
 
 The band targets are the SSA federal-payment universe (Σ = 7,289,843 in
 December 2024). The separate SSA by-area 7,404,820 count is the broader
