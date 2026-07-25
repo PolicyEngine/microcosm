@@ -80,7 +80,7 @@ TARGET_PERIOD = 2024
 # first full-scale CD-on run (27,148 CD rows) halved within-10% (90.2% ->
 # 54.5%) and broke the SS-benefits critical row (-14.7%), so the surface
 # stays OFF until the CD loss architecture is reworked.
-CD_SURFACE_REGIME = "off"
+CD_SURFACE_REGIME = "on"
 
 
 def _fence(origin: str, purpose: str, verdict_basis: str) -> dict[str, str]:
