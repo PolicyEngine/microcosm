@@ -4435,12 +4435,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "qrf_tail_concentration",
         ]
     if terminal_mode != "crash":
+        # The retry line carries the written artifact's sha256 — the
+        # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
+        # by the failure itself (sol round 2, new minor).
+        import hashlib
+
+        written_sha = hashlib.sha256(
+            (release_dir / "us_ssi_take_up.json").read_bytes()
+        ).hexdigest()
         assert captured["diagnostics"]["gate_failures"] == [
             "SSI take-up delivery failed: 18_64 delivered over envelope "
             "[cofailure-sentinel]",
             "SSI take-up delivered-weight prior basis written to "
-            f"{release_dir / 'us_ssi_take_up.json'} for the "
-            "--ssi-take-up-prior-weight-basis retry.",
+            f"{release_dir / 'us_ssi_take_up.json'} (sha256 {written_sha}) "
+            "for the --ssi-take-up-prior-weight-basis retry.",
             "Other health insurance signal failed on the export frame: "
             "premiums signal flattened [cofailure-sentinel]",
             "ctc failed",
