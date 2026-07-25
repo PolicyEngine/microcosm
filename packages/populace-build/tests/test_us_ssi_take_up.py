@@ -297,10 +297,10 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
     assert diagnostics["measurement_phase"] == "assignment_stage"
-    # Schema 3 = the populace#507/#508 shape (schema 2's assignment/recomputed
-    # prior split and law count, plus the explicit prior weight basis); pin
-    # the literal so reverting the constant alone cannot pass.
-    assert diagnostics["schema_version"] == 3
+    # Schema 4 disambiguates the floor-aware assignment-prior arithmetic from
+    # schema 3 artifacts that may carry the old floor-blind arithmetic; pin the
+    # literal so reverting the constant alone cannot pass.
+    assert diagnostics["schema_version"] == 4
     assert diagnostics["prior_weight_basis"] == {
         "kind": US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
         "source_sha256": None,
@@ -717,6 +717,50 @@ def test_saturated_artifact_basis_falls_back_to_the_basis_reporter_rate() -> Non
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
 
+def test_build_o_attempt_3_receipts_pin_the_floor_aware_stabilizer() -> None:
+    """Regression fixture: Build O attempts 2/3 (populace#507, 2026-07-24).
+
+    Attempt 3 recomputed thresholds from attempt 2's delivered-weight
+    artifact — the intended basis — and still failed the delivery gate
+    because the schema-3 prior was target/capacity while the selection law
+    delivers floor + p × (capacity − floor). These are the artifacts' own
+    numbers: the old arithmetic prices both enforced bands outside the ±5%
+    envelope before any draw noise; the floor-aware prior prices both at
+    their targets exactly.
+    """
+
+    receipts = {
+        # band: (delivered candidate_capacity, reporter_candidate_floor,
+        #        ledger target, shipped schema-3 assignment_prior)
+        "18_64": (
+            5_692_738.613266995,
+            2_751_093.418495384,
+            3_905_779.0,
+            0.6860984256149643,
+        ),
+        "65_plus": (
+            3_978_003.639668682,
+            467_367.6056558765,
+            2_382_142.0,
+            0.5988285119312768,
+        ),
+    }
+    tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
+    for key, (capacity, floor, target, shipped_prior) in receipts.items():
+        # The shipped prior was the floor-blind ratio.
+        assert shipped_prior == pytest.approx(target / capacity)
+        # Its expected delivery on the very weights it was computed from
+        # misses the gate before any draw realization is added: +22.1% for
+        # 18–64, +7.9% for 65+.
+        shipped_expected = floor + shipped_prior * (capacity - floor)
+        assert shipped_expected - target > tolerance * target, key
+        # The floor-aware prior prices expected delivery at the target.
+        prior = _band_prior(target, capacity, floor)
+        assert prior == pytest.approx((target - floor) / (capacity - floor))
+        assert floor + prior * (capacity - floor) == pytest.approx(target)
+        assert abs(floor + prior * (capacity - floor) - target) <= 1e-6 * target
+
+
 def test_prior_basis_round_trips_through_diagnostics() -> None:
     _, result, potential, stage_diagnostics = _assigned()
     recovered = ssi_take_up_prior_basis_from_diagnostics(stage_diagnostics)
@@ -775,18 +819,42 @@ def _release_final_diagnostics() -> dict[str, object]:
     )
 
 
-def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
+def test_prior_basis_loader_accepts_current_and_legacy_artifacts() -> None:
     diagnostics = _release_final_diagnostics()
+    assert diagnostics["schema_version"] == 4
+    payload4 = copy.deepcopy(diagnostics)
+    basis4 = ssi_take_up_prior_basis_from_artifact(
+        payload4, targets=_TARGETS, source_sha256=_BASIS_SHA
+    )
+    assert basis4.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
+    assert basis4.source_sha256 == _BASIS_SHA
+    assert basis4.source_schema_version == 4
+    for band in basis4.bands:
+        assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
+        assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
+
+    # Build O attempts 2/3 published schema-3 artifacts; their capacity/floor
+    # measurements stay valid seeds — only the prior arithmetic derived from
+    # them changed. A faithful legacy payload has no lifecycle marker and
+    # carries the floor-blind target/capacity priors those builds shipped.
     payload3 = copy.deepcopy(diagnostics)
+    payload3["schema_version"] = 3
+    payload3.pop("measurement_phase")
+    for band in payload3["age_bands"]:
+        floor_blind = float(band["target"]) / float(band["candidate_capacity"])
+        band["assignment_prior"] = floor_blind
+        band["prior_recomputed_from_current_weights"] = floor_blind
     basis3 = ssi_take_up_prior_basis_from_artifact(
         payload3, targets=_TARGETS, source_sha256=_BASIS_SHA
     )
-    assert basis3.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
-    assert basis3.source_sha256 == _BASIS_SHA
     assert basis3.source_schema_version == 3
-    for band in basis3.bands:
-        assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
-        assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
+    assert [
+        (band.key, band.candidate_capacity, band.reporter_candidate_floor)
+        for band in basis3.bands
+    ] == [
+        (band.key, band.candidate_capacity, band.reporter_candidate_floor)
+        for band in basis4.bands
+    ]
 
     # Build N's certified artifact predates the basis fields and the phase
     # marker (schema 2); the chain must be able to start from it
@@ -807,15 +875,18 @@ def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
         for band in basis2.bands
     ] == [
         (band.key, band.candidate_capacity, band.reporter_candidate_floor)
-        for band in basis3.bands
+        for band in basis4.bands
     ]
 
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
+        ("schema_1", "schema version"),
         ("unknown_schema", "schema version"),
-        ("stage_phase", "measurement phase"),
+        ("current_missing_phase", "measurement phase"),
+        ("current_stage_phase", "measurement phase"),
+        ("legacy_stage_phase", "measurement phase"),
         ("wrong_table", "target table"),
         ("wrong_period", "target period"),
         ("target_contract_drift", "target contract"),
@@ -834,10 +905,19 @@ def test_prior_basis_loader_rejects_invalid_artifacts(
 ) -> None:
     payload = copy.deepcopy(_release_final_diagnostics())
     sha = _BASIS_SHA
-    if mutation == "unknown_schema":
+    if mutation == "schema_1":
         payload["schema_version"] = 1
-    elif mutation == "stage_phase":
+    elif mutation == "unknown_schema":
+        payload["schema_version"] = 999
+    elif mutation == "current_missing_phase":
+        payload.pop("measurement_phase")
+    elif mutation == "current_stage_phase":
         # A stage-time payload must never masquerade as delivered weights.
+        payload["measurement_phase"] = "assignment_stage"
+    elif mutation == "legacy_stage_phase":
+        # Schema 3 may omit the marker, but an explicit assignment-stage
+        # marker proves the artifact is not a delivered-weight measurement.
+        payload["schema_version"] = 3
         payload["measurement_phase"] = "assignment_stage"
     elif mutation == "wrong_table":
         payload["target_table"] = "another_table"

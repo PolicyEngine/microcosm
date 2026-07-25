@@ -117,6 +117,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
     # 9 = the #374 SIPP+SCF blend changes the pre-materialization frame;
     # SCF-only checkpoints (8 = post-#539 ORG rewrite) must not be reused.
@@ -213,6 +214,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
     # 8 = current-main SCF-only-era checkpoints (the #510 review's stale
     # hazard); 7 = pre-#539. Both must miss against expected version 9.
@@ -265,6 +267,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         # the basis-artifact key (populace#543 instance 2). The broader
         # frozen-assignment digest is covered separately below.
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
         ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
     )
     basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
@@ -397,6 +400,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
     stale_identity = {
         **fresh_identity,
@@ -442,6 +446,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256=None,
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
 
     def fail_materialize(*args, **kwargs):
@@ -2967,7 +2972,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
-@pytest.mark.parametrize("terminal_mode", ["merge", "crash", "telemetry"])
+@pytest.mark.parametrize("terminal_mode", ["merge", "integrity", "crash", "telemetry"])
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
 ) -> None:
@@ -2976,6 +2981,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``merge``: SSI delivery + export other-health + the ctc sentinel all
     fail in one run — the batch carries every group in corridor order and
     the diagnostics artifact is written first.
+    ``integrity``: the persisted-flag FINAL-INTEGRITY gate reports a
+    Bernoulli-law violation; that failure reaches the written diagnostics
+    and the single terminal batch while the delivery gate passes and every
+    later terminal group still runs.
     ``crash``: the degraded-mode guards themselves are exercised — the
     health-input evaluation raises, the incumbent path is missing, and
     ``_release_gate_failures`` raises; each records a line instead of
@@ -3093,6 +3102,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
+    if terminal_mode in {"integrity", "telemetry"}:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -3944,12 +3954,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return dict(fake_band_targets)
 
     fake_stage_priors = {"under_18": 0.3, "18_64": 0.4, "65_plus": 0.5}
-    # Schema-3 shape (populace#507/#508): main() reconstructs the prior
+    # Current schema-4 shape (populace#507/#508): main() reconstructs the prior
     # weight basis from these stage diagnostics with the REAL module helper
     # and threads it into the final release-weight measurement.
     fake_stage_diagnostics = {
         "checked": True,
-        "schema_version": 3,
+        "schema_version": 4,
         "measurement_phase": "assignment_stage",
         "prior_weight_basis": {
             "kind": "current_frame",
@@ -3986,13 +3996,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
         captured["ssi_take_up_gate_called"] = True
-        captured.setdefault("ssi_take_up_gate_calls", []).append(
-            {"diagnostics": diagnostics, "targets": dict(targets)}
-        )
+        gate_calls = captured.setdefault("ssi_take_up_gate_calls", [])
+        gate_calls.append({"diagnostics": diagnostics, "targets": dict(targets)})
         captured.setdefault("ssi_event_order", []).append("integrity_gate")
+        final_integrity_failure = terminal_mode == "integrity" and len(gate_calls) == 2
         return builder.GateResult(
             name="ssi_take_up",
-            passed=True,
+            passed=not final_integrity_failure,
+            failures=(
+                ("Bernoulli-law violation [final-integrity-sentinel]",)
+                if final_integrity_failure
+                else ()
+            ),
             details=diagnostics,
         )
 
@@ -4284,12 +4299,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["target_loss_cap"] = kwargs["target_loss_cap"]
         return result
 
-    def fake_write_diagnostics(**kwargs):
+    real_write_release_diagnostics = builder._write_release_calibration_diagnostics
+
+    def recording_write_release_diagnostics(**kwargs):
         captured["diagnostics"] = kwargs
-        release_dir = kwargs["release_dir"]
-        release_dir.mkdir(parents=True, exist_ok=True)
-        (release_dir / "calibration_diagnostics.json").write_text("{}")
-        return release_dir / "calibration_diagnostics.json"
+        return real_write_release_diagnostics(**kwargs)
+
+    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "build": {
+                        "release_gates": dict(build["release_gates"]),
+                    }
+                }
+            )
+        )
+        return path
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
 
@@ -4335,15 +4362,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_ssi_delivery_gate(diagnostics, *, targets):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
-        # Fails deliberately: the populace#547 cofailure regression proves
-        # the delivery failure reaches the diagnostics artifact and the
-        # terminal batch while other gates also fail, and that the basis
-        # artifact is written for the retry.
+        # The integrity case passes delivery to isolate FINAL-INTEGRITY
+        # collection. Other modes retain the populace#547 delivery cofailure
+        # and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
+        passes = terminal_mode == "integrity"
         return builder.GateResult(
             name="ssi_take_up_delivery",
-            passed=False,
-            failures=("18_64 delivered over envelope [cofailure-sentinel]",),
+            passed=passes,
+            failures=(
+                ()
+                if passes
+                else ("18_64 delivered over envelope [cofailure-sentinel]",)
+            ),
             details=diagnostics,
         )
 
@@ -4383,7 +4414,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_write_release_calibration_diagnostics",
-        fake_write_diagnostics,
+        recording_write_release_diagnostics,
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        fake_write_calibration_diagnostics,
     )
 
     try:
@@ -4395,10 +4431,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
-        assert message.startswith(
-            "Release gates failed: SSI take-up delivery failed: "
-            "18_64 delivered over envelope [cofailure-sentinel]"
-        )
+        if terminal_mode == "integrity":
+            assert message.startswith(
+                "Release gates failed: SSI take-up final measurement failed: "
+                "Bernoulli-law violation [final-integrity-sentinel]"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        else:
+            assert message.startswith(
+                "Release gates failed: SSI take-up delivery failed: "
+                "18_64 delivered over envelope [cofailure-sentinel]"
+            )
         assert (
             "Other health insurance signal failed on the export frame: "
             "premiums signal flattened [cofailure-sentinel]" in message
@@ -4419,7 +4462,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         raise AssertionError("Expected post-calibration gate failure.")
 
     release_dir = out / "releases" / release_id
-    assert (release_dir / "calibration_diagnostics.json").exists()
+    written_diagnostics = json.loads(
+        (release_dir / "calibration_diagnostics.json").read_text()
+    )
+    if terminal_mode == "integrity":
+        assert (
+            "SSI take-up final measurement failed: "
+            "Bernoulli-law violation [final-integrity-sentinel]"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
@@ -4429,6 +4480,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert not list(release_dir.glob("*manifest*"))
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
+    if terminal_mode in {"integrity", "telemetry"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
@@ -4443,16 +4495,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         written_sha = hashlib.sha256(
             (release_dir / "us_ssi_take_up.json").read_bytes()
         ).hexdigest()
-        assert captured["diagnostics"]["gate_failures"] == [
-            "SSI take-up delivery failed: 18_64 delivered over envelope "
-            "[cofailure-sentinel]",
-            "SSI take-up delivered-weight prior basis written to "
-            f"{release_dir / 'us_ssi_take_up.json'} (sha256 {written_sha}) "
-            "for the --ssi-take-up-prior-weight-basis retry.",
-            "Other health insurance signal failed on the export frame: "
-            "premiums signal flattened [cofailure-sentinel]",
-            "ctc failed",
-        ]
+        if terminal_mode == "integrity":
+            expected_gate_failures = [
+                "SSI take-up final measurement failed: "
+                "Bernoulli-law violation [final-integrity-sentinel]",
+                "Medicaid final diagnostics not evaluated: SSI decision "
+                "integrity failed upstream (Bernoulli-law violation) and "
+                "Medicaid eligibility consumes the frozen SSI decisions; "
+                "quarantined instead of mis-measured (populace#547).",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        else:
+            expected_gate_failures = [
+                "SSI take-up delivery failed: 18_64 delivered over envelope "
+                "[cofailure-sentinel]",
+                "SSI take-up delivered-weight prior basis written to "
+                f"{release_dir / 'us_ssi_take_up.json'} (sha256 {written_sha}) "
+                "for the --ssi-take-up-prior-weight-basis retry.",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        assert captured["diagnostics"]["gate_failures"] == expected_gate_failures
     else:
         # Corridor order: SSI delivery + basis note, health-input crash
         # guard, other-health gate failure, incumbent guard, release-gate
@@ -4628,20 +4694,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
         == "ssi-digest-sentinel"
     )
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_context"][
+            "selection_identities_sha256"
+        ]
+        is None
+    )
     # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
     # the #548 batched terminal gates): the final measurement hits disk
-    # BEFORE the final integrity gate runs, so an integrity+delivery
-    # cofailure still leaves the retry basis; the deliberately-failing
-    # delivery gate then rewrites the same artifact inside the enforce
-    # helper (its failure line carries the sha pin).
-    assert captured["ssi_event_order"] == [
+    # BEFORE the final integrity gate runs. Delivery still evaluates after
+    # an integrity failure; on a delivery miss, the enforce helper rewrites
+    # the same artifact and its failure line carries the sha pin.
+    expected_ssi_event_order = [
         "integrity_gate",  # stage diagnostics, at assignment time
         "write:us_ssi_take_up.json",  # final measurement, written first
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
-        "write:us_ssi_take_up.json",  # enforce rewrites the retry basis
     ]
-    assert captured["final_medicaid_diagnostics_called"] is True
+    if terminal_mode != "integrity":
+        # A delivery miss rewrites the final measurement as the retry basis.
+        expected_ssi_event_order.append("write:us_ssi_take_up.json")
+    assert captured["ssi_event_order"] == expected_ssi_event_order
+    if terminal_mode == "integrity":
+        assert "final_medicaid_diagnostics_called" not in captured
+    else:
+        assert captured["final_medicaid_diagnostics_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
         captured["voluntary_filing_donor_sha256"]
@@ -8273,6 +8350,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
     legacy = builder._target_frame_checkpoint_identity(**common)
     default_kwarg = builder._target_frame_checkpoint_identity(
@@ -8312,6 +8390,65 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
     )
     assert (
         builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
+        is None
+    )
+
+
+def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
+    monkeypatch, tmp_path, small_frame
+) -> None:
+    """A frozen-support change invalidates the checkpoint identity.
+
+    The assignment digest hashes positional flags, priors, and provenance,
+    but two same-length supports can share those flag bytes. The selected
+    source identities therefore remain an independent checkpoint input, and
+    even the full-pool ``None`` value must reject a pre-fix identity that
+    omitted the key entirely.
+    """
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    common = {
+        "base_dataset_sha256": "base-sha",
+        "policyengine_us_version": "1.2.3",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-sha",
+        "weeks_unemployed_source_sha256": "weeks-source-sha",
+        "congressional_district_vintage_crosswalk_sha256": None,
+        "ssi_take_up_assignment_sha256": "ssi-flags-sha",
+    }
+    full_pool = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256=None
+    )
+    selected = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256="cd" * 32
+    )
+    selected_other = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256="ef" * 32
+    )
+    digest = builder._target_frame_checkpoint_digest
+    assert digest(full_pool) != digest(selected)
+    assert digest(selected) != digest(selected_other)
+
+    prefix_shape = {
+        key: value
+        for key, value in full_pool.items()
+        if key != "selection_identities_sha256"
+    }
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity=prefix_shape,
+        compilation={},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=full_pool,
+            target_specs=(),
+        )
         is None
     )
 
@@ -8720,7 +8857,7 @@ def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> 
 
 def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "measurement_phase": "release_final",
         "age_bands": [
             {
@@ -8892,13 +9029,14 @@ def test_final_medicaid_green_path_evaluates_normally() -> None:
     assert failures == []
 
 
-def test_reform_vector_cache_context_tracks_the_ssi_assignment_digest() -> None:
-    """The #217 reform-vector cache whitelist must carry the SSI digest.
+def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
+    """The #217 reform-vector cache whitelist carries both support digests.
 
     Whether a JCT reform income-tax estimate can move with
     takes_up_ssi_if_eligible is an engine-graph question the build must not
-    answer by assumption — the digest invalidates reform vectors too
-    (sol round 2, finding 2)."""
+    answer by assumption, while two selected supports can share positional
+    SSI flag bytes. The assignment and selection digests therefore invalidate
+    reform vectors independently."""
 
     builder = _load_builder_module()
     base = {
@@ -8909,12 +9047,22 @@ def test_reform_vector_cache_context_tracks_the_ssi_assignment_digest() -> None:
         "congressional_district_vintage_crosswalk_sha256": None,
         "build_commit": "irrelevant-to-reform-vectors",
         "ssi_take_up_assignment_sha256": "digest-a",
+        "selection_identities_sha256": None,
     }
-    changed = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
+    changed_assignment = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
+    selected = {**base, "selection_identities_sha256": "cd" * 32}
+    selected_other = {**base, "selection_identities_sha256": "ef" * 32}
+    projected = builder._reform_vector_cache_context(base)
     assert builder._reform_vector_cache_context(
         base
-    ) != builder._reform_vector_cache_context(changed)
-    assert "build_commit" not in builder._reform_vector_cache_context(base)
+    ) != builder._reform_vector_cache_context(changed_assignment)
+    assert projected != builder._reform_vector_cache_context(selected)
+    assert builder._reform_vector_cache_context(
+        selected
+    ) != builder._reform_vector_cache_context(selected_other)
+    assert "selection_identities_sha256" in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    assert projected["selection_identities_sha256"] is None
+    assert "build_commit" not in projected
 
 
 def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:

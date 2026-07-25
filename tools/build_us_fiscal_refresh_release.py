@@ -307,6 +307,10 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # invalidates reform vectors too — correctness over cache warmth
     # (populace#507/#508 sol review round 2, finding 2).
     "ssi_take_up_assignment_sha256",
+    # The selected identities determine which household rows the vectors
+    # describe. Same-length supports can share positional SSI flag bytes, so
+    # this digest remains independent of the assignment digest.
+    "selection_identities_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 2: the medicaid_take_up stage (populace #331) changed base_frame's
@@ -977,18 +981,18 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional us_ssi_take_up.json diagnostics artifact from a prior "
-            "attempt's final release-weight measurement (schema 2 or 3, e.g. "
-            "the certified predecessor release's). The SSI take-up Bernoulli "
-            "thresholds are then computed against that attempt's delivered "
-            "per-band candidate capacities instead of this run's "
-            "pre-calibration weights — the populace#508 fix for the "
-            "populace#507 aged-band collapse: thresholds truthful against "
-            "release-kind weights, still drawn exactly once, with no "
-            "reconcile loop. The artifact must carry the same SSA band "
-            "target contract this build compiles; the enforced-band "
-            "delivery gate verifies the landed counts either way, and on "
-            "failure writes this run's us_ssi_take_up.json as the basis for "
-            "the retry. Requires --ssi-take-up-prior-weight-basis-sha256."
+            "attempt's final release-weight measurement (current schema 4, or "
+            "legacy schema 2/3 capacity-floor seeds such as the certified "
+            "predecessor release's). The SSI take-up Bernoulli thresholds are "
+            "then computed against that attempt's delivered per-band candidate "
+            "capacities instead of this run's pre-calibration weights — the "
+            "populace#508 fix for the populace#507 aged-band collapse: "
+            "thresholds truthful against release-kind weights, still drawn "
+            "exactly once, with no reconcile loop. The artifact must carry the "
+            "same SSA band target contract this build compiles; the enforced-"
+            "band delivery gate verifies the landed counts either way, and on "
+            "failure writes this run's us_ssi_take_up.json as the basis for the "
+            "retry. Requires --ssi-take-up-prior-weight-basis-sha256."
         ),
     )
     parser.add_argument(
@@ -1637,6 +1641,7 @@ def _target_frame_checkpoint_identity(
     weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
     ssi_take_up_assignment_sha256: str,
+    selection_identities_sha256: str | None,
     selection_mass_protections: tuple[str, ...] = (),
     ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
@@ -1657,6 +1662,15 @@ def _target_frame_checkpoint_identity(
         # (populace#507/#508). Always present, so every pre-#507 checkpoint
         # — built on the collapsed Build-N-class flags — also misses once.
         "ssi_take_up_assignment_sha256": str(ssi_take_up_assignment_sha256),
+        # The frozen-support selection prunes the base pool before assignment
+        # and materialization. Its identity-set digest is independent of the
+        # positional SSI assignment digest: different same-length supports can
+        # carry identical flag bytes (populace#507).
+        "selection_identities_sha256": (
+            None
+            if selection_identities_sha256 is None
+            else str(selection_identities_sha256)
+        ),
         "congressional_district_vintage_crosswalk_sha256": (
             None
             if congressional_district_vintage_crosswalk_sha256 is None
@@ -5367,11 +5381,12 @@ def _load_ssi_take_up_prior_weight_basis(
     prior attempt's final ``us_ssi_take_up.json``; its per-band
     ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
     the weights that attempt delivered, and the module-side validator
-    enforces the release-final phase, full diagnostics-gate pass (schema 3),
-    same-target-contract, and enforced-band-feasibility rules
-    (populace#507/#508). The caller must pin the artifact's sha256 in the
-    launch command so the basis is an auditable receipt, never whatever
-    bytes happen to sit at the path.
+    enforces the release-final phase and full diagnostics-gate pass for the
+    current schema, while schemas 2/3 contribute legacy capacity/floor seeds
+    only; same-target-contract and enforced-band-feasibility rules apply to
+    every accepted version (populace#507/#508). The caller must pin the
+    artifact's sha256 in the launch command so the basis is an auditable
+    receipt, never whatever bytes happen to sit at the path.
     """
 
     if path is None:
@@ -5538,9 +5553,7 @@ def _enforce_ssi_take_up_delivery(
         # failure itself hands the operator both halves of the remedy (a
         # failed attempt never reaches the release manifest that would
         # otherwise carry the hash).
-        failed_basis_sha256 = hashlib.sha256(
-            failed_basis_path.read_bytes()
-        ).hexdigest()
+        failed_basis_sha256 = hashlib.sha256(failed_basis_path.read_bytes()).hexdigest()
         failures.append(
             "SSI take-up delivered-weight prior basis written to "
             f"{failed_basis_path} (sha256 {failed_basis_sha256}) for the "
@@ -8793,6 +8806,9 @@ def main() -> None:
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
         ssi_take_up_assignment_sha256=ssi_take_up_assignment_sha256,
+        selection_identities_sha256=(
+            None if selection_source is None else selection_source.identities_sha256
+        ),
         selection_mass_protections=selection_mass_protections,
         ssi_take_up_prior_weight_basis_sha256=(
             None
@@ -8824,6 +8840,12 @@ def main() -> None:
             # every cached materialized column, not only the SSI-dependent
             # ones — correctness over cache warmth (populace#507/#508).
             "ssi_take_up_assignment_sha256": ssi_take_up_assignment_sha256,
+            # Reform vectors are computed over the selected support. Thread
+            # the source identity-set digest directly; the report manifest
+            # intentionally does not carry this cache identity.
+            "selection_identities_sha256": (
+                None if selection_source is None else selection_source.identities_sha256
+            ),
         },
         gate_congressional_district_targets=args.gate_congressional_district_targets,
     )
