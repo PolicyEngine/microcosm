@@ -281,14 +281,17 @@ def clone_uk_dataset_tables_with_ladder_geography(
             modulus=source_lineage_modulus,
         )
     household_frame = _attach_source_lineage(household_frame, source_year=source_year)
-    input_total = float(
-        np.asarray(
-            pd.to_numeric(household_frame["household_weight"], errors="raise"),
-            dtype=np.float64,
-        ).sum()
+    weight_values = np.asarray(
+        pd.to_numeric(household_frame["household_weight"], errors="raise"),
+        dtype=np.float64,
     )
-    if not np.isfinite(input_total):
-        raise ValueError("household weight total must be finite before cloning.")
+    if not np.isfinite(weight_values).all() or (weight_values < 0).any():
+        raise ValueError(
+            "household weights must be finite and non-negative before "
+            "cloning; a negative component cannot hide behind a positive "
+            "aggregate."
+        )
+    input_total = float(weight_values.sum())
     if input_total <= 0.0:
         raise ValueError(
             "household weights must carry positive total mass before cloning."
@@ -327,6 +330,13 @@ def clone_uk_dataset_tables_with_ladder_geography(
         id_multiplier=id_multiplier,
         clone_index_column=clone_index_column,
     ).reset_index(drop=True)
+
+    if clone_index_column is not None:
+        _assert_clone_link_alignment(
+            cloned_person,
+            cloned_household,
+            clone_index_column=clone_index_column,
+        )
 
     assigned = assign_uk_geography_ladder(
         cloned_household,
@@ -449,6 +459,14 @@ def validate_uk_ladder_rowwise_dataset_tables(
     _require_columns(benunit, BENUNIT_ID_COLUMNS, label="benunit")
     _require_columns(household, HOUSEHOLD_ID_COLUMNS, label="household")
     _require_columns(household, UK_GEOGRAPHY_LADDER_COLUMNS, label="household")
+    for column in UK_GEOGRAPHY_LADDER_COLUMNS:
+        values = household[column].fillna("").astype(str).str.strip()
+        blank = values == ""
+        if blank.any():
+            raise ValueError(
+                f"household.{column} contains {int(blank.sum())} blank "
+                "value(s); every ladder rung must be assigned."
+            )
 
     _require_unique(person, "person_id", label="person")
     _require_unique(benunit, "benunit_id", label="benunit")
@@ -467,6 +485,29 @@ def validate_uk_ladder_rowwise_dataset_tables(
         raise ValueError(
             "person.person_benunit_id contains value(s) absent from benunit: "
             f"{missing_benunits[:5]}."
+        )
+
+
+def _assert_clone_link_alignment(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    clone_index_column: str,
+) -> None:
+    """Refuse cross-clone links an undersized explicit id_multiplier allows.
+
+    Set-membership FK validation cannot see a clone-1 person pointing at a
+    clone-0 household when remapped ids collide; the clone indices must
+    agree row by row.
+    """
+
+    household_clone = household.set_index("household_id")[clone_index_column]
+    mapped = person["person_household_id"].map(household_clone)
+    misaligned = mapped.to_numpy() != person[clone_index_column].to_numpy()
+    if misaligned.any():
+        raise ValueError(
+            f"{int(misaligned.sum())} person row(s) link across clone "
+            "generations; id_multiplier is too small for these ids."
         )
 
 
@@ -565,7 +606,19 @@ def write_uk_rowwise_dataset(
 
     # A frozen dataclass does not freeze DataFrames: re-verify the mass log
     # against the tables actually being written, so a post-clone mutation
-    # cannot ship under a stale conservation record.
+    # cannot ship under a stale conservation record — and for ladder results
+    # (which carry a gate), re-run the release gate on the frame actually
+    # written, so a post-gate geography mutation cannot ship either.
+    if isinstance(getattr(result, "gate", None), GateResult):
+        regate = uk_geography_ladder_gate(
+            result.household,
+            np.asarray(result.household["household_weight"], dtype=np.float64),
+        )
+        if not regate.passed:
+            raise ValueError(
+                "UK geography ladder gate failed on the frame being written "
+                "(mutated after the clone?): " + "; ".join(regate.failures)
+            )
     _assert_mass_log_current(
         result.mass_log,
         float(np.asarray(result.household["household_weight"], dtype=np.float64).sum()),

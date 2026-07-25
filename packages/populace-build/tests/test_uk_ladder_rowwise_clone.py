@@ -430,3 +430,115 @@ def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path
     )
     with pytest.raises(ValueError, match="mutually exclusive"):
         builder.main()
+
+
+def test_ladder_clone_pins_per_copy_weights_and_fk_alignment(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+    result = clone_uk_dataset_with_ladder_geography(SeamLike(), ladder, n_clones=2)
+    household = result.household
+    # Every source copy carries exactly its divided weight.
+    for clone_index in (0, 1):
+        copy = household[household["clone_index"] == clone_index]
+        weights = dict(
+            zip(copy["source_household_id"], copy["household_weight"], strict=True)
+        )
+        assert weights == {
+            1: pytest.approx(1.5),
+            2: pytest.approx(5.0),
+            3: pytest.approx(5.0),
+            4: pytest.approx(5.0),
+        }
+    # Person links never cross clone generations.
+    household_clone = household.set_index("household_id")["clone_index"]
+    mapped = result.person["person_household_id"].map(household_clone)
+    assert (mapped.to_numpy() == result.person["clone_index"].to_numpy()).all()
+
+
+def test_ladder_clone_refuses_negative_weights(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+
+    class NegativeWeights(SeamLike):
+        mass_log = ()
+
+        def __init__(self) -> None:
+            super().__init__()
+            # Negative component hidden behind a positive aggregate.
+            self.household = self.household.assign(
+                household_weight=[-1.0, 12.0, 11.0, 11.0]
+            )
+
+    with pytest.raises(ValueError, match="non-negative"):
+        clone_uk_dataset_with_ladder_geography(NegativeWeights(), ladder, n_clones=1)
+
+
+def test_ladder_clone_rejects_unknown_weight_kind_h5(toy_ladder, tmp_path) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import h5py
+
+    from populace.build.uk_runtime.national_build import (
+        UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
+    )
+
+    ladder, _ = toy_ladder
+    corrupted = tmp_path / "corrupted.h5"
+    with pd.HDFStore(corrupted) as store:
+        store.put("person", _person_frame(), format="table", data_columns=True)
+        store.put("benunit", _benunit_frame(), format="table", data_columns=True)
+        store.put("household", _household_frame(), format="table", data_columns=True)
+        store.put("time_period", pd.Series(["2023"]), format="table", data_columns=True)
+    with h5py.File(corrupted, mode="r+") as file:
+        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = "quantum"
+
+    with pytest.raises(ValueError, match="weight kind"):
+        clone_uk_dataset_with_ladder_geography(corrupted, ladder, n_clones=1)
+
+
+def test_write_refuses_post_gate_geography_mutation(toy_ladder, tmp_path) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    ladder, _ = toy_ladder
+    result = clone_uk_dataset_with_ladder_geography(SeamLike(), ladder, n_clones=1)
+    # Collapse every region code after the gate passed; the writer must
+    # re-gate the frame it actually writes.
+    result.household.loc[:, "region_code"] = "E12000007"
+    with pytest.raises(ValueError, match="gate failed on the frame"):
+        write_uk_rowwise_dataset(result, tmp_path / "mutated.h5")
+    assert not (tmp_path / "mutated.h5").exists()
+
+
+def test_dry_run_bottom_covers_every_toy_area(monkeypatch, toy_ladder, tmp_path):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import json
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    plan_dir = tmp_path / "plan"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--out",
+            str(plan_dir),
+            "--n-clones",
+            "2",
+            "--dry-run",
+        ],
+    )
+    assert builder.main() == 0
+    plan = json.loads((plan_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
+    constituency = plan["realized_support"]["constituency"]
+    # The toy surface must stay within the bottom cap so the exactness test
+    # keeps comparing every area; growing the fixture past the cap should
+    # fail here loudly instead of silently weakening the comparison.
+    assert constituency["n_areas"] <= builder.EXPECTED_SUPPORT_BOTTOM_AREAS
+    assert len(constituency["bottom"]) == constituency["n_areas"]

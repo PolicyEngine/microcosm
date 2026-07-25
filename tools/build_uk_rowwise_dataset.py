@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from populace.build.uk_runtime import (
@@ -36,6 +37,7 @@ from populace.build.uk_runtime import (
     id_multiplier_for_values,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
+    uk_geography_ladder_gate,
     validate_geography_coverage,
     write_geography_crosswalk,
 )
@@ -181,6 +183,21 @@ def main() -> int:
                 "--ladder does not take coverage-code checks; the ladder gate "
                 "validates coverage."
             )
+        sidecars = {
+            (args.out / MANIFEST_FILENAME).resolve(),
+            (args.out / COVERAGE_FILENAME).resolve(),
+            (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
+            (args.out / CROSSWALK_FILENAME).resolve(),
+        }
+        if args.ladder.resolve() in sidecars:
+            raise ValueError(
+                "--ladder must not point at a build sidecar path inside "
+                "--out; it would be overwritten."
+            )
+        # A reused crosswalk output directory must not leave stale sidecars
+        # beside a ladder manifest that reports no coverage output.
+        (args.out / COVERAGE_FILENAME).unlink(missing_ok=True)
+        (args.out / CROSSWALK_FILENAME).unlink(missing_ok=True)
         return _run_ladder_route(
             args,
             input_h5=input_h5,
@@ -405,18 +422,29 @@ def _validate_optional_coverage(
 
 
 def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
+    ladder_route = getattr(args, "ladder", None) is not None
     return {
         "n_clones": args.n_clones,
         "seed": args.seed,
         "source_year": source_year,
-        "require_all_countries": not args.allow_missing_country,
-        "require_constituency": not args.allow_blank_constituency,
-        "constrain_to_region": not args.allow_cross_region_assignment,
-        "avoid_constituency_collisions": not args.allow_constituency_collisions,
+        # Crosswalk-sampler knobs are meaningless on the ladder route and are
+        # recorded as null rather than falsely claimed effective.
+        "require_all_countries": (
+            None if ladder_route else not args.allow_missing_country
+        ),
+        "require_constituency": (
+            None if ladder_route else not args.allow_blank_constituency
+        ),
+        "constrain_to_region": (
+            None if ladder_route else not args.allow_cross_region_assignment
+        ),
+        "avoid_constituency_collisions": (
+            None if ladder_route else not args.allow_constituency_collisions
+        ),
         "source_lineage_modulus": args.source_lineage_modulus,
-        "assignment_route": "ladder" if args.ladder is not None else "crosswalk",
+        "assignment_route": "ladder" if ladder_route else "crosswalk",
         "expected_constituency_vintage": (
-            args.expected_constituency_vintage if args.ladder is not None else None
+            args.expected_constituency_vintage if ladder_route else None
         ),
     }
 
@@ -630,6 +658,7 @@ def _run_ladder_route(
         },
         "outputs": {
             "dataset": _artifact_info(output_h5),
+            "crosswalk": None,
             "coverage_summary": None,
         },
         "base_dataset": base_summary,
@@ -677,6 +706,20 @@ def _ladder_dry_run_plan(
             household,
             modulus=args.source_lineage_modulus,
         )
+    # Fence parity with the real build (a plan must never bless a build that
+    # would raise): weight validity, mass-chain currency, then the release
+    # gate on the divided-weight assignment.
+    from populace.build.uk_runtime.rowwise_dataset import _assert_mass_log_current
+
+    weight_values = pd.to_numeric(
+        household["household_weight"], errors="raise"
+    ).to_numpy(dtype=float)
+    if not (weight_values >= 0).all() or not np.isfinite(weight_values).all():
+        raise ValueError("household weights must be finite and non-negative.")
+    if float(weight_values.sum()) <= 0.0:
+        raise ValueError("household weights must carry positive total mass.")
+    _kind, mass_log = read_uk_single_year_weight_metadata(input_h5)
+    _assert_mass_log_current(mass_log, float(weight_values.sum()))
     cloned = clone_entity_frame(
         household,
         id_columns=("household_id",),
@@ -684,12 +727,25 @@ def _ladder_dry_run_plan(
         id_multiplier=id_multiplier,
         clone_index_column="clone_index",
     ).reset_index(drop=True)
+    cloned["household_weight"] = (
+        pd.to_numeric(cloned["household_weight"], errors="raise").to_numpy(dtype=float)
+        / args.n_clones
+    )
     assigned = assign_uk_geography_ladder(
         cloned,
         ladder,
         seed=args.seed,
         expected_constituency_vintage=args.expected_constituency_vintage,
     )
+    gate = uk_geography_ladder_gate(
+        assigned,
+        assigned["household_weight"].to_numpy(dtype=float),
+    )
+    if not gate.passed:
+        raise ValueError(
+            "UK geography ladder gate would fail this build: "
+            + "; ".join(gate.failures)
+        )
     realized = _ladder_realized_support(assigned, ladder)
     table_rows = {
         name: base_summary["tables"][name][0]
