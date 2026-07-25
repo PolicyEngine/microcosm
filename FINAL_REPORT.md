@@ -6,6 +6,11 @@ Implemented the populace#507/#508 assignment-law correction on
 `ssi-floor-aware-prior`, branched directly from `origin/main` at
 `0ac342270633740dbfc4dd8bde6eeb4b1c0430e0`.
 
+During final handoff, the shared `origin/main` ref advanced to `929f1cc` via
+the unrelated UK-only #553 commit (two newly added UK files, no overlap with
+this change). This verified branch remains pinned to the `origin/main` tip from
+task start rather than silently rewriting its completed history.
+
 The one-shot source-identity Bernoulli assignment, stable draw, SSA targets,
 calibration losses, and absence of an in-process reconcile loop are unchanged.
 No target, loss-shaping term, or calibration knob was added. Nothing was

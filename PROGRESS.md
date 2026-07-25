@@ -12,6 +12,9 @@ classifications; their fixes and focused regressions pass. The final committed
 tree rerun returned `PYTEST_RC=0`, both Ruff gates pass, and the completion
 report is written.
 
+The shared `origin/main` ref advanced afterward by one unrelated UK-only
+commit; this branch remains pinned to the recorded task-start tip `0ac3422`.
+
 ## Done
 
 - Confirmed the designated worktree was clean and did not touch the active
@@ -69,6 +72,8 @@ report is written.
   `RUFF_CHECK_RC=0`, `RUFF_FORMAT_RC=0`; `DIFF_CHECK_RC=0`.
 - Replaced the stale output file with the complete floor-aware SSI report in
   `FINAL_REPORT.md`, including the flag-retirement and 65+ assessments.
+- Confirmed the later `origin/main` commit `929f1cc` adds only the UK rowwise
+  candidate builder and its tests, with no overlap in this branch's files.
 
 ## Next
 
