@@ -175,15 +175,15 @@ def test_v2_primary_qrf_excludes_only_host_derived_qualification_routes() -> Non
 
     assert excluded == {
         "farm_operations_income_would_be_qualified",
-        "partnership_s_corp_income_would_be_qualified",
         "self_employment_income_would_be_qualified",
         "sstb_self_employment_income_would_be_qualified",
     }
-    assert len(v2_outputs) == 51
-    assert len((*v2_outputs, *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS)) == 60
+    assert len(v2_outputs) == 52
+    assert len((*v2_outputs, *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS)) == 61
     assert "farm_rent_income_would_be_qualified" in v2_outputs
     assert "rental_income_would_be_qualified" in v2_outputs
     assert "estate_income_would_be_qualified" in v2_outputs
+    assert "partnership_s_corp_income_would_be_qualified" in v2_outputs
     assert "business_is_sstb" in v2_outputs
 
 

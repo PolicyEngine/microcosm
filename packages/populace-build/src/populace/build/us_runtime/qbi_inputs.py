@@ -247,7 +247,8 @@ def with_host_sstb_classification(
 
     This pure post-QRF transform classifies positive qualified Schedule C
     income from host industry when configured, falling back to detailed
-    occupation. Ambiguous and unmapped codes use the versioned residual prior.
+    occupation. The live crosswalk supplies every mapped probability; codes
+    absent from the relevant map are non-SSTB with probability zero.
     Records with no positive qualified Schedule C income but positive qualified
     partnership/S-corporation or estate income use the versioned AGI-band
     passive prior.
@@ -331,7 +332,7 @@ def with_host_sstb_classification(
             flags[column] = _numeric(result, column) > 0.0
     base_self_employment_qualified = flags["self_employment_income_would_be_qualified"]
 
-    host_classification = _host_sstb_classification_values(
+    host_probabilities = _host_sstb_probabilities(
         result,
         occupation_column=classification.occupation_column,
         occupation_mapping=crosswalk.mapping_for("occupation"),
@@ -339,13 +340,10 @@ def with_host_sstb_classification(
         industry_mapping=crosswalk.mapping_for("industry"),
     )
     rng = np.random.default_rng(resolved_assumptions.sstb_seed)
-    ambiguous_draw = rng.random(len(result)) < classification.ambiguous_prior
     schedule_c_qualified = (
         total_self_employment > 0.0
     ) & base_self_employment_qualified
-    schedule_c_sstb = (host_classification == "clear_sstb") | (
-        (host_classification == "ambiguous") & ambiguous_draw
-    )
+    schedule_c_sstb = rng.random(len(result)) < host_probabilities
 
     estate_income = source_values["estate_income"]
     has_positive_qualified_passive_income = (
@@ -386,13 +384,13 @@ def with_host_sstb_classification(
     return routed
 
 
-def _host_sstb_classification_values(
+def _host_sstb_probabilities(
     person: pd.DataFrame,
     *,
     occupation_column: str,
-    occupation_mapping: Mapping[int, str],
+    occupation_mapping: Mapping[int, float],
     industry_column: str | None,
-    industry_mapping: Mapping[int, str],
+    industry_mapping: Mapping[int, float],
 ) -> np.ndarray:
     resolved = np.full(len(person), None, dtype=object)
     unresolved = np.ones(len(person), dtype=bool)
@@ -410,13 +408,13 @@ def _host_sstb_classification_values(
     )
     observed = unresolved & pd.notna(occupation)
     resolved[observed] = occupation[observed]
-    resolved[pd.isna(resolved)] = "ambiguous"
-    return resolved.astype(str)
+    resolved[pd.isna(resolved)] = 0.0
+    return resolved.astype(np.float64)
 
 
 def _mapped_sstb_values(
     values: pd.Series,
-    mapping: Mapping[int, str],
+    mapping: Mapping[int, float],
 ) -> np.ndarray:
     numeric = pd.to_numeric(values, errors="coerce")
     return numeric.map(mapping).to_numpy(dtype=object)

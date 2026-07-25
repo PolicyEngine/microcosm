@@ -2,48 +2,55 @@
 
 ## Current task
 
-The active ledger for the repeal-revenue validation surface is
-`PROGRESS_REPEAL_VALIDATION.md`. This branch starts from local
-`qbi-v2-engine` HEAD `807141e` and remains offline.
+The active ledger for the QBI v2 content work is
+`PROGRESS_QBI_V2_CONTENT.md`. Branch `qbi-v2-content` starts from local
+`repeal-validation-298` HEAD `e45f797` and remains offline.
 
 ## Current state
 
-- Branch `repeal-validation-298` created in the dedicated
+- Branch `qbi-v2-content` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
-- The reform-validation contracts and release hook are mapped; implementation
-  and all required verification for the diagnostics-only runner table are
-  complete.
+- The adjudicated live SSTB crosswalk is packaged and wired occupation-first.
+  Evidence-anchored qualification, passive SSTB, REIT/PTP, and BDC content is
+  implemented and fully validated.
 
 ## Current done
 
 - Verified the requested branch point and clean starting worktree.
-- Confirmed GitNexus MCP tools are unavailable and selected local source
-  tracing as the documented fallback.
-- Located the diagnostics path:
-  `us_runtime/reform_validation.py` -> `_write_reform_validation()` ->
-  release `reform_validation.json`.
-- Confirmed repeal rows must always use independent simulations, never
-  calibration estimates, and must remain outside release gates.
-- Added the declared eight-row repeal benchmark resource and manifest entry,
-  with provisional JCX-45-25 transcriptions and null tips/overtime
-  placeholders.
-- Added strict loader/schema checks and proved every neutralization exists in
-  the pinned 1.764.6 variable registry.
-- Added schema-v2 `repeal_revenue_benchmarks` output with explicit
-  `diagnostic_only`/`simulated` metadata, per-row modeled deltas and signed
-  relative gaps, and no gate field or threshold.
-- Wired the family into `_write_reform_validation()` on the freshly exported
-  release H5 and proved skipped repeal diagnostics do not change the existing
-  publication-guard flag.
-- Added the required towncrier fragment and tightened optional metadata types
-  so malformed JSON fails at load time rather than during simulation.
-- Full workspace pytest passed: 3,434 passed, 58 skipped, 6 warnings.
-- Wrote the complete handoff to `FINAL_REPORT_REPEAL_VALIDATION.md`.
+- Read the repository instructions and the full adjudicated evidence base:
+  SSTB crosswalk, published Section 199A statistics, SCF business variables,
+  and SOI industry tables.
+- Recorded the binding probability tiers, occupation-primary wiring,
+  passive-prior anchors, REIT/PTP diagnostic band, and qualification content
+  requirements without adding unsupported facts.
+- Added the live 2017-industry/2018-occupation resource with 128 mapped codes,
+  21 explicit non-SSTB documentation rows, per-code probabilities, and
+  provisional de-minimis bases for all 62 ambiguous entries.
+- Updated the loader and host transform for `status: live`, zero-prefixed
+  codes, per-code probabilities, industry-first fallback, and unmapped p=0.
+- Preserved the packaged placeholder fail-closed path and added schema, tier,
+  code-format, documentation, and real-crosswalk end-to-end tests.
+- Focused QBI/crosswalk/spec tests and Ruff pass.
+- Replaced the partnership/S-corporation derived flag with the adjudicated
+  0.90 prior and returned that flag to the v2 QRF target set.
+- Derived passive priors as 58.24/221.00 = 0.2635 -> 0.264 below the coarse
+  threshold and 37.54/221.00 = 0.1699 -> 0.170 above it; documented JCT's
+  120.81/216.08 = 55.91% upper-band materiality without misusing it as a rate.
+- Anchored REIT/PTP to Pub 4801's $21.07B income / $4.20B component and JCT's
+  $2.90B comparison component. The fixed-seed replay is $20.943037789B
+  (0.993974x); the provisional diagnostic band is [0.3x, 3x].
+- Retained the v1 BDC scale with an explicit no-published-anchor note; its
+  replay is $0.143270890B.
+- Added the QBI v2 content changelog. Country-package, US-plan/incumbent,
+  source-runtime, and base-builder contract suites pass.
+- Full offline workspace validation passes: 3,260 tests passed, 132 skipped,
+  and zero failed. Full `ruff check` and changed-file format checks pass.
+- Replaced the prior engine-scaffold output with the final content report in
+  `FINAL_REPORT_QBI_530.md`; no binding adjudication remains unimplemented.
 
 ## Current next
 
-- Supervisor: re-verify the provisional JCX-45-25 values and component scope,
-  coordinate the schema-v2 dashboard reader, then push/open the PR.
+- Supervisor push and PR handling; no network action was taken locally.
 
 ## State
 

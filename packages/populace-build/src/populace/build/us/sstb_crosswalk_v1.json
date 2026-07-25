@@ -1,0 +1,1707 @@
+{
+  "schema_version": 1,
+  "crosswalk_version": "v1",
+  "status": "live",
+  "meta": {
+    "industry_vintage": "2017 Census industry classification (2017 NAICS), used in CPS ASEC 2023-2025 (PEIOIND, INDUSTRY); codes below verified unchanged in the 2022 Census industry classification",
+    "occupation_vintage": "2018 Census occupation classification (2018 SOC), used in CPS ASEC 2023-2025 (PEIOOCC, OCCUP)",
+    "legal_basis": "26 CFR 1.199A-5(b), fetched from eCFR 2026-07-24",
+    "wiring_notes": [
+      "Gate on class of worker: A_CLSWKR in (5,6) / LJCW in (5,6) or self-employment income > 0; SSTB status is irrelevant for pure W-2 earners",
+      "Use the 4-digit codes (PEIOOCC/OCCUP, PEIOIND/INDUSTRY); the recodes (A_DTOCC 23 groups, A_DTIND 52 groups) are too coarse to separate SSTB fields",
+      "reputation_or_skill (b)(2)(xiv) is deliberately unmapped: endorsements/likeness/appearance income, not an industry or occupation",
+      "De minimis (c)(1): <10% SSTB receipts (<=$25M gross) or <5% (>$25M) keeps a mixed business out of SSTB - supports probabilistic treatment of ambiguous codes"
+    ],
+    "sstb_category_values": [
+      "health",
+      "law",
+      "accounting",
+      "actuarial_science",
+      "performing_arts",
+      "consulting",
+      "athletics",
+      "financial_services",
+      "brokerage_services",
+      "investing_investment_management",
+      "trading",
+      "dealing"
+    ]
+  },
+  "industry_2017": [
+    {
+      "census_code": "6970",
+      "census_title": "Securities, commodities, funds, trusts, and other financial investments",
+      "naics": "523, 525",
+      "sstb_category": [
+        "brokerage_services",
+        "dealing",
+        "trading",
+        "investing_investment_management",
+        "financial_services"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Broker-dealers, investment banking, portfolio management, funds/trusts - the reg's securities fields almost verbatim",
+      "probability": 1
+    },
+    {
+      "census_code": "7270",
+      "census_title": "Legal services",
+      "naics": "5411",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Law offices; lawyers/paralegals named in (b)(2)(iii)",
+      "probability": 1
+    },
+    {
+      "census_code": "7280",
+      "census_title": "Accounting, tax preparation, bookkeeping, and payroll services",
+      "naics": "5412",
+      "sstb_category": [
+        "accounting"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Accountants/return preparers/auditors named; only the payroll-processing slice is arguably outside the field",
+      "probability": 1
+    },
+    {
+      "census_code": "7390",
+      "census_title": "Management, scientific, and technical consulting services",
+      "naics": "5416",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "NAICS 5416 is defined by provision of advice; also where benefits/actuarial-consulting (541612) lands",
+      "probability": 1
+    },
+    {
+      "census_code": "7480",
+      "census_title": "Veterinary services",
+      "naics": "54194",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Veterinarians named in (b)(2)(ii)",
+      "probability": 1
+    },
+    {
+      "census_code": "7970",
+      "census_title": "Offices of physicians",
+      "naics": "6211",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Owner-practitioner medical services - core health SSTB",
+      "probability": 1
+    },
+    {
+      "census_code": "7980",
+      "census_title": "Offices of dentists",
+      "naics": "6212",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Dentists named",
+      "probability": 1
+    },
+    {
+      "census_code": "7990",
+      "census_title": "Offices of chiropractors",
+      "naics": "62131",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Direct treatment by licensed practitioners ('similar healthcare professionals')",
+      "probability": 1
+    },
+    {
+      "census_code": "8070",
+      "census_title": "Offices of optometrists",
+      "naics": "62132",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Direct medical services to patients",
+      "probability": 1
+    },
+    {
+      "census_code": "8080",
+      "census_title": "Offices of other health practitioners",
+      "naics": "6213 exc. 62131, 62132",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "PT/OT, mental-health practitioners, podiatrists etc. in office practice - practitioner-billed medical services",
+      "probability": 1
+    },
+    {
+      "census_code": "8170",
+      "census_title": "Home health care services",
+      "naics": "6216",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Agency revenue is skilled nursing/therapy delivered to patients (unlike reg Example 2, the agency itself bills for the medical services)",
+      "probability": 1
+    },
+    {
+      "census_code": "8561",
+      "census_title": "Performing arts companies",
+      "naics": "7111",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Theater/dance/music companies - services by participants in the creation of performing arts",
+      "probability": 1
+    },
+    {
+      "census_code": "8562",
+      "census_title": "Spectator sports",
+      "naics": "7112",
+      "sstb_category": [
+        "athletics"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Teams and independent athletes (711219) - athletes/coaches/team managers named; small racetrack-operator slice is facility ops",
+      "probability": 1
+    },
+    {
+      "census_code": "6570",
+      "census_title": "Motion pictures and video industries",
+      "naics": "5121",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Freelance actors/directors code here (SSTB), but the industry also spans distribution/exhibition and equipment/facility work the reg excludes",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "6590",
+      "census_title": "Sound recording industries",
+      "naics": "5122",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Producers/session musicians = creation of performing arts; recording studios = excluded equipment/facility operation",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "6890",
+      "census_title": "Nondepository credit and related activities",
+      "naics": "5222, 5223",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Making loans is excluded, but 52231 loan/mortgage brokers = 'arranging lending transactions between a lender and borrower,' which the reg includes",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "6992",
+      "census_title": "Agencies, brokerages, and other insurance related activities",
+      "naics": "5242",
+      "sstb_category": [
+        "actuarial_science"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Insurance agents/brokers expressly excluded from brokerage; lean non-SSTB, except the 524298 actuarial/insurance-advisory slice",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "7470",
+      "census_title": "Advertising, public relations, and related services",
+      "naics": "5418",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Lobbying/government relations and PR counsel = consulting per reg; ad agencies/media buying = sales-like services outside it",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "7490",
+      "census_title": "Other professional, scientific, and technical services",
+      "naics": "5419 exc. 54194",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Marketing research/polling can shade into advice; photography and translation in the same code are plainly non-SSTB - lean non-SSTB",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8090",
+      "census_title": "Outpatient care centers",
+      "naics": "6214",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Provider-owned clinics deliver medical services (SSTB), but reg Example 3 holds a surgical center billing only facility fees is NOT health",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8180",
+      "census_title": "Other health care services",
+      "naics": "6215, 6219",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Labs/imaging read by physicians = medical services; reg Example 4 (test developer without patient contact) = not health; ambulance/blood banks mixed",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8191",
+      "census_title": "General medical and surgical hospitals, and specialty (except psychiatric and substance abuse) hospitals",
+      "naics": "6221, 6223",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Hospitals-as-employers: W-2 staff have no QBI and facility fees resemble non-SSTB Example 3; but a self-employed person coded here is typically an owner-practitioner clinician = health SSTB",
+      "probability": 0.25,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8192",
+      "census_title": "Psychiatric and substance abuse hospitals",
+      "naics": "6222",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Same employer-vs-owner-practitioner split as 8191",
+      "probability": 0.25,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8270",
+      "census_title": "Nursing care facilities (skilled nursing facilities)",
+      "naics": "6231",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "SNFs bill for skilled nursing (medical services), but reg Example 2's facility/third-party-billing logic cuts the other way",
+      "probability": 0.25,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8290",
+      "census_title": "Residential care facilities, except skilled nursing facilities",
+      "naics": "6232, 6233, 6239",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Assisted living/group homes match reg Example 2 (housing + contracted care = not health); medical-model facilities are closer to SSTB",
+      "probability": 0.25,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8563",
+      "census_title": "Promoters of performing arts, sports, and similar events, agents and managers for artists, athletes, entertainers, and other public figures",
+      "naics": "7113, 7114",
+      "sstb_category": [
+        "performing_arts",
+        "athletics"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Promoters/venues = excluded facility/event operation; agents/managers do not participate in creation or competition - lean non-SSTB despite the adjacency",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "8564",
+      "census_title": "Independent artists, writers, and performers",
+      "naics": "7115",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Independent actors/musicians/entertainers = clear performing arts; the same code holds writers and visual artists, who are SSTB only via (xiv) endorsement/likeness/appearance income",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    }
+  ],
+  "industry_explicit_nonsstb_neighbors": [
+    {
+      "census_code": "6870/6880",
+      "census_title": "Banking and related activities; Savings institutions, including credit unions",
+      "why": "taking deposits/making loans expressly excluded from financial services (2022 vintage: 6871/6881)",
+      "probability": 0
+    },
+    {
+      "census_code": "6991",
+      "census_title": "Insurance carriers",
+      "why": "insurance not a listed field; underwriting carriers outside (b)(1)",
+      "probability": 0
+    },
+    {
+      "census_code": "7071/7072",
+      "census_title": "Real estate (lessors, agents/brokers; property managers, appraisers)",
+      "why": "real estate agents/brokers excluded from brokerage; 'directly managing real property' excluded from investing/investment management",
+      "probability": 0
+    },
+    {
+      "census_code": "7290",
+      "census_title": "Architectural, engineering, and related services",
+      "why": "reg: architecture/engineering are not consulting",
+      "probability": 0
+    },
+    {
+      "census_code": "7380",
+      "census_title": "Computer systems design and related services",
+      "why": "IT implementation/deliverables, not advice and counsel; not a listed field",
+      "probability": 0
+    },
+    {
+      "census_code": "7860-7890",
+      "census_title": "Educational services",
+      "why": "training and educational courses excluded from consulting",
+      "probability": 0
+    },
+    {
+      "census_code": "8590",
+      "census_title": "Other amusement, gambling, and recreation industries",
+      "why": "health clubs/spas expressly excluded from health",
+      "probability": 0
+    },
+    {
+      "census_code": "5070",
+      "census_title": "Pharmacies and drug stores",
+      "why": "retail sales of pharmaceuticals excluded, even though pharmacists as professionals are named (occupation-level pharmacist maps, industry-level pharmacy does not)",
+      "probability": 0
+    },
+    {
+      "census_code": "2190/3960",
+      "census_title": "Pharmaceutical and medicine manufacturing; Medical equipment and supplies manufacturing",
+      "why": "research/testing/manufacture/sales of pharmaceuticals or medical devices excluded",
+      "probability": 0
+    },
+    {
+      "census_code": "6670/6672",
+      "census_title": "Broadcasting (except internet); Internet publishing and broadcasting",
+      "why": "broadcasters/disseminators of performing arts and athletics excluded (2022 vintage: 6671)",
+      "probability": 0
+    }
+  ],
+  "occupation_2018": [
+    {
+      "census_code": "3065",
+      "census_title": "Emergency medicine physicians",
+      "soc": "29-1214",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Physicians named",
+      "probability": 1
+    },
+    {
+      "census_code": "3070",
+      "census_title": "Radiologists",
+      "soc": "29-1224",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Physicians named",
+      "probability": 1
+    },
+    {
+      "census_code": "3090",
+      "census_title": "Other physicians",
+      "soc": "29-12XX",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Physicians named",
+      "probability": 1
+    },
+    {
+      "census_code": "3100",
+      "census_title": "Surgeons",
+      "soc": "29-1240",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Physicians named",
+      "probability": 1
+    },
+    {
+      "census_code": "3010",
+      "census_title": "Dentists",
+      "soc": "29-1020",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Dentists named",
+      "probability": 1
+    },
+    {
+      "census_code": "3110",
+      "census_title": "Physician assistants",
+      "soc": "29-1071",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed treating clinician - 'similar healthcare professional'",
+      "probability": 1
+    },
+    {
+      "census_code": "3120",
+      "census_title": "Podiatrists",
+      "soc": "29-1081",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Physician-tier practitioner",
+      "probability": 1
+    },
+    {
+      "census_code": "3000",
+      "census_title": "Chiropractors",
+      "soc": "29-1011",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed treating practitioner",
+      "probability": 1
+    },
+    {
+      "census_code": "3040",
+      "census_title": "Optometrists",
+      "soc": "29-1041",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed treating practitioner",
+      "probability": 1
+    },
+    {
+      "census_code": "3050",
+      "census_title": "Pharmacists",
+      "soc": "29-1051",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Pharmacists named (note: owning a retail pharmacy is a retail business - the exclusion runs at the business, not occupation, level)",
+      "probability": 1
+    },
+    {
+      "census_code": "3140",
+      "census_title": "Audiologists",
+      "soc": "29-1181",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed treating clinician",
+      "probability": 1
+    },
+    {
+      "census_code": "3150",
+      "census_title": "Occupational therapists",
+      "soc": "29-1122",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Same tier as physical therapists, who are named",
+      "probability": 1
+    },
+    {
+      "census_code": "3160",
+      "census_title": "Physical therapists",
+      "soc": "29-1123",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Physical therapists named",
+      "probability": 1
+    },
+    {
+      "census_code": "3200",
+      "census_title": "Radiation therapists",
+      "soc": "29-1124",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed clinician delivering treatment",
+      "probability": 1
+    },
+    {
+      "census_code": "3210",
+      "census_title": "Recreational therapists",
+      "soc": "29-1125",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Certified therapist providing patient treatment",
+      "probability": 1
+    },
+    {
+      "census_code": "3220",
+      "census_title": "Respiratory therapists",
+      "soc": "29-1126",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed clinician",
+      "probability": 1
+    },
+    {
+      "census_code": "3230",
+      "census_title": "Speech-language pathologists",
+      "soc": "29-1127",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed clinician",
+      "probability": 1
+    },
+    {
+      "census_code": "3030",
+      "census_title": "Dietitians and nutritionists",
+      "soc": "29-1031",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed clinicians; dietary counseling listed among medical services in reg Example 2",
+      "probability": 1
+    },
+    {
+      "census_code": "3250",
+      "census_title": "Veterinarians",
+      "soc": "29-1131",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Veterinarians named",
+      "probability": 1
+    },
+    {
+      "census_code": "3255",
+      "census_title": "Registered nurses",
+      "soc": "29-1141",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Nurses named",
+      "probability": 1
+    },
+    {
+      "census_code": "3256",
+      "census_title": "Nurse anesthetists",
+      "soc": "29-1151",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Nurses named; common 1099 arrangement",
+      "probability": 1
+    },
+    {
+      "census_code": "3257",
+      "census_title": "Nurse midwives",
+      "soc": "29-1161",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Nurses named",
+      "probability": 1
+    },
+    {
+      "census_code": "3258",
+      "census_title": "Nurse practitioners",
+      "soc": "29-1171",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Nurses named",
+      "probability": 1
+    },
+    {
+      "census_code": "3261",
+      "census_title": "Acupuncturists",
+      "soc": "29-1291",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "State-licensed provider of patient treatment",
+      "probability": 1
+    },
+    {
+      "census_code": "3270",
+      "census_title": "Healthcare diagnosing or treating practitioners, all other",
+      "soc": "29-1299",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Residual of diagnosing/treating practitioners",
+      "probability": 1
+    },
+    {
+      "census_code": "3310",
+      "census_title": "Dental hygienists",
+      "soc": "29-1292",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Practitioner-series SOC; direct preventive dental care, nurse-tier",
+      "probability": 1
+    },
+    {
+      "census_code": "3500",
+      "census_title": "Licensed practical and licensed vocational nurses",
+      "soc": "29-2061",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Nurses named",
+      "probability": 1
+    },
+    {
+      "census_code": "1821",
+      "census_title": "Clinical and counseling psychologists",
+      "soc": "19-3033",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Psychologists named",
+      "probability": 1
+    },
+    {
+      "census_code": "1822",
+      "census_title": "School psychologists",
+      "soc": "19-3034",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Psychologists named (mostly W-2 school employees - class-of-worker gate does the work)",
+      "probability": 1
+    },
+    {
+      "census_code": "1825",
+      "census_title": "Other psychologists",
+      "soc": "19-303X",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Psychologists named",
+      "probability": 1
+    },
+    {
+      "census_code": "2001",
+      "census_title": "Substance abuse and behavioral disorder counselors",
+      "soc": "21-1011",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed behavioral-health treatment - same function as named psychologists",
+      "probability": 1
+    },
+    {
+      "census_code": "2003",
+      "census_title": "Marriage and family therapists",
+      "soc": "21-1013",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed psychotherapy providers",
+      "probability": 1
+    },
+    {
+      "census_code": "2004",
+      "census_title": "Mental health counselors",
+      "soc": "21-1014",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Licensed psychotherapy providers",
+      "probability": 1
+    },
+    {
+      "census_code": "2005",
+      "census_title": "Rehabilitation counselors",
+      "soc": "21-1015",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Vocational rehabilitation is closer to social services than medical treatment",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2006",
+      "census_title": "Counselors, all other",
+      "soc": "21-1019",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Residual mixes clinical and non-clinical counseling",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2012",
+      "census_title": "Healthcare social workers",
+      "soc": "21-1022",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "LCSW psychotherapy = health; case management/discharge planning = not medical services",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2013",
+      "census_title": "Mental health and substance abuse social workers",
+      "soc": "21-1023",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Clinical (therapy) vs case-management split within the code",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3235",
+      "census_title": "Exercise physiologists",
+      "soc": "29-1128",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Clinical (cardiac rehab) roles = health; fitness/conditioning work sits in the reg's explicit health-club exclusion",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3245",
+      "census_title": "Therapists, all other",
+      "soc": "29-1129",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Residual spans licensed clinical therapists and wellness-adjacent practices",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3300",
+      "census_title": "Clinical laboratory technologists and technicians",
+      "soc": "29-2010",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier - direct diagnostic services, but not clearly 'similar healthcare professionals'; reg Example 4 (no patient contact) cuts against",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3321",
+      "census_title": "Cardiovascular technologists and technicians",
+      "soc": "29-2031",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier, patient-facing diagnostics",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3322",
+      "census_title": "Diagnostic medical sonographers",
+      "soc": "29-2032",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier, patient-facing diagnostics",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3323",
+      "census_title": "Radiologic technologists and technicians",
+      "soc": "29-2034",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier, patient-facing diagnostics",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3324",
+      "census_title": "Magnetic resonance imaging technologists",
+      "soc": "29-2035",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3330",
+      "census_title": "Nuclear medicine technologists and medical dosimetrists",
+      "soc": "29-203X",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3401",
+      "census_title": "Emergency medical technicians",
+      "soc": "29-2042",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Direct emergency care but technician certification tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3402",
+      "census_title": "Paramedics",
+      "soc": "29-2043",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Direct emergency care but technician tier; ambulance business itself is mixed",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3421",
+      "census_title": "Pharmacy technicians",
+      "soc": "29-2052",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Dispensing support, not treatment; named pharmacists are the professional tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3422",
+      "census_title": "Psychiatric technicians",
+      "soc": "29-2053",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Care delivery under supervision; technician tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3423",
+      "census_title": "Surgical technologists",
+      "soc": "29-2055",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3424",
+      "census_title": "Veterinary technologists and technicians",
+      "soc": "29-2056",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier (veterinarians themselves are named)",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3430",
+      "census_title": "Dietetic technicians and ophthalmic medical technicians",
+      "soc": "29-205X",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician tier",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3520",
+      "census_title": "Opticians, dispensing",
+      "soc": "29-2081",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Dispensing/retail character vs the named optometrist tier; device sales excluded by reg",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3545",
+      "census_title": "Miscellaneous health technologists and technicians",
+      "soc": "29-2090",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Technician residual",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3550",
+      "census_title": "Other healthcare practitioners and technical occupations",
+      "soc": "29-9000",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Mixed residual (includes athletic trainers etc.)",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3601",
+      "census_title": "Home health aides",
+      "soc": "31-1121",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Heavily self-employed, but aides provide personal care, not 'medical services by ... professionals' - lean non-SSTB",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3602",
+      "census_title": "Personal care aides",
+      "soc": "31-1122",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Personal/domestic care, not medical services - lean non-SSTB",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3603",
+      "census_title": "Nursing assistants",
+      "soc": "31-1131",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Support tier under nurses",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3610",
+      "census_title": "Occupational therapy assistants and aides",
+      "soc": "31-2010",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Assistant tier under licensed OTs",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3620",
+      "census_title": "Physical therapist assistants and aides",
+      "soc": "31-2020",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Assistant tier under licensed PTs",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "3630",
+      "census_title": "Massage therapists",
+      "soc": "31-9011",
+      "sstb_category": [
+        "health"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Therapeutic/medical massage arguably health; spa/wellness massage sits in the health-club/spa exclusion",
+      "probability": 0.2,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2100",
+      "census_title": "Lawyers",
+      "soc": "23-1011",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Lawyers named",
+      "probability": 1
+    },
+    {
+      "census_code": "2105",
+      "census_title": "Judicial law clerks",
+      "soc": "23-1012",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Legal services in capacity as legal professionals (virtually always W-2, so moot in practice)",
+      "probability": 1
+    },
+    {
+      "census_code": "2110",
+      "census_title": "Judges, magistrates, and other judicial workers",
+      "soc": "23-1020",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Law field; includes private arbitrators/mediators, who are named in the reg",
+      "probability": 1
+    },
+    {
+      "census_code": "2145",
+      "census_title": "Paralegals and legal assistants",
+      "soc": "23-2011",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Paralegals named",
+      "probability": 1
+    },
+    {
+      "census_code": "2170",
+      "census_title": "Title examiners, abstractors, and searchers",
+      "soc": "23-2093",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Legal-skill-adjacent, but title abstracting is largely clerical/title-insurance work",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2180",
+      "census_title": "Legal support workers, all other",
+      "soc": "23-2099",
+      "sstb_category": [
+        "law"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Mixed residual; note stenography is expressly excluded from law (court reporters, code 2862, are out)",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0800",
+      "census_title": "Accountants and auditors",
+      "soc": "13-2011",
+      "sstb_category": [
+        "accounting"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Accountants and financial auditors named (enrolled agents also land here)",
+      "probability": 1
+    },
+    {
+      "census_code": "0940",
+      "census_title": "Tax preparers",
+      "soc": "13-2082",
+      "sstb_category": [
+        "accounting"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Return preparers named",
+      "probability": 1
+    },
+    {
+      "census_code": "5120",
+      "census_title": "Bookkeeping, accounting, and auditing clerks",
+      "soc": "43-3031",
+      "sstb_category": [
+        "accounting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Freelance bookkeeping is accounting-type service by a 'similar professional'; clerk tier is not named in the reg text",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "1200",
+      "census_title": "Actuaries",
+      "soc": "15-2011",
+      "sstb_category": [
+        "actuarial_science"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Actuaries named (the field's only dedicated census code; no dedicated industry code exists - actuarial firms land in industry 7390/6992)",
+      "probability": 1
+    },
+    {
+      "census_code": "2700",
+      "census_title": "Actors",
+      "soc": "27-2011",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Actors named",
+      "probability": 1
+    },
+    {
+      "census_code": "2710",
+      "census_title": "Producers and directors",
+      "soc": "27-2012",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Directors named; producers participate in creation (pure-financing producers are the edge)",
+      "probability": 1
+    },
+    {
+      "census_code": "2740",
+      "census_title": "Dancers and choreographers",
+      "soc": "27-2030",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Participants in creation of performing arts",
+      "probability": 1
+    },
+    {
+      "census_code": "2751",
+      "census_title": "Music directors and composers",
+      "soc": "27-2041",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Creation of performing arts (songwriting included)",
+      "probability": 1
+    },
+    {
+      "census_code": "2752",
+      "census_title": "Musicians and singers",
+      "soc": "27-2042",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Singers and musicians named",
+      "probability": 1
+    },
+    {
+      "census_code": "2755",
+      "census_title": "Disc jockeys, except radio",
+      "soc": "27-2091",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Live-event entertainers ('entertainers' named)",
+      "probability": 1
+    },
+    {
+      "census_code": "2770",
+      "census_title": "Entertainers and performers, sports and related workers, all other",
+      "soc": "27-2099",
+      "sstb_category": [
+        "performing_arts",
+        "athletics"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Entertainers named; residual bucket caveat",
+      "probability": 1
+    },
+    {
+      "census_code": "2805",
+      "census_title": "Broadcast announcers and radio disc jockeys",
+      "soc": "27-3011",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Broadcast/dissemination excluded from performing arts; but on-air personalities create the performance and (xiv)(C) captures media appearance fees",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2810",
+      "census_title": "News analysts, reporters, and journalists",
+      "soc": "27-3023",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Journalism is not a listed field; freelance on-air commentators paid appearance fees fall under (xiv)(C)",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2850",
+      "census_title": "Writers and authors",
+      "soc": "27-3043",
+      "sstb_category": [
+        "performing_arts"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Songwriters/screenwriters participate in creation of performing arts; novelists/copywriters do not",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2721",
+      "census_title": "Athletes and sports competitors",
+      "soc": "27-2021",
+      "sstb_category": [
+        "athletics"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Athletes named",
+      "probability": 1
+    },
+    {
+      "census_code": "2722",
+      "census_title": "Coaches and scouts",
+      "soc": "27-2022",
+      "sstb_category": [
+        "athletics"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Coaches named; the scout minority arguably does not 'participate in athletic competition'",
+      "probability": 1
+    },
+    {
+      "census_code": "2723",
+      "census_title": "Umpires, referees, and other sports officials",
+      "soc": "27-2023",
+      "sstb_category": [
+        "athletics"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Officials participate in the competition but are not among the reg's named roles (athletes, coaches, team managers); unsettled",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0845",
+      "census_title": "Financial and investment analysts",
+      "soc": "13-2051",
+      "sstb_category": [
+        "financial_services",
+        "investing_investment_management"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Investment analysis/advice is the reg's financial-services and investing text",
+      "probability": 1
+    },
+    {
+      "census_code": "0850",
+      "census_title": "Personal financial advisors",
+      "soc": "13-2052",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "'Financial advisors, wealth planners, retirement advisors' named",
+      "probability": 1
+    },
+    {
+      "census_code": "4820",
+      "census_title": "Securities, commodities, and financial services sales agents",
+      "soc": "41-3031",
+      "sstb_category": [
+        "brokerage_services",
+        "dealing",
+        "trading",
+        "financial_services"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Stock brokers named; securities/commodities sales is brokerage-dealing-trading territory",
+      "probability": 1
+    },
+    {
+      "census_code": "0120",
+      "census_title": "Financial managers",
+      "soc": "11-3031",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Mostly W-2 corporate/branch finance managers; wealth-management roles inside the code overlap financial services",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0810",
+      "census_title": "Property appraisers and assessors",
+      "soc": "13-2020",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Reg's 'valuations' language targets M&A/financial advisory; real-property appraisal sits next to the real-estate carve-outs",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0820",
+      "census_title": "Budget analysts",
+      "soc": "13-2031",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Internal budgeting function vs client financial advice",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0830",
+      "census_title": "Credit analysts",
+      "soc": "13-2041",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Lending-side analysis (loans excluded) vs investor-side credit research (financial services)",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0900",
+      "census_title": "Financial examiners",
+      "soc": "13-2061",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Regulatory/compliance examination, largely government W-2",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0910",
+      "census_title": "Credit counselors and loan officers",
+      "soc": "13-2070",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Making loans is excluded, but independent mortgage/loan brokers 'arranging lending transactions' are included",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0960",
+      "census_title": "Other financial specialists",
+      "soc": "13-20XX",
+      "sstb_category": [
+        "financial_services"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Residual code; contents span advisory (SSTB) and operations (not)",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0710",
+      "census_title": "Management analysts",
+      "soc": "13-1111",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "clear_sstb",
+      "rationale": "Management consultants - 'professional advice and counsel to clients' verbatim",
+      "probability": 1
+    },
+    {
+      "census_code": "0705",
+      "census_title": "Project management specialists",
+      "soc": "13-1082",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Execution/management of projects is a service, not advice and counsel; advisory PM shades into consulting",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0735",
+      "census_title": "Market research analysts and marketing specialists",
+      "soc": "13-1161",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Research deliverables and marketing execution vs strategic advice; lean non-SSTB",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0750",
+      "census_title": "Business operations specialists, all other",
+      "soc": "13-1199",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Residual where generic self-employed 'business consultants' often land; consulting only if advice-based",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "1800",
+      "census_title": "Economists",
+      "soc": "19-3011",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Self-employed economic consulting = advice and counsel; academic/government economists are W-2",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "2825",
+      "census_title": "Public relations specialists",
+      "soc": "27-3031",
+      "sstb_category": [
+        "consulting"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Lobbying/advocacy counsel is expressly consulting; communications execution (releases, placement) is not",
+      "probability": 0.3,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    },
+    {
+      "census_code": "0500",
+      "census_title": "Agents and business managers of artists, performers, and athletes",
+      "soc": "13-1011",
+      "sstb_category": [
+        "performing_arts",
+        "athletics"
+      ],
+      "classification": "ambiguous",
+      "rationale": "Representation/negotiation, not participation in creation or competition, and brokerage covers securities only - lean non-SSTB despite adjacency",
+      "probability": 0.1,
+      "provisional": true,
+      "basis": "Provisional prior based on 26 CFR 1.199A-5(c)(1): under the de-minimis rule, less than 10% SSTB receipts (5% above $25 million of gross receipts) keeps a mixed business out of SSTB, so coarse ambiguous Census codes lean low."
+    }
+  ],
+  "occupation_explicit_nonsstb_notes": [
+    {
+      "census_code": "4810",
+      "census_title": "Insurance sales agents",
+      "why": "expressly excluded from brokerage services",
+      "probability": 0
+    },
+    {
+      "census_code": "4920",
+      "census_title": "Real estate brokers and sales agents",
+      "why": "expressly excluded from brokerage services",
+      "probability": 0
+    },
+    {
+      "census_code": "0410",
+      "census_title": "Property, real estate, and community association managers",
+      "why": "'directly managing real property' excluded from investing/investment management",
+      "probability": 0
+    },
+    {
+      "census_code": "2862",
+      "census_title": "Court reporters and simultaneous captioners",
+      "why": "stenography expressly excluded from law",
+      "probability": 0
+    },
+    {
+      "census_code": "2002",
+      "census_title": "Educational, guidance, and career counselors and advisors",
+      "why": "education/training excluded from consulting; not medical",
+      "probability": 0
+    },
+    {
+      "census_code": "2600/2910/2905",
+      "census_title": "Artists and related workers; Photographers; Broadcast, sound, and lighting technicians",
+      "why": "visual arts are not performing arts; equipment operation expressly excluded",
+      "probability": 0
+    },
+    {
+      "census_code": "0350",
+      "census_title": "Medical and health services managers",
+      "why": "administration, not provision of medical services",
+      "probability": 0
+    },
+    {
+      "census_code": "3515",
+      "census_title": "Medical records specialists",
+      "why": "no patient care; records processing",
+      "probability": 0
+    },
+    {
+      "census_code": "5200",
+      "census_title": "Brokerage clerks",
+      "why": "clerical support, W-2",
+      "probability": 0
+    },
+    {
+      "census_code": "0860",
+      "census_title": "Insurance underwriters",
+      "why": "insurance underwriting not a listed field",
+      "probability": 0
+    },
+    {
+      "census_code": "0930",
+      "census_title": "Tax examiners and collectors, and revenue agents",
+      "why": "government enforcement, W-2",
+      "probability": 0
+    }
+  ]
+}

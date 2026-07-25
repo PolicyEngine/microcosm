@@ -110,17 +110,81 @@ def ready_sstb_crosswalk() -> dict[str, object]:
     return {
         "schema_version": 1,
         "crosswalk_version": "synthetic-host-test-v1",
-        "status": "ready",
-        "occupation_code_system": "synthetic Census occupation",
-        "industry_code_system": None,
-        "mapping": {
-            "occupation": {
-                "1010": "clear_sstb",
-                "2020": "non_sstb",
-                "3030": "ambiguous",
-            },
-            "industry": {},
+        "status": "live",
+        "meta": {
+            "industry_vintage": "synthetic Census industry",
+            "occupation_vintage": "synthetic Census occupation",
+            "legal_basis": "synthetic Section 199A test basis",
+            "wiring_notes": ["synthetic test wiring"],
+            "sstb_category_values": ["law"],
         },
+        "industry_2017": [
+            {
+                "census_code": "4040",
+                "census_title": "Synthetic non-SSTB industry",
+                "naics": "00",
+                "sstb_category": ["law"],
+                "classification": "non_sstb",
+                "probability": 0.0,
+                "rationale": "Synthetic deterministic non-SSTB entry",
+            },
+            {
+                "census_code": "5050",
+                "census_title": "Synthetic clear industry",
+                "naics": "00",
+                "sstb_category": ["law"],
+                "classification": "clear_sstb",
+                "probability": 1.0,
+                "rationale": "Synthetic deterministic SSTB entry",
+            },
+        ],
+        "industry_explicit_nonsstb_neighbors": [
+            {
+                "census_code": "0000",
+                "census_title": "Synthetic documented industry",
+                "why": "Synthetic documentation row",
+                "probability": 0.0,
+            }
+        ],
+        "occupation_2018": [
+            {
+                "census_code": "1010",
+                "census_title": "Synthetic clear occupation",
+                "soc": "00-0001",
+                "sstb_category": ["law"],
+                "classification": "clear_sstb",
+                "probability": 1.0,
+                "rationale": "Synthetic deterministic SSTB entry",
+            },
+            {
+                "census_code": "2020",
+                "census_title": "Synthetic non-SSTB occupation",
+                "soc": "00-0002",
+                "sstb_category": ["law"],
+                "classification": "non_sstb",
+                "probability": 0.0,
+                "rationale": "Synthetic deterministic non-SSTB entry",
+            },
+            {
+                "census_code": "3030",
+                "census_title": "Synthetic ambiguous occupation",
+                "soc": "00-0003",
+                "sstb_category": ["law"],
+                "classification": "ambiguous",
+                "probability": 0.999,
+                "rationale": "Synthetic ambiguous entry",
+                "provisional": True,
+                "basis": "Synthetic provisional basis",
+            },
+        ],
+        "occupation_explicit_nonsstb_notes": [
+            {
+                "census_code": "0000",
+                "census_title": "Synthetic documented occupation",
+                "why": "Synthetic documentation row",
+                "probability": 0.0,
+            }
+        ],
     }
 
 
@@ -140,12 +204,14 @@ def _v2_host_person() -> pd.DataFrame:
     person.loc[103, "self_employment_income_before_lsr"] = 0.0
     person.loc[103, "sstb_self_employment_income_before_lsr"] = 0.0
     person.loc[103, "AGI"] = 50_000.0
+    person.loc[103, "partnership_s_corp_income_would_be_qualified"] = True
 
     # Passive-only estate income in a zero-probability AGI band.
     person.loc[104, "self_employment_income_before_lsr"] = 0.0
     person.loc[104, "sstb_self_employment_income_before_lsr"] = 0.0
     person.loc[104, "estate_income"] = 2_000.0
     person.loc[104, "estate_income_would_be_qualified"] = True
+    person.loc[104, "AGI"] = 250_000.0
 
     # A non-SSTB Schedule C signal takes precedence over the passive prior.
     person.loc[105, "PEIOOCC"] = 2020
@@ -164,7 +230,7 @@ def _host_test_assumptions():
     bands = tuple(
         replace(
             band,
-            probability=1.0 if band.label == "-inf:100000" else 0.0,
+            probability=1.0 if band.label == "-inf:200000" else 0.0,
         )
         for band in classification.passive_passthrough_sstb_prior_by_agi
     )
@@ -304,11 +370,20 @@ def test_reconciliation_restores_sstb_routes_total_pools_and_exposure_caps() -> 
 
 def test_host_sstb_classification_fails_closed_on_packaged_placeholder() -> None:
     person = _v2_host_person()
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    assumptions = replace(
+        assumptions,
+        sstb_classification=replace(
+            assumptions.sstb_classification,
+            crosswalk_resource="sstb_crosswalk_placeholder.json",
+        ),
+    )
 
     with pytest.raises(ValueError, match="status is 'placeholder'"):
         with_host_sstb_classification(
             _frame(person),
             qbi_simulation_version=QBI_SIMULATION_V2,
+            assumptions=assumptions,
         )
 
 
@@ -387,9 +462,8 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
     ready_sstb_crosswalk: dict[str, object],
 ) -> None:
     person = _v2_host_person()
-    person["partnership_s_corp_income_would_be_qualified"] = True
     assumptions = _host_test_assumptions()
-    prior_partnership = replace(
+    prior_farm_operations = replace(
         assumptions,
         qualification_derivations=tuple(
             replace(
@@ -397,7 +471,7 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
                 mode="prior",
                 prior_probability=1.0,
             )
-            if derivation.source == "partnership_s_corp_income"
+            if derivation.source == "farm_operations_income"
             else derivation
             for derivation in assumptions.qualification_derivations
         ),
@@ -412,13 +486,13 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
     changed = with_host_sstb_classification(
         _frame(person),
         qbi_simulation_version=QBI_SIMULATION_V2,
-        assumptions=prior_partnership,
+        assumptions=prior_farm_operations,
         sstb_crosswalk=ready_sstb_crosswalk,
     ).table("person")
 
     assert not np.array_equal(
-        baseline["partnership_s_corp_income_would_be_qualified"],
-        changed["partnership_s_corp_income_would_be_qualified"],
+        baseline["farm_operations_income_would_be_qualified"],
+        changed["farm_operations_income_would_be_qualified"],
     )
     for column in (
         "business_is_sstb",
@@ -446,23 +520,11 @@ def test_host_sstb_uses_industry_first_then_occupation_fallback(
             industry_column="PEIOIND",
         ),
     )
-    crosswalk = {
-        **ready_sstb_crosswalk,
-        "industry_code_system": "synthetic Census industry",
-        "mapping": {
-            **ready_sstb_crosswalk["mapping"],
-            "industry": {
-                "4040": "non_sstb",
-                "5050": "clear_sstb",
-            },
-        },
-    }
-
     result = with_host_sstb_classification(
         _frame(person),
         qbi_simulation_version=QBI_SIMULATION_V2,
         assumptions=assumptions,
-        sstb_crosswalk=crosswalk,
+        sstb_crosswalk=ready_sstb_crosswalk,
     ).table("person")
 
     # Industry overrides occupation on the first two rows; the unmapped
@@ -471,6 +533,40 @@ def test_host_sstb_uses_industry_first_then_occupation_fallback(
         False,
         True,
         True,
+    ]
+
+
+def test_host_sstb_classification_runs_end_to_end_with_live_crosswalk() -> None:
+    person = _qbi_person()
+    person["PEIOOCC"] = 4810
+    person["AGI"] = 150_000.0
+    person["farm_operations_income"] = 0.0
+    for row in (122, 123):
+        person.loc[row, "self_employment_income_before_lsr"] = 10_000.0
+    person.loc[[100, 101, 107, 108, 122, 123], "PEIOOCC"] = [
+        2100,
+        4810,
+        3300,
+        2005,
+        3601,
+        9999,
+    ]
+
+    result = with_host_sstb_classification(
+        _frame(person),
+        qbi_simulation_version=QBI_SIMULATION_V2,
+    ).table("person")
+
+    # The fixed SSTB stream draws below the 0.20, 0.30, and 0.10 code priors
+    # at rows 107, 108, and 122. The explicit non-SSTB neighbor and absent
+    # code remain false, while the clear-law code is deterministic.
+    assert result.loc[[100, 101, 107, 108, 122, 123], "business_is_sstb"].tolist() == [
+        True,
+        False,
+        True,
+        True,
+        True,
+        False,
     ]
 
 
