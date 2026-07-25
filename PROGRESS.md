@@ -7,7 +7,9 @@ Floor-aware SSI take-up prior implementation is committed on
 plan, and builder tests pass. The first full package run returned 1 because one
 ordinary-miss test double omitted the new retry-applicability detail; that
 fixture is corrected and its three parameterized cases now pass. A clean full
-rerun and the final report remain.
+rerun returned `PYTEST_RC=0`. Final audit then found two mixed/boundary gate
+classifications; their fixes and focused regressions pass, and one final full
+rerun plus the report remain.
 
 ## Done
 
@@ -45,10 +47,25 @@ rerun and the final report remain.
 - Classified that fixture's deliberately ordinary 18–64 delivery miss as
   prior-weight-basis retryable. All three focused modes pass (`FOCUSED_RC=0`);
   production behavior is unchanged.
+- Committed the corrected ordinary-miss fixture as `c6b5b55`.
+- Reran the complete required package suite unpiped and captured
+  `PYTEST_RC=0`.
+- Ran both required Ruff gates on all six changed Python files:
+  `RUFF_CHECK_RC=0` and `RUFF_FORMAT_RC=0`.
+- The final independent audit caught two uncovered interactions: an exact
+  reporter-only `target == floor == capacity` band was incorrectly classified
+  as insufficient support, and a mixed structural/ordinary failure could
+  advertise a retry incapable of clearing the run.
+- Made triple equality an exact pass; made a run retryable only when it has
+  ordinary delivery misses and no structural or invalid-diagnostics blocker;
+  and made the builder's non-retry artifact wording truthful for structural,
+  invalid, and mixed failures. The complete SSI test module plus focused
+  builder regressions pass (`FOCUSED_EDGE_RC=0`).
 
 ## Next
 
-- Commit the corrected ordinary-miss fixture and this journal update.
-- Rerun `uv run pytest packages/populace-build/tests/ -q` and capture its
-  return code first, then repeat changed-file Ruff gates.
+- Commit the final-audit edge fixes and this journal update.
+- Rerun `uv run pytest packages/populace-build/tests/ -q` after the audit
+  fixes and capture its return code first, then repeat changed-file Ruff
+  gates.
 - Write `FINAL_REPORT.md`, finalize this journal, and commit without pushing.
