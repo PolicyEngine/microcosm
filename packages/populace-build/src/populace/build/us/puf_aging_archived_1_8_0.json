@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "aging_version": "archived_1_8_0",
+  "source_year": 2015,
+  "target_year": 2021,
+  "provenance": {
+    "source_kind": "archived_soi_targets",
+    "source_artifact_sha256": "0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb",
+    "source_coordinates": [
+      "retired-us-data-package@371f77a0aadfdeacd5856e0a3030c2db0eda65b5",
+      "datasets/puf/uprate_puf.py (retired US data package)",
+      "retired-us-data-package@42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+      "storage/calibration_targets/soi_targets.csv (retired US data package)",
+      "datasets/puf/uprate_puf.py#L12-L193 (retired US data package)"
+    ],
+    "notes": "Exact 2015-to-2021 factors. The later puf_2024 processed-array loop iterated year columns instead of variable rows and therefore changed no arrays. E00900 and E26270 combine their signed factor with the retired AGI fallback because those columns appeared in both ownership lists."
+  },
+  "weight": {
+    "column": "S006",
+    "factor": 1.0686481028722197,
+    "fact_ids": [
+      "archived-soi:count:2015:2021"
+    ]
+  },
+  "straight": [
+    {
+      "column": "E00200",
+      "factor": 1.187079295246555,
+      "fact_ids": [
+        "archived-soi:employment_income:2015:2021"
+      ]
+    },
+    {
+      "column": "E01100",
+      "factor": 1.933280146058946,
+      "fact_ids": [
+        "archived-soi:capital_gains_distributions:2015:2021"
+      ]
+    },
+    {
+      "column": "E00300",
+      "factor": 1.0104614635225775,
+      "fact_ids": [
+        "archived-soi:taxable_interest_income:2015:2021"
+      ]
+    },
+    {
+      "column": "E00400",
+      "factor": 0.8396766287008147,
+      "fact_ids": [
+        "archived-soi:exempt_interest:2015:2021"
+      ]
+    },
+    {
+      "column": "E00600",
+      "factor": 1.3913542463347282,
+      "fact_ids": [
+        "archived-soi:ordinary_dividends:2015:2021"
+      ]
+    },
+    {
+      "column": "E00650",
+      "factor": 1.3627673957749655,
+      "fact_ids": [
+        "archived-soi:qualified_dividends:2015:2021"
+      ]
+    },
+    {
+      "column": "E01400",
+      "factor": 1.5091982531835977,
+      "fact_ids": [
+        "archived-soi:ira_distributions:2015:2021"
+      ]
+    },
+    {
+      "column": "E01500",
+      "factor": 1.2062132876732925,
+      "fact_ids": [
+        "archived-soi:total_pension_income:2015:2021"
+      ]
+    },
+    {
+      "column": "E01700",
+      "factor": 1.1636648594128258,
+      "fact_ids": [
+        "archived-soi:taxable_pension_income:2015:2021"
+      ]
+    },
+    {
+      "column": "E02300",
+      "factor": 7.179137050739982,
+      "fact_ids": [
+        "archived-soi:unemployment_compensation:2015:2021"
+      ]
+    },
+    {
+      "column": "E02400",
+      "factor": 1.223392200575715,
+      "fact_ids": [
+        "archived-soi:total_social_security:2015:2021"
+      ]
+    },
+    {
+      "column": "E02500",
+      "factor": 1.392556998642743,
+      "fact_ids": [
+        "archived-soi:taxable_social_security:2015:2021"
+      ]
+    },
+    {
+      "column": "E17500",
+      "factor": 1.126162419264,
+      "fallback_reason": "retired fixed 2 percent annual itemized-deduction growth"
+    },
+    {
+      "column": "E18400",
+      "factor": 1.126162419264,
+      "fallback_reason": "retired fixed 2 percent annual itemized-deduction growth"
+    },
+    {
+      "column": "E18500",
+      "factor": 1.126162419264,
+      "fallback_reason": "retired fixed 2 percent annual itemized-deduction growth"
+    },
+    {
+      "column": "E19200",
+      "factor": 1.126162419264,
+      "fallback_reason": "retired fixed 2 percent annual itemized-deduction growth"
+    },
+    {
+      "column": "E19800",
+      "factor": 1.126162419264,
+      "fallback_reason": "retired fixed 2 percent annual itemized-deduction growth"
+    }
+  ],
+  "signed": [
+    {
+      "column": "E00900",
+      "positive_factor": 1.6738813405953035,
+      "negative_factor": 2.226843788284824,
+      "fact_ids": [
+        "archived-soi:business_net_profits:2015:2021",
+        "archived-soi:business_net_losses:2015:2021",
+        "archived-soi:adjusted_gross_income:2015:2021"
+      ],
+      "fallback_reason": "archival compatibility: signed factor followed by duplicate AGI fallback"
+    },
+    {
+      "column": "E01000",
+      "positive_factor": 2.686644370825099,
+      "negative_factor": 0.8150960322151273,
+      "fact_ids": [
+        "archived-soi:capital_gains_gross:2015:2021",
+        "archived-soi:capital_gains_losses:2015:2021"
+      ]
+    },
+    {
+      "column": "E26270",
+      "positive_factor": 2.076408758455809,
+      "negative_factor": 2.6139943101980907,
+      "fact_ids": [
+        "archived-soi:partnership_and_s_corp_income:2015:2021",
+        "archived-soi:partnership_and_s_corp_losses:2015:2021",
+        "archived-soi:adjusted_gross_income:2015:2021"
+      ],
+      "fallback_reason": "archival compatibility: signed factor followed by duplicate AGI fallback"
+    }
+  ],
+  "fallback": {
+    "factor": 1.3559989182295513,
+    "fact_ids": [
+      "archived-soi:adjusted_gross_income:2015:2021"
+    ],
+    "reason": "retired adjusted-gross-income fallback for otherwise unmapped amounts",
+    "columns": [
+      "E03500",
+      "E00800",
+      "E20500",
+      "E32800",
+      "E20100",
+      "E03240",
+      "E03400",
+      "E03220",
+      "E26390",
+      "E26400",
+      "T27800",
+      "E27200",
+      "E03290",
+      "P23250",
+      "E24518",
+      "E20400",
+      "E03230",
+      "E25850",
+      "E25860",
+      "E03270",
+      "E03300",
+      "P22250",
+      "E03210",
+      "E03150",
+      "E24515",
+      "E07300",
+      "E62900",
+      "E01200",
+      "E00700",
+      "E58990",
+      "E07400",
+      "E07600",
+      "E11200",
+      "E87521",
+      "E07260",
+      "E09900",
+      "P08000",
+      "E07240",
+      "E09700",
+      "E09800"
+    ]
+  },
+  "unchanged_columns": [
+    "RECID",
+    "MARS",
+    "XTOT",
+    "DSI",
+    "EIC",
+    "E02100",
+    "E87530"
+  ]
+}

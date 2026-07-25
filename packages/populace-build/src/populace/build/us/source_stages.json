@@ -10,16 +10,38 @@
       "grain": "tax_unit",
       "artifacts": [
         {
-          "kind": "public_microdata",
-          "format": "fixed_width_or_csv",
+          "kind": "restricted_microdata",
+          "access": "access_controlled",
+          "format": "csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File, including state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
+          "observed_local_sha256": "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df",
+          "pin_status": "candidate digest requires certification against an immutable licensed-source revision",
+          "redistribution": "prohibited by the IRS SOI data agreement",
+          "locator": "restricted://policyengine/irs-soi-puf/puf_2015.csv (observed local candidate digest; immutable remote revision is not yet recorded and blocks the production pin switch)",
+          "columns": "IRS SOI PUF raw fields, including E00700, E03220, E00800, E03500, E03240, E20500, E20400, E02100, E27200, E58990, E24518, and E24515"
         },
         {
-          "kind": "versioned_derived_microdata",
+          "kind": "restricted_microdata",
+          "access": "access_controlled",
+          "format": "csv",
+          "vintage": "2015",
+          "observed_local_sha256": "2d275cc405a1d0b254855628eabefe6c6484570ab789b2777a037ea604a82e81",
+          "pin_status": "candidate digest requires certification against an immutable licensed-source revision",
+          "redistribution": "prohibited by the IRS SOI data agreement",
+          "role": "archived personization input; not required by the Populace tax-unit donor unless retired demographics or EARNSPLIT are reproduced",
+          "locator": "restricted://policyengine/irs-soi-puf/demographics_2015.csv"
+        },
+        {
+          "kind": "transitional_derived_microdata",
+          "role": "current bespoke-builder input and audit comparator; not a governing primary source",
           "format": "hdf5_arrays",
-          "vintage": "2024 (2015-based)",
-          "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
+          "vintage": "2021-valued arrays labeled 2024 (2015-based; 2021-to-2024 pass was a no-op)",
+          "sha256": "8182579ddfecaf5e5b872e2307b88f03e8e8def993171b648f701a19a847f37b",
+          "size_bytes": 241045964,
+          "physical_qbi_metadata": "no qbi_simulation_version attribute; carries only the retired deterministic W-2 proxy",
+          "populace_qbi_simulation_version": 1,
+          "audit": "experiments/qbi-port-530/PUF_2024_ARTIFACT_AUDIT.md",
+          "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5"
         },
         {
           "kind": "archived_derivation_evidence",
@@ -41,7 +63,28 @@
         {
           "kind": "read_table",
           "table": "puf_tax_unit",
-          "weight": "s006"
+          "weight": "S006"
+        },
+        {
+          "kind": "disaggregate_aggregate_records",
+          "method": "donor_template_calibration",
+          "spec": "puf_aggregate_record_disaggregation",
+          "replace_records": [
+            999996,
+            999997,
+            999998,
+            999999
+          ],
+          "weight": "S006",
+          "amount_columns": "irs_puf_amount_columns",
+          "seed_from_build_config": true
+        },
+        {
+          "kind": "uprate",
+          "from_year": 2015,
+          "to_year_from_build_config": true,
+          "aging_version": "ledger_v1",
+          "factor_bundle_config_key": "puf_aging_factors"
         },
         {
           "kind": "derive_puf_policyengine_variables",
@@ -76,25 +119,6 @@
           "collectibles_capital_gain_output": "long_term_capital_gains_on_collectibles",
           "unrecaptured_section_1250_gain_source": "E24515",
           "unrecaptured_section_1250_gain_output": "unrecaptured_section_1250_gain"
-        },
-        {
-          "kind": "disaggregate_aggregate_records",
-          "method": "donor_template_calibration",
-          "spec": "puf_aggregate_record_disaggregation",
-          "replace_records": [
-            999996,
-            999997,
-            999998,
-            999999
-          ],
-          "weight": "s006",
-          "amount_columns": "irs_puf_amount_columns",
-          "seed_from_build_config": true
-        },
-        {
-          "kind": "uprate",
-          "from_year": 2015,
-          "to_year_from_build_config": true
         },
         {
           "kind": "fit_weighted_qrf",
@@ -225,7 +249,7 @@
         "unadjusted_basis_qualified_property",
         "w2_wages_from_qualified_business"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Populace places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Populace therefore aggregates each processed donor leaf to its identifiable tax-unit total, places that total on the unit's first person, and sparsifies only the PUF support channel to the donor positive rate rather than inventing an earnings-based split or reproducing the retired both-half override. This within-unit placement is policy-neutral in PolicyEngine-US 1.764.6 because the relevant formulas sum these leaves to the tax unit. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Populace deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Populace source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Populace places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Populace therefore aggregates each processed donor leaf to its identifiable tax-unit total, places that total on the unit's first person, and sparsifies only the PUF support channel to the donor positive rate rather than inventing an earnings-based split or reproducing the retired both-half override. This within-unit placement is policy-neutral in PolicyEngine-US 1.764.6 because the relevant formulas sum these leaves to the tax unit. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Populace deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are generated by Populace qbi_simulation_version=1 before the donor QRF; the physical 1.8.0 artifact carries only an older deterministic W-2 proxy, while a later retired loader synthesized and wrote the 15-leaf surface on load. Archived puf.py lines 105-405 pin the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Populace source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF. The raw-source manifest reserves ledger_v1 aging and fails closed without an explicit factor bundle; the bespoke production builder still reads the transitional processed HDF and the raw switch remains blocked as documented in PUF_RAW_PIN_AND_AGING.md."
     },
     {
       "stage": "education_inputs",

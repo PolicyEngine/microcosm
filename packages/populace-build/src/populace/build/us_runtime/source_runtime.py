@@ -68,6 +68,11 @@ from populace.build.us_runtime.puf_aggregate_records import (
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )
+from populace.build.us_runtime.puf_aging import (
+    PufAgingFactorBundle,
+    age_raw_puf,
+    puf_aging_factors_from_mapping,
+)
 from populace.build.us_runtime.relationship_inputs import (
     derive_us_relationship_inputs_from_manifest,
 )
@@ -129,6 +134,7 @@ __all__ = [
     "impute_us_workers_compensation_to_puf_support_from_manifest",
     "impute_us_weeks_unemployed_to_puf_support_from_manifest",
     "support_clip_us_source_output_from_manifest",
+    "uprate_us_raw_puf_from_manifest",
     "us_source_operation_handlers",
 ]
 
@@ -176,6 +182,15 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "collectibles_capital_gain_output",
         "unrecaptured_section_1250_gain_source",
         "unrecaptured_section_1250_gain_output",
+    }
+)
+
+_PUF_UPRATE_PARAMETER_KEYS = frozenset(
+    {
+        "from_year",
+        "to_year_from_build_config",
+        "aging_version",
+        "factor_bundle_config_key",
     }
 )
 
@@ -368,6 +383,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "split_component_by_share": split_us_component_by_share_from_manifest,
         "support_clip": support_clip_us_source_output_from_manifest,
+        "uprate": uprate_us_raw_puf_from_manifest,
     }
 
 
@@ -1057,6 +1073,77 @@ def derive_us_puf_policyengine_variables_from_manifest(
         raise SourceRuntimeError(str(exc)) from exc
 
 
+def uprate_us_raw_puf_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Age raw IRS PUF columns using an explicitly supplied factor bundle."""
+
+    if operation.kind != "uprate":
+        raise SourceRuntimeError(
+            f"PUF aging handler received unexpected operation {operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError("PUF aging requires a current raw source frame.")
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_PUF_UPRATE_PARAMETER_KEYS,
+        label="PUF aging",
+    )
+    source_year = params.get("from_year")
+    if isinstance(source_year, bool) or not isinstance(source_year, int):
+        raise SourceRuntimeError("PUF aging requires integer from_year.")
+    if params.get("to_year_from_build_config") is not True:
+        raise SourceRuntimeError("PUF aging requires to_year_from_build_config=true.")
+    target_year = context.config.target_year
+    if isinstance(target_year, bool) or not isinstance(target_year, int):
+        raise SourceRuntimeError(
+            "PUF aging requires target_year in the source runtime config."
+        )
+    aging_version = _required_string_param(
+        params,
+        "aging_version",
+        label="PUF aging",
+    )
+    factor_bundle_config_key = _required_string_param(
+        params,
+        "factor_bundle_config_key",
+        label="PUF aging",
+    )
+    if factor_bundle_config_key not in context.config.extra:
+        raise SourceRuntimeError(
+            "PUF aging requires an explicit factor bundle at runtime config "
+            f"extra[{factor_bundle_config_key!r}]."
+        )
+    factor_payload = context.config.extra[factor_bundle_config_key]
+    try:
+        factors = (
+            factor_payload
+            if isinstance(factor_payload, PufAgingFactorBundle)
+            else puf_aging_factors_from_mapping(factor_payload)
+        )
+        if factors.aging_version != aging_version:
+            raise ValueError(
+                f"factor aging_version {factors.aging_version!r} does not match "
+                f"manifest version {aging_version!r}"
+            )
+        if factors.source_year != source_year:
+            raise ValueError(
+                f"factor source_year {factors.source_year} does not match "
+                f"manifest from_year {source_year}"
+            )
+        if factors.target_year != target_year:
+            raise ValueError(
+                f"factor target_year {factors.target_year} does not match "
+                f"build target_year {target_year}"
+            )
+        return age_raw_puf(frame, factors=factors)
+    except (TypeError, ValueError) as exc:
+        raise SourceRuntimeError(f"PUF aging factor bundle is invalid: {exc}") from exc
+
+
 def support_clip_us_source_output_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -1150,11 +1237,14 @@ def disaggregate_us_puf_aggregate_records_from_manifest(
             "PUF aggregate-record disaggregation requires seed_from_build_config=true."
         )
 
-    return disaggregate_puf_aggregate_records(
-        frame,
-        seed=int(context.config.seed),
-        spec=spec,
-    )
+    try:
+        return disaggregate_puf_aggregate_records(
+            frame,
+            seed=int(context.config.seed),
+            spec=spec,
+        )
+    except ValueError as exc:
+        raise SourceRuntimeError(str(exc)) from exc
 
 
 def _reject_unexpected_parameters(

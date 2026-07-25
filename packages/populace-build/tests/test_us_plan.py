@@ -848,9 +848,9 @@ class TestUsSources:
         kinds = [operation.kind for operation in operations]
         assert (
             kinds.index("read_table")
-            < kinds.index("derive_puf_policyengine_variables")
             < kinds.index("disaggregate_aggregate_records")
             < kinds.index("uprate")
+            < kinds.index("derive_puf_policyengine_variables")
         )
 
         derive_operation = operations[kinds.index("derive_puf_policyengine_variables")]
@@ -897,11 +897,19 @@ class TestUsSources:
             "method": "donor_template_calibration",
             "spec": "puf_aggregate_record_disaggregation",
             "replace_records": [999996, 999997, 999998, 999999],
-            "weight": "s006",
+            "weight": "S006",
             "amount_columns": "irs_puf_amount_columns",
             "seed_from_build_config": True,
         }
         assert "forbes" not in str(operation.parameters).lower()
+
+        uprate_operation = operations[kinds.index("uprate")]
+        assert uprate_operation.parameters == {
+            "from_year": 2015,
+            "to_year_from_build_config": True,
+            "aging_version": "ledger_v1",
+            "factor_bundle_config_key": "puf_aging_factors",
+        }
 
     def test_aca_stage_declares_marketplace_input_surface(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]

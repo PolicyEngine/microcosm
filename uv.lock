@@ -1168,6 +1168,7 @@ dependencies = [
     { name = "populace-calibrate" },
     { name = "populace-fit" },
     { name = "populace-frame" },
+    { name = "pyyaml" },
     { name = "scipy" },
 ]
 
@@ -1203,6 +1204,7 @@ requires-dist = [
     { name = "populace-data", marker = "extra == 'us'", editable = "packages/populace-data" },
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },

@@ -22,6 +22,9 @@ from populace.build.us_runtime.qbi_inputs import (
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.qbi_simulation import (
+    with_qbi_simulation_from_puf_arrays,
+)
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from populace.frame.schema import EntitySchema
 
@@ -511,6 +514,7 @@ def puf_tax_unit_donor_from_arrays(
     *,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    qbi_simulation_version: int | None = None,
 ) -> pd.DataFrame:
     """Build a tax-unit donor table from processed PUF array columns.
 
@@ -524,11 +528,19 @@ def puf_tax_unit_donor_from_arrays(
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
+        qbi_simulation_version: Explicit repository-owned QBI simulation
+            version. When omitted, no QBI values are generated or replaced.
 
     Returns:
         A tax-unit donor DataFrame with numeric predictors, requested outputs,
         and a ``weight`` column.
     """
+
+    if qbi_simulation_version is not None:
+        arrays = with_qbi_simulation_from_puf_arrays(
+            arrays,
+            qbi_simulation_version=qbi_simulation_version,
+        )
 
     _require_array_columns(
         arrays,

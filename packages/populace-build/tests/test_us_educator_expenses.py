@@ -194,15 +194,16 @@ def test_shared_puf_stage_pins_source_artifact_mapping_and_qrf_contract() -> Non
     ]
     assert "educator_expense" in stage.outputs
     assert "educator_expense" in stage.nonnegative_outputs
-    locators = [str(artifact.get("locator")) for artifact in stage.artifacts]
+    locators = [
+        str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+        for artifact in stage.artifacts
+    ]
     assert any("E03220" in locator for locator in locators)
     assert any(
         "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5" in locator
         for locator in locators
     )
-    assert any(
-        "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe" in locator for locator in locators
-    )
+    assert "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe" in stage.notes
 
 
 def test_post_disaggregation_reconciliation_uses_final_e03220() -> None:

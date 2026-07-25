@@ -110,7 +110,10 @@ def test_shared_puf_stage_declares_exact_source_and_output() -> None:
     )
     assert "unreimbursed_business_employee_expenses" in stage.outputs
     assert "unreimbursed_business_employee_expenses" in stage.nonnegative_outputs
-    assert any("E20400" in str(artifact.get("locator")) for artifact in stage.artifacts)
+    assert any(
+        "E20400" in str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+        for artifact in stage.artifacts
+    )
 
 
 def test_puf_support_keeps_misc_itemized_dense_and_nonnegative() -> None:
