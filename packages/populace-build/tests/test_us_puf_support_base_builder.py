@@ -1675,6 +1675,22 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     )
 
 
+def test_resume_retirement_stage_forces_puf_imputation() -> None:
+    """The resume-side ownership boundary is pinned (PR #557 round 2, low).
+
+    The live post-clone boundary is behaviorally asserted above; this pins
+    the named-stage resume branch so deleting its force flag fails a test
+    (source-pin precedent: the main-summary gate tests below).
+    """
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+    marker = 'elif stage == "retirement_distributions_post_clone":'
+    assert marker in source
+    window = source.split(marker, 1)[1].split("elif ", 1)[0]
+    assert "with_us_retirement_distribution_inputs(" in window
+    assert "force_puf_imputation=True" in window
+
+
 def test_main_summary_records_retirement_distribution_gate() -> None:
     builder = _load_support_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")

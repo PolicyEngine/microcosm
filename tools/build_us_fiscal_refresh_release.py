@@ -1441,6 +1441,18 @@ def _reform_vector_cache_context(context: Mapping[str, object]) -> dict[str, obj
     that omits the crosswalk sha is distinct from one that sets it); absent keys
     are simply not part of the identity.
     """
+    # The materializer identity is the anti-mixing key (PR #557): a producer
+    # that cannot state which target-frame semantics built its vectors must
+    # not share the cache. Presence is required; an explicit None is a valid
+    # declaration for non-release producers (the scorers) and is
+    # identity-distinct from every release digest.
+    if "target_frame_materializer_identity_sha256" not in context:
+        raise ValueError(
+            "Reform-vector cache context must declare "
+            "target_frame_materializer_identity_sha256 (explicit None for "
+            "non-release producers); silently omitting it would let vectors "
+            "from different target-frame semantics mix (PR #557 review)."
+        )
     return {
         key: context[key] for key in REFORM_VECTOR_CACHE_CONTEXT_KEYS if key in context
     }
@@ -8743,13 +8755,24 @@ def main() -> None:
                 failures=list(input_mass_reference_gate.failures),
                 force_upload=True,
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
+        # Degraded pre-solve (PR #557 round 2 finding 1): when the retirement
+        # boundary already failed, this generic raise would supersede the
+        # specific missing-leaf diagnosis. Collect instead; the combined
+        # pre-solve raise below reports every group before the solve burns
+        # hours. A green run keeps today's fail-fast raise.
+        if early_terminal_gate_failures:
+            early_terminal_gate_failures.extend(
                 f"Input mass parity failed: {failure}"
                 for failure in input_mass_reference_gate.failures
             )
-        )
+        else:
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Input mass parity failed: {failure}"
+                    for failure in input_mass_reference_gate.failures
+                )
+            )
     degenerate_input_gate = _degenerate_input_signal_gate(
         base_frame, PolicyEngineUSEngine()
     )
@@ -8762,13 +8785,24 @@ def main() -> None:
                 failures=list(degenerate_input_gate.failures),
                 force_upload=True,
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
+        if early_terminal_gate_failures:
+            early_terminal_gate_failures.extend(
                 f"Degenerate input signal failed: {failure}"
                 for failure in degenerate_input_gate.failures
             )
-        )
+        else:
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_input_gate.failures
+                )
+            )
+    # No combined pre-solve raise: a degraded run continues through the
+    # solve so calibration_diagnostics.json and the single terminal batch
+    # exist (the #547/#548 evidence contract — compute is cheaper than a
+    # destroyed failure record). The two gates above keep fail-fast raises
+    # on otherwise-green runs only.
     if telemetry is not None:
         telemetry.stage(
             "ecps_parity_gate",

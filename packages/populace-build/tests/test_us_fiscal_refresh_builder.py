@@ -4301,14 +4301,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
 
-    monkeypatch.setattr(
-        builder,
-        "_degenerate_input_signal_gate",
-        lambda frame, engine: builder.GateResult(
+    def fake_degenerate_input_signal_gate(frame, engine):
+        # In retirement mode this gate ALSO fails: the production masking
+        # route (PR #557 round 2 finding 1) was the generic degenerate raise
+        # superseding the specific missing-leaf diagnosis. The degraded-mode
+        # append must carry BOTH lines to the single terminal batch while the
+        # run continues through the solve (the #547/#548 evidence contract).
+        if terminal_mode == "retirement":
+            return builder.GateResult(
+                name="degenerate_input_signal",
+                passed=False,
+                failures=("keogh_distributions flattened [degenerate-sentinel]",),
+                details={"checked": True},
+            )
+        return builder.GateResult(
             name="degenerate_input_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_degenerate_input_signal_gate",
+        fake_degenerate_input_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4460,6 +4475,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Release gates failed: Retirement-distribution signal failed: "
                 f"{retirement_missing_failure}"
             )
+            # The co-failing degenerate gate must batch AFTER the specific
+            # retirement diagnosis, never supersede it with an early raise
+            # (PR #557 round 2 finding 1).
+            assert (
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]" in message
+            )
             assert "SSI take-up delivery failed:" not in message
         elif terminal_mode == "integrity":
             assert message.startswith(
@@ -4526,6 +4548,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         if terminal_mode == "retirement":
             expected_gate_failures = [
                 f"Retirement-distribution signal failed: {retirement_missing_failure}",
+                # The co-failing pre-solve degenerate gate batches directly
+                # after the specific retirement diagnosis instead of
+                # superseding it with an early raise (PR #557 round 2).
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]",
                 "Other health insurance signal failed on the export frame: "
                 "premiums signal flattened [cofailure-sentinel]",
                 "ctc failed",
@@ -5877,7 +5904,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         "seed": 0,
         "target_period": builder.PERIOD,
         "target_registry_version": "test-target-registry",
+        # Required declaration (PR #557): the reform-vector projection
+        # fail-closes without it — see the dedicated rejection test.
+        "target_frame_materializer_identity_sha256": "test-materializer-digest",
     }
+    with pytest.raises(ValueError, match="target_frame_materializer_identity_sha256"):
+        builder._reform_vector_cache_context(
+            {
+                k: v
+                for k, v in cache_context.items()
+                if k != "target_frame_materializer_identity_sha256"
+            }
+        )
     target_frame, registry, dropped = builder._materialize_target_frame(
         frame,
         (target,),
