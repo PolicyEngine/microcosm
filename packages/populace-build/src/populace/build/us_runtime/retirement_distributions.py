@@ -595,16 +595,23 @@ def with_us_retirement_distribution_inputs(
     *,
     seed: int,
     time_period: int,
+    force_puf_imputation: bool = False,
 ) -> Frame:
-    """Materialize measured retirement-distribution leaves on a US frame."""
+    """Materialize measured retirement-distribution leaves on a US frame.
+
+    ``force_puf_imputation`` belongs only at the base builder's post-clone
+    boundary.  A completed base can later retain a frozen support whose rare
+    ASEC donors differ from the full base.  Refitting there would make support
+    selection redefine the donor universe and can broadcast a rare leaf such
+    as ``keogh_distributions`` across the retained PUF rows.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US retirement distributions require the US schema.")
     person = frame.table("person")
     has_support_channels = _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns
-    if (
-        _retirement_distribution_surface_carries_signal(frame)
-        and not has_support_channels
+    if _retirement_distribution_surface_carries_signal(frame) and not (
+        has_support_channels and force_puf_imputation
     ):
         return frame
 

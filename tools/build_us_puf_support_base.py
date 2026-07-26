@@ -1238,6 +1238,10 @@ def _run_all(
         imputed,
         seed=args.seed,
         time_period=args.target_year,
+        # This is the one ownership boundary where the copied ASEC leaves must
+        # be replaced on the newly created PUF support. Downstream consumers
+        # preserve this completed draw even after selecting a narrower support.
+        force_puf_imputation=True,
     )
     retirement_distributions_gate = us_retirement_distributions_signal_gate(imputed)
     if not retirement_distributions_gate.passed:
@@ -2193,6 +2197,9 @@ def _post_qrf_frame_stage(
             frame,
             seed=args.seed,
             time_period=args.target_year,
+            # Resuming this named base-builder stage is equivalent to crossing
+            # the live post-clone ownership boundary above.
+            force_puf_imputation=True,
         )
         signals["retirement_distributions_signal"] = _checked_gate_payload(
             us_retirement_distributions_signal_gate(frame),
