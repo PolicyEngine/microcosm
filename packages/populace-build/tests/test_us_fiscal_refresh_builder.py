@@ -4443,6 +4443,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_release_gate_failures(*args, **kwargs):
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        if terminal_mode == "retirement":
+            # The degraded pre-solve contract (PR #557 round 3): the failing
+            # degenerate gate is NOT raised early — the gate object itself
+            # must arrive here, failures intact, and ride the single
+            # terminal batch. Emitting from the argument (the real
+            # function's contract) proves the un-raised object reached us.
+            degenerate_gate = args[8]
+            assert degenerate_gate is not None
+            assert not degenerate_gate.passed
+            return [
+                *(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_gate.failures
+                ),
+                "ctc failed",
+            ]
         return ["ctc failed"]
 
     monkeypatch.setattr(
@@ -4548,13 +4564,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         if terminal_mode == "retirement":
             expected_gate_failures = [
                 f"Retirement-distribution signal failed: {retirement_missing_failure}",
-                # The co-failing pre-solve degenerate gate batches directly
-                # after the specific retirement diagnosis instead of
-                # superseding it with an early raise (PR #557 round 2).
-                "Degenerate input signal failed: keogh_distributions "
-                "flattened [degenerate-sentinel]",
                 "Other health insurance signal failed on the export frame: "
                 "premiums signal flattened [cofailure-sentinel]",
+                # The co-failing pre-solve degenerate gate is never raised
+                # early and never duplicated: its line arrives once, through
+                # _release_gate_failures (PR #557 round 3).
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]",
                 "ctc failed",
             ]
         elif terminal_mode == "integrity":

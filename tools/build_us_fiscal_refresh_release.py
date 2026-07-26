@@ -8747,25 +8747,38 @@ def main() -> None:
         and not input_mass_reference_gate.passed
         and not args.allow_input_mass_drift
     ):
-        if telemetry is not None:
-            telemetry.stage(
-                "input_mass_reference_gate",
-                status="failed",
-                message="Base-frame input mass parity gate failed.",
-                failures=list(input_mass_reference_gate.failures),
-                force_upload=True,
-            )
-        # Degraded pre-solve (PR #557 round 2 finding 1): when the retirement
-        # boundary already failed, this generic raise would supersede the
-        # specific missing-leaf diagnosis. Collect instead; the combined
-        # pre-solve raise below reports every group before the solve burns
-        # hours. A green run keeps today's fail-fast raise.
+        # Degraded pre-solve (PR #557 rounds 2-3): when the retirement
+        # boundary already failed, this raise would supersede the specific
+        # missing-leaf diagnosis. The gate object already rides
+        # _release_gate_failures into the single terminal batch, so the
+        # degraded branch simply does NOT raise — no duplicate append — and
+        # its telemetry is guarded so a reporting crash cannot mask the
+        # pending diagnosis (the #547 secure-before-report pattern). A green
+        # run keeps today's fail-fast raise.
         if early_terminal_gate_failures:
-            early_terminal_gate_failures.extend(
-                f"Input mass parity failed: {failure}"
-                for failure in input_mass_reference_gate.failures
-            )
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "input_mass_reference_gate",
+                        status="failed",
+                        message="Base-frame input mass parity gate failed.",
+                        failures=list(input_mass_reference_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "Input-mass gate failure telemetry crashed in degraded "
+                    f"mode; recorded instead of masking the diagnosis: {error}"
+                )
         else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "input_mass_reference_gate",
+                    status="failed",
+                    message="Base-frame input mass parity gate failed.",
+                    failures=list(input_mass_reference_gate.failures),
+                    force_upload=True,
+                )
             raise RuntimeError(
                 "Release gates failed: "
                 + "; ".join(
@@ -8777,20 +8790,34 @@ def main() -> None:
         base_frame, PolicyEngineUSEngine()
     )
     if not degenerate_input_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "degenerate_input_gate",
-                status="failed",
-                message="Degenerate input signal gate failed.",
-                failures=list(degenerate_input_gate.failures),
-                force_upload=True,
-            )
+        # Same degraded contract as the input-mass gate above: the gate
+        # object rides _release_gate_failures to the batch; no raise, no
+        # duplicate append, guarded telemetry.
         if early_terminal_gate_failures:
-            early_terminal_gate_failures.extend(
-                f"Degenerate input signal failed: {failure}"
-                for failure in degenerate_input_gate.failures
-            )
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "degenerate_input_gate",
+                        status="failed",
+                        message="Degenerate input signal gate failed.",
+                        failures=list(degenerate_input_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "Degenerate-input gate failure telemetry crashed in "
+                    f"degraded mode; recorded instead of masking the "
+                    f"diagnosis: {error}"
+                )
         else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "degenerate_input_gate",
+                    status="failed",
+                    message="Degenerate input signal gate failed.",
+                    failures=list(degenerate_input_gate.failures),
+                    force_upload=True,
+                )
             raise RuntimeError(
                 "Release gates failed: "
                 + "; ".join(
@@ -8810,21 +8837,44 @@ def main() -> None:
         )
     ecps_parity_gate = _ecps_parity_gate(base_frame)
     if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
-        if telemetry is not None:
-            telemetry.stage(
-                "ecps_parity_gate",
-                status="failed",
-                message="eCPS parity gate failed.",
-                failures=list(ecps_parity_gate.failures),
-                force_upload=True,
+        # Same degraded contract as the input-mass/degenerate gates above
+        # (PR #557 round 3 finding 1): the pinned parity reference requires
+        # the retirement leaves, so a missing-leaf frame fails HERE too and
+        # an unconditional raise would supersede the retirement diagnosis
+        # before the solve. The gate object rides _release_gate_failures
+        # (as enforced_ecps_parity_gate) into the terminal batch; degraded
+        # runs continue, green runs keep the fail-fast raise.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "ecps_parity_gate",
+                        status="failed",
+                        message="eCPS parity gate failed.",
+                        failures=list(ecps_parity_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "eCPS parity gate failure telemetry crashed in degraded "
+                    f"mode; recorded instead of masking the diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "ecps_parity_gate",
+                    status="failed",
+                    message="eCPS parity gate failed.",
+                    failures=list(ecps_parity_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"eCPS parity failed: {failure}"
+                    for failure in ecps_parity_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"eCPS parity failed: {failure}"
-                for failure in ecps_parity_gate.failures
-            )
-        )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
