@@ -8985,16 +8985,16 @@ def test_enforce_ssi_delivery_writes_structural_evidence_without_retry_advice(
     assert json.loads((release_dir / "us_ssi_take_up.json").read_text()) == diagnostics
 
 
-def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
+def test_enforce_ssi_delivery_survives_unwritable_failure_diagnostics(
     tmp_path,
 ) -> None:
-    """A nonfinite delivery fails the gate AND breaks the retry writer.
+    """A nonfinite delivery fails the gate AND breaks the evidence writer.
 
-    The strict-JSON basis writer (allow_nan=False) raises on the very
+    The strict-JSON diagnostics writer (allow_nan=False) raises on the very
     diagnostics that fail the gate; the reporting crash must not mask the
     gate failure or destroy the diagnostics artifact downstream
-    (populace#547, confirm round 2 finding 1). The failure line tells the
-    retry it must recompute delivery itself.
+    (populace#547, confirm round 2 finding 1). Invalid diagnostics make a
+    prior-basis retry inapplicable, so the failure must stay non-retryable.
     """
     builder = _load_builder_module()
     diagnostics = _ssi_delivery_diagnostics(
@@ -9012,7 +9012,10 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
 
     assert failures
     assert failures[0].startswith("SSI take-up delivery failed:")
-    assert any("could NOT be written" in failure for failure in failures)
+    assert any(
+        "non-retryable failure diagnostics could NOT be written" in failure
+        for failure in failures
+    )
     # json.dumps runs before write_text, so no partial artifact exists.
     assert not (release_dir / "us_ssi_take_up.json").exists()
 
