@@ -8027,22 +8027,29 @@ def main() -> None:
         time_period=PERIOD,
     )
     retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
+    early_terminal_gate_failures: list[str] = []
     if not retirement_distributions_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "retirement_distribution_inputs_gate",
-                status="failed",
-                message="Retirement-distribution signal gate failed.",
-                failures=list(retirement_distributions_gate.failures),
-                force_upload=True,
-            )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                "Retirement-distribution signal failed: " + failure
-                for failure in retirement_distributions_gate.failures
-            )
+        # A selected support is consume-only at this boundary. Preserve the
+        # gate's batched missing/degenerate leaf evidence and carry it to the
+        # #548 terminal accumulator instead of refitting or raising early.
+        early_terminal_gate_failures.extend(
+            "Retirement-distribution signal failed: " + failure
+            for failure in retirement_distributions_gate.failures
         )
+        try:
+            if telemetry is not None:
+                telemetry.stage(
+                    "retirement_distribution_inputs_gate",
+                    status="failed",
+                    message="Retirement-distribution signal gate failed.",
+                    failures=list(retirement_distributions_gate.failures),
+                    force_upload=True,
+                )
+        except Exception as error:
+            early_terminal_gate_failures.append(
+                "Retirement-distribution gate failure telemetry crashed; "
+                f"recorded instead of masking the failure: {error}"
+            )
     if telemetry is not None:
         telemetry.stage(
             "eligibility_inputs",
@@ -9044,7 +9051,6 @@ def main() -> None:
     # diagnostics and skipped every other gate group (populace#547). A law
     # violation additionally quarantines SSI-dependent evaluations below.
     ssi_law_degraded = not final_ssi_take_up_gate.passed
-    early_terminal_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
         # Failures enter the list BEFORE any reporting: the telemetry stage
         # performs local writes and must not be able to mask the gate

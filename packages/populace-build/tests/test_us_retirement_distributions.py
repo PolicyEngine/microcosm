@@ -419,16 +419,52 @@ def test_completed_puf_surface_survives_narrowed_support_without_refit(
 
     # If support selection removes every rare carrier from one leaf, preserve
     # the completed surface and fail closed at the gate instead of refitting.
-    result.table("person")["keogh_distributions"] = 0.0
+    # Removing the measured carrier rows keeps source reconciliation valid and
+    # isolates the degeneration/prevalence checks this regression owns.
+    keogh_carriers = result.table("person")["keogh_distributions"].gt(0)
+    assert keogh_carriers.any()
+    selected_away = result.select(~keogh_carriers)
     degenerate = with_us_retirement_distribution_inputs(
-        result,
+        selected_away,
         seed=7,
         time_period=2024,
     )
-    assert degenerate is result
+    assert degenerate is selected_away
     degenerate_gate = us_retirement_distributions_signal_gate(degenerate)
     assert not degenerate_gate.passed
-    assert any("keogh_distributions" in failure for failure in degenerate_gate.failures)
+    assert degenerate_gate.failures == (
+        "keogh_distributions: degenerate with 1 distinct value(s).",
+        "keogh_distributions: weighted nonzero share 0.00000000 outside "
+        "[0.00000010, 0.00500000].",
+    )
+    assert degenerate_gate.details["source_mismatches"]["keogh_distributions"] == 0
+
+
+@pytest.mark.parametrize("missing", _OUTPUTS)
+def test_incomplete_puf_surface_is_consume_only_and_fails_at_the_signal_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    direct = with_us_retirement_distribution_inputs(_frame(), seed=0, time_period=2024)
+    incomplete = clone_us_frame_for_puf_support(direct)
+    incomplete.table("person").drop(columns=[missing], inplace=True)
+
+    class UnexpectedQRF:
+        def __init__(self, **kwargs: object) -> None:
+            raise AssertionError("an incomplete support surface must not be refit")
+
+    monkeypatch.setattr(module, "QRF", UnexpectedQRF)
+    result = with_us_retirement_distribution_inputs(
+        incomplete,
+        seed=7,
+        time_period=2024,
+    )
+
+    assert result is incomplete
+    gate = us_retirement_distributions_signal_gate(result)
+    assert not gate.passed
+    assert gate.failures == (f"person columns missing: {[missing]}.",)
+    assert gate.details == {"missing": [missing]}
 
 
 def test_gate_rejects_a_default_or_source_divergent_leaf() -> None:

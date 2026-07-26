@@ -600,22 +600,19 @@ def with_us_retirement_distribution_inputs(
     """Materialize measured retirement-distribution leaves on a US frame.
 
     ``force_puf_imputation`` belongs only at the base builder's post-clone
-    boundary.  A materialized support surface can later retain a frozen
-    selection whose rare ASEC donors differ from the full base.  Refitting
+    boundary.  Every later support-frame call is consume-only, including when
+    a frozen selection is missing or has flattened a rare leaf.  Refitting
     there would make support selection redefine the donor universe and can
     broadcast a rare leaf such as ``keogh_distributions`` across the retained
-    PUF rows.  The downstream signal gate, rather than a refit, rejects a
-    materialized support surface that selection leaves degenerate.
+    PUF rows.  The downstream signal gate, rather than a refit, owns support
+    surface completeness and signal.
     """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US retirement distributions require the US schema.")
     person = frame.table("person")
     has_support_channels = _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns
-    surface_is_materialized = all(
-        column in person for column in US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS
-    )
-    if has_support_channels and surface_is_materialized and not force_puf_imputation:
+    if has_support_channels and not force_puf_imputation:
         return frame
     if not has_support_channels and _retirement_distribution_surface_carries_signal(
         frame

@@ -2972,7 +2972,10 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
-@pytest.mark.parametrize("terminal_mode", ["merge", "integrity", "crash", "telemetry"])
+@pytest.mark.parametrize(
+    "terminal_mode",
+    ["merge", "integrity", "retirement", "crash", "telemetry"],
+)
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
 ) -> None:
@@ -2985,6 +2988,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     Bernoulli-law violation; that failure reaches the written diagnostics
     and the single terminal batch while the delivery gate passes and every
     later terminal group still runs.
+    ``retirement``: an incomplete consume-only retirement surface reports its
+    missing leaves through the same written diagnostics and terminal batch,
+    while later terminal groups still run.
     ``crash``: the degraded-mode guards themselves are exercised — the
     health-input evaluation raises, the incumbent path is missing, and
     ``_release_gate_failures`` raises; each records a line instead of
@@ -3027,6 +3033,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "source_stage_events": [],
         "terminal_gate_events": [],
     }
+    retirement_missing_failure = (
+        "person columns missing: ['taxable_403b_distributions', 'keogh_distributions']."
+    )
 
     class FakeFrame:
         def n(self, entity):
@@ -3102,7 +3111,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
-    if terminal_mode in {"integrity", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry"}:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -3663,14 +3672,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_retirement_distributions_signal_gate(frame):
+        missing = terminal_mode == "retirement"
+        return builder.GateResult(
+            name="retirement_distributions_signal",
+            passed=not missing,
+            failures=((retirement_missing_failure,) if missing else ()),
+            details=(
+                {
+                    "missing": [
+                        "taxable_403b_distributions",
+                        "keogh_distributions",
+                    ]
+                }
+                if missing
+                else {"checked": True}
+            ),
+        )
+
     monkeypatch.setattr(
         builder,
         "us_retirement_distributions_signal_gate",
-        lambda frame: builder.GateResult(
-            name="retirement_distributions_signal",
-            passed=True,
-            details={"checked": True},
-        ),
+        fake_retirement_distributions_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4362,11 +4386,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_ssi_delivery_gate(diagnostics, *, targets):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
-        # The integrity case passes delivery to isolate FINAL-INTEGRITY
-        # collection. Other modes retain the populace#547 delivery cofailure
-        # and its written retry basis.
+        # The integrity and retirement cases pass delivery to isolate their
+        # own early failure. Other modes retain the populace#547 delivery
+        # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode == "integrity"
+        passes = terminal_mode in {"integrity", "retirement"}
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -4431,7 +4455,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
-        if terminal_mode == "integrity":
+        if terminal_mode == "retirement":
+            assert message.startswith(
+                "Release gates failed: Retirement-distribution signal failed: "
+                f"{retirement_missing_failure}"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "integrity":
             assert message.startswith(
                 "Release gates failed: SSI take-up final measurement failed: "
                 "Bernoulli-law violation [final-integrity-sentinel]"
@@ -4465,7 +4495,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
-    if terminal_mode == "integrity":
+    if terminal_mode == "retirement":
+        assert (
+            "Retirement-distribution signal failed: "
+            f"{retirement_missing_failure}"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "integrity":
         assert (
             "SSI take-up final measurement failed: "
             "Bernoulli-law violation [final-integrity-sentinel]"
@@ -4480,22 +4516,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert not list(release_dir.glob("*manifest*"))
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
-    if terminal_mode in {"integrity", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
             "qrf_tail_concentration",
         ]
     if terminal_mode != "crash":
-        # The retry line carries the written artifact's sha256 — the
-        # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
-        # by the failure itself (sol round 2, new minor).
-        import hashlib
-
-        written_sha = hashlib.sha256(
-            (release_dir / "us_ssi_take_up.json").read_bytes()
-        ).hexdigest()
-        if terminal_mode == "integrity":
+        if terminal_mode == "retirement":
+            expected_gate_failures = [
+                f"Retirement-distribution signal failed: {retirement_missing_failure}",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        elif terminal_mode == "integrity":
             expected_gate_failures = [
                 "SSI take-up final measurement failed: "
                 "Bernoulli-law violation [final-integrity-sentinel]",
@@ -4508,6 +4543,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "ctc failed",
             ]
         else:
+            # The retry line carries the written artifact's sha256 — the
+            # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
+            # by the failure itself (sol round 2, new minor).
+            import hashlib
+
+            written_sha = hashlib.sha256(
+                (release_dir / "us_ssi_take_up.json").read_bytes()
+            ).hexdigest()
             expected_gate_failures = [
                 "SSI take-up delivery failed: 18_64 delivered over envelope "
                 "[cofailure-sentinel]",
@@ -4711,7 +4754,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
     ]
-    if terminal_mode != "integrity":
+    if terminal_mode not in {"integrity", "retirement"}:
         # A delivery miss rewrites the final measurement as the retry basis.
         expected_ssi_event_order.append("write:us_ssi_take_up.json")
     assert captured["ssi_event_order"] == expected_ssi_event_order
