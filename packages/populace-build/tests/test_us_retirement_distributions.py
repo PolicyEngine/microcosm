@@ -390,6 +390,8 @@ def test_completed_puf_surface_survives_narrowed_support_without_refit(
     assert before.passed, before.failures
     before_share = before.details["nonzero_shares"]["keogh_distributions"]
     assert 0.0000001 <= before_share <= 0.005
+    before_values = selected.table("person")[list(_OUTPUTS)].copy()
+    before_keogh_carriers = int((before_values["keogh_distributions"] > 0).sum())
 
     class UnexpectedQRF:
         def __init__(self, **kwargs: object) -> None:
@@ -406,6 +408,27 @@ def test_completed_puf_surface_survives_narrowed_support_without_refit(
     after = us_retirement_distributions_signal_gate(result)
     assert after.passed, after.failures
     assert after.details["nonzero_shares"]["keogh_distributions"] == before_share
+    pd.testing.assert_frame_equal(
+        result.table("person")[list(_OUTPUTS)],
+        before_values,
+    )
+    assert (
+        result.table("person")["keogh_distributions"].gt(0).sum()
+        == before_keogh_carriers
+    )
+
+    # If support selection removes every rare carrier from one leaf, preserve
+    # the completed surface and fail closed at the gate instead of refitting.
+    result.table("person")["keogh_distributions"] = 0.0
+    degenerate = with_us_retirement_distribution_inputs(
+        result,
+        seed=7,
+        time_period=2024,
+    )
+    assert degenerate is result
+    degenerate_gate = us_retirement_distributions_signal_gate(degenerate)
+    assert not degenerate_gate.passed
+    assert any("keogh_distributions" in failure for failure in degenerate_gate.failures)
 
 
 def test_gate_rejects_a_default_or_source_divergent_leaf() -> None:
