@@ -1791,8 +1791,8 @@ def us_ssi_take_up_delivery_gate(
         if not all(np.isfinite(value) for value in (selected, capacity, floor)):
             invalid_diagnostics_failure_present = True
             failures.append(
-                f"SSI take-up age band {key!r} has nonfinite delivered "
-                "recipient/capacity/floor diagnostics."
+                f"SSI take-up age band {key!r} has missing, non-numeric, or "
+                "nonfinite delivered recipient/capacity/floor diagnostics."
             )
             continue
         signed_relative = (selected - target) / target

@@ -429,7 +429,7 @@ def test_reporter_floor_equal_target_is_explicit_and_exact() -> None:
         assert band["selected_recipient_weight"] == pytest.approx(_REPORTER_FLOOR)
     assert _band_prior(20.0, 20.0, 20.0) == 0.0
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
-    assert us_ssi_take_up_delivery_gate(diagnostics, targets=targets).passed
+    assert us_ssi_take_up_delivery_gate(_delivered(diagnostics), targets=targets).passed
 
 
 def test_reporter_floor_equal_target_and_capacity_passes_delivery_gate() -> None:
@@ -453,7 +453,7 @@ def test_reporter_floor_equal_target_and_capacity_passes_delivery_gate() -> None
     assert row["assignment_prior"] == 0.0
     assert row["assignment_prior_status"] == "reporter_floor_meets_target"
 
-    delivery = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    delivery = us_ssi_take_up_delivery_gate(_delivered(diagnostics), targets=targets)
     assert delivery.passed
     assert delivery.details["prior_weight_basis_retry_applicable"] is False
 
@@ -469,7 +469,7 @@ def test_delivery_gate_fails_reporter_floor_excess_inside_tolerance() -> None:
         "target"
     ] < US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
 
-    gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    gate = us_ssi_take_up_delivery_gate(_delivered(diagnostics), targets=targets)
     assert not gate.passed
     assert any(
         "18_64" in failure
@@ -556,8 +556,7 @@ def test_no_drawable_candidate_capacity_is_named() -> None:
     )
     assert set(adult_flags.loc[adult_flags].index) == {"18_64:0", "18_64:6"}
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
-    delivered = copy.deepcopy(diagnostics)
-    delivered["age_bands"][2]["selected_recipient_weight"] = 50.0
+    delivered = _delivered(diagnostics, **{"65_plus": 50.0})
     delivery = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
     assert not delivery.passed
     assert any(
@@ -889,11 +888,17 @@ def test_enforced_bands_are_the_adult_bands_pending_child_disability_stage() -> 
 
 def test_release_artifact_loader_basis_drives_floor_aware_band_priors() -> None:
     capacities = {"under_18": 200.0, "18_64": 100.0, "65_plus": 500.0}
-    _, _, _, payload = _assigned()
+    payload = _release_final_diagnostics()
     for row in payload["age_bands"]:
         key = row["age_band"]
         row["candidate_capacity"] = capacities[key]
         row["reporter_candidate_floor"] = _REPORTER_FLOOR
+        row["drawable_candidate_capacity"] = capacities[key] - _REPORTER_FLOOR
+        row["prior_recomputed_from_current_weights"] = _expected_prior(
+            50.0, capacity=capacities[key]
+        )
+        row["prior_status_recomputed_from_current_weights"] = "floor_aware"
+        row["saturated"] = False
     basis = ssi_take_up_prior_basis_from_artifact(
         payload,
         targets=_TARGETS,
@@ -1067,6 +1072,7 @@ def test_attempt_5_seeded_delivery_removes_floor_blind_overshoot() -> None:
         # thresholds (PR #554 review finding 1).
         return {
             "schema_version": 4,
+            "measurement_phase": "release_final",
             "age_bands": [
                 {
                     "age_band": "under_18",
@@ -1565,6 +1571,7 @@ def test_gate_prior_audit_epsilon_is_dimensionless_at_absurd_capacity() -> None:
     tampered = copy.deepcopy(diagnostics)
     row = tampered["age_bands"][0]
     row["candidate_capacity"] = 1e20
+    row["drawable_candidate_capacity"] = 1e20 - _REPORTER_FLOOR
     row["max_source_candidate_weight"] = 1e20
     row["saturated"] = False
     row["prior_recomputed_from_current_weights"] = _expected_prior(50.0, capacity=1e20)
