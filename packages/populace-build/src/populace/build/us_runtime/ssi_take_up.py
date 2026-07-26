@@ -61,7 +61,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from importlib.resources import files
@@ -1729,29 +1728,28 @@ def us_ssi_take_up_delivery_gate(
     under the SSA count because the frozen thresholds' weight basis stopped
     being true after calibration and the band miss was scorecard-only
     (populace#477's cutover). This gate makes an enforced band miss a
-    release failure. An ordinary delivered-weight miss names the documented
-    remedy — re-run the builder with
-    ``--ssi-take-up-prior-weight-basis`` pointing at this attempt's
-    ``us_ssi_take_up.json``, recomputing the thresholds exactly once from
-    the delivered weights. A reporter floor above target, or a target above
-    a band with no drawable candidate mass, instead fails explicitly as a
-    reporter-identification/support problem: changing the prior cannot repair
-    either condition. Candidate capacity at or below the target is likewise
-    an explicit support failure for enforced bands, not a weight-basis retry.
-    There is no in-build reconcile loop and no per-target knob
-    (populace#492). The under-18 band stays fenced pending populace#453/#509
-    and is reported in the details, never enforced.
+    release failure. Advice is conditional for each ordinary miss: when its
+    release-weight prior differs exactly from the assignment prior, the gate
+    names the one-shot ``--ssi-take-up-prior-weight-basis`` retry; when the
+    priors are equal, it explains that the same seed would reproduce
+    identical flags for that band. The run-level retry is applicable when at
+    least one missed band would change and no invalid-diagnostics or
+    structural-support failure blocks the run. A reporter floor above target,
+    a target above a band with no drawable candidate mass, or candidate
+    capacity at or below target instead fails explicitly as a
+    reporter-identification/support problem. There is no in-build reconcile
+    loop and no per-target knob (populace#492). The under-18 band stays fenced
+    pending populace#453/#509 and is reported in the details, never enforced.
     """
 
     expected_targets = _normalize_targets(targets)
     tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     failures: list[str] = []
-    ordinary_delivery_misses: list[str] = []
+    ordinary_delivery_misses: list[tuple[str, bool]] = []
     enforced_rows: list[dict[str, object]] = []
     fenced_rows: list[dict[str, object]] = []
     structural_support_failure_present = False
     invalid_diagnostics_failure_present = False
-    retryable_delivery_miss_present = False
     rows: Mapping[str, Mapping[str, object]] = {}
     if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
         invalid_diagnostics_failure_present = True
@@ -1788,11 +1786,20 @@ def us_ssi_take_up_delivery_gate(
         except (TypeError, ValueError):
             selected = capacity = floor = float("nan")
             assignment_prior = recomputed_prior = float("nan")
-        if not all(np.isfinite(value) for value in (selected, capacity, floor)):
+        if not all(
+            np.isfinite(value)
+            for value in (
+                selected,
+                capacity,
+                floor,
+                assignment_prior,
+                recomputed_prior,
+            )
+        ):
             invalid_diagnostics_failure_present = True
             failures.append(
                 f"SSI take-up age band {key!r} has missing, non-numeric, or "
-                "nonfinite delivered recipient/capacity/floor diagnostics."
+                "nonfinite delivered recipient/capacity/floor/prior diagnostics."
             )
             continue
         signed_relative = (selected - target) / target
@@ -1848,23 +1855,19 @@ def us_ssi_take_up_delivery_gate(
                 basis_would_change = bool(
                     np.isfinite(assignment_prior)
                     and np.isfinite(recomputed_prior)
-                    and not math.isclose(
-                        assignment_prior,
-                        recomputed_prior,
-                        rel_tol=1e-9,
-                        abs_tol=1e-12,
-                    )
+                    and assignment_prior != recomputed_prior
                 )
-                if basis_would_change:
-                    retryable_delivery_miss_present = True
                 ordinary_delivery_misses.append(
-                    f"SSI take-up delivered {selected:,.0f} weighted "
-                    f"recipients for enforced age band {key!r} against "
-                    f"the ledger target {target:,.0f} "
-                    f"({signed_relative:+.1%} vs the ±{tolerance:.0%} "
-                    f"envelope; assignment prior {assignment_prior:.7f}, "
-                    f"release-weight recomputation "
-                    f"{recomputed_prior:.7f})."
+                    (
+                        f"SSI take-up delivered {selected:,.0f} weighted "
+                        f"recipients for enforced age band {key!r} against "
+                        f"the ledger target {target:,.0f} "
+                        f"({signed_relative:+.1%} vs the ±{tolerance:.0%} "
+                        f"envelope; assignment prior {assignment_prior!r}, "
+                        "release-weight recomputation "
+                        f"{recomputed_prior!r}).",
+                        basis_would_change,
+                    )
                 )
         else:
             fenced_rows.append(
@@ -1879,6 +1882,9 @@ def us_ssi_take_up_delivery_gate(
                     ),
                 }
             )
+    retryable_delivery_miss_present = any(
+        basis_would_change for _, basis_would_change in ordinary_delivery_misses
+    )
     prior_weight_basis_retry_applicable = (
         bool(ordinary_delivery_misses)
         and retryable_delivery_miss_present
@@ -1886,42 +1892,33 @@ def us_ssi_take_up_delivery_gate(
             structural_support_failure_present or invalid_diagnostics_failure_present
         )
     )
-    if prior_weight_basis_retry_applicable:
-        failures.extend(
-            failure + " The frozen thresholds' weight basis is not true of the "
-            "release weights: re-run the builder with "
-            "--ssi-take-up-prior-weight-basis pointing at this attempt's "
-            "us_ssi_take_up.json so the thresholds are recomputed exactly "
-            "once from the delivered weights (populace#507/#508)."
-            for failure in ordinary_delivery_misses
-        )
-    elif (
-        ordinary_delivery_misses
-        and not retryable_delivery_miss_present
-        and not (
-            structural_support_failure_present or invalid_diagnostics_failure_present
-        )
+    if ordinary_delivery_misses and not (
+        structural_support_failure_present or invalid_diagnostics_failure_present
     ):
-        # The release-weight recomputation reproduces the assignment prior
-        # for every missing enforced band: a basis retry would regenerate
-        # identical flags under the same seed (PR #554 review finding 1).
-        # The residual is draw realization on this support, not a stale
-        # weight basis — no rerun flag can change it.
         failures.extend(
-            failure + " The weight basis is already true of the release "
-            "weights (the release-weight prior recomputation matches the "
-            "assignment prior), so a --ssi-take-up-prior-weight-basis retry "
-            "would reproduce identical flags. The residual is draw "
-            "realization on the current support; repair support/reporter "
-            "identification rather than re-running."
-            for failure in ordinary_delivery_misses
+            failure
+            + (
+                " The frozen thresholds' weight basis is not true of the "
+                "release weights for this band: re-run the builder with "
+                "--ssi-take-up-prior-weight-basis pointing at this attempt's "
+                "us_ssi_take_up.json so the thresholds are recomputed exactly "
+                "once from the delivered weights (populace#507/#508)."
+                if basis_would_change
+                else " The weight basis is already true of the release weights "
+                "for this band (the release-weight prior recomputation matches "
+                "the assignment prior), so a --ssi-take-up-prior-weight-basis "
+                "retry would reproduce identical flags for this band. The "
+                "residual is draw realization on the current support; repair "
+                "support/reporter identification rather than re-running."
+            )
+            for failure, basis_would_change in ordinary_delivery_misses
         )
     else:
         failures.extend(
             failure + " This ordinary delivered-weight miss co-occurs with a "
             "non-retryable SSI diagnostics/support failure, so changing the "
             "prior weight basis cannot clear this run."
-            for failure in ordinary_delivery_misses
+            for failure, _ in ordinary_delivery_misses
         )
     return GateResult(
         name="ssi_take_up_delivery",

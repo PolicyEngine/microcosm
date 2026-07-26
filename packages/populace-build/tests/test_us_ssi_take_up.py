@@ -1413,6 +1413,46 @@ def test_delivery_gate_names_the_remedy_when_the_basis_would_change() -> None:
     assert not any("under_18" in failure for failure in gate.failures)
 
 
+def test_delivery_gate_mixed_misses_get_exact_per_band_advice() -> None:
+    """A representably distinct threshold can flip a marginal source.
+
+    The 65+ priors reproduce the reviewer's exact counterexample: the stable
+    draw lies strictly between two thresholds that the old tolerance-based
+    classifier treated as equal. The simultaneous 18-64 miss keeps equal
+    priors, so each failure line must describe only its own band's remedy.
+    """
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(diagnostics, **{"18_64": 60.0, "65_plus": 80.0})
+    marginal_draw = 0.467845694336413
+    assignment_prior = 0.467845694286413
+    recomputed_prior = 0.467845694386413
+    assert assignment_prior < marginal_draw < recomputed_prior
+    assert assignment_prior != recomputed_prior
+    for band in delivered["age_bands"]:
+        if band["age_band"] == "65_plus":
+            band["assignment_prior"] = assignment_prior
+            band["prior_recomputed_from_current_weights"] = recomputed_prior
+
+    gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
+
+    assert not gate.passed
+    assert gate.details["prior_weight_basis_retry_applicable"] is True
+    adult_failure = next(
+        failure for failure in gate.failures if "age band '18_64'" in failure
+    )
+    aged_failure = next(
+        failure for failure in gate.failures if "age band '65_plus'" in failure
+    )
+    assert "already true of the release weights for this band" in adult_failure
+    assert "identical flags for this band" in adult_failure
+    assert "re-run the builder with" not in adult_failure
+    assert "is not true of the release weights for this band" in aged_failure
+    assert "re-run the builder with --ssi-take-up-prior-weight-basis" in aged_failure
+    assert "already true" not in aged_failure
+    assert "identical flags" not in aged_failure
+
+
 def test_delivery_gate_names_saturated_enforced_support_inside_tolerance() -> None:
     _, _, _, diagnostics = _assigned()
     delivered = _delivered(
@@ -1509,6 +1549,42 @@ def test_delivery_gate_rejects_malformed_diagnostics() -> None:
     corrupt_gate = us_ssi_take_up_delivery_gate(non_numeric, targets=_TARGETS)
     assert not corrupt_gate.passed
     assert any("non-numeric" in failure for failure in corrupt_gate.failures)
+
+
+@pytest.mark.parametrize(
+    ("field", "mutation"),
+    [
+        ("assignment_prior", "missing"),
+        ("assignment_prior", "nan"),
+        ("prior_recomputed_from_current_weights", "missing"),
+        ("prior_recomputed_from_current_weights", "nan"),
+    ],
+)
+def test_delivery_gate_rejects_missing_or_nonfinite_prior_diagnostics(
+    field: str,
+    mutation: str,
+) -> None:
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(diagnostics, **{"18_64": 50.0, "65_plus": 50.0})
+    adult = delivered["age_bands"][1]
+    if mutation == "missing":
+        adult.pop(field)
+    else:
+        adult[field] = float("nan")
+
+    gate = us_ssi_take_up_delivery_gate(delivered, targets=_TARGETS)
+
+    assert not gate.passed
+    assert gate.details["invalid_diagnostics_failure_present"] is True
+    assert gate.details["ordinary_delivery_miss_present"] is False
+    assert gate.details["prior_weight_basis_retry_applicable"] is False
+    assert any("prior diagnostics" in failure for failure in gate.failures)
+    assert not any(
+        "already true" in failure
+        or "identical flags" in failure
+        or "is not true of the release weights" in failure
+        for failure in gate.failures
+    )
 
 
 def test_gate_rejects_basis_arithmetic_drift() -> None:
