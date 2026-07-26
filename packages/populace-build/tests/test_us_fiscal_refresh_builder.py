@@ -4731,18 +4731,27 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_delivery_gate_targets"] == fake_band_targets
     # The frozen-assignment digest invalidates the materialization cache on
     # any retry whose flags differ (populace#507/#508 split-brain fix).
-    assert (
-        captured["materialize_kwargs"]["target_materialization_cache_context"][
-            "ssi_take_up_assignment_sha256"
-        ]
-        == "ssi-digest-sentinel"
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    assert cache_context["ssi_take_up_assignment_sha256"] == "ssi-digest-sentinel"
+    assert cache_context["selection_identities_sha256"] is None
+    expected_materializer_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
     )
-    assert (
-        captured["materialize_kwargs"]["target_materialization_cache_context"][
-            "selection_identities_sha256"
-        ]
-        is None
-    )
+    assert cache_context[
+        "target_frame_materializer_identity_sha256"
+    ] == builder._target_frame_checkpoint_digest(expected_materializer_identity)
     # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
     # the #548 batched terminal gates): the final measurement hits disk
     # BEFORE the final integrity gate runs. Delivery still evaluates after
@@ -5985,6 +5994,67 @@ def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> N
             identity,
             n_households=2,
         )
+
+
+def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> None:
+    """Schema-2 and pre-preservation materializer vectors cannot serve."""
+
+    builder = _load_builder_module()
+    assert builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION == 3
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+    current_context = {
+        "target_frame_materializer_identity_sha256": "version-10-preserved-surface",
+    }
+    current_identity = builder._target_materialization_cache_identity(
+        context=current_context,
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+
+    for stale_schema in (2, 1):
+        stale_identity = {
+            **current_identity,
+            "schema_version": stale_schema,
+        }
+        builder._write_reform_income_tax_cache(
+            tmp_path,
+            stale_identity,
+            np.asarray([1.0, 2.0]),
+        )
+        assert (
+            builder._read_reform_income_tax_cache(
+                tmp_path,
+                current_identity,
+                n_households=2,
+            )
+            is None
+        )
+
+    pre_557_identity = builder._target_materialization_cache_identity(
+        context={
+            "target_frame_materializer_identity_sha256": (
+                "version-9-release-refitted-surface"
+            ),
+        },
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+    builder._write_reform_income_tax_cache(
+        tmp_path,
+        pre_557_identity,
+        np.asarray([3.0, 4.0]),
+    )
+    assert (
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            current_identity,
+            n_households=2,
+        )
+        is None
+    )
 
 
 def test_soi_eitc_child_targets_materialize_distinct_child_slices(
@@ -7788,6 +7858,7 @@ def _base_cache_context(builder):
         "target_period": builder.PERIOD,
         "target_registry_version": "registry-A",
         "congressional_district_vintage_crosswalk_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-sha-A",
     }
 
 
@@ -7936,6 +8007,7 @@ def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
     [
         ("base_dataset_sha256", "base-sha-B"),
         ("weeks_unemployed_source_sha256", "weeks-source-sha-B"),
+        ("target_frame_materializer_identity_sha256", "materializer-sha-B"),
     ],
 )
 def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
@@ -7969,8 +8041,8 @@ def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # A different base H5 or measured LKWEEKS source must not share
-    # per-household vectors even at the same record count.
+    # A different base H5, measured LKWEEKS source, or complete target-frame
+    # materializer identity must not share vectors at the same record count.
     context_b = _base_cache_context(builder)
     context_b[identity_key] = new_value
     calls_b: list[str] = []
@@ -7998,9 +8070,8 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     monkeypatch,
     tmp_path,
 ) -> None:
-    # #217 acceptance criterion 1: a rerun that changes only build state that does
-    # not affect per-household reform estimates (build commit, seed, registry
-    # version) must reuse the cached reform vectors rather than recompute them.
+    # #217 acceptance criterion 1: a rerun that changes only the build commit
+    # must reuse the cached reform vectors rather than recompute them.
     builder = _load_builder_module()
     frame = _multi_reform_frame(builder)
     reforms = (("jct_reform_a", "credit_a"),)
@@ -8025,13 +8096,10 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # Only build_commit / seed / target_registry_version change (a code-only or
-    # calibration-only rerun). Everything that determines the reform estimate is
-    # identical, so the reform must load from cache.
+    # Only build_commit changes. The full materializer identity remains equal,
+    # so the reform must load from cache.
     context_b = _base_cache_context(builder)
     context_b["build_commit"] = "commit-B"
-    context_b["seed"] = 12345
-    context_b["target_registry_version"] = "registry-B"
     calls_b: list[str] = []
     _install_multi_reform_fakes(
         builder,
@@ -9072,14 +9140,14 @@ def test_final_medicaid_green_path_evaluates_normally() -> None:
     assert failures == []
 
 
-def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
-    """The #217 reform-vector cache whitelist carries both support digests.
+def test_reform_vector_cache_context_tracks_support_and_materializer() -> None:
+    """The reform-vector whitelist carries support and materializer digests.
 
     Whether a JCT reform income-tax estimate can move with
     takes_up_ssi_if_eligible is an engine-graph question the build must not
     answer by assumption, while two selected supports can share positional
-    SSI flag bytes. The assignment and selection digests therefore invalidate
-    reform vectors independently."""
+    SSI flag bytes. The assignment, selection, and complete target-frame
+    materializer digests therefore invalidate reform vectors independently."""
 
     builder = _load_builder_module()
     base = {
@@ -9091,10 +9159,15 @@ def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
         "build_commit": "irrelevant-to-reform-vectors",
         "ssi_take_up_assignment_sha256": "digest-a",
         "selection_identities_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-a",
     }
     changed_assignment = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
     selected = {**base, "selection_identities_sha256": "cd" * 32}
     selected_other = {**base, "selection_identities_sha256": "ef" * 32}
+    changed_materializer = {
+        **base,
+        "target_frame_materializer_identity_sha256": "materializer-b",
+    }
     projected = builder._reform_vector_cache_context(base)
     assert builder._reform_vector_cache_context(
         base
@@ -9103,8 +9176,14 @@ def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
     assert builder._reform_vector_cache_context(
         selected
     ) != builder._reform_vector_cache_context(selected_other)
+    assert projected != builder._reform_vector_cache_context(changed_materializer)
     assert "selection_identities_sha256" in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
     assert projected["selection_identities_sha256"] is None
+    assert (
+        "target_frame_materializer_identity_sha256"
+        in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    )
+    assert projected["target_frame_materializer_identity_sha256"] == "materializer-a"
     assert "build_commit" not in projected
 
 

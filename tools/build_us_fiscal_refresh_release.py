@@ -286,14 +286,15 @@ US_FISCAL_TARGET_LOSS_CAP = 1.0
 # the inputs that actually determine per-household reform estimates and no longer
 # includes build_commit / seed / target_registry_version. Old (v1) coarse-key
 # entries live under different filenames, so a mixed cache dir never collides.
-TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 2
+# Bumped 2 -> 3 for #557: absolute reform vectors now bind to the target-frame
+# materializer identity. Pre-#557 vectors can reflect release-refitted retirement
+# leaves and must not mix with a preserved-surface baseline.
+TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 3
 # The subset of the materialization cache context that determines per-household JCT
-# reform income-tax vectors (#217). Anything outside this set — build commit, RNG
-# seed, target registry version, calibration settings — cannot change a reform's
-# per-household estimate, so it is deliberately excluded from the reform-vector
-# cache key. That lets a restart at a newer build commit (or after a registry-only
-# change) reuse already-materialized reforms instead of recomputing all of them,
-# while a change to any of these keys still invalidates the entry (no stale reuse).
+# reform income-tax vectors (#217). The raw build commit and calibration settings
+# stay excluded. The materializer-identity digest transitively binds staged-frame
+# semantics, seed, registry, and support selection, so any such change invalidates
+# the vectors even when the on-disk base hash is stable.
 REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "base_dataset_sha256",
     "weeks_unemployed_source_sha256",
@@ -311,6 +312,10 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # describe. Same-length supports can share positional SSI flag bytes, so
     # this digest remains independent of the assignment digest.
     "selection_identities_sha256",
+    # Absolute reform-tax vectors are later subtracted from the freshly
+    # materialized baseline. Bind them to the complete target-frame identity
+    # so pre-#557 release-refitted surfaces cannot mix with preserved surfaces.
+    "target_frame_materializer_identity_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 2: the medicaid_take_up stage (populace #331) changed base_frame's
@@ -1155,7 +1160,7 @@ def _parse_args() -> argparse.Namespace:
             "stores expensive per-household target materialization artifacts "
             "such as JCT reform income-tax vectors and is content-addressed by "
             "base H5, policyengine-us version, period, geography crosswalk, and "
-            "reform (see #217)."
+            "the target-frame materializer identity and reform (see #217/#557)."
         ),
     )
     parser.add_argument(
@@ -1455,10 +1460,9 @@ def _target_materialization_cache_identity(
         "n_households": int(n_households),
         "reform_measure": str(reform_spec.measure),
         "neutralized_variable": str(reform_spec.neutralized_variable),
-        # #217: reform-vector identity uses only the inputs that determine the
-        # per-household estimate. Build commit / seed / registry version are
-        # intentionally excluded so calibration-only or commit-only reruns reuse
-        # the cache; base H5 / PE-US version / period / geography still invalidate.
+        # #217/#557: build commit remains intentionally excluded, while the
+        # target-frame materializer digest binds seed, registry, staged-frame
+        # semantics, and support selection to the absolute reform vector.
         "context": dict(sorted(_reform_vector_cache_context(context).items())),
     }
 
@@ -8826,6 +8830,9 @@ def main() -> None:
             else ssi_take_up_prior_basis.source_sha256
         ),
     )
+    target_frame_materializer_identity_sha256 = _target_frame_checkpoint_digest(
+        target_frame_checkpoint_identity
+    )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
         target_specs,
@@ -8855,6 +8862,12 @@ def main() -> None:
             # intentionally does not carry this cache identity.
             "selection_identities_sha256": (
                 None if selection_source is None else selection_source.identities_sha256
+            ),
+            # Reform caches store absolute income-tax vectors, which are
+            # subtracted from a freshly materialized baseline. Bind both sides
+            # to one complete materializer identity (populace#557).
+            "target_frame_materializer_identity_sha256": (
+                target_frame_materializer_identity_sha256
             ),
         },
         gate_congressional_district_targets=args.gate_congressional_district_targets,
