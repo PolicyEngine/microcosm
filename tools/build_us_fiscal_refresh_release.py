@@ -340,7 +340,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # reused (populace#543, post-merge audit).
 # 9: #374 SIPP+SCF financial-asset blend changes the pre-materialization
 # frame; warm SCF-only checkpoints must not calibrate the blended frame.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 9
+# 10: #557 preserves the staged retirement-distribution surface through
+# release materialization; pre-#557 checkpoints can carry QRF-refitted leaves
+# and must not serve the preserved-surface baseline.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 10
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500

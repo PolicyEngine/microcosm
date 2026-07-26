@@ -119,9 +119,9 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 9 = the #374 SIPP+SCF blend changes the pre-materialization frame;
-    # SCF-only checkpoints (8 = post-#539 ORG rewrite) must not be reused.
-    assert identity["materializer_version"] == 9
+    # 10 = #557 preserves the staged retirement surface through release
+    # materialization; pre-#557 QRF-refitted checkpoints (9) must not serve.
+    assert identity["materializer_version"] == 10
     # The SSI prior-weight basis is identity-bearing (populace#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -179,10 +179,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    #539 rewrote staged org-wage inputs without bumping the materializer
-    version, so version-7 checkpoints carry pre-fix ORG rows (populace#543).
-    The version constant participates in the identity comparison; this pins
-    the rejection path for the stored-7 vs current shape specifically.
+    #557 changed the staged retirement-surface semantics: version-9
+    checkpoints can carry release-refitted leaves instead of the preserved
+    support-built surface. The version constant participates in the identity
+    comparison; this pins the stored-9 versus current-10 rejection directly.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -216,10 +216,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 8 = current-main SCF-only-era checkpoints (the #510 review's stale
-    # hazard); 7 = pre-#539. Both must miss against expected version 9.
-    stale_identity = {**dict(identity), "materializer_version": 8}
-    older_identity = {**dict(identity), "materializer_version": 7}
+    # 9 = the pre-#557 release-refit world; 8 = the still-older pre-#374 blend
+    # world. Both must miss against expected version 10.
+    stale_identity = {**dict(identity), "materializer_version": 9}
+    older_identity = {**dict(identity), "materializer_version": 8}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
