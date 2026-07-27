@@ -516,9 +516,7 @@ def test_puf_donor_builder_threads_explicit_engine_agi(
     monkeypatch.setattr(builder, "_puf_adjusted_gross_income", fake_agi)
     monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
 
-    assert (
-        builder._puf_tax_unit_donor_from_h5(path, target_year=2024) == "donor"
-    )
+    assert builder._puf_tax_unit_donor_from_h5(path, target_year=2024) == "donor"
     assert captured["agi_path"] == path
     assert captured["target_year"] == 2024
     assert captured["expected_tax_unit_ids"] is arrays["tax_unit_id"]

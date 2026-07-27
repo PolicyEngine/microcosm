@@ -1230,8 +1230,7 @@ class TestShippedManifest:
             reason = by_id[probe_id].reason
             assert "JCX-35-25" in reason
             assert (
-                "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
-                in reason
+                "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect" in reason
             )
             assert "-$32.806 billion" in reason
         neutralization = by_id["fsla_overtime_premium_neutralization"].reason
@@ -1248,9 +1247,7 @@ class TestShippedManifest:
         for probe_id in ("obbba_no_tax_on_tips", "tip_income_neutralization"):
             reason = by_id[probe_id].reason
             assert "JCX-35-25" in reason
-            assert (
-                "jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect" in reason
-            )
+            assert "jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect" in reason
             assert "-$10.121 billion" in reason
         neutralization = by_id["tip_income_neutralization"].reason
         assert "certified Build N" in neutralization

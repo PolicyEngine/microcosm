@@ -6515,9 +6515,7 @@ def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
                     [1_000.0, 2_000.0, 3_000.0, 4_000.0]
                 ),
                 "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
-                "deductible_mortgage_interest": np.asarray(
-                    [0.5, 1.25, 2.0, 3.0]
-                ),
+                "deductible_mortgage_interest": np.asarray([0.5, 1.25, 2.0, 3.0]),
                 "interest_deduction": np.asarray([1.0, 2.0, 3.0, 4.0]),
                 "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),

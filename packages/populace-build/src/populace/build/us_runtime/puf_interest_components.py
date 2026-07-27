@@ -90,12 +90,8 @@ def _band(raw: dict[str, Any]) -> PufE19200AgiBand:
         ),
         investment_interest_amount=components.investment_interest_amount,
         label=str(raw["label"]),
-        lower_bound=(
-            None if raw["lower_bound"] is None else float(raw["lower_bound"])
-        ),
-        upper_bound=(
-            None if raw["upper_bound"] is None else float(raw["upper_bound"])
-        ),
+        lower_bound=(None if raw["lower_bound"] is None else float(raw["lower_bound"])),
+        upper_bound=(None if raw["upper_bound"] is None else float(raw["upper_bound"])),
     )
 
 
@@ -103,9 +99,7 @@ def _load_source_asset() -> tuple[
     PufE19200InterestComponents,
     tuple[PufE19200AgiBand, ...],
 ]:
-    payload = json.loads(
-        files("populace.build.us").joinpath(_SOURCE_ASSET).read_text()
-    )
+    payload = json.loads(files("populace.build.us").joinpath(_SOURCE_ASSET).read_text())
     source = payload.get("source", {})
     if (
         source.get("tax_year") != 2015

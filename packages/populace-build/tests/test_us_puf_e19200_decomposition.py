@@ -59,9 +59,7 @@ def test_ty2015_e19200_component_rows_are_complete_cited_and_conservative() -> N
             "total_interest_paid_amount": f"CF{band.source_row}",
             "home_mortgage_interest_amount": f"CH{band.source_row}",
             "deductible_points_amount": f"CN{band.source_row}",
-            "qualified_mortgage_insurance_premiums_amount": (
-                f"CP{band.source_row}"
-            ),
+            "qualified_mortgage_insurance_premiums_amount": (f"CP{band.source_row}"),
             "investment_interest_amount": f"CR{band.source_row}",
         }
         published_components = (
@@ -152,10 +150,7 @@ def test_e19200_donor_split_preserves_each_band_and_published_shares() -> None:
     np.testing.assert_allclose(
         source_mortgage,
         np.asarray(
-            [
-                band.home_mortgage_interest_amount
-                for band in US_PUF_E19200_AGI_BANDS
-            ],
+            [band.home_mortgage_interest_amount for band in US_PUF_E19200_AGI_BANDS],
             dtype=np.float64,
         ),
     )

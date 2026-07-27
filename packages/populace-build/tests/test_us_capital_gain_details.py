@@ -43,6 +43,8 @@ requires_us = pytest.mark.skipif(
     not policyengine_us_installed,
     reason="requires the policyengine-us [us] extra (build environment)",
 )
+
+
 class _ResolvedWeights:
     def __init__(self, values: np.ndarray) -> None:
         self.values = values

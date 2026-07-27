@@ -626,10 +626,7 @@ def puf_tax_unit_donor_from_arrays(
             tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN]
             < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
         )
-        tax_unit = (
-            tax_unit.loc[retained]
-            .reset_index(drop=True)
-        )
+        tax_unit = tax_unit.loc[retained].reset_index(drop=True)
     # Keep the split BEFORE _add_predictor_aliases: no mortgage predictor alias
     # exists today, but if one is ever added it must derive from the decomposed
     # column (aliases skip already-present columns, so a post-alias split would
