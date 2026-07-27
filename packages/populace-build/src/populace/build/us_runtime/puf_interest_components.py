@@ -199,8 +199,9 @@ def split_us_puf_e19200_by_agi_band(
     # empirical: with share in [0, 1], either the rounded mortgage or the
     # rounded residual lands in [total/2, total], so one of the two
     # subtractions is exact by Sterbenz's lemma and the pair sums to
-    # ``total`` bit-for-bit for every accepted total (an accepted -0.0
-    # reconstructs as +0.0). The mortgage component deviates from
+    # ``total`` bit-for-bit for every accepted total except signed zero
+    # (an accepted -0.0 reconstructs as +0.0). The mortgage component
+    # deviates from
     # ``total*share`` by at most the two subtractions' roundings — a bound
     # at the half-ULP scale of ``total`` per step, which can amount to
     # several ULPs of the smaller mortgage value itself.

@@ -560,6 +560,26 @@ def puf_tax_unit_donor_from_arrays(
                 "adjusted_gross_income must be real-valued; got dtype "
                 f"{agi_series.dtype}."
             )
+        if agi_series.dtype.kind == "O":
+            # Element screen (PR #561 review, round 3): object and
+            # categorical arrays reach the strict parse below with kind
+            # "O", where object-wrapped booleans become 1.0/0.0 and
+            # object-wrapped complex keeps its real part with only a
+            # warning. Allow only element types whose float conversion is
+            # faithful: real numbers, Decimal, strings (strict-parsed),
+            # and missing values (which fail the finiteness check).
+            inferred = pd.api.types.infer_dtype(agi_series, skipna=True)
+            if inferred not in {
+                "integer",
+                "floating",
+                "mixed-integer-float",
+                "decimal",
+                "string",
+                "empty",
+            }:
+                raise TypeError(
+                    f"adjusted_gross_income must be real-valued; got {inferred} values."
+                )
         agi = pd.to_numeric(agi_series, errors="raise").to_numpy(dtype=np.float64)
         if len(agi) != len(tax_unit_id):
             raise ValueError(

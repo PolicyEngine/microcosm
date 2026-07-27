@@ -465,12 +465,18 @@ def test_donor_api_rejects_non_real_agi_through_a_valid_fixture() -> None:
     donor = call(np.asarray([50_000.0]))
     assert len(donor) == 1
     assert donor["tax_unit_id"].tolist() == [1]
+    # Faithful float conversions are accepted (review round 3): Decimal
+    # and numeric strings parse strictly to the same real value.
+    from decimal import Decimal
+
+    assert len(call([Decimal("50000")])) == 1
+    assert len(call(["50000"])) == 1
 
     with _pytest.raises(ValueError, match="finite"):
         call(np.asarray([np.nan]))
     with _pytest.raises(ValueError, match="finite"):
         call(np.asarray([np.inf]))
-    with _pytest.raises(ValueError):
+    with _pytest.raises(ValueError, match="Unable to parse"):
         call(["not-a-number"])
     # Typed non-real arrays parse to finite numbers under pd.to_numeric and
     # must be rejected by dtype, not by parsing.
@@ -484,3 +490,12 @@ def test_donor_api_rejects_non_real_agi_through_a_valid_fixture() -> None:
         call(np.asarray([1.0 + 2.0j]))
     with _pytest.raises(TypeError, match="real-valued"):
         call(np.asarray([True]))
+    # Object-wrapped and categorical payloads dodge the dtype-kind gate
+    # (review round 3): True parses to 1.0 and complex keeps its real
+    # part, so the element screen must reject them too.
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(np.asarray([True], dtype=object))
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(np.asarray([1.0 + 2.0j], dtype=object))
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(pd.Categorical([True]))
