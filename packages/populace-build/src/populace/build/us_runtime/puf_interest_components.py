@@ -191,14 +191,19 @@ def split_us_puf_e19200_by_agi_band(
         raise ValueError("E19200 must be nonnegative.")
 
     band_index = np.searchsorted(_AGI_UPPER_BOUNDS, agi, side="right")
-    # Reconciled split (PR #561 review finding 1): the naive pair
+    # Reconciled split (PR #561 review, rounds 1-2): the naive pair
     # (total*share, total − total*share) is algebraically conserving but not
     # bit-exact in float64 (e.g. E19200=1.53 in the top band sums to
-    # 1.5300000000000002). Recomputing mortgage as the exact complement of
-    # the rounded residual makes ``mortgage + non_mortgage`` reproduce
-    # ``total`` bit-for-bit on every case we test, including that
-    # reproducer; the residual keeps its published-share definition to one
-    # rounding.
+    # 1.5300000000000002). Recomputing mortgage as the complement of the
+    # rounded residual makes conservation exact by construction, not merely
+    # empirical: with share in [0, 1], either the rounded mortgage or the
+    # rounded residual lands in [total/2, total], so one of the two
+    # subtractions is exact by Sterbenz's lemma and the pair sums to
+    # ``total`` bit-for-bit for every accepted total (an accepted -0.0
+    # reconstructs as +0.0). The mortgage component deviates from
+    # ``total*share`` by at most the two subtractions' roundings — a bound
+    # at the half-ULP scale of ``total`` per step, which can amount to
+    # several ULPs of the smaller mortgage value itself.
     mortgage = total * _HOME_MORTGAGE_SHARES[band_index]
     non_mortgage = total - mortgage
     mortgage = total - non_mortgage

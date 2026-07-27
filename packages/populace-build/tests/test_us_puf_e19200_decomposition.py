@@ -427,14 +427,18 @@ def test_split_conserves_bit_exactly_on_adversarial_floats() -> None:
     assert (mortgage >= 0.0).all() and (non_mortgage >= 0.0).all()
 
 
-def test_donor_api_rejects_nan_and_nonnumeric_agi() -> None:
-    """PR #561 review finding 2: the donor API's _numeric_array coerced
-    nonnumeric/NaN AGI to 0.0 BEFORE the finiteness check, silently routing
-    invalid AGI to the first band's share. The strict conversion must fail
-    closed at the puf_tax_unit_donor_from_arrays seam — the layer the
-    reviewer probed — not merely at the split function (which always
-    validated)."""
+def test_donor_api_rejects_non_real_agi_through_a_valid_fixture() -> None:
+    """PR #561 review findings 2 (rounds 1-2): the donor API must fail
+    closed on AGI that is not a finite real number. Round 1's
+    ``_numeric_array`` coerced nonnumeric/NaN to 0.0; round 2's
+    ``errors="raise"`` was parse-strict but not real-number-strict —
+    datetime/timedelta arrays (including NaT) convert to finite epoch
+    sentinels, complex drops its imaginary part, and booleans pass, all
+    silently routing records to the wrong AGI band. The fixture below is
+    proven valid by a positive control, so each rejection can only come
+    from the AGI validation itself."""
     import numpy as np
+    import pandas as pd
     import pytest as _pytest
 
     from populace.build.us_runtime.puf_support import puf_tax_unit_donor_from_arrays
@@ -444,11 +448,39 @@ def test_donor_api_rejects_nan_and_nonnumeric_agi() -> None:
         "person_tax_unit_id": np.asarray([1], dtype="int64"),
         "household_weight": np.asarray([1.0]),
         "filing_status": np.asarray(["SINGLE"]),
-        "E19200": np.asarray([100.0]),
     }
-    with _pytest.raises(ValueError, match="finite"):
-        puf_tax_unit_donor_from_arrays(
-            arrays, adjusted_gross_income=np.asarray([np.nan])
+
+    def call(agi):
+        return puf_tax_unit_donor_from_arrays(
+            arrays,
+            adjusted_gross_income=agi,
+            person_outputs=(),
+            tax_unit_outputs=(),
         )
-    with _pytest.raises((ValueError, TypeError)):
-        puf_tax_unit_donor_from_arrays(arrays, adjusted_gross_income=["not-a-number"])
+
+    # Positive control: the fixture succeeds with valid AGI (the band
+    # column is reserved for internal processing and is consumed before
+    # return), so the rejections below cannot be masked by an unrelated
+    # fixture defect.
+    donor = call(np.asarray([50_000.0]))
+    assert len(donor) == 1
+    assert donor["tax_unit_id"].tolist() == [1]
+
+    with _pytest.raises(ValueError, match="finite"):
+        call(np.asarray([np.nan]))
+    with _pytest.raises(ValueError, match="finite"):
+        call(np.asarray([np.inf]))
+    with _pytest.raises(ValueError):
+        call(["not-a-number"])
+    # Typed non-real arrays parse to finite numbers under pd.to_numeric and
+    # must be rejected by dtype, not by parsing.
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(pd.Series([pd.NaT]))
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(np.asarray(["NaT"], dtype="datetime64[ns]"))
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(np.asarray([np.timedelta64(1, "D")]))
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(np.asarray([1.0 + 2.0j]))
+    with _pytest.raises(TypeError, match="real-valued"):
+        call(np.asarray([True]))

@@ -545,14 +545,22 @@ def puf_tax_unit_donor_from_arrays(
         }
     )
     if adjusted_gross_income is not None:
-        # Strict conversion (PR #561 review finding 2): _numeric_array
-        # coerces nonnumeric/NaN to 0.0, which would silently route invalid
-        # AGI to the first band's share and defeat the finiteness check
-        # below. errors="raise" rejects nonnumeric values; NaN/inf survive
-        # conversion and fail the explicit check.
-        agi = pd.to_numeric(pd.Series(adjusted_gross_income), errors="raise").to_numpy(
-            dtype=np.float64
-        )
+        # Strict conversion (PR #561 review findings, rounds 1-2):
+        # _numeric_array coerces nonnumeric/NaN to 0.0, and errors="raise"
+        # alone is parse-strict but not real-number-strict — datetime and
+        # timedelta arrays (including NaT) convert to finite epoch/sentinel
+        # integers, complex drops its imaginary part, and booleans pass.
+        # Any of those would route records to the wrong AGI band with the
+        # finiteness check below none the wiser, so non-real dtypes are
+        # rejected up front. NaN/inf survive strict conversion and fail the
+        # explicit check.
+        agi_series = pd.Series(adjusted_gross_income)
+        if agi_series.dtype.kind not in "iufO":
+            raise TypeError(
+                "adjusted_gross_income must be real-valued; got dtype "
+                f"{agi_series.dtype}."
+            )
+        agi = pd.to_numeric(agi_series, errors="raise").to_numpy(dtype=np.float64)
         if len(agi) != len(tax_unit_id):
             raise ValueError(
                 "adjusted_gross_income must align one-for-one with tax_unit_id."
