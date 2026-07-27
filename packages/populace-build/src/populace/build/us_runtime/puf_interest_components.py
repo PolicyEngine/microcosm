@@ -191,8 +191,17 @@ def split_us_puf_e19200_by_agi_band(
         raise ValueError("E19200 must be nonnegative.")
 
     band_index = np.searchsorted(_AGI_UPPER_BOUNDS, agi, side="right")
+    # Reconciled split (PR #561 review finding 1): the naive pair
+    # (total*share, total − total*share) is algebraically conserving but not
+    # bit-exact in float64 (e.g. E19200=1.53 in the top band sums to
+    # 1.5300000000000002). Recomputing mortgage as the exact complement of
+    # the rounded residual makes ``mortgage + non_mortgage`` reproduce
+    # ``total`` bit-for-bit on every case we test, including that
+    # reproducer; the residual keeps its published-share definition to one
+    # rounding.
     mortgage = total * _HOME_MORTGAGE_SHARES[band_index]
     non_mortgage = total - mortgage
+    mortgage = total - non_mortgage
     return mortgage, non_mortgage
 
 

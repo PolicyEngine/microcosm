@@ -396,3 +396,59 @@ def test_source_year_puf_agi_matches_pinned_flat_array_artifact() -> None:
         == _REAL_SOURCE_AGI_VECTOR_SHA256
     )
     assert (adjusted_gross_income[-3_900:] == 100_000_000.0).all()
+
+
+def test_split_conserves_bit_exactly_on_adversarial_floats() -> None:
+    """PR #561 review finding 1: the naive (total*share, total-mortgage)
+    pair fails bit-exact conservation (E19200=1.53 in the top band summed to
+    1.5300000000000002). The reconciled split must reproduce the total
+    bit-for-bit on the reviewer's reproducer and on an adversarial sweep."""
+    import numpy as np
+
+    from populace.build.us_runtime.puf_interest_components import (
+        split_us_puf_e19200_by_agi_band,
+    )
+
+    total = np.asarray([1.53], dtype=np.float64)
+    agi = np.asarray([10_000_000.0], dtype=np.float64)
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(total, agi)
+    assert float(mortgage[0] + non_mortgage[0]) == 1.53
+
+    rng = np.random.default_rng(561)
+    totals = np.round(rng.uniform(0.01, 5_000_000.0, size=20_000), 2)
+    agis = rng.uniform(-100_000.0, 20_000_000.0, size=20_000)
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(totals, agis)
+    recon = mortgage + non_mortgage
+    exact = recon == totals
+    assert exact.all(), (
+        f"{(~exact).sum()} of 20,000 adversarial records failed bit-exact "
+        "conservation after reconciliation"
+    )
+    assert (mortgage >= 0.0).all() and (non_mortgage >= 0.0).all()
+
+
+def test_donor_api_rejects_nan_and_nonnumeric_agi() -> None:
+    """PR #561 review finding 2: the donor API's _numeric_array coerced
+    nonnumeric/NaN AGI to 0.0 BEFORE the finiteness check, silently routing
+    invalid AGI to the first band's share. The strict conversion must fail
+    closed at the puf_tax_unit_donor_from_arrays seam — the layer the
+    reviewer probed — not merely at the split function (which always
+    validated)."""
+    import numpy as np
+    import pytest as _pytest
+
+    from populace.build.us_runtime.puf_support import puf_tax_unit_donor_from_arrays
+
+    arrays = {
+        "tax_unit_id": np.asarray([1], dtype="int64"),
+        "person_tax_unit_id": np.asarray([1], dtype="int64"),
+        "household_weight": np.asarray([1.0]),
+        "filing_status": np.asarray(["SINGLE"]),
+        "E19200": np.asarray([100.0]),
+    }
+    with _pytest.raises(ValueError, match="finite"):
+        puf_tax_unit_donor_from_arrays(
+            arrays, adjusted_gross_income=np.asarray([np.nan])
+        )
+    with _pytest.raises((ValueError, TypeError)):
+        puf_tax_unit_donor_from_arrays(arrays, adjusted_gross_income=["not-a-number"])

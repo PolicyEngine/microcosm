@@ -545,7 +545,14 @@ def puf_tax_unit_donor_from_arrays(
         }
     )
     if adjusted_gross_income is not None:
-        agi = _numeric_array(adjusted_gross_income)
+        # Strict conversion (PR #561 review finding 2): _numeric_array
+        # coerces nonnumeric/NaN to 0.0, which would silently route invalid
+        # AGI to the first band's share and defeat the finiteness check
+        # below. errors="raise" rejects nonnumeric values; NaN/inf survive
+        # conversion and fail the explicit check.
+        agi = pd.to_numeric(pd.Series(adjusted_gross_income), errors="raise").to_numpy(
+            dtype=np.float64
+        )
         if len(agi) != len(tax_unit_id):
             raise ValueError(
                 "adjusted_gross_income must align one-for-one with tax_unit_id."
