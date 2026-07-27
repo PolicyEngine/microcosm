@@ -6111,7 +6111,7 @@ def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> No
     )
 
 
-def test_soi_eitc_child_targets_materialize_distinct_child_slices(
+def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
     monkeypatch,
 ) -> None:
     builder = _load_builder_module()
@@ -6442,6 +6442,22 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_only": "true",
             },
         ),
+        TargetSpec(
+            name="home_mortgage_interest_amount",
+            entity="household",
+            measure="home_mortgage_interest_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "deductible_mortgage_interest",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "home_mortgage_interest_amount",
+                "itemized_only": "true",
+            },
+        ),
     )
 
     class FakeVariable:
@@ -6460,6 +6476,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "eitc_child_count",
                 "itemized_taxable_income_deductions",
                 "charitable_deduction",
+                "deductible_mortgage_interest",
                 "interest_deduction",
                 "medical_expense_deduction",
                 "real_estate_taxes",
@@ -6498,6 +6515,9 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                     [1_000.0, 2_000.0, 3_000.0, 4_000.0]
                 ),
                 "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
+                "deductible_mortgage_interest": np.asarray(
+                    [0.5, 1.25, 2.0, 3.0]
+                ),
                 "interest_deduction": np.asarray([1.0, 2.0, 3.0, 4.0]),
                 "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
@@ -6530,6 +6550,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_taxable_income_deductions"
             ),
             "charitable_deduction": "charitable_deduction",
+            "deductible_mortgage_interest": "deductible_mortgage_interest",
             "interest_deduction": "interest_deduction",
             "medical_expense_deduction": "medical_expense_deduction",
             "real_estate_taxes": "real_estate_taxes",
@@ -6587,7 +6608,14 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(
         household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
     )
-    assert len(registry) == 20
+    assert np.array_equal(
+        household["home_mortgage_interest_amount"], np.asarray([1.25, 0.0])
+    )
+    assert not np.array_equal(
+        household["home_mortgage_interest_amount"],
+        household["interest_paid_deduction_amount"],
+    )
+    assert len(registry) == 21
     assert compilation["dropped_target_names"] == []
 
 
