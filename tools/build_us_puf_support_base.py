@@ -65,6 +65,7 @@ from populace.build.us_runtime import (
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
+    source_year_puf_adjusted_gross_income,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
     us_adult_care_signal_gate,
@@ -121,7 +122,6 @@ from populace.build.us_runtime import (
     with_us_wic_claim_input,
     with_us_workers_compensation,
 )
-from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
@@ -267,6 +267,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--puf-h5", required=True, type=Path)
+    parser.add_argument(
+        "--puf-source-year-csv",
+        type=Path,
+        help=(
+            "Restricted raw TY2015 IRS PUF CSV carrying RECID, E00100, S006, "
+            "and the archived aggregate-record donor fields. Required when "
+            "building the E19200 decomposition from a nonzero processed PUF."
+        ),
+    )
     parser.add_argument(
         "--asec-2023-weeks-unemployed-source",
         type=Path,
@@ -521,6 +530,11 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     command.extend(("--puf-h5", str(args.puf_h5)))
     _append_path_argument(
         command,
+        "--puf-source-year-csv",
+        args.puf_source_year_csv,
+    )
+    _append_path_argument(
+        command,
         "--asec-2023-weeks-unemployed-source",
         args.asec_2023_weeks_unemployed_source,
     )
@@ -665,6 +679,12 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "n_estimators": args.n_estimators,
         "out": path(args.out),
         "puf_h5": path(args.puf_h5),
+        "puf_source_year_csv": path(args.puf_source_year_csv),
+        "puf_source_year_csv_sha256": (
+            _sha256(args.puf_source_year_csv)
+            if args.puf_source_year_csv is not None
+            else None
+        ),
         "seed": args.seed,
         "support_spine_spec": path(args.support_spine_spec),
         "target_year": args.target_year,
@@ -995,7 +1015,7 @@ def _run_all(
     expanded = clone_us_frame_for_puf_support(base)
     donor = _puf_tax_unit_donor_from_h5(
         args.puf_h5,
-        target_year=args.target_year,
+        source_puf_csv=getattr(args, "puf_source_year_csv", None),
     )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
@@ -1379,6 +1399,16 @@ def _run_all(
         "base_sha256": _sha256(args.base_h5) if args.base_h5 is not None else None,
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
+        "puf_source_year_csv": (
+            str(args.puf_source_year_csv.resolve())
+            if args.puf_source_year_csv is not None
+            else None
+        ),
+        "puf_source_year_csv_sha256": (
+            _sha256(args.puf_source_year_csv)
+            if args.puf_source_year_csv is not None
+            else None
+        ),
         "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
         "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
         "acs_rent_donor_rows": (
@@ -1865,7 +1895,7 @@ def _clone_feature_extraction_stage(
     expanded = clone_us_frame_for_puf_support(base)
     donor = _puf_tax_unit_donor_from_h5(
         args.puf_h5,
-        target_year=args.target_year,
+        source_puf_csv=args.puf_source_year_csv,
     )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
@@ -1884,10 +1914,12 @@ def _clone_feature_extraction_stage(
     return expanded, {
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
+        "puf_source_year_csv": str(args.puf_source_year_csv.resolve()),
+        "puf_source_year_csv_sha256": _sha256(args.puf_source_year_csv),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
-        "puf_e19200_agi_variable": "adjusted_gross_income",
-        "puf_e19200_agi_period": args.target_year,
+        "puf_e19200_agi_variable": "E00100",
+        "puf_e19200_agi_period": 2015,
         "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
     }
 
@@ -2406,6 +2438,8 @@ def _export_staged_result(
         ),
         "puf_h5": clone["puf_h5"],
         "puf_sha256": clone["puf_sha256"],
+        "puf_source_year_csv": clone["puf_source_year_csv"],
+        "puf_source_year_csv_sha256": clone["puf_source_year_csv_sha256"],
         "acs_h5": pre_clone["acs_h5"],
         "acs_sha256": pre_clone["acs_sha256"],
         "acs_rent_donor_rows": pre_clone["acs_rent_donor_rows"],
@@ -2719,15 +2753,20 @@ def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:
 def _puf_tax_unit_donor_from_h5(
     path: Path,
     *,
-    target_year: int,
+    source_puf_csv: Path | None,
 ) -> pd.DataFrame:
-    """Build the PUF donor with explicit engine-calculated tax-unit AGI."""
+    """Build the PUF donor with source-year E00100-aligned banding values."""
 
     arrays = _read_h5_arrays(path)
-    adjusted_gross_income = _puf_adjusted_gross_income(
-        path,
-        target_year=target_year,
-        expected_tax_unit_ids=arrays["tax_unit_id"],
+    if source_puf_csv is None:
+        raise ValueError(
+            "--puf-source-year-csv is required to align nonzero E19200 records "
+            "to the published TY2015 SOI AGI bands."
+        )
+    adjusted_gross_income = _source_year_puf_adjusted_gross_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
     )
     return puf_tax_unit_donor_from_arrays(
         arrays,
@@ -2735,33 +2774,19 @@ def _puf_tax_unit_donor_from_h5(
     )
 
 
-def _puf_adjusted_gross_income(
-    path: Path,
+def _source_year_puf_adjusted_gross_income(
+    source_puf_csv: Path,
     *,
-    target_year: int,
-    expected_tax_unit_ids: Sequence[object],
+    processed_tax_unit_ids: Sequence[object],
+    processed_tax_unit_weights: Sequence[object],
 ) -> np.ndarray:
-    """Calculate the processed PUF's AGI in its tax-unit row order."""
+    """Load the restricted source only through its narrow alignment seam."""
 
-    from policyengine_us import Microsimulation
-    from policyengine_us.data import USSingleYearDataset
-
-    dataset = USSingleYearDataset(file_path=str(path))
-    dataset_tax_unit_ids = dataset.tax_unit["tax_unit_id"].to_numpy(dtype=np.int64)
-    expected = np.asarray(expected_tax_unit_ids, dtype=np.int64)
-    if not np.array_equal(dataset_tax_unit_ids, expected):
-        raise ValueError(
-            "PolicyEngine PUF tax-unit order differs from the raw H5 tax_unit_id "
-            "order used by the E19200 donor."
-        )
-    simulation = Microsimulation(dataset=dataset)
-    try:
-        return np.asarray(
-            simulation.calculate("adjusted_gross_income", period=target_year),
-            dtype=np.float64,
-        ).copy()
-    finally:
-        release_engine_simulation(simulation)
+    return source_year_puf_adjusted_gross_income(
+        source_puf_csv,
+        processed_tax_unit_ids=processed_tax_unit_ids,
+        processed_tax_unit_weights=processed_tax_unit_weights,
+    )
 
 
 def _row_counts(frame: Frame) -> dict[str, int]:

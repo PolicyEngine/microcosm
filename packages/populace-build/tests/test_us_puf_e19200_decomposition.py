@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from hashlib import sha256
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -12,6 +15,25 @@ from populace.build.us_runtime.puf_source_agi import (
     source_year_puf_adjusted_gross_income,
 )
 from populace.build.us_runtime.puf_support import puf_tax_unit_donor_from_arrays
+
+_REAL_PUF_STORAGE = (
+    Path.home()
+    / "PolicyEngine"
+    / ("policyengine" + "-us-data")
+    / ("policyengine" + "_us_data")
+    / "storage"
+)
+_REAL_PROCESSED_PUF = _REAL_PUF_STORAGE / "puf_2024.h5"
+_REAL_SOURCE_PUF = _REAL_PUF_STORAGE / "puf_2015.csv"
+_REAL_PROCESSED_PUF_SHA256 = (
+    "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df"
+)
+_REAL_SOURCE_PUF_SHA256 = (
+    "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df"
+)
+_REAL_SOURCE_AGI_VECTOR_SHA256 = (
+    "8b2b6c206e8e9f7b80dcfd86554962b0966b25ad8c47eab7d9db4f27f69ebc0d"
+)
 
 
 def _representative_agi(lower: float | None, upper: float | None) -> float:
@@ -57,9 +79,7 @@ def _raw_puf_source_fixture() -> tuple[dict[str, list[float]], np.ndarray, np.nd
         dtype=np.float64,
     )
     aggregate_ids = np.asarray([999_996, 999_997, 999_998, 999_999])
-    aggregate_agi = np.asarray(
-        [-100_000.0, 2_000_000.0, 20_000_000.0, 200_000_000.0]
-    )
+    aggregate_agi = np.asarray([-100_000.0, 2_000_000.0, 20_000_000.0, 200_000_000.0])
     recid = np.concatenate((regular_ids, aggregate_ids))
     agi = np.concatenate((regular_agi, aggregate_agi))
     source: dict[str, list[float]] = {
@@ -88,7 +108,7 @@ def _raw_puf_source_fixture() -> tuple[dict[str, list[float]], np.ndarray, np.nd
     for offset, field in enumerate(screened_fields, start=1):
         source[field] = (np.abs(agi) / offset + offset).tolist()
 
-    synthetic_ids = np.arange(1_000_000, 1_000_080, dtype=np.int64)
+    synthetic_ids = np.arange(1_000_000, 1_000_102, dtype=np.int64)
     processed_ids = np.concatenate((regular_ids, synthetic_ids))
     processed_weights = np.concatenate(
         (
@@ -96,10 +116,18 @@ def _raw_puf_source_fixture() -> tuple[dict[str, list[float]], np.ndarray, np.nd
             np.full(20, 7.0),
             np.full(23, 10.0),
             np.full(39, 10.0),
-            np.full(18, 100.0 / 18.0),
+            np.full(20, 5.0),
         )
     )
     return source, processed_ids, processed_weights
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def test_ty2015_e19200_component_rows_are_complete_cited_and_conservative() -> None:
@@ -342,3 +370,29 @@ def test_source_year_puf_agi_fails_closed_on_processed_id_drift() -> None:
             processed_tax_unit_ids=processed_ids,
             processed_tax_unit_weights=processed_weights,
         )
+
+
+def test_source_year_puf_agi_matches_pinned_flat_array_artifact() -> None:
+    if not _REAL_PROCESSED_PUF.exists() or not _REAL_SOURCE_PUF.exists():
+        pytest.skip("Pinned restricted PUF artifacts are not available.")
+    assert _file_sha256(_REAL_PROCESSED_PUF) == _REAL_PROCESSED_PUF_SHA256
+    assert _file_sha256(_REAL_SOURCE_PUF) == _REAL_SOURCE_PUF_SHA256
+
+    import h5py
+
+    with h5py.File(_REAL_PROCESSED_PUF, "r") as h5:
+        # This is deliberately the production artifact's flat root-array
+        # layout, not a USSingleYearDataset entity-table fixture.
+        assert "person" not in h5
+        adjusted_gross_income = source_year_puf_adjusted_gross_income(
+            _REAL_SOURCE_PUF,
+            processed_tax_unit_ids=np.asarray(h5["tax_unit_id"]),
+            processed_tax_unit_weights=np.asarray(h5["household_weight"]),
+        )
+
+    assert len(adjusted_gross_income) == 211_677
+    assert (
+        sha256(adjusted_gross_income.astype("<f8").tobytes()).hexdigest()
+        == _REAL_SOURCE_AGI_VECTOR_SHA256
+    )
+    assert (adjusted_gross_income[-3_900:] == 100_000_000.0).all()

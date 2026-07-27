@@ -564,9 +564,7 @@ def test_source_year_puf_input_content_is_checkpoint_identity(
     second = builder._stage_run_config(args)
 
     assert first["puf_source_year_csv"] == str(source.resolve())
-    assert first["puf_source_year_csv_sha256"] != second[
-        "puf_source_year_csv_sha256"
-    ]
+    assert first["puf_source_year_csv_sha256"] != second["puf_source_year_csv_sha256"]
 
 
 def test_monolith_equivalence_observer_writes_all_boundaries_and_raw_bits(
@@ -1371,7 +1369,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     monkeypatch.setattr(
         builder,
         "_puf_tax_unit_donor_from_h5",
-        lambda path, *, target_year: None,
+        lambda path, *, source_puf_csv: None,
     )
     monkeypatch.setattr(
         builder,
@@ -1846,6 +1844,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
     builder = _load_support_builder_module()
     puf = tmp_path / "puf.h5"
     puf.write_bytes(b"puf")
+    source_puf = tmp_path / "puf_2015.csv"
+    source_puf.write_bytes(b"source puf")
     sidecar = tmp_path / "asecpub24csv.zip"
     sidecar.write_bytes(b"zip")
     argv = [
@@ -1855,6 +1855,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
         f"2024={tmp_path / 'census_cps_2024.h5'}",
         "--puf-h5",
         str(puf),
+        "--puf-source-year-csv",
+        str(source_puf),
         "--asec-education-source",
         f"2023={sidecar}",
         "--target-year",

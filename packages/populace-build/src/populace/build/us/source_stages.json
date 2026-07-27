@@ -13,7 +13,7 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File, including total interest paid deduction E19200, state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
+          "locator": "IRS SOI Public Use File, including source-year adjusted gross income E00100, weight S006, total interest paid deduction E19200, state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
         },
         {
           "kind": "published_aggregate_table",
@@ -108,8 +108,10 @@
           "kind": "derive",
           "method": "decompose_e19200_by_soi_agi_band",
           "raw_total": "home_mortgage_interest",
-          "banding_variable": "adjusted_gross_income",
-          "banding_period": "target_year_from_build_config",
+          "banding_variable": "E00100",
+          "banding_period": "source_year_2015",
+          "band_alignment": "direct RECID join for regular returns; archived seed-42 aggregate-record donor allocation for the three bounded synthetic buckets; source bucket floor for the Forbes-backed $100 million-plus tail",
+          "archived_processed_puf_disaggregation_seed": 42,
           "published_source_year": 2015,
           "published_total_column": "CF",
           "published_home_mortgage_column": "CH",
