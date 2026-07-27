@@ -496,10 +496,10 @@ from populace.build.us_runtime.prior_year_income import (
     with_us_prior_year_income_inputs,
 )
 from populace.build.us_runtime.puf_interest_components import (
-    PufE19200AgiBand,
-    PufE19200InterestComponents,
     US_PUF_E19200_AGI_BANDS,
     US_PUF_E19200_ALL_RETURNS_COMPONENTS,
+    PufE19200AgiBand,
+    PufE19200InterestComponents,
     split_us_puf_e19200_by_agi_band,
 )
 from populace.build.us_runtime.puf_support import (

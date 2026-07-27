@@ -36,7 +36,6 @@ from populace.build.outer_stage_runtime import (
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.stage_profile import profile_stage
-from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -122,6 +121,7 @@ from populace.build.us_runtime import (
     with_us_wic_claim_input,
     with_us_workers_compensation,
 )
+from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
