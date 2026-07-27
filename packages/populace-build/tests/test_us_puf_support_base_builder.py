@@ -1043,7 +1043,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     salt_refund_gate_frames: list[object] = []
     adult_care_gate_frames: list[object] = []
     energy_subsidy_gate_frames: list[object] = []
-    retirement_distribution_calls: list[tuple[object, int, int]] = []
+    retirement_distribution_calls: list[tuple[object, int, int, bool]] = []
     retirement_distribution_gate_frames: list[object] = []
     prior_year_income_calls: list[tuple[object, int, int]] = []
     prior_year_income_gate_frames: list[object] = []
@@ -1255,8 +1255,16 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         lambda frame, *, seed, time_period: frame,
     )
 
-    def fake_retirement_distributions(frame, *, seed, time_period):
-        retirement_distribution_calls.append((frame, seed, time_period))
+    def fake_retirement_distributions(
+        frame,
+        *,
+        seed,
+        time_period,
+        force_puf_imputation=False,
+    ):
+        retirement_distribution_calls.append(
+            (frame, seed, time_period, force_puf_imputation)
+        )
         if frame == "disability-benefits-direct":
             return "retirement-distributions-direct"
         return "retirement-distributions-puf"
@@ -1652,10 +1660,12 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         if failing_gate in {"energy_subsidy", "retirement_distributions"}
         else []
     )
-    expected_retirement_distribution_calls = [("disability-benefits-direct", 7, 2024)]
+    expected_retirement_distribution_calls = [
+        ("disability-benefits-direct", 7, 2024, False)
+    ]
     if failing_gate == "retirement_distributions":
         expected_retirement_distribution_calls.append(
-            ("disability-benefits-puf", 7, 2024)
+            ("disability-benefits-puf", 7, 2024, True)
         )
     assert retirement_distribution_calls == expected_retirement_distribution_calls
     assert retirement_distribution_gate_frames == (
@@ -1663,6 +1673,22 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         if failing_gate == "retirement_distributions"
         else []
     )
+
+
+def test_resume_retirement_stage_forces_puf_imputation() -> None:
+    """The resume-side ownership boundary is pinned (PR #557 round 2, low).
+
+    The live post-clone boundary is behaviorally asserted above; this pins
+    the named-stage resume branch so deleting its force flag fails a test
+    (source-pin precedent: the main-summary gate tests below).
+    """
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+    marker = 'elif stage == "retirement_distributions_post_clone":'
+    assert marker in source
+    window = source.split(marker, 1)[1].split("elif ", 1)[0]
+    assert "with_us_retirement_distribution_inputs(" in window
+    assert "force_puf_imputation=True" in window
 
 
 def test_main_summary_records_retirement_distribution_gate() -> None:

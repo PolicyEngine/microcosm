@@ -489,6 +489,10 @@ def score_frame(
             "seed": 0,
             "target_period": release.PERIOD,
             "target_registry_version": target_registry.version,
+            # Scorer vectors declare no release materializer identity: the
+            # explicit None is identity-distinct from every release digest,
+            # so scorer and release vectors can never mix (PR #557).
+            "target_frame_materializer_identity_sha256": None,
             "congressional_district_vintage_crosswalk_sha256": (
                 congressional_district_vintage_crosswalk_metadata or {}
             ).get("sha256"),

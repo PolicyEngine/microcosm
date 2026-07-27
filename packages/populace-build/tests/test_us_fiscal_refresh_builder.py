@@ -119,9 +119,9 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 9 = the #374 SIPP+SCF blend changes the pre-materialization frame;
-    # SCF-only checkpoints (8 = post-#539 ORG rewrite) must not be reused.
-    assert identity["materializer_version"] == 9
+    # 10 = #557 preserves the staged retirement surface through release
+    # materialization; pre-#557 QRF-refitted checkpoints (9) must not serve.
+    assert identity["materializer_version"] == 10
     # The SSI prior-weight basis is identity-bearing (populace#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -179,10 +179,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    #539 rewrote staged org-wage inputs without bumping the materializer
-    version, so version-7 checkpoints carry pre-fix ORG rows (populace#543).
-    The version constant participates in the identity comparison; this pins
-    the rejection path for the stored-7 vs current shape specifically.
+    #557 changed the staged retirement-surface semantics: version-9
+    checkpoints can carry release-refitted leaves instead of the preserved
+    support-built surface. The version constant participates in the identity
+    comparison; this pins the stored-9 versus current-10 rejection directly.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -216,10 +216,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 8 = current-main SCF-only-era checkpoints (the #510 review's stale
-    # hazard); 7 = pre-#539. Both must miss against expected version 9.
-    stale_identity = {**dict(identity), "materializer_version": 8}
-    older_identity = {**dict(identity), "materializer_version": 7}
+    # 9 = the pre-#557 release-refit world; 8 = the still-older pre-#374 blend
+    # world. Both must miss against expected version 10.
+    stale_identity = {**dict(identity), "materializer_version": 9}
+    older_identity = {**dict(identity), "materializer_version": 8}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -2972,7 +2972,10 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
-@pytest.mark.parametrize("terminal_mode", ["merge", "integrity", "crash", "telemetry"])
+@pytest.mark.parametrize(
+    "terminal_mode",
+    ["merge", "integrity", "retirement", "crash", "telemetry"],
+)
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
 ) -> None:
@@ -2985,6 +2988,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     Bernoulli-law violation; that failure reaches the written diagnostics
     and the single terminal batch while the delivery gate passes and every
     later terminal group still runs.
+    ``retirement``: an incomplete consume-only retirement surface reports its
+    missing leaves through the same written diagnostics and terminal batch,
+    while later terminal groups still run.
     ``crash``: the degraded-mode guards themselves are exercised — the
     health-input evaluation raises, the incumbent path is missing, and
     ``_release_gate_failures`` raises; each records a line instead of
@@ -3027,6 +3033,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "source_stage_events": [],
         "terminal_gate_events": [],
     }
+    retirement_missing_failure = (
+        "person columns missing: ['taxable_403b_distributions', 'keogh_distributions']."
+    )
 
     class FakeFrame:
         def n(self, entity):
@@ -3102,7 +3111,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
-    if terminal_mode in {"integrity", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry"}:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -3663,14 +3672,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_retirement_distributions_signal_gate(frame):
+        missing = terminal_mode == "retirement"
+        return builder.GateResult(
+            name="retirement_distributions_signal",
+            passed=not missing,
+            failures=((retirement_missing_failure,) if missing else ()),
+            details=(
+                {
+                    "missing": [
+                        "taxable_403b_distributions",
+                        "keogh_distributions",
+                    ]
+                }
+                if missing
+                else {"checked": True}
+            ),
+        )
+
     monkeypatch.setattr(
         builder,
         "us_retirement_distributions_signal_gate",
-        lambda frame: builder.GateResult(
-            name="retirement_distributions_signal",
-            passed=True,
-            details={"checked": True},
-        ),
+        fake_retirement_distributions_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4277,14 +4301,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
 
-    monkeypatch.setattr(
-        builder,
-        "_degenerate_input_signal_gate",
-        lambda frame, engine: builder.GateResult(
+    def fake_degenerate_input_signal_gate(frame, engine):
+        # In retirement mode this gate ALSO fails: the production masking
+        # route (PR #557 round 2 finding 1) was the generic degenerate raise
+        # superseding the specific missing-leaf diagnosis. The degraded-mode
+        # append must carry BOTH lines to the single terminal batch while the
+        # run continues through the solve (the #547/#548 evidence contract).
+        if terminal_mode == "retirement":
+            return builder.GateResult(
+                name="degenerate_input_signal",
+                passed=False,
+                failures=("keogh_distributions flattened [degenerate-sentinel]",),
+                details={"checked": True},
+            )
+        return builder.GateResult(
             name="degenerate_input_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_degenerate_input_signal_gate",
+        fake_degenerate_input_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4362,11 +4401,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_ssi_delivery_gate(diagnostics, *, targets):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
-        # The integrity case passes delivery to isolate FINAL-INTEGRITY
-        # collection. Other modes retain the populace#547 delivery cofailure
-        # and its written retry basis.
+        # The integrity and retirement cases pass delivery to isolate their
+        # own early failure. Other modes retain the populace#547 delivery
+        # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode == "integrity"
+        passes = terminal_mode in {"integrity", "retirement"}
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -4404,6 +4443,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_release_gate_failures(*args, **kwargs):
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        if terminal_mode == "retirement":
+            # The degraded pre-solve contract (PR #557 round 3): the failing
+            # degenerate gate is NOT raised early — the gate object itself
+            # must arrive here, failures intact, and ride the single
+            # terminal batch. Emitting from the argument (the real
+            # function's contract) proves the un-raised object reached us.
+            degenerate_gate = args[8]
+            assert degenerate_gate is not None
+            assert not degenerate_gate.passed
+            return [
+                *(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_gate.failures
+                ),
+                "ctc failed",
+            ]
         return ["ctc failed"]
 
     monkeypatch.setattr(
@@ -4431,7 +4486,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
-        if terminal_mode == "integrity":
+        if terminal_mode == "retirement":
+            assert message.startswith(
+                "Release gates failed: Retirement-distribution signal failed: "
+                f"{retirement_missing_failure}"
+            )
+            # The co-failing degenerate gate must batch AFTER the specific
+            # retirement diagnosis, never supersede it with an early raise
+            # (PR #557 round 2 finding 1).
+            assert (
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]" in message
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "integrity":
             assert message.startswith(
                 "Release gates failed: SSI take-up final measurement failed: "
                 "Bernoulli-law violation [final-integrity-sentinel]"
@@ -4465,7 +4533,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
-    if terminal_mode == "integrity":
+    if terminal_mode == "retirement":
+        assert (
+            "Retirement-distribution signal failed: "
+            f"{retirement_missing_failure}"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "integrity":
         assert (
             "SSI take-up final measurement failed: "
             "Bernoulli-law violation [final-integrity-sentinel]"
@@ -4480,22 +4554,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert not list(release_dir.glob("*manifest*"))
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
-    if terminal_mode in {"integrity", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
             "qrf_tail_concentration",
         ]
     if terminal_mode != "crash":
-        # The retry line carries the written artifact's sha256 — the
-        # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
-        # by the failure itself (sol round 2, new minor).
-        import hashlib
-
-        written_sha = hashlib.sha256(
-            (release_dir / "us_ssi_take_up.json").read_bytes()
-        ).hexdigest()
-        if terminal_mode == "integrity":
+        if terminal_mode == "retirement":
+            expected_gate_failures = [
+                f"Retirement-distribution signal failed: {retirement_missing_failure}",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                # The co-failing pre-solve degenerate gate is never raised
+                # early and never duplicated: its line arrives once, through
+                # _release_gate_failures (PR #557 round 3).
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]",
+                "ctc failed",
+            ]
+        elif terminal_mode == "integrity":
             expected_gate_failures = [
                 "SSI take-up final measurement failed: "
                 "Bernoulli-law violation [final-integrity-sentinel]",
@@ -4508,6 +4586,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "ctc failed",
             ]
         else:
+            # The retry line carries the written artifact's sha256 — the
+            # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
+            # by the failure itself (sol round 2, new minor).
+            import hashlib
+
+            written_sha = hashlib.sha256(
+                (release_dir / "us_ssi_take_up.json").read_bytes()
+            ).hexdigest()
             expected_gate_failures = [
                 "SSI take-up delivery failed: 18_64 delivered over envelope "
                 "[cofailure-sentinel]",
@@ -4688,18 +4774,27 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_delivery_gate_targets"] == fake_band_targets
     # The frozen-assignment digest invalidates the materialization cache on
     # any retry whose flags differ (populace#507/#508 split-brain fix).
-    assert (
-        captured["materialize_kwargs"]["target_materialization_cache_context"][
-            "ssi_take_up_assignment_sha256"
-        ]
-        == "ssi-digest-sentinel"
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    assert cache_context["ssi_take_up_assignment_sha256"] == "ssi-digest-sentinel"
+    assert cache_context["selection_identities_sha256"] is None
+    expected_materializer_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
     )
-    assert (
-        captured["materialize_kwargs"]["target_materialization_cache_context"][
-            "selection_identities_sha256"
-        ]
-        is None
-    )
+    assert cache_context[
+        "target_frame_materializer_identity_sha256"
+    ] == builder._target_frame_checkpoint_digest(expected_materializer_identity)
     # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
     # the #548 batched terminal gates): the final measurement hits disk
     # BEFORE the final integrity gate runs. Delivery still evaluates after
@@ -4711,7 +4806,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
     ]
-    if terminal_mode != "integrity":
+    if terminal_mode not in {"integrity", "retirement"}:
         # A delivery miss rewrites the final measurement as the retry basis.
         expected_ssi_event_order.append("write:us_ssi_take_up.json")
     assert captured["ssi_event_order"] == expected_ssi_event_order
@@ -5825,7 +5920,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         "seed": 0,
         "target_period": builder.PERIOD,
         "target_registry_version": "test-target-registry",
+        # Required declaration (PR #557): the reform-vector projection
+        # fail-closes without it — see the dedicated rejection test.
+        "target_frame_materializer_identity_sha256": "test-materializer-digest",
     }
+    with pytest.raises(ValueError, match="target_frame_materializer_identity_sha256"):
+        builder._reform_vector_cache_context(
+            {
+                k: v
+                for k, v in cache_context.items()
+                if k != "target_frame_materializer_identity_sha256"
+            }
+        )
     target_frame, registry, dropped = builder._materialize_target_frame(
         frame,
         (target,),
@@ -5942,6 +6048,67 @@ def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> N
             identity,
             n_households=2,
         )
+
+
+def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> None:
+    """Schema-2 and pre-preservation materializer vectors cannot serve."""
+
+    builder = _load_builder_module()
+    assert builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION == 3
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+    current_context = {
+        "target_frame_materializer_identity_sha256": "version-10-preserved-surface",
+    }
+    current_identity = builder._target_materialization_cache_identity(
+        context=current_context,
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+
+    for stale_schema in (2, 1):
+        stale_identity = {
+            **current_identity,
+            "schema_version": stale_schema,
+        }
+        builder._write_reform_income_tax_cache(
+            tmp_path,
+            stale_identity,
+            np.asarray([1.0, 2.0]),
+        )
+        assert (
+            builder._read_reform_income_tax_cache(
+                tmp_path,
+                current_identity,
+                n_households=2,
+            )
+            is None
+        )
+
+    pre_557_identity = builder._target_materialization_cache_identity(
+        context={
+            "target_frame_materializer_identity_sha256": (
+                "version-9-release-refitted-surface"
+            ),
+        },
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+    builder._write_reform_income_tax_cache(
+        tmp_path,
+        pre_557_identity,
+        np.asarray([3.0, 4.0]),
+    )
+    assert (
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            current_identity,
+            n_households=2,
+        )
+        is None
+    )
 
 
 def test_soi_eitc_child_targets_materialize_distinct_child_slices(
@@ -7745,6 +7912,7 @@ def _base_cache_context(builder):
         "target_period": builder.PERIOD,
         "target_registry_version": "registry-A",
         "congressional_district_vintage_crosswalk_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-sha-A",
     }
 
 
@@ -7893,6 +8061,7 @@ def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
     [
         ("base_dataset_sha256", "base-sha-B"),
         ("weeks_unemployed_source_sha256", "weeks-source-sha-B"),
+        ("target_frame_materializer_identity_sha256", "materializer-sha-B"),
     ],
 )
 def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
@@ -7926,8 +8095,8 @@ def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # A different base H5 or measured LKWEEKS source must not share
-    # per-household vectors even at the same record count.
+    # A different base H5, measured LKWEEKS source, or complete target-frame
+    # materializer identity must not share vectors at the same record count.
     context_b = _base_cache_context(builder)
     context_b[identity_key] = new_value
     calls_b: list[str] = []
@@ -7955,9 +8124,8 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     monkeypatch,
     tmp_path,
 ) -> None:
-    # #217 acceptance criterion 1: a rerun that changes only build state that does
-    # not affect per-household reform estimates (build commit, seed, registry
-    # version) must reuse the cached reform vectors rather than recompute them.
+    # #217 acceptance criterion 1: a rerun that changes only the build commit
+    # must reuse the cached reform vectors rather than recompute them.
     builder = _load_builder_module()
     frame = _multi_reform_frame(builder)
     reforms = (("jct_reform_a", "credit_a"),)
@@ -7982,13 +8150,10 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # Only build_commit / seed / target_registry_version change (a code-only or
-    # calibration-only rerun). Everything that determines the reform estimate is
-    # identical, so the reform must load from cache.
+    # Only build_commit changes. The full materializer identity remains equal,
+    # so the reform must load from cache.
     context_b = _base_cache_context(builder)
     context_b["build_commit"] = "commit-B"
-    context_b["seed"] = 12345
-    context_b["target_registry_version"] = "registry-B"
     calls_b: list[str] = []
     _install_multi_reform_fakes(
         builder,
@@ -9029,14 +9194,14 @@ def test_final_medicaid_green_path_evaluates_normally() -> None:
     assert failures == []
 
 
-def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
-    """The #217 reform-vector cache whitelist carries both support digests.
+def test_reform_vector_cache_context_tracks_support_and_materializer() -> None:
+    """The reform-vector whitelist carries support and materializer digests.
 
     Whether a JCT reform income-tax estimate can move with
     takes_up_ssi_if_eligible is an engine-graph question the build must not
     answer by assumption, while two selected supports can share positional
-    SSI flag bytes. The assignment and selection digests therefore invalidate
-    reform vectors independently."""
+    SSI flag bytes. The assignment, selection, and complete target-frame
+    materializer digests therefore invalidate reform vectors independently."""
 
     builder = _load_builder_module()
     base = {
@@ -9048,10 +9213,15 @@ def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
         "build_commit": "irrelevant-to-reform-vectors",
         "ssi_take_up_assignment_sha256": "digest-a",
         "selection_identities_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-a",
     }
     changed_assignment = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
     selected = {**base, "selection_identities_sha256": "cd" * 32}
     selected_other = {**base, "selection_identities_sha256": "ef" * 32}
+    changed_materializer = {
+        **base,
+        "target_frame_materializer_identity_sha256": "materializer-b",
+    }
     projected = builder._reform_vector_cache_context(base)
     assert builder._reform_vector_cache_context(
         base
@@ -9060,8 +9230,14 @@ def test_reform_vector_cache_context_tracks_assignment_and_selection() -> None:
     assert builder._reform_vector_cache_context(
         selected
     ) != builder._reform_vector_cache_context(selected_other)
+    assert projected != builder._reform_vector_cache_context(changed_materializer)
     assert "selection_identities_sha256" in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
     assert projected["selection_identities_sha256"] is None
+    assert (
+        "target_frame_materializer_identity_sha256"
+        in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    )
+    assert projected["target_frame_materializer_identity_sha256"] == "materializer-a"
     assert "build_commit" not in projected
 
 

@@ -286,14 +286,15 @@ US_FISCAL_TARGET_LOSS_CAP = 1.0
 # the inputs that actually determine per-household reform estimates and no longer
 # includes build_commit / seed / target_registry_version. Old (v1) coarse-key
 # entries live under different filenames, so a mixed cache dir never collides.
-TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 2
+# Bumped 2 -> 3 for #557: absolute reform vectors now bind to the target-frame
+# materializer identity. Pre-#557 vectors can reflect release-refitted retirement
+# leaves and must not mix with a preserved-surface baseline.
+TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 3
 # The subset of the materialization cache context that determines per-household JCT
-# reform income-tax vectors (#217). Anything outside this set — build commit, RNG
-# seed, target registry version, calibration settings — cannot change a reform's
-# per-household estimate, so it is deliberately excluded from the reform-vector
-# cache key. That lets a restart at a newer build commit (or after a registry-only
-# change) reuse already-materialized reforms instead of recomputing all of them,
-# while a change to any of these keys still invalidates the entry (no stale reuse).
+# reform income-tax vectors (#217). The raw build commit and calibration settings
+# stay excluded. The materializer-identity digest transitively binds staged-frame
+# semantics, seed, registry, and support selection, so any such change invalidates
+# the vectors even when the on-disk base hash is stable.
 REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "base_dataset_sha256",
     "weeks_unemployed_source_sha256",
@@ -311,6 +312,10 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # describe. Same-length supports can share positional SSI flag bytes, so
     # this digest remains independent of the assignment digest.
     "selection_identities_sha256",
+    # Absolute reform-tax vectors are later subtracted from the freshly
+    # materialized baseline. Bind them to the complete target-frame identity
+    # so pre-#557 release-refitted surfaces cannot mix with preserved surfaces.
+    "target_frame_materializer_identity_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 2: the medicaid_take_up stage (populace #331) changed base_frame's
@@ -340,7 +345,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # reused (populace#543, post-merge audit).
 # 9: #374 SIPP+SCF financial-asset blend changes the pre-materialization
 # frame; warm SCF-only checkpoints must not calibrate the blended frame.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 9
+# 10: #557 preserves the staged retirement-distribution surface through
+# release materialization; pre-#557 checkpoints can carry QRF-refitted leaves
+# and must not serve the preserved-surface baseline.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 10
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -1152,7 +1160,7 @@ def _parse_args() -> argparse.Namespace:
             "stores expensive per-household target materialization artifacts "
             "such as JCT reform income-tax vectors and is content-addressed by "
             "base H5, policyengine-us version, period, geography crosswalk, and "
-            "reform (see #217)."
+            "the target-frame materializer identity and reform (see #217/#557)."
         ),
     )
     parser.add_argument(
@@ -1433,6 +1441,18 @@ def _reform_vector_cache_context(context: Mapping[str, object]) -> dict[str, obj
     that omits the crosswalk sha is distinct from one that sets it); absent keys
     are simply not part of the identity.
     """
+    # The materializer identity is the anti-mixing key (PR #557): a producer
+    # that cannot state which target-frame semantics built its vectors must
+    # not share the cache. Presence is required; an explicit None is a valid
+    # declaration for non-release producers (the scorers) and is
+    # identity-distinct from every release digest.
+    if "target_frame_materializer_identity_sha256" not in context:
+        raise ValueError(
+            "Reform-vector cache context must declare "
+            "target_frame_materializer_identity_sha256 (explicit None for "
+            "non-release producers); silently omitting it would let vectors "
+            "from different target-frame semantics mix (PR #557 review)."
+        )
     return {
         key: context[key] for key in REFORM_VECTOR_CACHE_CONTEXT_KEYS if key in context
     }
@@ -1452,10 +1472,9 @@ def _target_materialization_cache_identity(
         "n_households": int(n_households),
         "reform_measure": str(reform_spec.measure),
         "neutralized_variable": str(reform_spec.neutralized_variable),
-        # #217: reform-vector identity uses only the inputs that determine the
-        # per-household estimate. Build commit / seed / registry version are
-        # intentionally excluded so calibration-only or commit-only reruns reuse
-        # the cache; base H5 / PE-US version / period / geography still invalidate.
+        # #217/#557: build commit remains intentionally excluded, while the
+        # target-frame materializer digest binds seed, registry, staged-frame
+        # semantics, and support selection to the absolute reform vector.
         "context": dict(sorted(_reform_vector_cache_context(context).items())),
     }
 
@@ -8027,22 +8046,29 @@ def main() -> None:
         time_period=PERIOD,
     )
     retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
+    early_terminal_gate_failures: list[str] = []
     if not retirement_distributions_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "retirement_distribution_inputs_gate",
-                status="failed",
-                message="Retirement-distribution signal gate failed.",
-                failures=list(retirement_distributions_gate.failures),
-                force_upload=True,
-            )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                "Retirement-distribution signal failed: " + failure
-                for failure in retirement_distributions_gate.failures
-            )
+        # A selected support is consume-only at this boundary. Preserve the
+        # gate's batched missing/degenerate leaf evidence and carry it to the
+        # #548 terminal accumulator instead of refitting or raising early.
+        early_terminal_gate_failures.extend(
+            "Retirement-distribution signal failed: " + failure
+            for failure in retirement_distributions_gate.failures
         )
+        try:
+            if telemetry is not None:
+                telemetry.stage(
+                    "retirement_distribution_inputs_gate",
+                    status="failed",
+                    message="Retirement-distribution signal gate failed.",
+                    failures=list(retirement_distributions_gate.failures),
+                    force_upload=True,
+                )
+        except Exception as error:
+            early_terminal_gate_failures.append(
+                "Retirement-distribution gate failure telemetry crashed; "
+                f"recorded instead of masking the failure: {error}"
+            )
     if telemetry is not None:
         telemetry.stage(
             "eligibility_inputs",
@@ -8721,40 +8747,89 @@ def main() -> None:
         and not input_mass_reference_gate.passed
         and not args.allow_input_mass_drift
     ):
-        if telemetry is not None:
-            telemetry.stage(
-                "input_mass_reference_gate",
-                status="failed",
-                message="Base-frame input mass parity gate failed.",
-                failures=list(input_mass_reference_gate.failures),
-                force_upload=True,
+        # Degraded pre-solve (PR #557 rounds 2-3): when the retirement
+        # boundary already failed, this raise would supersede the specific
+        # missing-leaf diagnosis. The gate object already rides
+        # _release_gate_failures into the single terminal batch, so the
+        # degraded branch simply does NOT raise — no duplicate append — and
+        # its telemetry is guarded so a reporting crash cannot mask the
+        # pending diagnosis (the #547 secure-before-report pattern). A green
+        # run keeps today's fail-fast raise.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "input_mass_reference_gate",
+                        status="failed",
+                        message="Base-frame input mass parity gate failed.",
+                        failures=list(input_mass_reference_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "Input-mass gate failure telemetry crashed in degraded "
+                    f"mode; recorded instead of masking the diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "input_mass_reference_gate",
+                    status="failed",
+                    message="Base-frame input mass parity gate failed.",
+                    failures=list(input_mass_reference_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Input mass parity failed: {failure}"
+                    for failure in input_mass_reference_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Input mass parity failed: {failure}"
-                for failure in input_mass_reference_gate.failures
-            )
-        )
     degenerate_input_gate = _degenerate_input_signal_gate(
         base_frame, PolicyEngineUSEngine()
     )
     if not degenerate_input_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "degenerate_input_gate",
-                status="failed",
-                message="Degenerate input signal gate failed.",
-                failures=list(degenerate_input_gate.failures),
-                force_upload=True,
+        # Same degraded contract as the input-mass gate above: the gate
+        # object rides _release_gate_failures to the batch; no raise, no
+        # duplicate append, guarded telemetry.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "degenerate_input_gate",
+                        status="failed",
+                        message="Degenerate input signal gate failed.",
+                        failures=list(degenerate_input_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "Degenerate-input gate failure telemetry crashed in "
+                    f"degraded mode; recorded instead of masking the "
+                    f"diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "degenerate_input_gate",
+                    status="failed",
+                    message="Degenerate input signal gate failed.",
+                    failures=list(degenerate_input_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_input_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Degenerate input signal failed: {failure}"
-                for failure in degenerate_input_gate.failures
-            )
-        )
+    # No combined pre-solve raise: a degraded run continues through the
+    # solve so calibration_diagnostics.json and the single terminal batch
+    # exist (the #547/#548 evidence contract — compute is cheaper than a
+    # destroyed failure record). The two gates above keep fail-fast raises
+    # on otherwise-green runs only.
     if telemetry is not None:
         telemetry.stage(
             "ecps_parity_gate",
@@ -8762,21 +8837,44 @@ def main() -> None:
         )
     ecps_parity_gate = _ecps_parity_gate(base_frame)
     if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
-        if telemetry is not None:
-            telemetry.stage(
-                "ecps_parity_gate",
-                status="failed",
-                message="eCPS parity gate failed.",
-                failures=list(ecps_parity_gate.failures),
-                force_upload=True,
+        # Same degraded contract as the input-mass/degenerate gates above
+        # (PR #557 round 3 finding 1): the pinned parity reference requires
+        # the retirement leaves, so a missing-leaf frame fails HERE too and
+        # an unconditional raise would supersede the retirement diagnosis
+        # before the solve. The gate object rides _release_gate_failures
+        # (as enforced_ecps_parity_gate) into the terminal batch; degraded
+        # runs continue, green runs keep the fail-fast raise.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "ecps_parity_gate",
+                        status="failed",
+                        message="eCPS parity gate failed.",
+                        failures=list(ecps_parity_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "eCPS parity gate failure telemetry crashed in degraded "
+                    f"mode; recorded instead of masking the diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "ecps_parity_gate",
+                    status="failed",
+                    message="eCPS parity gate failed.",
+                    failures=list(ecps_parity_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"eCPS parity failed: {failure}"
+                    for failure in ecps_parity_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"eCPS parity failed: {failure}"
-                for failure in ecps_parity_gate.failures
-            )
-        )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
@@ -8816,6 +8914,9 @@ def main() -> None:
             else ssi_take_up_prior_basis.source_sha256
         ),
     )
+    target_frame_materializer_identity_sha256 = _target_frame_checkpoint_digest(
+        target_frame_checkpoint_identity
+    )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
         target_specs,
@@ -8845,6 +8946,12 @@ def main() -> None:
             # intentionally does not carry this cache identity.
             "selection_identities_sha256": (
                 None if selection_source is None else selection_source.identities_sha256
+            ),
+            # Reform caches store absolute income-tax vectors, which are
+            # subtracted from a freshly materialized baseline. Bind both sides
+            # to one complete materializer identity (populace#557).
+            "target_frame_materializer_identity_sha256": (
+                target_frame_materializer_identity_sha256
             ),
         },
         gate_congressional_district_targets=args.gate_congressional_district_targets,
@@ -9044,7 +9151,6 @@ def main() -> None:
     # diagnostics and skipped every other gate group (populace#547). A law
     # violation additionally quarantines SSI-dependent evaluations below.
     ssi_law_degraded = not final_ssi_take_up_gate.passed
-    early_terminal_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
         # Failures enter the list BEFORE any reporting: the telemetry stage
         # performs local writes and must not be able to mask the gate
