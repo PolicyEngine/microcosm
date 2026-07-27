@@ -33,14 +33,19 @@ def _synthetic_rows(*, notes: int = _NOTE_ROWS, suppress: bool = False):
     rows.append(list(_HEADER))
     for band_index, lower_bound in enumerate(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS):
         row: list[object] = [float(lower_bound)]
+        row_count = 0.0
+        row_amount = 0.0
         for income_index in range(len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)):
             count = float(band_index + income_index + 1)
             amount = float(10 * (band_index + 1) + income_index)
+            # The published all-incomes pair covers suppressed cells too.
+            row_count += count
+            row_amount += amount
             if suppress and band_index == 0 and income_index == 0:
                 row.extend(["[Fewer than 1]", "[x]"])
             else:
                 row.extend([count, amount])
-        row.extend([0.0, 0.0])
+        row.extend([row_count, row_amount])
         rows.append(row)
 
     published_amount = sum(
@@ -100,7 +105,7 @@ def test_converts_source_units_to_people_and_pounds(tmp_path, ods) -> None:
 
 
 def test_reports_suppressed_cells_as_unknown_rather_than_zero(tmp_path, ods) -> None:
-    """A withheld count means "fewer than 500 people", not "nobody"."""
+    """Counts publish in thousands: a withheld count means fewer than 1,000."""
     distribution = _load(_synthetic_ods(ods, tmp_path, suppress=True))
 
     cell = distribution.cell(gain_lower_bound=0, income_lower_bound=0)
@@ -109,7 +114,22 @@ def test_reports_suppressed_cells_as_unknown_rather_than_zero(tmp_path, ods) -> 
     assert cell.individuals_suppressed
     assert cell.gains is None
     assert cell.gains_suppressed
-    assert distribution.gains_by_band()[0] > 0
+
+
+def test_band_totals_come_from_the_published_row_pair(tmp_path, ods) -> None:
+    """Row totals cover suppressed cells, so they beat summing the cells."""
+    distribution = _load(_synthetic_ods(ods, tmp_path, suppress=True))
+
+    band = distribution.band_total(0)
+
+    assert band.gains > 0
+    assert distribution.gains_by_band()[0] == band.gains
+    cell_sum = sum(
+        cell.gains
+        for cell in distribution.cells
+        if cell.gain_lower_bound == 0 and cell.gains is not None
+    )
+    assert band.gains > cell_sum
 
 
 def test_finds_the_header_whatever_the_note_count(tmp_path, ods) -> None:

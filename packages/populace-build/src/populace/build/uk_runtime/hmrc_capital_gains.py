@@ -21,7 +21,8 @@ fall under the exempt amount.
 Counts publish in thousands and amounts in £ millions; both convert here, so
 callers see people and pounds. Cells too small to publish carry a suppression
 marker instead of a count, and those come back as ``None`` rather than zero —
-a suppressed count means "fewer than 500 people", not "nobody".
+counts publish in thousands, so a suppressed count means "fewer than 1,000
+people", not "nobody".
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from pathlib import Path
 from populace.build.uk_runtime.ods_tables import ODSTable, read_ods_tables
 
 __all__ = [
+    "HMRCCapitalGainsBandTotal",
     "HMRC_CGT_BUILD_PERIOD",
     "HMRC_CGT_GAIN_BAND_LOWER_BOUNDS",
     "HMRC_CGT_INCOME_BAND_LOWER_BOUNDS",
@@ -130,7 +132,11 @@ class HMRCCapitalGainsCell:
 
     @property
     def individuals_suppressed(self) -> bool:
-        """Whether HMRC withheld the count as too small to publish."""
+        """Whether HMRC withheld the count as too small to publish.
+
+        Counts publish in thousands, so a suppressed count means fewer than
+        1,000 people, not zero.
+        """
         return self.individuals is None
 
     @property
@@ -141,6 +147,21 @@ class HMRCCapitalGainsCell:
         an amount in the lowest band of gains at the lowest band of income.
         """
         return self.gains is None
+
+
+@dataclass(frozen=True)
+class HMRCCapitalGainsBandTotal:
+    """One published all-incomes row total for a band of gains.
+
+    The row totals come straight from the published "All incomes" pair rather
+    than summing the six income cells, so a band whose cells include a
+    suppressed amount still has its full published total here. The imputation
+    uses these as the fallback mean where a cell's own count is withheld.
+    """
+
+    gain_lower_bound: int
+    individuals: float | None
+    gains: float
 
 
 @dataclass(frozen=True)
@@ -160,6 +181,7 @@ class HMRCCapitalGainsJointDistribution:
     """The joint distribution, with the provenance of the file behind it."""
 
     cells: tuple[HMRCCapitalGainsCell, ...]
+    band_totals: tuple[HMRCCapitalGainsBandTotal, ...]
     source: HMRCCapitalGainsSourceProvenance
     total_individuals: float
     total_gains: float
@@ -191,16 +213,15 @@ class HMRCCapitalGainsJointDistribution:
         )
 
     def gains_by_band(self) -> dict[int, float]:
-        """Published gains in each band of gains, summed across income.
+        """Published gains in each band of gains, from the row totals."""
+        return {total.gain_lower_bound: total.gains for total in self.band_totals}
 
-        Suppressed cells contribute nothing, so a band holding one sums to
-        slightly less than its published row total.
-        """
-        totals: dict[int, float] = dict.fromkeys(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS, 0.0)
-        for cell in self.cells:
-            if cell.gains is not None:
-                totals[cell.gain_lower_bound] += cell.gains
-        return totals
+    def band_total(self, gain_lower_bound: int) -> HMRCCapitalGainsBandTotal:
+        """Return one published row total by its band bound."""
+        for total in self.band_totals:
+            if total.gain_lower_bound == gain_lower_bound:
+                return total
+        raise KeyError(f"No published band total for gains from {gain_lower_bound}.")
 
 
 def _fingerprint(path: Path) -> tuple[str, int]:
@@ -321,6 +342,7 @@ def materialize_hmrc_capital_gains_joint_distribution(
     first_band_row = header_row + 1
 
     cells: list[HMRCCapitalGainsCell] = []
+    band_totals: list[HMRCCapitalGainsBandTotal] = []
     total_individuals: float | None = None
     total_gains: float | None = None
 
@@ -352,6 +374,28 @@ def materialize_hmrc_capital_gains_joint_distribution(
                     gains=None if gains is None else gains * _AMOUNT_UNIT,
                 )
             )
+        all_incomes_column = 1 + 2 * len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)
+        where = (
+            f"{HMRC_CGT_SOURCE_LABEL} sheet {sheet_name} row {row} "
+            f"column {all_incomes_column}"
+        )
+        row_individuals = _numeric(table.cell(row, all_incomes_column), label=where)
+        row_gains = _numeric(
+            table.cell(row, all_incomes_column + 1), label=f"{where} amount"
+        )
+        if row_gains is None:
+            raise ValueError(
+                f"{where} suppresses the all-incomes amount, which is unexpected."
+            )
+        band_totals.append(
+            HMRCCapitalGainsBandTotal(
+                gain_lower_bound=gain_lower_bound,
+                individuals=(
+                    None if row_individuals is None else row_individuals * _COUNT_UNIT
+                ),
+                gains=row_gains * _AMOUNT_UNIT,
+            )
+        )
 
     all_row = first_band_row + len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
     if str(table.cell(all_row, _BAND_COLUMN)).strip() != _ALL_ROW_LABEL:
@@ -382,6 +426,7 @@ def materialize_hmrc_capital_gains_joint_distribution(
 
     return HMRCCapitalGainsJointDistribution(
         cells=tuple(cells),
+        band_totals=tuple(band_totals),
         source=HMRCCapitalGainsSourceProvenance(
             local_path=path.resolve(),
             sha256=sha256,
