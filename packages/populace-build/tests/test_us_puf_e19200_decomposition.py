@@ -8,6 +8,9 @@ from populace.build.us_runtime.puf_interest_components import (
     US_PUF_E19200_ALL_RETURNS_COMPONENTS,
     split_us_puf_e19200_by_agi_band,
 )
+from populace.build.us_runtime.puf_source_agi import (
+    source_year_puf_adjusted_gross_income,
+)
 from populace.build.us_runtime.puf_support import puf_tax_unit_donor_from_arrays
 
 
@@ -40,6 +43,63 @@ def _one_record_per_band_arrays() -> tuple[dict[str, list[object]], np.ndarray]:
         "investment_interest_expense": np.zeros(len(tax_unit_ids)).tolist(),
     }
     return arrays, adjusted_gross_income
+
+
+def _raw_puf_source_fixture() -> tuple[dict[str, list[float]], np.ndarray, np.ndarray]:
+    regular_ids = np.arange(1, 31, dtype=np.int64)
+    regular_agi = np.asarray(
+        [
+            4_000.0,
+            *np.linspace(-500_000.0, -10_000.0, 9),
+            *np.linspace(10_000.0, 9_000_000.0, 10),
+            *np.linspace(10_000_000.0, 200_000_000.0, 10),
+        ],
+        dtype=np.float64,
+    )
+    aggregate_ids = np.asarray([999_996, 999_997, 999_998, 999_999])
+    aggregate_agi = np.asarray(
+        [-100_000.0, 2_000_000.0, 20_000_000.0, 200_000_000.0]
+    )
+    recid = np.concatenate((regular_ids, aggregate_ids))
+    agi = np.concatenate((regular_agi, aggregate_agi))
+    source: dict[str, list[float]] = {
+        "RECID": recid.tolist(),
+        "MARS": np.concatenate((np.ones(len(regular_ids)), np.zeros(4))).tolist(),
+        "S006": np.concatenate(
+            (
+                np.full(len(regular_ids), 100.0),
+                np.asarray([14_000.0, 23_000.0, 39_000.0, 10_000.0]),
+            )
+        ).tolist(),
+        "E00100": agi.tolist(),
+    }
+    screened_fields = (
+        "E00200",
+        "P23250",
+        "P22250",
+        "E00650",
+        "E00300",
+        "E26270",
+        "E00900",
+        "E02100",
+        "E00400",
+        "E00600",
+    )
+    for offset, field in enumerate(screened_fields, start=1):
+        source[field] = (np.abs(agi) / offset + offset).tolist()
+
+    synthetic_ids = np.arange(1_000_000, 1_000_080, dtype=np.int64)
+    processed_ids = np.concatenate((regular_ids, synthetic_ids))
+    processed_weights = np.concatenate(
+        (
+            np.ones(len(regular_ids)),
+            np.full(20, 7.0),
+            np.full(23, 10.0),
+            np.full(39, 10.0),
+            np.full(18, 100.0 / 18.0),
+        )
+    )
+    return source, processed_ids, processed_weights
 
 
 def test_ty2015_e19200_component_rows_are_complete_cited_and_conservative() -> None:
@@ -226,4 +286,59 @@ def test_e19200_donor_split_is_bit_deterministic_and_order_invariant() -> None:
         np.testing.assert_array_equal(
             first[column].to_numpy().view(np.uint64),
             shuffled[column].to_numpy().view(np.uint64),
+        )
+
+
+def test_source_year_puf_agi_aligns_regular_and_synthetic_records() -> None:
+    source, processed_ids, processed_weights = _raw_puf_source_fixture()
+
+    adjusted_gross_income = source_year_puf_adjusted_gross_income(
+        source,
+        processed_tax_unit_ids=processed_ids,
+        processed_tax_unit_weights=processed_weights,
+    )
+
+    # The source record remains in its literal TY2015 band. A target-year
+    # formula or nominal uprating could move this $4,000 return into a later
+    # band, which is precisely what this source-aligned seam prevents.
+    assert adjusted_gross_income[0] == 4_000.0
+    np.testing.assert_array_equal(
+        adjusted_gross_income[:30],
+        np.asarray(source["E00100"][:30]),
+    )
+    assert (adjusted_gross_income[30:50] < 5_000.0).all()
+    assert (
+        (adjusted_gross_income[50:73] >= 0.0)
+        & (adjusted_gross_income[50:73] < 10_000_000.0)
+    ).all()
+    assert (adjusted_gross_income[73:] >= 10_000_000.0).all()
+
+
+def test_source_year_puf_agi_is_bit_deterministic() -> None:
+    source, processed_ids, processed_weights = _raw_puf_source_fixture()
+
+    first = source_year_puf_adjusted_gross_income(
+        source,
+        processed_tax_unit_ids=processed_ids,
+        processed_tax_unit_weights=processed_weights,
+    )
+    second = source_year_puf_adjusted_gross_income(
+        source,
+        processed_tax_unit_ids=processed_ids,
+        processed_tax_unit_weights=processed_weights,
+    )
+
+    np.testing.assert_array_equal(first.view(np.uint64), second.view(np.uint64))
+
+
+def test_source_year_puf_agi_fails_closed_on_processed_id_drift() -> None:
+    source, processed_ids, processed_weights = _raw_puf_source_fixture()
+    processed_ids = processed_ids.copy()
+    processed_ids[3] = 123_456
+
+    with pytest.raises(ValueError, match="regular RECID order"):
+        source_year_puf_adjusted_gross_income(
+            source,
+            processed_tax_unit_ids=processed_ids,
+            processed_tax_unit_weights=processed_weights,
         )

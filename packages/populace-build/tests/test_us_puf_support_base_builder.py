@@ -485,27 +485,31 @@ def test_outer_stage_resume_rejects_changed_builder_code(
         )
 
 
-def test_puf_donor_builder_threads_explicit_engine_agi(
+def test_puf_donor_builder_threads_explicit_source_year_agi(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     builder = _load_support_builder_module()
     path = tmp_path / "puf.h5"
-    arrays = {"tax_unit_id": np.asarray([10.0, 20.0])}
+    source_path = tmp_path / "puf_2015.csv"
+    arrays = {
+        "tax_unit_id": np.asarray([10.0, 20.0]),
+        "household_weight": np.asarray([1.0, 2.0]),
+    }
     adjusted_gross_income = np.asarray([-5_000.0, 250_000.0])
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(builder, "_read_h5_arrays", lambda actual: arrays)
 
     def fake_agi(
-        actual: Path,
+        actual_source_path: Path,
         *,
-        target_year: int,
-        expected_tax_unit_ids,
+        processed_tax_unit_ids,
+        processed_tax_unit_weights,
     ) -> np.ndarray:
-        captured["agi_path"] = actual
-        captured["target_year"] = target_year
-        captured["expected_tax_unit_ids"] = expected_tax_unit_ids
+        captured["source_path"] = actual_source_path
+        captured["processed_tax_unit_ids"] = processed_tax_unit_ids
+        captured["processed_tax_unit_weights"] = processed_tax_unit_weights
         return adjusted_gross_income
 
     def fake_donor(actual_arrays, *, adjusted_gross_income):
@@ -513,15 +517,56 @@ def test_puf_donor_builder_threads_explicit_engine_agi(
         captured["adjusted_gross_income"] = adjusted_gross_income
         return "donor"
 
-    monkeypatch.setattr(builder, "_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
     monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
 
-    assert builder._puf_tax_unit_donor_from_h5(path, target_year=2024) == "donor"
-    assert captured["agi_path"] == path
-    assert captured["target_year"] == 2024
-    assert captured["expected_tax_unit_ids"] is arrays["tax_unit_id"]
+    assert (
+        builder._puf_tax_unit_donor_from_h5(
+            path,
+            source_puf_csv=source_path,
+        )
+        == "donor"
+    )
+    assert captured["source_path"] == source_path
+    assert captured["processed_tax_unit_ids"] is arrays["tax_unit_id"]
+    assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
     assert captured["arrays"] is arrays
     assert captured["adjusted_gross_income"] is adjusted_gross_income
+
+
+def test_source_year_puf_input_content_is_checkpoint_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    source = tmp_path / "puf_2015.csv"
+    source.write_bytes(b"first")
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--puf-source-year-csv",
+            str(source),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+        ]
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "builder"},
+    )
+    first = builder._stage_run_config(args)
+    source.write_bytes(b"second")
+    second = builder._stage_run_config(args)
+
+    assert first["puf_source_year_csv"] == str(source.resolve())
+    assert first["puf_source_year_csv_sha256"] != second[
+        "puf_source_year_csv_sha256"
+    ]
 
 
 def test_monolith_equivalence_observer_writes_all_boundaries_and_raw_bits(
