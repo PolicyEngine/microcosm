@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
-import json
-from hashlib import sha256
-from importlib.resources import files
-from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -48,9 +43,6 @@ requires_us = pytest.mark.skipif(
     not policyengine_us_installed,
     reason="requires the policyengine-us [us] extra (build environment)",
 )
-ROOT = Path(__file__).resolve().parents[3]
-
-
 class _ResolvedWeights:
     def __init__(self, values: np.ndarray) -> None:
         self.values = values
@@ -273,88 +265,9 @@ def test_release_wiring_promotes_only_source_backed_detail_leaves() -> None:
         RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS
     )
     assert set(US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS) <= manifest.required_columns
-    assert "investment_interest_expense" in manifest.reviewed_exclusions
-    assert manifest.reviewed_exclusions["investment_interest_expense"].startswith(
-        "SOURCE UNAVAILABILITY WITH EVIDENCE:"
-    )
-
-
-def test_investment_interest_exclusion_has_machine_reviewable_source_evidence() -> None:
-    path = files("populace.build.us").joinpath("ecps_parity_known_gaps.json")
-    entry = json.loads(path.read_text(encoding="utf-8"))["known_gaps"][
-        "investment_interest_expense"
-    ]
-
-    assert entry["reason"].startswith("SOURCE UNAVAILABILITY WITH EVIDENCE:")
-    evidence = entry["evidence"]
-    assert evidence["classification"] == "source_unavailability"
-    assert evidence["retired_derivation"]["lines"] == "141-155,268-320,327-349"
-    assert evidence["required_intermediates"] == [
-        "interest_deduction",
-        "deductible_mortgage_interest",
-    ]
-    assert evidence["processed_puf"]["positive_values"] == 0
-    assert evidence["processed_puf"]["missing_columns"] == [
-        "interest_deduction",
-        "deductible_mortgage_interest",
-        "E19200",
-    ]
-    assert all(
-        item["missing_columns"]
-        == ["interest_deduction", "deductible_mortgage_interest", "E19200"]
-        for item in evidence["hermetic_asec_inputs"]
-    )
-
-
-def test_investment_interest_evidence_matches_build_j_artifact_pins() -> None:
-    entry = json.loads(
-        files("populace.build.us")
-        .joinpath("ecps_parity_known_gaps.json")
-        .read_text(encoding="utf-8")
-    )["known_gaps"]["investment_interest_expense"]
-    evidence = entry["evidence"]
-    summary = json.loads(
-        (ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()
-    )
-
-    assert evidence["processed_puf"]["sha256"] == summary["puf_sha256"]
-    assert {
-        item["filename"]: item["sha256"] for item in evidence["hermetic_asec_inputs"]
-    } == {
-        Path(item["path"]).name: item["sha256"]
-        for item in summary["base_source"]["sources"]
-    }
-
-
-def _sha256(path: Path) -> str:
-    digest = sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def test_mounted_puf_artifact_confirms_zero_and_missing_source() -> None:
-    entry = json.loads(
-        files("populace.build.us")
-        .joinpath("ecps_parity_known_gaps.json")
-        .read_text(encoding="utf-8")
-    )["known_gaps"]["investment_interest_expense"]
-    evidence = entry["evidence"]["processed_puf"]
-    summary = json.loads(
-        (ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()
-    )
-    path = Path(summary["puf_h5"])
-    if not path.is_file():
-        pytest.skip("SHA-locked PUF artifact is not mounted in this environment")
-
-    assert _sha256(path) == evidence["sha256"]
-    with h5py.File(path) as h5:
-        assert set(evidence["missing_columns"]).isdisjoint(h5.keys())
-        values = h5["investment_interest_expense"][...]
-    assert len(values) == evidence["rows"]
-    assert int(np.count_nonzero(values > 0.0)) == evidence["positive_values"]
-    assert float(values.sum()) == evidence["weighted_total"]
+    assert "investment_interest_expense" in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS
+    assert "investment_interest_expense" in manifest.required_columns
+    assert "investment_interest_expense" not in manifest.reviewed_exclusions
 
 
 def test_shipped_neutralization_probes_bind_each_restored_leaf() -> None:
