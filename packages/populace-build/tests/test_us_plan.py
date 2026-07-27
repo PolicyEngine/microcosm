@@ -846,14 +846,14 @@ class TestUsSources:
         assert "educator_expense" in stage.nonnegative_outputs
         assert "educator_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
 
-    def test_puf_stage_disaggregates_aggregate_records_before_uprating(self) -> None:
+    def test_puf_stage_uprates_before_archived_disaggregation(self) -> None:
         operations = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].operations
         kinds = [operation.kind for operation in operations]
         assert (
             kinds.index("read_table")
             < kinds.index("derive_puf_policyengine_variables")
-            < kinds.index("disaggregate_aggregate_records")
             < kinds.index("uprate")
+            < kinds.index("disaggregate_aggregate_records")
         )
 
         derive_operation = operations[kinds.index("derive_puf_policyengine_variables")]
@@ -903,8 +903,12 @@ class TestUsSources:
             "weight": "s006",
             "amount_columns": "irs_puf_amount_columns",
             "seed_from_build_config": True,
+            "use_forbes_top_tail": True,
         }
-        assert "forbes" not in str(operation.parameters).lower()
+        notes = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].notes
+        assert "uprates the raw TY2015 rows before replacing" in notes
+        assert "Forbes backbone for aggregate RECID 999999" in notes
+        assert "3,900-record open tail" in notes
 
     def test_aca_stage_declares_marketplace_input_surface(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
