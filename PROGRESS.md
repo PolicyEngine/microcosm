@@ -2,8 +2,8 @@
 
 ## State
 
-Measurements complete and internally reconciled. Runtime register edits are
-authorized by the measured frame but have not yet been made.
+Complete. Both runtime registers are written and validated, and the final
+report is in `FINAL_REPORT.md`.
 
 ## Done
 
@@ -30,13 +30,19 @@ authorized by the measured frame but have not yet been made.
 - Confirmed the 8c diagnostic cross-checks: mortgage Table 2.1 is
   `$224,295,761,736.252` against `$186,310,104,604.25217`
   (`+20.388404%`), and medical HT2 is `+17.325927%`.
+- Wrote the Build-P zero-support register with 31 entries. Mapping validation
+  proves all 27 carried entries are unchanged and only the requested four
+  measured-zero cells were added.
+- Wrote the Build-P QRF register with the exact 11-column concentrated set and
+  each column's measured share/carrier evidence.
+- Parsed both JSON files with `json.tool`, checked their object/string schemas
+  with `jq`, and loaded them through the release's actual loader functions.
+- Re-ran the exact QRF gate with the new register: passed with no failures,
+  stale entries, dormant entries, or unused register keys.
+- Wrote the complete measurement and validation report to `FINAL_REPORT.md`.
 
 ## Next
 
-- Copy the Build-M zero-support register unchanged and append only the four
-  measured-zero Build-P cells with evidence in the reason strings.
-- Write the Build-P QRF register with exactly the 11 measured concentrated
-  columns and current shares/carrier counts.
-- Parse both files through the release's actual loaders and re-run the QRF
-  gate with the new register to prove exact key-set use.
-- Write and commit `FINAL_REPORT.md`.
+- The next Build-P release may consume the two validated runtime registers.
+- Mortgage Table 2.1 and medical HT2 remain report-only findings for separate
+  follow-up.
