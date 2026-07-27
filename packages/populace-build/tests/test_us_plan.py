@@ -940,6 +940,10 @@ class TestUsSources:
         assert "Forbes backbone for aggregate RECID 999999" in notes
         assert "3,900-record open tail" in notes
         assert "does not request unsupported Forbes synthesis" in notes
+        donor_notes = US_DONORS["puf_tax_detail"].notes
+        assert "uprates its raw TY2015 rows before" in donor_notes
+        assert "Forbes-backed 3,900-record open tail" in donor_notes
+        assert "without rerunning Forbes synthesis" in donor_notes
 
     def test_aca_stage_declares_marketplace_input_surface(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]

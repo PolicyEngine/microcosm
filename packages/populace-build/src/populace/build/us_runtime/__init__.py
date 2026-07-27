@@ -2173,12 +2173,14 @@ US_DONORS: Mapping[str, DonorSpec] = {
         notes=(
             "Itemized-deduction detail, versioned processed-PUF Section 199A "
             "simulation leaves (carried without redrawing), partnership SE, "
-            "mortgage-interest split, direct E00800/E03500 alimony, direct "
-            "E20500 casualty loss, and the E20400 miscellaneous-expense proxy; IRS "
-            "disclosure aggregate rows are "
-            "disaggregated from raw PUF totals before uprating, with Forbes "
-            "top-tail synthesis disabled; support clipped to the PUF's own "
-            "realized ranges."
+            "source-year-AGI E19200 mortgage/non-mortgage split, direct "
+            "E00800/E03500 alimony, direct E20500 casualty loss, and the E20400 "
+            "miscellaneous-expense proxy. The pinned processed PUF uprates its "
+            "raw TY2015 rows before seeded disclosure-record replacement and "
+            "includes a Forbes-backed 3,900-record open tail; this runtime "
+            "reconstructs the bounded-record AGI lineage and anchors every "
+            "Forbes-tail record in the final published AGI band without rerunning "
+            "Forbes synthesis. Support is clipped to the PUF's realized ranges."
         ),
     ),
     US_EDUCATION_INPUTS_STAGE_NAME: DonorSpec(
