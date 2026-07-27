@@ -31,7 +31,7 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "charitable_deduction": (
         "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss"
     ),
-    "interest_deduction": (
+    "deductible_mortgage_interest": (
         "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss"
     ),
     "qualified_business_income_deduction": (
@@ -805,6 +805,20 @@ def test_jct_tax_expenditure_references_are_simple_income_tax_reforms() -> None:
         assert spec.output_variable == "income_tax"
         assert spec.matrix_row == "reform_minus_baseline_income_tax"
         assert spec.neutralized_variable
+
+
+def test_jct_mortgage_reform_neutralizes_only_the_mortgage_component() -> None:
+    mortgage_target = (
+        "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss"
+    )
+    reform = next(
+        spec
+        for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+        if spec.target_name == mortgage_target
+    )
+
+    assert reform.neutralized_variable == "deductible_mortgage_interest"
+    assert reform.neutralized_variable != "interest_deduction"
 
 
 def test_jct_reform_objects_satisfy_their_own_coverage_requirement() -> None:

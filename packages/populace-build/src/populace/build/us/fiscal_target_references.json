@@ -167,7 +167,7 @@
       "metadata": {
         "kind": "neutralize_variable",
         "matrix_row": "reform_minus_baseline_income_tax",
-        "neutralized_variable": "interest_deduction",
+        "neutralized_variable": "deductible_mortgage_interest",
         "output_variable": "income_tax",
         "target_role": "jct_tax_expenditure"
       },
