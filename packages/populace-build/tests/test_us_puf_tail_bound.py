@@ -323,6 +323,7 @@ def test_real_puf_weighted_p999_is_below_build_m_ceiling_draw() -> None:
         arrays = {column: h5[column][...] for column in required}
     donor = puf_tax_unit_donor_from_arrays(
         arrays,
+        adjusted_gross_income=np.zeros(len(arrays["tax_unit_id"])),
         person_outputs=(_TARGET,),
         tax_unit_outputs=(),
     )

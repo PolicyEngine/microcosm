@@ -485,6 +485,88 @@ def test_outer_stage_resume_rejects_changed_builder_code(
         )
 
 
+def test_puf_donor_builder_threads_explicit_source_year_agi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    path = tmp_path / "puf.h5"
+    source_path = tmp_path / "puf_2015.csv"
+    arrays = {
+        "tax_unit_id": np.asarray([10.0, 20.0]),
+        "household_weight": np.asarray([1.0, 2.0]),
+    }
+    adjusted_gross_income = np.asarray([-5_000.0, 250_000.0])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(builder, "_read_h5_arrays", lambda actual: arrays)
+
+    def fake_agi(
+        actual_source_path: Path,
+        *,
+        processed_tax_unit_ids,
+        processed_tax_unit_weights,
+    ) -> np.ndarray:
+        captured["source_path"] = actual_source_path
+        captured["processed_tax_unit_ids"] = processed_tax_unit_ids
+        captured["processed_tax_unit_weights"] = processed_tax_unit_weights
+        return adjusted_gross_income
+
+    def fake_donor(actual_arrays, *, adjusted_gross_income):
+        captured["arrays"] = actual_arrays
+        captured["adjusted_gross_income"] = adjusted_gross_income
+        return "donor"
+
+    monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
+
+    assert (
+        builder._puf_tax_unit_donor_from_h5(
+            path,
+            source_puf_csv=source_path,
+        )
+        == "donor"
+    )
+    assert captured["source_path"] == source_path
+    assert captured["processed_tax_unit_ids"] is arrays["tax_unit_id"]
+    assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
+    assert captured["arrays"] is arrays
+    assert captured["adjusted_gross_income"] is adjusted_gross_income
+
+
+def test_source_year_puf_input_content_is_checkpoint_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    source = tmp_path / "puf_2015.csv"
+    source.write_bytes(b"first")
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--puf-source-year-csv",
+            str(source),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+        ]
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "builder"},
+    )
+    first = builder._stage_run_config(args)
+    source.write_bytes(b"second")
+    second = builder._stage_run_config(args)
+
+    assert first["puf_source_year_csv"] == str(source.resolve())
+    assert first["puf_source_year_csv_sha256"] != second["puf_source_year_csv_sha256"]
+
+
 def test_monolith_equivalence_observer_writes_all_boundaries_and_raw_bits(
     tmp_path: Path,
 ) -> None:
@@ -1284,8 +1366,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "clone_us_frame_for_puf_support",
         lambda frame: "expanded",
     )
-    monkeypatch.setattr(builder, "_read_h5_arrays", lambda path: {})
-    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", lambda arrays: None)
+    monkeypatch.setattr(
+        builder,
+        "_puf_tax_unit_donor_from_h5",
+        lambda path, *, source_puf_csv: None,
+    )
     monkeypatch.setattr(
         builder,
         "impute_and_audit_us_puf_support",
@@ -1759,6 +1844,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
     builder = _load_support_builder_module()
     puf = tmp_path / "puf.h5"
     puf.write_bytes(b"puf")
+    source_puf = tmp_path / "puf_2015.csv"
+    source_puf.write_bytes(b"source puf")
     sidecar = tmp_path / "asecpub24csv.zip"
     sidecar.write_bytes(b"zip")
     argv = [
@@ -1768,6 +1855,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
         f"2024={tmp_path / 'census_cps_2024.h5'}",
         "--puf-h5",
         str(puf),
+        "--puf-source-year-csv",
+        str(source_puf),
         "--asec-education-source",
         f"2023={sidecar}",
         "--target-year",

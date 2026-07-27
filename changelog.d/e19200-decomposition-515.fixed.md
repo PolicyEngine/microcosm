@@ -1,0 +1,1 @@
+Decompose each PUF E19200 record into mortgage and non-mortgage interest using the published 2015 SOI Table 2.1 component shares for its AGI band, restore nonzero investment-interest support, and bind the JCT mortgage reform to the mortgage-specific variable.

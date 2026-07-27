@@ -182,6 +182,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
         *US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
         *US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
+        "investment_interest_expense",
         "spm_unit_pre_subsidy_childcare_expenses",
         "household_weight",
         "unreimbursed_business_employee_expenses",

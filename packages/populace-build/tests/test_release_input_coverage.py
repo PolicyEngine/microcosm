@@ -44,6 +44,9 @@ from populace.build.us_runtime import (
     us_release_input_coverage_gate,
     us_release_reform_coverage_probes,
 )
+from populace.build.us_runtime.release_input_coverage import (
+    RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
+)
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -563,6 +566,13 @@ class TestShippedManifest:
         for asset in SSI_COUNTABLE_RESOURCE_ASSETS:
             assert asset in manifest.required_columns
             assert asset not in manifest.reviewed_exclusions
+
+    def test_restored_investment_interest_is_required_without_exclusion(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "investment_interest_expense"
+        assert column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
 
     def test_post_reference_ssi_disability_criterion_has_unique_probe(self) -> None:
         manifest = load_release_input_coverage_manifest()
@@ -1220,8 +1230,7 @@ class TestShippedManifest:
             reason = by_id[probe_id].reason
             assert "JCX-35-25" in reason
             assert (
-                "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
-                in reason
+                "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect" in reason
             )
             assert "-$32.806 billion" in reason
         neutralization = by_id["fsla_overtime_premium_neutralization"].reason
@@ -1238,9 +1247,7 @@ class TestShippedManifest:
         for probe_id in ("obbba_no_tax_on_tips", "tip_income_neutralization"):
             reason = by_id[probe_id].reason
             assert "JCX-35-25" in reason
-            assert (
-                "jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect" in reason
-            )
+            assert "jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect" in reason
             assert "-$10.121 billion" in reason
         neutralization = by_id["tip_income_neutralization"].reason
         assert "certified Build N" in neutralization

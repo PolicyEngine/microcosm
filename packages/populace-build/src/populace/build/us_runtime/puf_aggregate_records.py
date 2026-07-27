@@ -107,10 +107,10 @@ _SOURCE_FIELD_ATTRIBUTES = {
     # Raw E19200 is Schedule A "Interest paid deduction, TOTAL" (home
     # mortgage + points + QMIP + investment interest), NOT mortgage-only;
     # the attribute name predates that distinction and stays stable because
-    # it keys raw-source audit payloads. The processed donor carves this
-    # lineage to the mortgage-only concept (populace#515,
-    # US_PUF_E19200_HOME_MORTGAGE_SHARE) -- do not compare this raw audit
-    # figure against carved donor masses without un-carving.
+    # it keys raw-source audit payloads. The processed donor decomposes this
+    # lineage using the published TY2015 Table 2.1 component shares for each
+    # AGI band (populace#515); compare this raw audit figure only with the sum
+    # of the carved mortgage and non-mortgage donor masses.
     "E19200": "mortgage_interest_paid",
     "E19800": "charitable_cash_contributions",
     "E20100": "charitable_noncash_contributions",

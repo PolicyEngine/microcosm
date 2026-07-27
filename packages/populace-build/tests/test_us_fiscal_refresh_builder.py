@@ -6111,10 +6111,21 @@ def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> No
     )
 
 
-def test_soi_eitc_child_targets_materialize_distinct_child_slices(
+def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
     monkeypatch,
 ) -> None:
+    from populace.build.us_runtime import split_us_puf_e19200_by_agi_band
+
     builder = _load_builder_module()
+    e19200_total = np.asarray([100.0, 200.0, 300.0, 400.0])
+    source_year_agi = np.asarray([-5_000.0, 20_000.0, 100_000.0, 10_000_000.0])
+    mortgage_interest, non_mortgage_interest = split_us_puf_e19200_by_agi_band(
+        e19200_total, source_year_agi
+    )
+    assert np.all(non_mortgage_interest > 0)
+    broader_interest = mortgage_interest + non_mortgage_interest
+    np.testing.assert_array_equal(broader_interest, e19200_total)
+
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -6442,6 +6453,22 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_only": "true",
             },
         ),
+        TargetSpec(
+            name="home_mortgage_interest_amount",
+            entity="household",
+            measure="home_mortgage_interest_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "deductible_mortgage_interest",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "home_mortgage_interest_amount",
+                "itemized_only": "true",
+            },
+        ),
     )
 
     class FakeVariable:
@@ -6460,6 +6487,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "eitc_child_count",
                 "itemized_taxable_income_deductions",
                 "charitable_deduction",
+                "deductible_mortgage_interest",
                 "interest_deduction",
                 "medical_expense_deduction",
                 "real_estate_taxes",
@@ -6498,7 +6526,8 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                     [1_000.0, 2_000.0, 3_000.0, 4_000.0]
                 ),
                 "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
-                "interest_deduction": np.asarray([1.0, 2.0, 3.0, 4.0]),
+                "deductible_mortgage_interest": mortgage_interest,
+                "interest_deduction": broader_interest,
                 "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
                 "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
@@ -6530,6 +6559,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_taxable_income_deductions"
             ),
             "charitable_deduction": "charitable_deduction",
+            "deductible_mortgage_interest": "deductible_mortgage_interest",
             "interest_deduction": "interest_deduction",
             "medical_expense_deduction": "medical_expense_deduction",
             "real_estate_taxes": "real_estate_taxes",
@@ -6585,9 +6615,23 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     )
     assert np.array_equal(household["charitable_amount"], np.asarray([20.0, 0.0]))
     assert np.array_equal(
-        household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
+        household["interest_paid_deduction_amount"],
+        np.asarray([broader_interest[1], 0.0]),
     )
-    assert len(registry) == 20
+    assert np.array_equal(
+        household["home_mortgage_interest_amount"],
+        np.asarray([mortgage_interest[1], 0.0]),
+    )
+    np.testing.assert_allclose(
+        household["interest_paid_deduction_amount"]
+        - household["home_mortgage_interest_amount"],
+        np.asarray([non_mortgage_interest[1], 0.0]),
+    )
+    assert not np.array_equal(
+        household["home_mortgage_interest_amount"],
+        household["interest_paid_deduction_amount"],
+    )
+    assert len(registry) == 21
     assert compilation["dropped_target_names"] == []
 
 

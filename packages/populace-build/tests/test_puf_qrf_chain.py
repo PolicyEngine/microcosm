@@ -152,7 +152,8 @@ def test_primary_qrf_production_target_order_is_locked() -> None:
         *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
     assert PRIMARY_QRF_TARGET_ORDER == expected
-    assert len(PRIMARY_QRF_TARGET_ORDER) == 64
+    assert len(PRIMARY_QRF_TARGET_ORDER) == 65
+    assert "investment_interest_expense" in PRIMARY_QRF_TARGET_ORDER
     digest = hashlib.sha256(
         json.dumps(list(PRIMARY_QRF_TARGET_ORDER), separators=(",", ":")).encode()
     ).hexdigest()
@@ -244,7 +245,7 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     run_primary_puf_qrf_chain(checkpoint_dir)
 
 
-def test_primary_qrf_rejects_pre_carve_schema_versions(
+def test_primary_qrf_rejects_pre_decomposition_schema_versions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -277,10 +278,10 @@ def test_primary_qrf_rejects_pre_carve_schema_versions(
     manifest_path = checkpoint_dir / "manifest.json"
     original_manifest = json.loads(manifest_path.read_text())
     assert original_manifest["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    # Every stale version must reject -- v1 (pre-carve) AND v2 (post-carve,
-    # pre-screen): a loader relaxed to accept {2, 3} would pass a v1-only pin
-    # while resurrecting the exact checkpoint populace#516 invalidates.
-    for stale_version in (1, 2):
+    # Every stale version must reject: pre-carve v1, pre-screen v2, and
+    # national-carve/all-zero-investment v3. This protects custom target-order
+    # standalone checkpoints whose manifests do not hash donor construction.
+    for stale_version in (1, 2, 3):
         stale_manifest = dict(original_manifest)
         stale_manifest["schema_version"] = stale_version
         manifest_path.write_text(json.dumps(stale_manifest))
@@ -294,7 +295,7 @@ def test_primary_qrf_rejects_pre_carve_schema_versions(
     with h5py.File(target_path, mode="r") as h5:
         pristine_metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
     assert pristine_metadata["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    for stale_version in (1, 2):
+    for stale_version in (1, 2, 3):
         metadata = dict(pristine_metadata)
         metadata["schema_version"] = stale_version
         with h5py.File(target_path, mode="r+") as h5:

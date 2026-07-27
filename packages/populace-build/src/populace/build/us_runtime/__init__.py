@@ -495,13 +495,27 @@ from populace.build.us_runtime.prior_year_income import (
     us_prior_year_income_summary,
     with_us_prior_year_income_inputs,
 )
+from populace.build.us_runtime.puf_interest_components import (
+    US_PUF_E19200_AGI_BANDS,
+    US_PUF_E19200_ALL_RETURNS_COMPONENTS,
+    PufE19200AgiBand,
+    PufE19200InterestComponents,
+    split_us_puf_e19200_by_agi_band,
+)
+from populace.build.us_runtime.puf_source_agi import (
+    PUF_AGGREGATE_DISAGGREGATION_SEED,
+    PUF_AGGREGATE_RECIDS,
+    PUF_SOURCE_YEAR,
+    PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS,
+    PUF_SYNTHETIC_RECID_START,
+    source_year_puf_adjusted_gross_income,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
-    US_PUF_E19200_HOME_MORTGAGE_SHARE,
     US_PUF_SUPPORT_FIT_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     PufTaxDetailChainInputs,
@@ -1688,8 +1702,16 @@ __all__ = [
     "PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "PufTaxDetailChainInputs",
+    "PufE19200AgiBand",
+    "PufE19200InterestComponents",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
-    "US_PUF_E19200_HOME_MORTGAGE_SHARE",
+    "US_PUF_E19200_AGI_BANDS",
+    "US_PUF_E19200_ALL_RETURNS_COMPONENTS",
+    "PUF_AGGREGATE_DISAGGREGATION_SEED",
+    "PUF_AGGREGATE_RECIDS",
+    "PUF_SOURCE_YEAR",
+    "PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS",
+    "PUF_SYNTHETIC_RECID_START",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
@@ -1721,6 +1743,8 @@ __all__ = [
     "prepare_us_puf_tax_detail_chain_inputs",
     "reform_validation_payload",
     "source_gap_family_ids",
+    "split_us_puf_e19200_by_agi_band",
+    "source_year_puf_adjusted_gross_income",
     "ECPS_PARITY_KNOWN_GAPS_RESOURCE",
     "ECPS_PARITY_REFERENCE_RESOURCE",
     "EcpsParityReference",
@@ -2149,12 +2173,14 @@ US_DONORS: Mapping[str, DonorSpec] = {
         notes=(
             "Itemized-deduction detail, versioned processed-PUF Section 199A "
             "simulation leaves (carried without redrawing), partnership SE, "
-            "mortgage-interest split, direct E00800/E03500 alimony, direct "
-            "E20500 casualty loss, and the E20400 miscellaneous-expense proxy; IRS "
-            "disclosure aggregate rows are "
-            "disaggregated from raw PUF totals before uprating, with Forbes "
-            "top-tail synthesis disabled; support clipped to the PUF's own "
-            "realized ranges."
+            "source-year-AGI E19200 mortgage/non-mortgage split, direct "
+            "E00800/E03500 alimony, direct E20500 casualty loss, and the E20400 "
+            "miscellaneous-expense proxy. The pinned processed PUF uprates its "
+            "raw TY2015 rows before seeded disclosure-record replacement and "
+            "includes a Forbes-backed 3,900-record open tail; this runtime "
+            "reconstructs the bounded-record AGI lineage and anchors every "
+            "Forbes-tail record in the final published AGI band without rerunning "
+            "Forbes synthesis. Support is clipped to the PUF's realized ranges."
         ),
     ),
     US_EDUCATION_INPUTS_STAGE_NAME: DonorSpec(

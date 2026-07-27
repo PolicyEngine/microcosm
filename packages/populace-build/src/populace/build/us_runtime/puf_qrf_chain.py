@@ -35,17 +35,21 @@ from populace.build.us_runtime.puf_support import (
 from populace.fit import QRF, QRFChainState
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
-# v2 (populace#515): the checkpointed donor frame now carries the E19200 ->
-# mortgage-only concept carve (US_PUF_E19200_HOME_MORTGAGE_SHARE). Loading
-# validates only schema/digest/kind/role -- not donor construction identity --
-# so a v1 checkpoint initialized pre-carve would keep fitting and drawing the
-# uncarved levels under carved code. The bump rejects every pre-carve
-# checkpoint and forces re-initialization through the carved constructor.
+# v2 (populace#515): the checkpointed donor frame gained the interim national
+# E19200 -> mortgage-only concept carve. Loading validates only
+# schema/digest/kind/role -- not donor construction identity -- so a v1
+# checkpoint initialized pre-carve would keep fitting and drawing the uncarved
+# levels under carved code.
 # v3 (populace#516): donor construction now whole-row-screens grouped raw
 # mortgage-interest outliers before that carve. A v2 post-carve, pre-screen
 # checkpoint would otherwise still fit and draw the corrupt rows under screened
 # code, so it too must be rejected and rebuilt.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 3
+# v4 (populace#515 completion): donor construction replaces the national carve
+# with published per-AGI-band shares and adds investment_interest_expense as a
+# learned person input. The production target-order digest also changes, but a
+# schema bump is still required for standalone custom-order checkpoints whose
+# manifests do not fingerprint donor-construction semantics.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 4
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
@@ -55,7 +59,7 @@ PRIMARY_QRF_TARGET_ORDER = (
     *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 PRIMARY_QRF_TARGET_ORDER_SHA256 = (
-    "556d713d029840848aba548d9c991842a54ea3cdbdea650c0be57d5ec5782661"
+    "795519d161e6b8425fc3b64de7eb435d52d25e7c8250b5861f3bb21ab48266a3"
 )
 
 _ARTIFACT_KIND = "populace_primary_puf_qrf_chain"
