@@ -485,6 +485,47 @@ def test_outer_stage_resume_rejects_changed_builder_code(
         )
 
 
+def test_puf_donor_builder_threads_explicit_engine_agi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    path = tmp_path / "puf.h5"
+    arrays = {"tax_unit_id": np.asarray([10.0, 20.0])}
+    adjusted_gross_income = np.asarray([-5_000.0, 250_000.0])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(builder, "_read_h5_arrays", lambda actual: arrays)
+
+    def fake_agi(
+        actual: Path,
+        *,
+        target_year: int,
+        expected_tax_unit_ids,
+    ) -> np.ndarray:
+        captured["agi_path"] = actual
+        captured["target_year"] = target_year
+        captured["expected_tax_unit_ids"] = expected_tax_unit_ids
+        return adjusted_gross_income
+
+    def fake_donor(actual_arrays, *, adjusted_gross_income):
+        captured["arrays"] = actual_arrays
+        captured["adjusted_gross_income"] = adjusted_gross_income
+        return "donor"
+
+    monkeypatch.setattr(builder, "_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
+
+    assert (
+        builder._puf_tax_unit_donor_from_h5(path, target_year=2024) == "donor"
+    )
+    assert captured["agi_path"] == path
+    assert captured["target_year"] == 2024
+    assert captured["expected_tax_unit_ids"] is arrays["tax_unit_id"]
+    assert captured["arrays"] is arrays
+    assert captured["adjusted_gross_income"] is adjusted_gross_income
+
+
 def test_monolith_equivalence_observer_writes_all_boundaries_and_raw_bits(
     tmp_path: Path,
 ) -> None:
@@ -1284,8 +1325,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "clone_us_frame_for_puf_support",
         lambda frame: "expanded",
     )
-    monkeypatch.setattr(builder, "_read_h5_arrays", lambda path: {})
-    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", lambda arrays: None)
+    monkeypatch.setattr(
+        builder,
+        "_puf_tax_unit_donor_from_h5",
+        lambda path, *, target_year: None,
+    )
     monkeypatch.setattr(
         builder,
         "impute_and_audit_us_puf_support",

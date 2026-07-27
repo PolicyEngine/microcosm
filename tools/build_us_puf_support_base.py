@@ -36,6 +36,7 @@ from populace.build.outer_stage_runtime import (
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.stage_profile import profile_stage
+from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -992,8 +993,10 @@ def _run_all(
     )
     _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
-    arrays = _read_h5_arrays(args.puf_h5)
-    donor = puf_tax_unit_donor_from_arrays(arrays)
+    donor = _puf_tax_unit_donor_from_h5(
+        args.puf_h5,
+        target_year=args.target_year,
+    )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
     if boundary_observer is None:
@@ -1860,7 +1863,10 @@ def _clone_feature_extraction_stage(
     base: Frame,
 ) -> tuple[Frame, dict[str, object]]:
     expanded = clone_us_frame_for_puf_support(base)
-    donor = puf_tax_unit_donor_from_arrays(_read_h5_arrays(args.puf_h5))
+    donor = _puf_tax_unit_donor_from_h5(
+        args.puf_h5,
+        target_year=args.target_year,
+    )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
         # The outer context marks clone_feature_extraction only after both its
@@ -1880,6 +1886,8 @@ def _clone_feature_extraction_stage(
         "puf_sha256": _sha256(args.puf_h5),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "puf_e19200_agi_variable": "adjusted_gross_income",
+        "puf_e19200_agi_period": args.target_year,
         "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
     }
 
@@ -2706,6 +2714,54 @@ def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:
 
     with h5py.File(path, "r") as h5:
         return {name: np.asarray(dataset) for name, dataset in h5.items()}
+
+
+def _puf_tax_unit_donor_from_h5(
+    path: Path,
+    *,
+    target_year: int,
+) -> pd.DataFrame:
+    """Build the PUF donor with explicit engine-calculated tax-unit AGI."""
+
+    arrays = _read_h5_arrays(path)
+    adjusted_gross_income = _puf_adjusted_gross_income(
+        path,
+        target_year=target_year,
+        expected_tax_unit_ids=arrays["tax_unit_id"],
+    )
+    return puf_tax_unit_donor_from_arrays(
+        arrays,
+        adjusted_gross_income=adjusted_gross_income,
+    )
+
+
+def _puf_adjusted_gross_income(
+    path: Path,
+    *,
+    target_year: int,
+    expected_tax_unit_ids: Sequence[object],
+) -> np.ndarray:
+    """Calculate the processed PUF's AGI in its tax-unit row order."""
+
+    from policyengine_us import Microsimulation
+    from policyengine_us.data import USSingleYearDataset
+
+    dataset = USSingleYearDataset(file_path=str(path))
+    dataset_tax_unit_ids = dataset.tax_unit["tax_unit_id"].to_numpy(dtype=np.int64)
+    expected = np.asarray(expected_tax_unit_ids, dtype=np.int64)
+    if not np.array_equal(dataset_tax_unit_ids, expected):
+        raise ValueError(
+            "PolicyEngine PUF tax-unit order differs from the raw H5 tax_unit_id "
+            "order used by the E19200 donor."
+        )
+    simulation = Microsimulation(dataset=dataset)
+    try:
+        return np.asarray(
+            simulation.calculate("adjusted_gross_income", period=target_year),
+            dtype=np.float64,
+        ).copy()
+    finally:
+        release_engine_simulation(simulation)
 
 
 def _row_counts(frame: Frame) -> dict[str, int]:

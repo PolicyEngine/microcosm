@@ -21,10 +21,7 @@ def _representative_agi(lower: float | None, upper: float | None) -> float:
 
 def _one_record_per_band_arrays() -> tuple[dict[str, list[object]], np.ndarray]:
     tax_unit_ids = np.arange(1, len(US_PUF_E19200_AGI_BANDS) + 1, dtype=np.int64)
-    total_interest = np.asarray(
-        [band.total_interest_paid_amount for band in US_PUF_E19200_AGI_BANDS],
-        dtype=np.float64,
-    )
+    total_interest = np.full(len(tax_unit_ids), 1_000.0, dtype=np.float64)
     adjusted_gross_income = np.asarray(
         [
             _representative_agi(band.lower_bound, band.upper_bound)
@@ -55,7 +52,7 @@ def test_ty2015_e19200_component_rows_are_complete_cited_and_conservative() -> N
     assert bands[0].upper_bound == 5_000
     assert bands[-1].lower_bound == 10_000_000
     assert bands[-1].upper_bound is None
-    for previous, following in zip(bands, bands[1:], strict=True):
+    for previous, following in zip(bands[:-1], bands[1:], strict=True):
         assert previous.upper_bound == following.lower_bound
     for band in bands:
         assert band.source_cells == {
@@ -130,10 +127,10 @@ def test_e19200_donor_split_preserves_each_band_and_published_shares() -> None:
         dtype=np.float64,
     )
     expected_mortgage = np.asarray(
-        [band.home_mortgage_interest_amount for band in US_PUF_E19200_AGI_BANDS],
+        [1_000.0 * band.home_mortgage_share for band in US_PUF_E19200_AGI_BANDS],
         dtype=np.float64,
     )
-    expected_non_mortgage = total - expected_mortgage
+    expected_non_mortgage = 1_000.0 - expected_mortgage
     np.testing.assert_allclose(donor["home_mortgage_interest"], expected_mortgage)
     np.testing.assert_allclose(
         donor["investment_interest_expense"],
@@ -142,10 +139,27 @@ def test_e19200_donor_split_preserves_each_band_and_published_shares() -> None:
     np.testing.assert_array_equal(
         donor["home_mortgage_interest"].to_numpy()
         + donor["investment_interest_expense"].to_numpy(),
-        total,
+        np.full(len(total), 1_000.0),
     )
-    assert donor["investment_interest_expense"].sum() == 21_456_696
     assert (donor["investment_interest_expense"] > 0).all()
+
+    # The same proportional rule applied to the literal source rows recovers
+    # the published mortgage amounts and the full conserving residual mass.
+    source_mortgage, source_non_mortgage = split_us_puf_e19200_by_agi_band(
+        total,
+        adjusted_gross_income,
+    )
+    np.testing.assert_allclose(
+        source_mortgage,
+        np.asarray(
+            [
+                band.home_mortgage_interest_amount
+                for band in US_PUF_E19200_AGI_BANDS
+            ],
+            dtype=np.float64,
+        ),
+    )
+    assert source_non_mortgage.sum() == 21_456_696
 
 
 def test_e19200_donor_split_requires_explicit_adjusted_gross_income() -> None:
