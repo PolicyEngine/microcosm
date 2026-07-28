@@ -119,6 +119,7 @@ from populace.build.source_runtime import (  # noqa: E402 - after the compat gat
     run_source_stage,
 )
 from populace.build.staging import (  # noqa: E402 - after the compat gate
+    DEFAULT_STAGING_PREFIX,
     LATEST_STAGING_POINTER,
     RUNS_INDEX,
     STAGING_SCHEMA_VERSION,
@@ -144,6 +145,7 @@ __all__ = [
     "SourceRuntimeConfig",
     "SourceRuntimeContext",
     "SourceRuntimeError",
+    "DEFAULT_STAGING_PREFIX",
     "LATEST_STAGING_POINTER",
     "RUNS_INDEX",
     "STAGING_SCHEMA_VERSION",

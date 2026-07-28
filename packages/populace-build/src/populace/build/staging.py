@@ -23,6 +23,7 @@ from typing import Any
 STAGING_SCHEMA_VERSION = 1
 LATEST_STAGING_POINTER = "latest_staging.json"
 RUNS_INDEX = "runs.json"
+DEFAULT_STAGING_PREFIX = "runs"
 
 
 def _now() -> str:
@@ -71,7 +72,7 @@ class StagingTelemetry:
     candidate_release_id: str
     run_dir: Path | str
     repo_id: str | None = None
-    path_prefix: str = "runs"
+    path_prefix: str = DEFAULT_STAGING_PREFIX
     api: Any = None
     upload_interval_seconds: float = 30.0
     started_at: str = field(default_factory=_now)

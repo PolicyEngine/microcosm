@@ -1083,7 +1083,9 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
 
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     builder = _load_builder_module()
-    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging")
+    # A value distinct from the built-in default, so this asserts the
+    # environment actually won rather than passing either way.
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-canary")
     monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
     monkeypatch.setattr(
         sys,
@@ -1099,7 +1101,7 @@ def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
 
     args = builder._parse_args()
 
-    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == "policyengine/populace-us-canary"
     assert args.staging_prefix == "candidate-runs"
 
 
@@ -7685,7 +7687,10 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         ],
     )
     args = module._parse_args()
-    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    # The one place the literal is asserted, so the constant cannot be
+    # retyped without a test noticing.
+    assert module.STAGING_REPO_ID == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == module.STAGING_REPO_ID
     assert not args.no_staging
 
     def namespace(no_staging: bool) -> SimpleNamespace:

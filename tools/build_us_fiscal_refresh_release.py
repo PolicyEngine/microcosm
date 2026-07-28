@@ -63,7 +63,7 @@ from populace.build.gates import (
 )
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from populace.build.staging import StagingTelemetry
+from populace.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
 from populace.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -273,6 +273,7 @@ from populace.frame.units import US_SCHEMA
 
 PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
+STAGING_REPO_ID = "policyengine/populace-us-staging"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
@@ -1272,9 +1273,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-repo-id",
-        default=os.environ.get(
-            "POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging"
-        ),
+        default=os.environ.get("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
             "Hugging Face dataset repo to upload staging telemetry to while "
             "the build runs. On by default (uploads are best-effort and never "
@@ -1308,7 +1307,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-prefix",
-        default=os.environ.get("POPULACE_STAGING_PREFIX", "runs"),
+        default=os.environ.get("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
         help=(
             "Repo prefix for staging run artifacts. Defaults to "
             "POPULACE_STAGING_PREFIX or runs."
