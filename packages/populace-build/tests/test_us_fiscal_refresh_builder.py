@@ -926,7 +926,16 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
 
+    base_load = source.index("base_frame = _load_frame(base_h5)")
+    tail_presence = source.index(
+        "capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(",
+        base_load,
+    )
     selection = source.index("base_frame, selection_report = select_frozen_support(")
+    tail_retention = source.index(
+        "assert_puf_capital_gains_tail_survives_selection(",
+        selection,
+    )
     regate = source.index(
         "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
     )
@@ -934,7 +943,7 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
         "base_frame, base_population_repair = _with_base_population_mass_repair("
     )
 
-    assert selection < regate < mass_repair
+    assert base_load < tail_presence < selection < tail_retention < regate < mass_repair
     assert "Post-selection weeks-unemployed input signal failed" in source
 
 

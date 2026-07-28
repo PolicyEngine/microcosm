@@ -346,6 +346,9 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert "state_withheld_income_tax" not in donor
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
+    assert donor[
+        puf_support_module.PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN
+    ].tolist() == [0.0, 0.0]
 
 
 def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:

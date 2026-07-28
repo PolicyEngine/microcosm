@@ -35,6 +35,7 @@ __all__ = [
     "PufTaxDetailChainInputs",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
     "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
     "US_PUF_SUPPORT_FIT_NAME",
@@ -59,6 +60,7 @@ US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 #: (populace #300). Stable so a release manifest and its allowlist can refer to
 #: this fit by name.
 US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
+PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN = "puf_source_adjusted_gross_income"
 
 # populace#516 donor mortgage quarantine: $10M of annual home-mortgage
 # interest implies roughly a $250M mortgage at 4%, not a genuine Schedule A
@@ -604,6 +606,11 @@ def puf_tax_unit_donor_from_arrays(
         if not np.isfinite(agi).all():
             raise ValueError("adjusted_gross_income must contain only finite values.")
         tax_unit[_E19200_AGI_BAND_COLUMN] = agi
+        # Preserve the source-year value solely as donor provenance for the
+        # post-QRF capital-gains tail transfer. QRF preparation selects an
+        # explicit predictor/output surface, so this never becomes a modeled
+        # carrier or a shipped PolicyEngine input.
+        tax_unit[PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN] = agi
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
     reserved_outputs = {
         _MORTGAGE_OUTLIER_SCREEN_COLUMN,

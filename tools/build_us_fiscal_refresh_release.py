@@ -230,6 +230,9 @@ from populace.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    assert_puf_capital_gains_tail_survives_selection,
+)
 from populace.build.us_runtime.reform_validation import (
     default_baseline_level_specs,
     default_simulate_factory,
@@ -7373,6 +7376,17 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+    capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
+        base_frame,
+        base_frame,
+        require_present=True,
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "capital_gains_tail_presence",
+            message="Verified the materialized PUF capital-gains own-tail.",
+            **capital_gains_tail_presence,
+        )
     weeks_unemployed_source_path = (
         args.asec_2023_weeks_unemployed_source
         if args.asec_2023_weeks_unemployed_source is not None
@@ -7441,10 +7455,19 @@ def main() -> None:
                 n_source=selection_source.n_identities,
                 join_key=list(selection_source.join_key),
             )
+        selection_candidate_frame = base_frame
         base_frame, selection_report = select_frozen_support(
-            base_frame, selection_source
+            selection_candidate_frame,
+            selection_source,
         )
         selection_source_payload = selection_report.as_manifest()
+        selection_source_payload["puf_capital_gains_tail_retention"] = (
+            assert_puf_capital_gains_tail_survives_selection(
+                selection_candidate_frame,
+                base_frame,
+                require_present=True,
+            )
+        )
         if telemetry is not None:
             telemetry.stage(
                 "frozen_support_selection_done",

@@ -221,6 +221,32 @@ def test_assignment_preserves_asec_reporters_and_fans_source_decisions() -> None
     assert person.groupby("person_source_id")[_OUTPUT].nunique().max() == 1
 
 
+def test_assignment_accepts_weight_split_puf_clone_indices() -> None:
+    frame, potential = _frame()
+    person = frame.table("person").copy()
+    person["person_support_clone_index"] = np.where(
+        person["person_support_channel"].eq("asec"),
+        0,
+        1,
+    )
+    original_source = "under_18:0"
+    tail_source = person["person_source_id"].eq("under_18:7")
+    person.loc[tail_source, "person_source_id"] = original_source
+    person.loc[tail_source, "person_support_clone_index"] = 2
+
+    result, diagnostics = with_us_ssi_take_up(
+        _replace_person(frame, person),
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+    )
+
+    split = result.table("person")["person_source_id"].eq(original_source)
+    assert split.sum() == 3
+    assert result.table("person").loc[split, _OUTPUT].nunique() == 1
+    assert diagnostics["source_identity_mismatch_count"] == 0
+
+
 def test_puf_only_ssi_value_is_not_promoted_to_reporter_anchor() -> None:
     frame, potential = _frame()
     baseline, baseline_diagnostics = with_us_ssi_take_up(

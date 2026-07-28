@@ -74,7 +74,13 @@ def _frame(households: list[dict[str, object]]) -> Frame:
                 "spm_unit_energy_subsidy": float(hh.get("energy", 0.0)),
             }
         )
-        tu_rows.append({"tax_unit_id": hid})
+        tax_unit = {"tax_unit_id": hid}
+        if any("tail_donor_id" in candidate for candidate in households):
+            tax_unit["puf_capital_gains_tail_transfer_applied"] = "tail_donor_id" in hh
+            tax_unit["puf_capital_gains_tail_donor_source_id"] = int(
+                hh.get("tail_donor_id", -1)
+            )
+        tu_rows.append(tax_unit)
         fam_rows.append({"family_id": hid})
         mu_rows.append({"marital_unit_id": pid})
         pid += 1
@@ -138,7 +144,11 @@ def test__selection_carryover__maps_cleanly__passes() -> None:
     base = _frame(_POOL)
     source = _selection([(2024, 11, "asec", 0), (2023, 11, "puf", 1)])
 
-    result, mask = check_selection_carryover(base, source)
+    result, mask = check_selection_carryover(
+        base,
+        source,
+        require_capital_gains_tail=False,
+    )
 
     assert result.status == "PASS"
     assert result.details["n_selected"] == 2
@@ -151,11 +161,89 @@ def test__selection_carryover__unmapped_identity__fails() -> None:
     # (2024, 99, ...) is not in the base pool.
     source = _selection([(2024, 11, "asec", 0), (2024, 99, "asec", 0)])
 
-    result, mask = check_selection_carryover(base, source)
+    result, mask = check_selection_carryover(
+        base,
+        source,
+        require_capital_gains_tail=False,
+    )
 
     assert result.status == "FAIL"
     assert mask is None
     assert result.failures and "unmapped" in result.failures[0].lower()
+
+
+def test__selection_carryover__base_without_cg_tail__fails() -> None:
+    base = _frame(_POOL)
+    source = _selection([(2024, 11, "asec", 0), (2023, 11, "puf", 1)])
+
+    result, mask = check_selection_carryover(base, source)
+
+    assert result.status == "FAIL"
+    assert mask is None
+    assert "Rebuild the base" in result.failures[0]
+
+
+def test__selection_carryover__stale_source_drops_cg_tail__fails() -> None:
+    pool = [
+        {
+            "hid": 1,
+            "syear": 2024,
+            "shh": 11,
+            "chan": "puf_tax_detail",
+            "clone": 1,
+        },
+        {
+            "hid": 2,
+            "syear": 2024,
+            "shh": 11,
+            "chan": "puf_tax_detail",
+            "clone": 2,
+            "tail_donor_id": 9001,
+        },
+    ]
+    base = _frame(pool)
+    source = _selection([(2024, 11, "puf_tax_detail", 1)])
+
+    result, mask = check_selection_carryover(base, source)
+
+    assert result.status == "FAIL"
+    assert mask is None
+    assert "Regenerate the selection-source manifest" in result.failures[0]
+
+
+def test__selection_carryover__complete_cg_tail_source__passes() -> None:
+    pool = [
+        {
+            "hid": 1,
+            "syear": 2024,
+            "shh": 11,
+            "chan": "puf_tax_detail",
+            "clone": 1,
+        },
+        {
+            "hid": 2,
+            "syear": 2024,
+            "shh": 11,
+            "chan": "puf_tax_detail",
+            "clone": 2,
+            "tail_donor_id": 9001,
+        },
+    ]
+    base = _frame(pool)
+    source = _selection(
+        [
+            (2024, 11, "puf_tax_detail", 1),
+            (2024, 11, "puf_tax_detail", 2),
+        ]
+    )
+
+    result, mask = check_selection_carryover(base, source)
+
+    assert result.status == "PASS"
+    assert mask.tolist() == [True, True]
+    tail = result.details["puf_capital_gains_tail_retention"]
+    assert tail["passed"]
+    assert tail["selected_tail_record_count"] == 1
 
 
 # ---------------------------------------------------------------------------

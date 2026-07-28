@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from importlib import metadata as importlib_metadata
 from pathlib import Path
@@ -44,6 +44,7 @@ from populace.build.us_runtime import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR,
     GEOGRAPHY_LADDER_VINTAGES_ATTR,
+    PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -67,6 +68,7 @@ from populace.build.us_runtime import (
     puf_tax_unit_donor_from_arrays,
     source_year_puf_adjusted_gross_income,
     support_channel_column,
+    transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
     us_adult_care_signal_gate,
     us_alimony_signal_gate,
@@ -100,6 +102,7 @@ from populace.build.us_runtime import (
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
+    validate_puf_capital_gains_tail_manifest,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_adult_care_inputs,
@@ -121,6 +124,7 @@ from populace.build.us_runtime import (
     with_us_weeks_unemployed,
     with_us_wic_claim_input,
     with_us_workers_compensation,
+    write_puf_capital_gains_tail_manifest,
 )
 from populace.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
@@ -144,6 +148,7 @@ PIPELINE_STEPS = (
     "clone_feature_extraction",
     "primary_qrf_chain",
     "qrf_finalization",
+    PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
     CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
     "qbi_reconciliation",
     "wic_post_clone",
@@ -200,6 +205,10 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("primary_qrf_chain", ("run_primary_puf_qrf_chain[target_subprocesses]",)),
     ("qrf_finalization", ("finalize_primary_puf_qrf_chain",)),
+    (
+        PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
+        ("transfer_puf_capital_gains_tail",),
+    ),
     (
         CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
         ("run_source_stage[capital_gain_distributions]",),
@@ -679,6 +688,11 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "n_estimators": args.n_estimators,
         "out": path(args.out),
         "puf_h5": path(args.puf_h5),
+        "puf_h5_sha256": (
+            _sha256(args.puf_h5)
+            if args.puf_h5 is not None and Path(args.puf_h5).is_file()
+            else None
+        ),
         "puf_source_year_csv": path(args.puf_source_year_csv),
         "puf_source_year_csv_sha256": (
             _sha256(args.puf_source_year_csv)
@@ -1041,6 +1055,16 @@ def _run_all(
             tail_bound_diagnostics=tail_bound_diagnostics,
         )
     _observe_frame_boundary(boundary_observer, "qrf_finalization", imputed)
+    imputed, capital_gains_tail_transfer = _capital_gains_tail_transfer_stage(
+        args,
+        imputed,
+        donor=donor,
+    )
+    _observe_frame_boundary(
+        boundary_observer,
+        PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
+        imputed,
+    )
     imputed, _ = _capital_gain_distributions_stage(args, imputed)
     _observe_frame_boundary(
         boundary_observer,
@@ -1443,6 +1467,7 @@ def _run_all(
         "puf_donor_build_summary": donor_build_summary,
         "weights_audit": weights_audit,
         "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
+        "puf_capital_gains_tail_transfer": capital_gains_tail_transfer,
         "qbi_inputs_signal": {
             "passed": qbi_inputs_gate.passed,
             "failures": list(qbi_inputs_gate.failures),
@@ -1616,6 +1641,10 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
     if args.stage in runtime.context.completed:
         if args.stage == "final_export":
             _repair_completed_final_stage(args, runtime)
+        elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
+            _ensure_capital_gains_tail_manifest(
+                runtime.metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+            )
         return
 
     with profile_stage(args.stage, args.checkpoint_dir):
@@ -1667,6 +1696,8 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         elif args.stage == "qrf_finalization":
             after, metadata = _qrf_finalization_stage(args, before)
             assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
+            after, metadata = _capital_gains_tail_transfer_stage(args, before)
         elif args.stage == CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME:
             after, metadata = _capital_gain_distributions_stage(args, before)
             assert_unchanged_identity(before, after, stage=args.stage)
@@ -1700,6 +1731,9 @@ def _repair_completed_final_stage(
     args: argparse.Namespace,
     runtime: StageRuntime,
 ) -> None:
+    _ensure_capital_gains_tail_manifest(
+        runtime.metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+    )
     loaded = runtime.load("final_export")
     metadata = runtime.metadata["final_export"]
     output_h5 = Path(str(metadata["output_h5"]))
@@ -1951,6 +1985,140 @@ def _qrf_finalization_stage(
         },
         "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
     }
+
+
+def _capital_gains_tail_transfer_stage(
+    args: argparse.Namespace,
+    frame: Frame,
+    *,
+    donor: pd.DataFrame | None = None,
+) -> tuple[Frame, dict[str, object]]:
+    """Transfer the declared PUF CG tail and bind its standalone manifest."""
+
+    tail_donor = donor
+    if tail_donor is None:
+        tail_donor = _puf_tax_unit_donor_from_h5(
+            args.puf_h5,
+            source_puf_csv=args.puf_source_year_csv,
+        )
+    transferred, manifest = transfer_puf_capital_gains_tail(
+        frame,
+        tail_donor,
+        seed=args.seed,
+    )
+    ceiling = manifest["tail_distribution_receipts"]["frame_after_stage"]
+    if not ceiling["positive_mass_five_x_target_exceeded"]:
+        raise ValueError(
+            "PUF capital-gains tail transfer did not clear its declared "
+            "five-times positive-mass target: "
+            f"{ceiling['positive_mass_five_x_ceiling']} <= "
+            f"{ceiling['positive_mass_five_x_target']}."
+        )
+    manifest_filename = _capital_gains_tail_manifest_filename(args.target_year)
+    manifest_path = args.out.resolve() / manifest_filename
+    checkpoint_dir = getattr(args, "checkpoint_dir", None)
+    checkpoint_manifest_path = (
+        manifest_path
+        if checkpoint_dir is None
+        else checkpoint_dir.resolve() / "artifacts" / manifest_filename
+    )
+    manifest_file_sha256 = write_puf_capital_gains_tail_manifest(
+        manifest_path,
+        manifest,
+    )
+    checkpoint_manifest_file_sha256 = (
+        manifest_file_sha256
+        if checkpoint_manifest_path == manifest_path
+        else write_puf_capital_gains_tail_manifest(
+            checkpoint_manifest_path,
+            manifest,
+        )
+    )
+    if checkpoint_manifest_file_sha256 != manifest_file_sha256:
+        raise AssertionError(
+            "PUF capital-gains tail output and checkpoint manifests differ."
+        )
+    return transferred, {
+        "manifest_path": str(manifest_path),
+        "checkpoint_manifest_path": str(checkpoint_manifest_path),
+        "manifest_file_sha256": manifest_file_sha256,
+        "manifest_sha256": manifest["manifest_sha256"],
+        "donor_records_sha256": manifest["donor_records_sha256"],
+        "assignment_sha256": manifest["assignment_sha256"],
+        "record_count": manifest["record_count"],
+        "boundary": manifest["boundary"],
+        "weight_domain": manifest["weight_domain"],
+        "joint_vector_columns": manifest["joint_vector_columns"],
+        "joint_vector_policy": manifest["joint_vector_policy"],
+        "clone": manifest["clone"],
+        "carrier_reconciliation": manifest["carrier_reconciliation"],
+        "tail_distribution_receipts": manifest["tail_distribution_receipts"],
+        "signed_leg_reconciliation": manifest["signed_leg_reconciliation"],
+        "tail_concentration_gate": manifest["tail_concentration_gate"],
+        "frame_after_stage_concentration_gate": manifest[
+            "frame_after_stage_concentration_gate"
+        ],
+    }
+
+
+def _ensure_capital_gains_tail_manifest(
+    metadata: Mapping[str, object],
+) -> dict[str, object]:
+    """Validate both tail-manifest copies and repair either from the other."""
+
+    expected_file_sha256 = str(metadata["manifest_file_sha256"])
+    paths = tuple(
+        dict.fromkeys(
+            Path(str(metadata[key]))
+            for key in ("manifest_path", "checkpoint_manifest_path")
+        )
+    )
+    valid_manifest: dict[str, object] | None = None
+    failures: list[str] = []
+    for path in paths:
+        try:
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            file_sha256 = _sha256(path)
+            if file_sha256 != expected_file_sha256:
+                raise ValueError(f"file SHA {file_sha256} != {expected_file_sha256}")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("payload is not a JSON object")
+            validate_puf_capital_gains_tail_manifest(payload)
+            for key in (
+                "manifest_sha256",
+                "donor_records_sha256",
+                "assignment_sha256",
+                "record_count",
+            ):
+                if payload.get(key) != metadata.get(key):
+                    raise ValueError(
+                        f"{key} {payload.get(key)!r} != {metadata.get(key)!r}"
+                    )
+            valid_manifest = payload
+            break
+        except (FileNotFoundError, OSError, TypeError, ValueError) as exc:
+            failures.append(f"{path}: {exc}")
+    if valid_manifest is None:
+        raise RuntimeError(
+            "No valid PUF capital-gains tail manifest copy remains:\n  "
+            + "\n  ".join(failures)
+        )
+
+    for path in paths:
+        if path.is_file() and _sha256(path) == expected_file_sha256:
+            continue
+        repaired_sha256 = write_puf_capital_gains_tail_manifest(
+            path,
+            valid_manifest,
+        )
+        if repaired_sha256 != expected_file_sha256:
+            raise RuntimeError(
+                "Repaired PUF capital-gains tail manifest differs from committed "
+                f"metadata at {path}: {repaired_sha256} != {expected_file_sha256}."
+            )
+    return valid_manifest
 
 
 def _capital_gain_distributions_stage(
@@ -2358,6 +2526,9 @@ def _export_staged_result(
     frame: Frame,
     stage_metadata: dict[str, dict[str, object]],
 ) -> dict[str, object]:
+    _ensure_capital_gains_tail_manifest(
+        stage_metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+    )
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     output_h5 = out_dir / _dataset_filename(args.target_year)
@@ -2393,6 +2564,7 @@ def _export_staged_result(
     pre_clone = stage_metadata["pre_clone_enrichment"]
     clone = stage_metadata["clone_feature_extraction"]
     qrf = stage_metadata["qrf_finalization"]
+    capital_gains_tail = stage_metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
     signals = _merged_stage_signals(stage_metadata)
     required_signals = (
         "qbi_inputs_signal",
@@ -2464,6 +2636,7 @@ def _export_staged_result(
         "puf_donor_build_summary": clone["puf_donor_build_summary"],
         "weights_audit": qrf["weights_audit"],
         "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
+        "puf_capital_gains_tail_transfer": capital_gains_tail,
         **{name: signals[name] for name in required_signals},
         "congressional_district_assignment": stage_metadata[
             "congressional_district_assignment"
@@ -2581,6 +2754,10 @@ def _summary_filename(period: int) -> str:
     if period == PERIOD:
         return SUMMARY_FILENAME
     return f"base_populace_us_{period}_puf_support.summary.json"
+
+
+def _capital_gains_tail_manifest_filename(period: int) -> str:
+    return f"base_populace_us_{period}_puf_capital_gains_tail.manifest.json"
 
 
 def _load_base_frame_from_args(args: argparse.Namespace) -> tuple[Frame, dict]:

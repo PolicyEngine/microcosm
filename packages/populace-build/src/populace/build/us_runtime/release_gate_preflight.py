@@ -65,6 +65,9 @@ import pandas as pd
 
 from populace.build.gates import input_mass_parity_gate
 from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    assert_puf_capital_gains_tail_survives_selection,
+)
 from populace.build.us_runtime.release_input_coverage import (
     ReformCoverageProbe,
     us_release_reform_coverage_probes,
@@ -273,7 +276,10 @@ def _numeric_column(series: pd.Series) -> np.ndarray:
 
 
 def check_selection_carryover(
-    base_frame: Frame, selection_source: SelectionSource
+    base_frame: Frame,
+    selection_source: SelectionSource,
+    *,
+    require_capital_gains_tail: bool = True,
 ) -> tuple[CheckResult, np.ndarray | None]:
     """Does the frozen selection map cleanly onto the base pool (no solve)?
 
@@ -285,6 +291,12 @@ def check_selection_carryover(
     try:
         mask, report = selection_source.base_selection_mask(
             base_frame, mode="frozen_support"
+        )
+        selected_frame = base_frame.select(_household_person_mask(base_frame, mask))
+        tail_retention = assert_puf_capital_gains_tail_survives_selection(
+            base_frame,
+            selected_frame,
+            require_present=require_capital_gains_tail,
         )
     except ValueError as exc:
         return (
@@ -328,7 +340,11 @@ def check_selection_carryover(
                 "identities under the join key.",
             ),
             rows=(row,),
-            details={"join_key": list(selection_source.join_key), **row},
+            details={
+                "join_key": list(selection_source.join_key),
+                "puf_capital_gains_tail_retention": tail_retention,
+                **row,
+            },
         ),
         mask,
     )

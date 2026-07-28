@@ -16,6 +16,9 @@ from populace.build.us_runtime import (
     support_channel_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    select_puf_capital_gains_tail_donors,
+)
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _TARGET = "non_sch_d_capital_gains"
@@ -316,15 +319,24 @@ def test_real_puf_weighted_p999_is_below_build_m_ceiling_draw() -> None:
         # The field-local quarantine still keys on grouped raw mortgage
         # interest; include it so this exercises production donor semantics.
         "home_mortgage_interest",
+        "short_term_capital_gains",
+        "long_term_capital_gains",
+        "long_term_capital_gains_on_collectibles",
         _TARGET,
+        "unrecaptured_section_1250_gain",
     )
     with h5py.File(_REAL_PUF_PATH, mode="r") as h5:
         arrays = {column: h5[column][...] for column in required}
     donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=np.zeros(len(arrays["tax_unit_id"])),
-        person_outputs=(_TARGET,),
-        tax_unit_outputs=(),
+        person_outputs=(
+            "short_term_capital_gains",
+            "long_term_capital_gains_before_response",
+            "long_term_capital_gains_on_collectibles",
+            _TARGET,
+        ),
+        tax_unit_outputs=("unrecaptured_section_1250_gain",),
     )
     # populace#567 retains all rows while quarantining only implicated fields.
     assert len(donor) == 211_677
@@ -338,3 +350,14 @@ def test_real_puf_weighted_p999_is_below_build_m_ceiling_draw() -> None:
     assert np.isfinite(bound)
     assert bound > 0.0
     assert bound < 594_483.0, f"real-donor weighted p99.9 was {bound}"
+
+    tail, receipt = select_puf_capital_gains_tail_donors(donor)
+    assert receipt["quantile"] == 0.995
+    assert receipt["realized_boundary"] == pytest.approx(1_685_506.6553593322)
+    assert receipt["next_reference_quantile"] == 0.999
+    assert 7_000_000.0 < receipt["next_reference_boundary"] < 8_000_000.0
+    assert receipt["tail_record_count"] == 15_228
+    assert receipt["tail_weight"] == pytest.approx(71_234.35070214933)
+    assert receipt["tail_positive_mass"] == pytest.approx(608_135_408_058.0879)
+    assert receipt["synthetic_tail_record_count"] == 2_239
+    assert len(tail) == 15_228
