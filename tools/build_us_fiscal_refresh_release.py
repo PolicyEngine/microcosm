@@ -230,6 +230,9 @@ from populace.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    assert_puf_capital_gains_tail_survives_selection,
+)
 from populace.build.us_runtime.reform_validation import (
     default_baseline_level_specs,
     default_simulate_factory,
@@ -275,6 +278,10 @@ PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
+FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
+FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
+FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
@@ -1576,6 +1583,124 @@ def _write_reform_income_tax_cache(
     os.replace(tmp_values_path, values_path)
     os.replace(tmp_metadata_path, metadata_path)
     return digest, values_path
+
+
+def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
+    """Fail loud when --out/--release-id points at a certified release.
+
+    populace#568 round 3: a failed retry into a directory that already
+    carries a certified release would write failed-attempt weight evidence
+    beside the prior run's manifest and H5 — mixing attempts the manifest
+    knows nothing about. Release ids are immutable once certified; reruns
+    pick a new id (every launcher stamps a fresh UTC timestamp) or remove
+    the directory deliberately.
+    """
+
+    manifest_path = Path(release_dir) / "release_manifest.json"
+    if manifest_path.exists():
+        raise RuntimeError(
+            f"Release directory {release_dir} already carries a certified "
+            "release (release_manifest.json present). Choose a new "
+            "--release-id or deliberately remove the stale directory before "
+            "rerunning."
+        )
+
+
+def _write_final_household_weight_evidence(
+    release_dir: Path,
+    export_frame: Frame,
+    *,
+    identity: Mapping[str, object],
+) -> dict[str, object]:
+    """Atomically persist the final release-grain household weight vector.
+
+    Written on the gate-failure path only (populace#568 review): a failed
+    pre-export run minted no H5, so this evidence pair — the weight vector
+    plus the ORDERED household ids it aligns to, bound to the target-frame
+    identity — is the only way to reattach weights to records for
+    record-level diagnosis. Green runs never write it: the certified H5
+    carries the weights itself.
+    """
+
+    weights = export_frame.weights_for("household")
+    if weights.kind is not WeightKind.CALIBRATED:
+        raise ValueError(
+            "Final household weight evidence requires calibrated weights, got "
+            f"{weights.kind.value!r}."
+        )
+    values = np.asarray(weights.values, dtype=np.float64)
+    if values.ndim != 1 or len(values) != export_frame.n("household"):
+        raise ValueError(
+            "Final household weights must align one-for-one with exported households."
+        )
+
+    household_ids = np.asarray(
+        export_frame.table("household")["household_id"].to_numpy(),
+        dtype=np.int64,
+    )
+    if household_ids.shape != values.shape:
+        raise ValueError(
+            "Final household weight evidence ids must align one-for-one with "
+            "the weight vector."
+        )
+
+    evidence_dir = Path(release_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    values_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
+    metadata_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    temporary_values = values_path.with_name(f".{values_path.name}.tmp")
+    temporary_ids = ids_path.with_name(f".{ids_path.name}.tmp")
+    temporary_metadata = metadata_path.with_name(f".{metadata_path.name}.tmp")
+    temporary_values.unlink(missing_ok=True)
+    temporary_ids.unlink(missing_ok=True)
+    temporary_metadata.unlink(missing_ok=True)
+    try:
+        with temporary_values.open("wb") as stream:
+            np.save(stream, values, allow_pickle=False)
+        with temporary_ids.open("wb") as stream:
+            np.save(stream, household_ids, allow_pickle=False)
+        metadata: dict[str, object] = {
+            "artifact_kind": "populace_final_household_weight_evidence",
+            "schema_version": FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION,
+            "measurement_phase": "release_final",
+            "entity": "household",
+            "weight_kind": weights.kind.value,
+            "identity": dict(identity),
+            "values": {
+                "file": values_path.name,
+                "dtype": "float64",
+                "shape": [int(len(values))],
+                "sha256": _sha256(temporary_values),
+            },
+            "household_ids": {
+                "file": ids_path.name,
+                "dtype": "int64",
+                "shape": [int(len(household_ids))],
+                "sha256": _sha256(temporary_ids),
+                "ordering_sha256": hashlib.sha256(household_ids.tobytes()).hexdigest(),
+            },
+            "summary": {
+                "n_households": int(len(values)),
+                "household_weight_sum": float(values.sum()),
+                "minimum": float(values.min()),
+                "maximum": float(values.max()),
+                "nonzero_count": int(np.count_nonzero(values)),
+                "zero_count": int((values == 0.0).sum()),
+            },
+        }
+        temporary_metadata.write_text(
+            _strict_json_text(metadata, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_values, values_path)
+        os.replace(temporary_ids, ids_path)
+        os.replace(temporary_metadata, metadata_path)
+    finally:
+        temporary_values.unlink(missing_ok=True)
+        temporary_ids.unlink(missing_ok=True)
+        temporary_metadata.unlink(missing_ok=True)
+    return metadata
 
 
 def _selection_mass_protection_specs(
@@ -7177,6 +7302,16 @@ def main() -> None:
     build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
+    if args.release_id:
+        # populace#568 round 4: when the id is known up front (every launcher
+        # passes one), refuse certified-dir reuse before ANY side effect —
+        # including the base download and cache writes below. The
+        # auto-generated-id path derives its id from the base digest, so its
+        # refusal necessarily runs later, but still before any output-dir
+        # creation.
+        _refuse_certified_release_dir_reuse(
+            args.out.resolve() / "releases" / args.release_id
+        )
     base_h5 = args.base_h5 or _download_base_h5()
     base_dataset_sha256 = _sha256(base_h5)
     digest = base_dataset_sha256[:7]
@@ -7349,6 +7484,10 @@ def main() -> None:
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
+    # Unconditional refusal BEFORE any output-directory creation: a hostile
+    # --checkpoint-root beneath releases/<id> must not mutate a certified
+    # directory before the raise (populace#568 round 4).
+    _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
@@ -7373,6 +7512,17 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+    capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
+        base_frame,
+        base_frame,
+        require_present=True,
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "capital_gains_tail_presence",
+            message="Verified the materialized PUF capital-gains own-tail.",
+            **capital_gains_tail_presence,
+        )
     weeks_unemployed_source_path = (
         args.asec_2023_weeks_unemployed_source
         if args.asec_2023_weeks_unemployed_source is not None
@@ -7441,10 +7591,19 @@ def main() -> None:
                 n_source=selection_source.n_identities,
                 join_key=list(selection_source.join_key),
             )
+        selection_candidate_frame = base_frame
         base_frame, selection_report = select_frozen_support(
-            base_frame, selection_source
+            selection_candidate_frame,
+            selection_source,
         )
         selection_source_payload = selection_report.as_manifest()
+        selection_source_payload["puf_capital_gains_tail_retention"] = (
+            assert_puf_capital_gains_tail_survives_selection(
+                selection_candidate_frame,
+                base_frame,
+                require_present=True,
+            )
+        )
         if telemetry is not None:
             telemetry.stage(
                 "frozen_support_selection_done",
@@ -9675,6 +9834,19 @@ def main() -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
+        # Gate-failure path ONLY (populace#568 review): a batched pre-export
+        # failure mints no H5, so the exact calibrated weight vector — with
+        # the ordered household ids it aligns to, bound to the target-frame
+        # identity — is persisted here as the run's only record-level weight
+        # evidence. Green runs never write these files (the certified H5
+        # carries the weights); late gates (reform smoke, take-up contract)
+        # raise after the H5 write, so their failed runs retain weights in
+        # the written dataset itself.
+        _write_final_household_weight_evidence(
+            release_dir,
+            export_frame,
+            identity=target_frame_checkpoint_identity,
+        )
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",
@@ -9683,6 +9855,18 @@ def main() -> None:
             force_upload=True,
         )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
+    # A green run must not inherit a prior failed attempt's weight evidence
+    # (populace#568 round 2): with --out/--release-id reuse, stale evidence
+    # files would coexist with a certified release whose manifest knows
+    # nothing about them. The batched gates have passed, so any evidence
+    # present here belongs to a superseded attempt — remove it before the
+    # certified artifacts are written.
+    for stale_evidence in (
+        release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+        release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+        release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+    ):
+        stale_evidence.unlink(missing_ok=True)
     dataset_path = artifact_root / DATASET_FILENAME
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after

@@ -109,7 +109,7 @@ def _prime_capital_gain_stage_predecessor(
     checkpoint_dir: Path,
     frame: Frame,
 ):
-    """Commit the exact outer-stage prefix ending at QRF finalization."""
+    """Commit the exact outer-stage prefix ending at CG tail transfer."""
 
     runtime = builder.StageRuntime(
         checkpoint_dir,
@@ -121,6 +121,7 @@ def _prime_capital_gain_stage_predecessor(
     runtime.complete("clone_feature_extraction", frame)
     runtime.complete_without_frame("primary_qrf_chain")
     runtime.complete("qrf_finalization", frame)
+    runtime.complete(builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME, frame)
     return runtime
 
 
@@ -178,8 +179,7 @@ class TestCapitalGainDistributionsStage:
         )
 
         share = (
-            load_capital_gain_distribution_shares()
-            .schedule_d_cgd_share_of_lt_net_gains
+            load_capital_gain_distribution_shares().schedule_d_cgd_share_of_lt_net_gains
         )
         out = result["schedule_d_capital_gain_distributions"]
         assert np.isclose(out.iloc[0], 10_000.0 * share)
@@ -196,8 +196,7 @@ class TestCapitalGainDistributionsStage:
         )
         assert (
             out
-            <= result["long_term_capital_gains_before_response"].clip(lower=0.0)
-            + 1e-9
+            <= result["long_term_capital_gains_before_response"].clip(lower=0.0) + 1e-9
         ).all()
         # National reconstruction: the split is exactly proportional.
         eligible_lt = toy.loc[
@@ -283,7 +282,7 @@ class TestCapitalGainDistributionsStage:
             builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME
         )
         assert pipeline_names[stage_index - 1 : stage_index + 2] == [
-            "qrf_finalization",
+            builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
             builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
             "qbi_reconciliation",
         ]
@@ -328,7 +327,9 @@ class TestCapitalGainDistributionsStage:
 
         # This is an uncompleted CGD stage whose predecessor already carries
         # the output, not a normal resume of an already-committed stage.
-        assert runtime.context.completed[-1] == "qrf_finalization"
+        assert (
+            runtime.context.completed[-1] == builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME
+        )
         assert builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME not in (
             runtime.context.completed
         )
@@ -382,9 +383,7 @@ class TestCapitalGainDistributionsStage:
             split_us_component_by_share_from_manifest(
                 missing_source, _split_operation(), _context()
             )
-        missing_exclusive = _toy_tax_units().drop(
-            columns=["non_sch_d_capital_gains"]
-        )
+        missing_exclusive = _toy_tax_units().drop(columns=["non_sch_d_capital_gains"])
         with pytest.raises(SourceRuntimeError, match="exclusive_with"):
             split_us_component_by_share_from_manifest(
                 missing_exclusive, _split_operation(), _context()
