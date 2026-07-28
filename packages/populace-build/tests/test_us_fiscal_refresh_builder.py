@@ -7759,6 +7759,78 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         )
         is None
     )
+    # A local staging dir with no repo id stays a supported offline run.
+    assert telemetry.repo_id is None
+
+
+def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
+    # Staging with nowhere to write used to no-op for the whole build. It is
+    # now an argparse error, so it costs seconds instead of hours and never
+    # produces a release that silently skipped the staging dashboard.
+    module = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--staging-repo-id",
+            "",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        module._parse_args()
+
+    assert excinfo.value.code == 2
+    assert "--no-staging" in capsys.readouterr().err
+
+
+def test_blank_staging_repo_id_is_accepted_with_a_local_staging_dir(
+    monkeypatch, tmp_path
+) -> None:
+    # The offline mode stays reachable: a local destination is a destination.
+    module = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--staging-repo-id",
+            "",
+            "--staging-dir",
+            str(tmp_path / "stage"),
+        ],
+    )
+
+    args = module._parse_args()
+
+    assert args.staging_repo_id == ""
+    assert args.staging_dir == tmp_path / "stage"
+
+
+def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:
+    # The defensive half of the same invariant, for callers that build the
+    # namespace directly instead of going through the parser.
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=None,
+        staging_repo_id="",
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+
+    with pytest.raises(ValueError, match="no destination"):
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
 
 
 # ---------------------------------------------------------------------------

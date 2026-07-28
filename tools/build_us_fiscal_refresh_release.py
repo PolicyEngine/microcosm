@@ -1359,6 +1359,16 @@ def _parse_args() -> argparse.Namespace:
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
+    if not args.no_staging and not args.staging_dir and not args.staging_repo_id:
+        # Staging with nowhere to write is a configuration error, not a quiet
+        # skip: it produces a whole build with no telemetry and a release that
+        # never appears on the staging dashboard. Turning staging off is an
+        # explicit decision, never a side effect of a blank repo id.
+        parser.error(
+            "--staging-repo-id is empty and no --staging-dir is set, so staging "
+            "telemetry would silently do nothing. Pass --no-staging to skip "
+            "staging deliberately, or --staging-dir for a local-only run."
+        )
     multipliers: dict[str, float] = {}
     for entry in args.target_family_loss_multiplier:
         family, separator, raw_value = entry.partition("=")
@@ -7121,7 +7131,14 @@ def _staging_telemetry(
     if args.no_staging:
         return None
     if not args.staging_dir and not args.staging_repo_id:
-        return None
+        # The parser rejects this combination, so reaching it means a caller
+        # built the namespace directly. Returning None here would reinstate
+        # the silent skip the parser guard exists to prevent.
+        raise ValueError(
+            "staging is enabled but has no destination: staging_repo_id is "
+            "empty and staging_dir is unset. Set no_staging to skip staging, "
+            "or give a staging_dir for a local-only run."
+        )
     run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
     return StagingTelemetry(
