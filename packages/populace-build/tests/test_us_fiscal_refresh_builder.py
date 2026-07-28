@@ -66,23 +66,34 @@ def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
 
 def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> None:
     builder = _load_builder_module()
+    import hashlib as _hashlib
+
+    import pandas as _pd
+
     weights = Weights(
         np.asarray([0.0, 12.0, 35.0]),
         WeightKind.CALIBRATED,
     )
+    ids = np.asarray([101, 202, 303], dtype="int64")
     frame = SimpleNamespace(
         n=lambda entity: 3 if entity == "household" else None,
         weights_for=lambda entity: weights if entity == "household" else None,
+        table=lambda entity: _pd.DataFrame({"household_id": ids}),
+    )
+    identity = {"base_dataset_sha256": "probe-base", "seed": 0}
+
+    metadata = builder._write_final_household_weight_evidence(
+        tmp_path, frame, identity=identity
     )
 
-    metadata = builder._write_final_household_weight_evidence(tmp_path, frame)
-
     values_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
     metadata_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
     np.testing.assert_array_equal(
         np.load(values_path, allow_pickle=False),
         np.asarray([0.0, 12.0, 35.0]),
     )
+    np.testing.assert_array_equal(np.load(ids_path, allow_pickle=False), ids)
     assert json.loads(metadata_path.read_text()) == metadata
     assert metadata == {
         "artifact_kind": "populace_final_household_weight_evidence",
@@ -90,11 +101,19 @@ def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> N
         "measurement_phase": "release_final",
         "entity": "household",
         "weight_kind": "calibrated",
+        "identity": {"base_dataset_sha256": "probe-base", "seed": 0},
         "values": {
             "file": "final_household_weights.npy",
             "dtype": "float64",
             "shape": [3],
             "sha256": builder._sha256(values_path),
+        },
+        "household_ids": {
+            "file": "final_household_weight_ids.npy",
+            "dtype": "int64",
+            "shape": [3],
+            "sha256": builder._sha256(ids_path),
+            "ordering_sha256": _hashlib.sha256(ids.tobytes()).hexdigest(),
         },
         "summary": {
             "n_households": 3,
@@ -107,6 +126,55 @@ def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> N
     }
     assert not list(tmp_path.glob("*.tmp"))
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> None:
+    """populace#568 review blocker 2: the evidence pair must be written on
+    the batched gate-failure path ONLY — green runs carry weights in the
+    certified H5. Enforced structurally (the #443 AST-guard pattern): the
+    sole main() call site must sit inside the ``if terminal_gate_failures:``
+    branch, before its raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    calls: list[tuple[ast.Call, list[ast.AST]]] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.stack: list[ast.AST] = []
+
+        def generic_visit(self, node):
+            self.stack.append(node)
+            super().generic_visit(node)
+            self.stack.pop()
+
+        def visit_Call(self, node):
+            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+            if name == "_write_final_household_weight_evidence":
+                calls.append((node, list(self.stack)))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    main_calls = [
+        (node, stack)
+        for node, stack in calls
+        if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
+    ]
+    assert len(main_calls) == 1
+    _, stack = main_calls[0]
+    guarding_ifs = [
+        anc
+        for anc in stack
+        if isinstance(anc, ast.If)
+        and isinstance(anc.test, ast.Name)
+        and anc.test.id == "terminal_gate_failures"
+    ]
+    assert guarding_ifs, (
+        "final-household-weight evidence must be written inside the "
+        "terminal_gate_failures branch only"
+    )
 
 
 def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
@@ -3108,6 +3176,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 WeightKind.CALIBRATED,
             )
 
+        def table(self, entity):
+            assert entity == "household"
+            return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
+
     argv = [
         "build_us_fiscal_refresh_release.py",
         "--base-h5",
@@ -4623,12 +4695,33 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
     final_weights_path = release_dir / "final_household_weights.npy"
+    final_ids_path = release_dir / "final_household_weight_ids.npy"
     final_weights_metadata = json.loads(
         (release_dir / "final_household_weights.json").read_text()
     )
     np.testing.assert_array_equal(
         np.load(final_weights_path, allow_pickle=False),
         np.asarray([12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(
+        np.load(final_ids_path, allow_pickle=False),
+        np.asarray([10, 20], dtype="int64"),
+    )
+    # Identity binds the evidence to this run's target-frame context; the
+    # ids block reattaches every weight to its household. Their inner
+    # values are run-derived, so assert them structurally and compare the
+    # stable remainder exactly.
+    evidence_identity = final_weights_metadata.pop("identity")
+    assert evidence_identity["base_dataset_sha256"]
+    assert evidence_identity["target_period"] == 2024
+    ids_block = final_weights_metadata.pop("household_ids")
+    assert ids_block["file"] == "final_household_weight_ids.npy"
+    assert ids_block["shape"] == [2]
+    assert (
+        ids_block["ordering_sha256"]
+        == __import__("hashlib")
+        .sha256(np.asarray([10, 20], dtype="int64").tobytes())
+        .hexdigest()
     )
     assert final_weights_metadata == {
         "artifact_kind": "populace_final_household_weight_evidence",

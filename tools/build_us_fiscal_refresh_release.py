@@ -280,6 +280,7 @@ DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
 FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
+FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
 FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
@@ -1587,8 +1588,18 @@ def _write_reform_income_tax_cache(
 def _write_final_household_weight_evidence(
     release_dir: Path,
     export_frame: Frame,
+    *,
+    identity: Mapping[str, object],
 ) -> dict[str, object]:
-    """Atomically persist the final release-grain household weight vector."""
+    """Atomically persist the final release-grain household weight vector.
+
+    Written on the gate-failure path only (populace#568 review): a failed
+    pre-export run minted no H5, so this evidence pair — the weight vector
+    plus the ORDERED household ids it aligns to, bound to the target-frame
+    identity — is the only way to reattach weights to records for
+    record-level diagnosis. Green runs never write it: the certified H5
+    carries the weights itself.
+    """
 
     weights = export_frame.weights_for("household")
     if weights.kind is not WeightKind.CALIBRATED:
@@ -1602,28 +1613,51 @@ def _write_final_household_weight_evidence(
             "Final household weights must align one-for-one with exported households."
         )
 
+    household_ids = np.asarray(
+        export_frame.table("household")["household_id"].to_numpy(),
+        dtype=np.int64,
+    )
+    if household_ids.shape != values.shape:
+        raise ValueError(
+            "Final household weight evidence ids must align one-for-one with "
+            "the weight vector."
+        )
+
     evidence_dir = Path(release_dir)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     values_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
     metadata_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
     temporary_values = values_path.with_name(f".{values_path.name}.tmp")
+    temporary_ids = ids_path.with_name(f".{ids_path.name}.tmp")
     temporary_metadata = metadata_path.with_name(f".{metadata_path.name}.tmp")
     temporary_values.unlink(missing_ok=True)
+    temporary_ids.unlink(missing_ok=True)
     temporary_metadata.unlink(missing_ok=True)
     try:
         with temporary_values.open("wb") as stream:
             np.save(stream, values, allow_pickle=False)
+        with temporary_ids.open("wb") as stream:
+            np.save(stream, household_ids, allow_pickle=False)
         metadata: dict[str, object] = {
             "artifact_kind": "populace_final_household_weight_evidence",
             "schema_version": FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION,
             "measurement_phase": "release_final",
             "entity": "household",
             "weight_kind": weights.kind.value,
+            "identity": dict(identity),
             "values": {
                 "file": values_path.name,
                 "dtype": "float64",
                 "shape": [int(len(values))],
                 "sha256": _sha256(temporary_values),
+            },
+            "household_ids": {
+                "file": ids_path.name,
+                "dtype": "int64",
+                "shape": [int(len(household_ids))],
+                "sha256": _sha256(temporary_ids),
+                "ordering_sha256": hashlib.sha256(household_ids.tobytes()).hexdigest(),
             },
             "summary": {
                 "n_households": int(len(values)),
@@ -1639,9 +1673,11 @@ def _write_final_household_weight_evidence(
             encoding="utf-8",
         )
         os.replace(temporary_values, values_path)
+        os.replace(temporary_ids, ids_path)
         os.replace(temporary_metadata, metadata_path)
     finally:
         temporary_values.unlink(missing_ok=True)
+        temporary_ids.unlink(missing_ok=True)
         temporary_metadata.unlink(missing_ok=True)
     return metadata
 
@@ -9201,10 +9237,6 @@ def main() -> None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
-    # Persist at the first moment the final selected-support vector exists.
-    # Every later release gate may fail, but the failed run must retain the
-    # exact calibrated weights needed to diagnose that failure (populace#567).
-    _write_final_household_weight_evidence(release_dir, export_frame)
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -9767,6 +9799,19 @@ def main() -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
+        # Gate-failure path ONLY (populace#568 review): a batched pre-export
+        # failure mints no H5, so the exact calibrated weight vector — with
+        # the ordered household ids it aligns to, bound to the target-frame
+        # identity — is persisted here as the run's only record-level weight
+        # evidence. Green runs never write these files (the certified H5
+        # carries the weights); late gates (reform smoke, take-up contract)
+        # raise after the H5 write, so their failed runs retain weights in
+        # the written dataset itself.
+        _write_final_household_weight_evidence(
+            release_dir,
+            export_frame,
+            identity=target_frame_checkpoint_identity,
+        )
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",
