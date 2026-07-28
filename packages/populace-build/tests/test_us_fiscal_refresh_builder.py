@@ -128,6 +128,20 @@ def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> N
     assert not list(tmp_path.glob(".*.tmp"))
 
 
+def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
+    """populace#568 round 3: a run pointed at a directory already carrying
+    release_manifest.json must refuse before writing anything — a failed
+    retry would otherwise mix its weight evidence with the prior certified
+    release."""
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "some-id"
+    release_dir.mkdir(parents=True)
+    builder._refuse_certified_release_dir_reuse(release_dir)  # absent: fine
+    (release_dir / "release_manifest.json").write_text("{}")
+    with pytest.raises(RuntimeError, match="already carries a certified"):
+        builder._refuse_certified_release_dir_reuse(release_dir)
+
+
 def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> None:
     """populace#568 review blocker 2: the evidence pair must be written on
     the batched gate-failure path ONLY — green runs carry weights in the
@@ -193,13 +207,24 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     main_fn = next(
         anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
     )
-    cleanup_unlinks = [
+    cleanup_fors = [
         n
         for n in ast.walk(main_fn)
-        if isinstance(n, ast.Call)
-        and getattr(n.func, "attr", "") == "unlink"
+        if isinstance(n, ast.For)
         and n.lineno > guard.end_lineno
+        and {name.id for name in ast.walk(n.iter) if isinstance(name, ast.Name)}
+        >= {
+            "FINAL_HOUSEHOLD_WEIGHTS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME",
+        }
+        and any(
+            isinstance(c, ast.Call) and getattr(c.func, "attr", "") == "unlink"
+            for stmt in n.body
+            for c in ast.walk(stmt)
+        )
     ]
+    cleanup_unlinks = cleanup_fors
     dataset_writes = [
         n
         for n in ast.walk(main_fn)
@@ -208,7 +233,8 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
         and n.lineno > guard.end_lineno
     ]
     assert cleanup_unlinks and dataset_writes, (
-        "green path must unlink stale evidence and write the dataset"
+        "green path must unlink ALL THREE stale evidence files (bound by "
+        "constant name) and write the dataset"
     )
     assert min(n.lineno for n in cleanup_unlinks) < min(
         n.lineno for n in dataset_writes

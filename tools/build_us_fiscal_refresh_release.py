@@ -1585,6 +1585,27 @@ def _write_reform_income_tax_cache(
     return digest, values_path
 
 
+def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
+    """Fail loud when --out/--release-id points at a certified release.
+
+    populace#568 round 3: a failed retry into a directory that already
+    carries a certified release would write failed-attempt weight evidence
+    beside the prior run's manifest and H5 — mixing attempts the manifest
+    knows nothing about. Release ids are immutable once certified; reruns
+    pick a new id (every launcher stamps a fresh UTC timestamp) or remove
+    the directory deliberately.
+    """
+
+    manifest_path = Path(release_dir) / "release_manifest.json"
+    if manifest_path.exists():
+        raise RuntimeError(
+            f"Release directory {release_dir} already carries a certified "
+            "release (release_manifest.json present). Choose a new "
+            "--release-id or deliberately remove the stale directory before "
+            "rerunning."
+        )
+
+
 def _write_final_household_weight_evidence(
     release_dir: Path,
     export_frame: Frame,
@@ -7459,6 +7480,7 @@ def main() -> None:
     if checkpoint_root is not None:
         checkpoint_root.mkdir(parents=True, exist_ok=True)
     artifact_root.mkdir(parents=True, exist_ok=True)
+    _refuse_certified_release_dir_reuse(release_dir)
     release_dir.mkdir(parents=True, exist_ok=True)
     telemetry = _staging_telemetry(
         args,
