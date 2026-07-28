@@ -53,11 +53,13 @@ from populace.build.us_runtime import (
     US_SUPPORT_SPINE_SPEC,
     AsecSource,
     build_pooled_asec_unit_frame,
+    build_puf_e01000_reconciliation_basis,
     clone_us_frame_for_puf_support,
     congressional_district_assignment_summary,
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
     fetch_asec_2023_weeks_unemployed_source,
+    finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
     load_acs_2022_rent_donor,
@@ -1033,6 +1035,11 @@ def _run_all(
         source_puf_csv=getattr(args, "puf_source_year_csv", None),
         donor_build_summary=donor_build_summary,
     )
+    e01000_reconciliation_basis = _puf_e01000_reconciliation_basis(
+        args,
+        donor,
+        donor_build_summary,
+    )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
     if boundary_observer is None:
@@ -1419,6 +1426,11 @@ def _run_all(
                     sort_keys=True,
                 )
 
+    e01000_reconciliation = finalize_puf_e01000_reconciliation(
+        e01000_reconciliation_basis,
+        capital_gains_tail_transfer,
+        frame_columns=_frame_column_inventory(imputed),
+    )
     summary = {
         "base_source": base_source,
         "base_h5": (str(args.base_h5.resolve()) if args.base_h5 is not None else None),
@@ -1465,6 +1477,7 @@ def _run_all(
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "puf_donor_build_summary": donor_build_summary,
+        "puf_e01000_reconciliation": e01000_reconciliation,
         "weights_audit": weights_audit,
         "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
         "puf_capital_gains_tail_transfer": capital_gains_tail_transfer,
@@ -1936,6 +1949,11 @@ def _clone_feature_extraction_stage(
         source_puf_csv=args.puf_source_year_csv,
         donor_build_summary=donor_build_summary,
     )
+    e01000_reconciliation_basis = _puf_e01000_reconciliation_basis(
+        args,
+        donor,
+        donor_build_summary,
+    )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
         # The outer context marks clone_feature_extraction only after both its
@@ -1958,6 +1976,7 @@ def _clone_feature_extraction_stage(
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "puf_donor_build_summary": donor_build_summary,
+        "puf_e01000_reconciliation_basis": e01000_reconciliation_basis,
         "puf_e19200_agi_variable": "E00100",
         "puf_e19200_agi_period": 2015,
         "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
@@ -2565,6 +2584,11 @@ def _export_staged_result(
     clone = stage_metadata["clone_feature_extraction"]
     qrf = stage_metadata["qrf_finalization"]
     capital_gains_tail = stage_metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+    e01000_reconciliation = finalize_puf_e01000_reconciliation(
+        clone["puf_e01000_reconciliation_basis"],
+        capital_gains_tail,
+        frame_columns=_frame_column_inventory(frame),
+    )
     signals = _merged_stage_signals(stage_metadata)
     required_signals = (
         "qbi_inputs_signal",
@@ -2634,6 +2658,7 @@ def _export_staged_result(
         "puf_donor_rows": clone["puf_donor_rows"],
         "puf_donor_columns": clone["puf_donor_columns"],
         "puf_donor_build_summary": clone["puf_donor_build_summary"],
+        "puf_e01000_reconciliation": e01000_reconciliation,
         "weights_audit": qrf["weights_audit"],
         "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
         "puf_capital_gains_tail_transfer": capital_gains_tail,
@@ -2960,6 +2985,40 @@ def _puf_tax_unit_donor_from_h5(
     )
 
 
+def _puf_e01000_reconciliation_basis(
+    args: argparse.Namespace,
+    donor: pd.DataFrame,
+    donor_build_summary: Mapping[str, object],
+) -> dict[str, object]:
+    """Build the audit-only source-through-donor reconciliation payload."""
+
+    source_puf_csv = getattr(args, "puf_source_year_csv", None)
+    if source_puf_csv is None:
+        raise ValueError(
+            "--puf-source-year-csv is required for the E01000 reconciliation."
+        )
+    processed_before_screen = donor_build_summary.get(
+        "capital_gains_before_mortgage_screen"
+    )
+    mortgage_quarantine = donor_build_summary.get("mortgage_field_quarantine")
+    if not isinstance(processed_before_screen, Mapping):
+        raise ValueError(
+            "PUF donor build summary is missing pre-screen capital-gains metrics."
+        )
+    if not isinstance(mortgage_quarantine, Mapping):
+        raise ValueError(
+            "PUF donor build summary is missing mortgage quarantine metrics."
+        )
+    return build_puf_e01000_reconciliation_basis(
+        source_puf_csv,
+        donor,
+        processed_before_screen=processed_before_screen,
+        mortgage_screen=mortgage_quarantine,
+        target_year=args.target_year,
+        source_sha256=_sha256(source_puf_csv),
+    )
+
+
 def _source_year_puf_adjusted_gross_income(
     source_puf_csv: Path,
     *,
@@ -2977,6 +3036,15 @@ def _source_year_puf_adjusted_gross_income(
 
 def _row_counts(frame: Frame) -> dict[str, int]:
     return {entity: frame.n(entity) for entity in frame.entities}
+
+
+def _frame_column_inventory(frame: Frame) -> dict[str, tuple[str, ...]]:
+    """Return the final schema surface used to verify E01000 is audit-only."""
+
+    return {
+        entity: tuple(str(column) for column in frame.table(entity).columns)
+        for entity in frame.entities
+    }
 
 
 def _channel_weight_totals(frame: Frame) -> dict[str, float]:

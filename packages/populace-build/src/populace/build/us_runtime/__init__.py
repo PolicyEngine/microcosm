@@ -516,6 +516,14 @@ from populace.build.us_runtime.puf_capital_gains_tail import (
     validate_puf_capital_gains_tail_manifest,
     write_puf_capital_gains_tail_manifest,
 )
+from populace.build.us_runtime.puf_e01000_reconciliation import (
+    PUF_E01000_RECONCILIATION_SCHEMA_VERSION,
+    build_puf_e01000_reconciliation_basis,
+    finalize_puf_e01000_reconciliation,
+    puf_capital_gains_joint_metrics,
+    puf_processed_capital_gains_stage,
+    puf_raw_e01000_stage,
+)
 from populace.build.us_runtime.puf_interest_components import (
     US_PUF_E19200_AGI_BANDS,
     US_PUF_E19200_ALL_RETURNS_COMPONENTS,
@@ -1726,6 +1734,7 @@ __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION",
+    "PUF_E01000_RECONCILIATION_SCHEMA_VERSION",
     "PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS",
     "PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET",
     "PUF_CAPITAL_GAINS_TAIL_QUANTILE",
@@ -1839,6 +1848,11 @@ __all__ = [
     "support_clone_index_column",
     "support_source_id_column",
     "transfer_puf_capital_gains_tail",
+    "build_puf_e01000_reconciliation_basis",
+    "finalize_puf_e01000_reconciliation",
+    "puf_capital_gains_joint_metrics",
+    "puf_processed_capital_gains_stage",
+    "puf_raw_e01000_stage",
     "validate_puf_capital_gains_tail_manifest",
     "validation_only_family_ids",
     "translate_congressional_district_facts_to_current_vintage",

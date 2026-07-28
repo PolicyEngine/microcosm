@@ -1075,6 +1075,112 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     assert alias.stat().st_ino == checkpoint.stat().st_ino
 
 
+def test_staged_export_serializes_e01000_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    frame = _minimal_us_frame()
+    basis = {"artifact_kind": "fixture-basis"}
+    tail = {"artifact_kind": "fixture-tail"}
+    receipt = {
+        "artifact_kind": "populace_puf_e01000_capital_gains_reconciliation",
+        "schema_version": 1,
+    }
+    captured: dict[str, object] = {}
+
+    class AllSignals(dict):
+        def __contains__(self, _key: object) -> bool:
+            return True
+
+        def __getitem__(self, key: str) -> object:
+            return {"name": key, "passed": True}
+
+    def fake_finalize(
+        actual_basis,
+        actual_tail,
+        *,
+        frame_columns,
+    ):
+        captured["basis"] = actual_basis
+        captured["tail"] = actual_tail
+        captured["frame_columns"] = frame_columns
+        return receipt
+
+    def fake_write(_args, _frame, path: Path) -> None:
+        path.write_bytes(b"fixture-h5")
+
+    monkeypatch.setattr(
+        builder,
+        "_ensure_capital_gains_tail_manifest",
+        lambda _metadata: None,
+    )
+    monkeypatch.setattr(builder, "_write_policyengine_dataset", fake_write)
+    monkeypatch.setattr(
+        builder,
+        "finalize_puf_e01000_reconciliation",
+        fake_finalize,
+    )
+    monkeypatch.setattr(
+        builder, "_merged_stage_signals", lambda _metadata: AllSignals()
+    )
+    monkeypatch.setattr(builder, "_channel_weight_totals", lambda _frame: {})
+    monkeypatch.setattr(builder, "_channel_output_totals", lambda _frame: {})
+    monkeypatch.setattr(
+        builder,
+        "us_immigration_composition_summary",
+        lambda _frame: {},
+    )
+    args = SimpleNamespace(
+        out=tmp_path,
+        target_year=2024,
+        seed=7,
+        n_estimators=4,
+        congressional_district_vintage_crosswalk=None,
+        block_ladder_artifact=None,
+    )
+    stage_metadata = {
+        "source_construction": {
+            "base_source": {"kind": "generated"},
+            "base_rows": {"household": 2},
+            "base_household_weight_total": 400.0,
+        },
+        "pre_clone_enrichment": {
+            "acs_h5": None,
+            "acs_sha256": None,
+            "acs_rent_donor_rows": None,
+            "weeks_unemployed_source": {},
+        },
+        "clone_feature_extraction": {
+            "puf_h5": "puf.h5",
+            "puf_sha256": "puf-sha",
+            "puf_source_year_csv": "puf_2015.csv",
+            "puf_source_year_csv_sha256": "source-sha",
+            "puf_donor_rows": 4,
+            "puf_donor_columns": ["weight"],
+            "puf_donor_build_summary": {},
+            "puf_e01000_reconciliation_basis": basis,
+        },
+        "qrf_finalization": {
+            "weights_audit": {"passed": True},
+            "puf_tax_detail_tail_bounds": [],
+        },
+        builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME: tail,
+        "congressional_district_assignment": {"congressional_district_assignment": {}},
+        "block_ladder_assignment": {"geography_ladder_assignment": {}},
+    }
+
+    result = builder._export_staged_result(args, frame, stage_metadata)
+
+    summary = json.loads(Path(result["summary_path"]).read_text())
+    assert summary["puf_e01000_reconciliation"] == receipt
+    assert captured["basis"] is basis
+    assert captured["tail"] is tail
+    assert captured["frame_columns"] == {
+        entity: tuple(frame.table(entity).columns) for entity in frame.entities
+    }
+
+
 def test_direct_named_stage_requires_fixed_python_hash_seed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1638,6 +1744,16 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder,
         "_puf_tax_unit_donor_from_h5",
         lambda path, *, source_puf_csv, donor_build_summary: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_puf_e01000_reconciliation_basis",
+        lambda args, donor, donor_build_summary: {"fixture": True},
+    )
+    monkeypatch.setattr(
+        builder,
+        "finalize_puf_e01000_reconciliation",
+        lambda basis, tail, *, frame_columns: {"fixture": True},
     )
     monkeypatch.setattr(
         builder,

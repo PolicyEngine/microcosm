@@ -464,6 +464,29 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
     assert quarantine["screened_record_count"] == 2
     assert quarantine["screened_weight"] == 404.0
     assert set(quarantine["fields"]) == set(expected_before_quarantine)
+    preserved = quarantine["capital_gains_preserved"]
+    assert preserved["columns"] == [
+        "short_term_capital_gains",
+        "long_term_capital_gains_before_response",
+    ]
+    assert preserved["before"] == {
+        "record_count": 2,
+        "total_weight": 404.0,
+        "positive_carrier_count": 2,
+        "positive_carrier_weight": 404.0,
+        "weighted_signed_mass": 1_610_950.0,
+        "weighted_positive_mass": 1_610_950.0,
+    }
+    assert preserved["after"] == preserved["before"]
+    assert set(preserved["difference"].values()) == {0}
+    before_screen = summary["capital_gains_before_mortgage_screen"]
+    assert before_screen["status"] == "observed_upstream_replacement"
+    assert before_screen["all"]["weighted_positive_mass"] == pytest.approx(
+        np.dot(
+            np.asarray([3_050.0, 3_040.0, 4_300.0]),
+            np.asarray([101.0, 202.0, 303.0]),
+        )
+    )
     screened_weights = np.asarray([101.0, 303.0])
     for column, expected in expected_before_quarantine.items():
         field = quarantine["fields"][column]

@@ -17,6 +17,11 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.puf_e01000_reconciliation import (
+    PUF_SCHEDULE_D_JOINT_COLUMNS,
+    puf_capital_gains_joint_metrics,
+    puf_processed_capital_gains_stage,
+)
 from populace.build.us_runtime.puf_interest_components import (
     split_us_puf_e19200_by_agi_band,
 )
@@ -690,6 +695,12 @@ def puf_tax_unit_donor_from_arrays(
     # column (aliases skip already-present columns, so a post-alias split would
     # leave a stale total-interest predictor copy).
     _split_us_puf_e19200_components(tax_unit)
+    if donor_build_summary is not None and set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(
+        tax_unit.columns
+    ):
+        donor_build_summary["capital_gains_before_mortgage_screen"] = (
+            puf_processed_capital_gains_stage(tax_unit)
+        )
     _quarantine_us_puf_mortgage_fields(
         tax_unit,
         mortgage_quarantine_mask,
@@ -713,6 +724,10 @@ def _quarantine_us_puf_mortgage_fields(
             "PUF mortgage quarantine mask must align one-for-one with donor rows."
         )
     weights = donor["weight"].to_numpy(dtype=np.float64, copy=False)
+    has_capital_gains = set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(donor.columns)
+    capital_gains_before = (
+        puf_capital_gains_joint_metrics(donor, mask=mask) if has_capital_gains else None
+    )
     fields: dict[str, dict[str, float | int]] = {}
     for column in US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS:
         if column not in donor:
@@ -744,7 +759,7 @@ def _quarantine_us_puf_mortgage_fields(
         donor.loc[mask, column] = 0.0
 
     if donor_build_summary is not None:
-        donor_build_summary["mortgage_field_quarantine"] = {
+        quarantine: dict[str, object] = {
             "method": "field_local_zero",
             "source_field": "grouped_raw_home_mortgage_interest",
             "comparison": "greater_than_or_equal",
@@ -753,6 +768,23 @@ def _quarantine_us_puf_mortgage_fields(
             "screened_weight": float(weights[mask].sum()),
             "fields": fields,
         }
+        if capital_gains_before is not None:
+            capital_gains_after = puf_capital_gains_joint_metrics(donor, mask=mask)
+            capital_gains_difference = {
+                key: capital_gains_after[key] - value
+                for key, value in capital_gains_before.items()
+            }
+            if any(value != 0 for value in capital_gains_difference.values()):
+                raise AssertionError(
+                    "Field-local PUF mortgage quarantine changed capital gains."
+                )
+            quarantine["capital_gains_preserved"] = {
+                "columns": list(PUF_SCHEDULE_D_JOINT_COLUMNS),
+                "before": capital_gains_before,
+                "after": capital_gains_after,
+                "difference": capital_gains_difference,
+            }
+        donor_build_summary["mortgage_field_quarantine"] = quarantine
 
 
 def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
