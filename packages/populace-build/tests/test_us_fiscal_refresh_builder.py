@@ -163,7 +163,7 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
         if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
     ]
     assert len(main_calls) == 1
-    _, stack = main_calls[0]
+    call_node, stack = main_calls[0]
     guarding_ifs = [
         anc
         for anc in stack
@@ -175,6 +175,44 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
         "final-household-weight evidence must be written inside the "
         "terminal_gate_failures branch only"
     )
+    guard = guarding_ifs[-1]
+    # The call must sit in the IF BODY (an else-branch call would run on
+    # green runs) and strictly before the branch's raise.
+    body_nodes = [n for stmt in guard.body for n in ast.walk(stmt)]
+    assert call_node in body_nodes, (
+        "evidence call must be in the terminal_gate_failures if-body, "
+        "not its else branch"
+    )
+    raises = [n for n in body_nodes if isinstance(n, ast.Raise)]
+    assert raises and call_node.lineno < min(r.lineno for r in raises), (
+        "evidence must be persisted before the batched raise"
+    )
+    # The green continuation must clean up a prior failed attempt's
+    # evidence (release-dir reuse, populace#568 round 2) before the
+    # certified dataset write.
+    main_fn = next(
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
+    )
+    cleanup_unlinks = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "attr", "") == "unlink"
+        and n.lineno > guard.end_lineno
+    ]
+    dataset_writes = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "attr", "") == "write_dataset"
+        and n.lineno > guard.end_lineno
+    ]
+    assert cleanup_unlinks and dataset_writes, (
+        "green path must unlink stale evidence and write the dataset"
+    )
+    assert min(n.lineno for n in cleanup_unlinks) < min(
+        n.lineno for n in dataset_writes
+    ), "stale-evidence cleanup must precede the certified dataset write"
 
 
 def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
@@ -4712,8 +4750,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # values are run-derived, so assert them structurally and compare the
     # stable remainder exactly.
     evidence_identity = final_weights_metadata.pop("identity")
-    assert evidence_identity["base_dataset_sha256"]
-    assert evidence_identity["target_period"] == 2024
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    expected_evidence_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
+    )
+    assert evidence_identity == dict(expected_evidence_identity)
     ids_block = final_weights_metadata.pop("household_ids")
     assert ids_block["file"] == "final_household_weight_ids.npy"
     assert ids_block["shape"] == [2]

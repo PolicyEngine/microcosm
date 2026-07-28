@@ -9820,6 +9820,18 @@ def main() -> None:
             force_upload=True,
         )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
+    # A green run must not inherit a prior failed attempt's weight evidence
+    # (populace#568 round 2): with --out/--release-id reuse, stale evidence
+    # files would coexist with a certified release whose manifest knows
+    # nothing about them. The batched gates have passed, so any evidence
+    # present here belongs to a superseded attempt — remove it before the
+    # certified artifacts are written.
+    for stale_evidence in (
+        release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+        release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+        release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+    ):
+        stale_evidence.unlink(missing_ok=True)
     dataset_path = artifact_root / DATASET_FILENAME
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
