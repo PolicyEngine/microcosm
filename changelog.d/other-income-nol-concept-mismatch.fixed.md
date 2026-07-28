@@ -1,1 +1,1 @@
-Registry-exclude the SOI 1.4 other-income net-loss rows: PUF E01200 bundles NOL carryovers, so the loss-side rows compare an NOL-inclusive variable against an NOL-exclusive target.
+Registry-exclude all four SOI 1.4 other-income rows: E01200 is Form 4797 line-14 business-property gain/loss (populace#393), not the line-21 concept the rows demand.
