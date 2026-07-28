@@ -7302,6 +7302,16 @@ def main() -> None:
     build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
+    if args.release_id:
+        # populace#568 round 4: when the id is known up front (every launcher
+        # passes one), refuse certified-dir reuse before ANY side effect —
+        # including the base download and cache writes below. The
+        # auto-generated-id path derives its id from the base digest, so its
+        # refusal necessarily runs later, but still before any output-dir
+        # creation.
+        _refuse_certified_release_dir_reuse(
+            args.out.resolve() / "releases" / args.release_id
+        )
     base_h5 = args.base_h5 or _download_base_h5()
     base_dataset_sha256 = _sha256(base_h5)
     digest = base_dataset_sha256[:7]
@@ -7474,13 +7484,16 @@ def main() -> None:
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
+    # Unconditional refusal BEFORE any output-directory creation: a hostile
+    # --checkpoint-root beneath releases/<id> must not mutate a certified
+    # directory before the raise (populace#568 round 4).
+    _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
     if checkpoint_root is not None:
         checkpoint_root.mkdir(parents=True, exist_ok=True)
     artifact_root.mkdir(parents=True, exist_ok=True)
-    _refuse_certified_release_dir_reuse(release_dir)
     release_dir.mkdir(parents=True, exist_ok=True)
     telemetry = _staging_telemetry(
         args,

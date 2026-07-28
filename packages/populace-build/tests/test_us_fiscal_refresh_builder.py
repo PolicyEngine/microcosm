@@ -128,6 +128,43 @@ def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> N
     assert not list(tmp_path.glob(".*.tmp"))
 
 
+def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
+    """populace#568 round 4: refusal placement is part of the contract —
+    one refusal call must precede the base download (the --release-id
+    path), and one must precede every output-directory mkdir (the
+    auto-generated-id path)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    refusals = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_refuse_certified_release_dir_reuse"
+    ]
+    downloads = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_download_base_h5"
+    ]
+    mkdirs = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mkdir"
+    ]
+    assert len(refusals) == 2
+    assert downloads and min(r.lineno for r in refusals) < min(
+        d.lineno for d in downloads
+    ), "the known-id refusal must precede the base download"
+    assert mkdirs and sorted(r.lineno for r in refusals)[1] < min(
+        m.lineno for m in mkdirs
+    ), "the unconditional refusal must precede every output mkdir"
+
+
 def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
     """populace#568 round 3: a run pointed at a directory already carrying
     release_manifest.json must refuse before writing anything — a failed
@@ -207,24 +244,35 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     main_fn = next(
         anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
     )
-    cleanup_fors = [
-        n
-        for n in ast.walk(main_fn)
-        if isinstance(n, ast.For)
-        and n.lineno > guard.end_lineno
-        and {name.id for name in ast.walk(n.iter) if isinstance(name, ast.Name)}
-        >= {
+
+    def _is_bound_cleanup_for(node):
+        if not isinstance(node, ast.For) or node.lineno <= guard.end_lineno:
+            return False
+        # The iterable must BE a tuple (no slicing/subscript tricks) whose
+        # elements name all three evidence filename constants.
+        if not isinstance(node.iter, ast.Tuple):
+            return False
+        iter_names = {
+            name.id for name in ast.walk(node.iter) if isinstance(name, ast.Name)
+        }
+        if not iter_names >= {
             "FINAL_HOUSEHOLD_WEIGHTS_FILENAME",
             "FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME",
             "FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME",
-        }
-        and any(
-            isinstance(c, ast.Call) and getattr(c.func, "attr", "") == "unlink"
-            for stmt in n.body
+        }:
+            return False
+        # The unlink must be called ON THE LOOP TARGET, not a decoy.
+        target = node.target.id if isinstance(node.target, ast.Name) else None
+        return target is not None and any(
+            isinstance(c, ast.Call)
+            and getattr(c.func, "attr", "") == "unlink"
+            and isinstance(getattr(c.func, "value", None), ast.Name)
+            and c.func.value.id == target
+            for stmt in node.body
             for c in ast.walk(stmt)
         )
-    ]
-    cleanup_unlinks = cleanup_fors
+
+    cleanup_unlinks = [n for n in ast.walk(main_fn) if _is_bound_cleanup_for(n)]
     dataset_writes = [
         n
         for n in ast.walk(main_fn)
