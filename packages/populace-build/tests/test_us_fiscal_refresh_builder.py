@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from populace.calibrate import TargetRegistry, TargetSpec, calibrate
-from populace.frame import Frame, WeightKind
+from populace.frame import Frame, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -62,6 +62,51 @@ def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
     assert payload["enabled"] is True
     assert payload["n_households"] == 3
     assert payload["sha256"] == builder._sha256(path)
+
+
+def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> None:
+    builder = _load_builder_module()
+    weights = Weights(
+        np.asarray([0.0, 12.0, 35.0]),
+        WeightKind.CALIBRATED,
+    )
+    frame = SimpleNamespace(
+        n=lambda entity: 3 if entity == "household" else None,
+        weights_for=lambda entity: weights if entity == "household" else None,
+    )
+
+    metadata = builder._write_final_household_weight_evidence(tmp_path, frame)
+
+    values_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    metadata_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    np.testing.assert_array_equal(
+        np.load(values_path, allow_pickle=False),
+        np.asarray([0.0, 12.0, 35.0]),
+    )
+    assert json.loads(metadata_path.read_text()) == metadata
+    assert metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [3],
+            "sha256": builder._sha256(values_path),
+        },
+        "summary": {
+            "n_households": 3,
+            "household_weight_sum": 47.0,
+            "minimum": 0.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 1,
+        },
+    }
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob(".*.tmp"))
 
 
 def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
@@ -3051,6 +3096,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return 4
 
+    class FakeExportFrame:
+        def n(self, entity):
+            assert entity == "household"
+            return 2
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.asarray([12.0, 35.0]),
+                WeightKind.CALIBRATED,
+            )
+
     argv = [
         "build_us_fiscal_refresh_release.py",
         "--base-h5",
@@ -3183,6 +3240,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
     monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        lambda base_frame, selected_frame, *, require_present=False: {
+            "passed": True,
+            "status": "fixture",
+        },
+    )
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
@@ -4370,7 +4435,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_l0_refit_weights(frame, refit_result):
         captured["export_frame_from_l0_refit"] = True
-        return frame
+        return FakeExportFrame()
 
     def fake_final_ssi_diagnostics(
         frame,
@@ -4557,6 +4622,37 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
+    final_weights_path = release_dir / "final_household_weights.npy"
+    final_weights_metadata = json.loads(
+        (release_dir / "final_household_weights.json").read_text()
+    )
+    np.testing.assert_array_equal(
+        np.load(final_weights_path, allow_pickle=False),
+        np.asarray([12.0, 35.0]),
+    )
+    assert final_weights_metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [2],
+            # This end-to-end fixture stubs every non-weeks file hash; the
+            # direct helper test above validates the real hash path.
+            "sha256": "base-sha",
+        },
+        "summary": {
+            "n_households": 2,
+            "household_weight_sum": 47.0,
+            "minimum": 12.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 0,
+        },
+    }
     # Artifact exclusion: the failed run leaves evidence, never artifacts.
     # H5s land under the out root (not the release dir), so sweep the tree.
     assert not list(out.rglob("*.h5"))

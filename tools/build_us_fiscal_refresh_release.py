@@ -278,6 +278,9 @@ PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
+FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
+FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
@@ -1579,6 +1582,68 @@ def _write_reform_income_tax_cache(
     os.replace(tmp_values_path, values_path)
     os.replace(tmp_metadata_path, metadata_path)
     return digest, values_path
+
+
+def _write_final_household_weight_evidence(
+    release_dir: Path,
+    export_frame: Frame,
+) -> dict[str, object]:
+    """Atomically persist the final release-grain household weight vector."""
+
+    weights = export_frame.weights_for("household")
+    if weights.kind is not WeightKind.CALIBRATED:
+        raise ValueError(
+            "Final household weight evidence requires calibrated weights, got "
+            f"{weights.kind.value!r}."
+        )
+    values = np.asarray(weights.values, dtype=np.float64)
+    if values.ndim != 1 or len(values) != export_frame.n("household"):
+        raise ValueError(
+            "Final household weights must align one-for-one with exported households."
+        )
+
+    evidence_dir = Path(release_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    values_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    metadata_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    temporary_values = values_path.with_name(f".{values_path.name}.tmp")
+    temporary_metadata = metadata_path.with_name(f".{metadata_path.name}.tmp")
+    temporary_values.unlink(missing_ok=True)
+    temporary_metadata.unlink(missing_ok=True)
+    try:
+        with temporary_values.open("wb") as stream:
+            np.save(stream, values, allow_pickle=False)
+        metadata: dict[str, object] = {
+            "artifact_kind": "populace_final_household_weight_evidence",
+            "schema_version": FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION,
+            "measurement_phase": "release_final",
+            "entity": "household",
+            "weight_kind": weights.kind.value,
+            "values": {
+                "file": values_path.name,
+                "dtype": "float64",
+                "shape": [int(len(values))],
+                "sha256": _sha256(temporary_values),
+            },
+            "summary": {
+                "n_households": int(len(values)),
+                "household_weight_sum": float(values.sum()),
+                "minimum": float(values.min()),
+                "maximum": float(values.max()),
+                "nonzero_count": int(np.count_nonzero(values)),
+                "zero_count": int((values == 0.0).sum()),
+            },
+        }
+        temporary_metadata.write_text(
+            _strict_json_text(metadata, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_values, values_path)
+        os.replace(temporary_metadata, metadata_path)
+    finally:
+        temporary_values.unlink(missing_ok=True)
+        temporary_metadata.unlink(missing_ok=True)
+    return metadata
 
 
 def _selection_mass_protection_specs(
@@ -9136,6 +9201,10 @@ def main() -> None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    # Persist at the first moment the final selected-support vector exists.
+    # Every later release gate may fail, but the failed run must retain the
+    # exact calibrated weights needed to diagnose that failure (populace#567).
+    _write_final_household_weight_evidence(release_dir, export_frame)
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
