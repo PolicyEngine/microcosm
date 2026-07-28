@@ -245,15 +245,13 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     run_primary_puf_qrf_chain(checkpoint_dir)
 
 
-def test_primary_qrf_rejects_pre_decomposition_schema_versions(
+def test_primary_qrf_rejects_stale_donor_construction_schema_versions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # populace#515 put the E19200 -> mortgage-only carve in schema v2, and
-    # populace#516 puts the grouped-raw whole-row screen before that carve in
-    # schema v3. Loading validates no donor-construction identity, so stale
-    # pre-carve/pre-screen roots or target checkpoints must be rejected, never
-    # fitted or drawn from. Keep literal v1 mutations as the oldest stale form.
+    # Loading validates no donor-construction identity, so stale roots and
+    # target checkpoints must reject every pre-field-local schema: pre-carve
+    # v1, pre-screen v2, national-carve v3, and whole-row-quarantine v4.
     monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     checkpoint_dir = tmp_path / "primary_qrf"
@@ -278,10 +276,9 @@ def test_primary_qrf_rejects_pre_decomposition_schema_versions(
     manifest_path = checkpoint_dir / "manifest.json"
     original_manifest = json.loads(manifest_path.read_text())
     assert original_manifest["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    # Every stale version must reject: pre-carve v1, pre-screen v2, and
-    # national-carve/all-zero-investment v3. This protects custom target-order
-    # standalone checkpoints whose manifests do not hash donor construction.
-    for stale_version in (1, 2, 3):
+    # This protects custom target-order standalone checkpoints whose manifests
+    # do not hash donor construction.
+    for stale_version in (1, 2, 3, 4):
         stale_manifest = dict(original_manifest)
         stale_manifest["schema_version"] = stale_version
         manifest_path.write_text(json.dumps(stale_manifest))
@@ -295,7 +292,7 @@ def test_primary_qrf_rejects_pre_decomposition_schema_versions(
     with h5py.File(target_path, mode="r") as h5:
         pristine_metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
     assert pristine_metadata["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    for stale_version in (1, 2, 3):
+    for stale_version in (1, 2, 3, 4):
         metadata = dict(pristine_metadata)
         metadata["schema_version"] = stale_version
         with h5py.File(target_path, mode="r+") as h5:

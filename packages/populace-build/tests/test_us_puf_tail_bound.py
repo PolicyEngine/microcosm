@@ -313,9 +313,8 @@ def test_real_puf_weighted_p999_is_below_build_m_ceiling_draw() -> None:
         "household_weight",
         "filing_status",
         "person_tax_unit_id",
-        # populace#516: the outlier screen keys on grouped raw mortgage
-        # interest; omitting the column would silently bound the UNSCREENED
-        # 211,677-row surface instead of the production donor.
+        # The field-local quarantine still keys on grouped raw mortgage
+        # interest; include it so this exercises production donor semantics.
         "home_mortgage_interest",
         _TARGET,
     )
@@ -327,9 +326,8 @@ def test_real_puf_weighted_p999_is_below_build_m_ceiling_draw() -> None:
         person_outputs=(_TARGET,),
         tax_unit_outputs=(),
     )
-    # The production screened surface on the pinned artifact (populace#516):
-    # 211,677 donor rows minus the 3,066-row outlier cohort.
-    assert len(donor) == 208_611
+    # populace#567 retains all rows while quarantining only implicated fields.
+    assert len(donor) == 211_677
 
     quantile = puf_support_module._PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES[_TARGET]
     assert quantile == 0.999

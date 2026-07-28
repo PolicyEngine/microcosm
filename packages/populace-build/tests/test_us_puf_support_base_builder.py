@@ -512,18 +512,27 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
         captured["processed_tax_unit_weights"] = processed_tax_unit_weights
         return adjusted_gross_income
 
-    def fake_donor(actual_arrays, *, adjusted_gross_income):
+    def fake_donor(
+        actual_arrays,
+        *,
+        adjusted_gross_income,
+        donor_build_summary,
+    ):
         captured["arrays"] = actual_arrays
         captured["adjusted_gross_income"] = adjusted_gross_income
+        captured["donor_build_summary"] = donor_build_summary
+        donor_build_summary["mortgage_field_quarantine"] = {"screened_record_count": 2}
         return "donor"
 
     monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
     monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
 
+    donor_build_summary: dict[str, object] = {}
     assert (
         builder._puf_tax_unit_donor_from_h5(
             path,
             source_puf_csv=source_path,
+            donor_build_summary=donor_build_summary,
         )
         == "donor"
     )
@@ -532,6 +541,10 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
     assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
     assert captured["arrays"] is arrays
     assert captured["adjusted_gross_income"] is adjusted_gross_income
+    assert captured["donor_build_summary"] is donor_build_summary
+    assert donor_build_summary == {
+        "mortgage_field_quarantine": {"screened_record_count": 2}
+    }
 
 
 def test_source_year_puf_input_content_is_checkpoint_identity(
@@ -1369,7 +1382,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     monkeypatch.setattr(
         builder,
         "_puf_tax_unit_donor_from_h5",
-        lambda path, *, source_puf_csv: None,
+        lambda path, *, source_puf_csv, donor_build_summary: None,
     )
     monkeypatch.setattr(
         builder,

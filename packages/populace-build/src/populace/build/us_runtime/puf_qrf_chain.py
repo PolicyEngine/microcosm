@@ -49,7 +49,10 @@ from populace.frame import EntitySchema, Frame, WeightKind, Weights
 # learned person input. The production target-order digest also changes, but a
 # schema bump is still required for standalone custom-order checkpoints whose
 # manifests do not fingerprint donor-construction semantics.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 4
+# v5 (populace#567): the grouped-raw mortgage screen is field-local instead of
+# dropping whole donor rows. A v4 checkpoint would silently retain the
+# whole-row quarantine semantics and its missing capital-gains support.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 5
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"

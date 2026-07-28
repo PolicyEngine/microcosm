@@ -1013,9 +1013,11 @@ def _run_all(
     )
     _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
+    donor_build_summary: dict[str, object] = {}
     donor = _puf_tax_unit_donor_from_h5(
         args.puf_h5,
         source_puf_csv=getattr(args, "puf_source_year_csv", None),
+        donor_build_summary=donor_build_summary,
     )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
@@ -1438,6 +1440,7 @@ def _run_all(
         "channel_weight_totals": _channel_weight_totals(imputed),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "puf_donor_build_summary": donor_build_summary,
         "weights_audit": weights_audit,
         "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
         "qbi_inputs_signal": {
@@ -1893,9 +1896,11 @@ def _clone_feature_extraction_stage(
     base: Frame,
 ) -> tuple[Frame, dict[str, object]]:
     expanded = clone_us_frame_for_puf_support(base)
+    donor_build_summary: dict[str, object] = {}
     donor = _puf_tax_unit_donor_from_h5(
         args.puf_h5,
         source_puf_csv=args.puf_source_year_csv,
+        donor_build_summary=donor_build_summary,
     )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
@@ -1918,6 +1923,7 @@ def _clone_feature_extraction_stage(
         "puf_source_year_csv_sha256": _sha256(args.puf_source_year_csv),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "puf_donor_build_summary": donor_build_summary,
         "puf_e19200_agi_variable": "E00100",
         "puf_e19200_agi_period": 2015,
         "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
@@ -2455,6 +2461,7 @@ def _export_staged_result(
         "channel_weight_totals": _channel_weight_totals(frame),
         "puf_donor_rows": clone["puf_donor_rows"],
         "puf_donor_columns": clone["puf_donor_columns"],
+        "puf_donor_build_summary": clone["puf_donor_build_summary"],
         "weights_audit": qrf["weights_audit"],
         "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
         **{name: signals[name] for name in required_signals},
@@ -2754,6 +2761,7 @@ def _puf_tax_unit_donor_from_h5(
     path: Path,
     *,
     source_puf_csv: Path | None,
+    donor_build_summary: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Build the PUF donor with source-year E00100-aligned banding values."""
 
@@ -2771,6 +2779,7 @@ def _puf_tax_unit_donor_from_h5(
     return puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        donor_build_summary=donor_build_summary,
     )
 
 
