@@ -552,6 +552,60 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
 
 
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount": (
+        "The PUF pipeline maps miscellaneous_income = E01200 (policyengine-us- "
+        "data datasets/puf/puf.py), but E01200 is Form 4797 / Form 1040 line 14 "
+        "business-property net gain or loss (IRS Research Bulletin 2017 Table "
+        "A1), not the 'other income' line concept SOI Table 1.4 reports (Form "
+        "1040 line 21 in ty2015; Schedule 1 in later years) — populace#393's "
+        "remedy experiments reached this final "
+        "determination and the export-parity registry already carries it for the "
+        "miscellaneous_income column. Both signs are therefore concept- "
+        "mismatched, and the measured legs bear the 4797 reading: ty2015 E01200 "
+        "as the pipeline ingests it (aggregate records removed) is two-sided "
+        "($22.84B positive on 1.09M returns vs $21.55B negative on 1.18M; "
+        "$33.42B/$21.95B on the full raw file) while SOI ty2015 other income "
+        "is heavily positive "
+        "($46.77B on 6.12M income returns vs $6.69B on 332,708 loss returns, "
+        "with NOL a separate item at $197.5B on 1,138,112 returns; ty2023 keeps "
+        "the concepts separate as items 91-94 vs 95-96, raw loss $12.21B on "
+        "318,839 returns before feed aging). Build P attempts 9/10 "
+        "(populace#507) measured the consequence: the solve must crush truthful "
+        "business-property loss mass to fit the loss rows ($34.3B design-weight "
+        "truth vs $13.3B aged target), and the income row's historical +0.005% "
+        "fit was free reweighting, not concept agreement. All four rows are "
+        "excluded until the populace#393 remedy lands in full: remap E01200 to "
+        "other_net_gain AND separately source or impute true miscellaneous "
+        "income — a remap-only rebuild leaves miscellaneous_income "
+        "zero/absent, so these exclusions lift only when both halves land."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns": (
+        "Same Form 4797 concept mismatch as the other_income_net_loss_amount "
+        "entry: E01200 carries Form 1040 line-14 business-property net "
+        "gain/loss, not the SOI Table 1.4 line-21 'other income' concept, so "
+        "this row compares incompatible concepts regardless of sign. Excluded "
+        "until the populace#393 remedy lands in full (remap E01200 to "
+        "other_net_gain AND separately source true miscellaneous income); "
+        "see the loss-amount entry for the full adjudication."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount": (
+        "Same Form 4797 concept mismatch as the other_income_net_loss_amount "
+        "entry: E01200 carries Form 1040 line-14 business-property net "
+        "gain/loss, not the SOI Table 1.4 line-21 'other income' concept, so "
+        "this row compares incompatible concepts regardless of sign. Excluded "
+        "until the populace#393 remedy lands in full (remap E01200 to "
+        "other_net_gain AND separately source true miscellaneous income); "
+        "see the loss-amount entry for the full adjudication."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_income_returns": (
+        "Same Form 4797 concept mismatch as the other_income_net_loss_amount "
+        "entry: E01200 carries Form 1040 line-14 business-property net "
+        "gain/loss, not the SOI Table 1.4 line-21 'other income' concept, so "
+        "this row compares incompatible concepts regardless of sign. Excluded "
+        "until the populace#393 remedy lands in full (remap E01200 to "
+        "other_net_gain AND separately source true miscellaneous income); "
+        "see the loss-amount entry for the full adjudication."
+    ),
     "census_stc.fy2023.individual_income_tax_collections.tn.t40.collections": (
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
