@@ -1105,6 +1105,48 @@ def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     assert args.staging_prefix == "candidate-runs"
 
 
+def test_empty_staging_environment_does_not_disable_staging(monkeypatch) -> None:
+    # A variable exported as an empty string returns "" from os.environ.get,
+    # not the default, and "" is falsy — which read as "staging off" and
+    # silently produced releases with no staging telemetry at all. Only
+    # --no-staging may turn staging off.
+    builder = _load_builder_module()
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "")
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "   ")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_repo_id == builder.STAGING_REPO_ID
+    assert args.staging_prefix == builder.DEFAULT_STAGING_PREFIX
+
+
+def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.delenv("POPULACE_TEST_ENV_DEFAULT", raising=False)
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "   ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", " org/repo ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "org/repo"
+
+
 def test_soi_indicator_rows_flag_positive_component_items() -> None:
     builder = _load_builder_module()
 

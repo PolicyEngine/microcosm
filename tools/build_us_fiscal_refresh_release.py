@@ -698,6 +698,19 @@ SUPPORTED_SOI_LEDGER_FILTERS = frozenset(
 )
 
 
+def _env_default(name: str, default: str) -> str:
+    """An environment override for an argparse default, empty meaning unset.
+
+    ``os.environ.get(name, default)`` falls back to ``default`` only when the
+    variable is absent: a variable exported as an empty string returns ``""``,
+    which is falsy, and silently defeats the default. For the staging settings
+    that reads as "staging off" — a state only --no-staging should be able to
+    reach. Blank and whitespace are treated as unset.
+    """
+
+    return os.environ.get(name, "").strip() or default
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1273,12 +1286,13 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-repo-id",
-        default=os.environ.get("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
+        default=_env_default("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
             "Hugging Face dataset repo to upload staging telemetry to while "
             "the build runs. On by default (uploads are best-effort and never "
             "fail the build); override with POPULACE_STAGING_REPO_ID or "
-            "disable with --no-staging."
+            "disable with --no-staging. An empty POPULACE_STAGING_REPO_ID is "
+            "ignored rather than read as off."
         ),
     )
     parser.add_argument(
@@ -1307,7 +1321,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-prefix",
-        default=os.environ.get("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
+        default=_env_default("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
         help=(
             "Repo prefix for staging run artifacts. Defaults to "
             "POPULACE_STAGING_PREFIX or runs."
