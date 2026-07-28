@@ -552,6 +552,33 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
 
 
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount": (
+        "PUF E01200 (mapped to miscellaneous_income) bundles Form 1040 line-21 "
+        "net-operating-loss carryovers as negatives, while SOI Table 1.4 reports "
+        "'Other income' and 'Net operating loss' as separate items (ty2015 "
+        "15in14ar.xls item columns 75-78 vs 79-80; the ty2023 source is laid out "
+        "identically). The mapped variable's loss side is therefore NOL-inclusive "
+        "while this row is NOL-exclusive: ty2015 all-returns other-income net "
+        "loss is $6.69B on 332,708 returns against raw PUF E01200 negatives of "
+        "$21.55B on 1.18M returns, with SOI's separate NOL item at $197.5B on "
+        "1,138,112 returns absorbing the difference in returns. Fitting this row "
+        "means crushing truthful donor loss mass (~2.6x on dollars at ty2023); "
+        "populace#507 attempts 9/10 measured the solve refusing exactly that "
+        "(final $30.0B/$26.9B vs target $13.3B with global fit at its best). The "
+        "income-side rows stay targeted: NOL is never positive, so positive "
+        "E01200 is concept-clean. Banded Table 1.4 loss rows are not currently "
+        "compiled and inherit this defect if ever mapped."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns": (
+        "Same NOL concept mismatch as the amount row: PUF E01200 negatives carry "
+        "~1.18M raw returns (donor-weighted ~1.9M) dominated by NOL-carryforward "
+        "returns that SOI Table 1.4 counts under its separate 'Net operating "
+        "loss' item (1,138,112 returns ty2015), while this row's concept excludes "
+        "NOL (332,708 returns ty2015; 318,839 ty2023). The count target pressures "
+        "~5x weight suppression on records whose loss values are truthful for the "
+        "mapped variable. The income-side rows stay targeted; see the amount-row "
+        "entry for the full adjudication."
+    ),
     "census_stc.fy2023.individual_income_tax_collections.tn.t40.collections": (
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "

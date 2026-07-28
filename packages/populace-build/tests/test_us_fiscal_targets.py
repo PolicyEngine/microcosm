@@ -557,12 +557,26 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 44
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
     )
     assert all(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.values())
+
+
+def test_other_income_loss_rows_are_reviewed_concept_exclusions() -> None:
+    """SOI 1.4 separates 'Other income' from 'Net operating loss'; PUF E01200
+    bundles NOL carryovers as negatives, so the loss-side rows compare
+    incompatible concepts and are registry-excluded. The income-side rows
+    must stay targeted (NOL is never positive)."""
+    for measure in ("amount", "returns"):
+        key = f"irs_soi.ty2023.table_1_4.all.other_income_net_loss_{measure}"
+        assert key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+        assert "operating" in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS[key].lower()
+    for measure in ("amount", "returns"):
+        key = f"irs_soi.ty2023.table_1_4.all.other_income_net_income_{measure}"
+        assert key not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
