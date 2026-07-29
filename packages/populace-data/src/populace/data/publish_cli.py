@@ -10,12 +10,26 @@ from pathlib import Path
 from populace.data.release import publish_release
 
 
-def _staging_missing(release_dir: Path) -> bool:
-    """True if the release's build manifest records no staging telemetry.
+def _staging_undelivered(release_dir: Path) -> bool:
+    """True if a build that should have staged has nothing to show for it.
 
-    Releases are expected to publish staging runs while building (the builder
-    now stages by default); a missing block means the build predates that or
-    was run with --no-staging. Non-fatal — surfaced as a warning at publish.
+    Scoped by the presence of the ``staging`` key rather than by country or
+    dataset role: a builder that stages writes the key on every build, and one
+    with no staging path writes none. The local-area product and any future
+    build without staging are therefore untouched, with no list of exceptions
+    to maintain.
+
+    Refused, because the release never reached the staging dashboard and its
+    manifest cannot show otherwise:
+
+    - the key is present and falsy (``null``, the pre-#270 shape, or a build
+      whose staging destination went away)
+    - staging was enabled but nothing was ever uploaded, which is what a run
+      without a write token looks like once uploads self-disable
+
+    Allowed: no key at all, and a declared ``enabled: False`` opt-out. Skipping
+    staging on purpose is a legitimate way to build, and saying so is exactly
+    what makes it distinguishable from the failures above.
     """
     path = release_dir / "build_manifest.json"
     if not path.exists():
@@ -24,7 +38,14 @@ def _staging_missing(release_dir: Path) -> bool:
         manifest = json.loads(path.read_text())
     except (OSError, ValueError):
         return False
-    return not manifest.get("staging")
+    if not isinstance(manifest, dict) or "staging" not in manifest:
+        return False
+    staging = manifest["staging"]
+    if not isinstance(staging, dict) or not staging:
+        return True
+    if staging.get("enabled") is False:
+        return False
+    return not staging.get("uploads_succeeded")
 
 
 def _reform_validation_skipped(release_dir: Path) -> bool:
@@ -106,6 +127,17 @@ def main(argv: list[str] | None = None) -> int:
             "release never silently ships blank OBBBA validation."
         ),
     )
+    parser.add_argument(
+        "--allow-missing-staging",
+        action="store_true",
+        help=(
+            "Publish even if the build recorded no staging telemetry, or "
+            "recorded staging that never uploaded anything. Off by default so "
+            "a release that never appeared on the staging dashboard is not "
+            "shipped unnoticed. A declared --no-staging build publishes "
+            "without this flag."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
@@ -121,14 +153,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    if _staging_missing(Path(args.release_dir)):
+    if not args.allow_missing_staging and _staging_undelivered(Path(args.release_dir)):
         print(
-            "warning: this release's build_manifest records no staging "
-            "telemetry — the build ran with --no-staging or predates "
-            "staging-by-default, so it will not appear on the staging "
-            "dashboard.",
+            "refusing to publish: this release's build_manifest records no "
+            "delivered staging telemetry, so the build never appeared on the "
+            "staging dashboard and there is no pre-publication review of it. "
+            "Either the staging destination was lost mid-build (uploads "
+            "self-disable after repeated failures — check the build machine's "
+            "Hugging Face write token), or the manifest predates staging "
+            "provenance. Rebuild with staging reaching its repo, or pass "
+            "--allow-missing-staging to publish anyway. A build that declared "
+            "--no-staging publishes without the flag.",
             file=sys.stderr,
         )
+        return 1
 
     pointer = publish_release(
         Path(args.release_dir),
