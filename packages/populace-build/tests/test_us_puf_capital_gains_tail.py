@@ -673,6 +673,8 @@ def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
     assert pre_receipts["collect"]["carriers"] == 97
     assert post_receipts["collect"]["top_share"] == pytest.approx(0.839, abs=1e-9)
     assert post_receipts["collect"]["carriers"] == 1_135
+    assert pre_receipts["collect"]["distinct_values"] == 1
+    assert post_receipts["collect"]["distinct_values"] == 2
 
     # Membership through the PRODUCTION gate: pre is thin (omitted), post
     # is checked and fails the absolute threshold.
@@ -713,8 +715,15 @@ def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
     assert len(worsened_failures) == 1 and worsened_failures[0].startswith("w:")
     assert worsened_receipts["w"]["stage_worsened_share"] is True
 
-    # ULP-scale movement is numerical noise, not a worsening.
-    noise_failures, _ = _stage_attributable_concentration_failures(
+    # ULP-scale movement is numerical noise, not a worsening — asserted
+    # against an OVER-THRESHOLD gate result so the tolerance is load-bearing
+    # (review round 3: an all-zero gate made this vacuous).
+    noisy = np.zeros(n)
+    noisy[:600] = 1.0
+    noisy[:100] = 1_000_000.0
+    noisy_gate = tail_concentration_gate({"n": noisy}, {"n": weights})
+    assert not noisy_gate.passed
+    noise_failures, noise_receipts = _stage_attributable_concentration_failures(
         {"n": {"top_share": 0.84, "carriers": 900, "distinct_values": 900}},
         {
             "n": {
@@ -723,9 +732,11 @@ def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
                 "distinct_values": 900,
             }
         },
-        tail_concentration_gate({"n": np.zeros(4)}, {"n": np.ones(4)}),
+        noisy_gate,
     )
     assert noise_failures == []
+    assert noise_receipts["n"]["over_threshold"] is True
+    assert noise_receipts["n"]["stage_worsened_share"] is False
 
 
 def test_undeclared_candidate_overlap_fails_loud() -> None:
