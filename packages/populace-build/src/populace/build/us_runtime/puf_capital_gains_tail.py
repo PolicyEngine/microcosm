@@ -22,6 +22,7 @@ from populace.build.us_runtime.puf_interest_components import (
 )
 from populace.build.us_runtime.puf_support import (
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     support_channel_column,
     support_clone_index_column,
@@ -76,6 +77,18 @@ _JOINT_VECTOR_COLUMNS = (
     *PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
     *PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
 )
+#: Donor/candidate schema overlap with declared ownership (populace#570
+#: review hardening): the recipient candidate row is the full tax-unit
+#: table row, so every donor tax-unit-grain OUTPUT column collides. The
+#: joint CG vector is donor-owned (re-overlaid after the merge); the
+#: remaining donor tax-unit outputs (mortgage/ALD family) are
+#: recipient-owned — the clone keeps its household's own values, only
+#: capital gains transfer. A new collision outside this partition fails
+#: loud instead of silently replacing donor payload.
+_RECIPIENT_OWNED_CANDIDATE_OVERLAP = frozenset(
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+) - set(PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS)
+
 _COMBINED_COLUMN = "short_term_plus_long_term_capital_gains"
 _TAIL_COMBINED_COLUMN = "_puf_capital_gains_tail_combined"
 _TAIL_AGI_BAND_INDEX_COLUMN = "_puf_capital_gains_tail_agi_band_index"
@@ -373,6 +386,50 @@ def assert_puf_capital_gains_tail_survives_selection(
     }
 
 
+def _stage_attributable_concentration_failures(
+    pre: GateResult,
+    post: GateResult,
+) -> tuple[list[str], dict[str, dict[str, object]]]:
+    """Fail only columns the stage left over threshold AND strictly worsened.
+
+    populace#567/#570 adjudication: the stage's frame check exists to catch
+    stage-caused pathology (a broadcast or a bad transfer concentrating
+    mass). Concentration the frame already carried BEFORE the stage —
+    collectibles arrives 67.2% inherited from pre-existing base rows — is
+    owned by the release-side gate, which measures the calibrated artifact
+    and has its own reviewed per-run register. Per-column pre/post receipts
+    ride the stage manifest either way.
+    """
+
+    pre_shares = dict(pre.details.get("top_share", {}))
+    post_shares = dict(post.details.get("top_share", {}))
+    pre_counts = dict(pre.details.get("carrier_counts", {}))
+    post_counts = dict(post.details.get("carrier_counts", {}))
+    over_threshold = {line.partition(":")[0].strip() for line in post.failures}
+    failures: list[str] = []
+    receipts: dict[str, dict[str, object]] = {}
+    for column in sorted(post_shares):
+        pre_share = float(pre_shares.get(column, 0.0))
+        post_share = float(post_shares[column])
+        over = column in over_threshold
+        worsened = post_share > pre_share
+        receipts[column] = {
+            "pre_stage_top_share": pre_share,
+            "post_stage_top_share": post_share,
+            "pre_stage_carriers": int(pre_counts.get(column, 0)),
+            "post_stage_carriers": int(post_counts.get(column, 0)),
+            "over_threshold": over,
+            "stage_worsened_share": worsened,
+        }
+        if over and worsened:
+            failures.append(
+                f"{column}: post-stage top-100 share {post_share:.4f} is over "
+                f"the threshold and worsened from pre-stage {pre_share:.4f} — "
+                "the transfer caused or deepened the concentration."
+            )
+    return failures, receipts
+
+
 def transfer_puf_capital_gains_tail(
     frame: Frame,
     donor: pd.DataFrame,
@@ -437,6 +494,13 @@ def transfer_puf_capital_gains_tail(
     # donor's value, keyed by donor_source_id — reconciliation downstream
     # derives expectations from assignments, so a leak here would
     # self-confirm if it were not caught at the source.
+    if sorted(assignments["donor_source_id"].tolist()) != sorted(
+        tail["tax_unit_id"].tolist()
+    ):
+        raise ValueError(
+            "PUF tail assignments must consume every selected donor exactly "
+            "once (donor-key bijection violated)."
+        )
     donor_by_id = tail.set_index("tax_unit_id")
     for column in _JOINT_VECTOR_COLUMNS:
         expected_vector = donor_by_id.loc[
@@ -450,16 +514,24 @@ def transfer_puf_capital_gains_tail(
                 "verbatim."
             )
     before_distribution = _frame_combined_distribution(frame)
+    pre_stage_concentration = _frame_capital_gains_concentration_gate(frame)
     transferred, clone_receipt = _clone_and_transfer(
         frame,
         assignments,
     )
     after_distribution = _frame_combined_distribution(transferred)
     frame_concentration = _frame_capital_gains_concentration_gate(transferred)
-    if not frame_concentration.passed:
+    (
+        stage_attributable_failures,
+        frame_concentration_receipts,
+    ) = _stage_attributable_concentration_failures(
+        pre_stage_concentration,
+        frame_concentration,
+    )
+    if stage_attributable_failures:
         raise ValueError(
-            "Materialized PUF capital-gains frame fails the existing weighted "
-            "concentration gate:\n  " + "\n  ".join(frame_concentration.failures)
+            "PUF capital-gains tail transfer worsened weighted concentration "
+            "above the threshold:\n  " + "\n  ".join(stage_attributable_failures)
         )
     observed_tail = _observed_tail_transfer(transferred)
     carrier_reconciliation = _reconcile_observed_tail_transfer(
@@ -519,6 +591,7 @@ def transfer_puf_capital_gains_tail(
         "schema_version": PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
         "stage": PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
         "seed": int(seed),
+        "frame_concentration_receipts": frame_concentration_receipts,
         "boundary": {
             **selection,
             "rationale": (
@@ -821,6 +894,18 @@ def _assign_tail_donors(
         row = donor_row.to_dict()
         row["donor_source_id"] = int(donor_row["tax_unit_id"])
         del row["tax_unit_id"]
+        overlap = set(row) & set(candidate.index)
+        undeclared = (
+            overlap - set(_JOINT_VECTOR_COLUMNS) - _RECIPIENT_OWNED_CANDIDATE_OVERLAP
+        )
+        if undeclared:
+            raise ValueError(
+                "PUF tail candidate merge met undeclared donor/candidate "
+                f"column overlap: {sorted(undeclared)}. Declare ownership "
+                "(donor joint vector vs recipient-owned) before merging — "
+                "an undeclared collision silently replaces donor payload "
+                "(populace#570)."
+            )
         row.update(candidate.to_dict())
         # The candidate carries the recipient's EXISTING tax-unit values for
         # joint-vector columns held at tax-unit grain, so the merge above

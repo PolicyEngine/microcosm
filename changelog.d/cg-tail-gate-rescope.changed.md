@@ -1,0 +1,1 @@
+The tail-transfer stage's frame concentration check scopes to stage-attributable worsening (per-column pre/post receipts in the manifest); inherited base-frame concentration stays owned by the release-side gate. Adds the declared-ownership overlap invariant and the donor-key bijection assertion.

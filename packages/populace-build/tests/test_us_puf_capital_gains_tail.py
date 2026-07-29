@@ -634,6 +634,94 @@ def test_joint_vectors_arrive_verbatim_from_selected_donors() -> None:
             "unrecaptured_section_1250_gain",
         ):
             if column in tax_unit.columns:
-                assert float(clone[column]) == float(
-                    record["joint_vector"][column]
-                )
+                assert float(clone[column]) == float(record["joint_vector"][column])
+
+
+def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
+    """populace#570 round 2 → rescope: a column already over the threshold
+    BEFORE the stage (inherited base concentration — collectibles arrives
+    67.2% inherited) must not block the stage unless the transfer strictly
+    worsened it; a stage-worsened over-threshold column still fails; all
+    columns get pre/post receipts."""
+    from populace.build.gates import GateResult
+    from populace.build.us_runtime.puf_capital_gains_tail import (
+        _stage_attributable_concentration_failures,
+    )
+
+    pre = GateResult(
+        name="tail_concentration",
+        passed=False,
+        failures=("inherited_col: top 100 ... (threshold 75%) ...",),
+        details={
+            "top_share": {"inherited_col": 0.85, "worsened_col": 0.70, "ok": 0.30},
+            "carrier_counts": {"inherited_col": 900, "worsened_col": 900, "ok": 900},
+        },
+    )
+    post = GateResult(
+        name="tail_concentration",
+        passed=False,
+        failures=(
+            "inherited_col: top 100 ... (threshold 75%) ...",
+            "worsened_col: top 100 ... (threshold 75%) ...",
+        ),
+        details={
+            "top_share": {"inherited_col": 0.84, "worsened_col": 0.80, "ok": 0.45},
+            "carrier_counts": {"inherited_col": 950, "worsened_col": 880, "ok": 900},
+        },
+    )
+    failures, receipts = _stage_attributable_concentration_failures(pre, post)
+    assert len(failures) == 1 and failures[0].startswith("worsened_col:")
+    assert receipts["inherited_col"] == {
+        "pre_stage_top_share": 0.85,
+        "post_stage_top_share": 0.84,
+        "pre_stage_carriers": 900,
+        "post_stage_carriers": 950,
+        "over_threshold": True,
+        "stage_worsened_share": False,
+    }
+    assert receipts["worsened_col"]["over_threshold"] is True
+    assert receipts["worsened_col"]["stage_worsened_share"] is True
+    assert receipts["ok"]["over_threshold"] is False
+
+
+def test_undeclared_candidate_overlap_fails_loud() -> None:
+    """populace#570 hardening: a donor/candidate column collision outside
+    the declared partition (joint vector = donor-owned; donor tax-unit
+    outputs = recipient-owned) must raise instead of silently replacing
+    donor payload."""
+    import populace.build.us_runtime.puf_capital_gains_tail as mod
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    tail, _ = mod.select_puf_capital_gains_tail_donors(donor)
+    weights = tail["weight"].to_numpy(dtype=np.float64)
+    candidates = mod._recipient_candidates(
+        frame,
+        maximum_transfer_weight=float(weights.max()),
+        seed=7,
+    )
+    poisoned = candidates.copy()
+    poisoned["filing_status_code"] = 1.0  # collides with the donor's column
+    with pytest.raises(ValueError, match="undeclared donor/candidate"):
+        mod._assign_tail_donors(
+            tail,
+            assigned_weights=weights,
+            candidates=poisoned,
+        )
+
+
+def test_donor_key_bijection_is_asserted(monkeypatch) -> None:
+    """populace#570 hardening: every selected donor must be consumed exactly
+    once; a dropped assignment fails at construction."""
+    import populace.build.us_runtime.puf_capital_gains_tail as mod
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    real_assign = mod._assign_tail_donors
+
+    def dropping_assign(*args, **kwargs):
+        return real_assign(*args, **kwargs).iloc[:-1]
+
+    monkeypatch.setattr(mod, "_assign_tail_donors", dropping_assign)
+    with pytest.raises(ValueError, match="bijection"):
+        mod.transfer_puf_capital_gains_tail(frame, donor, seed=7)
