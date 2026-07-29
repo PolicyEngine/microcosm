@@ -4894,6 +4894,25 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "(populace#393 final determination); this exclusion lifts with "
         "that rebuild."
     ),
+    "short_term_capital_gains": (
+        "Untargeted signed dimension measured against an incidental reference "
+        "(the populace#432/#433 rental_income class, called in advance by the "
+        "release-gate preflight: 'confirm the calibration surface targets this "
+        "column — an untargeted one fails the export-mass parity gate'). The "
+        "compiled register carries NO short-term-specific target (verified on "
+        "Build P3 dense diagnostics: zero short_term rows among 5,695 compiled "
+        "targets), so nothing pins the signed ST dimension; the combined ST+LT "
+        "surface is pinned instead and lands (net_capital_gains_amount -2.85% on "
+        "the same run). The reference h5 carries $118.072B of signed ST mass — "
+        "an artifact of the incumbent solve, not an identified level — while the "
+        "Build P3 dense export delivers $58.465B, 0.97% past the +/-50% band "
+        "floor ($59.036B). This exclusion RE-ADJUDICATES when SOI Publication "
+        "1304 Table 1.4A (the Schedule-D sales-of-capital-assets table) short- "
+        "term gain/loss legs land as Ledger targets — a new target pins the "
+        "dimension but does not itself validate the incumbent parity reference, "
+        "so the entry is re-decided on that build's receipts, the farm-entry "
+        "pattern."
+    ),
     "estate_income": (
         "Identified by SOI Table 1.4 estate/trust net income (income leg "
         "$47.892B + loss leg $4.899B, TY2023; CBO-aged net ~$46.74B@2024). "

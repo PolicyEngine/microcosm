@@ -1,0 +1,1 @@
+Reviewed export-parity exclusion for short_term_capital_gains: untargeted signed dimension vs an incidental reference (the #432/#433 class); re-adjudicates when SOI Publication 1304 Table 1.4A short-term gain/loss targets land.
