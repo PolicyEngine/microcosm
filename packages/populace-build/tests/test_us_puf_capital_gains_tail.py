@@ -634,6 +634,138 @@ def test_joint_vectors_arrive_verbatim_from_selected_donors() -> None:
             "unrecaptured_section_1250_gain",
         ):
             if column in tax_unit.columns:
-                assert float(clone[column]) == float(
-                    record["joint_vector"][column]
-                )
+                assert float(clone[column]) == float(record["joint_vector"][column])
+
+
+def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
+    """populace#571 rounds 1-2: the comparator reads RAW pre/post
+    measurements under the production gate's finite/positive-mass mask
+    (only the min-carriers floor omitted), derives over-threshold
+    membership from the PRODUCTION gate, tolerates ULP noise, and fails
+    only over-threshold columns the stage strictly worsened. The replay
+    case pins the exact Base-P3 geometry: pre 100%/97 carriers (thin —
+    the production gate omits it), post ~83.9%/1,135 carriers (over
+    threshold, gate-flagged), NOT worsened -> passes."""
+    from populace.build.gates import tail_concentration_gate
+    from populace.build.us_runtime.puf_capital_gains_tail import (
+        _WORSENING_SHARE_TOLERANCE,
+        _raw_top_share_receipts,
+        _stage_attributable_concentration_failures,
+    )
+
+    n = 3_000
+    weights = np.ones(n)
+    pre_collect = np.zeros(n)
+    pre_collect[:97] = 1_000_000.0
+    # Post: 100 records at $1M + 1,035 records sized so the top-100 share
+    # lands at the replay's 0.839: rest = top * (1/share - 1).
+    post_collect = np.zeros(n)
+    post_collect[:100] = 1_000_000.0
+    rest_total = 100 * 1_000_000.0 * (1.0 / 0.839 - 1.0)
+    post_collect[100:1_135] = rest_total / 1_035
+    # A NaN row must not poison the measurement (round-2 High).
+    pre_collect[n - 1] = np.nan
+    post_collect[n - 1] = np.nan
+
+    pre_receipts = _raw_top_share_receipts({"collect": pre_collect}, weights)
+    post_receipts = _raw_top_share_receipts({"collect": post_collect}, weights)
+    assert pre_receipts["collect"]["top_share"] == pytest.approx(1.0)
+    assert pre_receipts["collect"]["carriers"] == 97
+    assert post_receipts["collect"]["top_share"] == pytest.approx(0.839, abs=1e-9)
+    assert post_receipts["collect"]["carriers"] == 1_135
+
+    # Membership through the PRODUCTION gate: pre is thin (omitted), post
+    # is checked and fails the absolute threshold.
+    pre_gate = tail_concentration_gate(
+        {"collect": pre_collect[np.isfinite(pre_collect)]},
+        {"collect": weights[np.isfinite(pre_collect)]},
+    )
+    assert "collect" not in pre_gate.details["top_share"]
+    post_gate = tail_concentration_gate(
+        {"collect": post_collect[np.isfinite(post_collect)]},
+        {"collect": weights[np.isfinite(post_collect)]},
+    )
+    assert not post_gate.passed
+
+    failures, receipts = _stage_attributable_concentration_failures(
+        pre_receipts, post_receipts, post_gate
+    )
+    assert failures == []
+    assert receipts["collect"]["over_threshold"] is True
+    assert receipts["collect"]["stage_worsened_share"] is False
+    assert receipts["collect"]["pre_stage_carriers"] == 97
+    assert receipts["collect"]["post_stage_carriers"] == 1_135
+
+    # A stage-worsened over-threshold column still fails, derived through
+    # the production gate as well.
+    worsened_pre = np.zeros(n)
+    worsened_pre[:700] = np.linspace(1.0, 700.0, 700)
+    worsened_post = np.zeros(n)
+    worsened_post[:600] = 1.0
+    worsened_post[:100] = 1_000_000.0
+    worsened_gate = tail_concentration_gate({"w": worsened_post}, {"w": weights})
+    assert not worsened_gate.passed
+    worsened_failures, worsened_receipts = _stage_attributable_concentration_failures(
+        _raw_top_share_receipts({"w": worsened_pre}, weights),
+        _raw_top_share_receipts({"w": worsened_post}, weights),
+        worsened_gate,
+    )
+    assert len(worsened_failures) == 1 and worsened_failures[0].startswith("w:")
+    assert worsened_receipts["w"]["stage_worsened_share"] is True
+
+    # ULP-scale movement is numerical noise, not a worsening.
+    noise_failures, _ = _stage_attributable_concentration_failures(
+        {"n": {"top_share": 0.84, "carriers": 900, "distinct_values": 900}},
+        {
+            "n": {
+                "top_share": 0.84 + _WORSENING_SHARE_TOLERANCE / 2,
+                "carriers": 900,
+                "distinct_values": 900,
+            }
+        },
+        tail_concentration_gate({"n": np.zeros(4)}, {"n": np.ones(4)}),
+    )
+    assert noise_failures == []
+
+
+def test_undeclared_candidate_overlap_fails_loud() -> None:
+    """populace#570 hardening: a donor/candidate column collision outside
+    the declared partition (joint vector = donor-owned; donor tax-unit
+    outputs = recipient-owned) must raise instead of silently replacing
+    donor payload."""
+    import populace.build.us_runtime.puf_capital_gains_tail as mod
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    tail, _ = mod.select_puf_capital_gains_tail_donors(donor)
+    weights = tail["weight"].to_numpy(dtype=np.float64)
+    candidates = mod._recipient_candidates(
+        frame,
+        maximum_transfer_weight=float(weights.max()),
+        seed=7,
+    )
+    poisoned = candidates.copy()
+    poisoned["filing_status_code"] = 1.0  # collides with the donor's column
+    with pytest.raises(ValueError, match="undeclared donor/candidate"):
+        mod._assign_tail_donors(
+            tail,
+            assigned_weights=weights,
+            candidates=poisoned,
+        )
+
+
+def test_donor_key_bijection_is_asserted(monkeypatch) -> None:
+    """populace#570 hardening: every selected donor must be consumed exactly
+    once; a dropped assignment fails at construction."""
+    import populace.build.us_runtime.puf_capital_gains_tail as mod
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    real_assign = mod._assign_tail_donors
+
+    def dropping_assign(*args, **kwargs):
+        return real_assign(*args, **kwargs).iloc[:-1]
+
+    monkeypatch.setattr(mod, "_assign_tail_donors", dropping_assign)
+    with pytest.raises(ValueError, match="bijection"):
+        mod.transfer_puf_capital_gains_tail(frame, donor, seed=7)
