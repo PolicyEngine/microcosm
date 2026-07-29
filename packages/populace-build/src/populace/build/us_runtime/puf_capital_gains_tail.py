@@ -386,38 +386,85 @@ def assert_puf_capital_gains_tail_survives_selection(
     }
 
 
+#: Float tolerance for the worsening comparator (populace#571 review):
+#: weight splitting and changed summation order move shares by ULPs; a
+#: strict > would fail 0.84 -> 0.8400000000000001. Anything below this is
+#: numerical noise, not a worsening.
+_WORSENING_SHARE_TOLERANCE = 1e-9
+
+
+def _raw_top_share_receipts(
+    values_by_column: Mapping[str, np.ndarray],
+    weights: np.ndarray,
+    *,
+    top_k: int = 100,
+) -> dict[str, dict[str, object]]:
+    """Measure every column's weighted top-share raw — no thin-column skip.
+
+    populace#571 review, Critical: the shared gate omits shares for columns
+    under its min-carriers floor, so a thin PRE-stage column (collectibles:
+    97 carriers, literal top-100 share 100%) read as pre_share 0.0 and the
+    stage's improvement (100% -> 83.9%, 97 -> 1,135 carriers) was reported
+    as a worsening from zero. The comparator must see the raw geometry.
+    """
+
+    receipts: dict[str, dict[str, object]] = {}
+    for column, values in values_by_column.items():
+        mass = np.abs(np.asarray(values, dtype=np.float64)) * np.asarray(
+            weights, dtype=np.float64
+        )
+        carriers = int(np.count_nonzero(mass))
+        total = float(mass.sum())
+        if total > 0.0:
+            top = np.sort(mass)[::-1][:top_k]
+            share = float(top.sum() / total)
+        else:
+            share = 0.0
+        nonzero_values = np.asarray(values, dtype=np.float64)
+        nonzero_values = nonzero_values[nonzero_values != 0.0]
+        receipts[column] = {
+            "top_share": share,
+            "carriers": carriers,
+            "distinct_values": int(np.unique(nonzero_values).size),
+        }
+    return receipts
+
+
 def _stage_attributable_concentration_failures(
-    pre: GateResult,
-    post: GateResult,
+    pre_receipts: Mapping[str, Mapping[str, object]],
+    post_receipts: Mapping[str, Mapping[str, object]],
+    post_gate: GateResult,
 ) -> tuple[list[str], dict[str, dict[str, object]]]:
     """Fail only columns the stage left over threshold AND strictly worsened.
 
     populace#567/#570 adjudication: the stage's frame check exists to catch
     stage-caused pathology (a broadcast or a bad transfer concentrating
-    mass). Concentration the frame already carried BEFORE the stage —
-    collectibles arrives 67.2% inherited from pre-existing base rows — is
+    mass). Concentration the frame already carried BEFORE the stage is
     owned by the release-side gate, which measures the calibrated artifact
-    and has its own reviewed per-run register. Per-column pre/post receipts
+    and has its own reviewed per-run register. Over-threshold membership
+    comes from the production gate on the post frame; the pre/post shares
+    come from the raw measurement so thin pre-stage columns compare
+    truthfully. Per-column receipts (shares, carriers, distinct values —
+    the last a visibility signal for share-preserving value collapses)
     ride the stage manifest either way.
     """
 
-    pre_shares = dict(pre.details.get("top_share", {}))
-    post_shares = dict(post.details.get("top_share", {}))
-    pre_counts = dict(pre.details.get("carrier_counts", {}))
-    post_counts = dict(post.details.get("carrier_counts", {}))
-    over_threshold = {line.partition(":")[0].strip() for line in post.failures}
+    over_threshold = {line.partition(":")[0].strip() for line in post_gate.failures}
     failures: list[str] = []
     receipts: dict[str, dict[str, object]] = {}
-    for column in sorted(post_shares):
-        pre_share = float(pre_shares.get(column, 0.0))
-        post_share = float(post_shares[column])
+    for column in sorted(post_receipts):
+        pre = pre_receipts.get(column, {})
+        pre_share = float(pre.get("top_share", 0.0))
+        post_share = float(post_receipts[column]["top_share"])
         over = column in over_threshold
-        worsened = post_share > pre_share
+        worsened = post_share > pre_share + _WORSENING_SHARE_TOLERANCE
         receipts[column] = {
             "pre_stage_top_share": pre_share,
             "post_stage_top_share": post_share,
-            "pre_stage_carriers": int(pre_counts.get(column, 0)),
-            "post_stage_carriers": int(post_counts.get(column, 0)),
+            "pre_stage_carriers": int(pre.get("carriers", 0)),
+            "post_stage_carriers": int(post_receipts[column]["carriers"]),
+            "pre_stage_distinct_values": int(pre.get("distinct_values", 0)),
+            "post_stage_distinct_values": int(post_receipts[column]["distinct_values"]),
             "over_threshold": over,
             "stage_worsened_share": worsened,
         }
@@ -514,18 +561,30 @@ def transfer_puf_capital_gains_tail(
                 "verbatim."
             )
     before_distribution = _frame_combined_distribution(frame)
-    pre_stage_concentration = _frame_capital_gains_concentration_gate(frame)
+    pre_values, pre_weights = _frame_capital_gains_vectors(frame)
+    pre_values[_COMBINED_COLUMN] = (
+        pre_values["short_term_capital_gains"]
+        + pre_values["long_term_capital_gains_before_response"]
+    )
+    pre_receipts = _raw_top_share_receipts(pre_values, pre_weights)
     transferred, clone_receipt = _clone_and_transfer(
         frame,
         assignments,
     )
     after_distribution = _frame_combined_distribution(transferred)
+    post_values, post_weights = _frame_capital_gains_vectors(transferred)
+    post_values[_COMBINED_COLUMN] = (
+        post_values["short_term_capital_gains"]
+        + post_values["long_term_capital_gains_before_response"]
+    )
+    post_receipts = _raw_top_share_receipts(post_values, post_weights)
     frame_concentration = _frame_capital_gains_concentration_gate(transferred)
     (
         stage_attributable_failures,
         frame_concentration_receipts,
     ) = _stage_attributable_concentration_failures(
-        pre_stage_concentration,
+        pre_receipts,
+        post_receipts,
         frame_concentration,
     )
     if stage_attributable_failures:

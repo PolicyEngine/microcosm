@@ -638,50 +638,80 @@ def test_joint_vectors_arrive_verbatim_from_selected_donors() -> None:
 
 
 def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
-    """populace#570 round 2 → rescope: a column already over the threshold
-    BEFORE the stage (inherited base concentration — collectibles arrives
-    67.2% inherited) must not block the stage unless the transfer strictly
-    worsened it; a stage-worsened over-threshold column still fails; all
-    columns get pre/post receipts."""
+    """populace#571 round 2: the comparator reads RAW pre/post measurements
+    (no thin-column skip — the production replay's pre-stage collectibles is
+    100% across 97 carriers, which the shared gate omits entirely), compares
+    with a float tolerance, and fails only over-threshold columns the stage
+    strictly worsened."""
     from populace.build.gates import GateResult
     from populace.build.us_runtime.puf_capital_gains_tail import (
+        _WORSENING_SHARE_TOLERANCE,
+        _raw_top_share_receipts,
         _stage_attributable_concentration_failures,
     )
 
-    pre = GateResult(
+    # The exact production replay shape (populace#571 review): a thin
+    # 97-carrier pre column at literal 100% top-100 share that the stage
+    # IMPROVES to ~83.9% across 1,135 carriers must PASS.
+    rng = np.random.default_rng(571)
+    pre_collect = np.zeros(3_000)
+    pre_collect[:97] = rng.uniform(1e5, 1e6, 97)
+    post_collect = np.zeros(3_000)
+    post_collect[:1_135] = np.sort(rng.uniform(10.0, 1e6, 1_135))[::-1]
+    weights = np.ones(3_000)
+    pre_receipts = _raw_top_share_receipts({"collect": pre_collect}, weights)
+    post_receipts = _raw_top_share_receipts({"collect": post_collect}, weights)
+    assert pre_receipts["collect"]["top_share"] == pytest.approx(1.0)
+    assert pre_receipts["collect"]["carriers"] == 97
+    assert post_receipts["collect"]["top_share"] < 0.999
+    post_gate = GateResult(
         name="tail_concentration",
         passed=False,
-        failures=("inherited_col: top 100 ... (threshold 75%) ...",),
-        details={
-            "top_share": {"inherited_col": 0.85, "worsened_col": 0.70, "ok": 0.30},
-            "carrier_counts": {"inherited_col": 900, "worsened_col": 900, "ok": 900},
-        },
+        failures=("collect: top 100 ... (threshold 75%) ...",),
+        details={},
     )
-    post = GateResult(
-        name="tail_concentration",
-        passed=False,
-        failures=(
-            "inherited_col: top 100 ... (threshold 75%) ...",
-            "worsened_col: top 100 ... (threshold 75%) ...",
+    failures, receipts = _stage_attributable_concentration_failures(
+        pre_receipts, post_receipts, post_gate
+    )
+    assert failures == []
+    assert receipts["collect"]["over_threshold"] is True
+    assert receipts["collect"]["stage_worsened_share"] is False
+    assert receipts["collect"]["pre_stage_top_share"] == pytest.approx(1.0)
+    assert receipts["collect"]["pre_stage_carriers"] == 97
+
+    # A stage-worsened over-threshold column still fails.
+    worsened_failures, worsened_receipts = _stage_attributable_concentration_failures(
+        {"w": {"top_share": 0.70, "carriers": 900, "distinct_values": 900}},
+        {"w": {"top_share": 0.80, "carriers": 880, "distinct_values": 880}},
+        GateResult(
+            name="tail_concentration",
+            passed=False,
+            failures=("w: top 100 ... (threshold 75%) ...",),
+            details={},
         ),
-        details={
-            "top_share": {"inherited_col": 0.84, "worsened_col": 0.80, "ok": 0.45},
-            "carrier_counts": {"inherited_col": 950, "worsened_col": 880, "ok": 900},
-        },
     )
-    failures, receipts = _stage_attributable_concentration_failures(pre, post)
-    assert len(failures) == 1 and failures[0].startswith("worsened_col:")
-    assert receipts["inherited_col"] == {
-        "pre_stage_top_share": 0.85,
-        "post_stage_top_share": 0.84,
-        "pre_stage_carriers": 900,
-        "post_stage_carriers": 950,
-        "over_threshold": True,
-        "stage_worsened_share": False,
-    }
-    assert receipts["worsened_col"]["over_threshold"] is True
-    assert receipts["worsened_col"]["stage_worsened_share"] is True
-    assert receipts["ok"]["over_threshold"] is False
+    assert len(worsened_failures) == 1 and worsened_failures[0].startswith("w:")
+    assert worsened_receipts["w"]["stage_worsened_share"] is True
+
+    # ULP-scale movement is numerical noise, not a worsening.
+    noise_failures, noise_receipts = _stage_attributable_concentration_failures(
+        {"n": {"top_share": 0.84, "carriers": 900, "distinct_values": 900}},
+        {
+            "n": {
+                "top_share": 0.84 + _WORSENING_SHARE_TOLERANCE / 2,
+                "carriers": 900,
+                "distinct_values": 900,
+            }
+        },
+        GateResult(
+            name="tail_concentration",
+            passed=False,
+            failures=("n: top 100 ... (threshold 75%) ...",),
+            details={},
+        ),
+    )
+    assert noise_failures == []
+    assert noise_receipts["n"]["stage_worsened_share"] is False
 
 
 def test_undeclared_candidate_overlap_fails_loud() -> None:
