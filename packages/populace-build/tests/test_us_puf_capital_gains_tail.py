@@ -586,3 +586,54 @@ def test_tail_stratum_passes_existing_weighted_top_100_gate() -> None:
         == tail_count
     )
     assert gate.details["top_share"]["short_term_plus_long_term_capital_gains"] < 0.75
+
+
+def test_joint_vectors_arrive_verbatim_from_selected_donors() -> None:
+    """populace#570 review, Critical: the candidate merge previously
+    replaced donor joint-vector values held at tax-unit grain (notably
+    unrecaptured_section_1250_gain) with the RECIPIENT's existing values —
+    99.7% of intended donor mass lost, and reconciliation self-confirmed
+    because it derives expectations from assignments. Every joint-vector
+    column must arrive verbatim from the SELECTED donor, per-column, into
+    assignments, the manifest, and the materialized frame."""
+    from populace.build.us_runtime.puf_capital_gains_tail import (
+        transfer_puf_capital_gains_tail,
+    )
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    transferred, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=7)
+
+    donor_by_id = donor.set_index("tax_unit_id")
+    joint_columns = (
+        "short_term_capital_gains",
+        "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
+        "non_sch_d_capital_gains",
+        "unrecaptured_section_1250_gain",
+    )
+    records = manifest["records"]
+    assert records
+    for record in records:
+        source = donor_by_id.loc[record["donor_source_id"]]
+        for column in joint_columns:
+            assert float(record["joint_vector"][column]) == float(source[column]), (
+                f"{column} did not arrive verbatim for donor "
+                f"{record['donor_source_id']}"
+            )
+    # And the materialized frame carries the same values on the tail clones.
+    tax_unit = transferred.table("tax_unit")
+    by_tail = {record["tail_tax_unit_id"]: record for record in records}
+    clone_mask = tax_unit["tax_unit_id"].isin(list(by_tail))
+    assert int(clone_mask.sum()) == len(records)
+    for _, clone in tax_unit.loc[clone_mask].iterrows():
+        record = by_tail[int(clone["tax_unit_id"])]
+        for column in (
+            "long_term_capital_gains_on_collectibles",
+            "non_sch_d_capital_gains",
+            "unrecaptured_section_1250_gain",
+        ):
+            if column in tax_unit.columns:
+                assert float(clone[column]) == float(
+                    record["joint_vector"][column]
+                )

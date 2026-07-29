@@ -432,6 +432,23 @@ def transfer_puf_capital_gains_tail(
         assigned_weights=assigned_weights,
         candidates=candidates,
     )
+    # Fidelity is asserted by construction (populace#570 review): every
+    # joint-vector column in every assignment must equal the SELECTED
+    # donor's value, keyed by donor_source_id — reconciliation downstream
+    # derives expectations from assignments, so a leak here would
+    # self-confirm if it were not caught at the source.
+    donor_by_id = tail.set_index("tax_unit_id")
+    for column in _JOINT_VECTOR_COLUMNS:
+        expected_vector = donor_by_id.loc[
+            assignments["donor_source_id"], column
+        ].to_numpy(dtype=np.float64)
+        assigned_vector = assignments[column].to_numpy(dtype=np.float64)
+        if not np.array_equal(expected_vector, assigned_vector):
+            raise ValueError(
+                "PUF tail assignments leaked recipient values into "
+                f"{column}; the selected donor's joint vector must arrive "
+                "verbatim."
+            )
     before_distribution = _frame_combined_distribution(frame)
     transferred, clone_receipt = _clone_and_transfer(
         frame,
@@ -805,6 +822,14 @@ def _assign_tail_donors(
         row["donor_source_id"] = int(donor_row["tax_unit_id"])
         del row["tax_unit_id"]
         row.update(candidate.to_dict())
+        # The candidate carries the recipient's EXISTING tax-unit values for
+        # joint-vector columns held at tax-unit grain, so the merge above
+        # would silently replace the donor's transferred vector with the
+        # recipient's old value (populace#570 review, Critical: 99.7% of
+        # donor unrecaptured-1250 mass was lost this way). The selected
+        # donor's joint vector always wins.
+        for column in _JOINT_VECTOR_COLUMNS:
+            row[column] = donor_row[column]
         row["assigned_weight"] = float(assigned_weights[donor_position])
         rows.append(row)
     result = pd.DataFrame(rows)

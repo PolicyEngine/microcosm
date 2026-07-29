@@ -1,0 +1,1 @@
+The capital-gains tail transfer delivers every joint-vector column verbatim from the selected donor: the recipient-candidate merge no longer overwrites donor values held at tax-unit grain, fidelity is asserted at construction, and a donor-keyed test binds the chain.
