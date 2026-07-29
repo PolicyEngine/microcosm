@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from populace.calibrate import TargetRegistry, TargetSpec, calibrate
-from populace.frame import Frame, WeightKind
+from populace.frame import Frame, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -62,6 +62,231 @@ def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
     assert payload["enabled"] is True
     assert payload["n_households"] == 3
     assert payload["sha256"] == builder._sha256(path)
+
+
+def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> None:
+    builder = _load_builder_module()
+    import hashlib as _hashlib
+
+    import pandas as _pd
+
+    weights = Weights(
+        np.asarray([0.0, 12.0, 35.0]),
+        WeightKind.CALIBRATED,
+    )
+    ids = np.asarray([101, 202, 303], dtype="int64")
+    frame = SimpleNamespace(
+        n=lambda entity: 3 if entity == "household" else None,
+        weights_for=lambda entity: weights if entity == "household" else None,
+        table=lambda entity: _pd.DataFrame({"household_id": ids}),
+    )
+    identity = {"base_dataset_sha256": "probe-base", "seed": 0}
+
+    metadata = builder._write_final_household_weight_evidence(
+        tmp_path, frame, identity=identity
+    )
+
+    values_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
+    metadata_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    np.testing.assert_array_equal(
+        np.load(values_path, allow_pickle=False),
+        np.asarray([0.0, 12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(np.load(ids_path, allow_pickle=False), ids)
+    assert json.loads(metadata_path.read_text()) == metadata
+    assert metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "identity": {"base_dataset_sha256": "probe-base", "seed": 0},
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [3],
+            "sha256": builder._sha256(values_path),
+        },
+        "household_ids": {
+            "file": "final_household_weight_ids.npy",
+            "dtype": "int64",
+            "shape": [3],
+            "sha256": builder._sha256(ids_path),
+            "ordering_sha256": _hashlib.sha256(ids.tobytes()).hexdigest(),
+        },
+        "summary": {
+            "n_households": 3,
+            "household_weight_sum": 47.0,
+            "minimum": 0.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 1,
+        },
+    }
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
+    """populace#568 round 4: refusal placement is part of the contract —
+    one refusal call must precede the base download (the --release-id
+    path), and one must precede every output-directory mkdir (the
+    auto-generated-id path)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    refusals = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_refuse_certified_release_dir_reuse"
+    ]
+    downloads = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_download_base_h5"
+    ]
+    mkdirs = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mkdir"
+    ]
+    assert len(refusals) == 2
+    assert downloads and min(r.lineno for r in refusals) < min(
+        d.lineno for d in downloads
+    ), "the known-id refusal must precede the base download"
+    assert mkdirs and sorted(r.lineno for r in refusals)[1] < min(
+        m.lineno for m in mkdirs
+    ), "the unconditional refusal must precede every output mkdir"
+
+
+def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
+    """populace#568 round 3: a run pointed at a directory already carrying
+    release_manifest.json must refuse before writing anything — a failed
+    retry would otherwise mix its weight evidence with the prior certified
+    release."""
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "some-id"
+    release_dir.mkdir(parents=True)
+    builder._refuse_certified_release_dir_reuse(release_dir)  # absent: fine
+    (release_dir / "release_manifest.json").write_text("{}")
+    with pytest.raises(RuntimeError, match="already carries a certified"):
+        builder._refuse_certified_release_dir_reuse(release_dir)
+
+
+def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> None:
+    """populace#568 review blocker 2: the evidence pair must be written on
+    the batched gate-failure path ONLY — green runs carry weights in the
+    certified H5. Enforced structurally (the #443 AST-guard pattern): the
+    sole main() call site must sit inside the ``if terminal_gate_failures:``
+    branch, before its raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    calls: list[tuple[ast.Call, list[ast.AST]]] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.stack: list[ast.AST] = []
+
+        def generic_visit(self, node):
+            self.stack.append(node)
+            super().generic_visit(node)
+            self.stack.pop()
+
+        def visit_Call(self, node):
+            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+            if name == "_write_final_household_weight_evidence":
+                calls.append((node, list(self.stack)))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    main_calls = [
+        (node, stack)
+        for node, stack in calls
+        if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
+    ]
+    assert len(main_calls) == 1
+    call_node, stack = main_calls[0]
+    guarding_ifs = [
+        anc
+        for anc in stack
+        if isinstance(anc, ast.If)
+        and isinstance(anc.test, ast.Name)
+        and anc.test.id == "terminal_gate_failures"
+    ]
+    assert guarding_ifs, (
+        "final-household-weight evidence must be written inside the "
+        "terminal_gate_failures branch only"
+    )
+    guard = guarding_ifs[-1]
+    # The call must sit in the IF BODY (an else-branch call would run on
+    # green runs) and strictly before the branch's raise.
+    body_nodes = [n for stmt in guard.body for n in ast.walk(stmt)]
+    assert call_node in body_nodes, (
+        "evidence call must be in the terminal_gate_failures if-body, "
+        "not its else branch"
+    )
+    raises = [n for n in body_nodes if isinstance(n, ast.Raise)]
+    assert raises and call_node.lineno < min(r.lineno for r in raises), (
+        "evidence must be persisted before the batched raise"
+    )
+    # The green continuation must clean up a prior failed attempt's
+    # evidence (release-dir reuse, populace#568 round 2) before the
+    # certified dataset write.
+    main_fn = next(
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
+    )
+
+    def _is_bound_cleanup_for(node):
+        if not isinstance(node, ast.For) or node.lineno <= guard.end_lineno:
+            return False
+        # The iterable must BE a tuple (no slicing/subscript tricks) whose
+        # elements name all three evidence filename constants.
+        if not isinstance(node.iter, ast.Tuple):
+            return False
+        iter_names = {
+            name.id for name in ast.walk(node.iter) if isinstance(name, ast.Name)
+        }
+        if not iter_names >= {
+            "FINAL_HOUSEHOLD_WEIGHTS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME",
+        }:
+            return False
+        # The unlink must be called ON THE LOOP TARGET, not a decoy.
+        target = node.target.id if isinstance(node.target, ast.Name) else None
+        return target is not None and any(
+            isinstance(c, ast.Call)
+            and getattr(c.func, "attr", "") == "unlink"
+            and isinstance(getattr(c.func, "value", None), ast.Name)
+            and c.func.value.id == target
+            for stmt in node.body
+            for c in ast.walk(stmt)
+        )
+
+    cleanup_unlinks = [n for n in ast.walk(main_fn) if _is_bound_cleanup_for(n)]
+    dataset_writes = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "attr", "") == "write_dataset"
+        and n.lineno > guard.end_lineno
+    ]
+    assert cleanup_unlinks and dataset_writes, (
+        "green path must unlink ALL THREE stale evidence files (bound by "
+        "constant name) and write the dataset"
+    )
+    assert min(n.lineno for n in cleanup_unlinks) < min(
+        n.lineno for n in dataset_writes
+    ), "stale-evidence cleanup must precede the certified dataset write"
 
 
 def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
@@ -926,7 +1151,16 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
 
+    base_load = source.index("base_frame = _load_frame(base_h5)")
+    tail_presence = source.index(
+        "capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(",
+        base_load,
+    )
     selection = source.index("base_frame, selection_report = select_frozen_support(")
+    tail_retention = source.index(
+        "assert_puf_capital_gains_tail_survives_selection(",
+        selection,
+    )
     regate = source.index(
         "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
     )
@@ -934,7 +1168,7 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
         "base_frame, base_population_repair = _with_base_population_mass_repair("
     )
 
-    assert selection < regate < mass_repair
+    assert base_load < tail_presence < selection < tail_retention < regate < mass_repair
     assert "Post-selection weeks-unemployed input signal failed" in source
 
 
@@ -3086,6 +3320,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return 4
 
+    class FakeExportFrame:
+        def n(self, entity):
+            assert entity == "household"
+            return 2
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.asarray([12.0, 35.0]),
+                WeightKind.CALIBRATED,
+            )
+
+        def table(self, entity):
+            assert entity == "household"
+            return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
+
     argv = [
         "build_us_fiscal_refresh_release.py",
         "--base-h5",
@@ -3223,6 +3473,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
     monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        lambda base_frame, selected_frame, *, require_present=False: {
+            "passed": True,
+            "status": "fixture",
+        },
+    )
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
@@ -4410,7 +4668,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_l0_refit_weights(frame, refit_result):
         captured["export_frame_from_l0_refit"] = True
-        return frame
+        return FakeExportFrame()
 
     def fake_final_ssi_diagnostics(
         frame,
@@ -4597,6 +4855,73 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
+    final_weights_path = release_dir / "final_household_weights.npy"
+    final_ids_path = release_dir / "final_household_weight_ids.npy"
+    final_weights_metadata = json.loads(
+        (release_dir / "final_household_weights.json").read_text()
+    )
+    np.testing.assert_array_equal(
+        np.load(final_weights_path, allow_pickle=False),
+        np.asarray([12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(
+        np.load(final_ids_path, allow_pickle=False),
+        np.asarray([10, 20], dtype="int64"),
+    )
+    # Identity binds the evidence to this run's target-frame context; the
+    # ids block reattaches every weight to its household. Their inner
+    # values are run-derived, so assert them structurally and compare the
+    # stable remainder exactly.
+    evidence_identity = final_weights_metadata.pop("identity")
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    expected_evidence_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
+    )
+    assert evidence_identity == dict(expected_evidence_identity)
+    ids_block = final_weights_metadata.pop("household_ids")
+    assert ids_block["file"] == "final_household_weight_ids.npy"
+    assert ids_block["shape"] == [2]
+    assert (
+        ids_block["ordering_sha256"]
+        == __import__("hashlib")
+        .sha256(np.asarray([10, 20], dtype="int64").tobytes())
+        .hexdigest()
+    )
+    assert final_weights_metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [2],
+            # This end-to-end fixture stubs every non-weeks file hash; the
+            # direct helper test above validates the real hash path.
+            "sha256": "base-sha",
+        },
+        "summary": {
+            "n_households": 2,
+            "household_weight_sum": 47.0,
+            "minimum": 12.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 0,
+        },
+    }
     # Artifact exclusion: the failed run leaves evidence, never artifacts.
     # H5s land under the out root (not the release dir), so sweep the tree.
     assert not list(out.rglob("*.h5"))
@@ -6160,10 +6485,21 @@ def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> No
     )
 
 
-def test_soi_eitc_child_targets_materialize_distinct_child_slices(
+def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
     monkeypatch,
 ) -> None:
+    from populace.build.us_runtime import split_us_puf_e19200_by_agi_band
+
     builder = _load_builder_module()
+    e19200_total = np.asarray([100.0, 200.0, 300.0, 400.0])
+    source_year_agi = np.asarray([-5_000.0, 20_000.0, 100_000.0, 10_000_000.0])
+    mortgage_interest, non_mortgage_interest = split_us_puf_e19200_by_agi_band(
+        e19200_total, source_year_agi
+    )
+    assert np.all(non_mortgage_interest > 0)
+    broader_interest = mortgage_interest + non_mortgage_interest
+    np.testing.assert_array_equal(broader_interest, e19200_total)
+
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -6491,6 +6827,22 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_only": "true",
             },
         ),
+        TargetSpec(
+            name="home_mortgage_interest_amount",
+            entity="household",
+            measure="home_mortgage_interest_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "deductible_mortgage_interest",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "home_mortgage_interest_amount",
+                "itemized_only": "true",
+            },
+        ),
     )
 
     class FakeVariable:
@@ -6509,6 +6861,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "eitc_child_count",
                 "itemized_taxable_income_deductions",
                 "charitable_deduction",
+                "deductible_mortgage_interest",
                 "interest_deduction",
                 "medical_expense_deduction",
                 "real_estate_taxes",
@@ -6547,7 +6900,8 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                     [1_000.0, 2_000.0, 3_000.0, 4_000.0]
                 ),
                 "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
-                "interest_deduction": np.asarray([1.0, 2.0, 3.0, 4.0]),
+                "deductible_mortgage_interest": mortgage_interest,
+                "interest_deduction": broader_interest,
                 "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
                 "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
@@ -6579,6 +6933,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_taxable_income_deductions"
             ),
             "charitable_deduction": "charitable_deduction",
+            "deductible_mortgage_interest": "deductible_mortgage_interest",
             "interest_deduction": "interest_deduction",
             "medical_expense_deduction": "medical_expense_deduction",
             "real_estate_taxes": "real_estate_taxes",
@@ -6634,9 +6989,23 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     )
     assert np.array_equal(household["charitable_amount"], np.asarray([20.0, 0.0]))
     assert np.array_equal(
-        household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
+        household["interest_paid_deduction_amount"],
+        np.asarray([broader_interest[1], 0.0]),
     )
-    assert len(registry) == 20
+    assert np.array_equal(
+        household["home_mortgage_interest_amount"],
+        np.asarray([mortgage_interest[1], 0.0]),
+    )
+    np.testing.assert_allclose(
+        household["interest_paid_deduction_amount"]
+        - household["home_mortgage_interest_amount"],
+        np.asarray([non_mortgage_interest[1], 0.0]),
+    )
+    assert not np.array_equal(
+        household["home_mortgage_interest_amount"],
+        household["interest_paid_deduction_amount"],
+    )
+    assert len(registry) == 21
     assert compilation["dropped_target_names"] == []
 
 
@@ -7607,6 +7976,23 @@ def test_post_export_sanity_rejects_dropped_export_targets(
         assert "1 fiscal targets were not materialized after export" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected dropped-target post-export sanity failure.")
+
+
+def test_short_term_parity_exclusion_is_reviewed_and_scoped() -> None:
+    """populace#567 dense-P3: short_term_capital_gains is an UNTARGETED
+    signed dimension measured against the incumbent's incidental $118B —
+    the #432/#433 rental_income class, called in advance by the preflight.
+    The entry must exist with the adjudication and its lift condition, and
+    the combined-CG surface (which IS pinned) must not be excluded."""
+    builder = _load_builder_module()
+    register = builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    assert "short_term_capital_gains" in register
+    reason = register["short_term_capital_gains"]
+    assert "#432" in reason or "rental_income class" in reason
+    assert "RE-ADJUDICATES" in reason and "Table 1.4A" in reason
+    assert "long_term_capital_gains_before_response" not in register
+    assert "capital_gains" not in register
+    assert "long_term_capital_gains" not in register
 
 
 def test_reviewed_exclusions_are_exact_for_fiscal_refresh() -> None:

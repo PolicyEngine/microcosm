@@ -13,11 +13,11 @@ from populace.build.us_runtime import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
-    US_PUF_E19200_HOME_MORTGAGE_SHARE,
     clone_us_frame_for_puf_support,
     derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
     puf_tax_unit_donor_from_arrays,
+    split_us_puf_e19200_by_agi_band,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -307,6 +307,7 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
             "taxable_unemployment_compensation": [13.0, 17.0, 19.0],
             "state_and_local_sales_or_income_tax": [40.0, 50.0],
         },
+        adjusted_gross_income=[0.0, 0.0],
         person_outputs=(
             "employment_income_before_lsr",
             "qualified_dividend_income",
@@ -335,20 +336,30 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
     np.testing.assert_allclose(
         donor["home_mortgage_interest"].to_numpy(),
-        np.asarray([30.0, 30.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+        split_us_puf_e19200_by_agi_band(
+            np.asarray([30.0, 30.0]),
+            np.asarray([0.0, 0.0]),
+        )[0],
     )
     assert donor["educator_expense"].tolist() == [300.0, 300.0]
     assert "interest_deduction" not in donor
     assert "state_withheld_income_tax" not in donor
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
+    assert donor[
+        puf_support_module.PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN
+    ].tolist() == [0.0, 0.0]
 
 
-def test_puf_tax_unit_donor_drops_grouped_raw_mortgage_outlier_rows() -> None:
+def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
     assert US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING == 10_000_000.0
-    carved_below_ceiling = 10_500_000.0 * US_PUF_E19200_HOME_MORTGAGE_SHARE
+    carved_below_ceiling = split_us_puf_e19200_by_agi_band(
+        np.asarray([10_500_000.0]),
+        np.asarray([10_000_000.0]),
+    )[0][0]
     assert carved_below_ceiling < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
 
+    summary: dict[str, object] = {}
     donor = puf_tax_unit_donor_from_arrays(
         {
             "tax_unit_id": [10, 20, 30],
@@ -364,8 +375,10 @@ def test_puf_tax_unit_donor_drops_grouped_raw_mortgage_outlier_rows() -> None:
                 5_000_000.0,
                 10_500_000.0,
             ],
-            # Conspicuous values on unrelated columns prove this is a whole-row
-            # drop rather than mortgage-only zeroing.
+            "investment_interest_expense": [0.0, 0.0, 0.0, 0.0],
+            "short_term_capital_gains": [-100.0, 150.0, 40.0, 300.0],
+            "long_term_capital_gains": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+            # Conspicuous unrelated values prove field locality.
             "employment_income": [
                 600_000_000.0,
                 400_000_000.0,
@@ -373,23 +386,136 @@ def test_puf_tax_unit_donor_drops_grouped_raw_mortgage_outlier_rows() -> None:
                 800_000_000.0,
             ],
             "domestic_production_ald": [900_000_000.0, 700.0, 800_000_000.0],
+            "first_home_mortgage_interest": [
+                8_000_000.0,
+                4_000_000.0,
+                7_000_000.0,
+            ],
+            "second_home_mortgage_interest": [
+                2_000_000.0,
+                1_000_000.0,
+                3_500_000.0,
+            ],
         },
+        adjusted_gross_income=[0.0, 0.0, 10_000_000.0],
         person_outputs=(
             "home_mortgage_interest",
+            "investment_interest_expense",
             "employment_income_before_lsr",
+            "short_term_capital_gains",
+            "long_term_capital_gains_before_response",
         ),
-        tax_unit_outputs=("domestic_production_ald",),
+        tax_unit_outputs=(
+            "domestic_production_ald",
+            "first_home_mortgage_interest",
+            "second_home_mortgage_interest",
+        ),
+        donor_build_summary=summary,
     )
 
-    assert len(donor) == 1
-    assert donor.index.tolist() == [0]
-    assert donor["tax_unit_id"].tolist() == [20]
-    assert donor["weight"].tolist() == [202.0]
-    assert donor["employment_income_before_lsr"].tolist() == [50_000.0]
-    assert donor["domestic_production_ald"].tolist() == [700.0]
+    assert len(donor) == 3
+    assert donor.index.tolist() == [0, 1, 2]
+    assert donor["tax_unit_id"].tolist() == [10, 20, 30]
+    assert donor["weight"].tolist() == [101.0, 202.0, 303.0]
+    assert donor["employment_income_before_lsr"].tolist() == [
+        1_000_000_000.0,
+        50_000.0,
+        800_000_000.0,
+    ]
+    assert donor["domestic_production_ald"].tolist() == [
+        900_000_000.0,
+        700.0,
+        800_000_000.0,
+    ]
+    assert donor["short_term_capital_gains"].tolist() == [50.0, 40.0, 300.0]
+    assert donor["long_term_capital_gains_before_response"].tolist() == [
+        3_000.0,
+        3_000.0,
+        4_000.0,
+    ]
+
+    raw_total = np.asarray([10_000_000.0, 5_000_000.0, 10_500_000.0])
+    mortgage, investment = split_us_puf_e19200_by_agi_band(
+        raw_total,
+        np.asarray([0.0, 0.0, 10_000_000.0]),
+    )
+    share = mortgage / raw_total
+    expected_before_quarantine = {
+        "home_mortgage_interest": mortgage,
+        "investment_interest_expense": investment,
+        "first_home_mortgage_interest": (
+            np.asarray([8_000_000.0, 4_000_000.0, 7_000_000.0]) * share
+        ),
+        "second_home_mortgage_interest": (
+            np.asarray([2_000_000.0, 1_000_000.0, 3_500_000.0]) * share
+        ),
+    }
+    for column, expected in expected_before_quarantine.items():
+        np.testing.assert_allclose(
+            donor[column].to_numpy(),
+            np.asarray([0.0, expected[1], 0.0]),
+        )
+
+    quarantine = summary["mortgage_field_quarantine"]
+    assert quarantine["method"] == "field_local_zero"
+    assert quarantine["source_field"] == "grouped_raw_home_mortgage_interest"
+    assert quarantine["comparison"] == "greater_than_or_equal"
+    assert quarantine["ceiling"] == 10_000_000.0
+    assert quarantine["screened_record_count"] == 2
+    assert quarantine["screened_weight"] == 404.0
+    assert set(quarantine["fields"]) == set(expected_before_quarantine)
+    preserved = quarantine["capital_gains_preserved"]
+    assert preserved["columns"] == [
+        "short_term_capital_gains",
+        "long_term_capital_gains_before_response",
+    ]
+    assert preserved["before"] == {
+        "record_count": 2,
+        "total_weight": 404.0,
+        "positive_carrier_count": 2,
+        "positive_carrier_weight": 404.0,
+        "weighted_signed_mass": 1_610_950.0,
+        "weighted_positive_mass": 1_610_950.0,
+    }
+    assert preserved["after"] == preserved["before"]
+    assert set(preserved["difference"].values()) == {0}
+    before_screen = summary["capital_gains_before_mortgage_screen"]
+    assert before_screen["status"] == "observed_upstream_replacement"
+    assert before_screen["all"]["weighted_positive_mass"] == pytest.approx(
+        np.dot(
+            np.asarray([3_050.0, 3_040.0, 4_300.0]),
+            np.asarray([101.0, 202.0, 303.0]),
+        )
+    )
+    screened_weights = np.asarray([101.0, 303.0])
+    for column, expected in expected_before_quarantine.items():
+        field = quarantine["fields"][column]
+        screened = expected[[0, 2]]
+        assert field["screened_record_count"] == 2
+        assert field["screened_nonzero_record_count"] == 2
+        assert field["screened_weight"] == 404.0
+        assert field["screened_unweighted_signed_mass"] == pytest.approx(screened.sum())
+        assert field["screened_weighted_signed_mass"] == pytest.approx(
+            np.dot(screened, screened_weights)
+        )
+        assert field["screened_weighted_absolute_mass"] == pytest.approx(
+            np.dot(np.abs(screened), screened_weights)
+        )
+        assert field["screened_weighted_positive_mass"] == pytest.approx(
+            np.dot(screened, screened_weights)
+        )
+        assert field["screened_weighted_negative_mass"] == 0.0
+
+    assert puf_support_module.US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS == (
+        "home_mortgage_interest",
+        "investment_interest_expense",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "interest_deduction",
+    )
     np.testing.assert_allclose(
-        donor["home_mortgage_interest"].to_numpy(),
-        np.asarray([5_000_000.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+        donor.loc[1, "home_mortgage_interest"],
+        mortgage[1],
     )
 
 
@@ -397,7 +523,7 @@ def test_puf_tax_unit_donor_rejects_reserved_screen_column_output() -> None:
     # populace#516: the raw-mortgage helper name is reserved -- requesting it
     # as an output would let the screen threshold and then delete a caller's
     # column, silently violating the requested-output contract.
-    with pytest.raises(ValueError, match="reserved for the donor"):
+    with pytest.raises(ValueError, match="reserved for donor"):
         puf_tax_unit_donor_from_arrays(
             {
                 "tax_unit_id": [10],
@@ -411,8 +537,7 @@ def test_puf_tax_unit_donor_rejects_reserved_screen_column_output() -> None:
         )
 
 
-def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
-    assert US_PUF_E19200_HOME_MORTGAGE_SHARE == 283_004_465 / 304_461_163
+def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
     # Pin the lineage tuple by exact membership: an accidental addition (the
     # sol round-1 failure mode was appending investment_interest_expense,
     # invisible behind a zero sentinel) must fail here, not silently carve a
@@ -451,31 +576,36 @@ def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
             "second_home_mortgage_balance": [0.0, 125_000.0],
             "first_home_mortgage_origination_year": [2018.0, 2016.0],
             "second_home_mortgage_origination_year": [0.0, 2020.0],
-            # Nonzero sentinel: the artifact carries this column all-zero,
-            # but a zero fixture cannot distinguish "not scaled" from
-            # "scaled" (0 x share == 0). The root #515 ETL carve will make
-            # it nonzero, and it must stay uncarved then.
-            "investment_interest_expense": [12.0, 34.0],
+            "investment_interest_expense": [0.0, 0.0],
+            puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN: [100.0, 200.0],
+            puf_support_module._E19200_AGI_BAND_COLUMN: [0.0, 10_000_000.0],
         }
     )
     original = donor.copy(deep=True)
 
-    puf_support_module._carve_us_puf_e19200_home_mortgage_share(donor)
+    puf_support_module._split_us_puf_e19200_components(donor)
 
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
+        np.asarray([100.0, 200.0]),
+        np.asarray([0.0, 10_000_000.0]),
+    )
+    shares = mortgage / np.asarray([100.0, 200.0])
     for column in puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
         np.testing.assert_allclose(
             donor[column].to_numpy(),
-            original[column].to_numpy() * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+            original[column].to_numpy() * shares,
         )
+    np.testing.assert_allclose(donor["investment_interest_expense"], non_mortgage)
     for column in (
         "real_estate_taxes",
         "first_home_mortgage_balance",
         "second_home_mortgage_balance",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
-        "investment_interest_expense",
     ):
         np.testing.assert_array_equal(donor[column], original[column])
+    assert puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor
+    assert puf_support_module._E19200_AGI_BAND_COLUMN not in donor
 
 
 def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
@@ -493,6 +623,13 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "self_employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "self_employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "tax_exempt_interest_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "investment_interest_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "investment_interest_expense"
+        in puf_support_module._PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS
+    )
+    assert "investment_interest_expense" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "investment_interest_expense" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
     assert "unemployment_compensation" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert (
         "long_term_capital_gains_before_response"
@@ -1256,6 +1393,7 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "household_weight": [100.0, 200.0],
             "filing_status": [b"SINGLE", b"JOINT"],
             "person_tax_unit_id": [10, 20],
+            "home_mortgage_interest": [10_000.0, 25_000.0],
             "first_home_mortgage_balance": [250_000.0, 500_000.0],
             "second_home_mortgage_balance": [0.0, 125_000.0],
             "first_home_mortgage_interest": [10_000.0, 20_000.0],
@@ -1266,6 +1404,7 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "domestic_production_ald": [7_500.0, 0.0],
             "unrecaptured_section_1250_gain": [500.0, 0.0],
         },
+        adjusted_gross_income=[0.0, 10_000_000.0],
         person_outputs=(),
         tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
@@ -1277,11 +1416,25 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
     np.testing.assert_allclose(
         donor["first_home_mortgage_interest"].to_numpy(),
-        np.asarray([10_000.0, 20_000.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+        np.asarray([10_000.0, 20_000.0])
+        * (
+            split_us_puf_e19200_by_agi_band(
+                np.asarray([10_000.0, 25_000.0]),
+                np.asarray([0.0, 10_000_000.0]),
+            )[0]
+            / np.asarray([10_000.0, 25_000.0])
+        ),
     )
     np.testing.assert_allclose(
         donor["second_home_mortgage_interest"].to_numpy(),
-        np.asarray([0.0, 5_000.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+        np.asarray([0.0, 5_000.0])
+        * (
+            split_us_puf_e19200_by_agi_band(
+                np.asarray([10_000.0, 25_000.0]),
+                np.asarray([0.0, 10_000_000.0]),
+            )[0]
+            / np.asarray([10_000.0, 25_000.0])
+        ),
     )
     assert donor["first_home_mortgage_origination_year"].tolist() == [
         2018.0,

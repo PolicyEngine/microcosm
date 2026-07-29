@@ -221,6 +221,71 @@ def test_assignment_preserves_asec_reporters_and_fans_source_decisions() -> None
     assert person.groupby("person_source_id")[_OUTPUT].nunique().max() == 1
 
 
+def test_assignment_accepts_weight_split_puf_clone_indices() -> None:
+    """A clone-2 record must arrive the way the tail-transfer stage mints
+    it (populace#568 review): a NEW household row carrying part of the
+    source household's weight — weight actually split, total mass
+    conserved — not a relabeled full-weight row."""
+    frame, potential = _frame()
+    person = frame.table("person").copy()
+    household = frame.table("household").copy()
+    weights = frame.weights_for("household").values.copy()
+    person["person_support_clone_index"] = np.where(
+        person["person_support_channel"].eq("asec"),
+        0,
+        1,
+    )
+
+    original_source = "under_18:0"
+    source_row = person.index[
+        person["person_source_id"].eq(original_source)
+        & person["person_support_channel"].eq("puf_tax_detail")
+    ][0]
+    source_household_id = int(person.loc[source_row, "person_household_id"])
+    source_position = int(
+        household.index[household["household_id"].eq(source_household_id)][0]
+    )
+
+    clone_household_id = int(household["household_id"].max()) + 1
+    clone_weight = 4.0
+    clone_person = person.loc[[source_row]].copy()
+    clone_person["person_id"] = int(person["person_id"].max()) + 1
+    clone_person["person_household_id"] = clone_household_id
+    clone_person["person_support_clone_index"] = 2
+    person = pd.concat([person, clone_person], ignore_index=True)
+    potential = np.concatenate([potential, potential[[source_row]]])
+
+    household = pd.concat(
+        [household, pd.DataFrame({"household_id": [clone_household_id]})],
+        ignore_index=True,
+    )
+    total_before = weights.sum()
+    weights[source_position] -= clone_weight
+    weights = np.concatenate([weights, [clone_weight]])
+    assert weights.sum() == total_before
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    tables["household"] = household
+    split_frame = Frame(
+        tables,
+        frame.schema,
+        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+    )
+
+    result, diagnostics = with_us_ssi_take_up(
+        split_frame,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+    )
+
+    split = result.table("person")["person_source_id"].eq(original_source)
+    assert split.sum() == 3
+    assert result.table("person").loc[split, _OUTPUT].nunique() == 1
+    assert diagnostics["source_identity_mismatch_count"] == 0
+
+
 def test_puf_only_ssi_value_is_not_promoted_to_reporter_anchor() -> None:
     frame, potential = _frame()
     baseline, baseline_diagnostics = with_us_ssi_take_up(

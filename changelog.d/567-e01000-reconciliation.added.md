@@ -1,0 +1,1 @@
+Add a schema-versioned base-build receipt that reconciles raw TY2015 E01000 with row-joint P22250 plus P23250 through aggregate replacement, field-local screening, donor construction, and the capital-gains tail transfer without creating an E01000 carrier.

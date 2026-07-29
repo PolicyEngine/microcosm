@@ -69,6 +69,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "casualty_loss": [0.0, 2_500.0, 0.0],
             "unreimbursed_business_employee_expenses": [1_200.0, 0.0, 800.0],
             "investment_income_elected_form_4952": [0.0, 500.0, 250.0],
+            "investment_interest_expense": [0.0, 800.0, 200.0],
             "salt_refund_income": [0.0, 1_200.0, 400.0],
             "long_term_capital_gains_on_collectibles": [0.0, 2_500.0, 1_000.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
@@ -643,6 +644,28 @@ def test_required_us_release_source_columns_enforces_form_4952_signal() -> None:
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_investment_interest_signal() -> (
+    None
+):
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people["investment_interest_expense"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person.investment_interest_expense: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 @pytest.mark.parametrize(
     "column",
     [
@@ -1066,6 +1089,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "investment_income_elected_form_4952"
         in summary["required_person_source_columns"]
     )
+    assert "investment_interest_expense" in summary["required_person_source_columns"]
     assert (
         "other_health_insurance_premiums" in summary["required_person_source_columns"]
     )

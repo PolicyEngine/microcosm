@@ -139,6 +139,7 @@ US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
 _SOURCE_ID = "person_source_id"
 _SUPPORT_CHANNEL = "person_support_channel"
+_SUPPORT_CLONE_INDEX = "person_support_clone_index"
 _ASEC_CHANNEL = "asec"
 _PUF_CHANNEL = "puf_tax_detail"
 _KNOWN_CHANNELS = frozenset((_ASEC_CHANNEL, _PUF_CHANNEL))
@@ -620,17 +621,43 @@ def _source_table(
         },
         index=person.index,
     )
-    duplicated_channel = rows.duplicated(["source_id", "channel"], keep=False)
+    lineage_key = ["source_id", "channel"]
+    if _SUPPORT_CLONE_INDEX in person:
+        clone_index = pd.to_numeric(
+            person[_SUPPORT_CLONE_INDEX],
+            errors="raise",
+        ).to_numpy(dtype=np.float64)
+        if (
+            not np.isfinite(clone_index).all()
+            or (clone_index < 0.0).any()
+            or not np.equal(clone_index, np.floor(clone_index)).all()
+        ):
+            raise ValueError(
+                "US SSI take-up support clone indices must be finite "
+                "nonnegative integers."
+            )
+        clone_index = clone_index.astype(np.int64)
+        invalid_channel_index = (
+            channels.eq(_ASEC_CHANNEL).to_numpy() & (clone_index != 0)
+        ) | (channels.eq(_PUF_CHANNEL).to_numpy() & (clone_index < 1))
+        if invalid_channel_index.any():
+            raise ValueError(
+                "US SSI take-up support clone indices must identify ASEC as "
+                "clone 0 and PUF support as clone 1 or later."
+            )
+        rows["clone_index"] = clone_index
+        lineage_key.append("clone_index")
+    duplicated_channel = rows.duplicated(lineage_key, keep=False)
     if duplicated_channel.any():
         examples = (
-            rows.loc[duplicated_channel, ["source_id", "channel"]]
+            rows.loc[duplicated_channel, lineage_key]
             .drop_duplicates()
             .head(5)
             .to_dict("records")
         )
         raise ValueError(
-            "US SSI take-up requires at most one row per source identity and "
-            f"support channel; duplicate examples {examples}."
+            "US SSI take-up requires at most one row per clone-aware support "
+            f"identity {lineage_key}; duplicate examples {examples}."
         )
     rows["candidate_weight"] = rows["weight"].where(rows["candidate"], 0.0)
 

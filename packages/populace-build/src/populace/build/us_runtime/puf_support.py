@@ -17,6 +17,14 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.puf_e01000_reconciliation import (
+    PUF_SCHEDULE_D_JOINT_COLUMNS,
+    puf_capital_gains_joint_metrics,
+    puf_processed_capital_gains_stage,
+)
+from populace.build.us_runtime.puf_interest_components import (
+    split_us_puf_e19200_by_agi_band,
+)
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -32,8 +40,9 @@ __all__ = [
     "PufTaxDetailChainInputs",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
+    "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
-    "US_PUF_E19200_HOME_MORTGAGE_SHARE",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
@@ -56,33 +65,29 @@ US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 #: (populace #300). Stable so a release manifest and its allowlist can refer to
 #: this fit by name.
 US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
+PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN = "puf_source_adjusted_gross_income"
 
-# Interim populace#515 carve: SOI Pub 1304 TY2015 Table 2.1 reports
-# $283,004,465 thousand of home-mortgage interest within $304,461,163 thousand
-# of total interest paid. Apply that concept share per donor record before the
-# QRF learns levels and realized support. The #486 ``support_value_repairs``
-# surface is instead a release-time total pin, so it cannot express this
-# donor-column concept correction (#492). A uniform carve cannot identify the
-# records carrying the removed points, qualified mortgage-insurance premiums,
-# or investment interest, so ``investment_interest_expense`` remains all-zero.
-US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163
-
-# populace#516 donor outlier screen: $10M of annual home-mortgage interest
-# implies roughly a $250M mortgage at 4%, not a genuine Schedule A return; the
-# pinned artifact's maximum REAL-scale unit values are only low single-digit
-# millions. Its grouped-raw >=$10M intersection contains 3,066 tax units (max
-# $235.97B; weight 3,684 of 161M) and $2.947T of phantom mortgage-interest mass,
-# versus $418B retained; 1,823 have synthetic IDs >= 1,000,000 and 1,243 have
-# ordinary IDs.
-# The cohort uniquely sets 20 upper and 3 lower realized-range endpoints across
-# the 64 donor targets, so every column of each row must be removed. This is an
-# outlier screen, NOT aggregate-lineage removal: an ID-range union would delete
-# 2,162 healthy synthetic donors to remove only about $0.7B more.
+# populace#516 donor mortgage quarantine: $10M of annual home-mortgage
+# interest implies roughly a $250M mortgage at 4%, not a genuine Schedule A
+# return; the pinned artifact's maximum REAL-scale unit values are only low
+# single-digit millions. Its grouped-raw >=$10M intersection contains 3,066
+# tax units (max $235.97B; weight 3,684 of 161M) and $2.947T of phantom
+# mortgage-interest mass, versus $418B retained; 1,823 have synthetic IDs
+# >= 1,000,000 and 1,243 have ordinary IDs.
+#
+# populace#567 measured that whole-row removal also deleted $98.176B of
+# positive capital gains that are unrelated to E19200. The quarantine is
+# therefore field-local: only the raw E19200 lineage and its conserving
+# non-mortgage residual are zeroed. Mortgage balances and origination years
+# are independently sourced and remain intact, as do every non-mortgage field.
+# This is an outlier screen, NOT aggregate-lineage removal: an ID-range union
+# would also delete 2,162 healthy synthetic donors.
 US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0
 
 # Reserved internal column used to thread the grouped RAW mortgage value to
 # the outlier screen; never a legal requested output (populace#516).
 _MORTGAGE_OUTLIER_SCREEN_COLUMN = "_raw_home_mortgage_interest_for_outlier_screen"
+_E19200_AGI_BAND_COLUMN = "_adjusted_gross_income_for_e19200_band"
 
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -91,6 +96,13 @@ _DEFAULT_SUPPORT_CHANNELS = (
 
 _US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
     "home_mortgage_interest",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "interest_deduction",
+)
+US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS = (
+    "home_mortgage_interest",
+    "investment_interest_expense",
     "first_home_mortgage_interest",
     "second_home_mortgage_interest",
     "interest_deduction",
@@ -151,6 +163,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "charitable_non_cash_donations",
     "real_estate_taxes",
     "home_mortgage_interest",
+    "investment_interest_expense",
     "investment_income_elected_form_4952",
     "student_loan_interest",
     "educator_expense",
@@ -305,6 +318,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
         "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
@@ -509,8 +523,10 @@ def clone_us_frame_for_puf_support(
 def puf_tax_unit_donor_from_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
+    adjusted_gross_income: Sequence[Any] | None = None,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    donor_build_summary: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Build a tax-unit donor table from processed PUF array columns.
 
@@ -521,9 +537,15 @@ def puf_tax_unit_donor_from_arrays(
 
     Args:
         arrays: Mapping from column name to array-like values.
+        adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
+            published TY2015 SOI Table 2.1 component share for each record.
+            Required whenever the processed PUF carries nonzero E19200.
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
+        donor_build_summary: Optional mutable sink for donor-construction
+            provenance. When supplied, receives the field-local mortgage
+            quarantine cohort and per-field removed masses.
 
     Returns:
         A tax-unit donor DataFrame with numeric predictors, requested outputs,
@@ -545,11 +567,67 @@ def puf_tax_unit_donor_from_arrays(
             "filing_status_code": _filing_status_codes(arrays["filing_status"]),
         }
     )
+    if adjusted_gross_income is not None:
+        # Strict conversion (PR #561 review findings, rounds 1-2):
+        # _numeric_array coerces nonnumeric/NaN to 0.0, and errors="raise"
+        # alone is parse-strict but not real-number-strict — datetime and
+        # timedelta arrays (including NaT) convert to finite epoch/sentinel
+        # integers, complex drops its imaginary part, and booleans pass.
+        # Any of those would route records to the wrong AGI band with the
+        # finiteness check below none the wiser, so non-real dtypes are
+        # rejected up front. NaN/inf survive strict conversion and fail the
+        # explicit check.
+        agi_series = pd.Series(adjusted_gross_income)
+        if agi_series.dtype.kind not in "iufO":
+            raise TypeError(
+                "adjusted_gross_income must be real-valued; got dtype "
+                f"{agi_series.dtype}."
+            )
+        if agi_series.dtype.kind == "O":
+            # Element screen (PR #561 review, round 3): object and
+            # categorical arrays reach the strict parse below with kind
+            # "O", where object-wrapped booleans become 1.0/0.0 and
+            # object-wrapped complex keeps its real part with only a
+            # warning. Allow only element types whose float conversion is
+            # faithful: real numbers, Decimal, strings (strict-parsed),
+            # and missing values (which fail the finiteness check).
+            inferred = pd.api.types.infer_dtype(agi_series, skipna=True)
+            if inferred not in {
+                "integer",
+                "floating",
+                "mixed-integer-float",
+                "decimal",
+                "string",
+                "empty",
+            }:
+                raise TypeError(
+                    f"adjusted_gross_income must be real-valued; got {inferred} values."
+                )
+        agi = pd.to_numeric(agi_series, errors="raise").to_numpy(dtype=np.float64)
+        if len(agi) != len(tax_unit_id):
+            raise ValueError(
+                "adjusted_gross_income must align one-for-one with tax_unit_id."
+            )
+        if not np.isfinite(agi).all():
+            raise ValueError("adjusted_gross_income must contain only finite values.")
+        tax_unit[_E19200_AGI_BAND_COLUMN] = agi
+        # Preserve the source-year value solely as donor provenance for the
+        # post-QRF capital-gains tail transfer. QRF preparation selects an
+        # explicit predictor/output surface, so this never becomes a modeled
+        # carrier or a shipped PolicyEngine input.
+        tax_unit[PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN] = agi
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
-    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in (*person_outputs, *tax_unit_outputs):
+    reserved_outputs = {
+        _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+        _E19200_AGI_BAND_COLUMN,
+    }
+    requested_reserved = reserved_outputs.intersection(
+        (*person_outputs, *tax_unit_outputs)
+    )
+    if requested_reserved:
         raise ValueError(
-            f"{_MORTGAGE_OUTLIER_SCREEN_COLUMN!r} is reserved for the donor "
-            "mortgage outlier screen and cannot be a requested output."
+            f"{sorted(requested_reserved)!r} are reserved for donor E19200 "
+            "processing and cannot be requested outputs."
         )
     raw_home_mortgage_interest = _person_source_values(
         arrays,
@@ -598,42 +676,181 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    mortgage_quarantine_mask = np.zeros(len(tax_unit), dtype=bool)
     if _MORTGAGE_OUTLIER_SCREEN_COLUMN in tax_unit:
-        # The screen thresholds the grouped RAW person value: screening the
-        # CARVED value at the same literal would miss 49 corrupt rows in the
-        # $10M-to-$10.75M raw band (the semantic contract, pinned by the
-        # 10.5M-raw regression). Because the raw value rides its own reserved
-        # helper column -- outside the carve lineage tuple -- the returned
-        # frame is identical whether the screen runs before or after the
-        # carve; it runs first so the carve never touches rows the screen
-        # discards.
-        retained = (
-            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN]
-            < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+        # Threshold the grouped RAW person value: thresholding the carved
+        # mortgage value at the same literal would miss corrupt rows in the
+        # $10M-to-$10.75M raw band. Keep the mask while the E19200 split
+        # materializes both conserving components, then quarantine only those
+        # implicated fields so unrelated donor values remain available.
+        mortgage_quarantine_mask = (
+            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
+                dtype=np.float64,
+                copy=False,
+            )
+            >= US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
         )
-        tax_unit = (
-            tax_unit.loc[retained]
-            .drop(columns=[_MORTGAGE_OUTLIER_SCREEN_COLUMN])
-            .reset_index(drop=True)
+    # Keep the split BEFORE _add_predictor_aliases: no mortgage predictor alias
+    # exists today, but if one is ever added it must derive from the decomposed
+    # column (aliases skip already-present columns, so a post-alias split would
+    # leave a stale total-interest predictor copy).
+    _split_us_puf_e19200_components(tax_unit)
+    if donor_build_summary is not None and set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(
+        tax_unit.columns
+    ):
+        donor_build_summary["capital_gains_before_mortgage_screen"] = (
+            puf_processed_capital_gains_stage(tax_unit)
         )
-    # Keep the carve BEFORE _add_predictor_aliases: no mortgage predictor
-    # alias exists today, but if one is ever added it must derive from the
-    # carved column (aliases skip already-present columns, so a post-alias
-    # carve would leave a stale uncarved predictor copy).
-    _carve_us_puf_e19200_home_mortgage_share(tax_unit)
+    _quarantine_us_puf_mortgage_fields(
+        tax_unit,
+        mortgage_quarantine_mask,
+        donor_build_summary=donor_build_summary,
+    )
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
 
 
-def _carve_us_puf_e19200_home_mortgage_share(donor: pd.DataFrame) -> None:
-    """Carve E19200-lineage donor columns to the mortgage-only concept."""
+def _quarantine_us_puf_mortgage_fields(
+    donor: pd.DataFrame,
+    quarantine_mask: np.ndarray,
+    *,
+    donor_build_summary: dict[str, object] | None,
+) -> None:
+    """Zero only E19200-derived fields and record removed donor mass."""
 
+    mask = np.asarray(quarantine_mask, dtype=bool)
+    if mask.ndim != 1 or len(mask) != len(donor):
+        raise ValueError(
+            "PUF mortgage quarantine mask must align one-for-one with donor rows."
+        )
+    weights = donor["weight"].to_numpy(dtype=np.float64, copy=False)
+    has_capital_gains = set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(donor.columns)
+    capital_gains_before = (
+        puf_capital_gains_joint_metrics(donor, mask=mask) if has_capital_gains else None
+    )
+    fields: dict[str, dict[str, float | int]] = {}
+    for column in US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS:
+        if column not in donor:
+            continue
+        values = donor[column].to_numpy(dtype=np.float64, copy=False)
+        screened_values = values[mask]
+        screened_weights = weights[mask]
+        nonzero = screened_values != 0.0
+        positive = screened_values > 0.0
+        negative = screened_values < 0.0
+        fields[column] = {
+            "screened_record_count": int(mask.sum()),
+            "screened_nonzero_record_count": int(nonzero.sum()),
+            "screened_weight": float(screened_weights.sum()),
+            "screened_unweighted_signed_mass": float(screened_values.sum()),
+            "screened_weighted_signed_mass": float(
+                np.dot(screened_values, screened_weights)
+            ),
+            "screened_weighted_absolute_mass": float(
+                np.dot(np.abs(screened_values), screened_weights)
+            ),
+            "screened_weighted_positive_mass": float(
+                np.dot(screened_values[positive], screened_weights[positive])
+            ),
+            "screened_weighted_negative_mass": float(
+                np.dot(screened_values[negative], screened_weights[negative])
+            ),
+        }
+        donor.loc[mask, column] = 0.0
+
+    if donor_build_summary is not None:
+        quarantine: dict[str, object] = {
+            "method": "field_local_zero",
+            "source_field": "grouped_raw_home_mortgage_interest",
+            "comparison": "greater_than_or_equal",
+            "ceiling": US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
+            "screened_record_count": int(mask.sum()),
+            "screened_weight": float(weights[mask].sum()),
+            "fields": fields,
+        }
+        if capital_gains_before is not None:
+            capital_gains_after = puf_capital_gains_joint_metrics(donor, mask=mask)
+            capital_gains_difference = {
+                key: capital_gains_after[key] - value
+                for key, value in capital_gains_before.items()
+            }
+            if any(value != 0 for value in capital_gains_difference.values()):
+                raise AssertionError(
+                    "Field-local PUF mortgage quarantine changed capital gains."
+                )
+            quarantine["capital_gains_preserved"] = {
+                "columns": list(PUF_SCHEDULE_D_JOINT_COLUMNS),
+                "before": capital_gains_before,
+                "after": capital_gains_after,
+                "difference": capital_gains_difference,
+            }
+        donor_build_summary["mortgage_field_quarantine"] = quarantine
+
+
+def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
+    """Split raw E19200 into mortgage and modeled non-mortgage components."""
+
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor:
+        donor.drop(columns=[_E19200_AGI_BAND_COLUMN], errors="ignore", inplace=True)
+        return
+    raw_total = donor[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
+        dtype=np.float64,
+        copy=False,
+    )
+    has_nonzero_e19200 = bool((raw_total != 0).any())
+    if has_nonzero_e19200 and _E19200_AGI_BAND_COLUMN not in donor:
+        raise ValueError(
+            "adjusted_gross_income is required to split nonzero PUF E19200 "
+            "records by the published SOI AGI bands."
+        )
+    if "investment_interest_expense" in donor:
+        existing = donor["investment_interest_expense"].to_numpy(
+            dtype=np.float64,
+            copy=False,
+        )
+        if (existing != 0).any():
+            raise ValueError(
+                "Processed PUF already carries nonzero investment_interest_expense; "
+                "refusing to overwrite independently sourced values with the "
+                "E19200 residual."
+            )
+    if not has_nonzero_e19200:
+        if "investment_interest_expense" in donor:
+            donor["investment_interest_expense"] = np.zeros_like(raw_total)
+        donor.drop(
+            columns=[
+                _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+                _E19200_AGI_BAND_COLUMN,
+            ],
+            errors="ignore",
+            inplace=True,
+        )
+        return
+
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
+        raw_total,
+        donor[_E19200_AGI_BAND_COLUMN].to_numpy(dtype=np.float64, copy=False),
+    )
+    band_share = np.divide(
+        mortgage,
+        raw_total,
+        out=np.ones_like(mortgage),
+        where=raw_total != 0,
+    )
     for column in _US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
         if column in donor:
             donor[column] = (
-                donor[column].to_numpy(dtype=np.float64, copy=False)
-                * US_PUF_E19200_HOME_MORTGAGE_SHARE
+                donor[column].to_numpy(dtype=np.float64, copy=False) * band_share
             )
+    if "investment_interest_expense" in donor:
+        donor["investment_interest_expense"] = non_mortgage
+    donor.drop(
+        columns=[
+            _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+            _E19200_AGI_BAND_COLUMN,
+        ],
+        inplace=True,
+    )
 
 
 def impute_us_puf_tax_detail_support(
