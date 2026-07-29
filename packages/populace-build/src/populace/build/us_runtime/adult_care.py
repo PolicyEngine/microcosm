@@ -42,10 +42,13 @@ qualifying individual (dependent, or married head/spouse) plus the section
 ``min_head_spouse_earned`` binds — both spouses earning, or a 21(d)(2)
 floor-eligible spouse (incapable of self-care, or the measured full-time
 college student) deemed while the OTHER spouse actually earns.  Assignment
-is a seeded, weight-targeted, distribution-preserving draw over sorted unit
-ids (invariant to person-row order), with the level grid taken from the
-selected units' own cumulative weights; no level or usage number is
-invented outside the measured donor distribution.
+is a seeded, weight-targeted draw over sorted unit ids (invariant to
+person-row order) that preserves the SCREENED level distribution — donor
+values above the expense plausibility ceiling are refused as interpolation
+knots with a logged receipt, while the measured frame values stay
+untouched — with the level grid taken from the selected units' own
+cumulative weights; no level or usage number is invented outside the
+screened measured donor distribution.
 """
 
 from __future__ import annotations
@@ -122,9 +125,10 @@ _ROLE_COLUMN = "tax_unit_role_input"
 _AGE_COLUMN = "age"
 _FLAG_SHARE_BAND = (0.002, 0.12)
 # Sanity ceiling for a single unit's annual employment-related care expense.
-# Far above any measured childcare donor value (certified N maximum is in the
-# tens of thousands); its only job is refusing corrupted magnitudes such as
-# overflow artifacts on healed surfaces.
+# Its job is refusing corrupted magnitudes wherever they appear: measured
+# ASEC childcare itself carries two implausible values ($730,000 and
+# $360,000) that are screened out of the donor pool below, and healed
+# surfaces can carry overflow artifacts.
 _EXPENSE_PLAUSIBILITY_CEILING = 250_000.0
 
 
@@ -192,6 +196,46 @@ def _role(person: pd.DataFrame) -> pd.Series:
             value.decode() if isinstance(value, (bytes, np.bytes_)) else str(value)
         )
     )
+
+
+def _screen_implausible_donors(
+    donor_childcare: np.ndarray,
+    donor_weight: np.ndarray,
+    level_mask: np.ndarray,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Refuse donor knots above the plausibility ceiling, with a receipt.
+
+    The ceiling's charter is refusing corrupted magnitudes, and a corrupt
+    magnitude is corrupt at the SOURCE: two measured ASEC units ($730,000
+    and $360,000 childcare) sat latent in every build's donor pool, and
+    whether a recipient's quantile position reached those top knots was
+    grid luck — Build P3's tail clones shifted the grid and 12 draws
+    entered the >$250k top-tail interpolation region (three between the
+    ceiling and $360k, nine at or above $360k; populace#567). The measured
+    values stay in the frame untouched; they are only refused as
+    imputation donors. The receipt is a deterministic recomputation-stable
+    build-log record, not a persisted artifact.
+    """
+
+    implausible = level_mask & (donor_childcare > _EXPENSE_PLAUSIBILITY_CEILING)
+    clean_mask = level_mask & ~implausible
+    level_weight = float(donor_weight[level_mask].sum())
+    retained_values = donor_childcare[clean_mask]
+    receipt = {
+        "count": int(np.count_nonzero(implausible)),
+        "values": sorted(float(value) for value in donor_childcare[implausible]),
+        "weight": float(donor_weight[implausible].sum()),
+        "excluded_weight_share": (
+            float(donor_weight[implausible].sum()) / level_weight
+            if level_weight > 0.0
+            else 0.0
+        ),
+        "retained_maximum": (
+            float(retained_values.max()) if retained_values.size else 0.0
+        ),
+        "ceiling": _EXPENSE_PLAUSIBILITY_CEILING,
+    }
+    return clean_mask, receipt
 
 
 def derive_us_adult_care_from_manifest(
@@ -386,6 +430,25 @@ def derive_us_adult_care_from_manifest(
     # Zero-weight donors carry no measured mass and must not become
     # interpolation knots.
     level_mask = donor_positive & (donor_weight > 0.0)
+    # Implausible donor knots are refused with a logged receipt (see
+    # _screen_implausible_donors).
+    level_mask, implausible_donor_receipt = _screen_implausible_donors(
+        donor_childcare,
+        donor_weight,
+        level_mask,
+    )
+    if implausible_donor_receipt["count"]:
+        print(
+            "US adult-care donor screen refused "
+            f"{implausible_donor_receipt['count']} implausible donor knot(s) "
+            f"above ${_EXPENSE_PLAUSIBILITY_CEILING:,.0f}: "
+            f"{implausible_donor_receipt['values']} "
+            f"(weight {implausible_donor_receipt['weight']:,.2f}, "
+            f"{implausible_donor_receipt['excluded_weight_share']:.4%} of "
+            "level weight; retained maximum "
+            f"${implausible_donor_receipt['retained_maximum']:,.0f}); the "
+            "measured frame values are untouched."
+        )
     level_values = donor_childcare[level_mask]
     level_weights = donor_weight[level_mask]
     if not level_values.size:
