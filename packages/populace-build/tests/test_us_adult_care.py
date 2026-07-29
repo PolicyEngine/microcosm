@@ -668,3 +668,44 @@ def test_shipped_cdcc_adult_care_probe() -> None:
     required = us_release_input_coverage_required_columns()
     for column in US_ADULT_CARE_OUTPUT_COLUMNS:
         assert column in required
+
+
+def test_implausible_donor_knots_are_refused_with_receipt() -> None:
+    """populace#567 base-P3: two measured ASEC childcare values ($730k/$360k)
+    were latent donor knots in every build; the grid shift from the tail
+    clones let 12 draws land between them. Donors above the plausibility
+    ceiling are refused as knots (measured frame values untouched), with a
+    receipt; clean donors pass through unchanged."""
+    import numpy as np
+
+    from populace.build.us_runtime.adult_care import (
+        _EXPENSE_PLAUSIBILITY_CEILING,
+        _screen_implausible_donors,
+    )
+
+    childcare = np.asarray([500.0, 12_000.0, 360_000.0, 730_000.0, 80_000.0])
+    weight = np.asarray([10.0, 20.0, 30.0, 40.0, 50.0])
+    level_mask = np.asarray([True, True, True, True, True])
+
+    clean_mask, receipt = _screen_implausible_donors(childcare, weight, level_mask)
+    assert clean_mask.tolist() == [True, True, False, False, True]
+    assert receipt == {
+        "count": 2,
+        "values": [360_000.0, 730_000.0],
+        "weight": 70.0,
+        "ceiling": _EXPENSE_PLAUSIBILITY_CEILING,
+    }
+
+    # Already-excluded rows (outside the level mask) are not double-counted.
+    masked = np.asarray([True, True, False, True, True])
+    clean_mask2, receipt2 = _screen_implausible_donors(childcare, weight, masked)
+    assert receipt2["count"] == 1
+    assert receipt2["values"] == [730_000.0]
+
+    # A clean pool is untouched with an empty receipt.
+    clean = np.asarray([500.0, 12_000.0, 80_000.0])
+    ones = np.asarray([1.0, 1.0, 1.0])
+    all_true = np.asarray([True, True, True])
+    same_mask, empty = _screen_implausible_donors(clean, ones, all_true)
+    assert same_mask.tolist() == [True, True, True]
+    assert empty["count"] == 0 and empty["values"] == []

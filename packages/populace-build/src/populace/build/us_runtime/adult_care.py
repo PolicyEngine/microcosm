@@ -194,6 +194,32 @@ def _role(person: pd.DataFrame) -> pd.Series:
     )
 
 
+def _screen_implausible_donors(
+    donor_childcare: np.ndarray,
+    donor_weight: np.ndarray,
+    level_mask: np.ndarray,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Refuse donor knots above the plausibility ceiling, with a receipt.
+
+    The ceiling's charter is refusing corrupted magnitudes, and a corrupt
+    magnitude is corrupt at the SOURCE: two measured ASEC units ($730,000
+    and $360,000 childcare) sat latent in every build's donor pool, and
+    whether a recipient's quantile position reached those top knots was
+    grid luck — Build P3's tail clones shifted the grid and 12 draws
+    landed between them (populace#567). The measured values stay in the
+    frame untouched; they are only refused as imputation donors.
+    """
+
+    implausible = level_mask & (donor_childcare > _EXPENSE_PLAUSIBILITY_CEILING)
+    receipt = {
+        "count": int(np.count_nonzero(implausible)),
+        "values": sorted(float(value) for value in donor_childcare[implausible]),
+        "weight": float(donor_weight[implausible].sum()),
+        "ceiling": _EXPENSE_PLAUSIBILITY_CEILING,
+    }
+    return level_mask & ~implausible, receipt
+
+
 def derive_us_adult_care_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -386,6 +412,22 @@ def derive_us_adult_care_from_manifest(
     # Zero-weight donors carry no measured mass and must not become
     # interpolation knots.
     level_mask = donor_positive & (donor_weight > 0.0)
+    # Implausible donor knots are refused with a logged receipt (see
+    # _screen_implausible_donors).
+    level_mask, implausible_donor_receipt = _screen_implausible_donors(
+        donor_childcare,
+        donor_weight,
+        level_mask,
+    )
+    if implausible_donor_receipt["count"]:
+        print(
+            "US adult-care donor screen refused "
+            f"{implausible_donor_receipt['count']} implausible donor knot(s) "
+            f"above ${_EXPENSE_PLAUSIBILITY_CEILING:,.0f}: "
+            f"{implausible_donor_receipt['values']} "
+            f"(weight {implausible_donor_receipt['weight']:,.2f}); the "
+            "measured frame values are untouched."
+        )
     level_values = donor_childcare[level_mask]
     level_weights = donor_weight[level_mask]
     if not level_values.size:
