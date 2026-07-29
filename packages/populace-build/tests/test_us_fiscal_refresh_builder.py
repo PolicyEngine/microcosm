@@ -137,8 +137,12 @@ def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
 
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
+    # The build body is _main; main is the thin entry point that marks a
+    # crashed staging run failed and re-raises.
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     refusals = [
         n
@@ -211,7 +215,7 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     main_calls = [
         (node, stack)
         for node, stack in calls
-        if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
+        if any(isinstance(anc, ast.FunctionDef) and anc.name == "_main" for anc in stack)
     ]
     assert len(main_calls) == 1
     call_node, stack = main_calls[0]
@@ -242,7 +246,7 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     # evidence (release-dir reuse, populace#568 round 2) before the
     # certified dataset write.
     main_fn = next(
-        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "_main"
     )
 
     def _is_bound_cleanup_for(node):
