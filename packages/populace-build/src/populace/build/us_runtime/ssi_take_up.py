@@ -1644,12 +1644,14 @@ def us_ssi_take_up_delivery_gate(
 
     ``enforcement_fences`` fences normally-enforced bands for a specific
     ARM with a documented adjudication (the under-18 pattern extended):
-    on the dense full-pool arm the single permitted populace#508
-    delivered-weight recompute left the adult pair out of band on both
-    observed frames (populace#566/#567), so its adult bands ship in the
-    scorecard as known boundaries rather than enforced contracts. The
-    fence text rides each fenced row; the sparse certified default
-    passes no fences and keeps hard enforcement.
+    on the dense full-pool arm, populace#508 delivered-weight recomputes
+    have not landed the adult pair in band on either observed frame —
+    P2's clean one-retry record, and P3's delivered-basis chain that
+    ``ssi_take_up_prior_basis_from_artifact`` now refuses outright
+    (populace#566/#567) — so its adult bands ship in the scorecard as
+    known boundaries rather than enforced contracts. The fence text
+    rides each fenced row; the sparse certified default passes no
+    fences and keeps hard enforcement.
     """
 
     expected_targets = _normalize_targets(targets)

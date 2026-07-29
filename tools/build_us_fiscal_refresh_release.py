@@ -5724,10 +5724,11 @@ def _enforce_ssi_take_up_delivery(
     populace#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. ``enforcement_fences``
     (populace#566/#567) fences normally-enforced bands for the dense
-    diagnostic arm, where the single permitted delivered-weight recompute
-    left the adult pair out of band on both observed frames — fenced
-    misses ship in the scorecard with their adjudication text instead of
-    failing the release. The delivered-weight
+    diagnostic arm, where delivered-weight recomputes have not landed
+    the adult pair in band on either observed frame (P2's clean
+    one-retry record; P3's refused delivered-basis chain) — fenced
+    misses ship in the scorecard with their adjudication text instead
+    of failing the release. The delivered-weight
     diagnostics are written before returning failures — that artifact IS the
     remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
     the thresholds are recomputed exactly once from measured delivery, never
