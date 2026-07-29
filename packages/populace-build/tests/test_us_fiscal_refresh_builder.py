@@ -7821,6 +7821,75 @@ def test_blank_staging_repo_id_is_accepted_with_a_local_staging_dir(
     assert args.staging_dir == tmp_path / "stage"
 
 
+def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch, tmp_path) -> None:
+    # A build that died left its run reading "running" forever, so the
+    # dashboard could not tell a crash from work in progress.
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        run_id = "rel-1"
+
+        def fail(self, error):
+            recorded.append(error)
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(
+        module, "_main", lambda: (_ for _ in ()).throw(RuntimeError("build exploded"))
+    )
+
+    with pytest.raises(RuntimeError, match="build exploded"):
+        module.main()
+
+    assert [str(error) for error in recorded] == ["build exploded"]
+
+
+def test_crash_reporting_never_replaces_the_real_traceback(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    module = _load_builder_module()
+
+    class ExplodingTelemetry:
+        run_id = "rel-1"
+
+        def fail(self, error):
+            raise RuntimeError("telemetry itself is broken")
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", ExplodingTelemetry())
+    monkeypatch.setattr(
+        module, "_main", lambda: (_ for _ in ()).throw(ValueError("the real failure"))
+    )
+
+    # The build's own error survives; the telemetry problem is a warning.
+    with pytest.raises(ValueError, match="the real failure"):
+        module.main()
+
+    assert "could not record the staging run as failed" in capsys.readouterr().err
+
+
+def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
+    # Handles must not leak across runs in one process: a --no-staging build
+    # after a staged one would otherwise mark the earlier run failed.
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+    module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+    assert module._ACTIVE_TELEMETRY is not None
+
+    args.no_staging = True
+    assert (
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-2")
+        is None
+    )
+    assert module._ACTIVE_TELEMETRY is None
+
+
 def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
     # A null staging block could not say whether the build skipped staging on
     # purpose or meant to stage and failed, which is why several releases
@@ -8476,11 +8545,12 @@ def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
     populace#377 (register consistency) and populace#381 (take-up contract
     engine-drift) both abort a build in seconds when a register is stale. A
     regression that drops the preflight call would only surface after hours of
-    source staging, so pin the wiring at the code-object level (these globals
-    are looked up by name inside ``main``).
+    source staging, so lock the wiring at the code-object level (these globals
+    are looked up by name inside the build body, ``_main``; ``main`` is the
+    thin entry point that marks a crashed run failed).
     """
     builder = _load_builder_module()
-    called = set(builder.main.__code__.co_names)
+    called = set(builder._main.__code__.co_names)
     for preflight in (
         "assert_release_input_coverage_manifest_current",
         "us_register_consistency_gate",
@@ -8564,15 +8634,16 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
     """populace#443: #437 dropped release_engine.write_dataset(...) while
     inserting the batched pre-export raise, so the smoke gate scored a stale
     artifact from a prior run (and the manifest would have sha-pinned it).
-    Pin main()'s ordering contract at the AST level until the green-path
-    main() harness exists: exactly one export H5 write, strictly after the
+    Lock the build body's ordering contract at the AST level until the
+    green-path harness exists: exactly one export H5 write, strictly after the
     single batched pre-export raise and before the reform-coverage smoke
-    reads dataset_path."""
+    reads dataset_path. The body is ``_main``; ``main`` is the thin entry
+    point that marks a crashed run failed."""
     import ast
     import inspect
 
     builder = _load_builder_module()
-    source = inspect.getsource(builder.main)
+    source = inspect.getsource(builder._main)
     tree = ast.parse(source)
 
     batched_raises: list[int] = []

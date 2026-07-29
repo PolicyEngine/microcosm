@@ -7122,6 +7122,13 @@ def _assert_us_release_id(release_id: str) -> None:
         )
 
 
+#: The staging run for the build in flight, so the entry point can mark it
+#: failed on the way out. main() hands its telemetry object down through 2,600
+#: lines of call stack; a module-level handle avoids threading a second copy
+#: back up purely for the failure path.
+_ACTIVE_TELEMETRY: StagingTelemetry | None = None
+
+
 def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
     """The build manifest's record of what staging did, and why.
 
@@ -7152,6 +7159,10 @@ def _staging_telemetry(
     release_root: Path,
     release_id: str,
 ) -> StagingTelemetry | None:
+    global _ACTIVE_TELEMETRY
+    # Each call establishes the current run, so a handle from a previous one
+    # can never be marked failed in place of this build's.
+    _ACTIVE_TELEMETRY = None
     if args.no_staging:
         return None
     if not args.staging_dir and not args.staging_repo_id:
@@ -7165,7 +7176,7 @@ def _staging_telemetry(
         )
     run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    return StagingTelemetry(
+    _ACTIVE_TELEMETRY = StagingTelemetry(
         run_id=run_id,
         candidate_release_id=release_id,
         run_dir=run_dir,
@@ -7173,6 +7184,7 @@ def _staging_telemetry(
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
+    return _ACTIVE_TELEMETRY
 
 
 class _TerminalBatchTelemetry:
@@ -7225,6 +7237,34 @@ class _TerminalBatchTelemetry:
 
 
 def main() -> None:
+    """Run the build, and mark the staging run failed if it does not finish.
+
+    Without this, a build that died left its staging run reading "running"
+    forever: the dashboard cannot distinguish a crashed run from one still
+    working, and the staging repo accumulates runs that never resolve.
+
+    SIGKILL is out of reach of any in-process handler, so an out-of-memory
+    kill still leaves a stale run. Reaping those needs a staleness rule on the
+    reader side; this closes the uncaught-exception half.
+    """
+
+    try:
+        _main()
+    except BaseException as error:
+        if _ACTIVE_TELEMETRY is not None:
+            try:
+                _ACTIVE_TELEMETRY.fail(error)
+            except Exception as telemetry_error:  # pragma: no cover - defensive
+                # A failing failure-report must not replace the real traceback.
+                print(
+                    f"warning: could not record the staging run as failed: "
+                    f"{type(telemetry_error).__name__}: {telemetry_error}",
+                    file=sys.stderr,
+                )
+        raise
+
+
+def _main() -> None:
     args = _parse_args()
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
