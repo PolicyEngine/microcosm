@@ -242,6 +242,7 @@ from populace.build.us_runtime.reform_validation import (
 )
 from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
+    US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
 )
@@ -284,6 +285,47 @@ FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
 FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
+# populace#566/#567 dense-arm adjudication: populace#508 delivered-weight
+# recomputes have not landed the dense frame's adult band pair in the
+# envelope on either observed frame. P2 is the clean one-retry record
+# (current-frame attempt then its one permitted recompute: 18-64
+# +5.8%/65+ +24.8% -> +8.2%/+20.0%). P3's attempts were already anchored
+# on delivered bases (65+ +34.6% with 18-64 in-band, then +8.3%/+19.8%
+# after recomputing again — the recompute moved 18-64 OUT of band while
+# improving 65+); that chain shape is now refused outright by the
+# chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
+# diagnostic arm therefore FENCES its adult bands — the under-18 pattern
+# extended: the miss ships in the scorecard as a known boundary, never as
+# an enforced contract and never as saturation-as-success. The sparse
+# certified default passes no fences and keeps hard enforcement.
+# RE-ADJUDICATES when populace#566's damped fixed-point protocol lands.
+_US_DENSE_SSI_FENCE_ADJUDICATION = (
+    "Fenced for the dense diagnostic arm (populace#566/#567): "
+    "populace#508 delivered-weight recomputes have not landed the adult "
+    "band pair in the envelope on either observed frame (P2, current-"
+    "frame attempt then its one permitted recompute: +5.8%/+24.8% -> "
+    "+8.2%/+20.0%; P3, attempts already anchored on delivered bases: "
+    "65+ +34.6%, then +8.3%/+19.8% after recomputing again — a chain "
+    "the populace#508 loader now refuses). Further recomputes are the "
+    "deleted populace#463-class loop. This band's miss ships in the "
+    "scorecard as a known boundary — never as an enforced contract. "
+    "Re-adjudicates when the populace#566 damped fixed-point protocol "
+    "lands. The sparse certified default keeps hard enforcement."
+)
+US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
+    "18_64": _US_DENSE_SSI_FENCE_ADJUDICATION,
+    "65_plus": _US_DENSE_SSI_FENCE_ADJUDICATION,
+}
+assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == set(
+    US_SSI_TAKE_UP_ENFORCED_BAND_KEYS
+), (
+    "The dense-arm fence adjudication must cover exactly the "
+    "normally-enforced SSI bands. A new enforced band needs a dense-arm "
+    "adjudication first: fence it here with its documented reason, or "
+    "amend this assertion as the record of the decision to enforce it "
+    "on the dense arm too."
+)
+
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
     "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
 )
@@ -5675,11 +5717,18 @@ def _enforce_ssi_take_up_delivery(
     targets: Mapping[str, float],
     release_dir: Path,
     telemetry: StagingTelemetry | None,
-) -> list[str]:
+    enforcement_fences: Mapping[str, str] | None = None,
+) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
 
     populace#507/#508: a miss beyond tolerance on release weights fails the
-    build instead of shipping in the scorecard. The delivered-weight
+    build instead of shipping in the scorecard. ``enforcement_fences``
+    (populace#566/#567) fences normally-enforced bands for the dense
+    diagnostic arm, where delivered-weight recomputes have not landed
+    the adult pair in band on either observed frame (P2's clean
+    one-retry record; P3's refused delivered-basis chain) — fenced
+    misses ship in the scorecard with their adjudication text instead
+    of failing the release. The delivered-weight
     diagnostics are written before returning failures — that artifact IS the
     remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
     the thresholds are recomputed exactly once from measured delivery, never
@@ -5693,9 +5742,11 @@ def _enforce_ssi_take_up_delivery(
     written.
     """
 
-    delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    delivery_gate = us_ssi_take_up_delivery_gate(
+        diagnostics, targets=targets, enforcement_fences=enforcement_fences
+    )
     if delivery_gate.passed:
-        return []
+        return [], delivery_gate
     # The gate failures are secured FIRST: the retry-artifact write and the
     # telemetry are reporting conveniences for an already-failed gate, and
     # neither may destroy the evidence chain by raising. Concretely: a
@@ -5741,7 +5792,7 @@ def _enforce_ssi_take_up_delivery(
             "SSI delivery-gate failure telemetry crashed; recorded instead "
             f"of masking the failure: {error}"
         )
-    return failures
+    return failures, delivery_gate
 
 
 def _ssi_assignment_priors_from_diagnostics(
@@ -6697,6 +6748,7 @@ def _build_manifests(
     registry: TargetRegistry,
     dropped: Mapping[str, object],
     target_profile_gate: GateResult,
+    ssi_take_up_delivery_gate_result: GateResult | None = None,
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
@@ -6816,6 +6868,23 @@ def _build_manifests(
                 "failures": list(target_profile_gate.failures),
                 "details": dict(target_profile_gate.details),
             },
+            **(
+                {
+                    # The delivery gate result is the release's enforcement
+                    # receipt: under the populace#566/#567 dense-arm fences a
+                    # green release no longer implies every adult band was
+                    # ENFORCED, so the manifest must say which bands were
+                    # (enforced_band_keys) and which were fenced with their
+                    # adjudication text (fenced_bands).
+                    "ssi_take_up_delivery": {
+                        "passed": ssi_take_up_delivery_gate_result.passed,
+                        "failures": list(ssi_take_up_delivery_gate_result.failures),
+                        "details": dict(ssi_take_up_delivery_gate_result.details),
+                    }
+                }
+                if ssi_take_up_delivery_gate_result is not None
+                else {}
+            ),
             **(
                 {
                     "base_population_scale": {
@@ -6956,6 +7025,21 @@ def _build_manifests(
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
+            **(
+                {
+                    # populace#566/#567: release_manifest.json alone must
+                    # distinguish fenced from enforced SSI delivery — the
+                    # effective enforced set and the fenced rows (with
+                    # their adjudication text) ride here as well as in
+                    # build_manifest.json's gates block.
+                    "ssi_take_up_delivery": {
+                        "passed": ssi_take_up_delivery_gate_result.passed,
+                        "details": dict(ssi_take_up_delivery_gate_result.details),
+                    }
+                }
+                if ssi_take_up_delivery_gate_result is not None
+                else {}
+            ),
             **(
                 {
                     "base_population_scale": {
@@ -9351,14 +9435,23 @@ def main() -> None:
                 "SSI final-gate failure telemetry crashed; recorded instead "
                 f"of masking the failure: {error}"
             )
-    early_terminal_gate_failures.extend(
+    ssi_delivery_failures, ssi_take_up_delivery_gate_result = (
         _enforce_ssi_take_up_delivery(
             ssi_take_up_diagnostics,
             targets=ssi_band_targets,
             release_dir=release_dir,
             telemetry=telemetry,
+            # The dense diagnostic arm fences its adult bands per the
+            # populace#566/#567 fence adjudication; the sparse certified
+            # arm passes no fences and keeps hard enforcement.
+            enforcement_fences=(
+                US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
+                if args.dense_default_dataset
+                else None
+            ),
         )
     )
+    early_terminal_gate_failures.extend(ssi_delivery_failures)
     medicaid_take_up_diagnostics, medicaid_guard_failures = (
         _final_medicaid_diagnostics_or_quarantine(
             ssi_law_degraded=ssi_law_degraded,
@@ -10118,6 +10211,7 @@ def main() -> None:
         registry=registry,
         dropped=compilation,
         target_profile_gate=target_profile_gate,
+        ssi_take_up_delivery_gate_result=ssi_take_up_delivery_gate_result,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,

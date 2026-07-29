@@ -179,6 +179,110 @@ def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
         builder._refuse_certified_release_dir_reuse(release_dir)
 
 
+def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
+    """populace#566/#567: the dense-arm fence table must cover exactly the
+    normally-enforced bands, and every fence must carry the recompute
+    adjudication, its re-adjudication trigger, and the sparse contrast —
+    a fence without its documented reason is forbidden."""
+    from populace.build.us_runtime.ssi_take_up import (
+        US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
+    )
+
+    builder = _load_builder_module()
+    fences = builder.US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
+    assert set(fences) == set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
+    for band, text in fences.items():
+        assert "populace#566/#567" in text, band
+        assert "populace#508" in text, band
+        assert "Re-adjudicates" in text, band
+        assert "sparse certified" in text, band
+        # The adjudication must claim only what the artifacts support:
+        # recomputes failed to land the pair in band — NOT a proven
+        # periodic map (sol round-1 blocker 3). The refusal scans the
+        # WHOLE production sources, not just the constant, so a stray
+        # comment cannot reintroduce the overclaim (sol round 2).
+        assert "oscillat" not in text.lower(), band
+    import populace.build.us_runtime.ssi_take_up as ssi_module
+
+    for source_path in (Path(builder.__file__), Path(ssi_module.__file__)):
+        assert "oscillat" not in source_path.read_text().lower(), source_path
+
+
+def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
+    """The sparse certified arm must keep hard enforcement: structurally,
+    main()'s single _enforce_ssi_take_up_delivery call may pass the fence
+    table only under args.dense_default_dataset, with None otherwise (the
+    #443 AST-guard pattern)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_enforce_ssi_take_up_delivery"
+    ]
+    assert len(calls) == 1, "exactly one delivery-enforcement call site"
+    fence_kwargs = [kw for kw in calls[0].keywords if kw.arg == "enforcement_fences"]
+    assert len(fence_kwargs) == 1, "the call site must pass enforcement_fences"
+    value = fence_kwargs[0].value
+    assert isinstance(value, ast.IfExp), "fences must be arm-conditional"
+    assert isinstance(value.test, ast.Attribute)
+    assert getattr(value.test.value, "id", "") == "args"
+    assert value.test.attr == "dense_default_dataset"
+    assert getattr(value.body, "id", "") == "US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES"
+    assert isinstance(value.orelse, ast.Constant) and value.orelse.value is None
+
+
+def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
+    """A release built with fences must be distinguishable from one whose
+    bands passed enforcement: the delivery gate result (effective enforced
+    set + fenced rows with adjudication text) must ride the manifest gates
+    block, and main() must thread it into _build_manifests."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    manifest_calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_build_manifests"
+    ]
+    assert manifest_calls, "main() must call _build_manifests"
+    assert all(
+        any(kw.arg == "ssi_take_up_delivery_gate_result" for kw in call.keywords)
+        for call in manifest_calls
+    ), "every _build_manifests call must thread the delivery gate result"
+    build_fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_build_manifests"
+    )
+    carrier_dicts = [
+        node
+        for node in ast.walk(build_fn)
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value == "ssi_take_up_delivery"
+            for key in node.keys
+        )
+    ]
+    assert len(carrier_dicts) >= 2, (
+        "BOTH manifest writers (build_manifest.json gates block AND "
+        "release_manifest.json build section) must record the "
+        "ssi_take_up_delivery receipt — release_manifest.json alone has "
+        f"to distinguish fenced from enforced delivery; found "
+        f"{len(carrier_dicts)} carrier dict(s)"
+    )
+
+
 def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> None:
     """populace#568 review blocker 2: the evidence pair must be written on
     the batched gate-failure path ONLY — green runs carry weights in the
@@ -4656,9 +4760,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_final_ssi_diagnostics,
     )
 
-    def fake_ssi_delivery_gate(diagnostics, *, targets):
+    def fake_ssi_delivery_gate(diagnostics, *, targets, enforcement_fences=None):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
+        # The sparse e2e paths must never see dense fences (populace#566/#567).
+        captured["ssi_delivery_gate_enforcement_fences"] = enforcement_fences
         # The integrity and retirement cases pass delivery to isolate their
         # own early failure. Other modes retain the populace#547 delivery
         # cofailure and its written retry basis.
@@ -5096,6 +5202,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert final_basis.kind == "current_frame"
     assert final_basis.band("65_plus").candidate_capacity == pytest.approx(1_000.0)
     assert captured["ssi_delivery_gate_called"] is True
+    # This e2e harness runs the sparse arm: the dense-only enforcement
+    # fences must never reach the gate here (populace#566/#567).
+    assert captured["ssi_delivery_gate_enforcement_fences"] is None
     assert captured["ssi_delivery_gate_targets"] == fake_band_targets
     # The frozen-assignment digest invalidates the materialization cache on
     # any retry whose flags differ (populace#507/#508 split-brain fix).
@@ -9440,7 +9549,7 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9448,6 +9557,8 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     )
 
     assert failures
+    # The returned gate result is the manifest receipt for this run.
+    assert not gate_result.passed
     assert all(failure.startswith("SSI take-up deliver") for failure in failures)
     assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
     written_path = release_dir / "us_ssi_take_up.json"
@@ -9476,7 +9587,7 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9484,6 +9595,9 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     )
 
     assert failures == []
+    assert gate_result.passed
+    # No fences on this sparse-shaped call: full enforcement documented.
+    assert gate_result.details["adjudication_fenced_band_keys"] == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
 
 
@@ -9505,7 +9619,7 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9513,6 +9627,7 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
     )
 
     assert failures
+    assert not gate_result.passed
     assert failures[0].startswith("SSI take-up delivery failed:")
     assert any("could NOT be written" in failure for failure in failures)
     # json.dumps runs before write_text, so no partial artifact exists.
