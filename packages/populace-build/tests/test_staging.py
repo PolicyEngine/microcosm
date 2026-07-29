@@ -128,3 +128,37 @@ def test_upload_failures_never_raise_and_disable_after_three(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "staging upload" in err
     assert "disabling staging uploads" in err
+    # Nothing reached the repo, and the run says so. A configured destination
+    # is not evidence of delivery.
+    assert telemetry.uploads_succeeded == 0
+
+
+def test_uploads_succeeded_counts_files_that_reached_the_repo(tmp_path):
+    api = FakeApi()
+    telemetry = StagingTelemetry(
+        run_id="run-c",
+        candidate_release_id="run-c",
+        run_dir=tmp_path / "run-c",
+        repo_id="org/staging",
+        api=api,
+        upload_interval_seconds=0.0,
+    )
+
+    telemetry.stage("target_compilation", force_upload=True)
+
+    assert telemetry.uploads_succeeded == len(api.uploads)
+    assert telemetry.uploads_succeeded > 0
+
+
+def test_uploads_succeeded_is_zero_for_a_local_only_run(tmp_path):
+    # No repo id: files are written locally and nothing is uploaded.
+    telemetry = StagingTelemetry(
+        run_id="run-d",
+        candidate_release_id="run-d",
+        run_dir=tmp_path / "run-d",
+    )
+
+    telemetry.stage("target_compilation", force_upload=True)
+
+    assert telemetry.uploads_succeeded == 0
+    assert (tmp_path / "run-d" / "progress.json").is_file()

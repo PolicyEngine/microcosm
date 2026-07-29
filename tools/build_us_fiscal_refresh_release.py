@@ -7122,6 +7122,30 @@ def _assert_us_release_id(release_id: str) -> None:
         )
 
 
+def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
+    """The build manifest's record of what staging did, and why.
+
+    A release with no staging run is either a deliberate skip or a build that
+    meant to stage and did not. Recording ``None`` for both made those cases
+    indistinguishable after the fact. The shape follows the manifest's sibling
+    blocks (warm start, selection source), which already say ``enabled: False``
+    rather than going absent.
+
+    ``uploads_succeeded`` is the honest half: uploads are best-effort and
+    self-disable after repeated failures, so a configured destination is not
+    evidence that anything reached it.
+    """
+
+    if telemetry is None:
+        return {"enabled": False, "reason": "--no-staging"}
+    return {
+        "enabled": True,
+        "run_id": telemetry.run_id,
+        "repo_id": telemetry.repo_id,
+        "uploads_succeeded": telemetry.uploads_succeeded,
+    }
+
+
 def _staging_telemetry(
     args: argparse.Namespace,
     *,
@@ -9963,11 +9987,7 @@ def main() -> None:
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=(
-            {"run_id": telemetry.run_id, "repo_id": args.staging_repo_id}
-            if telemetry is not None
-            else None
-        ),
+        staging=_staging_manifest_block(telemetry),
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

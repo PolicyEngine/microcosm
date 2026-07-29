@@ -3122,6 +3122,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
         class LiveTelemetry:
             run_id = "live-telemetry-test"
+            # The manifest reads both when recording staging provenance; this
+            # test aborts before that write, but a stub missing them would
+            # fail as an AttributeError rather than the defect under test.
+            repo_id = "policyengine/populace-us-staging"
+            uploads_succeeded = 3
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
@@ -7814,6 +7819,40 @@ def test_blank_staging_repo_id_is_accepted_with_a_local_staging_dir(
 
     assert args.staging_repo_id == ""
     assert args.staging_dir == tmp_path / "stage"
+
+
+def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
+    # A null staging block could not say whether the build skipped staging on
+    # purpose or meant to stage and failed, which is why several releases
+    # shipped with no telemetry and nobody could tell which were deliberate.
+    module = _load_builder_module()
+
+    opted_out = module._staging_manifest_block(None)
+    assert opted_out == {"enabled": False, "reason": "--no-staging"}
+
+    class Delivered:
+        run_id = "rel-1"
+        repo_id = "policyengine/populace-us-staging"
+        uploads_succeeded = 7
+
+    assert module._staging_manifest_block(Delivered()) == {
+        "enabled": True,
+        "run_id": "rel-1",
+        "repo_id": "policyengine/populace-us-staging",
+        "uploads_succeeded": 7,
+    }
+
+    class Undelivered:
+        # What a run without a write token looks like: uploads self-disabled,
+        # so repo_id is cleared and nothing ever landed.
+        run_id = "rel-2"
+        repo_id = None
+        uploads_succeeded = 0
+
+    block = module._staging_manifest_block(Undelivered())
+    assert block["enabled"] is True
+    assert block["uploads_succeeded"] == 0
+    assert block["repo_id"] is None
 
 
 def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:

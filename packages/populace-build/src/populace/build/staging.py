@@ -82,6 +82,7 @@ class StagingTelemetry:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._last_upload_at = 0.0
         self._upload_failures = 0
+        self._upload_successes = 0
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
         self._progress: dict[str, Any] = {
@@ -100,6 +101,18 @@ class StagingTelemetry:
     def repo_run_prefix(self) -> str:
         prefix = self.path_prefix.strip("/")
         return f"{prefix}/{self.run_id}" if prefix else self.run_id
+
+    @property
+    def uploads_succeeded(self) -> int:
+        """How many files actually reached the staging repo.
+
+        Zero on a run that was configured to upload but never managed to --
+        no write token, revoked access, a Hub outage. Uploads are best-effort
+        and never fail the build, so this is the only signal separating a run
+        that staged from one that merely intended to.
+        """
+
+        return self._upload_successes
 
     def _api(self):
         if self.api is not None:
@@ -126,6 +139,7 @@ class StagingTelemetry:
                 repo_type="dataset",
             )
             self._upload_failures = 0
+            self._upload_successes += 1
         except Exception as exc:
             self._upload_failures += 1
             print(
