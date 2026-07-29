@@ -181,7 +181,7 @@ def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
 
 def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
     """populace#566/#567: the dense-arm fence table must cover exactly the
-    normally-enforced bands, and every fence must carry the oscillation
+    normally-enforced bands, and every fence must carry the recompute
     adjudication, its re-adjudication trigger, and the sparse contrast —
     a fence without its documented reason is forbidden."""
     from populace.build.us_runtime.ssi_take_up import (
@@ -197,9 +197,15 @@ def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -
         assert "Re-adjudicates" in text, band
         assert "sparse certified" in text, band
         # The adjudication must claim only what the artifacts support:
-        # the one permitted recompute left the pair out of band — NOT a
-        # proven oscillating map (sol round-1 blocker 3).
+        # recomputes failed to land the pair in band — NOT a proven
+        # periodic map (sol round-1 blocker 3). The refusal scans the
+        # WHOLE production sources, not just the constant, so a stray
+        # comment cannot reintroduce the overclaim (sol round 2).
         assert "oscillat" not in text.lower(), band
+    import populace.build.us_runtime.ssi_take_up as ssi_module
+
+    for source_path in (Path(builder.__file__), Path(ssi_module.__file__)):
+        assert "oscillat" not in source_path.read_text().lower(), source_path
 
 
 def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:

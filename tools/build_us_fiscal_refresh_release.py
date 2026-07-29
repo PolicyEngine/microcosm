@@ -285,28 +285,32 @@ FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
 FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
-# populace#566/#567 dense-arm adjudication: on the dense full-pool frame
-# the single permitted populace#508 delivered-weight recompute left the
-# adult band pair out of band on both observed frames (P2: 18-64
-# +5.8%/65+ +24.8% -> +8.2%/+20.0%; P3: 65+ +34.6% with 18-64 in-band ->
-# +8.3%/+19.8% — the retry moved 18-64 OUT of band while improving 65+).
-# A second recompute is refused as the deleted populace#463-class loop
-# (chain-depth guard in ssi_take_up_prior_basis_from_artifact). The dense
+# populace#566/#567 dense-arm adjudication: populace#508 delivered-weight
+# recomputes have not landed the dense frame's adult band pair in the
+# envelope on either observed frame. P2 is the clean one-retry record
+# (current-frame attempt then its one permitted recompute: 18-64
+# +5.8%/65+ +24.8% -> +8.2%/+20.0%). P3's attempts were already anchored
+# on delivered bases (65+ +34.6% with 18-64 in-band, then +8.3%/+19.8%
+# after recomputing again — the recompute moved 18-64 OUT of band while
+# improving 65+); that chain shape is now refused outright by the
+# chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
 # diagnostic arm therefore FENCES its adult bands — the under-18 pattern
 # extended: the miss ships in the scorecard as a known boundary, never as
 # an enforced contract and never as saturation-as-success. The sparse
 # certified default passes no fences and keeps hard enforcement.
 # RE-ADJUDICATES when populace#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
-    "Fenced for the dense diagnostic arm (populace#566/#567): the single "
-    "permitted populace#508 delivered-weight recompute left the adult "
-    "band pair out of band on both observed frames (P2: +5.8%/+24.8% -> "
-    "+8.2%/+20.0%; P3: in-band/+34.6% -> +8.3%/+19.8%), and a second "
-    "recompute is refused as the deleted populace#463-class loop. This "
-    "band's miss ships in the scorecard as a known boundary — never as "
-    "an enforced contract. Re-adjudicates when the populace#566 damped "
-    "fixed-point protocol lands. The sparse certified default keeps "
-    "hard enforcement."
+    "Fenced for the dense diagnostic arm (populace#566/#567): "
+    "populace#508 delivered-weight recomputes have not landed the adult "
+    "band pair in the envelope on either observed frame (P2, current-"
+    "frame attempt then its one permitted recompute: +5.8%/+24.8% -> "
+    "+8.2%/+20.0%; P3, attempts already anchored on delivered bases: "
+    "65+ +34.6%, then +8.3%/+19.8% after recomputing again — a chain "
+    "the populace#508 loader now refuses). Further recomputes are the "
+    "deleted populace#463-class loop. This band's miss ships in the "
+    "scorecard as a known boundary — never as an enforced contract. "
+    "Re-adjudicates when the populace#566 damped fixed-point protocol "
+    "lands. The sparse certified default keeps hard enforcement."
 )
 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
     "18_64": _US_DENSE_SSI_FENCE_ADJUDICATION,
@@ -9437,8 +9441,8 @@ def main() -> None:
             release_dir=release_dir,
             telemetry=telemetry,
             # The dense diagnostic arm fences its adult bands per the
-            # populace#566/#567 oscillation adjudication; the sparse
-            # certified arm passes no fences and keeps hard enforcement.
+            # populace#566/#567 fence adjudication; the sparse certified
+            # arm passes no fences and keeps hard enforcement.
             enforcement_fences=(
                 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
                 if args.dense_default_dataset
