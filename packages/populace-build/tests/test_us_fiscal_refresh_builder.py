@@ -7940,9 +7940,10 @@ def test_short_term_parity_exclusion_is_reviewed_and_scoped() -> None:
     assert "short_term_capital_gains" in register
     reason = register["short_term_capital_gains"]
     assert "#432" in reason or "rental_income class" in reason
-    assert "lifts when" in reason
+    assert "RE-ADJUDICATES" in reason and "Table 1.4A" in reason
     assert "long_term_capital_gains_before_response" not in register
-    assert "capital_gains" != set(register)
+    assert "capital_gains" not in register
+    assert "long_term_capital_gains" not in register
 
 
 def test_reviewed_exclusions_are_exact_for_fiscal_refresh() -> None:
