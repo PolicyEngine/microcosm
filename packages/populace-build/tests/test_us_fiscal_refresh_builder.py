@@ -7929,6 +7929,22 @@ def test_post_export_sanity_rejects_dropped_export_targets(
         raise AssertionError("Expected dropped-target post-export sanity failure.")
 
 
+def test_short_term_parity_exclusion_is_reviewed_and_scoped() -> None:
+    """populace#567 dense-P3: short_term_capital_gains is an UNTARGETED
+    signed dimension measured against the incumbent's incidental $118B —
+    the #432/#433 rental_income class, called in advance by the preflight.
+    The entry must exist with the adjudication and its lift condition, and
+    the combined-CG surface (which IS pinned) must not be excluded."""
+    builder = _load_builder_module()
+    register = builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    assert "short_term_capital_gains" in register
+    reason = register["short_term_capital_gains"]
+    assert "#432" in reason or "rental_income class" in reason
+    assert "lifts when" in reason
+    assert "long_term_capital_gains_before_response" not in register
+    assert "capital_gains" != set(register)
+
+
 def test_reviewed_exclusions_are_exact_for_fiscal_refresh() -> None:
     builder = _load_builder_module()
 

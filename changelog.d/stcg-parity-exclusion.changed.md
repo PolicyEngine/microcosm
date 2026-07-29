@@ -1,0 +1,1 @@
+Reviewed export-parity exclusion for short_term_capital_gains: untargeted signed dimension vs an incidental reference (the #432/#433 class); lifts when an SOI short-term identification lands as a Ledger target.
