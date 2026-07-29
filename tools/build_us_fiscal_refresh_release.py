@@ -285,25 +285,28 @@ FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
 FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
-# populace#566/#567 dense-arm adjudication: the dense full-pool frame's
-# threshold-to-equilibrium map OSCILLATES — the #508 one-retry recompute
-# moves each adult band past the other with no fixed point, proven on two
-# independent frames (P2: 18-64 +5.8%/65+ +24.8% -> +8.2%/+20.0% after the
-# retry; P3: 65+ +34.6% with 18-64 in-band -> +8.3%/+19.8% after the
-# retry). A second retry would be the deleted populace#463-class loop.
-# The dense diagnostic arm therefore FENCES its adult bands — the under-18
-# pattern extended: the miss ships in the scorecard as a known boundary,
-# never as an enforced contract and never as saturation-as-success. The
-# sparse certified default passes no fences and keeps hard enforcement.
+# populace#566/#567 dense-arm adjudication: on the dense full-pool frame
+# the single permitted populace#508 delivered-weight recompute left the
+# adult band pair out of band on both observed frames (P2: 18-64
+# +5.8%/65+ +24.8% -> +8.2%/+20.0%; P3: 65+ +34.6% with 18-64 in-band ->
+# +8.3%/+19.8% — the retry moved 18-64 OUT of band while improving 65+).
+# A second recompute is refused as the deleted populace#463-class loop
+# (chain-depth guard in ssi_take_up_prior_basis_from_artifact). The dense
+# diagnostic arm therefore FENCES its adult bands — the under-18 pattern
+# extended: the miss ships in the scorecard as a known boundary, never as
+# an enforced contract and never as saturation-as-success. The sparse
+# certified default passes no fences and keeps hard enforcement.
 # RE-ADJUDICATES when populace#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
-    "Fenced for the dense diagnostic arm (populace#566/#567): the dense "
-    "frame's SSI threshold-to-equilibrium map oscillates across the "
-    "populace#508 one-retry recompute with no fixed point (two frames: "
-    "P2 and P3), so this band's miss ships in the scorecard as a known "
-    "boundary — never as an enforced contract. Re-adjudicates when the "
-    "populace#566 damped fixed-point protocol lands. The sparse certified "
-    "default keeps hard enforcement."
+    "Fenced for the dense diagnostic arm (populace#566/#567): the single "
+    "permitted populace#508 delivered-weight recompute left the adult "
+    "band pair out of band on both observed frames (P2: +5.8%/+24.8% -> "
+    "+8.2%/+20.0%; P3: in-band/+34.6% -> +8.3%/+19.8%), and a second "
+    "recompute is refused as the deleted populace#463-class loop. This "
+    "band's miss ships in the scorecard as a known boundary — never as "
+    "an enforced contract. Re-adjudicates when the populace#566 damped "
+    "fixed-point protocol lands. The sparse certified default keeps "
+    "hard enforcement."
 )
 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
     "18_64": _US_DENSE_SSI_FENCE_ADJUDICATION,
@@ -5717,9 +5720,10 @@ def _enforce_ssi_take_up_delivery(
     populace#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. ``enforcement_fences``
     (populace#566/#567) fences normally-enforced bands for the dense
-    diagnostic arm, whose threshold-to-equilibrium map has no one-retry
-    fixed point — fenced misses ship in the scorecard with their
-    adjudication text instead of failing the release. The delivered-weight
+    diagnostic arm, where the single permitted delivered-weight recompute
+    left the adult pair out of band on both observed frames — fenced
+    misses ship in the scorecard with their adjudication text instead of
+    failing the release. The delivered-weight
     diagnostics are written before returning failures — that artifact IS the
     remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
     the thresholds are recomputed exactly once from measured delivery, never
@@ -7016,6 +7020,21 @@ def _build_manifests(
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
+            **(
+                {
+                    # populace#566/#567: release_manifest.json alone must
+                    # distinguish fenced from enforced SSI delivery — the
+                    # effective enforced set and the fenced rows (with
+                    # their adjudication text) ride here as well as in
+                    # build_manifest.json's gates block.
+                    "ssi_take_up_delivery": {
+                        "passed": ssi_take_up_delivery_gate_result.passed,
+                        "details": dict(ssi_take_up_delivery_gate_result.details),
+                    }
+                }
+                if ssi_take_up_delivery_gate_result is not None
+                else {}
+            ),
             **(
                 {
                     "base_population_scale": {

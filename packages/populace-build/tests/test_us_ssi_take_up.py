@@ -962,6 +962,7 @@ def test_prior_basis_loader_accepts_current_and_legacy_artifacts() -> None:
         ("floor_above_capacity", "reporter floor"),
         ("nonfinite_capacity", "candidate capacity"),
         ("integrity_failed_attempt", "diagnostics gate"),
+        ("chained_retry_artifact", "exactly one"),
         ("blank_sha", "sha256"),
     ],
 )
@@ -1010,6 +1011,15 @@ def test_prior_basis_loader_rejects_invalid_artifacts(
         # A Bernoulli-law-violating attempt's measurements are grounds for
         # investigation, never a basis to chain from.
         payload["bernoulli_law_violation_count"] = 1
+    elif mutation == "chained_retry_artifact":
+        # The artifact was itself measured on a delivered-weight retry:
+        # seeding another recompute from it is retry-of-retry — the deleted
+        # populace#463-class loop (populace#508 permits exactly one).
+        payload["prior_weight_basis"] = {
+            "kind": "release_artifact",
+            "source_sha256": "f" * 64,
+            "source_schema_version": 4,
+        }
     else:
         sha = "   "
     with pytest.raises(ValueError, match=message):
@@ -1178,14 +1188,27 @@ def test_delivery_gate_refuses_fences_on_never_enforced_or_unknown_bands() -> No
 
 
 def test_delivery_gate_refuses_a_fence_without_adjudication_text() -> None:
+    """Fail-closed: only nonblank STRING adjudications are fences — a
+    None/zero/list value must never half-fence a band (suppressing
+    enforcement in the details while the row stays enforced, or vice
+    versa), and non-string keys must raise ValueError, not TypeError."""
+
     _, _, _, diagnostics = _assigned()
     delivered = _delivered(diagnostics, **{"18_64": 52.4, "65_plus": 47.6})
-    with pytest.raises(ValueError, match="no.*adjudication text|carries no"):
-        us_ssi_take_up_delivery_gate(
-            delivered,
-            targets=_TARGETS,
-            enforcement_fences={"65_plus": "   "},
-        )
+    for bad_value in ("   ", "", None, 0, False, [], {"text": "x"}):
+        with pytest.raises(ValueError, match="carries no"):
+            us_ssi_take_up_delivery_gate(
+                delivered,
+                targets=_TARGETS,
+                enforcement_fences={"65_plus": bad_value},
+            )
+    for bad_key in (0, None, ("65_plus",)):
+        with pytest.raises(ValueError, match="band-name strings"):
+            us_ssi_take_up_delivery_gate(
+                delivered,
+                targets=_TARGETS,
+                enforcement_fences={bad_key: "documented adjudication"},
+            )
 
 
 def test_gate_rejects_basis_arithmetic_drift() -> None:

@@ -193,9 +193,13 @@ def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -
     assert set(fences) == set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
     for band, text in fences.items():
         assert "populace#566/#567" in text, band
+        assert "populace#508" in text, band
         assert "Re-adjudicates" in text, band
         assert "sparse certified" in text, band
-        assert "oscillates" in text, band
+        # The adjudication must claim only what the artifacts support:
+        # the one permitted recompute left the pair out of band — NOT a
+        # proven oscillating map (sol round-1 blocker 3).
+        assert "oscillat" not in text.lower(), band
 
 
 def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
@@ -255,15 +259,21 @@ def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
         for n in ast.walk(tree)
         if isinstance(n, ast.FunctionDef) and n.name == "_build_manifests"
     )
-    gate_keys = {
-        key.value
+    carrier_dicts = [
+        node
         for node in ast.walk(build_fn)
         if isinstance(node, ast.Dict)
-        for key in node.keys
-        if isinstance(key, ast.Constant) and isinstance(key.value, str)
-    }
-    assert "ssi_take_up_delivery" in gate_keys, (
-        "_build_manifests must record the ssi_take_up_delivery gate"
+        and any(
+            isinstance(key, ast.Constant) and key.value == "ssi_take_up_delivery"
+            for key in node.keys
+        )
+    ]
+    assert len(carrier_dicts) >= 2, (
+        "BOTH manifest writers (build_manifest.json gates block AND "
+        "release_manifest.json build section) must record the "
+        "ssi_take_up_delivery receipt — release_manifest.json alone has "
+        f"to distinguish fenced from enforced delivery; found "
+        f"{len(carrier_dicts)} carrier dict(s)"
     )
 
 

@@ -935,6 +935,24 @@ def ssi_take_up_prior_basis_from_artifact(
             "final measurement; got measurement phase "
             f"{measurement_phase!r}."
         )
+    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION:
+        artifact_prior = payload.get("prior_weight_basis")
+        artifact_prior_kind = (
+            artifact_prior.get("kind") if isinstance(artifact_prior, Mapping) else None
+        )
+        if artifact_prior_kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT:
+            # Chain-depth guard: populace#508 permits exactly ONE
+            # delivered-weight recompute. An artifact that was itself
+            # measured on a retry basis would seed retry-of-retry — the
+            # deleted populace#463-class loop reassembled by hand.
+            raise ValueError(
+                "US SSI take-up prior basis artifact was itself measured "
+                "on a delivered-weight retry (prior basis kind "
+                "'release_artifact'); chaining a second recompute is the "
+                "deleted populace#463-class loop — populace#508 permits "
+                "exactly one. Investigate the frame instead of retrying "
+                "again."
+            )
     if schema_version == 3 and measurement_phase not in (
         None,
         US_SSI_TAKE_UP_PHASE_RELEASE_FINAL,
@@ -1626,19 +1644,25 @@ def us_ssi_take_up_delivery_gate(
 
     ``enforcement_fences`` fences normally-enforced bands for a specific
     ARM with a documented adjudication (the under-18 pattern extended):
-    the dense full-pool arm's threshold-to-equilibrium map oscillates
-    with no one-retry fixed point (populace#566/#567, two frames), so its
-    adult bands ship in the scorecard as known boundaries rather than
-    enforced contracts. The fence text rides each fenced row; the sparse
-    certified default passes no fences and keeps hard enforcement.
+    on the dense full-pool arm the single permitted populace#508
+    delivered-weight recompute left the adult pair out of band on both
+    observed frames (populace#566/#567), so its adult bands ship in the
+    scorecard as known boundaries rather than enforced contracts. The
+    fence text rides each fenced row; the sparse certified default
+    passes no fences and keeps hard enforcement.
     """
 
     expected_targets = _normalize_targets(targets)
     tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     failures: list[str] = []
-    unknown_fences = sorted(
-        set(enforcement_fences or {}) - set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
-    )
+    fences = dict(enforcement_fences or {})
+    non_string_keys = [repr(key) for key in fences if not isinstance(key, str)]
+    if non_string_keys:
+        raise ValueError(
+            "SSI take-up delivery fence keys must be band-name strings; got "
+            f"{sorted(non_string_keys)}."
+        )
+    unknown_fences = sorted(set(fences) - set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS))
     if unknown_fences:
         raise ValueError(
             "SSI take-up delivery fences may only name normally-enforced "
@@ -1646,12 +1670,12 @@ def us_ssi_take_up_delivery_gate(
             f"{unknown_fences}. A fence on a never-enforced band is a "
             "configuration error, not a no-op."
         )
-    for key, fence_text in sorted((enforcement_fences or {}).items()):
-        if not str(fence_text).strip():
+    for key, fence_text in sorted(fences.items()):
+        if not isinstance(fence_text, str) or not fence_text.strip():
             raise ValueError(
                 f"SSI take-up delivery fence for band {key!r} carries no "
-                "adjudication text; a fence without its documented reason "
-                "is forbidden."
+                "adjudication text (fence values must be nonblank strings); "
+                "a fence without its documented reason is forbidden."
             )
     enforced_rows: list[dict[str, object]] = []
     fenced_rows: list[dict[str, object]] = []
@@ -1696,7 +1720,7 @@ def us_ssi_take_up_delivery_gate(
             "selected_recipient_weight": selected,
             "signed_relative_error": signed_relative,
         }
-        fence_text = (enforcement_fences or {}).get(key)
+        fence_text = fences.get(key)
         if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS and fence_text is None:
             enforced_rows.append(summary)
             if abs(selected - target) > tolerance * target + 1e-6:
@@ -1739,11 +1763,9 @@ def us_ssi_take_up_delivery_gate(
             # adjudication-fenced bands — reporting the constant here would
             # misdocument a fenced band as an enforced contract.
             "enforced_band_keys": [
-                key
-                for key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS
-                if key not in (enforcement_fences or {})
+                key for key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS if key not in fences
             ],
-            "adjudication_fenced_band_keys": sorted(enforcement_fences or {}),
+            "adjudication_fenced_band_keys": sorted(fences),
             "enforced_bands": enforced_rows,
             "fenced_bands": fenced_rows,
         },
