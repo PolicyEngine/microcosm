@@ -80,6 +80,13 @@ class StagingTelemetry:
     def __post_init__(self) -> None:
         self.run_dir = Path(self.run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        # Normalize here rather than at the caller: a blank or slash-only
+        # prefix would otherwise put run files at the repo root, where the
+        # dashboard's runs/<run_id> paths cannot find them. Covers the CLI
+        # flag, the environment, and programmatic callers in one place.
+        self.path_prefix = self.path_prefix.strip().strip("/").strip()
+        if not self.path_prefix:
+            self.path_prefix = DEFAULT_STAGING_PREFIX
         self._last_upload_at = 0.0
         self._upload_failures = 0
         self._upload_successes = 0
@@ -99,8 +106,10 @@ class StagingTelemetry:
 
     @property
     def repo_run_prefix(self) -> str:
-        prefix = self.path_prefix.strip("/")
-        return f"{prefix}/{self.run_id}" if prefix else self.run_id
+        # path_prefix is normalized non-empty at construction, so there is no
+        # root-level fallback here: writing runs to the repo root is the
+        # failure this class now refuses, not an alternative layout.
+        return f"{self.path_prefix}/{self.run_id}"
 
     @property
     def uploads_succeeded(self) -> int:
