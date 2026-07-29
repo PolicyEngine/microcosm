@@ -1102,6 +1102,92 @@ def test_delivery_gate_rejects_malformed_diagnostics() -> None:
     assert any("non-numeric" in failure for failure in corrupt_gate.failures)
 
 
+def test_delivery_gate_fences_override_enforcement_with_their_adjudication() -> None:
+    """populace#566/#567: the dense arm fences its adult bands.
+
+    A fenced band's miss must ship in the fenced rows with the supplied
+    adjudication text — never fail the release — and the details must
+    report the run's EFFECTIVE enforcement (empty here), not the constant.
+    """
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(
+        diagnostics,
+        **{"18_64": 80.0, "65_plus": 90.0},  # both far outside the envelope
+    )
+    fences = {
+        "18_64": "Fenced for the dense diagnostic arm (populace#566/#567).",
+        "65_plus": "Fenced for the dense diagnostic arm (populace#566/#567).",
+    }
+    gate = us_ssi_take_up_delivery_gate(
+        delivered, targets=_TARGETS, enforcement_fences=fences
+    )
+    assert gate.passed
+    assert gate.details["enforced_band_keys"] == []
+    assert gate.details["adjudication_fenced_band_keys"] == ["18_64", "65_plus"]
+    assert gate.details["enforced_bands"] == []
+    fenced = {row["age_band"]: row for row in gate.details["fenced_bands"]}
+    assert set(fenced) == {"under_18", "18_64", "65_plus"}
+    # The adult fences carry the supplied adjudication; the under-18 band
+    # keeps its own populace#453/#509 fence untouched.
+    assert fenced["18_64"]["fence"] == fences["18_64"]
+    assert fenced["65_plus"]["fence"] == fences["65_plus"]
+    assert "#453" in fenced["under_18"]["fence"]
+    # The measurement still ships: the fenced rows carry the miss.
+    assert fenced["18_64"]["selected_recipient_weight"] == pytest.approx(80.0)
+    assert fenced["65_plus"]["selected_recipient_weight"] == pytest.approx(90.0)
+
+
+def test_delivery_gate_partial_fence_keeps_the_other_band_enforced() -> None:
+    _, _, _, diagnostics = _assigned()
+    fences = {"65_plus": "Fenced for the dense diagnostic arm (populace#566)."}
+    # The un-fenced band still hard-fails on a miss...
+    missed = _delivered(diagnostics, **{"18_64": 80.0, "65_plus": 90.0})
+    gate = us_ssi_take_up_delivery_gate(
+        missed, targets=_TARGETS, enforcement_fences=fences
+    )
+    assert not gate.passed
+    assert any("18_64" in failure for failure in gate.failures)
+    assert not any("65_plus" in failure for failure in gate.failures)
+    assert gate.details["enforced_band_keys"] == ["18_64"]
+    assert gate.details["adjudication_fenced_band_keys"] == ["65_plus"]
+    # ...and passes in-band, with the fenced band's miss shipping as a row.
+    inside = _delivered(diagnostics, **{"18_64": 52.0, "65_plus": 90.0})
+    gate = us_ssi_take_up_delivery_gate(
+        inside, targets=_TARGETS, enforcement_fences=fences
+    )
+    assert gate.passed
+    fenced_keys = [row["age_band"] for row in gate.details["fenced_bands"]]
+    assert "65_plus" in fenced_keys and "under_18" in fenced_keys
+
+
+def test_delivery_gate_refuses_fences_on_never_enforced_or_unknown_bands() -> None:
+    """A fence names an enforcement being suspended; fencing a band that is
+    never enforced (or does not exist) is a configuration error, not a
+    no-op."""
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(diagnostics, **{"18_64": 52.4, "65_plus": 47.6})
+    for bogus in ("under_18", "not_a_band"):
+        with pytest.raises(ValueError, match="normally-enforced"):
+            us_ssi_take_up_delivery_gate(
+                delivered,
+                targets=_TARGETS,
+                enforcement_fences={bogus: "text"},
+            )
+
+
+def test_delivery_gate_refuses_a_fence_without_adjudication_text() -> None:
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(diagnostics, **{"18_64": 52.4, "65_plus": 47.6})
+    with pytest.raises(ValueError, match="no.*adjudication text|carries no"):
+        us_ssi_take_up_delivery_gate(
+            delivered,
+            targets=_TARGETS,
+            enforcement_fences={"65_plus": "   "},
+        )
+
+
 def test_gate_rejects_basis_arithmetic_drift() -> None:
     """The prior/basis link is weight-free, so the gate can audit it exactly."""
 

@@ -1,0 +1,1 @@
+Dense diagnostic arm fences its SSI adult bands (populace#566/#567): the dense frame's threshold-to-equilibrium map has no one-retry fixed point, so fenced misses ship in the scorecard with their adjudication instead of failing the release; the manifest gates block records the run's effective enforced set and fenced rows. The sparse certified default keeps hard enforcement.
