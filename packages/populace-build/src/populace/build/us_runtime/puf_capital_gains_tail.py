@@ -408,24 +408,31 @@ def _raw_top_share_receipts(
     as a worsening from zero. The comparator must see the raw geometry.
     """
 
+    weight_vector = np.asarray(weights, dtype=np.float64)
     receipts: dict[str, dict[str, object]] = {}
     for column, values in values_by_column.items():
-        mass = np.abs(np.asarray(values, dtype=np.float64)) * np.asarray(
-            weights, dtype=np.float64
-        )
-        carriers = int(np.count_nonzero(mass))
-        total = float(mass.sum())
+        value_vector = np.asarray(values, dtype=np.float64)
+        # The production gate's population: finite rows with positive
+        # weighted |mass| (populace#571 round 2 — a single NaN otherwise
+        # poisons the raw share to 0.0 while the gate reads 0.95/FAIL,
+        # making pre/post incommensurable with over-threshold membership).
+        # Only the gate's minimum-carrier floor is deliberately omitted.
+        finite = np.isfinite(value_vector) & np.isfinite(weight_vector)
+        masked_mass = np.abs(value_vector[finite]) * weight_vector[finite]
+        positive = masked_mass > 0.0
+        masked_mass = masked_mass[positive]
+        carriers = int(masked_mass.size)
+        total = float(masked_mass.sum())
         if total > 0.0:
-            top = np.sort(mass)[::-1][:top_k]
+            top = np.sort(masked_mass)[::-1][:top_k]
             share = float(top.sum() / total)
         else:
             share = 0.0
-        nonzero_values = np.asarray(values, dtype=np.float64)
-        nonzero_values = nonzero_values[nonzero_values != 0.0]
+        carrier_values = value_vector[finite][positive]
         receipts[column] = {
             "top_share": share,
             "carriers": carriers,
-            "distinct_values": int(np.unique(nonzero_values).size),
+            "distinct_values": int(np.unique(carrier_values).size),
         }
     return receipts
 

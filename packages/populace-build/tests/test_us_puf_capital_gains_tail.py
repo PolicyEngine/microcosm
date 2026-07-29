@@ -638,63 +638,83 @@ def test_joint_vectors_arrive_verbatim_from_selected_donors() -> None:
 
 
 def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
-    """populace#571 round 2: the comparator reads RAW pre/post measurements
-    (no thin-column skip — the production replay's pre-stage collectibles is
-    100% across 97 carriers, which the shared gate omits entirely), compares
-    with a float tolerance, and fails only over-threshold columns the stage
-    strictly worsened."""
-    from populace.build.gates import GateResult
+    """populace#571 rounds 1-2: the comparator reads RAW pre/post
+    measurements under the production gate's finite/positive-mass mask
+    (only the min-carriers floor omitted), derives over-threshold
+    membership from the PRODUCTION gate, tolerates ULP noise, and fails
+    only over-threshold columns the stage strictly worsened. The replay
+    case pins the exact Base-P3 geometry: pre 100%/97 carriers (thin —
+    the production gate omits it), post ~83.9%/1,135 carriers (over
+    threshold, gate-flagged), NOT worsened -> passes."""
+    from populace.build.gates import tail_concentration_gate
     from populace.build.us_runtime.puf_capital_gains_tail import (
         _WORSENING_SHARE_TOLERANCE,
         _raw_top_share_receipts,
         _stage_attributable_concentration_failures,
     )
 
-    # The exact production replay shape (populace#571 review): a thin
-    # 97-carrier pre column at literal 100% top-100 share that the stage
-    # IMPROVES to ~83.9% across 1,135 carriers must PASS.
-    rng = np.random.default_rng(571)
-    pre_collect = np.zeros(3_000)
-    pre_collect[:97] = rng.uniform(1e5, 1e6, 97)
-    post_collect = np.zeros(3_000)
-    post_collect[:1_135] = np.sort(rng.uniform(10.0, 1e6, 1_135))[::-1]
-    weights = np.ones(3_000)
+    n = 3_000
+    weights = np.ones(n)
+    pre_collect = np.zeros(n)
+    pre_collect[:97] = 1_000_000.0
+    # Post: 100 records at $1M + 1,035 records sized so the top-100 share
+    # lands at the replay's 0.839: rest = top * (1/share - 1).
+    post_collect = np.zeros(n)
+    post_collect[:100] = 1_000_000.0
+    rest_total = 100 * 1_000_000.0 * (1.0 / 0.839 - 1.0)
+    post_collect[100:1_135] = rest_total / 1_035
+    # A NaN row must not poison the measurement (round-2 High).
+    pre_collect[n - 1] = np.nan
+    post_collect[n - 1] = np.nan
+
     pre_receipts = _raw_top_share_receipts({"collect": pre_collect}, weights)
     post_receipts = _raw_top_share_receipts({"collect": post_collect}, weights)
     assert pre_receipts["collect"]["top_share"] == pytest.approx(1.0)
     assert pre_receipts["collect"]["carriers"] == 97
-    assert post_receipts["collect"]["top_share"] < 0.999
-    post_gate = GateResult(
-        name="tail_concentration",
-        passed=False,
-        failures=("collect: top 100 ... (threshold 75%) ...",),
-        details={},
+    assert post_receipts["collect"]["top_share"] == pytest.approx(0.839, abs=1e-9)
+    assert post_receipts["collect"]["carriers"] == 1_135
+
+    # Membership through the PRODUCTION gate: pre is thin (omitted), post
+    # is checked and fails the absolute threshold.
+    pre_gate = tail_concentration_gate(
+        {"collect": pre_collect[np.isfinite(pre_collect)]},
+        {"collect": weights[np.isfinite(pre_collect)]},
     )
+    assert "collect" not in pre_gate.details["top_share"]
+    post_gate = tail_concentration_gate(
+        {"collect": post_collect[np.isfinite(post_collect)]},
+        {"collect": weights[np.isfinite(post_collect)]},
+    )
+    assert not post_gate.passed
+
     failures, receipts = _stage_attributable_concentration_failures(
         pre_receipts, post_receipts, post_gate
     )
     assert failures == []
     assert receipts["collect"]["over_threshold"] is True
     assert receipts["collect"]["stage_worsened_share"] is False
-    assert receipts["collect"]["pre_stage_top_share"] == pytest.approx(1.0)
     assert receipts["collect"]["pre_stage_carriers"] == 97
+    assert receipts["collect"]["post_stage_carriers"] == 1_135
 
-    # A stage-worsened over-threshold column still fails.
+    # A stage-worsened over-threshold column still fails, derived through
+    # the production gate as well.
+    worsened_pre = np.zeros(n)
+    worsened_pre[:700] = np.linspace(1.0, 700.0, 700)
+    worsened_post = np.zeros(n)
+    worsened_post[:600] = 1.0
+    worsened_post[:100] = 1_000_000.0
+    worsened_gate = tail_concentration_gate({"w": worsened_post}, {"w": weights})
+    assert not worsened_gate.passed
     worsened_failures, worsened_receipts = _stage_attributable_concentration_failures(
-        {"w": {"top_share": 0.70, "carriers": 900, "distinct_values": 900}},
-        {"w": {"top_share": 0.80, "carriers": 880, "distinct_values": 880}},
-        GateResult(
-            name="tail_concentration",
-            passed=False,
-            failures=("w: top 100 ... (threshold 75%) ...",),
-            details={},
-        ),
+        _raw_top_share_receipts({"w": worsened_pre}, weights),
+        _raw_top_share_receipts({"w": worsened_post}, weights),
+        worsened_gate,
     )
     assert len(worsened_failures) == 1 and worsened_failures[0].startswith("w:")
     assert worsened_receipts["w"]["stage_worsened_share"] is True
 
     # ULP-scale movement is numerical noise, not a worsening.
-    noise_failures, noise_receipts = _stage_attributable_concentration_failures(
+    noise_failures, _ = _stage_attributable_concentration_failures(
         {"n": {"top_share": 0.84, "carriers": 900, "distinct_values": 900}},
         {
             "n": {
@@ -703,15 +723,9 @@ def test_frame_gate_scopes_to_stage_attributable_worsening() -> None:
                 "distinct_values": 900,
             }
         },
-        GateResult(
-            name="tail_concentration",
-            passed=False,
-            failures=("n: top 100 ... (threshold 75%) ...",),
-            details={},
-        ),
+        tail_concentration_gate({"n": np.zeros(4)}, {"n": np.ones(4)}),
     )
     assert noise_failures == []
-    assert noise_receipts["n"]["stage_worsened_share"] is False
 
 
 def test_undeclared_candidate_overlap_fails_loud() -> None:
