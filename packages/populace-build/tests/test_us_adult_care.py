@@ -673,7 +673,9 @@ def test_shipped_cdcc_adult_care_probe() -> None:
 def test_implausible_donor_knots_are_refused_with_receipt() -> None:
     """populace#567 base-P3: two measured ASEC childcare values ($730k/$360k)
     were latent donor knots in every build; the grid shift from the tail
-    clones let 12 draws land between them. Donors above the plausibility
+    clones let 12 draws enter the >$250k top-tail interpolation region
+    (three between the ceiling and $360k, nine at or above $360k). Donors
+    above the plausibility
     ceiling are refused as knots (measured frame values untouched), with a
     receipt; clean donors pass through unchanged."""
     import numpy as np
@@ -808,14 +810,18 @@ def test_poisoned_donor_is_screened_end_to_end(capsys) -> None:
     out_person = result.table("person")
     expenses = out_person["pre_subsidy_care_expenses"].to_numpy(dtype=np.float64)
     positive = expenses[expenses > 0.0]
-    # Incidence survives (usage computed pre-screen: one paid of two
-    # child-bearing donor units with positive weight).
-    assert positive.size > 0
+    # Incidence survives at the PRE-screen usage rate: two paid of three
+    # child-bearing donor units -> usage 2/3, which selects BOTH eligible
+    # units (a screening-before-usage mutation drops usage to 1/3 and
+    # selects only one, failing this count).
+    assert positive.size == 2
     # Outputs are bounded by the CLEAN donor maximum, far under the ceiling.
     assert float(expenses.max()) <= 14_000.0
     # The measured childcare column is untouched, poisoned value included.
     out_spm = result.table("spm_unit")
     assert (
-        out_spm.set_index("spm_unit_id").loc[703, "spm_unit_pre_subsidy_childcare_expenses"]
+        out_spm.set_index("spm_unit_id").loc[
+            703, "spm_unit_pre_subsidy_childcare_expenses"
+        ]
         == 600_000.0
     )

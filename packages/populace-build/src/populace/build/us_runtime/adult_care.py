@@ -443,7 +443,10 @@ def derive_us_adult_care_from_manifest(
             f"{implausible_donor_receipt['count']} implausible donor knot(s) "
             f"above ${_EXPENSE_PLAUSIBILITY_CEILING:,.0f}: "
             f"{implausible_donor_receipt['values']} "
-            f"(weight {implausible_donor_receipt['weight']:,.2f}); the "
+            f"(weight {implausible_donor_receipt['weight']:,.2f}, "
+            f"{implausible_donor_receipt['excluded_weight_share']:.4%} of "
+            "level weight; retained maximum "
+            f"${implausible_donor_receipt['retained_maximum']:,.0f}); the "
             "measured frame values are untouched."
         )
     level_values = donor_childcare[level_mask]
