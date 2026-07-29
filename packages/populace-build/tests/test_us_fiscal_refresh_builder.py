@@ -9533,7 +9533,7 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9541,6 +9541,8 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     )
 
     assert failures
+    # The returned gate result is the manifest receipt for this run.
+    assert not gate_result.passed
     assert all(failure.startswith("SSI take-up deliver") for failure in failures)
     assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
     written_path = release_dir / "us_ssi_take_up.json"
@@ -9569,7 +9571,7 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9577,6 +9579,9 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     )
 
     assert failures == []
+    assert gate_result.passed
+    # No fences on this sparse-shaped call: full enforcement documented.
+    assert gate_result.details["adjudication_fenced_band_keys"] == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
 
 
@@ -9598,7 +9603,7 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9606,6 +9611,7 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
     )
 
     assert failures
+    assert not gate_result.passed
     assert failures[0].startswith("SSI take-up delivery failed:")
     assert any("could NOT be written" in failure for failure in failures)
     # json.dumps runs before write_text, so no partial artifact exists.
