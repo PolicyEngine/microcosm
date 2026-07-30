@@ -13,12 +13,11 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
 )
-import pandas as pd
-
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,

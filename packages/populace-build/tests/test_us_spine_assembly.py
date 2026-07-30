@@ -5,13 +5,12 @@ from itertools import permutations
 import numpy as np
 import pandas as pd
 import pytest
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+    clone_us_frame_for_puf_support,
 )
-from pandas.testing import assert_frame_equal, assert_series_equal
-
-from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
