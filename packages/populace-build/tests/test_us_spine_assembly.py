@@ -227,6 +227,24 @@ def test_assembly_manifest_is_immutable_and_detects_channel_forgery() -> None:
         )
 
 
+def test_assembly_manifest_detects_declared_channel_count_drift() -> None:
+    assembled = assemble_spines(
+        {"asec": _asec_frame(), "acs": _acs_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    person = assembled.table("person")
+    person.loc[0, "person_support_channel"] = "acs"
+
+    with pytest.raises(
+        ValueError,
+        match="native row counts drifted from the assembly manifest",
+    ):
+        validate_assembly_provenance(
+            assembled,
+            boundary="test assembly output",
+        )
+
+
 def test_assembly_manifest_detects_cross_grain_channel_disagreement() -> None:
     assembled = assemble_spines(
         {"asec": _asec_frame(), "acs": _acs_frame()},
