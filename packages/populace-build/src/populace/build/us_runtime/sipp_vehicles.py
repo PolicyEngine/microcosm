@@ -61,9 +61,7 @@ __all__ = [
 ]
 
 _RETIRED_DATA_REPOSITORY = "policyengine-" + "us-data"
-_ARCHIVED_REPOSITORY = (
-    "https://github.com/PolicyEngine/" + _RETIRED_DATA_REPOSITORY
-)
+_ARCHIVED_REPOSITORY = "https://github.com/PolicyEngine/" + _RETIRED_DATA_REPOSITORY
 _ARCHIVED_COMMIT = "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
 _RETIRED_PACKAGE_PATH = "policyengine_" + "us_data"
 ARCHIVED_SIPP_VEHICLE_SOURCE_URL = (
@@ -323,9 +321,10 @@ def _cap_vehicle_training_sample(donor: pd.DataFrame) -> pd.DataFrame:
         US_SIPP_VEHICLE_OUTPUT_COLUMNS[0]: donor[_OWNED_OBSERVED_COLUMN].astype(bool),
         US_SIPP_VEHICLE_OUTPUT_COLUMNS[1]: donor[_VALUE_OBSERVED_COLUMN].astype(bool),
     }
-    union = filters[US_SIPP_VEHICLE_OUTPUT_COLUMNS[0]] | filters[
-        US_SIPP_VEHICLE_OUTPUT_COLUMNS[1]
-    ]
+    union = (
+        filters[US_SIPP_VEHICLE_OUTPUT_COLUMNS[0]]
+        | filters[US_SIPP_VEHICLE_OUTPUT_COLUMNS[1]]
+    )
     union_positions = np.flatnonzero(union.to_numpy())
     if len(union_positions) <= _MAX_TRAIN_SAMPLES:
         positions = union_positions
@@ -335,9 +334,7 @@ def _cap_vehicle_training_sample(donor: pd.DataFrame) -> pd.DataFrame:
         per_target_cap = _MAX_TRAIN_SAMPLES // len(filters)
         for target, target_filter in filters.items():
             target_positions = np.flatnonzero(target_filter.to_numpy())
-            sampled = _sample_rng(
-                _TRAINING_SAMPLE_SEED_NAME, salt=target
-            ).choice(
+            sampled = _sample_rng(_TRAINING_SAMPLE_SEED_NAME, salt=target).choice(
                 target_positions,
                 size=min(per_target_cap, len(target_positions)),
                 replace=False,
@@ -460,9 +457,9 @@ def load_sipp_2023_vehicle_donor(
             "AVEH1VAL": grouped["AVEH1VAL"].max().fillna(0.0),
             "AVEH2VAL": grouped["AVEH2VAL"].max().fillna(0.0),
             "AVEH3VAL": grouped["AVEH3VAL"].max().fillna(0.0),
-            "is_homeowner": (
-                grouped["THVAL_HOME"].first().fillna(0.0) > 0
-            ).astype(np.float32),
+            "is_homeowner": (grouped["THVAL_HOME"].first().fillna(0.0) > 0).astype(
+                np.float32
+            ),
         }
     ).reset_index(drop=True)
     donor = donor.merge(
@@ -471,9 +468,9 @@ def load_sipp_2023_vehicle_donor(
         right_index=True,
         how="left",
     )
-    donor["reference_is_female"] = (
-        donor["reference_sex"].fillna(1.0).eq(2)
-    ).astype(np.float32)
+    donor["reference_is_female"] = (donor["reference_sex"].fillna(1.0).eq(2)).astype(
+        np.float32
+    )
     donor["reference_is_married"] = (
         donor["reference_marital_status"].fillna(0.0).eq(1)
     ).astype(np.float32)
@@ -482,14 +479,18 @@ def load_sipp_2023_vehicle_donor(
         errors="ignore",
     ).fillna(0.0)
 
-    donor[_OWNED_OBSERVED_COLUMN] = pd.to_numeric(
-        donor["AVEH_NUM"], errors="coerce"
-    ).fillna(0).isin(_OBSERVED_SIPP_STATUSES)
+    donor[_OWNED_OBSERVED_COLUMN] = (
+        pd.to_numeric(donor["AVEH_NUM"], errors="coerce")
+        .fillna(0)
+        .isin(_OBSERVED_SIPP_STATUSES)
+    )
     value_observed = pd.Series(True, index=donor.index)
     for column in ("AVEH1VAL", "AVEH2VAL", "AVEH3VAL"):
-        value_observed &= pd.to_numeric(donor[column], errors="coerce").fillna(
-            0
-        ).isin(_OBSERVED_SIPP_STATUSES)
+        value_observed &= (
+            pd.to_numeric(donor[column], errors="coerce")
+            .fillna(0)
+            .isin(_OBSERVED_SIPP_STATUSES)
+        )
     donor[_VALUE_OBSERVED_COLUMN] = value_observed
 
     weights = pd.to_numeric(donor[_DONOR_WEIGHT_COLUMN], errors="coerce")
@@ -549,7 +550,9 @@ def _predictor_encoding(donor: pd.DataFrame) -> _PredictorEncoding:
     for column in SIPP_VEHICLE_MODEL_PREDICTORS:
         values = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
         if _is_numeric_categorical(values):
-            categorical[column] = tuple(float(value) for value in np.sort(values.unique()))
+            categorical[column] = tuple(
+                float(value) for value in np.sort(values.unique())
+            )
         else:
             numeric.append(column)
     return _PredictorEncoding(tuple(numeric), categorical)
@@ -582,14 +585,16 @@ def _household_tenure_status(
     household = frame.table("household")
     person = frame.table("person")
     if "SPM_TENMORTSTATUS" in household.columns:
-        return pd.to_numeric(
-            household["SPM_TENMORTSTATUS"], errors="coerce"
-        ).fillna(3).to_numpy()
+        return (
+            pd.to_numeric(household["SPM_TENMORTSTATUS"], errors="coerce")
+            .fillna(3)
+            .to_numpy()
+        )
     if "SPM_TENMORTSTATUS" in person.columns:
         values = pd.Series(
-            pd.to_numeric(
-                reference_people["SPM_TENMORTSTATUS"], errors="coerce"
-            ).fillna(3).to_numpy(),
+            pd.to_numeric(reference_people["SPM_TENMORTSTATUS"], errors="coerce")
+            .fillna(3)
+            .to_numpy(),
             index=reference_people["household_id"].to_numpy(),
         )
         return values.reindex(household_ids).fillna(3).to_numpy()
@@ -601,9 +606,9 @@ def _household_tenure_status(
             and "person_spm_unit_id" in reference_people.columns
         ):
             by_spm_unit = pd.Series(
-                pd.to_numeric(
-                    spm_unit["SPM_TENMORTSTATUS"], errors="coerce"
-                ).fillna(3).to_numpy(),
+                pd.to_numeric(spm_unit["SPM_TENMORTSTATUS"], errors="coerce")
+                .fillna(3)
+                .to_numpy(),
                 index=spm_unit["spm_unit_id"].to_numpy(),
             )
             by_household = pd.Series(
@@ -675,9 +680,7 @@ def _recipient_household_predictor_table(frame: Frame) -> pd.DataFrame:
     work["age"] = pd.to_numeric(person["age"], errors="coerce").fillna(0.0)
     work["is_female"] = person["is_female"].astype(bool).astype(np.float64)
     work["is_married"] = _recipient_is_married(person)
-    work["A_LINENO"] = pd.to_numeric(
-        person["A_LINENO"], errors="coerce"
-    ).fillna(np.inf)
+    work["A_LINENO"] = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(np.inf)
     if "person_spm_unit_id" in person.columns:
         work["person_spm_unit_id"] = person["person_spm_unit_id"].to_numpy()
     if "SPM_TENMORTSTATUS" in person.columns:
@@ -797,7 +800,9 @@ def impute_us_sipp_vehicles(
     owned_mask = donor[_OWNED_OBSERVED_COLUMN].astype(bool).to_numpy()
     value_mask = donor[_VALUE_OBSERVED_COLUMN].astype(bool).to_numpy()
     if not owned_mask.any() or not value_mask.any():
-        raise ValueError("SIPP vehicle donor lacks observed rows for one or both targets.")
+        raise ValueError(
+            "SIPP vehicle donor lacks observed rows for one or both targets."
+        )
 
     owned_target = donor.loc[owned_mask, "household_vehicles_owned"]
     owned_levels = tuple(float(value) for value in np.sort(owned_target.unique()))
@@ -856,16 +861,18 @@ def impute_us_sipp_vehicles(
             "household_vehicles_owned": np.clip(
                 np.rint(predicted_owned), 0, None
             ).astype(np.int32),
-            "household_vehicles_value": np.clip(
-                predicted_value, 0, None
-            ).astype(np.float32),
+            "household_vehicles_value": np.clip(predicted_value, 0, None).astype(
+                np.float32
+            ),
         },
         index=frame.table("household").index,
     )
 
 
 def _surface_has_signal(household: pd.DataFrame) -> bool:
-    if not all(column in household.columns for column in US_SIPP_VEHICLE_OUTPUT_COLUMNS):
+    if not all(
+        column in household.columns for column in US_SIPP_VEHICLE_OUTPUT_COLUMNS
+    ):
         return False
     owned = pd.to_numeric(
         household["household_vehicles_owned"], errors="coerce"
@@ -930,9 +937,9 @@ def us_sipp_vehicles_summary(frame: Frame) -> dict[str, object]:
     values: dict[str, np.ndarray] = {}
     for column in US_SIPP_VEHICLE_OUTPUT_COLUMNS:
         if column in household.columns:
-            values[column] = pd.to_numeric(
-                household[column], errors="coerce"
-            ).to_numpy(dtype=np.float64)
+            values[column] = pd.to_numeric(household[column], errors="coerce").to_numpy(
+                dtype=np.float64
+            )
     owned = values.get("household_vehicles_owned", np.zeros(len(household)))
     value = values.get("household_vehicles_value", np.zeros(len(household)))
     finite_owned = np.nan_to_num(owned, nan=0.0, posinf=0.0, neginf=0.0)
