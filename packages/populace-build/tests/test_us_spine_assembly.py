@@ -339,6 +339,30 @@ def test_assemble_spines__rejects_negative_source_ids_before_clone() -> None:
         )
 
 
+def test_clone_safe_bound_is_the_documented_literal() -> None:
+    """The bound is part of the assembly/clone composition contract:
+    10**15 - 1 caps the decimal multiplier at 10**16, leaving clone
+    indices up to 921 inside int64. A drifted constant must fail HERE —
+    the payload-based tests below derive from the constant and cannot
+    see it move (sol round-3 finding)."""
+
+    assert PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID == 10**15 - 1
+
+
+def test_remap_ids_raises_governed_error_instead_of_overflowing() -> None:
+    """Direct _remap_ids regression: overflow-shaped inputs must raise
+    the governed ValueError naming the bound, never OverflowError."""
+
+    from populace.build.us_runtime.puf_support import _remap_ids
+
+    with pytest.raises(ValueError, match=r"overflow int64.*999999999999999"):
+        _remap_ids(
+            np.array([10**18], dtype="int64"),
+            clone_index=9,
+            id_multiplier=10**19,
+        )
+
+
 def test_assemble_spines__rejects_ids_above_the_clone_safe_bound() -> None:
     """Round-2 blocker: int64-valid IDs above the shared bound assembled
     fine, then overflowed the clone stage's decimal remap (OverflowError:
