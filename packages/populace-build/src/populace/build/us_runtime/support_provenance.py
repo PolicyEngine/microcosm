@@ -54,7 +54,7 @@ def spine_assembly_manifest(
     *,
     channels: Sequence[str],
 ) -> dict[str, object]:
-    """Build immutable-ready channel/count metadata for one assembly output."""
+    """Build deeply frozen channel/count receipt data for one assembly output."""
 
     declared_channels = tuple(channels)
     if len(declared_channels) < 2 or len(set(declared_channels)) != len(
@@ -102,7 +102,7 @@ def validate_assembly_provenance(
     if manifest is None:
         if require_manifest:
             raise ValueError(
-                f"{boundary}: immutable support provenance has no assembly "
+                f"{boundary}: receipt-validated support provenance has no assembly "
                 f"manifest {SPINE_ASSEMBLY_MANIFEST_KEY!r}."
             )
         return None
@@ -373,7 +373,7 @@ def support_role_series(
     # Before multispine assembly, this column carried the operator role. Keep
     # validating that historical contract so malformed current-lineage frames
     # still fail closed. Assembled frames carry a raw spine ID and use the
-    # channel for immutable source identity, so arbitrary declared source names
+    # channel for receipt-declared source identity, so arbitrary declared names
     # are valid and never influence the returned operator role.
     if spine_source_id_column(entity) not in table:
         valid = channels.isin(

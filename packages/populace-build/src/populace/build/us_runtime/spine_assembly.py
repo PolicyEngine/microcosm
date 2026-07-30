@@ -52,7 +52,7 @@ def assemble_spines(
     mass across the peer sources.  The anchor is emitted first and remaining
     channels are emitted in lexical order, so mapping insertion order cannot
     change record order.  Each entity receives four provenance fields:
-    ``*_support_channel`` (the immutable source-spine channel),
+    ``*_support_channel`` (the receipt-validated source-spine channel),
     ``*_spine_source_id`` (the raw ID before collision remapping),
     ``*_source_id`` (the assembly-unique ID before cloning), and
     ``*_support_clone_index`` (zero before clone operators).

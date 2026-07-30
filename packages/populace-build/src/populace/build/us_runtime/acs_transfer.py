@@ -1657,8 +1657,8 @@ def resolve_acs_donor_channel(
 
     ``donor_channel`` is the legacy public API name. Its non-``None`` values
     identify operator roles derived by :func:`support_role_series`; on an
-    assembled pool those roles come from clone indices while immutable source
-    channels (for example ``"acs"`` and ``"asec"``) remain untouched.
+    assembled pool those roles come from clone indices while receipt-declared
+    source channels (for example ``"acs"`` and ``"asec"``) remain untouched.
     """
 
     if channel is None:

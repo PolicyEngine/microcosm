@@ -481,7 +481,7 @@ def _support_group_keys(
     person: pd.DataFrame,
     source_id: pd.Series,
 ) -> tuple[pd.Series, pd.Series]:
-    """Return clone-pair keys without consulting immutable source channels."""
+    """Return clone-pair keys without consulting source-spine channels."""
 
     if not has_support_role_metadata(person, entity="person"):
         return (

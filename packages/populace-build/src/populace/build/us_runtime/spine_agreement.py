@@ -1,10 +1,11 @@
 """Pre-calibration agreement contract for assembled household spines.
 
-The assembly seam records each entity row's immutable source spine in
-``{entity}_support_channel``.  This gate is the only operator-ordering stage
-that intentionally conditions on that provenance: it compares the weighted
-distribution produced by the common operator pass across every pair of source
-spines, before calibration can conceal a disagreement.
+The assembly seam records each entity row's source spine in
+``{entity}_support_channel`` and a deeply frozen frame receipt. This gate
+validates the live columns against that receipt, then intentionally conditions
+on the provenance: it compares the weighted distribution produced by the
+common operator pass across every pair of source spines, before calibration
+can conceal a disagreement.
 
 For every registered transferred, imputed, seeded, or simulated surface,
 agreement has two parts:
@@ -290,7 +291,7 @@ def spine_agreement_gate(
         provenance_column = f"{entity}_support_channel"
         if provenance_column not in table:
             failures.append(
-                f"{entity}: immutable source-spine provenance column "
+                f"{entity}: source-spine provenance column "
                 f"{provenance_column!r} is absent."
             )
             contexts[entity] = None
@@ -310,7 +311,7 @@ def spine_agreement_gate(
         if PUF_TAX_DETAIL_SUPPORT_CHANNEL in channels:
             failures.append(
                 f"{entity}: {PUF_TAX_DETAIL_SUPPORT_CHANNEL!r} is a clone role, "
-                "not valid immutable source-spine provenance."
+                "not valid receipt-declared source-spine provenance."
             )
             contexts[entity] = None
             continue
