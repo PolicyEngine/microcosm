@@ -851,6 +851,17 @@ from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
+from populace.build.us_runtime.spine_agreement import (
+    DEFAULT_INCIDENCE_RATIO_BOUNDS,
+    DEFAULT_QUANTILE_ENVELOPE_TOLERANCE,
+    DEFAULT_SPINE_AGREEMENT_QUANTILES,
+    US_SPINE_AGREEMENT_REGISTRY,
+    SpineAgreementSpec,
+    default_spine_agreement_registry,
+    normalize_transfer_family_name,
+    spine_agreement_gate,
+    validate_spine_agreement_registry,
+)
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_REVISION,
@@ -1845,6 +1856,15 @@ __all__ = [
     "us_register_consistency_gate",
     "us_register_contradictions",
     "write_us_source_coverage_diagnostics",
+    "DEFAULT_INCIDENCE_RATIO_BOUNDS",
+    "DEFAULT_QUANTILE_ENVELOPE_TOLERANCE",
+    "DEFAULT_SPINE_AGREEMENT_QUANTILES",
+    "US_SPINE_AGREEMENT_REGISTRY",
+    "SpineAgreementSpec",
+    "default_spine_agreement_registry",
+    "normalize_transfer_family_name",
+    "spine_agreement_gate",
+    "validate_spine_agreement_registry",
     "assemble_spines",
     "support_channel_column",
     "support_clone_index_column",

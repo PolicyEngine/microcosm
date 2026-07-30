@@ -4,10 +4,11 @@
 
 Populace #395 increment 1 is in implementation on
 `multispine-operator-ordering-395`, based on `origin/main` at `0d99d8a`.
-The opt-in pre-operator spine assembly seam is implemented and focused tests
-pass. Operator clone-role separation, the spine-blindness structural guard,
-and the pre-calibration spine-agreement gate contract are in progress. Current
-sparse and dense release behavior remains unwired to the new seam.
+The opt-in pre-operator spine assembly seam and pre-calibration
+spine-agreement contract are implemented and focused tests pass. Operator
+clone-role separation and the spine-blindness structural guard are in
+progress. Current sparse and dense release behavior remains unwired to the new
+seam.
 
 ## Done
 
@@ -33,11 +34,19 @@ sparse and dense release behavior remains unwired to the new seam.
   rejection of PUF as a peer spine.
 - Verified the assembly test module (8 tests), its ruff lint, and diff
   whitespace checks using the existing Populace environment.
+- Added the canonical spine-agreement registry with exact coverage of the
+  declared ACS transferred-input surface, including deterministic derived
+  transfer outputs and normalized batch families.
+- Declared one fixed statistic and tolerance contract for every registry
+  column: weighted nonzero-incidence ratio in `[0.8, 1.25]` and a weighted
+  conditional q10/q25/q50/q75/q90 symmetric-relative envelope no greater than
+  `0.25`. The gate compares every source-spine pair and batches all failures.
+- Added focused agreement tests covering registry exactness, weighted
+  measurement, batched failures, nullable evidence, malformed registries, and
+  rejection of the legacy PUF clone role as source-spine provenance.
 
 ## Next
 
-- Commit the assembly seam and its tests.
 - Separate PUF clone role from immutable source-spine provenance, then add
   structural spine-blindness enforcement.
-- Add the spine-agreement gate specification and registry.
 - Add the design note, changelog fragment, and focused/full verification.
