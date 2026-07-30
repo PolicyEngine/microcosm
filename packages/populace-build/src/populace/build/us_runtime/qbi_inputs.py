@@ -266,6 +266,7 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

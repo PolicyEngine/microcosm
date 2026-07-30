@@ -533,6 +533,7 @@ def derive_us_housing_inputs(frame: Frame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -1138,6 +1139,7 @@ def impute_us_housing_assistance_to_puf_support(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -1172,6 +1174,7 @@ def with_us_housing_inputs(
         {entity: carried.weights_for(entity) for entity in carried.weighted_entities},
         carried.strata,
         mass_log=carried.mass_log,
+        metadata=carried.metadata,
     )
 
 

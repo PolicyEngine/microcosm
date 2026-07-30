@@ -442,6 +442,35 @@ def _called_function_names(source: str) -> set[str]:
     }
 
 
+def _frame_metadata_drops(source: str) -> tuple[str, ...]:
+    """Find Frame rebuilds that carry a mass log but drop stage metadata."""
+
+    drops: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call) or _call_name(node) != "Frame":
+            continue
+        keywords = {
+            keyword.arg: keyword.value
+            for keyword in node.keywords
+            if keyword.arg is not None
+        }
+        mass_log = keywords.get("mass_log")
+        if not isinstance(mass_log, ast.Attribute) or mass_log.attr != "mass_log":
+            continue
+        metadata = keywords.get("metadata")
+        same_source = (
+            isinstance(metadata, ast.Attribute)
+            and metadata.attr == "metadata"
+            and ast.dump(metadata.value) == ast.dump(mass_log.value)
+        )
+        if not same_source:
+            drops.append(
+                f"line {node.lineno}: Frame carrying {ast.unparse(mass_log)} "
+                "must carry metadata from the same source frame"
+            )
+    return tuple(drops)
+
+
 def _operator_source_channel_reads(source: str) -> tuple[str, ...]:
     """Compatibility name for the all-entity source-identity detector."""
 
@@ -475,6 +504,20 @@ def test_runtime_classification_rejects_a_new_unreviewed_module() -> None:
     actual = {path.name for path in _US_RUNTIME.glob("*.py")}
     assert _unclassified_runtime_modules(actual | {"future_operator.py"}) == (
         "future_operator.py",
+    )
+
+
+def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
+    """A transformation carrying mass history must also carry stage receipts."""
+
+    offenders = {
+        path.name: drops
+        for path in sorted(_US_RUNTIME.glob("*.py"))
+        if (drops := _frame_metadata_drops(path.read_text()))
+    }
+    assert not offenders, (
+        "US runtime Frame rebuilds must preserve immutable metadata alongside "
+        f"their mass log; found: {offenders}"
     )
 
 

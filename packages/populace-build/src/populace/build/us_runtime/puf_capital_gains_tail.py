@@ -1221,6 +1221,7 @@ def _clone_and_transfer(
             ignore_index=True,
         ),
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     effective_group_weight_before: dict[str, float] = {}
     effective_group_weight_after: dict[str, float] = {}

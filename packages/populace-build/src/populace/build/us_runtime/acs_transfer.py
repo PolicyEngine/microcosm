@@ -775,6 +775,7 @@ def transfer_acs_inputs(
         },
         recipient.strata,
         mass_log=recipient.mass_log,
+        metadata=recipient.metadata,
     )
     return AcsTransferResult(
         frame=frame,

@@ -187,6 +187,7 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
