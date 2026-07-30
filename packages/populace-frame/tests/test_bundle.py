@@ -435,6 +435,32 @@ class TestWithWeights:
             bundle.with_weights("household", wrong, mass=_FREE_MASS)
 
 
+class TestMetadata:
+    def test_metadata_is_deeply_immutable_and_propagates(self, make_bundle) -> None:
+        source = make_bundle()
+        frame = Frame(
+            {entity: source.table(entity) for entity in source.entities},
+            source.schema,
+            {entity: source.weights_for(entity) for entity in source.weighted_entities},
+            source.strata,
+            metadata={
+                "assembly": {
+                    "channels": ["asec", "acs"],
+                    "counts": {"asec": 2, "acs": 1},
+                }
+            },
+        )
+
+        with pytest.raises(TypeError):
+            frame.metadata["assembly"]["counts"]["asec"] = 99
+        replacement = Weights(
+            values=frame.weights_for("household").values,
+            kind=WeightKind.IMPORTANCE,
+        )
+        updated = frame.with_weights("household", replacement, mass="conserve")
+        assert updated.metadata == frame.metadata
+
+
 class TestConcat:
     def test_column_set_mismatch_is_named(self, make_bundle) -> None:
         a = make_bundle()

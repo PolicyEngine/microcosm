@@ -26,6 +26,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -73,7 +77,6 @@ US_MEDICARE_TAKE_UP_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = ("MCARE",)
 _OUTPUT = US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS[0]
 _SOURCE = US_MEDICARE_TAKE_UP_REQUIRED_SOURCE_COLUMNS[0]
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _VALID_SOURCE_CODES = frozenset({0, 1, 2})
 _ENROLLED_CODE = 1
 _EXPECTED_PARAMETERS = {
@@ -204,6 +207,7 @@ def with_us_medicare_take_up_input(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -228,14 +232,9 @@ def us_medicare_take_up_summary(frame: Frame) -> dict[str, object]:
         summary["source_mismatch_count"] = int(
             np.count_nonzero(values != source_values)
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+    if has_support_role_metadata(person, entity="person"):
         channel_shares: dict[str, float] = {}
-        channels = (
-            person[_PERSON_SUPPORT_CHANNEL_COLUMN]
-            .fillna("<missing>")
-            .astype(str)
-            .to_numpy()
-        )
+        channels = support_role_series(person, entity="person").to_numpy()
         for channel in sorted(set(channels.tolist())):
             mask = channels == channel
             channel_weight = float(weights[mask].sum())

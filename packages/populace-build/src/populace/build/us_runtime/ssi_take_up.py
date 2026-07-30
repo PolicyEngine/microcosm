@@ -71,6 +71,13 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_clone_index_column,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -138,10 +145,9 @@ US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
 _SOURCE_ID = "person_source_id"
-_SUPPORT_CHANNEL = "person_support_channel"
-_SUPPORT_CLONE_INDEX = "person_support_clone_index"
-_ASEC_CHANNEL = "asec"
-_PUF_CHANNEL = "puf_tax_detail"
+_SUPPORT_CLONE_INDEX = support_clone_index_column("person")
+_ASEC_CHANNEL = BASE_ASEC_SUPPORT_CHANNEL
+_PUF_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
 _KNOWN_CHANNELS = frozenset((_ASEC_CHANNEL, _PUF_CHANNEL))
 _TARGET_PERIOD = "2024-12"
 _TARGET_MEASURE = "Total with—Federal payment"
@@ -510,16 +516,20 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
     if frame.schema != US_SCHEMA:
         raise ValueError("US SSI take-up requires the US schema.")
     person = frame.table("person")
-    required = {_SOURCE_ID, _SUPPORT_CHANNEL, US_SSI_TAKE_UP_ANCHOR}
+    required = {_SOURCE_ID, US_SSI_TAKE_UP_ANCHOR}
     missing = sorted(required - set(person.columns))
     if missing:
         raise ValueError(
             f"US SSI take-up reporter lineage missing person column(s): {missing}."
         )
-    if person[_SOURCE_ID].isna().any() or person[_SUPPORT_CHANNEL].isna().any():
+    if not has_support_role_metadata(person, entity="person"):
+        raise ValueError(
+            "US SSI take-up reporter lineage is missing support-role provenance."
+        )
+    if person[_SOURCE_ID].isna().any():
         raise ValueError("US SSI take-up reporter lineage requires provenance.")
     source_ids = _decoded_strings(person[_SOURCE_ID])
-    channels = _decoded_strings(person[_SUPPORT_CHANNEL])
+    roles = support_role_series(person, entity="person")
     reported = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -529,7 +539,7 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
             "finite SSI_VAL values."
         )
     reporter_ids = frozenset(
-        source_ids[(channels == _ASEC_CHANNEL).to_numpy() & (reported > 0.0)]
+        source_ids[roles.eq(_ASEC_CHANNEL).to_numpy() & (reported > 0.0)]
     )
     if not reporter_ids:
         raise ValueError("US SSI take-up found no direct ASEC SSI reporters.")
@@ -574,11 +584,13 @@ def _source_table(
             "US SSI take-up requires finite nonnegative person weights with "
             "positive total."
         )
-    if person[_SOURCE_ID].isna().any() or person[_SUPPORT_CHANNEL].isna().any():
+    if person[_SOURCE_ID].isna().any():
+        raise ValueError("US SSI take-up requires complete support provenance.")
+    if not has_support_role_metadata(person, entity="person"):
         raise ValueError("US SSI take-up requires complete support provenance.")
 
     source_ids = _decoded_strings(person[_SOURCE_ID])
-    channels = _decoded_strings(person[_SUPPORT_CHANNEL])
+    channels = support_role_series(person, entity="person")
     if source_ids.str.strip().eq("").any():
         raise ValueError("US SSI take-up source identities must be nonblank.")
     observed_channels = set(channels.unique())
@@ -637,14 +649,6 @@ def _source_table(
                 "nonnegative integers."
             )
         clone_index = clone_index.astype(np.int64)
-        invalid_channel_index = (
-            channels.eq(_ASEC_CHANNEL).to_numpy() & (clone_index != 0)
-        ) | (channels.eq(_PUF_CHANNEL).to_numpy() & (clone_index < 1))
-        if invalid_channel_index.any():
-            raise ValueError(
-                "US SSI take-up support clone indices must identify ASEC as "
-                "clone 0 and PUF support as clone 1 or later."
-            )
         rows["clone_index"] = clone_index
         lineage_key.append("clone_index")
     duplicated_channel = rows.duplicated(lineage_key, keep=False)
@@ -1275,6 +1279,7 @@ def with_us_ssi_take_up(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     return result, diagnostics
 

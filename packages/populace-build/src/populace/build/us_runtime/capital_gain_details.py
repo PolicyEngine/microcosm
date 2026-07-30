@@ -22,6 +22,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -166,12 +170,11 @@ def _column_summary(
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    support_channel = f"{entity}_support_channel"
-    if support_channel in table.columns:
-        channel_values = table[support_channel].to_numpy()
+    if has_support_role_metadata(table, entity=entity):
+        role_values = support_role_series(table, entity=entity).to_numpy()
         channels: dict[str, dict[str, float | int]] = {}
-        for channel in table[support_channel].dropna().unique():
-            channel_mask = channel_values == channel
+        for channel in pd.unique(role_values):
+            channel_mask = role_values == channel
             channel_weight = float(weights[channel_mask].sum())
             channel_positive = channel_mask & positive
             channels[str(channel)] = {

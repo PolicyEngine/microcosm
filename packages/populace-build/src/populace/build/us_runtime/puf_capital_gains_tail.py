@@ -23,8 +23,11 @@ from populace.build.us_runtime.puf_interest_components import (
 from populace.build.us_runtime.puf_support import (
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
+from populace.build.us_runtime.support_provenance import (
+    PUF_TAX_DETAIL_CLONE_INDEX,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
-    support_channel_column,
+    puf_tax_detail_clone_mask,
     support_clone_index_column,
     support_source_id_column,
 )
@@ -776,22 +779,20 @@ def _recipient_candidates(
     person = frame.table("person")
     household = frame.table("household")
     tax_unit = frame.table("tax_unit")
-    person_channel = support_channel_column("person")
-    household_channel = support_channel_column("household")
-    tax_unit_channel = support_channel_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    household_clone_index = support_clone_index_column("household")
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
     for table, column in (
-        (person, person_channel),
-        (household, household_channel),
-        (tax_unit, tax_unit_channel),
+        (person, person_clone_index),
+        (household, household_clone_index),
+        (tax_unit, tax_unit_clone_index),
     ):
         if column not in table:
             raise ValueError(
                 f"PUF capital-gains tail transfer requires metadata column {column!r}."
             )
 
-    puf_people = person.loc[
-        person[person_channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL
-    ]
+    puf_people = person.loc[puf_tax_detail_clone_mask(person, entity="person")]
     tax_to_household_counts = puf_people.groupby(
         "person_tax_unit_id",
         sort=False,
@@ -804,7 +805,7 @@ def _recipient_candidates(
     )["person_household_id"].first()
 
     puf_tax_units = tax_unit.loc[
-        tax_unit[tax_unit_channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+        puf_tax_detail_clone_mask(tax_unit, entity="tax_unit")
     ].copy()
     puf_tax_units.rename(
         columns={"tax_unit_id": "recipient_tax_unit_id"},
@@ -832,7 +833,7 @@ def _recipient_candidates(
     )
     puf_household_ids = set(
         household.loc[
-            household[household_channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            puf_tax_detail_clone_mask(household, entity="household"),
             "household_id",
         ].astype("int64")
     )
@@ -993,7 +994,6 @@ def _clone_and_transfer(
     frame: Frame,
     assignments: pd.DataFrame,
 ) -> tuple[Frame, dict[str, object]]:
-    id_multiplier = _support_clone_multiplier(frame)
     selected_household_ids = set(assignments["recipient_household_id"].astype("int64"))
     person = frame.table("person")
     selected_person_mask = (
@@ -1035,6 +1035,7 @@ def _clone_and_transfer(
                 "household boundary; refusing a partial graph clone."
             )
 
+    id_multiplier = _support_clone_multiplier(frame)
     tables: dict[str, pd.DataFrame] = {}
     selected_masks: dict[str, np.ndarray] = {}
     before_rows: dict[str, int] = {}
@@ -1047,16 +1048,12 @@ def _clone_and_transfer(
         clone = table.loc[selected_mask].copy()
         if clone.empty:
             raise ValueError(f"PUF tail selection has no {entity} rows to clone.")
-        clone_channel = support_channel_column(entity)
         clone_index = support_clone_index_column(entity)
-        source_id = support_source_id_column(entity)
         if not (
-            clone[clone_channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+            clone[clone_index].to_numpy(dtype=np.int64) == PUF_TAX_DETAIL_CLONE_INDEX
         ).all():
-            raise ValueError(f"PUF tail selected a non-PUF {entity} row.")
-        if not (clone[clone_index].to_numpy(dtype=np.int64) == 1).all():
             raise ValueError(f"PUF tail selected a non-primary PUF {entity} clone.")
-        clone[primary] = clone[source_id].to_numpy(dtype=np.int64) + 2 * id_multiplier
+        clone[primary] = clone[primary].to_numpy(dtype=np.int64) + id_multiplier
         if entity == frame.schema.person_entity:
             for group in frame.schema.group_entities:
                 membership = frame.schema.membership_column(group)
@@ -1064,7 +1061,6 @@ def _clone_and_transfer(
                     clone[membership].to_numpy(dtype=np.int64) + id_multiplier
                 )
         clone[clone_index] = 2
-        clone[clone_channel] = PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL
         combined = pd.concat([table, clone], ignore_index=True)
         if combined[primary].duplicated().any():
             raise ValueError(f"PUF tail cloned duplicate {primary} values.")
@@ -1225,6 +1221,7 @@ def _clone_and_transfer(
             ignore_index=True,
         ),
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     effective_group_weight_before: dict[str, float] = {}
     effective_group_weight_after: dict[str, float] = {}
@@ -1278,27 +1275,29 @@ def _support_clone_multiplier(frame: Frame) -> int:
     multiplier: int | None = None
     for entity in frame.entities:
         table = frame.table(entity)
-        channel = support_channel_column(entity)
         clone_index = support_clone_index_column(entity)
         source_id = support_source_id_column(entity)
-        missing = [
-            column
-            for column in (channel, clone_index, source_id)
-            if column not in table
-        ]
+        missing = [column for column in (clone_index, source_id) if column not in table]
         if missing:
             raise ValueError(f"PUF support {entity} metadata missing: {missing}.")
         if (table[clone_index].to_numpy(dtype=np.int64) >= 2).any():
             raise ValueError("PUF capital-gains tail transfer must run exactly once.")
-        puf = table[channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+        puf = puf_tax_detail_clone_mask(table, entity=entity)
         if not puf.any():
-            raise ValueError(f"PUF support channel has no {entity} rows.")
-        if not (table.loc[puf, clone_index].to_numpy(dtype=np.int64) == 1).all():
-            raise ValueError(f"PUF support {entity} clone indices are inconsistent.")
+            raise ValueError(f"PUF detail clone has no {entity} rows.")
+        native = table[clone_index].to_numpy(dtype=np.int64) == 0
+        native_ids = np.sort(
+            table.loc[native, frame.schema.entity_id_column(entity)].to_numpy(
+                dtype=np.int64
+            )
+        )
         primary = frame.schema.entity_id_column(entity)
-        differences = table.loc[puf, primary].to_numpy(dtype=np.int64) - table.loc[
-            puf, source_id
-        ].to_numpy(dtype=np.int64)
+        puf_ids = np.sort(table.loc[puf, primary].to_numpy(dtype=np.int64))
+        if len(native_ids) != len(puf_ids):
+            raise ValueError(
+                f"PUF support {entity} native and detail clone counts differ."
+            )
+        differences = puf_ids - native_ids
         unique = np.unique(differences)
         if len(unique) != 1 or int(unique[0]) <= 0:
             raise ValueError(f"PUF support {entity} IDs do not share one clone offset.")

@@ -34,6 +34,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.build.us_runtime.voluntary_filing import (
     SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
@@ -97,7 +101,6 @@ US_SIPP_HEAD_START_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 _OUTPUT = US_SIPP_HEAD_START_OUTPUT_COLUMNS[0]
 _DONOR_WEIGHT_COLUMN = "sipp_weight"
 _PERSON_SOURCE_ID_COLUMN = "person_source_id"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _ASEC_CHANNEL = "asec"
 _PUF_CHANNEL = "puf_tax_detail"
 _DEFAULT_N_ESTIMATORS = 100
@@ -474,6 +477,27 @@ def _decoded_strings(series: pd.Series) -> pd.Series:
     ).astype(str)
 
 
+def _support_group_keys(
+    person: pd.DataFrame,
+    source_id: pd.Series,
+) -> tuple[pd.Series, pd.Series]:
+    """Return clone-pair keys without consulting source-spine channels."""
+
+    if not has_support_role_metadata(person, entity="person"):
+        return (
+            source_id.astype(object),
+            pd.Series(_ASEC_CHANNEL, index=person.index),
+        )
+    try:
+        roles = support_role_series(person, entity="person")
+    except ValueError as exc:
+        raise ValueError(
+            "US SIPP Head Start found unsupported support channel or "
+            f"clone-role metadata: {exc}"
+        ) from exc
+    return source_id.astype(object), roles
+
+
 def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.ndarray]:
     person = frame.table("person")
     missing = [
@@ -537,8 +561,9 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
     )
 
     source_id = _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN])
+    source_key, roles = _support_group_keys(person, source_id)
     age_unique = (
-        pd.Series(age, index=person.index).groupby(source_id, sort=False).nunique()
+        pd.Series(age, index=person.index).groupby(source_key, sort=False).nunique()
     )
     inconsistent = age_unique.index[age_unique > 1].tolist()
     if inconsistent:
@@ -546,32 +571,38 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
             "US SIPP Head Start source clones disagree on age for "
             f"person_source_id(s): {inconsistent[:5]}."
         )
+    role_rows = pd.DataFrame({"source_id": source_id, "role": roles})
+    duplicate_roles = role_rows.duplicated(
+        ["source_id", "role"],
+        keep=False,
+    )
+    if duplicate_roles.any():
+        bad = (
+            role_rows.loc[duplicate_roles, ["source_id", "role"]]
+            .drop_duplicates()
+            .itertuples(index=False, name=None)
+        )
+        raise ValueError(
+            "US SIPP Head Start source units carry duplicated same-role rows; "
+            f"invalid source role(s): {list(bad)[:5]}."
+        )
 
     order = pd.DataFrame(index=person.index)
     order["source_id"] = source_id
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        if person[_PERSON_SUPPORT_CHANNEL_COLUMN].isna().any():
-            raise ValueError("US SIPP Head Start support channel is missing.")
-        channels = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN])
-        unexpected = sorted(set(channels) - {_ASEC_CHANNEL, _PUF_CHANNEL})
-        if unexpected:
-            raise ValueError(
-                "US SIPP Head Start found unsupported support channel(s): "
-                f"{unexpected}."
-            )
-        order["channel_priority"] = channels.map({_ASEC_CHANNEL: 0, _PUF_CHANNEL: 1})
-    else:
-        order["channel_priority"] = 0
+    order["source_key"] = source_key
+    order["role_priority"] = roles.map({_ASEC_CHANNEL: 0, _PUF_CHANNEL: 1})
     order["person_key"] = person["person_id"].astype(str)
     canonical_index = (
         order.sort_values(
-            ["source_id", "channel_priority", "person_key"], kind="mergesort"
+            ["source_id", "role_priority", "person_key"],
+            kind="mergesort",
         )
-        .drop_duplicates("source_id", keep="first")
+        .drop_duplicates("source_key", keep="first")
         .index
     )
     canonical = features.loc[canonical_index].copy()
-    canonical.insert(0, "source_id", source_id.loc[canonical_index].to_numpy())
+    canonical.insert(0, "source_key", source_key.loc[canonical_index].to_numpy())
+    canonical.insert(1, "source_id", source_id.loc[canonical_index].to_numpy())
     canonical = canonical.sort_values("source_id", kind="mergesort").reset_index(
         drop=True
     )
@@ -585,7 +616,7 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
         .between(_ELIGIBLE_MIN_AGE, _ELIGIBLE_MAX_AGE, inclusive="both")
         .to_numpy()
     )
-    return canonical, source_id, eligible
+    return canonical, source_key, eligible
 
 
 def _coerce_boolean_prediction(values: pd.Series | np.ndarray) -> np.ndarray:
@@ -641,7 +672,7 @@ def impute_us_sipp_head_start(
         raise ValueError("SIPP Head Start donor target must contain both classes.")
     training[_OUTPUT] = target.astype(bool)
 
-    canonical, source_id, eligible = _recipient_predictors(frame)
+    canonical, source_key, eligible = _recipient_predictors(frame)
     global QRF
     if QRF is None:
         from importlib import import_module
@@ -661,8 +692,8 @@ def impute_us_sipp_head_start(
         if _OUTPUT not in predicted:
             raise ValueError(f"SIPP Head Start QRF prediction missing {_OUTPUT!r}.")
         decisions[eligible] = _coerce_boolean_prediction(predicted[_OUTPUT])
-    decision_by_source = pd.Series(decisions, index=canonical["source_id"])
-    result = source_id.map(decision_by_source)
+    decision_by_source = pd.Series(decisions, index=canonical["source_key"])
+    result = source_key.map(decision_by_source)
     if result.isna().any():
         raise ValueError(
             "SIPP Head Start prediction did not cover every source person."
@@ -712,6 +743,7 @@ def with_us_sipp_head_start_input(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -741,18 +773,20 @@ def us_sipp_head_start_summary(frame: Frame) -> dict[str, object]:
         _PERSON_SOURCE_ID_COLUMN not in person
         or person.get(_PERSON_SOURCE_ID_COLUMN, pd.Series(dtype=object)).isna().any()
     )
-    channel_invalid = False
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel_source = person[_PERSON_SUPPORT_CHANNEL_COLUMN]
-        channel_invalid = bool(
-            channel_source.isna().any()
-            or not set(_decoded_strings(channel_source)).issubset(
-                {_ASEC_CHANNEL, _PUF_CHANNEL}
-            )
-        )
+    role_invalid = False
+    roles: pd.Series | None = None
+    if has_support_role_metadata(person, entity="person"):
+        try:
+            roles = support_role_series(person, entity="person")
+        except ValueError:
+            role_invalid = True
     clone_groups = clone_mismatches = 0
     if not provenance_missing:
-        keys = _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN])
+        source_ids = _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN])
+        if role_invalid:
+            keys = source_ids.astype(object)
+        else:
+            keys, _ = _support_group_keys(person, source_ids)
         work = pd.DataFrame({"key": keys, "value": values})
         sizes = work.groupby("key", sort=False).size()
         clone_groups = int((sizes > 1).sum())
@@ -775,15 +809,14 @@ def us_sipp_head_start_summary(frame: Frame) -> dict[str, object]:
         "eligible_weighted_take_up_share_band": list(_ELIGIBLE_TAKE_UP_SHARE_BAND),
         "out_of_domain_positive_count": int(np.count_nonzero(~eligible & values)),
         "support_provenance_missing": provenance_missing,
-        "support_channel_invalid": channel_invalid,
+        "support_channel_invalid": role_invalid,
         "clone_group_count": clone_groups,
         "clone_mismatch_count": clone_mismatches,
     }
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN])
+    if roles is not None:
         channel_shares: dict[str, float] = {}
-        for name in sorted(channel.unique()):
-            mask = channel.eq(name).to_numpy() & eligible
+        for name in sorted(roles.unique()):
+            mask = roles.eq(name).to_numpy() & eligible
             denominator = float(weights[mask].sum())
             channel_shares[name] = (
                 float(weights[mask & values].sum()) / denominator

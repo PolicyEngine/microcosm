@@ -70,6 +70,11 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -120,7 +125,6 @@ _PERSON_WEIGHT_COLUMN = "person_weight"
 _TAX_UNIT_WEIGHT_COLUMN = "adult_care_tax_unit_weight"
 _SPM_UNIT_WEIGHT_COLUMN = "adult_care_spm_unit_weight"
 _PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _ROLE_COLUMN = "tax_unit_role_input"
 _AGE_COLUMN = "age"
 _FLAG_SHARE_BAND = (0.002, 0.12)
@@ -297,12 +301,13 @@ def derive_us_adult_care_from_manifest(
             f"US adult-care donor {_CHILDCARE_SOURCE!r} contains "
             f"{negative_childcare} negative value(s)."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in person.columns:
+    if not has_support_role_metadata(person, entity="person"):
         raise SourceRuntimeError(
-            "US adult-care derivation requires the support-channel column "
-            f"{_PERSON_SUPPORT_CHANNEL_COLUMN!r}; without provenance the "
+            "US adult-care derivation requires support-role provenance; "
+            "without it the "
             "measured-ASEC donor statistics cannot be certified."
         )
+    support_role = support_role_series(person, entity="person")
 
     role = _role(person)
     is_head = (role == "HEAD").to_numpy()
@@ -353,10 +358,7 @@ def derive_us_adult_care_from_manifest(
                 if "person_spm_unit_id" in person.columns
                 else person["person_tax_unit_id"].to_numpy()
             ),
-            "asec": (
-                person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-                == _BASE_ASEC_SUPPORT_CHANNEL
-            ).to_numpy(),
+            "asec": (support_role == BASE_ASEC_SUPPORT_CHANNEL).to_numpy(),
         }
     )
     units = unit_frame.groupby("unit", sort=False).agg(
@@ -605,6 +607,7 @@ def with_us_adult_care_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

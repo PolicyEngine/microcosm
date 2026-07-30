@@ -640,6 +640,18 @@ def test_puf_only_survivor_units_predict_from_the_surviving_clone(
     assert predicted[survivors.to_numpy()].all()
 
 
+def test_duplicate_same_role_source_rows_fail_closed() -> None:
+    expanded = clone_us_frame_for_puf_support(_frame(10))
+    tax_unit = expanded.table("tax_unit")
+    asec_rows = tax_unit.index[tax_unit["tax_unit_support_channel"].eq("asec")].tolist()
+    tax_unit.loc[asec_rows[1], "tax_unit_source_id"] = tax_unit.loc[
+        asec_rows[0], "tax_unit_source_id"
+    ]
+
+    with pytest.raises(ValueError, match="duplicated same-role rows"):
+        impute_us_voluntary_filing(expanded, _donor(), seed=17)
+
+
 def test_real_qrf_recomputation_is_deterministic() -> None:
     frame = _frame(14)
     donor = _donor(120)

@@ -283,6 +283,23 @@ def test_puf_support_channel_refuses_duplicate_or_missing_puf_channel() -> None:
     with pytest.raises(ValueError, match="must include 'puf_tax_detail'"):
         clone_us_frame_for_puf_support(frame, channels=("asec", "tail"))
 
+    with pytest.raises(ValueError, match="canonical ASEC/PUF roles"):
+        clone_us_frame_for_puf_support(
+            frame,
+            channels=("asec", "puf_tax_detail", "tail"),
+        )
+
+
+def test_puf_support_channel_rejects_fractional_ids_without_truncation() -> None:
+    frame = _minimal_us_frame()
+    frame.table("person")["person_id"] = frame.table("person")["person_id"].astype(
+        np.float64
+    )
+    frame.table("person").loc[0, "person_id"] = 1.5
+
+    with pytest.raises(ValueError, match="integral"):
+        clone_us_frame_for_puf_support(frame)
+
 
 def test_puf_support_channel_refuses_to_run_twice() -> None:
     expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
