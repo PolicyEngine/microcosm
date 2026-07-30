@@ -34,6 +34,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -78,7 +82,6 @@ US_CHILDCARE_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 
 _OUTPUT = US_CHILDCARE_OUTPUT_COLUMNS[0]
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PUF_PREDICTORS: tuple[str, ...] = (
@@ -229,7 +232,7 @@ def impute_us_childcare_to_puf_support_from_manifest(
             "US childcare PUF imputation parameters must match the archived "
             f"method; missing={missing_parameters}, unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -267,9 +270,9 @@ def impute_us_childcare_to_puf_support_from_manifest(
             f"US childcare PUF imputation is missing source column(s): {missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    role = support_role_series(frame, entity="person")
+    asec_mask = role == _BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = role == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US childcare PUF imputation requires nonempty ASEC and "
@@ -486,7 +489,7 @@ def with_us_childcare_inputs(
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+    if has_support_role_metadata(person, entity="person"):
         predictors = _person_childcare_predictors(frame)
         for column in _PUF_PREDICTORS:
             stage_person[_PUF_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()

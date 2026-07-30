@@ -28,6 +28,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -158,11 +162,11 @@ def us_domestic_production_ald_summary(frame: Frame) -> dict[str, object]:
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    support_channel = "tax_unit_support_channel"
-    if support_channel in tax_unit.columns:
+    if has_support_role_metadata(tax_unit, entity="tax_unit"):
+        role_values = support_role_series(tax_unit, entity="tax_unit").to_numpy()
         channels: dict[str, dict[str, float | int]] = {}
-        for channel in tax_unit[support_channel].dropna().unique():
-            channel_mask = tax_unit[support_channel].to_numpy() == channel
+        for channel in pd.unique(role_values):
+            channel_mask = role_values == channel
             channel_weight = float(weights[channel_mask].sum())
             channel_positive = channel_mask & positive
             channels[str(channel)] = {

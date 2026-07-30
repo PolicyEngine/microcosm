@@ -37,6 +37,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 from populace.frame.units import US_SCHEMA
@@ -144,7 +148,6 @@ _SE_MEDICARE_SSDI_SOURCE = "social_security_disability"
 # coverage is the conservative, incomplete proxy for that eligibility.
 _SE_EMPLOYER_COVERAGE_SOURCE = "has_esi"
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PREDICTORS: tuple[str, ...] = (
@@ -308,7 +311,7 @@ def impute_us_other_health_insurance_to_puf_support_from_manifest(
             f"archived method; missing={missing_parameters}, "
             f"unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -351,9 +354,9 @@ def impute_us_other_health_insurance_to_puf_support_from_manifest(
             f"US other-health-insurance PUF imputation is missing column(s): {missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    role = support_role_series(frame, entity="person")
+    asec_mask = role == _BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = role == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US other-health-insurance PUF imputation requires nonempty ASEC "
@@ -877,7 +880,7 @@ def with_us_other_health_insurance_inputs(
             variable=variable,
         )
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+    if has_support_role_metadata(person, entity="person"):
         predictors = _person_other_health_insurance_predictors(frame)
         for column in _PREDICTORS:
             stage_person[_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
@@ -926,8 +929,8 @@ def us_other_health_insurance_summary(frame: Frame) -> dict[str, object]:
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
     channel = (
-        person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
-        if _PERSON_SUPPORT_CHANNEL_COLUMN in person
+        support_role_series(person, entity="person").to_numpy()
+        if has_support_role_metadata(person, entity="person")
         else None
     )
     columns: dict[str, dict[str, object]] = {}

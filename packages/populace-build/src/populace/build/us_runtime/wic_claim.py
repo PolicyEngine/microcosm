@@ -45,6 +45,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -99,7 +103,6 @@ US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 
 _OUTPUT = US_WIC_CLAIM_OUTPUT_COLUMNS[0]
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _PERSON_SUPPORT_SOURCE_ID_COLUMN = "person_support_source_id"
 _SOURCE_IDENTITY_COLUMNS = (
     "source_year",
@@ -582,13 +585,8 @@ def us_wic_claim_summary(frame: Frame) -> dict[str, object]:
         **_clone_diagnostics(person, categories=categories, claims=claims),
     }
 
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns:
-        channels = (
-            person[_PERSON_SUPPORT_CHANNEL_COLUMN]
-            .fillna("<missing>")
-            .astype(str)
-            .to_numpy()
-        )
+    if has_support_role_metadata(person, entity="person"):
+        channels = support_role_series(person, entity="person").to_numpy()
         channel_shares: dict[str, float] = {}
         channel_unique_counts: dict[str, int] = {}
         for channel in sorted(set(channels.tolist())):

@@ -59,7 +59,7 @@ def support_clone_index_column(entity: str) -> str:
 
 
 def support_source_id_column(entity: str) -> str:
-    """Return the entity-prefixed source-record ID metadata column."""
+    """Return the entity-prefixed assembly-unique pre-clone ID column."""
 
     _require_entity_name(entity)
     return f"{entity}_source_id"
@@ -136,6 +136,46 @@ def support_role_series(
             f"PUF support metadata column {clone_index_column!r} must contain "
             "nonnegative integers."
         )
+    channel_column = support_channel_column(entity)
+    if channel_column not in table:
+        raise ValueError(
+            f"PUF support metadata requires complete support provenance; "
+            f"missing {channel_column!r}."
+        )
+    channels = table[channel_column]
+    invalid_channels = channels.isna() | ~channels.map(
+        lambda value: isinstance(value, str) and bool(value.strip())
+    )
+    if invalid_channels.any():
+        raise ValueError(
+            f"PUF support metadata column {channel_column!r} requires complete "
+            "support provenance."
+        )
+
+    # Before multispine assembly, this column carried the operator role. Keep
+    # validating that historical contract so malformed current-lineage frames
+    # still fail closed. Assembled frames carry a raw spine ID and use the
+    # channel for immutable source identity, so arbitrary declared source names
+    # are valid and never influence the returned operator role.
+    if spine_source_id_column(entity) not in table:
+        valid = channels.isin(
+            (BASE_ASEC_SUPPORT_CHANNEL, PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+        )
+        if not valid.all():
+            invalid = sorted(set(channels.loc[~valid].astype(str)))
+            raise ValueError(
+                f"Legacy support metadata column {channel_column!r} has an "
+                "unsupported support channel; expected exact ASEC/PUF roles, "
+                f"got {invalid}."
+            )
+        inconsistent = channels.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy() != (
+            clone_indices == 0
+        )
+        if inconsistent.any():
+            raise ValueError(
+                f"Legacy support metadata columns {channel_column!r} and "
+                f"{clone_index_column!r} are inconsistent."
+            )
     return pd.Series(
         np.where(
             clone_indices == 0,

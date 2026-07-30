@@ -7,9 +7,9 @@ Populace #395 increment 1 is in implementation on
 The opt-in pre-operator spine assembly seam and pre-calibration
 spine-agreement contract are implemented and focused tests pass. PUF
 operator-clone roles are now separate from immutable source-spine provenance.
-The remaining population-operator migration and spine-blindness structural
-guard are in progress. Current sparse and dense release behavior remains
-unwired to the new seam.
+The population-operator migration and spine-blindness structural guard are
+implemented and their focused regression suites pass. Current sparse and
+dense release behavior remains unwired to the new seam.
 
 ## Done
 
@@ -58,9 +58,22 @@ unwired to the new seam.
 - Added combined-frame clone/QRF tests and passed the 69-test PUF support,
   QRF-chain, capital-gains-tail, and multispine-clone regression set. Assembly
   tests and focused ruff/diff checks also pass.
+- Migrated the population operators that formerly treated
+  `*_support_channel` as an ASEC/PUF switch to the centralized clone-role
+  resolver. On assembled frames, clone indices determine the native or
+  PUF-detail role while arbitrary declared source channels remain inert.
+- Preserved the current unassembled lineage's fail-closed checks: without raw
+  spine IDs, the historical channel field must still contain complete,
+  clone-consistent ASEC/PUF role labels.
+- Added an AST guard over the full US runtime and an exact registry of the 27
+  migrated population-operator modules. It rejects direct source-channel or
+  source-spine reads and separately pins clone-index routing in the PUF clone,
+  QRF, and tail stages.
+- Passed the 28-module focused operator regression suite after the compatibility
+  validation change; the four-test structural guard, ruff checks, and diff
+  whitespace checks also pass.
 
 ## Next
 
-- Complete the remaining population-operator clone-role migration and add
-  structural spine-blindness enforcement.
-- Add the design note, changelog fragment, and focused/full verification.
+- Commit the design note and changelog fragment.
+- Run the current-lineage builder suites and final combined verification.

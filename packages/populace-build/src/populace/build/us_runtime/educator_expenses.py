@@ -23,6 +23,12 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -62,9 +68,6 @@ US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS: tuple[str, ...] = ("educator_expense",)
 US_EDUCATOR_EXPENSE_NONCONSTANT_PERSON_COLUMNS = US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS
 
 _OUTPUT = US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS[0]
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
-_PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _OVERALL_POSITIVE_SHARE_BAND = (0.002, 0.04)
 _PUF_POSITIVE_SHARE_BAND = (0.005, 0.08)
 
@@ -136,10 +139,13 @@ def us_educator_expense_summary(frame: Frame) -> dict[str, object]:
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel = person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+    if has_support_role_metadata(person, entity="person"):
+        channel = support_role_series(person, entity="person").to_numpy()
         channels: dict[str, dict[str, float | int]] = {}
-        for name in (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL):
+        for name in (
+            BASE_ASEC_SUPPORT_CHANNEL,
+            PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        ):
             mask = channel == name
             channel_weight = float(weights[mask].sum())
             channels[name] = {
@@ -185,8 +191,8 @@ def us_educator_expense_signal_gate(frame: Frame) -> GateResult:
 
     channels = summary.get("channels")
     if isinstance(channels, dict):
-        asec = channels.get(_BASE_ASEC_SUPPORT_CHANNEL)
-        puf = channels.get(_PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+        asec = channels.get(BASE_ASEC_SUPPORT_CHANNEL)
+        puf = channels.get(PUF_TAX_DETAIL_SUPPORT_CHANNEL)
         if not isinstance(asec, dict) or not isinstance(puf, dict):
             failures.append(f"{_OUTPUT}: missing support-channel diagnostics.")
         else:

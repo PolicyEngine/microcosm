@@ -24,6 +24,11 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -100,8 +105,6 @@ US_QBI_OUTPUT_COLUMNS: tuple[str, ...] = (
 )
 US_QBI_NONCONSTANT_PERSON_COLUMNS = US_QBI_OUTPUT_COLUMNS
 
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _SELF_EMPLOYMENT_COLUMN = "self_employment_income_before_lsr"
 _SSTB_SELF_EMPLOYMENT_COLUMN = "sstb_self_employment_income_before_lsr"
 _BOOLEAN_SHARE_BANDS: dict[str, tuple[float, float]] = {
@@ -169,10 +172,10 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
 
     result = person.copy(deep=True)
     asec_mask = np.zeros(len(result), dtype=bool)
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in result:
+    if has_support_role_metadata(result, entity="person"):
         asec_mask = (
-            result[_PERSON_SUPPORT_CHANNEL_COLUMN].to_numpy(dtype=object)
-            == _BASE_ASEC_SUPPORT_CHANNEL
+            support_role_series(result, entity="person").to_numpy()
+            == BASE_ASEC_SUPPORT_CHANNEL
         )
 
     flags: dict[str, np.ndarray] = {}

@@ -32,6 +32,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -89,7 +93,6 @@ US_DISABILITY_BENEFITS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 
 _OUTPUT = US_DISABILITY_BENEFITS_OUTPUT_COLUMNS[0]
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PREDICTORS: tuple[str, ...] = (
@@ -276,7 +279,7 @@ def impute_us_disability_benefits_to_puf_support_from_manifest(
             f"archived method; missing={missing_parameters}, "
             f"unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -310,9 +313,9 @@ def impute_us_disability_benefits_to_puf_support_from_manifest(
             f"US disability-benefits PUF imputation is missing column(s): {missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    role = support_role_series(frame, entity="person")
+    asec_mask = role == _BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = role == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US disability-benefits PUF imputation requires nonempty ASEC and "
@@ -530,7 +533,7 @@ def with_us_disability_benefits(
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+    if has_support_role_metadata(person, entity="person"):
         predictors = _person_disability_benefits_predictors(frame)
         for column in _PREDICTORS:
             stage_person[_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
@@ -581,8 +584,8 @@ def us_disability_benefits_summary(frame: Frame) -> dict[str, object]:
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel = person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+    if has_support_role_metadata(person, entity="person"):
+        channel = support_role_series(person, entity="person").to_numpy()
         channels: dict[str, dict[str, float | int]] = {}
         for name in (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL):
             mask = channel == name

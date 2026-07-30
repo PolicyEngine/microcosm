@@ -36,6 +36,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -73,7 +77,6 @@ US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 )
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PUF_PREDICTORS: tuple[str, ...] = (
@@ -270,7 +273,7 @@ def impute_us_retirement_contributions_to_puf_support_from_manifest(
             f"the archived method; missing={missing_parameters}, "
             f"unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -310,9 +313,9 @@ def impute_us_retirement_contributions_to_puf_support_from_manifest(
             f"column(s): {missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    roles = support_role_series(frame, entity="person")
+    asec_mask = roles == _BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = roles == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US retirement-contribution PUF imputation requires nonempty ASEC "
@@ -509,16 +512,13 @@ def with_us_retirement_contribution_inputs(
     if frame.schema != US_SCHEMA:
         raise ValueError("US retirement contributions require the US schema.")
     person = frame.table("person")
-    has_support_channels = _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns
-    if (
-        _retirement_contribution_surface_carries_signal(frame)
-        and not has_support_channels
-    ):
+    has_support_roles = has_support_role_metadata(person, entity="person")
+    if _retirement_contribution_surface_carries_signal(frame) and not has_support_roles:
         return frame
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if has_support_channels:
+    if has_support_roles:
         predictors = _person_retirement_predictors(frame)
         for column in _PUF_PREDICTORS:
             stage_person[_PUF_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()

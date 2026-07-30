@@ -37,6 +37,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -126,7 +130,6 @@ _DONOR_WEIGHT_COLUMN = "tax_unit_weight"
 _DONOR_SOURCE_KEY_COLUMN = "source_tax_unit_key"
 _DEFAULT_N_ESTIMATORS = 100
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
-_TAX_UNIT_SUPPORT_CHANNEL_COLUMN = "tax_unit_support_channel"
 _TAX_UNIT_SOURCE_ID_COLUMN = "tax_unit_source_id"
 _TRUE_SHARE_BAND = (0.45, 0.95)
 _EXPECTED_READ_PARAMETERS: dict[str, object] = {
@@ -726,7 +729,7 @@ def _source_receiver_rows(
                 "US voluntary-filing receiver has missing tax_unit_source_id."
             )
     else:
-        if _TAX_UNIT_SUPPORT_CHANNEL_COLUMN in tax_unit:
+        if has_support_role_metadata(tax_unit, entity="tax_unit"):
             raise ValueError(
                 "US voluntary-filing support clones require tax_unit_source_id."
             )
@@ -735,14 +738,20 @@ def _source_receiver_rows(
     rows = receiver.copy()
     rows["_source_id"] = _decoded_strings(source_ids).to_numpy()
     rows["_tax_unit_id"] = tax_unit["tax_unit_id"].to_numpy()
-    if _TAX_UNIT_SUPPORT_CHANNEL_COLUMN in tax_unit:
-        rows["_support_channel"] = _decoded_strings(
-            tax_unit[_TAX_UNIT_SUPPORT_CHANNEL_COLUMN]
+    if has_support_role_metadata(tax_unit, entity="tax_unit"):
+        rows["_support_role"] = support_role_series(
+            tax_unit, entity="tax_unit"
         ).to_numpy()
+        rows["_source_occurrence"] = rows.groupby(
+            ["_source_id", "_support_role"], sort=False
+        ).cumcount()
+        rows["_source_key"] = list(
+            zip(rows["_source_id"], rows["_source_occurrence"], strict=True)
+        )
         asec_counts = (
-            rows["_support_channel"]
+            rows["_support_role"]
             .eq(_BASE_ASEC_SUPPORT_CHANNEL)
-            .groupby(rows["_source_id"])
+            .groupby(rows["_source_key"])
             .sum()
         )
         if asec_counts.gt(1).any():
@@ -759,14 +768,20 @@ def _source_receiver_rows(
         # deterministically by channel then tax-unit id.
         ordered_rows = rows.copy()
         ordered_rows["_asec_rank"] = (
-            ~ordered_rows["_support_channel"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
+            ~ordered_rows["_support_role"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
         ).astype(int)
         source_rows = (
             ordered_rows.sort_values(
-                ["_source_id", "_asec_rank", "_support_channel", "_tax_unit_id"],
+                [
+                    "_source_id",
+                    "_source_occurrence",
+                    "_asec_rank",
+                    "_support_role",
+                    "_tax_unit_id",
+                ],
                 kind="stable",
             )
-            .drop_duplicates("_source_id", keep="first")
+            .drop_duplicates("_source_key", keep="first")
             .drop(columns="_asec_rank")
         )
     else:
@@ -779,11 +794,15 @@ def _source_receiver_rows(
                 f"unit(s) {duplicates[:5]}."
             )
         source_rows = rows
+        rows["_source_key"] = rows["_source_id"]
+        source_rows["_source_key"] = source_rows["_source_id"]
 
-    source_rows = source_rows.sort_values("_source_id", kind="stable")
+    source_rows = source_rows.sort_values(["_source_id", "_source_key"], kind="stable")
     prediction_rows = source_rows.loc[:, list(SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS)]
-    prediction_rows.index = source_rows["_source_id"].to_numpy()
-    return prediction_rows, rows["_source_id"]
+    prediction_rows.index = pd.Index(
+        source_rows["_source_key"].tolist(), tupleize_cols=False
+    )
+    return prediction_rows, rows["_source_key"]
 
 
 def impute_us_voluntary_filing(
@@ -962,8 +981,8 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
     clone_source_units = 0
     clone_metadata_missing = False
     channel_diagnostics: dict[str, dict[str, float | int]] = {}
-    if _TAX_UNIT_SUPPORT_CHANNEL_COLUMN in tax_unit:
-        channels = _decoded_strings(tax_unit[_TAX_UNIT_SUPPORT_CHANNEL_COLUMN])
+    if has_support_role_metadata(tax_unit, entity="tax_unit"):
+        channels = support_role_series(tax_unit, entity="tax_unit")
         for channel in sorted(channels.unique()):
             mask = channels.eq(channel).to_numpy()
             channel_weight = float(weights[mask].sum())
@@ -984,11 +1003,19 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
                 clone_metadata_missing = True
             else:
                 clone_table = pd.DataFrame(
-                    {"source_id": source_ids.astype(str), "value": values}
+                    {
+                        "source_id": source_ids.astype(str),
+                        "role": channels.to_numpy(),
+                        "value": values,
+                    }
                 )
-                sizes = clone_table.groupby("source_id", sort=False).size()
+                clone_table["source_occurrence"] = clone_table.groupby(
+                    ["source_id", "role"], sort=False
+                ).cumcount()
+                clone_groups = ["source_id", "source_occurrence"]
+                sizes = clone_table.groupby(clone_groups, sort=False).size()
                 clone_source_units = int((sizes > 1).sum())
-                unique = clone_table.groupby("source_id", sort=False)["value"].nunique(
+                unique = clone_table.groupby(clone_groups, sort=False)["value"].nunique(
                     dropna=False
                 )
                 clone_mismatch_source_units = int((unique > 1).sum())

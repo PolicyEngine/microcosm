@@ -41,6 +41,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.build.us_runtime.voluntary_filing import (
     SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
@@ -237,7 +241,6 @@ _MAX_TRAIN_SAMPLES = 20_000
 _TRAINING_SAMPLE_SEED_NAME = "sipp_ssi_disability_model_training_sample"
 _TRAINING_SAMPLE_SEED = 8_386_123_572_872_638_692
 _ARCHIVED_MODEL_SEED = 42
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _PERSON_SOURCE_ID_COLUMN = "person_source_id"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
@@ -857,21 +860,17 @@ def _person_ssi_disability_predictors(frame: Frame) -> pd.DataFrame:
 
 
 def _validate_support_provenance(person: pd.DataFrame) -> None:
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in person:
+    if not has_support_role_metadata(person, entity="person"):
         return
-    if person[_PERSON_SUPPORT_CHANNEL_COLUMN].isna().any():
-        raise ValueError(
-            "US SSI disability support rows contain missing support-channel values."
-        )
-    channels = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN])
+    channels = support_role_series(person, entity="person")
     known = {_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL}
     observed = set(channels.unique())
     unexpected = sorted(observed - known)
     missing = sorted(known - observed)
     if unexpected or missing:
         raise ValueError(
-            "US SSI disability receiver requires exact ASEC/PUF support "
-            f"channels; missing {missing}, unsupported support channel(s) "
+            "US SSI disability receiver requires exact native/PUF support "
+            f"roles; missing {missing}, unsupported support role(s) "
             f"{unexpected}."
         )
     if (
@@ -976,7 +975,7 @@ def impute_us_ssi_disability_criteria(
         targets=[_OUTPUT],
         weights="none",
     )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in person:
+    if not has_support_role_metadata(person, entity="person"):
         prediction = fitted.predict(receiver)
         if _OUTPUT not in prediction:
             raise ValueError(f"SIPP SSI disability QRF prediction missing {_OUTPUT!r}.")
@@ -988,7 +987,7 @@ def impute_us_ssi_disability_criteria(
         # make PUF outcomes depend on the number/order of preceding ASEC rows.
         # Deep-copying the pristine fit per channel reproduces the two fresh
         # prediction streams without refitting the reviewed forest.
-        channels = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN])
+        channels = support_role_series(person, entity="person")
         predicted = np.zeros(len(person), dtype=bool)
         for channel in (
             _BASE_ASEC_SUPPORT_CHANNEL,
@@ -1000,7 +999,7 @@ def impute_us_ssi_disability_criteria(
             if _OUTPUT not in prediction:
                 raise ValueError(
                     f"SIPP SSI disability QRF prediction missing {_OUTPUT!r} "
-                    f"for support channel {channel!r}."
+                    f"for support role {channel!r}."
                 )
             predicted[mask] = _coerce_boolean_predictions(prediction[_OUTPUT])
             del channel_model
@@ -1034,8 +1033,8 @@ def impute_us_ssi_disability_criteria(
         > 0.0
     )
     under_65 = receiver["age"].to_numpy(dtype=np.float64) < 65.0
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channels = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN])
+    if has_support_role_metadata(person, entity="person"):
+        channels = support_role_series(person, entity="person")
         asec = channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
     else:
         asec = np.ones(len(person), dtype=bool)
@@ -1103,15 +1102,20 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
     total_weight = float(weights.sum())
 
     channels: dict[str, dict[str, float | int]] = {}
+    has_support_roles = has_support_role_metadata(person, entity="person")
+    channel_values: pd.Series | None = None
+    if has_support_roles:
+        try:
+            channel_values = support_role_series(person, entity="person")
+        except ValueError:
+            has_support_roles = False
     provenance_missing = bool(
-        _PERSON_SUPPORT_CHANNEL_COLUMN not in person
-        or person[_PERSON_SUPPORT_CHANNEL_COLUMN].isna().any()
+        not has_support_roles
         or _PERSON_SOURCE_ID_COLUMN not in person
         or person[_PERSON_SOURCE_ID_COLUMN].isna().any()
     )
     clone_divergence_source_people = 0
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel_values = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN])
+    if channel_values is not None:
         for channel in sorted(channel_values.unique()):
             mask = channel_values.eq(channel).to_numpy()
             channel_weight = float(weights[mask].sum())
@@ -1128,12 +1132,16 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
             clone_table = pd.DataFrame(
                 {
                     "source_id": _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN]),
+                    "role": channel_values,
                     "value": values,
                 }
             )
-            unique = clone_table.groupby("source_id", sort=False)["value"].nunique(
-                dropna=False
-            )
+            clone_table["source_occurrence"] = clone_table.groupby(
+                ["source_id", "role"], sort=False
+            ).cumcount()
+            unique = clone_table.groupby(
+                ["source_id", "source_occurrence"], sort=False
+            )["value"].nunique(dropna=False)
             clone_divergence_source_people = int((unique > 1).sum())
 
     reporter_mismatches = 0
@@ -1142,10 +1150,8 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
         age_column = "age" if "age" in person else "A_AGE"
         age = pd.to_numeric(person[age_column], errors="coerce")
         asec = pd.Series(True, index=person.index)
-        if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-            asec = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN]).eq(
-                _BASE_ASEC_SUPPORT_CHANNEL
-            )
+        if channel_values is not None:
+            asec = channel_values.eq(_BASE_ASEC_SUPPORT_CHANNEL)
         anchor = (reported & age.lt(65.0) & asec).to_numpy()
         reporter_mismatches = int(np.count_nonzero(anchor & ~positive))
 
@@ -1206,8 +1212,8 @@ def us_ssi_disability_criteria_signal_gate(frame: Frame) -> GateResult:
         )
     if summary["support_provenance_missing"]:
         failures.append(
-            "SSI disability support rows lack complete person_support_channel "
-            "or person_source_id provenance."
+            "SSI disability support rows lack complete clone-role or "
+            "person_source_id provenance."
         )
     channels = summary["channels"]
     required_channels = {
