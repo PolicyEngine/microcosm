@@ -8,7 +8,8 @@ The opt-in pre-operator spine assembly seam and pre-calibration
 spine-agreement contract are implemented and focused tests pass. PUF
 operator-clone roles are now separate from immutable source-spine provenance.
 The population-operator migration and spine-blindness structural guard are
-implemented and their focused regression suites pass. Current sparse and
+implemented and their focused regression suites pass. The call-graph/target
+ordering design note and changelog fragment are complete. Current sparse and
 dense release behavior remains unwired to the new seam.
 
 ## Done
@@ -72,8 +73,11 @@ dense release behavior remains unwired to the new seam.
 - Passed the 28-module focused operator regression suite after the compatibility
   validation change; the four-test structural guard, ruff checks, and diff
   whitespace checks also pass.
+- Added the design note mapping the current two-build call graph, consumed
+  state, provenance axes, target ordering, raw-only boundary, fixed agreement
+  statistics, calibration boundary, and increment-1 compatibility boundary.
+- Added the #395 changelog fragment.
 
 ## Next
 
-- Commit the design note and changelog fragment.
 - Run the current-lineage builder suites and final combined verification.
