@@ -2,95 +2,47 @@
 
 ## State
 
-Populace #395 increment 1 is complete on
-`multispine-operator-ordering-395`, based on `origin/main` at `0d99d8a`.
-The opt-in pre-operator spine assembly seam and pre-calibration
-spine-agreement contract are implemented and focused tests pass. PUF
-operator-clone roles are now separate from immutable source-spine provenance.
-The population-operator migration and spine-blindness structural guard are
-implemented and their regression suites pass. The call-graph/target ordering
-design note, changelog fragment, and root handoff worklog are complete.
-Current sparse and dense release behavior remains unwired to the new seam.
+Populace #516 whole-row donor outlier screen is complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
+whose grouped raw mortgage interest reaches $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuild.
 
 ## Done
 
-- Read epic #578, including the governing Scope hardening: one suite per
-  country, exact-k as the only US release variation, full geography in every
-  file, and retirement of the separate local artifact.
-- Confirmed the locally cached `origin/main` and requested base commit both
-  resolve to `0d99d8a`.
-- Created this isolated worktree and branch.
-- Attempted `git fetch origin`; the managed environment cannot resolve
-  `github.com`, so the lane uses the already exact local remote-tracking ref.
-- Read the repository agent guidance and selected the GitNexus exploration,
-  impact-analysis, and refactoring workflows for the cross-module seam.
-- Mapped the two current build call graphs: ASEC enrichment and PUF cloning,
-  transfer, derivation, seeding, and geography all precede the late ACS
-  append; the ACS builder transfers from that already-operated donor.
-- Added the opt-in `assemble_spines(...)` stage. It deterministically combines
-  two or more raw US peer frames, aligns nullable source columns, remaps ID
-  collisions, conserves the anchor household mass, and records immutable
-  source channel/source ID/clone-index-zero provenance on every entity.
-- Added focused assembly tests covering mass allocation, provenance, raw input
-  immutability, collision remapping, future channels, dtype contracts, and
-  rejection of PUF as a peer spine.
-- Verified the assembly test module (8 tests), its ruff lint, and diff
-  whitespace checks using the existing Populace environment.
-- Added the canonical spine-agreement registry with exact coverage of the
-  declared ACS transferred-input surface, including deterministic derived
-  transfer outputs and normalized batch families.
-- Declared one fixed statistic and tolerance contract for every registry
-  column: weighted nonzero-incidence ratio in `[0.8, 1.25]` and a weighted
-  conditional q10/q25/q50/q75/q90 symmetric-relative envelope no greater than
-  `0.25`. The gate compares every source-spine pair and batches all failures.
-- Added focused agreement tests covering registry exactness, weighted
-  measurement, batched failures, nullable evidence, malformed registries, and
-  rejection of the legacy PUF clone role as source-spine provenance.
-- Split immutable source provenance from operator clone roles: assembly emits
-  an assembly-unique `*_source_id`, the original local
-  `*_spine_source_id`, the unchanged source channel, and clone index zero.
-- Extended the existing PUF clone entrypoint to accept an assembled frame.
-  Every source spine receives a native and primary PUF-detail copy; source
-  channels and both source-ID fields remain unchanged while structural IDs
-  and clone indices carry operator identity.
-- Routed PUF QRF recipients and the capital-gains tail through clone
-  provenance instead of source-spine provenance while retaining the legacy
-  unassembled call path and private keyword compatibility.
-- Added combined-frame clone/QRF tests and passed the 69-test PUF support,
-  QRF-chain, capital-gains-tail, and multispine-clone regression set. Assembly
-  tests and focused ruff/diff checks also pass.
-- Migrated the population operators that formerly treated
-  `*_support_channel` as an ASEC/PUF switch to the centralized clone-role
-  resolver. On assembled frames, clone indices determine the native or
-  PUF-detail role while arbitrary declared source channels remain inert.
-- Preserved the current unassembled lineage's fail-closed checks: without raw
-  spine IDs, the historical channel field must still contain complete,
-  clone-consistent ASEC/PUF role labels.
-- Added an AST guard over the full US runtime and an exact registry of the 27
-  migrated population-operator modules. It rejects direct source-channel or
-  source-spine reads and separately pins clone-index routing in the PUF clone,
-  QRF, and tail stages.
-- Passed the 28-module focused operator regression suite after the compatibility
-  validation change; the four-test structural guard, ruff checks, and diff
-  whitespace checks also pass.
-- Added the design note mapping the current two-build call graph, consumed
-  state, provenance axes, target ordering, raw-only boundary, fixed agreement
-  statistics, calibration boundary, and increment-1 compatibility boundary.
-- Added the #395 changelog fragment.
-- Passed all 544 tests in the 28-module migrated-operator regression set.
-- Passed 145 current-lineage PUF-builder, ACS-builder, ACS-transfer, base-pool,
-  and checkpoint-equivalence tests; two environment-dependent tests skipped.
-- Passed all 89 assembly, agreement-gate, multispine-clone, AST-guard, PUF
-  support, QRF-chain, and capital-gains-tail tests.
-- Verified all 38 changed Python files are ruff-formatted and lint-clean;
-  the complete branch diff also passes whitespace checks.
+- Confirmed a clean starting worktree at `aef1c56`.
+- Read the repository guidance and established the #515 donor carve as the
+  screen's required downstream boundary.
+- Started source-level audits of every donor-frame consumer, checkpoint
+  validation, row-count pins, and existing donor-fact summaries.
+- Attempted the requested GitNexus impact workflow; the managed filesystem
+  denied its global registry write. Its local index also exposed a broad
+  `build/` ignore mismatch, so the completed impact audit uses direct source
+  call sites and tests.
+- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
+  structural rationale and pinned-artifact receipts.
+- Added a whole-row screen on grouped raw person `home_mortgage_interest`
+  after tax-unit assembly, before the #515 carve, with retained-index reset.
+- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
+  or carries a stale donor-length vector; values and weights always originate
+  from the same screened frame.
+- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
+  checkpoint regression track the live constant while retaining literal-v1
+  corruptions.
+- Added regression coverage for the exact grouped boundary, whole-row removal,
+  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
+- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
+  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
+  audit, expected 208,611-row real-artifact effect, verification results, count
+  sweep, and deliberately untouched surfaces.
 
 ## Next
 
-- Increment 2 can wire peer-source harmonization and `assemble_spines(...)`
-  into the US build before the shared clone/impute/derive/seed/simulate pass.
-- Evaluate the agreement gate on the simulated combined frame before allowing
-  calibration, then retire the late ACS transfer/append ordering once the
-  replacement lineage is artifact-verified.
-- Carry the verified ordering into #578's one-suite, full-geography, exact-k
-  release shape.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on populace#515.
