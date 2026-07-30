@@ -851,6 +851,7 @@ from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
+from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_REVISION,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
@@ -1844,6 +1845,7 @@ __all__ = [
     "us_register_consistency_gate",
     "us_register_contradictions",
     "write_us_source_coverage_diagnostics",
+    "assemble_spines",
     "support_channel_column",
     "support_clone_index_column",
     "support_source_id_column",
