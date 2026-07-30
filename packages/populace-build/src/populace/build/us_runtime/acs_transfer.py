@@ -34,7 +34,10 @@ from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     resolve_formula_owned_outputs,
-    support_channel_column,
+)
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
 )
 from populace.frame import EntitySchema, Frame, Weights
 
@@ -427,6 +430,7 @@ def acs_derived_transfer_expectations(
         return {_SCHEDULE_D_CGD_COLUMN: "person"}
     return {}
 
+
 _SCHEDULE_D_CGD_COLUMN = "schedule_d_capital_gain_distributions"
 _SCHEDULE_D_CGD_SOURCE = "long_term_capital_gains_before_response"
 _SCHEDULE_D_CGD_EXCLUSIVE_WITH = "non_sch_d_capital_gains"
@@ -659,11 +663,12 @@ def transfer_acs_inputs(
     across the full model-input inventory. Joint categorical codecs remain in
     one batch even when their two exported columns cross the nominal limit.
 
-    ``donor_channel="auto"`` is the safe default: it selects
-    ``puf_tax_detail`` when support metadata exists and otherwise uses an
-    unchanneled donor. Pass ``None`` only to deliberately fit every donor row.
-    The resolved channel, patterns, seeds, row counts, and weight kind are
-    recorded outside the returned frame.
+    ``donor_channel="auto"`` is the safe default: it selects the
+    ``puf_tax_detail`` clone role when support-role metadata exists and
+    otherwise uses an unchanneled donor. Source-spine channel labels never
+    determine fit eligibility. Pass ``None`` only to deliberately fit every
+    donor row. The resolved role, patterns, seeds, row counts, and weight kind
+    are recorded outside the returned frame.
     """
 
     _validate_frames(recipient, donor)
@@ -1647,55 +1652,60 @@ def resolve_acs_donor_channel(
     donor: Frame,
     channel: str | None,
 ) -> tuple[Frame, str | None]:
-    """Resolve and select the transfer donor support channel fail-closed."""
+    """Resolve the requested transfer role without reading source-spine identity.
+
+    ``donor_channel`` is the legacy public API name. Its non-``None`` values
+    identify operator roles derived by :func:`support_role_series`; on an
+    assembled pool those roles come from clone indices while immutable source
+    channels (for example ``"acs"`` and ``"asec"``) remain untouched.
+    """
 
     if channel is None:
         return donor, None
 
-    channel_columns = {
-        entity: support_channel_column(entity)
+    # Donor-role selection is person-grain: Frame.select() propagates the
+    # person mask to group tables through structural IDs. Other-entity
+    # metadata is checked only to distinguish an untagged legacy donor from
+    # malformed partial metadata with no person role. Current assembled pools
+    # receive their cross-grain provenance validation at the clone boundary.
+    metadata_entities = {
+        entity
         for entity in donor.entities
-        if support_channel_column(entity) in donor.table(entity).columns
+        if has_support_role_metadata(donor.table(entity), entity=entity)
     }
-    if channel != ACS_DONOR_CHANNEL_AUTO:
-        return _select_donor_channel(donor, channel), channel
-    if not channel_columns:
-        return donor, None
     person_entity = donor.schema.person_entity
-    person_channel = support_channel_column(person_entity)
-    if person_entity not in channel_columns:
+    if not metadata_entities:
+        if channel == ACS_DONOR_CHANNEL_AUTO:
+            return donor, None
         raise ValueError(
-            "AUTO donor-channel resolution found partial support metadata but "
-            f"the donor person table lacks {person_channel!r}."
+            f"donor_channel={channel!r} requested a support role, but the donor "
+            "carries no support-role metadata."
         )
-    available = set(donor.table(person_entity)[person_channel].dropna().astype(str))
-    if PUF_TAX_DETAIL_SUPPORT_CHANNEL not in available:
+    if person_entity not in metadata_entities:
         raise ValueError(
-            "AUTO donor-channel resolution found support metadata but no "
-            f"{PUF_TAX_DETAIL_SUPPORT_CHANNEL!r} rows; available channels: "
-            f"{sorted(available)}. Pass None only for a deliberate whole-donor fit."
+            "Donor-role resolution found partial support metadata but the "
+            f"{person_entity!r} table has no support-role metadata."
         )
-    return (
-        _select_donor_channel(donor, PUF_TAX_DETAIL_SUPPORT_CHANNEL),
-        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+
+    role = (
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL if channel == ACS_DONOR_CHANNEL_AUTO else channel
     )
+    roles = support_role_series(donor.table(person_entity), entity=person_entity)
+    return _select_donor_role(donor, roles=roles, role=role), role
 
 
-def _select_donor_channel(donor: Frame, channel: str) -> Frame:
-    person_entity = donor.schema.person_entity
-    column = support_channel_column(person_entity)
-    if column not in donor.table(person_entity).columns:
-        raise ValueError(
-            f"donor_channel={channel!r} was requested, but donor person table "
-            f"lacks {column!r}."
-        )
-    values = donor.table(person_entity)[column]
-    mask = values.astype(str) == channel
+def _select_donor_role(
+    donor: Frame,
+    *,
+    roles: pd.Series,
+    role: str,
+) -> Frame:
+    mask = roles.eq(role)
     if not mask.any():
-        available = sorted(map(str, values.dropna().unique()))
+        available = sorted(map(str, roles.dropna().unique()))
         raise ValueError(
-            f"donor channel {channel!r} has no person rows; available channels: "
-            f"{available}."
+            f"donor support role {role!r} has no person rows; available roles: "
+            f"{available}. Pass None only for a deliberate whole-donor fit."
         )
     if mask.all():
         return donor

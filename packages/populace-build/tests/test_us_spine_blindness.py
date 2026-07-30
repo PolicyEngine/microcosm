@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import fnmatch
 from pathlib import Path
 
 _US_RUNTIME = (
@@ -15,6 +16,8 @@ _US_RUNTIME = (
 _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         "base_pool.py",  # Legacy late-spine assembly.
+        "puf_qrf_chain.py",  # Carries provenance into resumable checkpoints.
+        "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
         "support_provenance.py",  # Centralized provenance compatibility.
@@ -22,13 +25,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     }
 )
 
-_SOURCE_SPINE_COLUMNS = frozenset(
-    {
-        "household_spine",
-        "household_support_channel",
-    }
-)
 _US_ENTITIES = (
+    "benefit_unit",
+    "benunit",
     "family",
     "household",
     "marital_unit",
@@ -39,10 +38,11 @@ _US_ENTITIES = (
 _OPERATOR_SOURCE_COLUMNS = frozenset(
     f"{entity}_{suffix}"
     for entity in _US_ENTITIES
-    for suffix in ("spine", "support_channel")
+    for suffix in ("spine", "spine_source_id", "support_channel")
 )
 _SOURCE_SPINE_COLUMN_FACTORIES = frozenset(
     {
+        "spine_source_id_column",
         "spine_column",
         "support_channel_column",
     }
@@ -53,6 +53,7 @@ _PUF_CLONE_OPERATOR_MODULES = (
     "puf_support.py",
 )
 _SPINE_BLIND_OPERATOR_MODULES = (
+    "acs_transfer.py",
     "adult_care.py",
     "alimony.py",
     "capital_gain_details.py",
@@ -82,6 +83,85 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "workers_compensation.py",
 )
 
+# Every runtime module must be deliberately classified. This allowlist does
+# not exempt a module from the all-runtime AST scan below; it only records
+# modules outside the migrated population-treatment registry. Keeping the
+# inventory explicit makes an added us_runtime module fail until reviewed.
+_OTHER_US_RUNTIME_MODULES = frozenset(
+    {
+        "__init__.py",
+        "acs_inputs.py",
+        "acs_multispine.py",
+        "acs_pums.py",
+        "acs_sources.py",
+        "asec_pool.py",
+        "base_pool.py",
+        "block_ladder_sources.py",
+        "capital_gain_distributions.py",
+        "casualty_losses.py",
+        "congressional_district_geography.py",
+        "congressional_district_vintage.py",
+        "congressional_district_vintage_crosswalk.py",
+        "cps_carried.py",
+        "demographics.py",
+        "education_assistance_source.py",
+        "eligibility_inputs.py",
+        "engine_lifecycle.py",
+        "fiscal_targets.py",
+        "geography_ladder.py",
+        "hours_worked.py",
+        "immigration.py",
+        "input_mass.py",
+        "l0_refit_export.py",
+        "medicaid_take_up.py",
+        "misc_itemized.py",
+        "nonzero_shares.py",
+        "org_wages.py",
+        "parity_reference.py",
+        "pregnancy.py",
+        "puf_aggregate_records.py",
+        "puf_capital_gains_tail.py",
+        "puf_e01000_reconciliation.py",
+        "puf_interest_components.py",
+        "puf_qrf_chain.py",
+        "puf_qrf_worker.py",
+        "puf_source_agi.py",
+        "puf_support.py",
+        "puma_ladder.py",
+        "puma_ladder_sources.py",
+        "reform_coverage_smoke.py",
+        "reform_validation.py",
+        "register_consistency.py",
+        "relationship_inputs.py",
+        "release_gate_preflight.py",
+        "release_input_coverage.py",
+        "release_target_parity.py",
+        "scf_auto_loans.py",
+        "scf_wealth.py",
+        "sipp_financial_assets.py",
+        "sipp_tips.py",
+        "sipp_vehicles.py",
+        "snap_discretionary_exemption.py",
+        "snap_state_take_up.py",
+        "snap_take_up.py",
+        "source_coverage.py",
+        "source_runtime.py",
+        "sources.py",
+        "spine_agreement.py",
+        "spine_assembly.py",
+        "spm_resources.py",
+        "support_provenance.py",
+        "take_up.py",
+        "take_up_contract.py",
+        "target_aging.py",
+        "validation_input_coverage.py",
+        "warm_start_selection.py",
+    }
+)
+_CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
+    _OTHER_US_RUNTIME_MODULES
+)
+
 
 def _call_name(node: ast.Call) -> str | None:
     if isinstance(node.func, ast.Name):
@@ -97,75 +177,258 @@ def _literal_string(node: ast.AST) -> str | None:
     return None
 
 
-def _docstring_constant_ids(tree: ast.AST) -> set[int]:
-    """Return IDs for docstring constants, which are not executable access."""
+def _string_shape(node: ast.AST) -> str | None:
+    """Resolve a static string, using ``*`` for a dynamic formatted value."""
 
-    owners = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(
-            node,
-            (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
-        )
-    ]
-    constants: set[int] = set()
-    for owner in owners:
-        body = getattr(owner, "body", ())
-        if not body:
+    literal = _literal_string(node)
+    if literal is not None:
+        return literal
+    if isinstance(node, ast.FormattedValue):
+        return "*"
+    if isinstance(node, ast.JoinedStr):
+        pieces = [_string_shape(value) for value in node.values]
+        if any(piece is None for piece in pieces):
+            return None
+        return "".join(piece for piece in pieces if piece is not None)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _string_shape(node.left)
+        right = _string_shape(node.right)
+        if left is not None and right is not None:
+            return left + right
+        return None
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return None
+    if node.func.attr == "join" and len(node.args) == 1:
+        separator = _string_shape(node.func.value)
+        values = node.args[0]
+        if separator is None or not isinstance(values, (ast.List, ast.Tuple)):
+            return None
+        pieces = [_string_shape(value) for value in values.elts]
+        if any(piece is None for piece in pieces):
+            return None
+        return separator.join(piece for piece in pieces if piece is not None)
+    if node.func.attr == "format":
+        template = _string_shape(node.func.value)
+        if template is None or node.keywords:
+            return None
+        for argument in node.args:
+            value = _string_shape(argument)
+            template = template.replace(
+                "{}",
+                "*" if value is None else value,
+                1,
+            )
+        return template
+    return None
+
+
+def _is_source_column_shape(shape: str) -> bool:
+    if not any(
+        marker in shape for marker in ("_spine", "_spine_source_id", "_support_channel")
+    ):
+        return False
+    return any(
+        fnmatch.fnmatchcase(column, shape) for column in _OPERATOR_SOURCE_COLUMNS
+    )
+
+
+def _factory_aliases(tree: ast.AST) -> set[str]:
+    aliases = set(_SOURCE_SPINE_COLUMN_FACTORIES)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
             continue
-        first = body[0]
-        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
-            if isinstance(first.value.value, str):
-                constants.add(id(first.value))
-    return constants
+        for imported in node.names:
+            if imported.name in _SOURCE_SPINE_COLUMN_FACTORIES:
+                aliases.add(imported.asname or imported.name)
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if not isinstance(value, ast.Name) or value.id not in aliases:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in aliases:
+                    aliases.add(target.id)
+                    changed = True
+    return aliases
+
+
+def _source_expression(
+    node: ast.AST,
+    *,
+    bindings: list[dict[str, str | None]],
+    factory_aliases: set[str],
+) -> str | None:
+    if isinstance(node, ast.Name):
+        for scope in reversed(bindings):
+            if node.id in scope:
+                return scope[node.id]
+        return None
+    if isinstance(node, ast.Call) and _call_name(node) in factory_aliases:
+        return f"call to {_call_name(node)}"
+    shape = _string_shape(node)
+    if shape is not None and _is_source_column_shape(shape):
+        return f"source column {shape!r}"
+    return None
+
+
+def _subscript_source_expression(
+    node: ast.AST,
+    *,
+    bindings: list[dict[str, str | None]],
+    factory_aliases: set[str],
+) -> str | None:
+    if isinstance(node, (ast.List, ast.Tuple)):
+        for element in node.elts:
+            description = _subscript_source_expression(
+                element,
+                bindings=bindings,
+                factory_aliases=factory_aliases,
+            )
+            if description is not None:
+                return description
+        return None
+    return _source_expression(
+        node,
+        bindings=bindings,
+        factory_aliases=factory_aliases,
+    )
+
+
+def _assigned_names(target: ast.AST) -> tuple[str, ...]:
+    if isinstance(target, ast.Name):
+        return (target.id,)
+    if isinstance(target, (ast.List, ast.Tuple)):
+        return tuple(
+            name for element in target.elts for name in _assigned_names(element)
+        )
+    return ()
+
+
+class _SourceReadVisitor(ast.NodeVisitor):
+    def __init__(self, factory_aliases: set[str]) -> None:
+        self.factory_aliases = factory_aliases
+        self.bindings: list[dict[str, str | None]] = [{}]
+        self.accesses: set[tuple[int, int, str]] = set()
+
+    def _expression(self, node: ast.AST) -> str | None:
+        return _source_expression(
+            node,
+            bindings=self.bindings,
+            factory_aliases=self.factory_aliases,
+        )
+
+    def _record(self, node: ast.AST, description: str) -> None:
+        self.accesses.add((node.lineno, node.col_offset, description))
+
+    def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
+        description = self._expression(value)
+        for target in targets:
+            for name in _assigned_names(target):
+                self.bindings[-1][name] = description
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.visit(node.value)
+        self._bind(list(node.targets), node.value)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is None:
+            for name in _assigned_names(node.target):
+                self.bindings[-1][name] = None
+            return
+        self.visit(node.value)
+        self._bind([node.target], node.value)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.visit(node.value)
+        self._bind([node.target], node.value)
+
+    def _visit_function(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        local: dict[str, str | None] = {
+            argument.arg: None
+            for argument in (
+                *node.args.posonlyargs,
+                *node.args.args,
+                *node.args.kwonlyargs,
+            )
+        }
+        if node.args.vararg is not None:
+            local[node.args.vararg.arg] = None
+        if node.args.kwarg is not None:
+            local[node.args.kwarg.arg] = None
+        self.bindings.append(local)
+        for statement in node.body:
+            self.visit(statement)
+        self.bindings.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        local = {
+            argument.arg: None
+            for argument in (
+                *node.args.posonlyargs,
+                *node.args.args,
+                *node.args.kwonlyargs,
+            )
+        }
+        self.bindings.append(local)
+        self.visit(node.body)
+        self.bindings.pop()
+
+    def visit_Call(self, node: ast.Call) -> None:
+        name = _call_name(node)
+        if name in self.factory_aliases:
+            self._record(node, f"call to {name}")
+        elif name == "getattr" and len(node.args) >= 2:
+            attribute = self._expression(node.args[1])
+            if attribute is not None:
+                self._record(node, f"getattr using {attribute}")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr in _OPERATOR_SOURCE_COLUMNS:
+            self._record(node, f"attribute {node.attr!r}")
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        column = _subscript_source_expression(
+            node.slice,
+            bindings=self.bindings,
+            factory_aliases=self.factory_aliases,
+        )
+        if column is not None:
+            self._record(node, f"subscript using {column}")
+        self.generic_visit(node)
 
 
 def _source_spine_accesses(source: str) -> tuple[str, ...]:
-    """Describe executable references to household source-spine provenance."""
+    """Describe data reads that resolve any entity's source-spine identity."""
 
     tree = ast.parse(source)
-    docstrings = _docstring_constant_ids(tree)
-    accesses: set[tuple[int, int, str]] = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Constant)
-            and id(node) not in docstrings
-            and node.value in _SOURCE_SPINE_COLUMNS
-        ):
-            accesses.add(
-                (
-                    node.lineno,
-                    node.col_offset,
-                    f"literal {node.value!r}",
-                )
-            )
-            continue
-        if isinstance(node, ast.Attribute) and node.attr in _SOURCE_SPINE_COLUMNS:
-            accesses.add(
-                (
-                    node.lineno,
-                    node.col_offset,
-                    f"attribute {node.attr!r}",
-                )
-            )
-            continue
-        if not isinstance(node, ast.Call):
-            continue
-        name = _call_name(node)
-        if name not in _SOURCE_SPINE_COLUMN_FACTORIES:
-            continue
-        arguments = [*node.args, *(keyword.value for keyword in node.keywords)]
-        if any(_literal_string(argument) == "household" for argument in arguments):
-            accesses.add(
-                (
-                    node.lineno,
-                    node.col_offset,
-                    f"{name}('household')",
-                )
-            )
+    aliases = _factory_aliases(tree)
+    visitor = _SourceReadVisitor(aliases)
+    visitor.visit(tree)
     return tuple(
         f"line {line}:{column + 1}: {description}"
-        for line, column, description in sorted(accesses)
+        for line, column, description in sorted(visitor.accesses)
     )
 
 
@@ -180,70 +443,48 @@ def _called_function_names(source: str) -> set[str]:
 
 
 def _operator_source_channel_reads(source: str) -> tuple[str, ...]:
-    """Describe direct source-channel table reads in a population operator."""
+    """Compatibility name for the all-entity source-identity detector."""
 
-    tree = ast.parse(source)
-    support_column_names: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-            continue
-        value = _literal_string(node.value)
-        if value not in _OPERATOR_SOURCE_COLUMNS:
-            continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        for target in targets:
-            if isinstance(target, ast.Name):
-                support_column_names[target.id] = value
+    return _source_spine_accesses(source)
 
-    reads: set[tuple[int, int, str]] = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and _call_name(node) in _SOURCE_SPINE_COLUMN_FACTORIES
-        ):
-            reads.add(
-                (
-                    node.lineno,
-                    node.col_offset,
-                    f"call to {_call_name(node)}",
-                )
-            )
-            continue
-        if isinstance(node, ast.Attribute) and node.attr in _OPERATOR_SOURCE_COLUMNS:
-            reads.add(
-                (
-                    node.lineno,
-                    node.col_offset,
-                    f"attribute {node.attr!r}",
-                )
-            )
-            continue
-        if not isinstance(node, ast.Subscript):
-            continue
-        column = _literal_string(node.slice)
-        if isinstance(node.slice, ast.Name):
-            column = support_column_names.get(node.slice.id)
-        if column in _OPERATOR_SOURCE_COLUMNS:
-            reads.add(
-                (
-                    node.lineno,
-                    node.col_offset,
-                    f"subscript {column!r}",
-                )
-            )
-    return tuple(
-        f"line {line}:{column + 1}: {description}"
-        for line, column, description in sorted(reads)
+
+def _unclassified_runtime_modules(module_names: set[str]) -> tuple[str, ...]:
+    return tuple(sorted(module_names - _CLASSIFIED_US_RUNTIME_MODULES))
+
+
+def test_us_runtime_module_classification_is_complete() -> None:
+    """Every runtime module is registered or explicitly classified otherwise."""
+
+    actual = {path.name for path in _US_RUNTIME.glob("*.py")}
+    overlap = sorted(
+        set(_SPINE_BLIND_OPERATOR_MODULES).intersection(_OTHER_US_RUNTIME_MODULES)
+    )
+    assert not overlap, f"runtime module classifications overlap: {overlap}"
+    assert not _unclassified_runtime_modules(actual), (
+        "US runtime modules must be classified as registered population "
+        "operators or reviewed non-registry modules; unclassified: "
+        f"{_unclassified_runtime_modules(actual)}"
+    )
+    stale = sorted(_CLASSIFIED_US_RUNTIME_MODULES - actual)
+    assert not stale, f"runtime module classification contains missing files: {stale}"
+
+
+def test_runtime_classification_rejects_a_new_unreviewed_module() -> None:
+    """Bind fail-closed classification when a future operator file appears."""
+
+    actual = {path.name for path in _US_RUNTIME.glob("*.py")}
+    assert _unclassified_runtime_modules(actual | {"future_operator.py"}) == (
+        "future_operator.py",
     )
 
 
 def test_runtime_population_operators_are_source_spine_blind() -> None:
-    """Only provenance owners may resolve household source-spine identity.
+    """Only provenance owners may resolve any entity's source-spine identity.
 
     The guard parses executable syntax rather than searching raw text, so
-    comments and docstrings may explain the invariant without creating an
-    exception. Any operator that names the concrete column, accesses it as an
-    attribute, or resolves it through the canonical column helper fails.
+    comments, docstrings, and source-manifest declarations may explain the
+    invariant without creating an exception. Data access through a concrete
+    column, a dynamic string, ``getattr``, or a canonical factory fails.
     """
 
     missing_owners = sorted(
@@ -303,8 +544,8 @@ def test_puf_clone_operators_resolve_clone_index_metadata() -> None:
     )
 
 
-def test_source_spine_ast_guard_detects_direct_and_helper_access() -> None:
-    """Pin the detector itself against the two prohibited access forms."""
+def test_source_spine_ast_guard_detects_reviewer_bypasses() -> None:
+    """Pin the detector against every source-identity bypass from review."""
 
     direct = """
 def operator(frame):
@@ -326,8 +567,41 @@ PERSON_CHANNEL = "person_support_channel"
 def operator(frame):
     return frame.table("person")[PERSON_CHANNEL].eq("asec")
 """
+    aliased_factory = """
+from x import support_channel_column as sc
+def op(df):
+    return df[sc("person")]
+"""
+    dynamic_subscript = """
+def op(df, entity):
+    col = f"{entity}_support_channel"
+    return df[col]
+"""
+    dynamic_getattr = """
+def op(row):
+    col = "_".join(("person", "support", "channel"))
+    return getattr(row, col)
+"""
+    raw_spine_source_id = """
+def op(df):
+    return df["person_spine_source_id"]
+"""
 
     assert _source_spine_accesses(direct)
     assert _source_spine_accesses(via_helper)
     assert _source_spine_accesses(clone_index) == ()
     assert _operator_source_channel_reads(named_person_channel)
+    assert _source_spine_accesses(aliased_factory)
+    assert _source_spine_accesses(dynamic_subscript)
+    assert _source_spine_accesses(dynamic_getattr)
+    assert _source_spine_accesses(raw_spine_source_id)
+
+
+def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
+    """Every US and benefit-unit grain's source identity is prohibited."""
+
+    for entity in _US_ENTITIES:
+        for suffix in ("spine", "spine_source_id", "support_channel"):
+            column = f"{entity}_{suffix}"
+            source = f'def op(df):\n    return df["{column}"]\n'
+            assert _source_spine_accesses(source), column

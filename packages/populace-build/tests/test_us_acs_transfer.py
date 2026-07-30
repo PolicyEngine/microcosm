@@ -17,7 +17,9 @@ from populace.build.us_runtime.acs_transfer import (
     default_acs_transfer_target_families,
     transfer_acs_inputs,
 )
-from populace.frame import EntitySchema, Frame, WeightKind, Weights
+from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
+from populace.build.us_runtime.spine_assembly import assemble_spines
+from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 SCHEMA = EntitySchema(group_entities=("household", "tax_unit"))
 
@@ -244,6 +246,26 @@ def _with_columns(
     return Frame(
         tables,
         frame.schema,
+        {name: frame.weights_for(name) for name in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
+def _with_full_us_schema(frame: Frame) -> Frame:
+    """Promote the compact transfer fixture to all PolicyEngine-US grains."""
+
+    tables = {name: frame.table(name).copy() for name in frame.entities}
+    person = tables["person"]
+    household_ids = person["person_household_id"].to_numpy(copy=True)
+    for entity in ("spm_unit", "family", "marital_unit"):
+        person[f"person_{entity}_id"] = household_ids
+        tables[entity] = pd.DataFrame(
+            {f"{entity}_id": np.unique(household_ids)},
+        )
+    return Frame(
+        tables,
+        US_SCHEMA,
         {name: frame.weights_for(name) for name in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
@@ -864,6 +886,46 @@ def test_auto_channel_excludes_artificial_asec_zeros(
     assert whole.resolved_donor_channel is None
     assert whole.imputed_inputs[0].donor_channel is None
     assert whole.imputed_inputs[0].patterns[0].donor_rows == 2 * len(base.person)
+
+
+def test_auto_role_selects_puf_clones_from_assembled_two_spine_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ACS transfer routes by clone role, never assembled source channel."""
+
+    base = _with_full_us_schema(_donor_frame())
+    assembled = assemble_spines(
+        {"asec": base, "acs": base},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    donor = clone_us_frame_for_puf_support(assembled)
+    source_channels = donor.table("person")["person_support_channel"]
+    assert set(source_channels) == {"acs", "asec"}
+    assert "puf_tax_detail" not in set(source_channels)
+
+    compact_recipient = _drop_column(
+        _drop_column(_recipient_frame(), "person", "employment_income_before_lsr"),
+        "person",
+        "self_employment_income_before_lsr",
+    )
+    recipient = _with_full_us_schema(compact_recipient)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {"tax_detail": ("qualified_dividend_income",)},
+        },
+        seed=5,
+        n_estimators=1,
+    )
+
+    assert result.resolved_donor_channel == "puf_tax_detail"
+    assert result.imputed_inputs[0].donor_channel == "puf_tax_detail"
+    assert result.imputed_inputs[0].patterns[0].donor_rows == assembled.n("person")
+    assert donor.n("person") == 2 * assembled.n("person")
 
 
 def test_pattern_fits_use_observed_native_and_complete_donor_analogs(
