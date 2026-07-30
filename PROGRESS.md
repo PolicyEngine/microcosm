@@ -2,15 +2,15 @@
 
 ## State
 
-Populace #395 increment 1 is in implementation on
+Populace #395 increment 1 is complete on
 `multispine-operator-ordering-395`, based on `origin/main` at `0d99d8a`.
 The opt-in pre-operator spine assembly seam and pre-calibration
 spine-agreement contract are implemented and focused tests pass. PUF
 operator-clone roles are now separate from immutable source-spine provenance.
 The population-operator migration and spine-blindness structural guard are
-implemented and their focused regression suites pass. The call-graph/target
-ordering design note and changelog fragment are complete. Current sparse and
-dense release behavior remains unwired to the new seam.
+implemented and their regression suites pass. The call-graph/target ordering
+design note, changelog fragment, and root handoff worklog are complete.
+Current sparse and dense release behavior remains unwired to the new seam.
 
 ## Done
 
@@ -77,7 +77,20 @@ dense release behavior remains unwired to the new seam.
   state, provenance axes, target ordering, raw-only boundary, fixed agreement
   statistics, calibration boundary, and increment-1 compatibility boundary.
 - Added the #395 changelog fragment.
+- Passed all 544 tests in the 28-module migrated-operator regression set.
+- Passed 145 current-lineage PUF-builder, ACS-builder, ACS-transfer, base-pool,
+  and checkpoint-equivalence tests; two environment-dependent tests skipped.
+- Passed all 89 assembly, agreement-gate, multispine-clone, AST-guard, PUF
+  support, QRF-chain, and capital-gains-tail tests.
+- Verified all 38 changed Python files are ruff-formatted and lint-clean;
+  the complete branch diff also passes whitespace checks.
 
 ## Next
 
-- Run the current-lineage builder suites and final combined verification.
+- Increment 2 can wire peer-source harmonization and `assemble_spines(...)`
+  into the US build before the shared clone/impute/derive/seed/simulate pass.
+- Evaluate the agreement gate on the simulated combined frame before allowing
+  calibration, then retire the late ACS transfer/append ordering once the
+  replacement lineage is artifact-verified.
+- Carry the verified ordering into #578's one-suite, full-geography, exact-k
+  release shape.
