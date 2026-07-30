@@ -6,7 +6,8 @@ that intentionally conditions on that provenance: it compares the weighted
 distribution produced by the common operator pass across every pair of source
 spines, before calibration can conceal a disagreement.
 
-For every registered transferred or imputed input, agreement has two parts:
+For every registered transferred, imputed, seeded, or simulated surface,
+agreement has two parts:
 
 * the ratio of weighted nonzero incidence rates must lie in ``[0.8, 1.25]``;
 * at weighted conditional quantiles 10, 25, 50, 75, and 90 percent, the
@@ -40,7 +41,10 @@ from populace.build.us_runtime.acs_transfer import (
 )
 from populace.build.us_runtime.support_provenance import (
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    spine_source_id_column,
+    validate_assembly_provenance,
 )
+from populace.build.us_runtime.take_up_contract import load_take_up_contract
 
 __all__ = [
     "DEFAULT_INCIDENCE_RATIO_BOUNDS",
@@ -59,7 +63,12 @@ DEFAULT_SPINE_AGREEMENT_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
 DEFAULT_QUANTILE_ENVELOPE_TOLERANCE = 0.25
 _BATCH_SEPARATOR = "__batch_"
 _DERIVED_FAMILY = "derived_transfer"
+_SIMULATED_OUTPUT_FAMILY = "simulated_output"
+_TAKE_UP_FAMILY = "take_up"
 _GATE_NAME = "us_spine_agreement"
+_SIMULATED_OUTPUTS: Mapping[str, tuple[str, ...]] = {
+    "person": ("ssi",),
+}
 
 
 class _ResolvedWeights(Protocol):
@@ -138,12 +147,15 @@ def normalize_transfer_family_name(family: str) -> str:
 def default_spine_agreement_registry(
     target_families: TargetFamilies | None = None,
 ) -> tuple[SpineAgreementSpec, ...]:
-    """Build the checked-distribution registry from the ACS transfer contract.
+    """Build the complete checked-distribution registry.
 
     Split QRF families are merged back to their canonical family.  Columns
     derived deterministically from transferred parents are registered under
-    ``derived_transfer`` so the pre-calibration gate covers the full produced
-    transfer surface, not only fitted leaves.
+    ``derived_transfer``.  The checked-in take-up inventory supplies every
+    take-up input, including stages owned outside the generic seeder, and
+    simulation outputs measured by the multispine QA contract are registered
+    separately.  Thus the pre-calibration gate covers the full chartered
+    surface, not only fitted transfer leaves.
     """
 
     families = (
@@ -151,10 +163,7 @@ def default_spine_agreement_registry(
         if target_families is None
         else target_families
     )
-    normalized = _normalize_target_families(families)
-    derived = acs_derived_transfer_expectations(families)
-    for column, entity in sorted(derived.items(), key=lambda item: (item[1], item[0])):
-        normalized.setdefault((entity, _DERIVED_FAMILY), []).append(column)
+    normalized = _declared_agreement_surface(families)
 
     registry = tuple(
         SpineAgreementSpec(
@@ -173,7 +182,7 @@ def validate_spine_agreement_registry(
     *,
     target_families: TargetFamilies | None = None,
 ) -> tuple[SpineAgreementSpec, ...]:
-    """Validate a registry, optionally requiring exact transfer-plan coverage.
+    """Validate a registry, optionally requiring exact charter coverage.
 
     Structural mistakes raise :class:`ValueError`; observed distribution
     disagreements belong to :func:`spine_agreement_gate` and become batched
@@ -209,11 +218,7 @@ def validate_spine_agreement_registry(
             column_owners[key] = spec.family
 
     if target_families is not None:
-        expected = _normalize_target_families(target_families)
-        for column, entity in acs_derived_transfer_expectations(
-            target_families
-        ).items():
-            expected.setdefault((entity, _DERIVED_FAMILY), []).append(column)
+        expected = _declared_agreement_surface(target_families)
         expected_surface = {
             key: frozenset(columns) for key, columns in expected.items()
         }
@@ -237,8 +242,8 @@ def validate_spine_agreement_registry(
             missing_families = sorted(set(expected_surface) - set(observed_surface))
             extra_families = sorted(set(observed_surface) - set(expected_surface))
             raise ValueError(
-                "Spine-agreement registry does not exactly cover the transfer "
-                f"plan; missing_columns={missing}, extra_columns={extra}, "
+                "Spine-agreement registry does not exactly cover the chartered "
+                f"surface; missing_columns={missing}, extra_columns={extra}, "
                 f"missing_families={missing_families}, "
                 f"extra_families={extra_families}."
             )
@@ -262,11 +267,20 @@ def spine_agreement_gate(
         if registry is None
         else validate_spine_agreement_registry(registry)
     )
+    frame_entities = tuple(frame.entities)
+    validate_assembly_provenance(
+        frame,
+        boundary="spine agreement gate",
+        require_manifest=any(
+            spine_source_id_column(entity) in frame.table(entity)
+            for entity in frame_entities
+        ),
+    )
     failures: list[str] = []
     comparisons: dict[str, object] = {}
+    untestable_comparisons: list[str] = []
     contexts: dict[str, tuple[pd.DataFrame, np.ndarray, tuple[str, ...]] | None] = {}
 
-    frame_entities = tuple(frame.entities)
     for entity in sorted({spec.entity for spec in specs}):
         if entity not in frame_entities:
             failures.append(f"{entity}: registered entity is absent from the frame.")
@@ -345,13 +359,42 @@ def spine_agreement_gate(
             continue
         contexts[entity] = (table, weights, channels)
 
+    observed_source_channels = {
+        entity: list(context[2])
+        for entity, context in sorted(contexts.items())
+        if context is not None
+    }
+    expected_source_channels = tuple(
+        sorted(
+            {
+                channel
+                for channels in observed_source_channels.values()
+                for channel in channels
+            }
+        )
+    )
+    missing_source_channels_by_entity: dict[str, list[str]] = {}
+    for entity, observed_channels in observed_source_channels.items():
+        missing_channels = sorted(
+            set(expected_source_channels) - set(observed_channels)
+        )
+        if not missing_channels:
+            continue
+        missing_source_channels_by_entity[entity] = missing_channels
+        failures.append(
+            f"{entity}: source-spine set is inconsistent across registered "
+            f"entity grains; observed {observed_channels}, expected "
+            f"{list(expected_source_channels)}, missing {missing_channels}."
+        )
+
     checked_columns = 0
     checked_pairs = 0
+    tested_pairs = 0
     for spec in specs:
         context = contexts.get(spec.entity)
         if context is None:
             continue
-        table, weights, channels = context
+        table, weights, observed_channels = context
         channel_values = table[f"{spec.entity}_support_channel"].astype(str).to_numpy()
         for column in spec.columns:
             label = f"{spec.entity}/{spec.family}/{column}"
@@ -376,12 +419,46 @@ def spine_agreement_gate(
 
             checked_columns += 1
             lower, upper = DEFAULT_INCIDENCE_RATIO_BOUNDS
-            for left_channel, right_channel in itertools.combinations(channels, 2):
+            comparison_channels = (
+                expected_source_channels
+                if len(expected_source_channels) >= 2
+                else observed_channels
+            )
+            for left_channel, right_channel in itertools.combinations(
+                comparison_channels, 2
+            ):
                 checked_pairs += 1
+                comparison_key = f"{label}/{left_channel}_vs_{right_channel}"
+                missing_pair_channels = sorted(
+                    {left_channel, right_channel} - set(observed_channels)
+                )
+                if missing_pair_channels:
+                    comparisons[comparison_key] = {
+                        "status": "untestable_missing_source_spine",
+                        "missing_source_spines": missing_pair_channels,
+                    }
+                    untestable_comparisons.append(comparison_key)
+                    continue
                 left = channel_values == left_channel
                 right = channel_values == right_channel
                 left_incidence = _weighted_incidence(values[left], weights[left])
                 right_incidence = _weighted_incidence(values[right], weights[right])
+                if left_incidence == 0.0 and right_incidence == 0.0:
+                    comparisons[comparison_key] = {
+                        "status": "untestable_both_zero",
+                        "left_incidence": left_incidence,
+                        "right_incidence": right_incidence,
+                        "incidence_ratio_right_over_left": None,
+                        "quantile_envelope_distance": None,
+                    }
+                    untestable_comparisons.append(comparison_key)
+                    failures.append(
+                        f"{comparison_key}: both source spines have zero weighted "
+                        "nonzero incidence; the registered comparison is untestable."
+                    )
+                    continue
+
+                tested_pairs += 1
                 incidence_ratio = _incidence_ratio(left_incidence, right_incidence)
                 left_quantiles = _conditional_nonzero_quantiles(
                     values[left], weights[left], DEFAULT_SPINE_AGREEMENT_QUANTILES
@@ -392,8 +469,8 @@ def spine_agreement_gate(
                 envelope_distance = _quantile_envelope_distance(
                     left_quantiles, right_quantiles
                 )
-                comparison_key = f"{label}/{left_channel}_vs_{right_channel}"
                 comparisons[comparison_key] = {
+                    "status": "tested",
                     "left_incidence": left_incidence,
                     "right_incidence": right_incidence,
                     "incidence_ratio_right_over_left": _manifest_number(
@@ -422,7 +499,9 @@ def spine_agreement_gate(
         details={
             "statistic": {
                 "incidence": "weighted share with value != 0",
-                "incidence_ratio": "right incidence / left incidence",
+                "incidence_ratio": (
+                    "right incidence / left incidence; undefined when both are zero"
+                ),
                 "conditional_quantiles": list(DEFAULT_SPINE_AGREEMENT_QUANTILES),
                 "quantile_distance": (
                     "max_q 2*abs(left_q-right_q)/(abs(left_q)+abs(right_q))"
@@ -435,9 +514,51 @@ def spine_agreement_gate(
             "registered_families": len(specs),
             "checked_columns": checked_columns,
             "checked_spine_pairs": checked_pairs,
+            "tested_spine_pairs": tested_pairs,
+            "untestable_comparisons": sorted(untestable_comparisons),
+            "expected_source_channels": list(expected_source_channels),
+            "observed_source_channels_by_entity": observed_source_channels,
+            "missing_source_channels_by_entity": missing_source_channels_by_entity,
             "comparisons": comparisons,
         },
     )
+
+
+def _declared_agreement_surface(
+    target_families: TargetFamilies,
+) -> dict[tuple[str, str], list[str]]:
+    """Return transfer, take-up, and simulated-output registry families."""
+
+    normalized = _normalize_target_families(target_families)
+    derived = acs_derived_transfer_expectations(target_families)
+    for column, entity in sorted(derived.items(), key=lambda item: (item[1], item[0])):
+        normalized.setdefault((entity, _DERIVED_FAMILY), []).append(column)
+
+    registered_columns = {
+        (entity, column)
+        for (entity, _family), columns in normalized.items()
+        for column in columns
+    }
+    for program in sorted(
+        load_take_up_contract().programs,
+        key=lambda item: (item.entity, item.variable),
+    ):
+        key = (program.entity, program.variable)
+        if key in registered_columns:
+            continue
+        normalized.setdefault((program.entity, _TAKE_UP_FAMILY), []).append(
+            program.variable
+        )
+        registered_columns.add(key)
+
+    for entity, columns in sorted(_SIMULATED_OUTPUTS.items()):
+        for column in columns:
+            key = (entity, column)
+            if key in registered_columns:
+                continue
+            normalized.setdefault((entity, _SIMULATED_OUTPUT_FAMILY), []).append(column)
+            registered_columns.add(key)
+    return normalized
 
 
 def _normalize_target_families(
@@ -535,4 +656,4 @@ def _quantile_envelope_distance(
 
 
 US_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry()
-"""Canonical transferred-input distributions checked before calibration."""
+"""Canonical chartered distributions checked before calibration."""
