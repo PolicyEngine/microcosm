@@ -483,8 +483,8 @@ def test_gate_rejects_legacy_clone_role_as_source_spine_provenance() -> None:
 
     assert not result.passed
     assert result.failures == (
-        "person: 'puf_tax_detail' is a clone role, not valid immutable "
-        "source-spine provenance.",
+        "person: 'puf_tax_detail' is a clone role, not valid "
+        "receipt-declared source-spine provenance.",
     )
 
 

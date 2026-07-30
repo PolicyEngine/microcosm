@@ -13,6 +13,10 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
+
+from populace.build.us_runtime.puf_support import (
+    PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+)
 import pandas as pd
 
 from populace.build.us_runtime.support_provenance import (
@@ -257,6 +261,18 @@ def _validate_source_frame(frame: Frame, *, channel: str) -> None:
             raise ValueError(
                 f"Spine {channel!r} {id_column!r} contains negative source IDs "
                 f"{negative_ids[:5].tolist()}; source IDs must be nonnegative."
+            )
+        oversized_ids = np.unique(ids[ids > PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID])
+        if oversized_ids.size:
+            # The clone stage's decimal remap (id + clone_index *
+            # 10**digits(max_id)) must stay inside int64 for every clone
+            # index; IDs above the shared bound compose into an overflow
+            # there, so assembly rejects them at the door.
+            raise ValueError(
+                f"Spine {channel!r} {id_column!r} contains source IDs above "
+                f"the clone-safe bound {PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID} "
+                f"({oversized_ids[:5].tolist()}); larger IDs overflow the "
+                "clone stage's int64 decimal remap."
             )
         metadata = _support_metadata_columns(entity)
         present = [column for column in metadata if column in table]

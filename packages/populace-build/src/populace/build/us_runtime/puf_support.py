@@ -1589,6 +1589,17 @@ def _id_multiplier_for_frame(frame: Frame) -> int:
     return _id_multiplier_for_values(*values)
 
 
+# The decimal remap (id + clone_index * 10**digits(max_id)) must stay inside
+# int64 for every clone index the builder can produce. Capping assembled
+# source IDs at 10**15 - 1 bounds the multiplier at 10**16, leaving clone
+# indices up to 921 before int64 overflow — orders beyond any configured
+# clone count. Assembly enforces this bound; _remap_ids re-checks it so a
+# violation is a governed ValueError, never an OverflowError.
+PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID = 10**15 - 1
+
+_INT64_MAX = 2**63 - 1
+
+
 def _id_multiplier_for_values(*values: Sequence[Any]) -> int:
     if not values:
         raise ValueError("at least one ID value sequence is required.")
@@ -1615,7 +1626,16 @@ def _remap_ids(
     )
     if clone_index == 0:
         return values.copy()
-    return values + clone_index * id_multiplier
+    shift = int(clone_index) * int(id_multiplier)
+    if len(values) and shift + int(values.max()) > _INT64_MAX:
+        raise ValueError(
+            "PUF support ID remap would overflow int64: max source ID "
+            f"{int(values.max())} with clone index {clone_index} and "
+            f"multiplier {id_multiplier} exceeds {_INT64_MAX}. Assembled "
+            "source IDs must not exceed "
+            f"{PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID}."
+        )
+    return values + shift
 
 
 def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:

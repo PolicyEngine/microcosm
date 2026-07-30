@@ -5,6 +5,10 @@ from itertools import permutations
 import numpy as np
 import pandas as pd
 import pytest
+
+from populace.build.us_runtime.puf_support import (
+    PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+)
 from pandas.testing import assert_frame_equal, assert_series_equal
 
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
@@ -334,6 +338,46 @@ def test_assemble_spines__rejects_negative_source_ids_before_clone() -> None:
             {"asec": negative, "acs": positive},
             household_mass_shares={"asec": 0.5, "acs": 0.5},
         )
+
+
+def test_assemble_spines__rejects_ids_above_the_clone_safe_bound() -> None:
+    """Round-2 blocker: int64-valid IDs above the shared bound assembled
+    fine, then overflowed the clone stage's decimal remap (OverflowError:
+    'Python int too large to convert to C long'). Assembly now rejects
+    them at the door, naming the shared constant's value."""
+
+    oversized = _with_structural_ids(
+        _asec_frame(),
+        [1, PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID + 1],
+    )
+    low = _with_structural_ids(_asec_frame(), [1, 2])
+
+    with pytest.raises(ValueError, match=r"clone-safe bound"):
+        assemble_spines(
+            {"asec": oversized, "acs": low},
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+
+
+def test_assemble_then_clone_composes_at_the_clone_safe_bound() -> None:
+    """The bound itself must compose: assembly accepts it and the clone
+    remap stays inside int64 (multiplier 10**16, clone index 1)."""
+
+    at_bound = _with_structural_ids(
+        _asec_frame(), [1, PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID]
+    )
+    low = _with_structural_ids(_asec_frame(), [2, 3])
+    assembled = assemble_spines(
+        {"asec": at_bound, "acs": low},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    cloned = clone_us_frame_for_puf_support(assembled)
+
+    for entity in US_SCHEMA.entities:
+        id_column = US_SCHEMA.entity_id_column(entity)
+        assert not cloned.table(entity)[id_column].duplicated().any()
+        assert (cloned.table(entity)[id_column] >= 0).all()
 
 
 def test_assemble_then_clone_composes_for_adversarial_nonnegative_ids() -> None:
