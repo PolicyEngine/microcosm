@@ -24,10 +24,12 @@ from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
-    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     PufTaxDetailChainInputs,
     finalize_us_puf_tax_detail_predictions,
     prepare_us_puf_tax_detail_chain_inputs,
+)
+from populace.build.us_runtime.support_provenance import (
+    puf_tax_detail_clone_mask,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -635,16 +637,16 @@ def _assert_live_recipient_identity(
 ) -> None:
     identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
     tax_unit = frame.table("tax_unit")
-    channel = support_channel_column("tax_unit")
-    if channel not in tax_unit:
-        raise ValueError("Live finalization frame lacks PUF support-channel identity.")
+    clone_index = support_clone_index_column("tax_unit")
+    if clone_index not in tax_unit:
+        raise ValueError("Live finalization frame lacks PUF clone identity.")
     missing_identity = [column for column in identity_columns if column not in tax_unit]
     if missing_identity:
         raise ValueError(
             f"Live finalization frame lacks identity columns: {missing_identity}."
         )
     live = tax_unit.loc[
-        tax_unit[channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        puf_tax_detail_clone_mask(tax_unit, entity="tax_unit"),
         list(identity_columns),
     ]
     expected_rows = _manifest_integer(manifest, "recipient_rows")

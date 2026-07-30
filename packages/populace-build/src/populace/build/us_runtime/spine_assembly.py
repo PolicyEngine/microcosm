@@ -15,9 +15,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.puf_support import (
+from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -48,9 +49,10 @@ def assemble_spines(
     ``household_mass_shares`` allocates the anchor frame's incoming household
     mass across the peer sources.  The anchor is emitted first and remaining
     channels are emitted in lexical order, so mapping insertion order cannot
-    change record order.  Each entity receives three provenance fields:
+    change record order.  Each entity receives four provenance fields:
     ``*_support_channel`` (the immutable source-spine channel),
-    ``*_source_id`` (the source ID before collision remapping), and
+    ``*_spine_source_id`` (the raw ID before collision remapping),
+    ``*_source_id`` (the assembly-unique ID before cloning), and
     ``*_support_clone_index`` (zero before clone operators).
 
     Source frames must already use the same US schema and column dtypes for
@@ -267,8 +269,9 @@ def _validate_shared_column_dtypes(frames: Mapping[str, Frame]) -> None:
             )
 
 
-def _support_metadata_columns(entity: str) -> tuple[str, str, str]:
+def _support_metadata_columns(entity: str) -> tuple[str, str, str, str]:
     return (
+        spine_source_id_column(entity),
         support_source_id_column(entity),
         support_channel_column(entity),
         support_clone_index_column(entity),
@@ -302,7 +305,14 @@ def _column_dtypes(
             table = frames[channel].table(entity)
             for column in table:
                 dtypes.setdefault(column, table[column].dtype)
-        source_id, support_channel, clone_index = _support_metadata_columns(entity)
+        spine_source_id, source_id, support_channel, clone_index = (
+            _support_metadata_columns(entity)
+        )
+        dtypes[spine_source_id] = (
+            frames[ordered_channels[0]]
+            .table(entity)[US_SCHEMA.entity_id_column(entity)]
+            .dtype
+        )
         dtypes[source_id] = (
             frames[ordered_channels[0]]
             .table(entity)[US_SCHEMA.entity_id_column(entity)]
@@ -362,7 +372,7 @@ def _prepared_tables(
         source = frame.table(entity)
         table = source.copy()
         id_column = US_SCHEMA.entity_id_column(entity)
-        table[support_source_id_column(entity)] = source[id_column].to_numpy()
+        table[spine_source_id_column(entity)] = source[id_column].to_numpy()
         table[support_channel_column(entity)] = channel
         table[support_clone_index_column(entity)] = _SUPPORT_CLONE_INDEX
         if entity == US_SCHEMA.person_entity:
@@ -378,6 +388,7 @@ def _prepared_tables(
             offset = offsets.get(entity)
             if offset is not None:
                 table[id_column] = source[id_column].to_numpy() + offset
+        table[support_source_id_column(entity)] = table[id_column].to_numpy()
         result[entity] = _align_table(
             table,
             column_orders[entity],

@@ -5,10 +5,11 @@
 Populace #395 increment 1 is in implementation on
 `multispine-operator-ordering-395`, based on `origin/main` at `0d99d8a`.
 The opt-in pre-operator spine assembly seam and pre-calibration
-spine-agreement contract are implemented and focused tests pass. Operator
-clone-role separation and the spine-blindness structural guard are in
-progress. Current sparse and dense release behavior remains unwired to the new
-seam.
+spine-agreement contract are implemented and focused tests pass. PUF
+operator-clone roles are now separate from immutable source-spine provenance.
+The remaining population-operator migration and spine-blindness structural
+guard are in progress. Current sparse and dense release behavior remains
+unwired to the new seam.
 
 ## Done
 
@@ -44,9 +45,22 @@ seam.
 - Added focused agreement tests covering registry exactness, weighted
   measurement, batched failures, nullable evidence, malformed registries, and
   rejection of the legacy PUF clone role as source-spine provenance.
+- Split immutable source provenance from operator clone roles: assembly emits
+  an assembly-unique `*_source_id`, the original local
+  `*_spine_source_id`, the unchanged source channel, and clone index zero.
+- Extended the existing PUF clone entrypoint to accept an assembled frame.
+  Every source spine receives a native and primary PUF-detail copy; source
+  channels and both source-ID fields remain unchanged while structural IDs
+  and clone indices carry operator identity.
+- Routed PUF QRF recipients and the capital-gains tail through clone
+  provenance instead of source-spine provenance while retaining the legacy
+  unassembled call path and private keyword compatibility.
+- Added combined-frame clone/QRF tests and passed the 69-test PUF support,
+  QRF-chain, capital-gains-tail, and multispine-clone regression set. Assembly
+  tests and focused ruff/diff checks also pass.
 
 ## Next
 
-- Separate PUF clone role from immutable source-spine provenance, then add
+- Complete the remaining population-operator clone-role migration and add
   structural spine-blindness enforcement.
 - Add the design note, changelog fragment, and focused/full verification.

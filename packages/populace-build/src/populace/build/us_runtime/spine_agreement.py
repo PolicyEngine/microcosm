@@ -38,6 +38,9 @@ from populace.build.us_runtime.acs_transfer import (
     acs_derived_transfer_expectations,
     declared_acs_transfer_target_families,
 )
+from populace.build.us_runtime.support_provenance import (
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+)
 
 __all__ = [
     "DEFAULT_INCIDENCE_RATIO_BOUNDS",
@@ -57,7 +60,6 @@ DEFAULT_QUANTILE_ENVELOPE_TOLERANCE = 0.25
 _BATCH_SEPARATOR = "__batch_"
 _DERIVED_FAMILY = "derived_transfer"
 _GATE_NAME = "us_spine_agreement"
-_PUF_TAX_DETAIL_CLONE_ROLE = "puf_tax_detail"
 
 
 class _ResolvedWeights(Protocol):
@@ -291,9 +293,9 @@ def spine_agreement_gate(
             contexts[entity] = None
             continue
         channels = tuple(sorted(provenance.astype(str).unique()))
-        if _PUF_TAX_DETAIL_CLONE_ROLE in channels:
+        if PUF_TAX_DETAIL_SUPPORT_CHANNEL in channels:
             failures.append(
-                f"{entity}: {_PUF_TAX_DETAIL_CLONE_ROLE!r} is a clone role, "
+                f"{entity}: {PUF_TAX_DETAIL_SUPPORT_CHANNEL!r} is a clone role, "
                 "not valid immutable source-spine provenance."
             )
             contexts[entity] = None

@@ -5,12 +5,13 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal, assert_series_equal
 
-from populace.build.us_runtime.puf_support import (
+from populace.build.us_runtime.spine_assembly import assemble_spines
+from populace.build.us_runtime.support_provenance import (
+    spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
-from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -149,11 +150,13 @@ def test_assemble_spines__combines_raw_sources_before_operators() -> None:
         table = result.table(entity)
         channel = support_channel_column(entity)
         source_id = support_source_id_column(entity)
+        spine_source_id = spine_source_id_column(entity)
         clone_index = support_clone_index_column(entity)
         assert set(table[channel]) == {"asec", "acs"}
         assert table[clone_index].eq(0).all()
+        assert table[source_id].equals(table[US_SCHEMA.entity_id_column(entity)])
         acs_rows = table[channel].eq("acs")
-        assert table.loc[acs_rows, source_id].tolist() == [
+        assert table.loc[acs_rows, spine_source_id].tolist() == [
             _acs_frame().table(entity)[US_SCHEMA.entity_id_column(entity)].iloc[0]
         ]
 
