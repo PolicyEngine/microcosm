@@ -111,8 +111,9 @@ is subject to the same clone and downstream operator sequence.
 
 The new provenance contract is:
 
-- `*_support_channel` is immutable source-spine provenance. Its vocabulary is
-  `asec`, `acs`, and future source names declared at assembly.
+- `*_support_channel` records source-spine provenance. Its vocabulary is the
+  set of source names declared at assembly, such as `asec`, `acs`, and future
+  peer channels.
 - `*_spine_source_id` is the entity ID in the source frame before assembly
   remaps colliding ID spaces.
 - `*_source_id` is the assembly-unique structural ID before cloning. Operator
@@ -122,6 +123,19 @@ The new provenance contract is:
   assembled source record; the PUF-detail clone is identified by its clone
   index rather than by changing the source channel.
 
+`Frame.table()` exposes mutable pandas tables, so the provenance columns are
+not made read-only by the dataframe API. Enforcement instead uses a private,
+deeply frozen frame-metadata receipt. At assembly it records the declared
+channel set and the native row count for every entity/channel pair. Assembly
+output, PUF clone entry/output, and the spine-agreement gate validate live
+channels and clone-index-zero row counts against that receipt. They also
+require every person's channel to agree with each linked group row, including
+its household. An unknown/forged channel, a drifted native count, a missing
+receipt on an assembled frame, or a cross-grain mismatch raises `ValueError`
+that names the assembly manifest. US runtime frame rebuilds carry the receipt
+whenever they carry the source frame's mass log, and a structural test rejects
+a mass-log-preserving rebuild that drops it.
+
 Assembly, provenance reporting, and the spine-agreement gate may read source
 channels. Population operators must not. In particular, an operator may
 route PUF-detail behavior using clone provenance, but it may not make a fit,
@@ -129,6 +143,19 @@ draw, transformation, or overwrite conditional on `asec`, `acs`, or another
 source channel. The current unassembled lineage remains compatible: when the
 raw-spine ID field is absent, its historical `asec`/`puf_tax_detail` channel
 labels are validated and translated to clone roles centrally.
+
+The structural guard covers person, household, tax-unit, SPM-unit, family,
+marital-unit, and benefit-unit naming variants. It recognizes direct,
+aliased-helper, dynamic-subscript, `getattr`, and `*_spine_source_id` reads.
+Every US runtime module is classified as a reviewed population operator or an
+explicit non-operator/provenance owner, so a new unclassified module fails the
+guard. `transfer_acs_inputs` selects fit donors by the centrally derived clone
+role; assembled source-channel names never determine donor eligibility.
+
+Assembly accepts only integer-typed, nonnegative structural source IDs and
+names the source spine and offending IDs on failure. PUF cloning revalidates
+integrality without truncating fractional values and accepts only the
+canonical native/PUF-detail role pair.
 
 ## Source harmonization and geography boundary
 
@@ -158,20 +185,30 @@ contracts while making the first shared mutable population state explicit.
 ## Gate and calibration boundary
 
 The spine-agreement gate runs after simulation and before calibration. Its
-registry covers each transferred or imputed input family and declares the
-statistics and tolerances used to compare source-conditional distributions.
-Failures are collected and reported as one batch. Calibration must not
-consume a frame whose agreement gate failed.
+registry covers each transferred or imputed input family, every variable in
+the checked-in take-up contract, and the downstream `ssi` simulation output
+measured by the multispine QA contract. This includes
+`takes_up_ssi_if_eligible`. The registry declares the statistics and
+tolerances used to compare source-conditional distributions. Failures are
+collected and reported as one batch. Calibration must not consume a frame
+whose agreement gate failed.
 
 The increment-1 registry is generated from the declared ACS transfer families,
 with transfer batch suffixes normalized and deterministic transfer outputs
-included. Each registered numeric or boolean distribution uses the same fixed
-contract, with no family-specific override:
+included, then extended from the take-up inventory and the declared simulated
+output surface. Each registered numeric or boolean distribution uses the same
+fixed contract, with no family-specific override:
 
 - every pair of source spines is compared using positive record weights;
 - the weighted nonzero-incidence ratio must be in `[0.8, 1.25]`; and
 - among nonzero records, the largest symmetric relative distance at weighted
   q10, q25, q50, q75, or q90 must not exceed `0.25`.
+
+The union of source channels observed across registered entity grains defines
+the required pair set, so a missing third-spine entity comparison is explicit
+and fails. A one-sided zero incidence is a disagreement. A both-zero pair is
+recorded as untestable in gate details and also fails; registered all-zero
+surfaces cannot pass silently.
 
 The gate returns one `GateResult` containing every malformed-input and
 distribution failure rather than stopping at the first disagreement.
