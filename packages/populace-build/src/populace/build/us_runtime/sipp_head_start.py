@@ -480,14 +480,13 @@ def _decoded_strings(series: pd.Series) -> pd.Series:
 def _support_group_keys(
     person: pd.DataFrame,
     source_id: pd.Series,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series]:
     """Return clone-pair keys without consulting immutable source channels."""
 
     if not has_support_role_metadata(person, entity="person"):
         return (
             source_id.astype(object),
             pd.Series(_ASEC_CHANNEL, index=person.index),
-            pd.Series(0, index=person.index, dtype=np.int64),
         )
     try:
         roles = support_role_series(person, entity="person")
@@ -496,17 +495,7 @@ def _support_group_keys(
             "US SIPP Head Start found unsupported support channel or "
             f"clone-role metadata: {exc}"
         ) from exc
-    occurrence = (
-        pd.DataFrame({"source_id": source_id, "role": roles})
-        .groupby(["source_id", "role"], sort=False)
-        .cumcount()
-    )
-    keys = pd.Series(
-        list(zip(source_id, occurrence, strict=True)),
-        index=person.index,
-        dtype=object,
-    )
-    return keys, roles, occurrence
+    return source_id.astype(object), roles
 
 
 def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.ndarray]:
@@ -572,7 +561,7 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
     )
 
     source_id = _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN])
-    source_key, roles, source_occurrence = _support_group_keys(person, source_id)
+    source_key, roles = _support_group_keys(person, source_id)
     age_unique = (
         pd.Series(age, index=person.index).groupby(source_key, sort=False).nunique()
     )
@@ -582,16 +571,30 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
             "US SIPP Head Start source clones disagree on age for "
             f"person_source_id(s): {inconsistent[:5]}."
         )
+    role_rows = pd.DataFrame({"source_id": source_id, "role": roles})
+    duplicate_roles = role_rows.duplicated(
+        ["source_id", "role"],
+        keep=False,
+    )
+    if duplicate_roles.any():
+        bad = (
+            role_rows.loc[duplicate_roles, ["source_id", "role"]]
+            .drop_duplicates()
+            .itertuples(index=False, name=None)
+        )
+        raise ValueError(
+            "US SIPP Head Start source units carry duplicated same-role rows; "
+            f"invalid source role(s): {list(bad)[:5]}."
+        )
 
     order = pd.DataFrame(index=person.index)
     order["source_id"] = source_id
-    order["source_occurrence"] = source_occurrence
     order["source_key"] = source_key
     order["role_priority"] = roles.map({_ASEC_CHANNEL: 0, _PUF_CHANNEL: 1})
     order["person_key"] = person["person_id"].astype(str)
     canonical_index = (
         order.sort_values(
-            ["source_id", "source_occurrence", "role_priority", "person_key"],
+            ["source_id", "role_priority", "person_key"],
             kind="mergesort",
         )
         .drop_duplicates("source_key", keep="first")
@@ -600,15 +603,8 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
     canonical = features.loc[canonical_index].copy()
     canonical.insert(0, "source_key", source_key.loc[canonical_index].to_numpy())
     canonical.insert(1, "source_id", source_id.loc[canonical_index].to_numpy())
-    canonical.insert(
-        2,
-        "source_occurrence",
-        source_occurrence.loc[canonical_index].to_numpy(),
-    )
-    canonical = canonical.sort_values(
-        ["source_id", "source_occurrence"], kind="mergesort"
-    ).reset_index(
-        drop=True,
+    canonical = canonical.sort_values("source_id", kind="mergesort").reset_index(
+        drop=True
     )
     values = canonical.loc[:, list(SIPP_HEAD_START_MODEL_PREDICTORS)].to_numpy(
         dtype=np.float64
@@ -789,7 +785,7 @@ def us_sipp_head_start_summary(frame: Frame) -> dict[str, object]:
         if role_invalid:
             keys = source_ids.astype(object)
         else:
-            keys, _, _ = _support_group_keys(person, source_ids)
+            keys, _ = _support_group_keys(person, source_ids)
         work = pd.DataFrame({"key": keys, "value": values})
         sizes = work.groupby("key", sort=False).size()
         clone_groups = int((sizes > 1).sum())

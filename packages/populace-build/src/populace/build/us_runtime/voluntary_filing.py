@@ -742,12 +742,18 @@ def _source_receiver_rows(
         rows["_support_role"] = support_role_series(
             tax_unit, entity="tax_unit"
         ).to_numpy()
-        rows["_source_occurrence"] = rows.groupby(
-            ["_source_id", "_support_role"], sort=False
-        ).cumcount()
-        rows["_source_key"] = list(
-            zip(rows["_source_id"], rows["_source_occurrence"], strict=True)
-        )
+        role_counts = rows.groupby(
+            ["_source_id", "_support_role"],
+            sort=False,
+        ).size()
+        duplicated_roles = role_counts[role_counts > 1]
+        if not duplicated_roles.empty:
+            bad = duplicated_roles.index.tolist()
+            raise ValueError(
+                "US voluntary-filing support source units carry duplicated "
+                f"same-role rows; invalid source role(s) {bad[:5]}."
+            )
+        rows["_source_key"] = rows["_source_id"]
         asec_counts = (
             rows["_support_role"]
             .eq(_BASE_ASEC_SUPPORT_CHANNEL)
@@ -774,7 +780,6 @@ def _source_receiver_rows(
             ordered_rows.sort_values(
                 [
                     "_source_id",
-                    "_source_occurrence",
                     "_asec_rank",
                     "_support_role",
                     "_tax_unit_id",

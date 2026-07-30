@@ -401,6 +401,34 @@ def test_imputer_fails_closed_on_provenance_and_clone_age(
         impute_us_sipp_head_start(inconsistent, _donor(), seed=0)
 
 
+def test_imputer_rejects_conflicting_duplicate_asec_source_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    duplicate = _frame(
+        [7, 7],
+        ages=[3, 5],
+        channels=["asec", "asec"],
+    )
+
+    with pytest.raises(ValueError, match="source clones disagree on age"):
+        impute_us_sipp_head_start(duplicate, _donor(), seed=0)
+
+
+def test_imputer_rejects_identical_duplicate_same_role_source_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    duplicate = _frame(
+        [7, 7],
+        ages=[3, 3],
+        channels=["asec", "asec"],
+    )
+
+    with pytest.raises(ValueError, match="duplicated same-role rows"):
+        impute_us_sipp_head_start(duplicate, _donor(), seed=0)
+
+
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
