@@ -19,6 +19,7 @@ from populace.build.us_runtime.puf_support import (
     support_role_series,
     support_source_id_column,
 )
+from populace.build.us_runtime.support_provenance import spine_assembly_manifest
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -71,6 +72,10 @@ def _assembled_spines() -> Frame:
             )
         },
         pd.Series(["asec_record", "acs_record"], name="stratum"),
+        metadata=spine_assembly_manifest(
+            tables,
+            channels=("asec", "acs"),
+        ),
     )
 
 
@@ -120,6 +125,14 @@ def test_puf_clone_preserves_source_spines_and_routes_by_clone_index() -> None:
         20.0,
     ]
     assert cloned.weights_for("household").total == 100.0
+
+
+def test_puf_clone_rejects_support_channel_forged_through_mutable_table() -> None:
+    assembled = _assembled_spines()
+    assembled.table("person").loc[0, support_channel_column("person")] = "forged_source"
+
+    with pytest.raises(ValueError, match="assembly manifest.*unknown channel"):
+        clone_us_frame_for_puf_support(assembled)
 
 
 def test_puf_qrf_preparation_accepts_all_source_spines() -> None:

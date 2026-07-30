@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
+
 import numpy as np
 import pandas as pd
 
@@ -9,19 +12,234 @@ __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "SPINE_ASSEMBLY_MANIFEST_KEY",
     "has_support_role_metadata",
     "puf_tax_detail_clone_mask",
+    "spine_assembly_manifest",
     "spine_source_id_column",
     "support_channel_column",
     "support_clone_index_column",
     "support_role_series",
     "support_source_id_column",
+    "validate_assembly_provenance",
     "without_support_role_metadata",
 ]
 
 BASE_ASEC_SUPPORT_CHANNEL = "asec"
 PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 PUF_TAX_DETAIL_CLONE_INDEX = 1
+SPINE_ASSEMBLY_MANIFEST_KEY = "us_spine_assembly_manifest"
+_SPINE_ASSEMBLY_MANIFEST_VERSION = 1
+
+
+class _ProvenanceSchema(Protocol):
+    person_entity: str
+    group_entities: Sequence[str]
+
+    def entity_id_column(self, entity: str) -> str: ...
+
+    def membership_column(self, entity: str) -> str: ...
+
+
+class _ProvenanceFrame(Protocol):
+    entities: Sequence[str]
+    metadata: Mapping[str, Any]
+    schema: _ProvenanceSchema
+
+    def table(self, entity: str) -> pd.DataFrame: ...
+
+
+def spine_assembly_manifest(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    channels: Sequence[str],
+) -> dict[str, object]:
+    """Build immutable-ready channel/count metadata for one assembly output."""
+
+    declared_channels = tuple(channels)
+    if len(declared_channels) < 2 or len(set(declared_channels)) != len(
+        declared_channels
+    ):
+        raise ValueError(
+            "Spine assembly manifest requires at least two unique channels."
+        )
+    row_counts: dict[str, dict[str, int]] = {}
+    for entity, table in tables.items():
+        channel_column = support_channel_column(entity)
+        if channel_column not in table:
+            raise ValueError(
+                f"Spine assembly manifest cannot be built; missing {channel_column!r}."
+            )
+        row_counts[entity] = {
+            channel: int(table[channel_column].eq(channel).sum())
+            for channel in declared_channels
+        }
+    return {
+        SPINE_ASSEMBLY_MANIFEST_KEY: {
+            "version": _SPINE_ASSEMBLY_MANIFEST_VERSION,
+            "channels": declared_channels,
+            "native_row_counts": row_counts,
+        }
+    }
+
+
+def validate_assembly_provenance(
+    frame: _ProvenanceFrame,
+    *,
+    boundary: str,
+    require_manifest: bool = True,
+) -> Mapping[str, Any] | None:
+    """Validate live support provenance against the frozen assembly manifest.
+
+    Counts cover clone-index-zero rows, so clone operators may add role copies
+    without rewriting the source assembly receipt. Every live channel must be
+    declared, native counts must remain exact, and each person's channel must
+    agree with every group row referenced by that person.
+    """
+
+    metadata = getattr(frame, "metadata", {})
+    manifest = metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
+    if manifest is None:
+        if require_manifest:
+            raise ValueError(
+                f"{boundary}: immutable support provenance has no assembly "
+                f"manifest {SPINE_ASSEMBLY_MANIFEST_KEY!r}."
+            )
+        return None
+    if not isinstance(manifest, Mapping):
+        raise ValueError(f"{boundary}: assembly manifest is malformed.")
+    if manifest.get("version") != _SPINE_ASSEMBLY_MANIFEST_VERSION:
+        raise ValueError(
+            f"{boundary}: assembly manifest has unsupported version "
+            f"{manifest.get('version')!r}."
+        )
+    raw_channels = manifest.get("channels")
+    raw_counts = manifest.get("native_row_counts")
+    if (
+        not isinstance(raw_channels, Sequence)
+        or isinstance(raw_channels, (str, bytes))
+        or not isinstance(raw_counts, Mapping)
+    ):
+        raise ValueError(f"{boundary}: assembly manifest is malformed.")
+    channels = tuple(raw_channels)
+    if (
+        len(channels) < 2
+        or len(set(channels)) != len(channels)
+        or any(not isinstance(channel, str) or not channel for channel in channels)
+    ):
+        raise ValueError(
+            f"{boundary}: assembly manifest declares invalid channels "
+            f"{list(channels)!r}."
+        )
+    declared = set(channels)
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        channel_column = support_channel_column(entity)
+        clone_index_column = support_clone_index_column(entity)
+        missing = [
+            column
+            for column in (channel_column, clone_index_column)
+            if column not in table
+        ]
+        if missing:
+            raise ValueError(
+                f"{boundary}: assembly manifest provenance is incomplete for "
+                f"{entity!r}; missing {missing}."
+            )
+        channel_values = table[channel_column]
+        invalid_channels = channel_values.isna() | ~channel_values.map(
+            lambda value: isinstance(value, str) and bool(value)
+        )
+        if invalid_channels.any():
+            raise ValueError(
+                f"{boundary}: assembly manifest provenance column "
+                f"{channel_column!r} has invalid value(s)."
+            )
+        observed = set(channel_values.astype(str))
+        unknown = sorted(observed - declared)
+        if unknown:
+            raise ValueError(
+                f"{boundary}: assembly manifest declares channels "
+                f"{list(channels)!r}, but {channel_column!r} contains unknown "
+                f"channel(s) {unknown}."
+            )
+
+        numeric_clone_indices = pd.to_numeric(
+            table[clone_index_column],
+            errors="coerce",
+        )
+        clone_indices = numeric_clone_indices.to_numpy(dtype=np.float64)
+        if (
+            numeric_clone_indices.isna().any()
+            or (clone_indices < 0.0).any()
+            or not np.equal(clone_indices, np.floor(clone_indices)).all()
+        ):
+            raise ValueError(
+                f"{boundary}: assembly manifest provenance column "
+                f"{clone_index_column!r} must contain nonnegative integers."
+            )
+        expected_by_channel = raw_counts.get(entity)
+        if (
+            not isinstance(expected_by_channel, Mapping)
+            or set(expected_by_channel) != declared
+        ):
+            raise ValueError(
+                f"{boundary}: assembly manifest row counts for {entity!r} "
+                "do not exactly cover its declared channels."
+            )
+        native = clone_indices == 0.0
+        actual_counts = {
+            channel: int(
+                np.count_nonzero(
+                    native & channel_values.astype(str).eq(channel).to_numpy()
+                )
+            )
+            for channel in channels
+        }
+        try:
+            expected_counts = {
+                channel: int(expected_by_channel[channel]) for channel in channels
+            }
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{boundary}: assembly manifest row counts for {entity!r} "
+                "must be integers."
+            ) from exc
+        if any(value < 0 for value in expected_counts.values()):
+            raise ValueError(
+                f"{boundary}: assembly manifest row counts for {entity!r} "
+                "must be nonnegative."
+            )
+        if actual_counts != expected_counts:
+            raise ValueError(
+                f"{boundary}: live {entity!r} native row counts drifted from "
+                f"the assembly manifest; expected {expected_counts}, observed "
+                f"{actual_counts}."
+            )
+
+    person_entity = frame.schema.person_entity
+    person = frame.table(person_entity)
+    person_channel_column = support_channel_column(person_entity)
+    for group in frame.schema.group_entities:
+        membership_column = frame.schema.membership_column(group)
+        group_id_column = frame.schema.entity_id_column(group)
+        group_channel_column = support_channel_column(group)
+        group_channels = frame.table(group).set_index(group_id_column)[
+            group_channel_column
+        ]
+        expected = person[membership_column].map(group_channels)
+        mismatch = expected.isna() | expected.astype(str).ne(
+            person[person_channel_column].astype(str)
+        )
+        if mismatch.any():
+            raise ValueError(
+                f"{boundary}: cross-grain provenance disagrees with the "
+                f"assembly manifest on {int(mismatch.sum())} person/{group} "
+                "link(s); each person's support channel must match its "
+                f"{group} channel."
+            )
+    return manifest
 
 
 def has_support_role_metadata(

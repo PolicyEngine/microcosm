@@ -18,10 +18,12 @@ import pandas as pd
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    spine_assembly_manifest,
     spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
+    validate_assembly_provenance,
 )
 from populace.frame import (
     US_SCHEMA,
@@ -123,6 +125,14 @@ def assemble_spines(
         {"household": weights},
         strata,
         mass_log=mass_log,
+        metadata=spine_assembly_manifest(
+            tables,
+            channels=ordered_channels,
+        ),
+    )
+    validate_assembly_provenance(
+        result,
+        boundary="spine assembly output",
     )
     if not np.isclose(
         result.weights_for("household").total,
@@ -236,6 +246,18 @@ def _validate_source_frame(frame: Frame, *, channel: str) -> None:
     conflicts: list[str] = []
     for entity in US_SCHEMA.entities:
         table = frame.table(entity)
+        id_column = US_SCHEMA.entity_id_column(entity)
+        ids = table[id_column].to_numpy()
+        if not np.issubdtype(ids.dtype, np.integer):
+            raise ValueError(
+                f"Spine {channel!r} {id_column!r} must contain integral source IDs."
+            )
+        negative_ids = np.unique(ids[ids < 0])
+        if negative_ids.size:
+            raise ValueError(
+                f"Spine {channel!r} {id_column!r} contains negative source IDs "
+                f"{negative_ids[:5].tolist()}; source IDs must be nonnegative."
+            )
         metadata = _support_metadata_columns(entity)
         present = [column for column in metadata if column in table]
         if present:

@@ -41,6 +41,7 @@ from populace.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_role_series,
     support_source_id_column,
+    validate_assembly_provenance,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from populace.frame.schema import EntitySchema
@@ -476,9 +477,9 @@ def clone_us_frame_for_puf_support(
             legacy ASEC expansion. A frame whose entity tables all carry
             native (clone-index zero) support provenance keeps its source
             channels unchanged while receiving one PUF-detail clone.
-        channels: Ordered support-channel names. The first channel keeps the
-            original IDs; later channels receive remapped IDs. Weights are
-            split evenly across channels.
+        channels: The canonical ``("asec", "puf_tax_detail")`` operator-role
+            pair. Custom roles are rejected at this boundary because downstream
+            operators accept only these two roles.
 
     Returns:
         A new frame with every entity table cloned once per support role, all
@@ -496,6 +497,10 @@ def clone_us_frame_for_puf_support(
     support_channels = _validate_channels(channels)
     has_assembly_provenance = _has_native_assembly_provenance(frame)
     if has_assembly_provenance:
+        validate_assembly_provenance(
+            frame,
+            boundary="PUF support clone entry",
+        )
         if support_channels != _DEFAULT_SUPPORT_CHANNELS:
             raise ValueError(
                 "Preassembled spine frames use the canonical native/PUF clone "
@@ -545,13 +550,20 @@ def clone_us_frame_for_puf_support(
         [frame.strata.copy() for _channel in support_channels],
         ignore_index=True,
     )
-    return Frame(
+    result = Frame(
         tables,
         frame.schema,
         weights,
         strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
+    if has_assembly_provenance:
+        validate_assembly_provenance(
+            result,
+            boundary="PUF support clone output",
+        )
+    return result
 
 
 def puf_tax_unit_donor_from_arrays(
@@ -1293,6 +1305,7 @@ def finalize_us_puf_tax_detail_predictions(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -1423,6 +1436,32 @@ def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:
     return values
 
 
+def _validated_integral_ids(
+    values: Sequence[Any],
+    *,
+    label: str,
+) -> np.ndarray:
+    """Return int64 IDs only when every input value is exactly integral."""
+
+    try:
+        numeric = pd.to_numeric(pd.Series(values), errors="raise")
+        as_float = numeric.to_numpy(dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be integral.") from exc
+    if (
+        not np.isfinite(as_float).all()
+        or not np.equal(as_float, np.floor(as_float)).all()
+    ):
+        raise ValueError(f"{label} must be integral.")
+    try:
+        integral = numeric.astype("int64").to_numpy()
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be integral.") from exc
+    if not np.equal(as_float, integral.astype(np.float64)).all():
+        raise ValueError(f"{label} must be integral.")
+    return integral
+
+
 def _has_native_assembly_provenance(frame: Frame) -> bool:
     """Validate support metadata and identify a preassembled native frame."""
 
@@ -1496,12 +1535,10 @@ def _has_native_assembly_provenance(frame: Frame) -> bool:
             support_source_id_column(entity),
             spine_source_id_column(entity),
         ):
-            try:
-                pd.to_numeric(table[source_id_column], errors="raise").astype("int64")
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"Preassembled source IDs in {source_id_column!r} must be integral."
-                ) from exc
+            _validated_integral_ids(
+                table[source_id_column],
+                label=f"Preassembled source IDs in {source_id_column!r}",
+            )
     return True
 
 
@@ -1537,6 +1574,11 @@ def _reject_metadata_collisions(
         raise ValueError(
             f"support channels must include {PUF_TAX_DETAIL_SUPPORT_CHANNEL!r}."
         )
+    if channels != _DEFAULT_SUPPORT_CHANNELS:
+        raise ValueError(
+            "PUF support expansion accepts only the canonical ASEC/PUF roles "
+            f"{_DEFAULT_SUPPORT_CHANNELS!r}; got {channels!r}."
+        )
 
 
 def _id_multiplier_for_frame(frame: Frame) -> int:
@@ -1552,9 +1594,12 @@ def _id_multiplier_for_values(*values: Sequence[Any]) -> int:
         raise ValueError("at least one ID value sequence is required.")
     max_id = 0
     for sequence in values:
-        numeric = pd.to_numeric(pd.Series(sequence), errors="raise").astype("int64")
+        numeric = _validated_integral_ids(
+            sequence,
+            label="PUF support structural IDs",
+        )
         if len(numeric):
-            max_id = max(max_id, int(numeric.abs().max()))
+            max_id = max(max_id, int(np.abs(numeric).max()))
     return 10 ** max(1, len(str(max_id)))
 
 
@@ -1564,7 +1609,10 @@ def _remap_ids(
     clone_index: int,
     id_multiplier: int,
 ) -> np.ndarray:
-    values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
+    values = _validated_integral_ids(
+        ids,
+        label="PUF support structural IDs",
+    )
     if clone_index == 0:
         return values.copy()
     return values + clone_index * id_multiplier

@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+from itertools import permutations
+
 import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal, assert_series_equal
 
+from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
+    SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
+    validate_assembly_provenance,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -114,6 +119,23 @@ def _snapshot(frame: Frame) -> tuple[dict[str, pd.DataFrame], pd.Series, np.ndar
     )
 
 
+def _with_structural_ids(frame: Frame, ids: list[int]) -> Frame:
+    values = np.asarray(ids, dtype=np.int64)
+    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    person = tables[US_SCHEMA.person_entity]
+    person[US_SCHEMA.person_id_column] = values
+    for entity in US_SCHEMA.group_entities:
+        tables[entity][US_SCHEMA.entity_id_column(entity)] = values
+        person[US_SCHEMA.membership_column(entity)] = values
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
 def test_assemble_spines__combines_raw_sources_before_operators() -> None:
     asec = _asec_frame()
     acs = _acs_frame()
@@ -188,6 +210,40 @@ def test_assemble_spines__accepts_a_future_source_channel() -> None:
     }
 
 
+def test_assembly_manifest_is_immutable_and_detects_channel_forgery() -> None:
+    assembled = assemble_spines(
+        {"asec": _asec_frame(), "acs": _acs_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    manifest = assembled.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
+    with pytest.raises(TypeError):
+        manifest["channels"] = ("forged_source",)
+
+    assembled.table("person").loc[0, "person_support_channel"] = "forged_source"
+    with pytest.raises(ValueError, match="assembly manifest.*unknown channel"):
+        validate_assembly_provenance(
+            assembled,
+            boundary="test assembly output",
+        )
+
+
+def test_assembly_manifest_detects_cross_grain_channel_disagreement() -> None:
+    assembled = assemble_spines(
+        {"asec": _asec_frame(), "acs": _acs_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    person = assembled.table("person")
+    # Preserve every per-channel count while assigning two people to the
+    # opposite source from their linked households.
+    person.loc[[0, 2], "person_support_channel"] = ["acs", "asec"]
+
+    with pytest.raises(ValueError, match="cross-grain.*person/household"):
+        validate_assembly_provenance(
+            assembled,
+            boundary="test assembly output",
+        )
+
+
 @pytest.mark.parametrize(
     ("spines", "shares", "match"),
     [
@@ -246,3 +302,80 @@ def test_assemble_spines__owns_support_provenance() -> None:
             {"asec": pretagged, "acs": _acs_frame()},
             household_mass_shares={"asec": 0.5, "acs": 0.5},
         )
+
+
+def test_assemble_spines__rejects_negative_source_ids_before_clone() -> None:
+    negative = _with_structural_ids(_asec_frame(), [-5, 95])
+    positive = _with_structural_ids(_asec_frame(), [1, 2])
+
+    with pytest.raises(
+        ValueError,
+        match=r"Spine 'asec'.*negative source IDs.*-5",
+    ):
+        assemble_spines(
+            {"asec": negative, "acs": positive},
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+
+
+def test_assemble_then_clone_composes_for_adversarial_nonnegative_ids() -> None:
+    wide = _with_structural_ids(_asec_frame(), [5, 95])
+    low = _with_structural_ids(_asec_frame(), [1, 2])
+    assembled = assemble_spines(
+        {"asec": wide, "acs": low},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    cloned = clone_us_frame_for_puf_support(assembled)
+
+    for entity in US_SCHEMA.entities:
+        id_column = US_SCHEMA.entity_id_column(entity)
+        assert cloned.n(entity) == 2 * assembled.n(entity)
+        assert not cloned.table(entity)[id_column].duplicated().any()
+
+
+def test_clone_rejects_fractional_assembled_source_ids_without_truncation() -> None:
+    assembled = assemble_spines(
+        {"asec": _asec_frame(), "acs": _acs_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    person = assembled.table("person")
+    person["person_source_id"] = person["person_source_id"].astype(np.float64)
+    person.loc[0, "person_source_id"] = 1.5
+
+    with pytest.raises(
+        ValueError,
+        match=r"Preassembled source IDs in 'person_source_id' must be integral",
+    ):
+        clone_us_frame_for_puf_support(assembled)
+
+
+def test_three_spine_output_is_invariant_across_all_input_permutations() -> None:
+    frames = {
+        "asec": _asec_frame(),
+        "acs": _acs_frame(),
+        "future_survey": _acs_frame(),
+    }
+    shares = {"asec": 0.5, "acs": 0.25, "future_survey": 0.25}
+    baseline: Frame | None = None
+    seen_orders: set[tuple[str, ...]] = set()
+
+    for order in permutations(frames):
+        seen_orders.add(order)
+        result = assemble_spines(
+            {channel: frames[channel] for channel in order},
+            household_mass_shares={channel: shares[channel] for channel in order},
+        )
+        if baseline is None:
+            baseline = result
+            continue
+        for entity in US_SCHEMA.entities:
+            assert_frame_equal(result.table(entity), baseline.table(entity))
+        assert_series_equal(result.strata, baseline.strata)
+        np.testing.assert_array_equal(
+            result.weights_for("household").values,
+            baseline.weights_for("household").values,
+        )
+        assert result.mass_log == baseline.mass_log
+
+    assert len(seen_orders) == 6
