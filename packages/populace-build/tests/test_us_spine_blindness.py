@@ -1130,6 +1130,115 @@ def _scope_assignment_counts(
     return counter.counts
 
 
+def _static_structure(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> tuple | None:
+    """Resolve a list/tuple container STRUCTURALLY, tolerating opaque
+    leaves (kept as the opaque sentinel). Lets the rows binder propagate
+    mixed rows — static labels beside dynamic objects — per column."""
+
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                if isinstance(value, (list, tuple)):
+                    return tuple(value)
+                return None
+        return None
+    if isinstance(node, (ast.List, ast.Tuple)):
+        resolved = []
+        for element in node.elts:
+            if isinstance(element, (ast.List, ast.Tuple)):
+                inner = _static_structure(element, constants)
+                resolved.append(inner if inner is not None else _OPAQUE_STATIC_VALUE)
+            else:
+                value = _static_literal_value(element, constants)
+                resolved.append(value)
+        return tuple(resolved)
+    return None
+
+
+def _static_container_expression(node: ast.AST) -> ast.AST | None:
+    """The literal-container core of an iterable expression, if any.
+
+    Recognizes literal containers directly, ``<container>.items()``, and
+    ``dict(<static literal>)`` — the forms whose string leaves are
+    guaranteed container CONTENT. Dynamic expressions that merely mention
+    strings (``mapping.get("person", {}).values()``) return None so key
+    lookups never trip the fragment rule."""
+
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+        return node
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "items"
+        and not node.args
+        and not node.keywords
+    ):
+        return _static_container_expression(node.func.value)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "dict"
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        return _static_container_expression(node.args[0])
+    return None
+
+
+def _iterable_carries_guarded_fragments(node: ast.AST) -> bool:
+    """True when a literal-container iterable holds string constants that
+    assemble into a guarded column name. Applies only to genuinely static
+    container expressions (see _static_container_expression) so dynamic
+    iterables that merely mention strings never trip it. Fragments shorter
+    than four characters are ignored."""
+
+    container = _static_container_expression(node)
+    if container is None:
+        return False
+    fragments = [
+        constant.value
+        for constant in ast.walk(container)
+        if isinstance(constant, ast.Constant)
+        and isinstance(constant.value, str)
+        and len(constant.value) >= 4
+    ]
+    return any(
+        fragment in column
+        for fragment in fragments
+        for column in _OPERATOR_SOURCE_COLUMNS
+    )
+
+
+def _resolved_value_carries_guarded_fragments(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> bool:
+    """The bound-value counterpart of the syntactic probe: when the
+    iterable is a name (or expression) resolving to a static structure,
+    walk that structure's string leaves for guarded fragments."""
+
+    value = _static_literal_value(node, constants)
+    if value is _OPAQUE_STATIC_VALUE:
+        return False
+    leaves: list[str] = []
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            if len(item) >= 4:
+                leaves.append(item)
+        elif isinstance(item, (list, tuple, set, frozenset)):
+            stack.extend(item)
+        elif isinstance(item, dict):
+            stack.extend(item.keys())
+            stack.extend(item.values())
+    return any(
+        fragment in column for fragment in leaves for column in _OPERATOR_SOURCE_COLUMNS
+    )
+
+
 class _SourceReadVisitor(ast.NodeVisitor):
     def __init__(
         self,
@@ -1388,14 +1497,16 @@ class _SourceReadVisitor(ast.NodeVisitor):
             literal: object = tuple(mapping.items())
         else:
             literal = _static_literal_value(iterable, self.constants)
+            if literal is _OPAQUE_STATIC_VALUE or not isinstance(
+                literal, (list, tuple)
+            ):
+                structure = _static_structure(iterable, self.constants)
+                if structure is not None:
+                    literal = structure
         if literal is _OPAQUE_STATIC_VALUE or not isinstance(literal, (list, tuple)):
             return False
         rows = tuple(literal)
-        if not rows or not all(
-            isinstance(row, (list, tuple))
-            and all(isinstance(item, str) for item in row)
-            for row in rows
-        ):
+        if not rows or not all(isinstance(row, (list, tuple)) for row in rows):
             return False
         if not isinstance(target, (ast.Tuple, ast.List)):
             return False
@@ -1427,15 +1538,19 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 return False
         elif any(len(row) != len(leading) for row in rows):
             return False
+
+        def _column_choices(values: tuple) -> tuple[str, ...] | None:
+            return values if all(isinstance(value, str) for value in values) else None
+
         for position, element in enumerate(leading):
             self._bind_iteration_target(
                 element,
-                tuple(row[position] for row in rows),
+                _column_choices(tuple(row[position] for row in rows)),
             )
         for back, element in enumerate(reversed(trailing), start=1):
             self._bind_iteration_target(
                 element,
-                tuple(row[-back] for row in rows),
+                _column_choices(tuple(row[-back] for row in rows)),
             )
         if star_positions and isinstance(elements[star_positions[0]].value, ast.Name):
             self._bind_iteration_target(elements[star_positions[0]].value, None)
@@ -1620,6 +1735,20 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if values is None and self._bind_iteration_rows(node.target, node.iter):
             values = ("",)  # rows bound per position; body always analyzed
         else:
+            if values is None and (
+                _iterable_carries_guarded_fragments(node.iter)
+                or _resolved_value_carries_guarded_fragments(node.iter, self.constants)
+            ):
+                # The container statically carries guarded-name fragments
+                # but the binder cannot propagate them to this target
+                # geometry — the loop itself fails closed rather than
+                # binding silently opaque (sol #583 round 9).
+                self._record(
+                    node,
+                    "iteration over a static container carrying guarded-name "
+                    "fragments with unpropagatable target geometry "
+                    "(fail-closed)",
+                )
             self._bind_iteration_target(
                 node.target,
                 values,
@@ -1670,6 +1799,18 @@ class _SourceReadVisitor(ast.NodeVisitor):
             ):
                 pass
             else:
+                if values is None and (
+                    _iterable_carries_guarded_fragments(generator.iter)
+                    or _resolved_value_carries_guarded_fragments(
+                        generator.iter, self.constants
+                    )
+                ):
+                    self._record(
+                        generator.iter,
+                        "iteration over a static container carrying "
+                        "guarded-name fragments with unpropagatable target "
+                        "geometry (fail-closed)",
+                    )
                 self._bind_iteration_target(
                     generator.target,
                     values,
@@ -3185,6 +3326,51 @@ def f():
     for source in (items_loop, items_comprehension, starred_rows):
         assert _source_spine_accesses(source), source
     assert _source_spine_accesses(benign_starred) == ()
+
+
+def test_unpropagatable_geometry_over_guarded_fragments_fails_closed():
+    """Sol #583 round-9: any target/container geometry the binder cannot
+    propagate fails closed AT THE LOOP when the container statically
+    carries guarded-name fragments — ending geometry-by-geometry chasing.
+    Dynamic iterables that merely mention strings (key lookups) and
+    fragment-free static tables stay clean."""
+
+    nested_star_payload = """
+ROWS = (("person", "support", "channel"),)
+
+
+def f(df):
+    return [df.filter(items=[f"{e}_{m}_{sfx}"]) for *(e, m), sfx in ROWS]
+"""
+    rows_of_rows = """
+ROWS = ((("person", "support_channel"), "metadata"),)
+
+
+def f():
+    for (entity, suffix), metadata in ROWS:
+        sink(f"{entity}_{suffix}")
+"""
+    dict_constructor = """
+def f():
+    for entity, suffix in dict([("person", "support_channel")]).items():
+        sink(f"{entity}_{suffix}")
+"""
+    dynamic_mentioning_strings = """
+def f(target_families):
+    return {t for ts in target_families.get("person", {}).values() for t in ts}
+"""
+    fragment_free_nested = """
+ROWS = ((("state", "fips"), "meta"),)
+
+
+def f():
+    for (a, b), meta in ROWS:
+        sink(f"{a}_{b}")
+"""
+    for source in (nested_star_payload, rows_of_rows, dict_constructor):
+        assert _source_spine_accesses(source), source
+    assert _source_spine_accesses(dynamic_mentioning_strings) == ()
+    assert _source_spine_accesses(fragment_free_nested) == ()
 
 
 def test_mid_star_rows_and_concatenated_dict_entries_are_in_scope():
