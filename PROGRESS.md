@@ -17,6 +17,8 @@ Starred and nested format-field composition is now closed too, as are
 late-bound writes through comprehensions, `nonlocal`, and `global`.
 Static iterable propagation now covers all built-in literal forms requested by
 the contract.
+Conditional statements and optional loop execution now merge bindings
+conservatively instead of retaining the last syntactically visited value.
 
 No push or external mutation is authorized.
 
@@ -113,10 +115,17 @@ No push or external mutation is authorized.
   preserving literal containers for format-field indexing.
 - Added benign and guarded loop/comprehension controls for every new iterable
   form. The guard file now passes 72 tests with the graph clean.
+- Added branch-state joins for `if` statements/expressions and zero-or-more
+  iteration joins for dynamic loops; divergent constants become opaque,
+  possible DataFrame provenance is retained, and conditional method aliases
+  cannot disappear.
+- Preserved exact pre-loop bindings across provably empty static iterables.
+- Added guarded, benign, conditional-alias, optional-loop, and empty-loop
+  binding tests. The guard file now passes 73 tests with the graph clean.
 
 ## Next
 
-- Commit complete static-iterable propagation.
+- Commit flow-sensitive branch and loop joins.
 - Reconcile the universal column-container contract with the typed runtime
   graph findings from the independent audit.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module

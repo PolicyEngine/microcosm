@@ -1098,17 +1098,177 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.constants[-1][name] = values
             self.column_containers[-1][name] = False
             self.attribute_containers[-1][name] = False
-            self.method_aliases[-1][name] = None
+            self.method_aliases[-1][name] = (
+                _OPAQUE_METHOD_ALIAS
+                if name in self.method_alias_history[-1]
+                else None
+            )
             if self.scope_kinds[-1] == "comprehension":
                 self.assignment_counts[-1][name] = 1
 
+    def _flow_state(
+        self,
+    ) -> tuple[
+        dict[str, str | None],
+        dict[str, object],
+        dict[str, bool],
+        dict[str, bool],
+        dict[str, tuple[str, bool] | None],
+        set[str],
+    ]:
+        return (
+            self.bindings[-1].copy(),
+            self.constants[-1].copy(),
+            self.column_containers[-1].copy(),
+            self.attribute_containers[-1].copy(),
+            self.method_aliases[-1].copy(),
+            self.method_alias_history[-1].copy(),
+        )
+
+    def _restore_flow_state(
+        self,
+        state: tuple[
+            dict[str, str | None],
+            dict[str, object],
+            dict[str, bool],
+            dict[str, bool],
+            dict[str, tuple[str, bool] | None],
+            set[str],
+        ],
+    ) -> None:
+        (
+            self.bindings[-1],
+            self.constants[-1],
+            self.column_containers[-1],
+            self.attribute_containers[-1],
+            self.method_aliases[-1],
+            self.method_alias_history[-1],
+        ) = tuple(value.copy() for value in state)
+
+    @staticmethod
+    def _same_flow_value(left: object, right: object) -> bool:
+        return type(left) is type(right) and left == right
+
+    def _merge_flow_states(
+        self,
+        left: tuple[
+            dict[str, str | None],
+            dict[str, object],
+            dict[str, bool],
+            dict[str, bool],
+            dict[str, tuple[str, bool] | None],
+            set[str],
+        ],
+        right: tuple[
+            dict[str, str | None],
+            dict[str, object],
+            dict[str, bool],
+            dict[str, bool],
+            dict[str, tuple[str, bool] | None],
+            set[str],
+        ],
+    ) -> None:
+        left_bindings, left_constants, left_columns, left_attributes, left_aliases, left_history = left
+        (
+            right_bindings,
+            right_constants,
+            right_columns,
+            right_attributes,
+            right_aliases,
+            right_history,
+        ) = right
+        names = (
+            set(left_bindings)
+            | set(right_bindings)
+            | set(left_constants)
+            | set(right_constants)
+            | set(left_aliases)
+            | set(right_aliases)
+        )
+        history = left_history | right_history
+        self.bindings[-1] = {
+            name: (
+                left_bindings.get(name)
+                if self._same_flow_value(
+                    left_bindings.get(name),
+                    right_bindings.get(name),
+                )
+                else None
+            )
+            for name in names
+        }
+        self.constants[-1] = {
+            name: (
+                left_constants.get(name)
+                if self._same_flow_value(
+                    left_constants.get(name),
+                    right_constants.get(name),
+                )
+                else None
+            )
+            for name in names
+        }
+        self.column_containers[-1] = {
+            name: left_columns.get(name, False) or right_columns.get(name, False)
+            for name in names
+        }
+        self.attribute_containers[-1] = {
+            name: left_attributes.get(name, False)
+            or right_attributes.get(name, False)
+            for name in names
+        }
+        self.method_aliases[-1] = {}
+        for name in names:
+            left_alias = left_aliases.get(name)
+            right_alias = right_aliases.get(name)
+            if self._same_flow_value(left_alias, right_alias):
+                merged_alias = left_alias
+            elif name in history or left_alias is not None or right_alias is not None:
+                merged_alias = _OPAQUE_METHOD_ALIAS
+                history.add(name)
+            else:
+                merged_alias = None
+            self.method_aliases[-1][name] = merged_alias
+        self.method_alias_history[-1] = history
+
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        before = self._flow_state()
+        for statement in node.body:
+            self.visit(statement)
+        body_state = self._flow_state()
+        self._restore_flow_state(before)
+        for statement in node.orelse:
+            self.visit(statement)
+        else_state = self._flow_state()
+        self._merge_flow_states(body_state, else_state)
+
+    def visit_IfExp(self, node: ast.IfExp) -> None:
+        self.visit(node.test)
+        before = self._flow_state()
+        self.visit(node.body)
+        body_state = self._flow_state()
+        self._restore_flow_state(before)
+        self.visit(node.orelse)
+        else_state = self._flow_state()
+        self._merge_flow_states(body_state, else_state)
+
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
+        before = self._flow_state()
+        values = _static_string_list(node.iter, self.constants)
         self._bind_iteration_target(
             node.target,
-            _static_string_list(node.iter, self.constants),
+            values,
         )
-        for statement in (*node.body, *node.orelse):
+        for statement in node.body:
+            self.visit(statement)
+        body_state = self._flow_state()
+        if values == ():
+            self._restore_flow_state(before)
+        elif values is None:
+            self._merge_flow_states(before, body_state)
+        for statement in node.orelse:
             self.visit(statement)
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
@@ -2091,6 +2251,65 @@ def f(df, col):
         "person_support_channel" in access
         for access in _source_spine_accesses(format_bound)
     )
+
+
+def test_conditional_and_loop_flow_joins_never_restore_stale_constants() -> None:
+    """Branch disagreement and optional loop execution become opaque."""
+
+    conditional_sources = (
+        """
+def f(df, flag):
+    column = "person_support_channel"
+    if flag:
+        column = "age"
+    return df[column]
+""",
+        """
+def f(df, flag):
+    if flag:
+        column = "person_support_channel"
+    else:
+        column = "age"
+    return df[column]
+""",
+        """
+def f(df, flag):
+    query = df.query
+    if flag:
+        query = print
+    return query("person_support_channel == 1")
+""",
+        """
+def f(df, columns):
+    column = "age"
+    for column in columns:
+        pass
+    return df[column]
+""",
+    )
+    empty_loop_guarded = """
+def f(df):
+    column = "person_support_channel"
+    for column in ():
+        column = "age"
+    return df[column]
+"""
+    empty_loop_benign = empty_loop_guarded.replace(
+        '"person_support_channel"',
+        '"age"',
+    ).replace(
+        'column = "age"\n    return',
+        'column = "person_support_channel"\n    return',
+    )
+
+    for source in conditional_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("fail-closed" in item for item in accesses)
+    guarded_accesses = _source_spine_accesses(empty_loop_guarded)
+    assert guarded_accesses
+    assert any("person_support_channel" in item for item in guarded_accesses)
+    assert _source_spine_accesses(empty_loop_benign) == ()
 
 
 def test_subscript_selectors_resolve_or_fail_closed() -> None:
