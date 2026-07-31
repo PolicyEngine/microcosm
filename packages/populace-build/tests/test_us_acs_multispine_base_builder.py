@@ -203,27 +203,40 @@ def test_legacy_loader_and_shim_keep_calibrated_weight_contract(
         assert "household_weight" not in loaded.table("household")
 
 
-def test_retired_cli_exits_nonzero_with_pool_builder_migration_command(
-    tmp_path: Path,
-) -> None:
-    output = tmp_path / "must-not-exist.h5"
-
+def test_deprecated_cli_keeps_legacy_staging_recipe_available() -> None:
     result = subprocess.run(
         [
             sys.executable,
             str(_shim_path()),
-            "--base-h5",
-            "legacy.h5",
-            "--out-h5",
-            str(output),
+            "--help",
         ],
         check=False,
         capture_output=True,
         text=True,
     )
 
-    assert result.returncode == 2
-    assert result.stdout == ""
-    assert "legacy command cannot be translated" in result.stderr
-    assert "uv run tools/build_us_multispine_pool.py --help" in result.stderr
-    assert not output.exists()
+    assert result.returncode == 0
+    assert "--base-h5 BASE_H5" in result.stdout
+    assert "--out-h5 OUT_H5" in result.stdout
+    assert "--donor-release-manifest DONOR_RELEASE_MANIFEST" in result.stdout
+    assert "populace#578 increment 4" in result.stderr
+    assert "tools/build_us_multispine_pool.py" in result.stderr
+
+
+def test_deprecated_shim_warns_and_delegates_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shim = _load_shim_module()
+    argv = ["--base-h5", "dense.h5", "--out-h5", "staging.h5"]
+    captured: list[list[str] | None] = []
+
+    def fake_main(actual_argv: list[str] | None = None) -> int:
+        captured.append(actual_argv)
+        return 0
+
+    monkeypatch.setattr(shim._legacy, "main", fake_main)
+
+    with pytest.warns(DeprecationWarning, match=r"populace#578 increment 4"):
+        assert shim.main(argv) == 0
+
+    assert captured == [argv]

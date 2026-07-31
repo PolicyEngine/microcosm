@@ -74,6 +74,14 @@ RELEASE_ID_PREFIX = "populace-us-2024-buildo-acs-local"
 ARTIFACT_NAME = "populace_us_2024_acs_local"
 ARTIFACT_FILENAME = f"{ARTIFACT_NAME}.h5"
 HF_REPO_ID = "policyengine/populace-us"
+LEGACY_STAGING_REFRESH_RECIPE = (
+    "uv run tools/build_us_acs_multispine_base.py "
+    "--base-h5 <next-certified-release>.h5 "
+    "--donor-release-manifest <release_manifest.json> "
+    "--out-h5 <run>/acs_multispine_staging.h5 "
+    "--inputs-dir <acs-archive-cache> "
+    "--puma-ladder build/us/us_puma_ladder_2020.npz"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1658,14 +1666,7 @@ def do_package(args) -> dict:
             "against the new certified release H5; everything else is "
             "unchanged."
         ),
-        "staging": (
-            "uv run tools/build_us_acs_multispine_base.py "
-            "--base-h5 <next-certified-release>.h5 "
-            "--donor-release-manifest <its release_manifest.json> "
-            "--out-h5 <run>/acs_multispine_staging.h5 "
-            "--inputs-dir <acs archive cache> "
-            "--puma-ladder build/us/us_puma_ladder_2020.npz"
-        ),
+        "staging": LEGACY_STAGING_REFRESH_RECIPE,
         "release": (
             "uv run tools/build_us_acs_local_release.py --stage all "
             "--staging-h5 <run>/acs_multispine_staging.h5 "
