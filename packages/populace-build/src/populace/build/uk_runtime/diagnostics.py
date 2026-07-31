@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.calibrate import diagnostics_payload, effective_sample_size
+from populace.calibrate import (
+    TargetRegistry,
+    diagnostics_payload,
+    effective_sample_size,
+)
 from populace.calibrate.solve import CalibrationResult
 
 __all__ = [
@@ -259,7 +264,7 @@ def _geography_mapping(
 ) -> dict[str, str]:
     if not isinstance(values, Mapping):
         raise TypeError(
-            "target_geography_levels must map compiled target names to levels."
+            "target_geography_levels must map declared target names to levels."
         )
     normalized: dict[str, str] = {}
     for raw_name, raw_level in values.items():
@@ -274,18 +279,86 @@ def _geography_mapping(
     extra = sorted(set(normalized) - expected)
     if missing or extra:
         raise ValueError(
-            "target_geography_levels must exactly cover compiled diagnostics; "
+            "target_geography_levels must exactly cover the declared UK target "
+            "registry; "
             f"missing={missing[:10]}, extra={extra[:10]}."
         )
     return normalized
 
 
+def _require_uk_target_registry(value: object) -> TargetRegistry:
+    """Require the non-empty UK registry a release contract can validate."""
+
+    if not isinstance(value, TargetRegistry):
+        raise TypeError(
+            "UK calibration diagnostics require a TargetRegistry, got "
+            f"{type(value).__name__}."
+        )
+    if value.country != "uk":
+        raise ValueError(
+            "UK calibration diagnostics require target_registry.country == 'uk', "
+            f"got {value.country!r}."
+        )
+    if not value.specs:
+        raise ValueError("UK calibration diagnostics require a non-empty registry.")
+    if not isinstance(value.version, str) or not value.version:
+        raise ValueError(
+            "UK calibration diagnostics require a non-empty registry version."
+        )
+    return value
+
+
+def _declared_target_partition(
+    result: CalibrationResult,
+    target_rows: list[dict[str, object]],
+    registry: TargetRegistry,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Reconcile registry declarations with compiled and skipped target rows."""
+
+    declared = tuple(spec.to_target().row_name for spec in registry.specs)
+    compiled = tuple(str(row["name"]) for row in target_rows)
+    skipped: list[str] = []
+    for item in result.skipped:
+        target = getattr(item, "target", None)
+        row_name = getattr(target, "row_name", None)
+        if not isinstance(row_name, str) or not row_name:
+            raise ValueError(
+                "UK calibration diagnostics contain a malformed skipped target."
+            )
+        skipped.append(row_name)
+    skipped_names = tuple(skipped)
+
+    if len(set(compiled)) != len(compiled):
+        raise ValueError("UK calibration diagnostics contain duplicate target names.")
+    if len(set(skipped_names)) != len(skipped_names):
+        raise ValueError(
+            "UK calibration diagnostics contain duplicate skipped target names."
+        )
+    overlap = sorted(set(compiled) & set(skipped_names))
+    observed = set(compiled) | set(skipped_names)
+    missing = sorted(set(declared) - observed)
+    extra = sorted(observed - set(declared))
+    if overlap or missing or extra or len(observed) != len(declared):
+        raise ValueError(
+            "UK calibration result must exactly partition the declared target "
+            "registry into compiled and skipped rows; "
+            f"overlap={overlap[:10]}, missing={missing[:10]}, extra={extra[:10]}."
+        )
+    return declared, compiled, skipped_names
+
+
 def _target_pass_rates(
     target_rows: list[dict[str, object]],
+    skipped_names: Sequence[str],
     geography_levels: Mapping[str, str],
 ) -> list[dict[str, object]]:
     counts = {
-        level: {"n_targets": 0, "n_within_10pct": 0}
+        level: {
+            "n_targets": 0,
+            "n_scored": 0,
+            "n_skipped": 0,
+            "n_within_10pct": 0,
+        }
         for level in UK_TARGET_GEOGRAPHY_LEVELS
     }
     for row in target_rows:
@@ -302,13 +375,20 @@ def _target_pass_rates(
                 f"UK target diagnostic {name!r} has no finite relative_error."
             )
         counts[level]["n_targets"] += 1
+        counts[level]["n_scored"] += 1
         if abs(error) <= _TARGET_PASS_RELATIVE_ERROR:
             counts[level]["n_within_10pct"] += 1
+    for name in skipped_names:
+        level = geography_levels[name]
+        counts[level]["n_targets"] += 1
+        counts[level]["n_skipped"] += 1
 
     return [
         {
             "geography_level": level,
             "n_targets": counts[level]["n_targets"],
+            "n_scored": counts[level]["n_scored"],
+            "n_skipped": counts[level]["n_skipped"],
             "n_within_10pct": counts[level]["n_within_10pct"],
             "pass_rate": (
                 counts[level]["n_within_10pct"] / counts[level]["n_targets"]
@@ -325,8 +405,8 @@ def uk_calibration_diagnostics_payload(
     household: pd.DataFrame,
     *,
     target_geography_levels: Mapping[str, object],
+    target_registry: TargetRegistry,
     stratum_columns: Sequence[str] = _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS,
-    target_registry: object | None = None,
     build: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     """Render shared diagnostics plus the versioned UK release evidence.
@@ -336,6 +416,7 @@ def uk_calibration_diagnostics_payload(
     unknown mapping aborts instead of silently shrinking a scoreboard level.
     """
 
+    registry = _require_uk_target_registry(target_registry)
     if not isinstance(household, pd.DataFrame):
         raise TypeError("UK diagnostic household data must be a pandas DataFrame.")
     if "household_weight" not in household:
@@ -354,7 +435,7 @@ def uk_calibration_diagnostics_payload(
 
     payload: dict[str, object] = diagnostics_payload(
         result,
-        target_registry=target_registry,
+        target_registry=registry,
         build=build,
     )
     target_rows = payload.get("targets")
@@ -362,12 +443,10 @@ def uk_calibration_diagnostics_payload(
         not isinstance(row, dict) for row in target_rows
     ):
         raise RuntimeError("Shared calibration diagnostics returned malformed targets.")
-    names = [str(row["name"]) for row in target_rows]
-    if len(set(names)) != len(names):
-        raise ValueError("UK calibration diagnostics contain duplicate target names.")
-    geography = _geography_mapping(names, target_geography_levels)
+    declared, _, skipped = _declared_target_partition(result, target_rows, registry)
+    geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
-    pass_rates = _target_pass_rates(target_rows, geography)
+    pass_rates = _target_pass_rates(target_rows, skipped, geography)
     strata = uk_zero_weight_strata(
         household,
         result_weights,
@@ -389,26 +468,29 @@ def write_uk_calibration_diagnostics(
     household: pd.DataFrame,
     *,
     target_geography_levels: Mapping[str, object],
+    target_registry: TargetRegistry,
     stratum_columns: Sequence[str] = _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS,
-    target_registry: object | None = None,
     build: dict[str, Any] | None = None,
 ) -> Path:
-    """Write strict shared-plus-UK diagnostics and return the written path."""
+    """Atomically write strict shared-plus-UK diagnostics."""
 
     output = Path(path)
-    output.write_text(
-        json.dumps(
-            uk_calibration_diagnostics_payload(
-                result,
-                household,
-                target_geography_levels=target_geography_levels,
-                stratum_columns=stratum_columns,
-                target_registry=target_registry,
-                build=build,
-            ),
-            indent=1,
-            allow_nan=False,
+    encoded = json.dumps(
+        uk_calibration_diagnostics_payload(
+            result,
+            household,
+            target_geography_levels=target_geography_levels,
+            target_registry=target_registry,
+            stratum_columns=stratum_columns,
+            build=build,
         ),
-        encoding="utf-8",
+        indent=1,
+        allow_nan=False,
     )
+    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(encoded, encoding="utf-8")
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
     return output

@@ -29,7 +29,7 @@ _SPI_COLUMN = "household_is_spi_synthetic"
 _CG_COLUMN = "household_is_capital_gains_clone"
 
 
-def _diagnostics_case():
+def _diagnostics_case(*, with_skipped: bool = False):
     levels_and_weights = (
         ("national", 11.0),
         ("region", 12.0),
@@ -64,6 +64,19 @@ def _diagnostics_case():
             )
         )
         geography[f"{name}@2023"] = "la" if level == "local_authority" else level
+    if with_skipped:
+        specs.append(
+            TargetSpec(
+                name="skipped_national_target",
+                entity="household",
+                value=10.0,
+                measure="missing_measure",
+                period=2023,
+                source="Synthetic UK diagnostics fixture",
+                family="fixture",
+            )
+        )
+        geography["skipped_national_target@2023"] = "national"
 
     frame = Frame(
         {
@@ -242,7 +255,11 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
     assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
     assert "ess_fraction" not in payload
     assert all("geography_level" not in row for row in payload["targets"])
-    assert payload["target_registry"]["country"] == "uk"
+    assert payload["target_registry"] == {
+        "country": "uk",
+        "version": registry.version,
+        "n_specs": len(registry),
+    }
     assert payload["build"] == {"release_id": "fixture"}
     uk = payload["uk_diagnostics"]
     assert set(uk) == {
@@ -274,30 +291,40 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         {
             "geography_level": "national",
             "n_targets": 1,
+            "n_scored": 1,
+            "n_skipped": 0,
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
         {
             "geography_level": "region",
             "n_targets": 1,
+            "n_scored": 1,
+            "n_skipped": 0,
             "n_within_10pct": 0,
             "pass_rate": 0.0,
         },
         {
             "geography_level": "country",
             "n_targets": 1,
+            "n_scored": 1,
+            "n_skipped": 0,
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
         {
             "geography_level": "local_authority",
             "n_targets": 1,
+            "n_scored": 1,
+            "n_skipped": 0,
             "n_within_10pct": 0,
             "pass_rate": 0.0,
         },
         {
             "geography_level": "constituency",
             "n_targets": 1,
+            "n_scored": 1,
+            "n_skipped": 0,
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
@@ -327,12 +354,83 @@ def test_payload_requires_exact_explicit_geography_mapping() -> None:
             target_geography_levels=unknown,
             target_registry=registry,
         )
-    with pytest.raises(TypeError, match="must map compiled target names"):
+    with pytest.raises(TypeError, match="must map declared target names"):
         uk_calibration_diagnostics_payload(
             result,
             household,
             target_geography_levels=list(geography),
             target_registry=registry,
+        )
+
+
+def test_skipped_target_counts_as_a_geography_non_pass() -> None:
+    result, household, registry, geography = _diagnostics_case(with_skipped=True)
+
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        household,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+
+    assert len(payload["skipped"]) == 1
+    assert payload["skipped"][0]["name"] == "skipped_national_target"
+    assert "missing_measure" in payload["skipped"][0]["reason"]
+    national = payload["uk_diagnostics"]["target_pass_rates_by_geography_level"][0]
+    assert national == {
+        "geography_level": "national",
+        "n_targets": 2,
+        "n_scored": 1,
+        "n_skipped": 1,
+        "n_within_10pct": 1,
+        "pass_rate": 0.5,
+    }
+    rates = payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+    assert sum(row["n_targets"] for row in rates) == len(registry)
+    assert sum(row["n_scored"] for row in rates) == len(result.diagnostics)
+    assert sum(row["n_skipped"] for row in rates) == len(result.skipped)
+
+    missing_skipped = dict(geography)
+    missing_skipped.pop("skipped_national_target@2023")
+    with pytest.raises(ValueError, match="must exactly cover"):
+        uk_calibration_diagnostics_payload(
+            result,
+            household,
+            target_geography_levels=missing_skipped,
+            target_registry=registry,
+        )
+
+
+def test_payload_requires_a_valid_matching_uk_registry() -> None:
+    result, household, registry, geography = _diagnostics_case()
+
+    with pytest.raises(TypeError, match="require a TargetRegistry"):
+        uk_calibration_diagnostics_payload(
+            result,
+            household,
+            target_geography_levels=geography,
+            target_registry=object(),
+        )
+    with pytest.raises(ValueError, match="country == 'uk'"):
+        uk_calibration_diagnostics_payload(
+            result,
+            household,
+            target_geography_levels=geography,
+            target_registry=TargetRegistry(registry.specs, country="us"),
+        )
+    with pytest.raises(ValueError, match="non-empty registry"):
+        uk_calibration_diagnostics_payload(
+            result,
+            household,
+            target_geography_levels=geography,
+            target_registry=TargetRegistry((), country="uk"),
+        )
+    with pytest.raises(ValueError, match="exactly partition"):
+        uk_calibration_diagnostics_payload(
+            result,
+            household,
+            target_geography_levels=geography,
+            target_registry=TargetRegistry(registry.specs[:-1], country="uk"),
         )
 
 
@@ -367,15 +465,44 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
             target_registry=registry,
         )
     )
+    previous = path.read_bytes()
     with pytest.raises(ValueError, match="Out of range float values"):
         write_uk_calibration_diagnostics(
             result,
-            tmp_path / "invalid.json",
+            path,
             household,
             target_geography_levels=geography,
+            target_registry=registry,
             build={"not_json": float("nan")},
         )
-    assert not (tmp_path / "invalid.json").exists()
+    assert path.read_bytes() == previous
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+
+
+def test_writer_preserves_prior_bytes_when_atomic_replace_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    result, household, registry, geography = _diagnostics_case()
+    path = tmp_path / "calibration_diagnostics.json"
+    prior = b'{"prior":true}\n'
+    path.write_bytes(prior)
+
+    def fail_replace(_temporary, _output):
+        raise OSError("seeded replace failure")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(OSError, match="seeded replace failure"):
+        write_uk_calibration_diagnostics(
+            result,
+            path,
+            household,
+            target_geography_levels=geography,
+            target_registry=registry,
+        )
+
+    assert path.read_bytes() == prior
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
 
 
 def test_geography_level_vocabulary_includes_future_release_levels() -> None:
