@@ -8,24 +8,34 @@ import pandas as pd
 import pytest
 
 from populace.build.gates import GateResult
+from populace.build.us_runtime import multispine_pool as multispine_pool_module
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
     POOL_OPERATOR_ORDER,
+    POOL_SOURCE_OPERATOR_ORDER,
+    POOL_SPINE_AGREEMENT_REGISTRY,
     PoolStageOutput,
     _complete_schedule_d_input,
     materialize_multispine_agreement_outputs,
     pool_transfer_target_families,
+    prepare_multispine_puf_predictors,
     run_multispine_pool_path,
     seed_multispine_pool_inputs,
 )
+from populace.build.us_runtime.operator_boundary import (
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+    clone_us_frame_for_puf_support,
 )
 from populace.build.us_runtime.spine_agreement import (
     SpineAgreementSpec,
+    default_spine_agreement_registry,
     spine_agreement_gate,
+    validate_spine_agreement_registry,
 )
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
@@ -34,6 +44,29 @@ from populace.build.us_runtime.support_provenance import (
 )
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+_EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
+    "derive_us_cps_carried_inputs",
+    "with_us_prior_year_income_inputs",
+    "with_us_relationship_inputs",
+    "with_us_medicare_take_up_input",
+    "with_us_housing_inputs",
+    "with_us_eligibility_inputs",
+    "with_us_pregnancy_inputs",
+    "with_us_wic_claim_input",
+    "impute_us_housing_assistance_to_puf_support",
+    "with_us_child_support_inputs",
+    "with_us_disability_benefits",
+    "with_us_workers_compensation",
+    "with_us_weeks_unemployed",
+    "with_us_childcare_inputs",
+    "with_us_adult_care_inputs",
+    "with_us_energy_subsidy_input",
+    "with_us_retirement_contribution_inputs",
+    "with_us_retirement_distribution_inputs",
+    "with_us_immigration_inputs",
+    "with_us_education_inputs",
+)
 
 
 def _source_frame(*, offset: float = 0.0) -> Frame:
@@ -208,6 +241,7 @@ def test_agreement_failures_remain_batched_in_terminal_result() -> None:
     assert result.agreement_gate.details["tolerances"] == {
         "incidence_ratio_bounds": [0.8, 1.25],
         "max_quantile_envelope_distance": 0.25,
+        "max_categorical_total_variation_distance": 0.25,
     }
     assert order == ["impute", "derive", "seed", "simulate"]
 
@@ -261,8 +295,315 @@ def test_clone_safe_id_violation_surfaces_assembly_error() -> None:
         )
 
 
-def test_pool_transfer_plan_is_the_fixed_declared_qrf_surface() -> None:
-    assert pool_transfer_target_families() == declared_acs_transfer_target_families()
+def test_pool_transfer_plan_extends_legacy_without_duplicates() -> None:
+    legacy = declared_acs_transfer_target_families()
+    pool = pool_transfer_target_families()
+
+    for entity, families in legacy.items():
+        for family, columns in families.items():
+            assert pool[entity][family] == columns
+
+    owners: dict[str, tuple[str, str]] = {}
+    for entity, families in pool.items():
+        for family, columns in families.items():
+            for column in columns:
+                assert column not in owners, (
+                    f"{column} is duplicated by {owners[column]} and "
+                    f"{(entity, family)}"
+                )
+                owners[column] = (entity, family)
+
+    assert owners["takes_up_medicare_if_eligible"] == (
+        "person",
+        "source_operator_medicare_take_up",
+    )
+    assert owners["receives_housing_assistance"] == (
+        "spm_unit",
+        "source_operator_housing_inputs",
+    )
+    assert owners["immigration_status_str"] == (
+        "person",
+        "source_operator_immigration",
+    )
+
+
+def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
+    target_families = pool_transfer_target_families()
+
+    assert POOL_SPINE_AGREEMENT_REGISTRY == default_spine_agreement_registry(
+        target_families
+    )
+    assert (
+        validate_spine_agreement_registry(
+            POOL_SPINE_AGREEMENT_REGISTRY,
+            target_families=target_families,
+        )
+        == POOL_SPINE_AGREEMENT_REGISTRY
+    )
+    registered = {
+        (spec.entity, column)
+        for spec in POOL_SPINE_AGREEMENT_REGISTRY
+        for column in spec.columns
+    }
+    transferred = {
+        (entity, column)
+        for entity, families in target_families.items()
+        for columns in families.values()
+        for column in columns
+    }
+    take_up = {
+        (program.entity, program.variable)
+        for program in load_take_up_contract().programs
+    }
+    assert transferred | take_up | {("person", "ssi")} <= registered
+
+    immigration_spec = next(
+        spec
+        for spec in POOL_SPINE_AGREEMENT_REGISTRY
+        if (spec.entity, spec.family)
+        == ("person", "source_operator_immigration")
+    )
+    assert immigration_spec.columns == (
+        "immigration_status_str",
+        "ssn_card_type",
+    )
+    assert immigration_spec.joint_categorical_groups == (
+        ("ssn_card_type", "immigration_status_str"),
+    )
+
+
+def test_production_path_passes_fixed_pool_registry_to_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[object] = []
+
+    def no_op(frame: Frame) -> PoolStageOutput:
+        return PoolStageOutput(frame)
+
+    def gate(
+        _frame: Frame,
+        *,
+        registry: object,
+    ) -> GateResult:
+        captured.append(registry)
+        return GateResult("fixture", True)
+
+    monkeypatch.setattr(multispine_pool_module, "spine_agreement_gate", gate)
+
+    result = run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        impute=no_op,
+        derive=no_op,
+        seed=no_op,
+        simulate=no_op,
+    )
+
+    assert result.simulation_ready
+    assert captured == [POOL_SPINE_AGREEMENT_REGISTRY]
+
+
+def test_pool_source_operator_order_is_the_full_legacy_chain() -> None:
+    assert POOL_SOURCE_OPERATOR_ORDER == _EXPECTED_POOL_SOURCE_OPERATOR_ORDER
+
+
+def test_every_source_operator_output_has_a_pool_owner() -> None:
+    transferred = {
+        column
+        for families in pool_transfer_target_families().values()
+        for columns in families.values()
+        for column in columns
+    }
+    native = {
+        column
+        for columns in multispine_pool_module._POOL_NATIVE_COMPLETE_OUTPUTS.values()
+        for column in columns
+    }
+    formula_owned = {
+        column
+        for columns in multispine_pool_module._FORMULA_OWNED_SOURCE_OUTPUTS.values()
+        for column in columns
+    }
+    seeded = {
+        program.variable
+        for program in load_take_up_contract().programs
+        if program.is_seeded
+    }
+
+    unowned: list[str] = []
+    for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        family = multispine_pool_module._SOURCE_OPERATOR_FAMILIES[operator_name]
+        for columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].values():
+            for column in columns:
+                if column not in transferred | native | formula_owned | seeded:
+                    unowned.append(f"{family}.{column}")
+    assert not unowned
+
+
+def test_source_operator_chain_is_availability_aware_and_source_blind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asec = _source_frame()
+    asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    asec_tables["person"]["PERIDNUM"] = ["asec-1", "asec-2"]
+    asec = Frame(
+        asec_tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+    acs = _source_frame(offset=100.0)
+    acs_tables = {entity: acs.table(entity).copy() for entity in acs.entities}
+    first_output = "fixture_source_output_00"
+    acs_tables["person"][first_output] = [900.0, 901.0]
+    acs = Frame(
+        acs_tables,
+        acs.schema,
+        {"household": acs.weights_for("household")},
+        acs.strata,
+    )
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned = clone_us_frame_for_puf_support(assembled)
+
+    calls: list[str] = []
+    output_families: dict[str, dict[str, frozenset[str]]] = {}
+    operators: dict[str, Callable[[Frame], Frame]] = {}
+    for index, operator_name in enumerate(POOL_SOURCE_OPERATOR_ORDER):
+        family = multispine_pool_module._SOURCE_OPERATOR_FAMILIES[operator_name]
+        output = f"fixture_source_output_{index:02d}"
+        output_families[family] = {"person": frozenset({output})}
+
+        def apply(
+            available: Frame,
+            *,
+            name: str = operator_name,
+            column: str = output,
+            value: float = float(index + 1),
+        ) -> Frame:
+            calls.append(name)
+            assert "us_spine_assembly_manifest" not in available.metadata
+            assert not available.mass_log
+            person = available.table("person")
+            assert "person_support_channel" in person.columns
+            assert set(person["person_support_clone_index"]) == {0, 1}
+            assert person["PERIDNUM"].notna().all()
+            updated = person.copy()
+            updated[column] = value
+            return _replace_person(available, updated)
+
+        operators[operator_name] = apply
+
+    original_getitem = pd.DataFrame.__getitem__
+
+    def reject_source_channel_read(
+        table: pd.DataFrame,
+        key: object,
+    ) -> object:
+        keys = [key] if isinstance(key, str) else list(key) if isinstance(
+            key, (list, tuple)
+        ) else []
+        if any(str(column).endswith("_support_channel") for column in keys):
+            raise AssertionError("population source channel was read")
+        return original_getitem(table, key)
+
+    monkeypatch.setattr(pd.DataFrame, "__getitem__", reject_source_channel_read)
+    result = multispine_pool_module._run_source_operator_chain(
+        cloned,
+        operator_names=POOL_SOURCE_OPERATOR_ORDER,
+        operators=operators,
+        output_families=output_families,
+    )
+
+    assert calls == list(POOL_SOURCE_OPERATOR_ORDER)
+    assert result.receipt["operator_order"] == list(POOL_SOURCE_OPERATOR_ORDER)
+    assert result.receipt["cps_source_evidence"] == {
+        "column": "PERIDNUM",
+        "person_rows": 4,
+    }
+    for index, receipt in enumerate(result.receipt["suboperators"]):
+        assert receipt["order_index"] == index
+        assert receipt["operator"] == POOL_SOURCE_OPERATOR_ORDER[index]
+        assert receipt["pool_input_rows"]["person"] == 8
+        assert receipt["cps_available_rows"]["person"] == 4
+        assert receipt["operator_output_rows"]["person"] == 4
+        assert receipt["merged_rows"]["person"] == 4
+        assert receipt["operator_projection"] == {
+            "selection": "PERIDNUM",
+            "lineage_state_persisted": False,
+        }
+
+    person = result.frame.table("person")
+    cps = person["PERIDNUM"].notna()
+    assert person.loc[cps, first_output].tolist() == [1.0] * 4
+    assert sorted(person.loc[~cps, first_output].tolist()) == [
+        900.0,
+        900.0,
+        901.0,
+        901.0,
+    ]
+    unavailable = "fixture_source_output_01"
+    assert person.loc[cps, unavailable].tolist() == [2.0] * 4
+    assert person.loc[~cps, unavailable].isna().all()
+    assert result.frame.metadata == cloned.metadata
+    assert result.frame.mass_log == cloned.mass_log
+
+
+def test_predictor_prep_fills_cps_rows_without_overwriting_acs_native() -> None:
+    asec = _source_frame()
+    asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    asec_person = asec_tables["person"].drop(columns=["age"])
+    asec_person["PERIDNUM"] = ["asec-1", "asec-2"]
+    asec_person["A_AGE"] = [31, 52]
+    asec_person["A_SEX"] = [1, 2]
+    asec_person["OI_VAL"] = [0.0, 25.0]
+    asec_person["OI_OFF"] = [0, 20]
+    asec_tables["person"] = asec_person
+    asec = Frame(
+        asec_tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+
+    acs = _source_frame()
+    acs_tables = {entity: acs.table(entity).copy() for entity in acs.entities}
+    acs_tables["person"]["age"] = [70.0, 80.0]
+    acs_tables["person"]["is_female"] = [True, False]
+    acs = Frame(
+        acs_tables,
+        acs.schema,
+        {"household": acs.weights_for("household")},
+        acs.strata,
+    )
+    cloned = clone_us_frame_for_puf_support(
+        assemble_spines(
+            {"asec": asec, "acs": acs},
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+    )
+
+    result = prepare_multispine_puf_predictors(cloned)
+
+    person = result.frame.table("person")
+    cps = person["PERIDNUM"].notna()
+    assert sorted(person.loc[cps, "age"].tolist()) == [31.0, 31.0, 52.0, 52.0]
+    assert sorted(person.loc[~cps, "age"].tolist()) == [70.0, 70.0, 80.0, 80.0]
+    assert sorted(person.loc[cps, "is_female"].tolist()) == [
+        False,
+        False,
+        True,
+        True,
+    ]
+    assert sorted(person.loc[~cps, "is_female"].tolist()) == [
+        False,
+        False,
+        True,
+        True,
+    ]
+    assert result.receipt["operator_order"] == ["derive_us_cps_carried_inputs"]
 
 
 def test_schedule_d_derivation_preserves_existing_values_and_receipt() -> None:
@@ -329,6 +670,7 @@ def _assembled_cloned_with_partial_take_up() -> Frame:
     acs = _source_frame()
     tables = {entity: acs.table(entity).copy() for entity in acs.entities}
     tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = [False, True]
+    tables["person"]["takes_up_medicare_if_eligible"] = [True, False]
     acs = Frame(
         tables,
         acs.schema,
@@ -374,9 +716,9 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
     assert tanf["provenance_kind"] == "administrative_seed_or_preserved_input"
     medicare = result.receipt["programs"]["takes_up_medicare_if_eligible"]
     assert medicare["provenance_kind"] == (
-        "preserved_input_or_disclosed_engine_default"
+        "transferred_or_preserved_input"
     )
-    assert medicare["defaulted_rows"] == 4
+    assert medicare["defaulted_rows"] == 0
 
     spm = result.frame.table("spm_unit")
     source_id = support_source_id_column("spm_unit")

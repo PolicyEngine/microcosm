@@ -60,53 +60,105 @@ transfers from a donor after the donor has crossed the ASEC-only operator
 sequence. Appending the transferred ACS records later does not cause those
 operators to run over the combined population.
 
-`build_us_acs_multispine_base.py` is now a deprecated compatibility shim for
-shared legacy H5 helpers. It does not expose a second executable pool builder.
+`build_us_acs_multispine_base.py` remains a deprecated but executable
+compatibility path until populace#578 increment 4 retires the ACS local-release
+overlay. The public command warns and delegates to the preserved implementation
+under `tools/_legacy`; its summary and reviewed-null receipts remain the inputs
+expected by `build_us_acs_local_release.py`. New multispine work uses the pool
+builder below, but the supported legacy release recipe is not left half-working.
 
 ## Executable increment-2 pool build
 
 `build_us_multispine_pool.py` consumes only explicit local files and their
 declared SHA-256 values:
 
-- the input-complete ASEC checkpoint from the
-  `pre_clone_enrichment` outer-stage boundary;
+- the dedicated `populace_us_asec_raw_stage` artifact emitted alongside the
+  producer's `source_construction` checkpoint. Its stage tag is
+  `raw_source_mapping` and its operator status is `operator_untouched`;
 - the ACS household and person PUMS archives, whose caller-supplied hashes
-  must also match the checked-in ACS source manifest; and
+  must also match the checked-in ACS source manifest;
+- the canonical ACS 2022 rent donor used by the post-assembly housing
+  operator; and
 - the processed PUF H5 and source-year PUF CSV used by the existing donor
   loader.
 
-The tool does not download any source. It verifies all file pins before
-loading frames, maps measured ACS fields without overwriting them, and then
-runs this fixed sequence:
+The raw artifact is a second producer output, not a relabeling of
+`pre_clone_enrichment`. It contains pooled ASEC unit structure and measured raw
+columns. The only enrichment allowed there is faithful source mapping:
+`LKWEEKS` and `ED_VAL` are restored by exact, pinned Census identity joins.
+No `weeks_unemployed`, `educational_assistance`, carried-income split,
+eligibility, pregnancy, take-up, childcare, retirement, or immigration output
+is present. The producer still emits its historical enriched checkpoint and
+final H5 for the sparse/dense single-spine release lineage; their operator
+sequence and bytes are unchanged.
+
+The dedicated raw artifact is produced by the checkpointed producer recipe
+(`--stage all --checkpoint-dir ...`) at
+`<checkpoint-dir>/asec_raw_stage.checkpoint.h5`. The legacy monolithic recipe
+continues to produce only its historical release outputs.
+
+The tool does not download any source. It verifies all file pins and validates
+the raw artifact kind, stage, frame identity, operator status, and complete
+operator-output absence before loading the peer frames. Measured ACS mappings
+are allowed only when named by the ACS native-input receipt. It then runs this
+fixed sequence:
 
 1. `assemble_spines({"asec": ..., "acs": ...})` creates the first shared
    population state and binds the immutable assembly receipt.
 2. `clone_us_frame_for_puf_support(...)` applies the PUF-detail clone to the
    whole assembled pool. Clone-index provenance, not source-spine identity,
    controls later PUF-detail routing.
-3. The primary PUF QRF chain and capital-gains tail transfer run over the
-   combined frame, followed by the declared ACS input-family QRF transfers.
-   Existing measured target cells remain unchanged, and transfer receipts
-   record fitted and imputed rows.
-4. Deterministic input reconciliation runs over that same pool.
-5. The seed stage preserves existing take-up values, applies the sourced
+3. CPS-carried predictor inputs are derived after assembly on rows with the
+   required measured CPS source fields. The pool wrapper validates the complete
+   assembly receipt first, then gives the historical CPS kernel an ephemeral
+   `PERIDNUM`-available structural projection. That projection deliberately
+   carries neither the full-pool assembly receipt nor its mass history. Only
+   the kernel's declared output family is merged back into the still-receipted
+   full pool. Unavailable peer rows remain nullable; no operator uses
+   source-channel identity to choose behavior.
+4. The primary PUF QRF chain and capital-gains tail transfer run over the
+   combined frame. The remaining historical ASEC input families then run in
+   their declared order on source-evidenced rows: prior-year income,
+   relationship and Medicare inputs, housing, eligibility, pregnancy, WIC,
+   housing-assistance support transfer, child support, disability benefits,
+   workers compensation, weeks unemployed, childcare, adult care, energy
+   subsidy, retirement contributions/distributions, immigration, and
+   education inputs.
+5. The pool-specific ACS transfer plan fills only still-null peer cells from
+   those post-assembly results. Existing measured/native cells remain
+   byte-for-byte unchanged, and transfer receipts record fitted and imputed
+   rows.
+6. Schedule-D and QBI deterministic reconciliation run over that same pool.
+7. The seed stage preserves existing take-up values, applies the sourced
    TANF and EITC mechanisms, and explicitly receipts live engine defaults
    used for unresolved, non-transfer-owned take-up inputs. Those defaults
    are not described as fitted or administrative mechanisms.
-6. SSI is materialized only on an ephemeral agreement view in fixed
+8. SSI is materialized only on an ephemeral agreement view in fixed
    household batches. Any engine defaults required solely for that
    calculation are separately receipted; formula output is not written into
    the input pool.
-7. The unchanged spine-agreement gate is terminal. It uses its checked-in
-   registry and fixed tolerances, batches all failures, and controls the
-   manifest's simulation-ready status.
+9. The spine-agreement gate is terminal. Its immutable pool registry is built
+   from the complete pool-specific transfer plan plus derived, take-up, and SSI
+   surfaces. Numeric columns retain the fixed incidence and conditional-
+   quantile tolerances. Categorical columns use a fixed weighted total-
+   variation-distance ceiling of `0.25`; the immigration fields are also
+   checked jointly so matching marginals cannot conceal incompatible pairs.
+   The gate batches all failures and controls the manifest's simulation-ready
+   status.
 
 The output H5 is a nullable, input-only, pre-calibration pool. Its companion
 manifest carries input pins, the assembly receipt, per-source and per-clone
-counts, operator receipts, and the complete agreement result. A failed gate
-writes diagnostics and a non-ready manifest and exits nonzero. Calibration
-is deliberately absent; the downstream k-ladder may consume only a pool
-whose terminal agreement result passed.
+counts, operator receipts, and the complete agreement result. Publication
+first atomically replaces any prior manifest with a non-ready tombstone, then
+stages the H5 and diagnostics under one publication run ID and renames them,
+and finally writes the readiness manifest. The manifest records the H5 and
+diagnostics run IDs and SHA-256 digests. The readiness loader requires a green
+manifest whose run ID and digests match the H5 metadata and diagnostics
+payload. An interrupted, substituted, or failed publication therefore
+self-reports not ready even beside stale files. A failed agreement gate writes
+diagnostics and a non-ready final manifest and exits nonzero. Calibration is
+deliberately absent; the downstream k-ladder
+may consume only a pool whose terminal agreement result passed.
 
 ## Provenance axes
 
@@ -150,9 +202,14 @@ Calibration is a downstream consumer boundary, not a stage in this tool.
 `assemble_spines(...)` is the boundary between source preparation and
 population operators. It receives nullable, schema-compatible peer frames
 and produces one combined frame before cloning, fitted transfer, derivation,
-seeded assignment, simulation, or calibration. Downstream operator
+seeded assignment, simulation, or calibration. Downstream pool-stage
 entrypoints receive that combined frame and operate on measured
-characteristics without selecting behavior by source spine.
+characteristics without selecting behavior by source spine. A historical
+source kernel that requires CPS-only raw fields receives an ephemeral
+availability projection after the combined-frame boundary is validated. Such
+a projection is not published or described as a full-pool lineage state; its
+declared outputs are merged back into the combined frame, whose immutable
+assembly receipt remains the authority.
 
 ASEC and ACS are peer household spines. A future household source can join
 the same assembly contract. PUF tax detail is not a peer spine: it remains a

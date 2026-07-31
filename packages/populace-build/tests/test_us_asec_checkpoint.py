@@ -12,7 +12,17 @@ from populace.build.outer_stage_runtime import (
     OUTER_STAGE_CONTEXT_SCHEMA_VERSION,
     frame_identity,
 )
-from populace.build.us_runtime import load_asec_pre_clone_checkpoint
+from populace.build.us_runtime import (
+    ASEC_RAW_STAGE_ARTIFACT_KIND,
+    ASEC_RAW_STAGE_OPERATOR_STATUS,
+    ASEC_RAW_STAGE_SCHEMA_VERSION,
+    ASEC_RAW_STAGE_STAGE,
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    assert_operator_free_source_frame,
+    load_asec_pre_clone_checkpoint,
+    load_asec_raw_stage_checkpoint,
+    load_take_up_contract,
+)
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 _OUTER_STAGE_ARTIFACT_KIND = "populace_outer_stage_frame"
@@ -22,6 +32,7 @@ def _us_frame(
     *,
     id_offset: int = 0,
     household_weights: tuple[float, float] = (2.0, 3.0),
+    include_age: bool = True,
     person_weights: bool = False,
 ) -> Frame:
     ids = np.asarray([1, 2], dtype=np.int64) + id_offset
@@ -33,9 +44,10 @@ def _us_frame(
             "person_spm_unit_id": ids + 20,
             "person_family_id": ids + 30,
             "person_marital_unit_id": ids + 40,
-            "age": np.asarray([30, 50], dtype=np.int16),
         }
     )
+    if include_age:
+        person["age"] = np.asarray([30, 50], dtype=np.int16)
     tables = {
         "person": person,
         "household": pd.DataFrame({"household_id": ids}),
@@ -99,6 +111,70 @@ def _binding(frame: Frame) -> dict[str, object]:
     }
 
 
+def _raw_binding(frame: Frame) -> dict[str, object]:
+    pin = {
+        "income_year": 2022,
+        "locator": "https://example.test/asec.zip",
+        "member": "pppub.csv",
+        "member_sha256": "b" * 64,
+        "sha256": "a" * 64,
+    }
+    return {
+        "artifact_kind": ASEC_RAW_STAGE_ARTIFACT_KIND,
+        "identity": frame_identity(frame).to_payload(),
+        "operator_status": ASEC_RAW_STAGE_OPERATOR_STATUS,
+        "pipeline_sha256": "c" * 64,
+        "raw_source_mappings": {
+            column: {
+                "audit": {"rows": 2},
+                "column": column,
+                "entity": "person",
+                "join_keys": ["source_year", "PERIDNUM"],
+                "operation": "exact_source_join",
+                "source_pins": [pin],
+            }
+            for column in ("ED_VAL", "LKWEEKS")
+        },
+        "schema_version": ASEC_RAW_STAGE_SCHEMA_VERSION,
+        "source_construction_identity": frame_identity(frame).to_payload(),
+        "source_receipt": {
+            "kind": "pooled_asec",
+            "sources": [
+                {
+                    "max_households": None,
+                    "path": "/raw/asec_2022.h5",
+                    "sha256": "d" * 64,
+                    "share": 1.0,
+                    "year": 2022,
+                }
+            ],
+            "target_year": 2022,
+        },
+        "stage": ASEC_RAW_STAGE_STAGE,
+    }
+
+
+def _raw_us_frame(*, id_offset: int = 0) -> Frame:
+    source = _us_frame(id_offset=id_offset, include_age=False)
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["person"]["source_year"] = [2022, 2023]
+    tables["person"]["PERIDNUM"] = [
+        "0000000000000000000001",
+        "0000000000000000000002",
+    ]
+    tables["person"]["ED_VAL"] = [0.0, 500.0]
+    tables["person"]["LKWEEKS"] = [-1, 12]
+    return Frame(
+        tables,
+        source.schema,
+        {
+            entity: source.weights_for(entity)
+            for entity in source.weighted_entities
+        },
+        source.strata,
+    )
+
+
 def _write_checkpoint(
     path: Path,
     frame: Frame,
@@ -147,6 +223,250 @@ def test_rejects_wrong_outer_stage_binding(
 
     with pytest.raises(ValueError, match=message):
         load_asec_pre_clone_checkpoint(path)
+
+
+def test_loads_operator_untouched_raw_stage_checkpoint(tmp_path: Path) -> None:
+    path = tmp_path / "asec_raw_stage.checkpoint.h5"
+    source = _raw_us_frame()
+    metadata = _raw_binding(source)
+    _write_checkpoint(path, source, metadata=metadata)
+
+    frame, loaded_metadata = load_asec_raw_stage_checkpoint(path)
+
+    assert frame_identity(frame) == frame_identity(source)
+    assert loaded_metadata == metadata
+    assert loaded_metadata["artifact_kind"] == ASEC_RAW_STAGE_ARTIFACT_KIND
+    assert loaded_metadata["stage"] == ASEC_RAW_STAGE_STAGE
+    assert loaded_metadata["operator_status"] == ASEC_RAW_STAGE_OPERATOR_STATUS
+
+
+@pytest.mark.parametrize("column", ("ED_VAL", "LKWEEKS", "PERIDNUM", "source_year"))
+def test_raw_loader_rejects_missing_input_complete_source_column(
+    tmp_path: Path,
+    column: str,
+) -> None:
+    source = _raw_us_frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["person"] = tables["person"].drop(columns=[column])
+    incomplete = Frame(
+        tables,
+        source.schema,
+        {
+            entity: source.weights_for(entity)
+            for entity in source.weighted_entities
+        },
+        source.strata,
+    )
+    path = tmp_path / f"raw-missing-{column}.checkpoint.h5"
+    _write_checkpoint(path, incomplete, metadata=_raw_binding(incomplete))
+
+    with pytest.raises(ValueError, match=rf"input-complete.*{column}"):
+        load_asec_raw_stage_checkpoint(path)
+
+
+@pytest.mark.parametrize(
+    ("column", "values", "message"),
+    (
+        ("source_year", [2022, np.nan], "source_year must be complete"),
+        ("PERIDNUM", ["0000000000000000000001", ""], "PERIDNUM must be complete"),
+        ("ED_VAL", [0.0, np.nan], "ED_VAL must be complete"),
+        ("LKWEEKS", [-1, 53], "LKWEEKS must be complete"),
+    ),
+)
+def test_raw_loader_rejects_invalid_input_complete_source_values(
+    tmp_path: Path,
+    column: str,
+    values: list[object],
+    message: str,
+) -> None:
+    source = _raw_us_frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["person"][column] = values
+    invalid = Frame(
+        tables,
+        source.schema,
+        {
+            entity: source.weights_for(entity)
+            for entity in source.weighted_entities
+        },
+        source.strata,
+    )
+    path = tmp_path / f"raw-invalid-{column}.checkpoint.h5"
+    _write_checkpoint(path, invalid, metadata=_raw_binding(invalid))
+
+    with pytest.raises(ValueError, match=message):
+        load_asec_raw_stage_checkpoint(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("artifact_kind", _OUTER_STAGE_ARTIFACT_KIND, "not a dedicated raw-stage"),
+        ("schema_version", 999, "unsupported raw-stage schema version"),
+        ("stage", "pre_clone_enrichment", "must be bound to stage"),
+        ("operator_status", "operator_enriched", "must declare operator_status"),
+        ("pipeline_sha256", "not-a-digest", "lowercase SHA-256 digest"),
+    ),
+)
+def test_raw_loader_rejects_wrong_artifact_binding(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    path = tmp_path / f"raw-wrong-{field}.checkpoint.h5"
+    frame = _raw_us_frame()
+    metadata = _raw_binding(frame)
+    metadata[field] = value
+    _write_checkpoint(path, frame, metadata=metadata)
+
+    with pytest.raises(ValueError, match=message):
+        load_asec_raw_stage_checkpoint(path)
+
+
+def test_raw_loader_rejects_legacy_enriched_checkpoint(tmp_path: Path) -> None:
+    path = tmp_path / "001_pre_clone_enrichment.frame.h5"
+    frame = _us_frame()
+    _write_checkpoint(path, frame, metadata=_binding(frame))
+
+    with pytest.raises(ValueError, match="incomplete raw-stage artifact binding"):
+        load_asec_raw_stage_checkpoint(path)
+
+
+def test_raw_loader_rejects_identity_not_bound_to_frame(tmp_path: Path) -> None:
+    path = tmp_path / "raw-wrong-identity.checkpoint.h5"
+    frame = _raw_us_frame()
+    metadata = _raw_binding(frame)
+    metadata["identity"] = frame_identity(_raw_us_frame(id_offset=100)).to_payload()
+    _write_checkpoint(path, frame, metadata=metadata)
+
+    with pytest.raises(ValueError, match="Frame identity changed"):
+        load_asec_raw_stage_checkpoint(path)
+
+
+_OPERATOR_OUTPUT_CASES = tuple(
+    (family, entity, column)
+    for family, by_entity in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES.items()
+    for entity, columns in by_entity.items()
+    for column in sorted(columns)
+)
+
+
+def test_operator_boundary_enumerates_full_take_up_contract() -> None:
+    expected: dict[str, set[str]] = {}
+    for program in load_take_up_contract().programs:
+        expected.setdefault(program.entity, set()).add(program.variable)
+
+    assert PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["take_up"] == {
+        entity: frozenset(columns) for entity, columns in expected.items()
+    }
+
+
+def test_operator_boundary_accepts_only_receipted_acs_native_exception() -> None:
+    source = _us_frame(include_age=False)
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["person"]["AGEP"] = [30, 50]
+    tables["person"]["age"] = [30, 50]
+    acs = Frame(
+        tables,
+        source.schema,
+        {
+            entity: source.weights_for(entity)
+            for entity in source.weighted_entities
+        },
+        source.strata,
+    )
+    receipt = {
+        "age": {
+            "entity": "person",
+            "source_columns": ["AGEP"],
+            "transformation": "identity",
+            "provenance": "acs_2024_1yr_native",
+            "observed_rows": 2,
+            "missing_rows": 0,
+        }
+    }
+
+    assert_operator_free_source_frame(
+        acs,
+        label="ACS fixture",
+        native_inputs=receipt,
+    )
+    with pytest.raises(ValueError, match="canonical operator output"):
+        assert_operator_free_source_frame(acs, label="unreceipted ACS fixture")
+
+    malformed = {"age": {**receipt["age"], "provenance": "fixture_allowlist"}}
+    with pytest.raises(ValueError, match="provenance"):
+        assert_operator_free_source_frame(
+            acs,
+            label="malformed ACS fixture",
+            native_inputs=malformed,
+        )
+
+
+def test_operator_boundary_rejects_forged_native_receipt_for_operator_output() -> None:
+    source = _us_frame(include_age=False)
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["person"]["AGEP"] = [30, 50]
+    tables["person"]["would_claim_wic"] = [True, False]
+    forged = Frame(
+        tables,
+        source.schema,
+        {
+            entity: source.weights_for(entity)
+            for entity in source.weighted_entities
+        },
+        source.strata,
+    )
+    forged_receipt = {
+        "would_claim_wic": {
+            "entity": "person",
+            "source_columns": ["AGEP"],
+            "transformation": "identity",
+            "provenance": "acs_2024_1yr_native",
+            "observed_rows": 2,
+            "missing_rows": 0,
+        }
+    }
+
+    with pytest.raises(ValueError, match="not a declared ACS native mapping"):
+        assert_operator_free_source_frame(
+            forged,
+            label="forged ACS fixture",
+            native_inputs=forged_receipt,
+        )
+
+
+@pytest.mark.parametrize(
+    ("family", "entity", "column"),
+    _OPERATOR_OUTPUT_CASES,
+)
+def test_raw_loader_rejects_every_registered_operator_output(
+    tmp_path: Path,
+    family: str,
+    entity: str,
+    column: str,
+) -> None:
+    source = _raw_us_frame()
+    tables = {
+        table_entity: source.table(table_entity).copy()
+        for table_entity in source.entities
+    }
+    tables[entity][column] = 0
+    contaminated = Frame(
+        tables,
+        source.schema,
+        {
+            weighted_entity: source.weights_for(weighted_entity)
+            for weighted_entity in source.weighted_entities
+        },
+        source.strata,
+    )
+    path = tmp_path / f"{family}-{entity}-{column}.checkpoint.h5"
+    _write_checkpoint(path, contaminated, metadata=_raw_binding(contaminated))
+
+    with pytest.raises(ValueError, match=rf"{family}:{entity}"):
+        load_asec_raw_stage_checkpoint(path)
 
 
 def test_rejects_incomplete_outer_stage_binding(tmp_path: Path) -> None:

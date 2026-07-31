@@ -137,6 +137,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "medicaid_take_up.py",
         "misc_itemized.py",
         "nonzero_shares.py",
+        "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",

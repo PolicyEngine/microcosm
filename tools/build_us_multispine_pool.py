@@ -47,9 +47,20 @@ from populace.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from populace.build.us_runtime.asec_checkpoint import (
-    load_asec_pre_clone_checkpoint,
+    load_asec_raw_stage_checkpoint,
 )
-from populace.build.us_runtime.h5_io import write_nullable_us_h5
+from populace.build.us_runtime.h5_io import (
+    US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
+    US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+    US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    load_simulation_ready_us_multispine_pool_manifest,
+    write_nullable_us_h5,
+)
+from populace.build.us_runtime.housing_inputs import (
+    ACS_2022_RENT_ARTIFACT_SHA256,
+    load_acs_2022_rent_donor,
+)
 from populace.build.us_runtime.multispine_pool import (
     POOL_HOUSEHOLD_MASS_SHARES,
     POOL_OPERATOR_ORDER,
@@ -57,11 +68,16 @@ from populace.build.us_runtime.multispine_pool import (
     POOL_TIME_PERIOD,
     MultispinePoolResult,
     PoolStageOutput,
+    complete_multispine_source_inputs,
     derive_multispine_pool_inputs,
     materialize_multispine_agreement_outputs,
     pool_transfer_target_families,
+    prepare_multispine_puf_predictors,
     run_multispine_pool_path,
     seed_multispine_pool_inputs,
+)
+from populace.build.us_runtime.operator_boundary import (
+    assert_operator_free_source_frame,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
     transfer_puf_capital_gains_tail,
@@ -85,13 +101,14 @@ __all__ = [
     "POOL_MANIFEST_SCHEMA_VERSION",
     "PoolBuildOutputs",
     "build_multispine_pool",
+    "load_simulation_ready_us_multispine_pool_manifest",
     "main",
 ]
 
-POOL_MANIFEST_SCHEMA_VERSION = 2
+POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 """Schema version for the companion pool build manifest."""
 
-POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
+POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
@@ -134,8 +151,9 @@ class _VerifiedInput:
 class _LoadedInputs:
     asec: Frame
     acs: Frame
+    acs_rent_donor: pd.DataFrame
     puf_donor: pd.DataFrame
-    asec_checkpoint: Mapping[str, object]
+    asec_raw_stage_checkpoint: Mapping[str, object]
     acs_build: Mapping[str, object]
     acs_native_inputs: Mapping[str, Mapping[str, Any]]
     puf_donor_build: Mapping[str, object]
@@ -152,16 +170,16 @@ def _sha256_argument(value: str) -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--asec-pre-clone-h5",
+        "--asec-raw-stage-h5",
         required=True,
         type=Path,
-        help="Input-complete ASEC pre_clone_enrichment Frame checkpoint.",
+        help="Operator-untouched ASEC raw_source_mapping Frame checkpoint.",
     )
     parser.add_argument(
-        "--asec-pre-clone-h5-sha256",
+        "--asec-raw-stage-h5-sha256",
         required=True,
         type=_sha256_argument,
-        help="Expected SHA-256 of --asec-pre-clone-h5.",
+        help="Expected SHA-256 of --asec-raw-stage-h5.",
     )
     parser.add_argument(
         "--acs-household-zip",
@@ -186,6 +204,18 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         type=_sha256_argument,
         help="Expected SHA-256 of --acs-person-zip.",
+    )
+    parser.add_argument(
+        "--acs-rent-h5",
+        required=True,
+        type=Path,
+        help="Local canonical ACS 2022 rent-donor H5.",
+    )
+    parser.add_argument(
+        "--acs-rent-h5-sha256",
+        required=True,
+        type=_sha256_argument,
+        help="Expected canonical SHA-256 of --acs-rent-h5.",
     )
     parser.add_argument(
         "--puf-h5",
@@ -276,9 +306,10 @@ def _verify_inputs(
     outputs: PoolBuildOutputs,
 ) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
     source_paths = {
-        Path(args.asec_pre_clone_h5).resolve(),
+        Path(args.asec_raw_stage_h5).resolve(),
         Path(args.acs_household_zip).resolve(),
         Path(args.acs_person_zip).resolve(),
+        Path(args.acs_rent_h5).resolve(),
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
@@ -293,11 +324,17 @@ def _verify_inputs(
         raise ValueError(f"Pool outputs must not overwrite inputs: {collisions}.")
 
     acs_source_manifest = load_acs_source_manifest()
+    if args.acs_rent_h5_sha256 != ACS_2022_RENT_ARTIFACT_SHA256:
+        raise ValueError(
+            "ACS rent donor CLI pin differs from the canonical archived pin: "
+            f"got {args.acs_rent_h5_sha256}, expected "
+            f"{ACS_2022_RENT_ARTIFACT_SHA256}."
+        )
     verified = {
-        "asec_pre_clone": _verify_file(
-            "ASEC pre-clone checkpoint",
-            args.asec_pre_clone_h5,
-            args.asec_pre_clone_h5_sha256,
+        "asec_raw_stage": _verify_file(
+            "ASEC raw-stage checkpoint",
+            args.asec_raw_stage_h5,
+            args.asec_raw_stage_h5_sha256,
         ),
         "acs_household": _verify_acs_file(
             "ACS household archive",
@@ -310,6 +347,11 @@ def _verify_inputs(
             args.acs_person_zip,
             args.acs_person_zip_sha256,
             acs_source_manifest.artifact("person"),
+        ),
+        "acs_rent_donor": _verify_file(
+            "ACS rent donor",
+            args.acs_rent_h5,
+            args.acs_rent_h5_sha256,
         ),
         "processed_puf": _verify_file(
             "processed PUF H5",
@@ -330,7 +372,9 @@ def _load_inputs(
     *,
     acs_source_manifest: AcsSourceManifest,
 ) -> _LoadedInputs:
-    asec, asec_checkpoint = load_asec_pre_clone_checkpoint(args.asec_pre_clone_h5)
+    asec, asec_raw_stage_checkpoint = load_asec_raw_stage_checkpoint(
+        args.asec_raw_stage_h5
+    )
     acs_source = AcsPumsSource(
         household_zip=args.acs_household_zip,
         person_zip=args.acs_person_zip,
@@ -338,6 +382,7 @@ def _load_inputs(
     )
     acs_frame, acs_build = build_acs_pums_unit_frame(acs_source)
     mapped_acs = map_acs_native_inputs(acs_frame)
+    acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
     donor_build: dict[str, object] = {}
     puf_donor = load_puf_tax_unit_donor(
         args.puf_h5,
@@ -347,8 +392,9 @@ def _load_inputs(
     return _LoadedInputs(
         asec=asec,
         acs=mapped_acs.frame,
+        acs_rent_donor=acs_rent_donor,
         puf_donor=puf_donor,
-        asec_checkpoint=asec_checkpoint,
+        asec_raw_stage_checkpoint=asec_raw_stage_checkpoint,
         acs_build=acs_build,
         acs_native_inputs=mapped_acs.native_inputs,
         puf_donor_build=donor_build,
@@ -430,11 +476,13 @@ def _impute_pool(
     frame: Frame,
     *,
     puf_donor: pd.DataFrame,
+    acs_rent_donor: pd.DataFrame,
     checkpoint_dir: Path,
     checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
+    predictor_preparation = prepare_multispine_puf_predictors(frame)
     _initialize_or_resume_primary_qrf(
-        frame,
+        predictor_preparation.frame,
         puf_donor,
         checkpoint_dir,
         input_binding=checkpoint_input_binding,
@@ -443,7 +491,7 @@ def _impute_pool(
 
     tail_bound_diagnostics: list[dict[str, object]] = []
     with_primary_detail, primary_weight_kind = finalize_primary_puf_qrf_chain(
-        frame,
+        predictor_preparation.frame,
         checkpoint_dir,
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
@@ -461,10 +509,14 @@ def _impute_pool(
             f"{tail_ceiling['positive_mass_five_x_ceiling']} <= "
             f"{tail_ceiling['positive_mass_five_x_target']}."
         )
+    source_completion = complete_multispine_source_inputs(
+        with_tail,
+        acs_rent_donor=acs_rent_donor,
+    )
     transfer_families = pool_transfer_target_families()
     transferred = transfer_acs_inputs(
-        with_tail,
-        with_tail,
+        source_completion.frame,
+        source_completion.frame,
         target_families=transfer_families,
         donor_channel=ACS_DONOR_CHANNEL_AUTO,
         seed=POOL_RANDOM_SEED,
@@ -488,6 +540,10 @@ def _impute_pool(
     return PoolStageOutput(
         transferred.frame,
         {
+            "source_operator_chain": {
+                "predictor_preparation": dict(predictor_preparation.receipt),
+                "post_primary_completion": dict(source_completion.receipt),
+            },
             "primary_puf_qrf": {
                 "checkpoint_manifest": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
@@ -516,8 +572,14 @@ def build_multispine_pool(
     acs: Frame,
     *,
     puf_donor: pd.DataFrame,
+    acs_rent_donor: pd.DataFrame | None = None,
     primary_qrf_checkpoint_dir: Path,
     checkpoint_input_binding: Mapping[str, object] | None = None,
+    source_native_inputs: Mapping[
+        str,
+        Mapping[str, Mapping[str, Any]],
+    ]
+    | None = None,
     impute: PoolOperator | None = None,
     derive: PoolOperator = derive_multispine_pool_inputs,
     seed: PoolOperator = seed_multispine_pool_inputs,
@@ -530,17 +592,33 @@ def build_multispine_pool(
     its registry or fixed tolerances.
     """
 
+    native_inputs = source_native_inputs or {}
+    assert_operator_free_source_frame(
+        asec,
+        label="ASEC raw-stage pool input",
+        native_inputs=native_inputs.get("asec"),
+    )
+    assert_operator_free_source_frame(
+        acs,
+        label="ACS native-mapped pool input",
+        native_inputs=native_inputs.get("acs"),
+    )
     if impute is None:
         if checkpoint_input_binding is None:
             raise ValueError(
                 "Production pool imputation requires a verified checkpoint "
                 "input binding."
             )
+        if acs_rent_donor is None:
+            raise ValueError(
+                "Production pool imputation requires the canonical ACS rent donor."
+            )
 
         def impute_operator(frame: Frame) -> PoolStageOutput:
             return _impute_pool(
                 frame,
                 puf_donor=puf_donor,
+                acs_rent_donor=acs_rent_donor,
                 checkpoint_dir=primary_qrf_checkpoint_dir,
                 checkpoint_input_binding=checkpoint_input_binding,
             )
@@ -584,7 +662,7 @@ def _manifest_payload(
         "provenance_pins": {
             role: pin.to_manifest() for role, pin in verified_inputs.items()
         },
-        "asec_pre_clone_checkpoint": loaded.asec_checkpoint,
+        "asec_raw_stage_checkpoint": loaded.asec_raw_stage_checkpoint,
         "acs_source_manifest": asdict(acs_source_manifest),
         "acs_pums_build": loaded.acs_build,
         "acs_native_inputs": loaded.acs_native_inputs,
@@ -622,6 +700,7 @@ def _manifest_payload(
             "path": str(outputs.agreement_diagnostics.resolve()),
             "sha256": _file_sha256(outputs.agreement_diagnostics),
             "size_bytes": outputs.agreement_diagnostics.stat().st_size,
+            "publication_run_id": publication_run_id,
         },
         "primary_qrf_checkpoint_dir": str(outputs.primary_qrf_checkpoint_dir.resolve()),
         "calibration": {
@@ -639,7 +718,7 @@ def _publication_tombstone(
     publication_run_id: str,
 ) -> dict[str, object]:
     return {
-        "artifact_kind": "populace_us_multispine_pool_manifest",
+        "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
         "status": "publication_in_progress",
         "simulation_ready": False,
@@ -693,7 +772,7 @@ def _write_outputs(
         publication_run_id=publication_run_id,
     )
     diagnostics = {
-        "artifact_kind": "populace_us_multispine_agreement_diagnostics",
+        "artifact_kind": US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
         "simulation_ready": result.simulation_ready,
         "publication_run_id": publication_run_id,
@@ -796,8 +875,10 @@ def main(argv: list[str] | None = None) -> int:
         loaded.asec,
         loaded.acs,
         puf_donor=loaded.puf_donor,
+        acs_rent_donor=loaded.acs_rent_donor,
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
         checkpoint_input_binding=_checkpoint_input_binding(verified_inputs),
+        source_native_inputs={"acs": loaded.acs_native_inputs},
     )
     _write_outputs(
         result,

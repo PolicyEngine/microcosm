@@ -29,15 +29,29 @@ the deprecated-but-supported local ACS release producer.
   pre-shim implementation in `tools/_legacy` in `f8bcb3b`. Its local-release
   recipe, summary/reviewed-null contract, helper compatibility, and legacy
   suite pass (37 tests); focused Ruff is clean.
+- Split the pooled ASEC producer at a dedicated, operator-untouched raw-stage
+  artifact; its exact `LKWEEKS`/`ED_VAL` mappings, artifact binding, resume
+  repair, complete operator-family exclusion, and unchanged legacy checkpoint
+  sequence are covered by regressions.
+- Rewired the multispine pool to consume only that raw artifact, assemble and
+  clone first, run the full 20-operator source-input chain on raw-evidenced
+  rows, preserve ACS-native cells, and transfer the remaining nullable peer
+  inputs with explicit ownership. Consolidated blocker coverage passes,
+  including the legacy local-release path and structural guard.
+- Closed the independent lineage-review findings: ACS native exceptions bind
+  exact mapping contracts, source-kernel projections carry no false full-pool
+  receipt, production wiring and the immutable 20-operator order are tested,
+  and the pool-specific agreement registry covers every expanded transfer,
+  take-up, SSI, and joint immigration surface.
+- Added a readiness loader that accepts only a green manifest whose publication
+  run ID and digests match the H5 metadata and agreement diagnostics; the three
+  interruption regressions now exercise that reader as well as the tombstone.
 - Established the required final constraint: this live checkpoint will be
   restored byte-for-byte to `origin/main` before handoff so no root journal
   ships in the PR diff.
 
 ## Next
 
-- Finish tracing the producer/pool raw artifact and operator contracts.
-- Add each reviewer repro as a failing regression before its implementation
-  fix.
-- Fix and commit the raw-boundary blocker.
-- Run the full `populace-build` suite and Ruff, write the external handoff, and
-  restore `PROGRESS.md` to `origin/main`.
+- Commit the reviewed raw-boundary and readiness integration.
+- Run the full `populace-build` suite and Ruff.
+- Write the external handoff and restore `PROGRESS.md` to `origin/main`.

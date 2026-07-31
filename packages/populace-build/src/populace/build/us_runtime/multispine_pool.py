@@ -21,26 +21,75 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.us_runtime.acs_transfer import (
+    ACS_NATIVE_PERSON_INPUTS,
     TargetFamilies,
     declared_acs_transfer_target_families,
     derive_acs_schedule_d_capital_gain_distributions,
+)
+from populace.build.us_runtime.adult_care import with_us_adult_care_inputs
+from populace.build.us_runtime.child_support import with_us_child_support_inputs
+from populace.build.us_runtime.childcare import with_us_childcare_inputs
+from populace.build.us_runtime.cps_carried import derive_us_cps_carried_inputs
+from populace.build.us_runtime.disability_benefits import (
+    with_us_disability_benefits,
+)
+from populace.build.us_runtime.education_inputs import with_us_education_inputs
+from populace.build.us_runtime.eligibility_inputs import (
+    with_us_eligibility_inputs,
+)
+from populace.build.us_runtime.energy_subsidy import (
+    with_us_energy_subsidy_input,
+)
+from populace.build.us_runtime.housing_inputs import (
+    impute_us_housing_assistance_to_puf_support,
+    with_us_housing_inputs,
+)
+from populace.build.us_runtime.immigration import with_us_immigration_inputs
+from populace.build.us_runtime.medicare_take_up import (
+    with_us_medicare_take_up_input,
+)
+from populace.build.us_runtime.operator_boundary import (
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
+from populace.build.us_runtime.pregnancy import with_us_pregnancy_inputs
+from populace.build.us_runtime.prior_year_income import (
+    with_us_prior_year_income_inputs,
 )
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_OUTPUT_COLUMNS,
     with_us_qbi_input_reconciliation,
 )
-from populace.build.us_runtime.spine_agreement import spine_agreement_gate
+from populace.build.us_runtime.relationship_inputs import (
+    with_us_relationship_inputs,
+)
+from populace.build.us_runtime.retirement_contributions import (
+    with_us_retirement_contribution_inputs,
+)
+from populace.build.us_runtime.retirement_distributions import (
+    with_us_retirement_distribution_inputs,
+)
+from populace.build.us_runtime.spine_agreement import (
+    default_spine_agreement_registry,
+    spine_agreement_gate,
+)
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
+    SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_assembly_receipt,
     spine_provenance_counts,
+    support_clone_index_column,
     validate_assembly_provenance,
 )
 from populace.build.us_runtime.take_up import with_us_take_up_inputs
 from populace.build.us_runtime.take_up_contract import (
     TakeUpProgram,
     load_take_up_contract,
+)
+from populace.build.us_runtime.weeks_unemployed import with_us_weeks_unemployed
+from populace.build.us_runtime.wic_claim import with_us_wic_claim_input
+from populace.build.us_runtime.workers_compensation import (
+    with_us_workers_compensation,
 )
 from populace.frame import Frame
 
@@ -49,12 +98,16 @@ __all__ = [
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
+    "POOL_SOURCE_OPERATOR_ORDER",
+    "POOL_SPINE_AGREEMENT_REGISTRY",
     "POOL_TIME_PERIOD",
     "MultispinePoolResult",
     "PoolStageOutput",
+    "complete_multispine_source_inputs",
     "derive_multispine_pool_inputs",
     "materialize_multispine_agreement_outputs",
     "pool_transfer_target_families",
+    "prepare_multispine_puf_predictors",
     "run_multispine_pool_path",
     "seed_multispine_pool_inputs",
 ]
@@ -75,6 +128,34 @@ POOL_OPERATOR_ORDER = (
     "agreement",
 )
 """The executable pool-build order, including the terminal QA evaluation."""
+
+POOL_SOURCE_OPERATOR_ORDER = (
+    "derive_us_cps_carried_inputs",
+    "with_us_prior_year_income_inputs",
+    "with_us_relationship_inputs",
+    "with_us_medicare_take_up_input",
+    "with_us_housing_inputs",
+    "with_us_eligibility_inputs",
+    "with_us_pregnancy_inputs",
+    "with_us_wic_claim_input",
+    "impute_us_housing_assistance_to_puf_support",
+    "with_us_child_support_inputs",
+    "with_us_disability_benefits",
+    "with_us_workers_compensation",
+    "with_us_weeks_unemployed",
+    "with_us_childcare_inputs",
+    "with_us_adult_care_inputs",
+    "with_us_energy_subsidy_input",
+    "with_us_retirement_contribution_inputs",
+    "with_us_retirement_distribution_inputs",
+    "with_us_immigration_inputs",
+    "with_us_education_inputs",
+)
+"""Migrated source-input order.
+
+CPS predictor preparation runs before primary QRF; every remaining entry runs
+post-tail on the already assembled and cloned population.
+"""
 
 POOL_RANDOM_SEED = 0
 """Fixed seed shared by pool imputations and seeded input stages."""
@@ -137,22 +218,583 @@ class MultispinePoolResult:
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 type AgreementGate = Callable[[Frame], GateResult]
+type SourceFrameOperator = Callable[[Frame], Frame]
+
+_CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
+_SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
+    "derive_us_cps_carried_inputs": "cps_carried",
+    "with_us_prior_year_income_inputs": "prior_year_income",
+    "with_us_relationship_inputs": "relationship_inputs",
+    "with_us_medicare_take_up_input": "medicare_take_up",
+    "with_us_housing_inputs": "housing_inputs",
+    "with_us_eligibility_inputs": "eligibility_inputs",
+    "with_us_pregnancy_inputs": "pregnancy",
+    "with_us_wic_claim_input": "wic_claim",
+    "impute_us_housing_assistance_to_puf_support": "housing_assistance",
+    "with_us_child_support_inputs": "child_support",
+    "with_us_disability_benefits": "disability_benefits",
+    "with_us_workers_compensation": "workers_compensation",
+    "with_us_weeks_unemployed": "weeks_unemployed",
+    "with_us_childcare_inputs": "childcare",
+    "with_us_adult_care_inputs": "adult_care",
+    "with_us_energy_subsidy_input": "energy_subsidy",
+    "with_us_retirement_contribution_inputs": "retirement_contributions",
+    "with_us_retirement_distribution_inputs": "retirement_distributions",
+    "with_us_immigration_inputs": "immigration",
+    "with_us_education_inputs": "education_inputs",
+}
+_FORMULA_OWNED_SOURCE_OUTPUTS: Mapping[str, frozenset[str]] = {
+    "person": frozenset({"employment_income_last_year"}),
+}
+_POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
+    "person": frozenset(
+        {
+            *ACS_NATIVE_PERSON_INPUTS,
+            "age",
+            "is_female",
+            "is_household_head",
+        }
+    ),
+    "household": frozenset({"tenure_type"}),
+    "spm_unit": frozenset({"spm_unit_tenure_type"}),
+}
 
 
 def pool_transfer_target_families() -> TargetFamilies:
-    """Return the fixed raw-preserving QRF transfer plan.
+    """Return the fixed pool-only raw-preserving QRF transfer plan.
 
-    The #581 default agreement registry supplements this declaration with the
-    complete take-up inventory and formula-owned SSI. Take-up inputs not owned
-    by the declared QRF are handled together in the later seed stage, where
-    sourced TANF/EITC draws and explicitly disclosed engine defaults remain
-    distinguishable in the receipt.
+    The legacy declaration remains unchanged. This pool-local copy adds every
+    persisted historical source-operator output that ACS does not map natively
+    and the legacy plan does not already own. A target appears in exactly one
+    family, so transfer provenance stays unambiguous. Formula-owned outputs are
+    never transfer targets.
+
+    The #581 agreement registry supplements this plan with the complete take-up
+    inventory and formula-owned SSI. Take-up inputs not owned by QRF remain in
+    the later seed stage, where sourced draws and disclosed engine defaults
+    remain distinguishable in the receipt.
     """
 
-    return {
+    plan: dict[str, dict[str, tuple[str, ...]]] = {
         entity: {family: tuple(columns) for family, columns in families.items()}
         for entity, families in declared_acs_transfer_target_families().items()
     }
+    declared = {
+        column
+        for families in plan.values()
+        for columns in families.values()
+        for column in columns
+    }
+    for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        family = _SOURCE_OPERATOR_FAMILIES[operator_name]
+        additions: dict[str, tuple[str, ...]] = {}
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items():
+            excluded = (
+                declared
+                | set(_POOL_NATIVE_COMPLETE_OUTPUTS.get(entity, ()))
+                | set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+            )
+            targets = tuple(sorted(set(columns) - excluded))
+            if targets:
+                additions[entity] = targets
+                declared.update(targets)
+        for entity, targets in additions.items():
+            plan.setdefault(entity, {})[f"source_operator_{family}"] = targets
+    return plan
+
+
+POOL_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry(
+    pool_transfer_target_families()
+)
+"""Immutable pool charter: transfers, derived leaves, take-up, and SSI."""
+
+
+def prepare_multispine_puf_predictors(frame: Frame) -> PoolStageOutput:
+    """Derive CPS-carried primary-QRF predictors after assembly and cloning.
+
+    ``PERIDNUM`` is raw CPS evidence and is absent from the harmonized ACS
+    source. Only rows carrying that raw evidence enter the historical
+    derivation. Explicit output families are merged back by structural entity
+    ID, leaving unavailable peer-spine cells nullable and preserving native
+    non-null cells.
+    """
+
+    return _run_source_operator_chain(
+        frame,
+        operator_names=(POOL_SOURCE_OPERATOR_ORDER[0],),
+        operators={
+            POOL_SOURCE_OPERATOR_ORDER[0]: derive_us_cps_carried_inputs,
+        },
+    )
+
+
+def complete_multispine_source_inputs(
+    frame: Frame,
+    *,
+    acs_rent_donor: pd.DataFrame,
+) -> PoolStageOutput:
+    """Run the remaining historical source chain on the assembled clone pool.
+
+    The function is intentionally fixed-seed/fixed-period. Each operator runs
+    over the CPS-evidenced portion of the already assembled and cloned frame;
+    its declared output family alone is merged into the whole pool. This
+    retains ACS native measurements, leaves unavailable cells null for the
+    subsequent declared transfer, and keeps assembly metadata untouched.
+    """
+
+    operators: Mapping[str, SourceFrameOperator] = {
+        "with_us_prior_year_income_inputs": lambda current: (
+            with_us_prior_year_income_inputs(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+            )
+        ),
+        "with_us_relationship_inputs": lambda current: with_us_relationship_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_medicare_take_up_input": lambda current: (
+            with_us_medicare_take_up_input(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+            )
+        ),
+        "with_us_housing_inputs": lambda current: with_us_housing_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+            acs_rent_donor=acs_rent_donor,
+        ),
+        "with_us_eligibility_inputs": lambda current: with_us_eligibility_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_pregnancy_inputs": lambda current: with_us_pregnancy_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_wic_claim_input": lambda current: with_us_wic_claim_input(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "impute_us_housing_assistance_to_puf_support": lambda current: (
+            impute_us_housing_assistance_to_puf_support(
+                current,
+                seed=POOL_RANDOM_SEED,
+            )
+        ),
+        "with_us_child_support_inputs": lambda current: with_us_child_support_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_disability_benefits": lambda current: with_us_disability_benefits(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_workers_compensation": lambda current: (
+            with_us_workers_compensation(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+            )
+        ),
+        "with_us_weeks_unemployed": lambda current: with_us_weeks_unemployed(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_childcare_inputs": lambda current: with_us_childcare_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_adult_care_inputs": lambda current: with_us_adult_care_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_energy_subsidy_input": lambda current: with_us_energy_subsidy_input(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_retirement_contribution_inputs": lambda current: (
+            with_us_retirement_contribution_inputs(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+            )
+        ),
+        "with_us_retirement_distribution_inputs": lambda current: (
+            with_us_retirement_distribution_inputs(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+                force_puf_imputation=True,
+            )
+        ),
+        "with_us_immigration_inputs": lambda current: with_us_immigration_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_education_inputs": lambda current: with_us_education_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+    }
+    return _run_source_operator_chain(
+        frame,
+        operator_names=POOL_SOURCE_OPERATOR_ORDER[1:],
+        operators=operators,
+    )
+
+
+def _run_source_operator_chain(
+    frame: Frame,
+    *,
+    operator_names: tuple[str, ...],
+    operators: Mapping[str, SourceFrameOperator],
+    output_families: Mapping[
+        str,
+        Mapping[str, frozenset[str]],
+    ] = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+) -> PoolStageOutput:
+    """Run an injectable source-available chain and merge declared outputs."""
+
+    if not isinstance(frame, Frame):
+        raise TypeError(
+            "Multispine source operators require a Frame, got "
+            f"{type(frame).__name__}."
+        )
+    expected_operators = set(operator_names)
+    if set(operators) != expected_operators:
+        raise ValueError(
+            "Multispine source operator mapping must exactly match the requested "
+            f"order; missing={sorted(expected_operators - set(operators))}, "
+            f"unexpected={sorted(set(operators) - expected_operators)}."
+        )
+    invalid = [name for name, operator in operators.items() if not callable(operator)]
+    if invalid:
+        raise TypeError(f"Multispine source operator(s) are not callable: {invalid}.")
+
+    _assert_source_operator_boundary(frame)
+    current = frame
+    receipts: list[dict[str, object]] = []
+    for order_index, operator_name in enumerate(operator_names):
+        family = _SOURCE_OPERATOR_FAMILIES.get(operator_name, operator_name)
+        if family not in output_families:
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} has no declared "
+                f"output family {family!r}."
+            )
+        declared_outputs = _persisted_source_outputs(
+            output_families[family],
+        )
+        available_mask = _cps_source_evidence_mask(current)
+        available = _source_available_projection(current, available_mask)
+        available = _without_unavailable_output_columns(
+            available,
+            declared_outputs,
+        )
+        before_rows = _frame_row_counts(current)
+        available_rows = _frame_row_counts(available)
+        outcome = operators[operator_name](available)
+        if not isinstance(outcome, Frame):
+            raise TypeError(
+                f"Multispine source operator {operator_name!r} must return Frame, "
+                f"got {type(outcome).__name__}."
+            )
+        output_rows = _frame_row_counts(outcome)
+        if output_rows != available_rows:
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} changed entity row "
+                f"counts: input={available_rows}, output={output_rows}."
+            )
+        _assert_source_operator_structure(
+            available,
+            outcome,
+            operator_name=operator_name,
+        )
+        current, merged_rows = _merge_source_operator_outputs(
+            current,
+            outcome,
+            declared_outputs,
+            operator_name=operator_name,
+        )
+        after_rows = _frame_row_counts(current)
+        if after_rows != before_rows:
+            raise AssertionError(
+                f"Multispine source output merge changed pool row counts at "
+                f"{operator_name!r}: input={before_rows}, output={after_rows}."
+            )
+        receipts.append(
+            {
+                "order_index": order_index,
+                "operator": operator_name,
+                "family": family,
+                "pool_input_rows": before_rows,
+                "cps_available_rows": available_rows,
+                "operator_output_rows": output_rows,
+                "merged_rows": merged_rows,
+                "operator_projection": {
+                    "selection": _CPS_SOURCE_EVIDENCE_COLUMN,
+                    "lineage_state_persisted": False,
+                },
+                "output_columns": {
+                    entity: sorted(columns)
+                    for entity, columns in declared_outputs.items()
+                    if columns
+                },
+            }
+        )
+    return PoolStageOutput(
+        current,
+        {
+            "operator_order": list(operator_names),
+            "cps_source_evidence": {
+                "column": _CPS_SOURCE_EVIDENCE_COLUMN,
+                "person_rows": int(_cps_source_evidence_mask(frame).sum()),
+            },
+            "suboperators": receipts,
+        },
+    )
+
+
+def _assert_source_operator_boundary(frame: Frame) -> None:
+    manifest = frame.metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
+    if not isinstance(manifest, Mapping):
+        raise ValueError(
+            "Multispine source operators require the immutable spine assembly "
+            "manifest before any source derivation."
+        )
+    person = frame.table(frame.schema.person_entity)
+    clone_column = support_clone_index_column(frame.schema.person_entity)
+    if clone_column not in person:
+        raise ValueError(
+            "Multispine source operators require post-assembly clone provenance; "
+            f"missing {clone_column!r}."
+        )
+    clone_index = pd.to_numeric(person[clone_column], errors="coerce")
+    if clone_index.isna().any():
+        raise ValueError(
+            f"Multispine source clone provenance {clone_column!r} must be integral."
+        )
+    clone_values = clone_index.to_numpy(dtype=np.float64)
+    if (
+        (clone_values < 0.0).any()
+        or not np.equal(clone_values, np.floor(clone_values)).all()
+        or not np.any(clone_values == 0.0)
+        or not np.any(clone_values > 0.0)
+    ):
+        raise ValueError(
+            "Multispine source operators require both native and cloned rows with "
+            "nonnegative integral clone provenance."
+        )
+    _cps_source_evidence_mask(frame)
+
+
+def _cps_source_evidence_mask(frame: Frame) -> pd.Series:
+    """Select CPS lineage only from a raw column unavailable on ACS."""
+
+    person = frame.table(frame.schema.person_entity)
+    if _CPS_SOURCE_EVIDENCE_COLUMN not in person:
+        raise ValueError(
+            "Multispine source operators require raw CPS evidence column "
+            f"{_CPS_SOURCE_EVIDENCE_COLUMN!r}."
+        )
+    evidence = person[_CPS_SOURCE_EVIDENCE_COLUMN]
+    available = evidence.notna()
+    if pd.api.types.is_string_dtype(evidence.dtype) or evidence.dtype == object:
+        available &= evidence.astype("string").str.strip().ne("").fillna(False)
+    if not available.any():
+        raise ValueError(
+            "Multispine source operators found no CPS-evidenced person rows in "
+            f"{_CPS_SOURCE_EVIDENCE_COLUMN!r}."
+        )
+    clone_column = support_clone_index_column(frame.schema.person_entity)
+    clone_index = pd.to_numeric(person[clone_column], errors="coerce")
+    evidenced_clones = set(clone_index.loc[available].astype(int).tolist())
+    if 0 not in evidenced_clones or not any(index > 0 for index in evidenced_clones):
+        raise ValueError(
+            "Raw CPS evidence must cover both native and cloned rows before "
+            "source operators run."
+        )
+    return available.astype(bool)
+
+
+def _source_available_projection(frame: Frame, person_mask: pd.Series) -> Frame:
+    """Build an ephemeral CPS-only kernel input without a false pool receipt.
+
+    The public source-chain boundary receives and validates the fully assembled
+    clone pool. Historical source operators cannot safely consume rows lacking
+    their raw CPS inputs, so their internal kernel runs on this structural
+    projection. Assembly metadata and mass history describe the full pool and
+    therefore must not be attached to the subset. Only declared outputs are
+    merged back into the still-receipted full pool.
+    """
+
+    selected = frame.select(person_mask)
+    return Frame(
+        {
+            entity: selected.table(entity).copy()
+            for entity in selected.entities
+        },
+        selected.schema,
+        {
+            entity: selected.weights_for(entity)
+            for entity in selected.weighted_entities
+        },
+        selected.strata,
+    )
+
+
+def _persisted_source_outputs(
+    outputs: Mapping[str, frozenset[str]],
+) -> dict[str, frozenset[str]]:
+    return {
+        entity: frozenset(
+            set(columns) - set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+        )
+        for entity, columns in outputs.items()
+    }
+
+
+def _assert_source_operator_structure(
+    before: Frame,
+    after: Frame,
+    *,
+    operator_name: str,
+) -> None:
+    if after.metadata != before.metadata or after.mass_log != before.mass_log:
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} changed immutable "
+            "assembly metadata or mass history."
+        )
+    for entity in before.entities:
+        entity_id = before.schema.entity_id_column(entity)
+        before_ids = before.table(entity)[entity_id]
+        after_ids = after.table(entity)[entity_id]
+        if (
+            after_ids.duplicated().any()
+            or set(after_ids.tolist()) != set(before_ids.tolist())
+        ):
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} changed structural "
+                f"{entity_id!r} values."
+            )
+
+
+def _without_unavailable_output_columns(
+    frame: Frame,
+    outputs: Mapping[str, frozenset[str]],
+) -> Frame:
+    """Remove union-created all-null outputs before an available-source run."""
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    dropped = False
+    for entity, columns in outputs.items():
+        if entity not in tables:
+            continue
+        unavailable = [
+            column
+            for column in columns
+            if column in tables[entity] and tables[entity][column].isna().all()
+        ]
+        if unavailable:
+            tables[entity] = tables[entity].drop(columns=unavailable)
+            dropped = True
+    if not dropped:
+        return frame
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _merge_source_operator_outputs(
+    pool: Frame,
+    operated: Frame,
+    outputs: Mapping[str, frozenset[str]],
+    *,
+    operator_name: str,
+) -> tuple[Frame, dict[str, int]]:
+    """Merge only one operator's explicit family by entity ID."""
+
+    tables = {entity: pool.table(entity).copy() for entity in pool.entities}
+    merged_rows: dict[str, int] = {}
+    for entity, columns in outputs.items():
+        if not columns:
+            continue
+        if entity not in pool.entities or entity not in operated.entities:
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} declares outputs "
+                f"for absent entity {entity!r}."
+            )
+        target = tables[entity]
+        source = operated.table(entity)
+        entity_id = pool.schema.entity_id_column(entity)
+        if entity_id not in target or entity_id not in source:
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} cannot align "
+                f"{entity!r} without {entity_id!r}."
+            )
+        if source[entity_id].duplicated().any():
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} returned duplicate "
+                f"{entity_id!r} values."
+            )
+        missing_outputs = sorted(set(columns) - set(source.columns))
+        if missing_outputs:
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} did not emit its "
+                f"declared {entity!r} output(s): {missing_outputs}."
+            )
+        source_by_id = source.set_index(entity_id)
+        target_ids = target[entity_id]
+        eligible = target_ids.isin(source_by_id.index)
+        if int(eligible.sum()) != len(source):
+            raise ValueError(
+                f"Multispine source operator {operator_name!r} output IDs do not "
+                f"align one-to-one with the {entity!r} pool."
+            )
+        for column in sorted(columns):
+            aligned = source_by_id[column].reindex(target_ids)
+            if column not in target:
+                target[column] = aligned.to_numpy()
+            else:
+                positions = np.flatnonzero(eligible.to_numpy())
+                target.loc[target.index[positions], column] = aligned.iloc[
+                    positions
+                ].to_numpy()
+        merged_rows[entity] = int(eligible.sum())
+
+    merged = Frame(
+        tables,
+        pool.schema,
+        {entity: pool.weights_for(entity) for entity in pool.weighted_entities},
+        pool.strata,
+        mass_log=pool.mass_log,
+        metadata=pool.metadata,
+    )
+    return merged, merged_rows
+
+
+def _frame_row_counts(frame: Frame) -> dict[str, int]:
+    return {entity: int(len(frame.table(entity))) for entity in frame.entities}
 
 
 def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
@@ -600,7 +1242,7 @@ def run_multispine_pool_path(
     ``agreement_gate`` is an injection seam for small synthetic tests only.
     Production callers omit it, which invokes
     :func:`~populace.build.us_runtime.spine_agreement.spine_agreement_gate`
-    with its fixed registry and tolerances.
+    with the immutable pool-specific registry and fixed tolerances.
     """
 
     operators = {
@@ -660,8 +1302,14 @@ def run_multispine_pool_path(
     )
     receipts["simulate"] = dict(simulated.receipt)
 
-    gate_operator = spine_agreement_gate if agreement_gate is None else agreement_gate
-    agreement = gate_operator(simulated.frame)
+    agreement = (
+        spine_agreement_gate(
+            simulated.frame,
+            registry=POOL_SPINE_AGREEMENT_REGISTRY,
+        )
+        if agreement_gate is None
+        else agreement_gate(simulated.frame)
+    )
     if not isinstance(agreement, GateResult):
         raise TypeError(
             "Pool agreement operator must return GateResult, got "

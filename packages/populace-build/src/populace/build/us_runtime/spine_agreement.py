@@ -14,6 +14,11 @@ agreement has two parts:
 * at weighted conditional quantiles 10, 25, 50, 75, and 90 percent, the
   maximum symmetric relative distance must be no greater than ``0.25``.
 
+Categorical surfaces instead compare the complete weighted category
+distribution by total-variation distance, which must be no greater than
+``0.25``. Declared joint categorical groups are additionally compared as
+tuples, so equal marginals cannot conceal invalid cross-column combinations.
+
 The symmetric quantile distance at one quantile is
 ``2 * abs(left - right) / (abs(left) + abs(right))``.  It is zero when both
 quantiles are zero and at most two otherwise.  Quantiles use positive-weight,
@@ -48,6 +53,7 @@ from populace.build.us_runtime.support_provenance import (
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 
 __all__ = [
+    "DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE",
     "DEFAULT_INCIDENCE_RATIO_BOUNDS",
     "DEFAULT_QUANTILE_ENVELOPE_TOLERANCE",
     "DEFAULT_SPINE_AGREEMENT_QUANTILES",
@@ -62,6 +68,7 @@ __all__ = [
 DEFAULT_INCIDENCE_RATIO_BOUNDS = (0.8, 1.25)
 DEFAULT_SPINE_AGREEMENT_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
 DEFAULT_QUANTILE_ENVELOPE_TOLERANCE = 0.25
+DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE = 0.25
 _BATCH_SEPARATOR = "__batch_"
 _DERIVED_FAMILY = "derived_transfer"
 _SIMULATED_OUTPUT_FAMILY = "simulated_output"
@@ -70,6 +77,9 @@ _GATE_NAME = "us_spine_agreement"
 _SIMULATED_OUTPUTS: Mapping[str, tuple[str, ...]] = {
     "person": ("ssi",),
 }
+_JOINT_CATEGORICAL_TARGET_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("ssn_card_type", "immigration_status_str"),
+)
 
 
 class _ResolvedWeights(Protocol):
@@ -95,6 +105,7 @@ class SpineAgreementSpec:
     entity: str
     family: str
     columns: tuple[str, ...]
+    joint_categorical_groups: tuple[tuple[str, ...], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.entity, str) or not self.entity.strip():
@@ -126,6 +137,48 @@ class SpineAgreementSpec:
             raise ValueError(
                 f"SpineAgreementSpec {self.entity}/{self.family} repeats columns "
                 f"{duplicate_columns}."
+            )
+        if not isinstance(self.joint_categorical_groups, tuple) or any(
+            not isinstance(group, tuple)
+            for group in self.joint_categorical_groups
+        ):
+            raise ValueError(
+                "SpineAgreementSpec.joint_categorical_groups must be an "
+                "immutable tuple of tuples."
+            )
+        invalid_groups = [
+            group
+            for group in self.joint_categorical_groups
+            if len(group) < 2
+            or any(
+                not isinstance(column, str) or not column.strip()
+                for column in group
+            )
+            or len(set(group)) != len(group)
+            or not set(group).issubset(self.columns)
+        ]
+        if invalid_groups:
+            raise ValueError(
+                f"SpineAgreementSpec {self.entity}/{self.family} has invalid "
+                f"joint categorical group(s): {invalid_groups}."
+            )
+        grouped_columns = [
+            column
+            for group in self.joint_categorical_groups
+            for column in group
+        ]
+        repeated_group_columns = sorted(
+            {
+                column
+                for column in grouped_columns
+                if grouped_columns.count(column) > 1
+            }
+        )
+        if repeated_group_columns:
+            raise ValueError(
+                f"SpineAgreementSpec {self.entity}/{self.family} repeats columns "
+                "across joint categorical groups: "
+                f"{repeated_group_columns}."
             )
 
 
@@ -171,6 +224,11 @@ def default_spine_agreement_registry(
             entity=entity,
             family=family,
             columns=tuple(dict.fromkeys(columns)),
+            joint_categorical_groups=tuple(
+                group
+                for group in _JOINT_CATEGORICAL_TARGET_GROUPS
+                if set(group).issubset(columns)
+            ),
         )
         for (entity, family), columns in sorted(normalized.items())
     )
@@ -391,25 +449,66 @@ def spine_agreement_gate(
     checked_columns = 0
     checked_pairs = 0
     tested_pairs = 0
+    checked_joint_categorical_groups = 0
     for spec in specs:
         context = contexts.get(spec.entity)
         if context is None:
             continue
         table, weights, observed_channels = context
         channel_values = table[f"{spec.entity}_support_channel"].astype(str).to_numpy()
+        comparison_channels = (
+            expected_source_channels
+            if len(expected_source_channels) >= 2
+            else observed_channels
+        )
         for column in spec.columns:
             label = f"{spec.entity}/{spec.family}/{column}"
             if column not in table:
                 failures.append(f"{label}: registered column is absent from the frame.")
                 continue
             series = table[column]
-            if not (is_numeric_dtype(series) or is_bool_dtype(series)):
-                failures.append(
-                    f"{label}: dtype {series.dtype} is not numeric or boolean."
-                )
-                continue
-            values = series.to_numpy(dtype=np.float64, na_value=np.nan)
             relevant = weights > 0.0
+            if not (is_numeric_dtype(series) or is_bool_dtype(series)):
+                invalid_values = relevant & series.isna().to_numpy(dtype=bool)
+                if invalid_values.any():
+                    failures.append(
+                        f"{label}: {int(invalid_values.sum())} positive-weight "
+                        "categorical value(s) are missing."
+                    )
+                    continue
+                category_values = series.to_numpy(dtype=object)
+                unhashable = sum(
+                    1
+                    for value, included in zip(
+                        category_values,
+                        relevant,
+                        strict=True,
+                    )
+                    if included and not _is_hashable(value)
+                )
+                if unhashable:
+                    failures.append(
+                        f"{label}: {unhashable} positive-weight categorical "
+                        "value(s) are not hashable."
+                    )
+                    continue
+                checked_columns += 1
+                pair_count, tested_count = _record_categorical_comparisons(
+                    label=label,
+                    values=category_values,
+                    weights=weights,
+                    channel_values=channel_values,
+                    observed_channels=observed_channels,
+                    comparison_channels=comparison_channels,
+                    failures=failures,
+                    comparisons=comparisons,
+                    untestable_comparisons=untestable_comparisons,
+                )
+                checked_pairs += pair_count
+                tested_pairs += tested_count
+                continue
+
+            values = series.to_numpy(dtype=np.float64, na_value=np.nan)
             invalid_values = relevant & ~np.isfinite(values)
             if invalid_values.any():
                 failures.append(
@@ -420,11 +519,6 @@ def spine_agreement_gate(
 
             checked_columns += 1
             lower, upper = DEFAULT_INCIDENCE_RATIO_BOUNDS
-            comparison_channels = (
-                expected_source_channels
-                if len(expected_source_channels) >= 2
-                else observed_channels
-            )
             for left_channel, right_channel in itertools.combinations(
                 comparison_channels, 2
             ):
@@ -493,6 +587,62 @@ def spine_agreement_gate(
                         f"{DEFAULT_QUANTILE_ENVELOPE_TOLERANCE:.6g}."
                     )
 
+        for group in spec.joint_categorical_groups:
+            if any(column not in table for column in group):
+                continue
+            group_series = [table[column] for column in group]
+            if any(
+                is_numeric_dtype(series) or is_bool_dtype(series)
+                for series in group_series
+            ):
+                failures.append(
+                    f"{spec.entity}/{spec.family}/joint[{','.join(group)}]: "
+                    "registered joint categorical columns must all be categorical."
+                )
+                continue
+            relevant = weights > 0.0
+            invalid_values = relevant & np.logical_or.reduce(
+                [series.isna().to_numpy(dtype=bool) for series in group_series]
+            )
+            if invalid_values.any():
+                continue
+            category_values = np.empty(len(table), dtype=object)
+            category_values[:] = list(
+                zip(
+                    *[
+                        series.to_numpy(dtype=object)
+                        for series in group_series
+                    ],
+                    strict=True,
+                )
+            )
+            if any(
+                included and not _is_hashable(value)
+                for value, included in zip(
+                    category_values,
+                    relevant,
+                    strict=True,
+                )
+            ):
+                continue
+            checked_joint_categorical_groups += 1
+            pair_count, tested_count = _record_categorical_comparisons(
+                label=(
+                    f"{spec.entity}/{spec.family}/"
+                    f"joint[{','.join(group)}]"
+                ),
+                values=category_values,
+                weights=weights,
+                channel_values=channel_values,
+                observed_channels=observed_channels,
+                comparison_channels=comparison_channels,
+                failures=failures,
+                comparisons=comparisons,
+                untestable_comparisons=untestable_comparisons,
+            )
+            checked_pairs += pair_count
+            tested_pairs += tested_count
+
     return GateResult(
         name=_GATE_NAME,
         passed=not failures,
@@ -507,13 +657,26 @@ def spine_agreement_gate(
                 "quantile_distance": (
                     "max_q 2*abs(left_q-right_q)/(abs(left_q)+abs(right_q))"
                 ),
+                "categorical_distribution": (
+                    "resolved-weight category shares, including registered "
+                    "joint tuples"
+                ),
+                "categorical_distance": (
+                    "0.5 * sum_category abs(left_share-right_share)"
+                ),
             },
             "tolerances": {
                 "incidence_ratio_bounds": list(DEFAULT_INCIDENCE_RATIO_BOUNDS),
                 "max_quantile_envelope_distance": (DEFAULT_QUANTILE_ENVELOPE_TOLERANCE),
+                "max_categorical_total_variation_distance": (
+                    DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE
+                ),
             },
             "registered_families": len(specs),
             "checked_columns": checked_columns,
+            "checked_joint_categorical_groups": (
+                checked_joint_categorical_groups
+            ),
             "checked_spine_pairs": checked_pairs,
             "tested_spine_pairs": tested_pairs,
             "untestable_comparisons": sorted(untestable_comparisons),
@@ -601,6 +764,127 @@ def _normalize_target_families(
                 column_owner[owner_key] = canonical_family
             normalized.setdefault((entity, canonical_family), []).extend(columns)
     return normalized
+
+
+def _record_categorical_comparisons(
+    *,
+    label: str,
+    values: np.ndarray,
+    weights: np.ndarray,
+    channel_values: np.ndarray,
+    observed_channels: tuple[str, ...],
+    comparison_channels: tuple[str, ...],
+    failures: list[str],
+    comparisons: dict[str, object],
+    untestable_comparisons: list[str],
+) -> tuple[int, int]:
+    """Record fixed weighted total-variation checks for one category surface."""
+
+    checked_pairs = 0
+    tested_pairs = 0
+    for left_channel, right_channel in itertools.combinations(
+        comparison_channels,
+        2,
+    ):
+        checked_pairs += 1
+        comparison_key = f"{label}/{left_channel}_vs_{right_channel}"
+        missing_pair_channels = sorted(
+            {left_channel, right_channel} - set(observed_channels)
+        )
+        if missing_pair_channels:
+            comparisons[comparison_key] = {
+                "status": "untestable_missing_source_spine",
+                "missing_source_spines": missing_pair_channels,
+            }
+            untestable_comparisons.append(comparison_key)
+            continue
+
+        left = channel_values == left_channel
+        right = channel_values == right_channel
+        left_distribution = _weighted_category_distribution(
+            values[left],
+            weights[left],
+        )
+        right_distribution = _weighted_category_distribution(
+            values[right],
+            weights[right],
+        )
+        distance = _categorical_total_variation_distance(
+            left_distribution,
+            right_distribution,
+        )
+        tested_pairs += 1
+        comparisons[comparison_key] = {
+            "status": "tested",
+            "left_category_shares": _manifest_category_shares(
+                left_distribution
+            ),
+            "right_category_shares": _manifest_category_shares(
+                right_distribution
+            ),
+            "categorical_total_variation_distance": distance,
+        }
+        if distance > DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE:
+            failures.append(
+                f"{comparison_key}: weighted categorical total-variation "
+                f"distance {distance:.6g} exceeds "
+                f"{DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE:.6g}."
+            )
+    return checked_pairs, tested_pairs
+
+
+def _weighted_category_distribution(
+    values: np.ndarray,
+    weights: np.ndarray,
+) -> dict[object, float]:
+    total_weight = float(weights.sum())
+    distribution: dict[object, float] = {}
+    for value, weight in zip(values, weights, strict=True):
+        if weight <= 0.0:
+            continue
+        distribution[value] = distribution.get(value, 0.0) + float(weight)
+    return {
+        category: category_weight / total_weight
+        for category, category_weight in distribution.items()
+    }
+
+
+def _categorical_total_variation_distance(
+    left: Mapping[object, float],
+    right: Mapping[object, float],
+) -> float:
+    categories = set(left) | set(right)
+    return 0.5 * sum(
+        abs(left.get(category, 0.0) - right.get(category, 0.0))
+        for category in categories
+    )
+
+
+def _manifest_category_shares(
+    distribution: Mapping[object, float],
+) -> dict[str, float]:
+    return {
+        _manifest_category(category): distribution[category]
+        for category in sorted(distribution, key=_category_sort_key)
+    }
+
+
+def _manifest_category(value: object) -> str:
+    value_type = type(value)
+    return f"{value_type.__module__}.{value_type.__qualname__}:{value!r}"
+
+
+def _category_sort_key(value: object) -> tuple[str, str, str]:
+    value_type = type(value)
+    return (value_type.__module__, value_type.__qualname__, repr(value))
+
+
+def _is_hashable(value: object) -> bool:
+    try:
+        hash(value)
+    except TypeError:
+        return False
+    return True
 
 
 def _weighted_incidence(values: np.ndarray, weights: np.ndarray) -> float:

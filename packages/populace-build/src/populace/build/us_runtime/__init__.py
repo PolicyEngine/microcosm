@@ -60,7 +60,13 @@ from populace.build.us_runtime.alimony import (
     us_alimony_summary,
 )
 from populace.build.us_runtime.asec_checkpoint import (
+    ASEC_RAW_STAGE_ARTIFACT_KIND,
+    ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
+    ASEC_RAW_STAGE_OPERATOR_STATUS,
+    ASEC_RAW_STAGE_SCHEMA_VERSION,
+    ASEC_RAW_STAGE_STAGE,
     load_asec_pre_clone_checkpoint,
+    load_asec_raw_stage_checkpoint,
 )
 from populace.build.us_runtime.asec_pool import (
     AsecSource,
@@ -411,6 +417,10 @@ from populace.build.us_runtime.misc_itemized import (
 from populace.build.us_runtime.nonzero_shares import (
     nonzero_share,
     us_nonzero_shares,
+)
+from populace.build.us_runtime.operator_boundary import (
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    assert_operator_free_source_frame,
 )
 from populace.build.us_runtime.org_wages import (
     BLS_STATE_UNION_REPRESENTATION_RATE_2024,
@@ -861,6 +871,7 @@ from populace.build.us_runtime.source_runtime import (
     us_source_operation_handlers,
 )
 from populace.build.us_runtime.spine_agreement import (
+    DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE,
     DEFAULT_INCIDENCE_RATIO_BOUNDS,
     DEFAULT_QUANTILE_ENVELOPE_TOLERANCE,
     DEFAULT_SPINE_AGREEMENT_QUANTILES,
@@ -1045,6 +1056,11 @@ from populace.build.us_runtime.workers_compensation import (
 from populace.frame import Frame
 
 __all__ = [
+    "ASEC_RAW_STAGE_ARTIFACT_KIND",
+    "ASEC_RAW_STAGE_CHECKPOINT_FILENAME",
+    "ASEC_RAW_STAGE_OPERATOR_STATUS",
+    "ASEC_RAW_STAGE_SCHEMA_VERSION",
+    "ASEC_RAW_STAGE_STAGE",
     "BuildConfig",
     "AsecSource",
     "BASE_ASEC_SUPPORT_CHANNEL",
@@ -1778,12 +1794,14 @@ __all__ = [
     "PUF_SOURCE_YEAR",
     "PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS",
     "PUF_SYNTHETIC_RECID_START",
+    "PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
     "assign_congressional_districts_to_households",
+    "assert_operator_free_source_frame",
     "build_pooled_asec_unit_frame",
     "clone_us_frame_for_puf_support",
     "congressional_district_assignment_summary",
@@ -1800,6 +1818,7 @@ __all__ = [
     "load_congressional_district_vintage_crosswalk",
     "load_default_congressional_district_vintage_crosswalk",
     "load_asec_pre_clone_checkpoint",
+    "load_asec_raw_stage_checkpoint",
     "load_puf_tax_unit_donor",
     "normalize_district_code",
     "parse_baf_cd_layer",
@@ -1867,6 +1886,7 @@ __all__ = [
     "us_register_consistency_gate",
     "us_register_contradictions",
     "write_us_source_coverage_diagnostics",
+    "DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE",
     "DEFAULT_INCIDENCE_RATIO_BOUNDS",
     "DEFAULT_QUANTILE_ENVELOPE_TOLERANCE",
     "DEFAULT_SPINE_AGREEMENT_QUANTILES",
