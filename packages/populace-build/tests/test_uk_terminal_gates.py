@@ -159,6 +159,25 @@ def test_zero_weight_stratum_beyond_declaration_produces_named_finding() -> None
     assert "exceed the declared maximum" in gate["failures"][0]
 
 
+def test_missing_zero_weight_selector_columns_fail_even_with_positive_weights() -> None:
+    dataset = _dataset()
+    dataset.household.drop(
+        columns=[
+            "household_is_spi_synthetic",
+            "household_is_capital_gains_clone",
+        ],
+        inplace=True,
+    )
+
+    gate = _gates(_report(dataset))["zero_weight_strata"]
+
+    assert gate["passed"] is False
+    assert all(
+        row["missing_selector_columns"] for row in gate["details"]["declared_strata"]
+    )
+    assert "selector column(s) are missing" in gate["failures"][0]
+
+
 def test_default_declarations_name_both_june_100k_zero_strata() -> None:
     assert [row.maximum_zero_weight_rows for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
         100_000,
@@ -219,6 +238,48 @@ def test_gate_evaluation_error_does_not_mask_later_findings() -> None:
     assert gates["uk_release_input_coverage"]["passed"] is False
     assert gates["degenerate_release_surface"]["passed"] is False
     assert gates["weight_ratio"]["passed"] is True
+
+
+def test_malformed_release_surface_still_returns_the_complete_named_batch() -> None:
+    dataset = _dataset()
+    del dataset.household
+
+    report = uk_terminal_gate_report(
+        dataset,
+        object(),
+        input_coverage_evaluator=lambda: _coverage(passed=False),
+    )
+    gates = _gates(report)
+
+    assert list(gates) == [
+        "uk_release_input_coverage",
+        "degenerate_release_surface",
+        "zero_weight_strata",
+        "weight_ess",
+        "weight_ratio",
+    ]
+    assert all(not gate["passed"] for gate in gates.values())
+    assert "DataFrames" in gates["weight_ratio"]["failures"][0]
+
+
+def test_bad_optional_evidence_is_contained_by_each_named_gate() -> None:
+    def broken_records():
+        raise RuntimeError("seeded record materialization failure")
+        yield  # pragma: no cover
+
+    report = _report(
+        fit_weight_records=broken_records(),
+        parity_evidence=object(),
+    )
+    gates = _gates(report)
+
+    assert gates["weights_audit"]["passed"] is False
+    assert (
+        "seeded record materialization failure" in gates["weights_audit"]["failures"][0]
+    )
+    for name in ("export_surface", "target_surface", "target_fit"):
+        assert gates[name]["passed"] is False
+        assert "must be UKReleaseParityEvidence" in gates[name]["failures"][0]
 
 
 def test_fit_audit_is_absent_without_evidence_and_required_missing_fails() -> None:
@@ -287,6 +348,19 @@ def test_ported_june_parity_gates_retain_their_named_failures() -> None:
     assert surface.name == "target_surface"
     assert not fit.passed
     assert fit.name == "target_fit"
+
+
+def test_ported_june_parity_gates_reject_empty_evidence() -> None:
+    export = uk_export_surface_gate((), ())
+    surface = uk_target_surface_gate((), ())
+    fit = uk_target_fit_gate({})
+
+    assert not export.passed
+    assert not surface.passed
+    assert not fit.passed
+    assert "evidence is empty" in " ".join(export.failures)
+    assert "evidence is empty" in " ".join(surface.failures)
+    assert "evidence is empty" in " ".join(fit.failures)
 
 
 def test_item_4_and_5_future_gates_are_not_stubbed_as_passes() -> None:

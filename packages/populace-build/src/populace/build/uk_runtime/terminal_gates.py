@@ -457,6 +457,11 @@ def uk_zero_weight_strata_gate(
                 "reason": declaration.reason,
             }
         )
+        if missing:
+            failures.append(
+                f"{declaration.name}: selector column(s) are missing from the "
+                f"household release surface: {missing}."
+            )
         if count > declaration.maximum_zero_weight_rows:
             failures.append(
                 f"{declaration.name}: {count} zero-weight rows exceed the declared "
@@ -589,10 +594,11 @@ def uk_export_surface_gate(
     """Run the incumbent-compatible UK export-surface gate."""
 
     candidate = {str(name) for name in candidate_columns}
+    reference = {str(name) for name in reference_columns}
     exclusions = _reviewed_export_exclusions(reviewed_exclusions)
     result = export_surface_gate(
         candidate,
-        reference_columns,
+        reference,
         candidate_name=UK_CANDIDATE_DATASET_NAME,
         reference_name=UK_REFERENCE_DATASET_NAME,
         allowed_extra_columns=allowed_extra_columns,
@@ -600,6 +606,10 @@ def uk_export_surface_gate(
     )
     forbidden = sorted(candidate & set(exclusions))
     failures = [*result.failures]
+    if not candidate:
+        failures.append("UK candidate export-surface evidence is empty.")
+    if not reference:
+        failures.append("Enhanced-FRS reference export-surface evidence is empty.")
     if forbidden:
         failures.append(
             f"{UK_CANDIDATE_DATASET_NAME}: exports {len(forbidden)} reviewed "
@@ -619,11 +629,24 @@ def uk_target_surface_gate(
 ) -> GateResult:
     """Require the UK candidate target surface to cover enhanced FRS."""
 
-    return _target_surface_gate(
-        candidate_targets,
-        reference_targets,
+    candidate = {str(name) for name in candidate_targets}
+    reference = {str(name) for name in reference_targets}
+    result = _target_surface_gate(
+        candidate,
+        reference,
         candidate_name=UK_CANDIDATE_DATASET_NAME,
         reference_name=UK_REFERENCE_DATASET_NAME,
+    )
+    failures = [*result.failures]
+    if not candidate:
+        failures.append("UK candidate target-surface evidence is empty.")
+    if not reference:
+        failures.append("Enhanced-FRS reference target-surface evidence is empty.")
+    return GateResult(
+        name=result.name,
+        passed=not failures,
+        failures=tuple(failures),
+        details=dict(result.details),
     )
 
 
@@ -651,15 +674,17 @@ def uk_target_fit_gate(
         if abs(error) > maximum and name not in exclusions
     }
     worst = sorted(failing, key=lambda name: abs(failing[name]), reverse=True)
-    failures = tuple(
+    failures = [
         f"{UK_CANDIDATE_DATASET_NAME}: {name} relative error "
         f"{failing[name]:+.1%} exceeds {maximum:.0%}."
         for name in worst[:20]
-    )
+    ]
+    if not errors:
+        failures.append("UK target-fit evidence is empty.")
     return GateResult(
         name="target_fit",
         passed=not failures,
-        failures=failures,
+        failures=tuple(failures),
         details={
             "candidate_name": UK_CANDIDATE_DATASET_NAME,
             "targets_checked": len(errors),
@@ -738,8 +763,6 @@ def uk_terminal_gate_report(
 ) -> GateReport:
     """Evaluate every evidenced UK terminal gate and return one report."""
 
-    tables = dict(_entity_tables(dataset))
-    weights = _household_weights(tables["household"])
     coverage = input_coverage_evaluator or (
         lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
     )
@@ -755,61 +778,70 @@ def uk_terminal_gate_report(
         (
             "zero_weight_strata",
             lambda: uk_zero_weight_strata_gate(
-                tables["household"], declarations=zero_weight_declarations
+                dict(_entity_tables(dataset))["household"],
+                declarations=zero_weight_declarations,
             ),
         ),
         (
             "weight_ess",
             lambda: uk_weight_ess_gate(
-                weights,
+                _household_weights(dict(_entity_tables(dataset))["household"]),
                 minimum_ess_fraction=minimum_ess_fraction,
             ),
         ),
         (
             "weight_ratio",
             lambda: uk_weight_ratio_gate(
-                weights,
+                _household_weights(dict(_entity_tables(dataset))["household"]),
                 maximum_max_to_median_ratio=maximum_max_to_median_ratio,
             ),
         ),
     ]
 
-    records = None if fit_weight_records is None else tuple(fit_weight_records)
-    if records is not None or require_fit_weight_records:
+    if fit_weight_records is not None or require_fit_weight_records:
+
+        def fit_weight_evaluator() -> GateResult:
+            if fit_weight_records is None:
+                return _missing_fit_weight_evidence_gate()
+            records = tuple(fit_weight_records)
+            if not records:
+                return _missing_fit_weight_evidence_gate()
+            return weights_audit_gate(records)
+
         evaluators.append(
             (
                 "weights_audit",
-                (
-                    (lambda: weights_audit_gate(records))
-                    if records
-                    else _missing_fit_weight_evidence_gate
-                ),
+                fit_weight_evaluator,
             )
         )
 
     if parity_evidence is not None:
-        if not isinstance(parity_evidence, UKReleaseParityEvidence):
-            raise TypeError("parity_evidence must be UKReleaseParityEvidence.")
+
+        def checked_parity_evidence() -> UKReleaseParityEvidence:
+            if not isinstance(parity_evidence, UKReleaseParityEvidence):
+                raise TypeError("parity_evidence must be UKReleaseParityEvidence.")
+            return parity_evidence
+
         evaluators.extend(
             (
                 (
                     "export_surface",
                     lambda: uk_export_surface_gate(
-                        parity_evidence.candidate_columns,
-                        parity_evidence.reference_columns,
+                        checked_parity_evidence().candidate_columns,
+                        checked_parity_evidence().reference_columns,
                     ),
                 ),
                 (
                     "target_surface",
                     lambda: uk_target_surface_gate(
-                        parity_evidence.candidate_targets,
-                        parity_evidence.reference_targets,
+                        checked_parity_evidence().candidate_targets,
+                        checked_parity_evidence().reference_targets,
                     ),
                 ),
                 (
                     "target_fit",
                     lambda: uk_target_fit_gate(
-                        parity_evidence.target_relative_errors,
+                        checked_parity_evidence().target_relative_errors,
                     ),
                 ),
             )
