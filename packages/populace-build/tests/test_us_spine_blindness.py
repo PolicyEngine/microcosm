@@ -122,6 +122,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "pregnancy.py",
         "puf_aggregate_records.py",
         "puf_capital_gains_tail.py",
+        "puf_donor_io.py",  # Bounded donor artifact I/O; no population treatment.
         "puf_e01000_reconciliation.py",
         "puf_interest_components.py",
         "puf_qrf_chain.py",

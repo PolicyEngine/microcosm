@@ -516,6 +516,7 @@ from populace.build.us_runtime.puf_capital_gains_tail import (
     validate_puf_capital_gains_tail_manifest,
     write_puf_capital_gains_tail_manifest,
 )
+from populace.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
 from populace.build.us_runtime.puf_e01000_reconciliation import (
     PUF_E01000_RECONCILIATION_SCHEMA_VERSION,
     build_puf_e01000_reconciliation_basis,
@@ -1795,6 +1796,7 @@ __all__ = [
     "load_default_reform_specs",
     "load_congressional_district_vintage_crosswalk",
     "load_default_congressional_district_vintage_crosswalk",
+    "load_puf_tax_unit_donor",
     "normalize_district_code",
     "parse_baf_cd_layer",
     "parse_national_cd_bef_districts",
