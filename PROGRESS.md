@@ -46,12 +46,16 @@ the deprecated-but-supported local ACS release producer.
 - Added a readiness loader that accepts only a green manifest whose publication
   run ID and digests match the H5 metadata and agreement diagnostics; the three
   interruption regressions now exercise that reader as well as the tombstone.
+- Committed the reviewed assembly-first lineage and readiness integration in
+  `5b930ab`.
+- Ran the complete `populace-build` suite: 3,232 passed, 85 skipped, with only
+  five pre-existing runtime/deprecation warnings. Repository-wide Ruff passes.
 - Established the required final constraint: this live checkpoint will be
   restored byte-for-byte to `origin/main` before handoff so no root journal
   ships in the PR diff.
 
 ## Next
 
-- Commit the reviewed raw-boundary and readiness integration.
-- Run the full `populace-build` suite and Ruff.
-- Write the external handoff and restore `PROGRESS.md` to `origin/main`.
+- Resolve any finding from the final independent adversarial audit.
+- Write the external handoff.
+- Restore `PROGRESS.md` to `origin/main` and commit the cleanup.
