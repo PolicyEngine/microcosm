@@ -10,7 +10,8 @@ position in a non-owner operator module. The three-layer contract, composition
 argument, sole runtime-data residual, and annotation/docstring exemptions are
 now documented and executable. All requested binding tests pass, and both the
 all-runtime scan and pinned 54-module graph are clean after three narrow
-adjudications. Full package validation and the fix-3 handoff remain.
+adjudications. Final guard/package/Ruff certification is green. The fix-3
+handoff and required root-journal restoration remain.
 
 No push or external mutation is authorized.
 
@@ -52,6 +53,15 @@ No push or external mutation is authorized.
   formatting as alternative values.
 - The expanded guard file passes 99 tests; the all-runtime and exact 54-module
   scans remain clean.
+- Completed independent adversarial review with a final clean verdict after
+  binding every reported definition-time, class-scope, annotation, store,
+  closure, and static-format precision repro.
+- Ran the final guard file through `uv`: 99 passed.
+- Ran the final full `populace-build` suite: 3,321 passed, 85 skipped, 5 known
+  warnings in 107.66 seconds.
+- Ran repository-wide `ruff check .`: passed.
+- Ran focused `ruff format --check` on all four changed code/test files:
+  passed. `git diff --check` and worktree status are clean.
 - Read `CLAUDE.md` and the round-4 review log.
 - Confirmed the required clean starting HEAD and branch.
 - Confirmed the local GitNexus index is absent; direct AST/source tracing will
@@ -160,6 +170,5 @@ No push or external mutation is authorized.
 
 ## Next
 
-- Run the full `populace-build` suite and repository-wide Ruff.
 - Write `/private/tmp/583_fix3_handoff.md`, then restore `PROGRESS.md` to
   `origin/main` and commit that restoration so root journals stay out of the PR.
