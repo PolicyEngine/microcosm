@@ -353,12 +353,11 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "policyengine_us_version",
     "target_period",
     "congressional_district_vintage_crosswalk_sha256",
-    # The frozen SSI take-up assignment is a base-frame input to every
-    # materialized vector. Whether any JCT reform income-tax estimate can
-    # actually move with takes_up_ssi_if_eligible is an engine-graph
-    # question this build must not answer by assumption, so the digest
-    # invalidates reform vectors too — correctness over cache warmth
-    # (populace#507/#508 sol review round 2, finding 2).
+    # The complete frozen SSI input surface — general disability, qualifying
+    # criteria, take-up flags, priors, and basis — is a base-frame input to
+    # every materialized vector. Whether a JCT reform estimate can move with
+    # it is an engine-graph question this build must not answer by assumption,
+    # so the digest invalidates reform vectors too (populace#507/#508; #509).
     "ssi_take_up_assignment_sha256",
     # The selected identities determine which household rows the vectors
     # describe. Same-length supports can share positional SSI flag bytes, so
@@ -1847,11 +1846,10 @@ def _target_frame_checkpoint_identity(
         "seed": int(seed),
         "target_period": int(target_period),
         "target_registry_version": str(target_registry_version),
-        # The frozen SSI take-up decisions (flags + priors + basis
-        # provenance) feed the materialized ssi target columns; a retry
-        # under a different prior basis must invalidate the checkpoint
-        # (populace#507/#508). Always present, so every pre-#507 checkpoint
-        # — built on the collapsed Build-N-class flags — also misses once.
+        # The frozen SSI inputs (general disability, qualifying criteria,
+        # take-up flags, priors, and basis provenance) feed the materialized
+        # SSI target columns. Any child assignment change or take-up retry
+        # must invalidate the checkpoint (populace#507/#508; #509 round 3).
         "ssi_take_up_assignment_sha256": str(ssi_take_up_assignment_sha256),
         # The frozen-support selection prunes the base pool before assignment
         # and materialization. Its identity-set digest is independent of the
@@ -5694,17 +5692,34 @@ def _ssi_take_up_assignment_digest(
 ) -> str:
     """Digest of the frozen SSI assignment for checkpoint/cache identity.
 
-    Covers the persisted flag vector plus the priors and basis provenance
-    that generated it, so a retry whose thresholds differ — the
-    --ssi-take-up-prior-weight-basis path — can never reuse a target-frame
-    checkpoint or materialized-column cache built on the previous flags
-    (populace#507 sol review finding 2).
+    Covers the ordered persisted ``is_disabled``,
+    ``meets_ssi_disability_criteria``, and
+    ``takes_up_ssi_if_eligible`` vectors plus the priors and basis
+    provenance that generated the take-up decision.  A child-disability
+    assignment change or a retry whose take-up thresholds differ — the
+    --ssi-take-up-prior-weight-basis path — can therefore never reuse a
+    target-frame checkpoint or materialized-column cache built on the
+    previous SSI inputs (populace#507 sol review finding 2; populace#509
+    round-3 finding 5).
     """
 
-    flags = frame.table("person")[US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]]
-    return hashlib.sha256(
-        flags.to_numpy(dtype=np.uint8).tobytes()
-        + json.dumps(
+    person = frame.table("person")
+    digest = hashlib.sha256()
+    # Domain-separate the round-3 vector contract from the pre-round-3
+    # take-up-only digest.  Extending the digest itself invalidates every
+    # affected v10 checkpoint, so a materializer-version bump would add no
+    # further protection.
+    digest.update(b"populace-us-ssi-assignment-v2\0")
+    for column in (
+        "is_disabled",
+        "meets_ssi_disability_criteria",
+        US_SSI_TAKE_UP_OUTPUT_COLUMNS[0],
+    ):
+        digest.update(column.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(person[column].to_numpy(dtype=np.uint8).tobytes())
+    digest.update(
+        json.dumps(
             {
                 "assignment_priors": {
                     str(key): float(value) for key, value in assignment_priors.items()
@@ -5713,7 +5728,8 @@ def _ssi_take_up_assignment_digest(
             },
             sort_keys=True,
         ).encode("utf-8")
-    ).hexdigest()
+    )
+    return digest.hexdigest()
 
 
 def _enforce_ssi_take_up_delivery(
@@ -8442,8 +8458,9 @@ def main() -> None:
         telemetry.stage(
             "child_disability_inputs",
             message=(
-                "Imputing complete SIPP RDIS_ALT child-item disability for "
-                "ages 1--14, with the adjacent age-1--4 rate only for age 0."
+                "Imputing SIPP RDIS_ALT general child disability and the "
+                "receipt-anchored severe SSI subset for ages 0--14; age 0 "
+                "uses the nearest observed exact-age-1 general rate."
             ),
         )
     # The child stage is deliberately adjacent to eligibility_inputs: it only
@@ -8793,12 +8810,10 @@ def main() -> None:
     ssi_assignment_prior_basis = ssi_take_up_prior_basis_from_diagnostics(
         ssi_take_up_stage_diagnostics
     )
-    # populace#507 sol review finding 2: the frozen SSI decisions and their
-    # basis are materialization inputs. A retry with different flags MUST
-    # miss the previous attempt's target-frame checkpoint and target
-    # materialization cache — otherwise the solve runs against the stale
-    # SSI rows while the export carries the fresh ones (split-brain
-    # certification).
+    # The complete frozen SSI surface and its basis are materialization
+    # inputs. A child-assignment change or retry with different take-up flags
+    # MUST miss the previous target-frame checkpoint and cache — otherwise
+    # the solve runs against stale SSI rows while export carries fresh ones.
     ssi_take_up_assignment_sha256 = _ssi_take_up_assignment_digest(
         base_frame,
         assignment_priors=ssi_assignment_priors,
@@ -9529,7 +9544,8 @@ def main() -> None:
     # output: the Bernoulli-law recheck and anchor/envelope laws are
     # weight-safe, so any downstream transform that corrupted the frozen
     # decisions fails the build here instead of shipping (PR #477 review
-    # finding 3). The SSA-count miss itself stays scorecard-only.
+    # finding 3). Delivery misses are enforced separately below: all three
+    # bands on the sparse certified arm, and under-18 on the dense arm.
     final_ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_diagnostics, targets=ssi_band_targets
     )

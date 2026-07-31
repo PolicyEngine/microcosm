@@ -9337,11 +9337,11 @@ def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
 ) -> None:
     """A frozen-support change invalidates the checkpoint identity.
 
-    The assignment digest hashes positional flags, priors, and provenance,
-    but two same-length supports can share those flag bytes. The selected
-    source identities therefore remain an independent checkpoint input, and
-    even the full-pool ``None`` value must reject a pre-fix identity that
-    omitted the key entirely.
+    The assignment digest hashes positional child/general/criteria/take-up
+    vectors, priors, and provenance, but two same-length supports can share
+    those bytes. The selected source identities therefore remain an
+    independent checkpoint input, and even the full-pool ``None`` value must
+    reject a pre-fix identity that omitted the key entirely.
     """
 
     builder = _load_builder_module()
@@ -9649,16 +9649,17 @@ _SSI_BAND_TARGETS = {
 
 
 def _ssi_prior_final_artifact_payload() -> dict:
-    """A prior attempt's final us_ssi_take_up.json, schema 2 (Build N shape).
+    """A feasible prior final us_ssi_take_up.json, using schema 2.
 
     Contract strings are frozen LITERALS on purpose: this fixture documents
-    what Build N's certified artifact actually carries, so drift in the
-    module constants cannot silently redefine what the loader accepts
-    (populace#507 sol review finding 10).
+    the legacy artifact shape while giving every normally enforced band enough
+    delivered capacity for a truthful threshold. Drift in the module constants
+    cannot silently redefine what the loader accepts (populace#507 sol review
+    finding 10; populace#509 round 3).
     """
 
     bands = [
-        ("under_18", 1_001_922.0, 177_582.0, 60_000.0),
+        ("under_18", 1_001_922.0, 1_400_000.0, 60_000.0),
         ("18_64", 3_905_779.0, 6_000_000.0, 2_500_000.0),
         ("65_plus", 2_382_142.0, 3_995_000.0, 900_000.0),
     ]
@@ -10020,7 +10021,9 @@ def test_reform_vector_cache_context_tracks_support_and_materializer() -> None:
     assert "build_commit" not in projected
 
 
-def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:
+def test_ssi_assignment_digest_tracks_child_inputs_take_up_priors_and_basis(
+    small_frame,
+) -> None:
     """Any change to the frozen assignment must invalidate checkpoint/cache."""
 
     from populace.build.us_runtime.ssi_take_up import (
@@ -10030,10 +10033,20 @@ def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> Non
 
     builder = _load_builder_module()
 
-    def _frame_with_flags(flags):
+    def _frame_with_assignments(
+        flags,
+        *,
+        is_disabled=(False, True, False, True),
+        meets_ssi_disability_criteria=(False, False, True, True),
+    ):
         tables = {
             entity: small_frame.table(entity).copy() for entity in small_frame.entities
         }
+        tables["person"]["is_disabled"] = np.asarray(is_disabled, dtype=bool)
+        tables["person"]["meets_ssi_disability_criteria"] = np.asarray(
+            meets_ssi_disability_criteria,
+            dtype=bool,
+        )
         tables["person"]["takes_up_ssi_if_eligible"] = np.asarray(flags, dtype=bool)
         return Frame(
             tables,
@@ -10055,27 +10068,43 @@ def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> Non
         ),
     )
     baseline = builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors=priors,
         prior_basis=basis,
     )
     assert baseline == builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors=priors,
         prior_basis=basis,
     )
     assert baseline != builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, True, True, False]),
+        _frame_with_assignments([True, True, True, False]),
         assignment_priors=priors,
         prior_basis=basis,
     )
     assert baseline != builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments(
+            [True, False, True, False],
+            is_disabled=(True, True, False, True),
+        ),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_assignments(
+            [True, False, True, False],
+            meets_ssi_disability_criteria=(True, False, True, True),
+        ),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors={**priors, "65_plus": 0.9},
         prior_basis=basis,
     )
     assert baseline != builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors=priors,
         prior_basis=SSITakeUpPriorBasis(
             kind="release_artifact",
@@ -10083,6 +10112,110 @@ def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> Non
             source_sha256="cd" * 32,
             source_schema_version=2,
         ),
+    )
+
+
+def test_pre_round_3_v10_checkpoint_misses_new_child_assignment_digest(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    """A take-up-only v10 checkpoint cannot serve the round-3 SSI inputs."""
+
+    from populace.build.us_runtime.ssi_take_up import (
+        SSITakeUpBandPriorBasis,
+        SSITakeUpPriorBasis,
+    )
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["is_disabled"] = np.asarray([False, True, False, True], dtype=bool)
+    tables["person"]["meets_ssi_disability_criteria"] = np.asarray(
+        [False, False, True, True], dtype=bool
+    )
+    tables["person"]["takes_up_ssi_if_eligible"] = np.asarray(
+        [True, False, True, False], dtype=bool
+    )
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {
+            entity: small_frame.weights_for(entity)
+            for entity in small_frame.weighted_entities
+        },
+        small_frame.strata,
+    )
+    priors = {"under_18": 0.1, "18_64": 0.2, "65_plus": 0.3}
+    basis = SSITakeUpPriorBasis(
+        kind="current_frame",
+        bands=tuple(
+            SSITakeUpBandPriorBasis(
+                key=key,
+                candidate_capacity=100.0,
+                reporter_candidate_floor=10.0,
+            )
+            for key in priors
+        ),
+    )
+    legacy_digest = builder.hashlib.sha256(
+        frame.table("person")["takes_up_ssi_if_eligible"]
+        .to_numpy(dtype=np.uint8)
+        .tobytes()
+        + json.dumps(
+            {
+                "assignment_priors": {
+                    str(key): float(value) for key, value in priors.items()
+                },
+                "prior_weight_basis": dict(basis.provenance()),
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    current_digest = builder._ssi_take_up_assignment_digest(
+        frame,
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert legacy_digest != current_digest
+
+    identity_kwargs = {
+        "base_dataset_sha256": "base-sha",
+        "policyengine_us_version": "1.2.3",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-sha",
+        "weeks_unemployed_source_sha256": "weeks-source-sha",
+        "congressional_district_vintage_crosswalk_sha256": "crosswalk-sha",
+        "selection_identities_sha256": None,
+    }
+    legacy_identity = builder._target_frame_checkpoint_identity(
+        **identity_kwargs,
+        ssi_take_up_assignment_sha256=legacy_digest,
+    )
+    current_identity = builder._target_frame_checkpoint_identity(
+        **identity_kwargs,
+        ssi_take_up_assignment_sha256=current_digest,
+    )
+    assert legacy_identity["materializer_version"] == 10
+    assert current_identity["materializer_version"] == 10
+
+    checkpoint = tmp_path / "pre_round_3_v10_target_frame.h5"
+    builder._write_target_frame_checkpoint(
+        checkpoint,
+        frame=frame,
+        identity=legacy_identity,
+        compilation={"declared_targets": 0},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            checkpoint,
+            identity=current_identity,
+            target_specs=(),
+        )
+        is None
     )
 
 
