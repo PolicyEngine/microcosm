@@ -54,14 +54,15 @@ Six declared options, each a real feature (and each its own test):
 
 An explicit exact-k frozen refit first benchmarks its selected records to the
 known full-pool weight total. The seam receives the realized support but not its
-marginal inclusion probabilities, so it uses the Hájek-style ratio estimator
+marginal inclusion probabilities, so it uses the known-total ratio benchmark
 ``w_i * sum_pool(w) / sum_support(w)`` rather than an unavailable
-Horvitz--Thompson ``w_i / q_i`` estimator. This preserves the original relative
-design weights within the support while setting the known pool mass as the
-estimator's control total. Thus ``mass="conserve"`` conserves full-pool mass,
-and ``max_weight_ratio`` bounds the resulting expansion weights with useful
-headroom. The legacy thresholded L0 refit does not perform this normalization
-and remains unchanged.
+Horvitz--Thompson ``w_i / q_i`` estimator. Interpreted as an estimator, this
+plain subset rescale is not design-unbiased when inclusion probabilities differ;
+it is the available ratio construction with the pool's known design mass as its
+control total. It preserves relative design weights within the realized support,
+makes ``mass="conserve"`` mean full-pool mass exactly, and gives
+``max_weight_ratio`` useful expansion headroom. The legacy thresholded L0 refit
+does not perform this normalization and remains unchanged.
 """
 
 from __future__ import annotations
@@ -1917,16 +1918,16 @@ def refit_l0_selection(
     the stage that produces the shipped weights; the default ``0.0`` keeps the
     refit unpenalized.
 
-    The refit's starting weights are the *selection stage's calibrated
-    weights*, which are already concentrated — so with ``l2_anchor="initial"``
-    a strong penalty pulls toward their square (more concentration, lower
-    ESS). Pass ``l2_anchor="uniform"`` when the penalty's job is to spread
-    the shipped weights, or ``l2_anchor="design"`` to anchor at the
-    *pre-selection* initial weights of the surviving records — "stay near the
-    survey design", the natural choice when the candidate frame carries real
-    design weights rather than a uniform reset. On the explicit exact-k path,
-    that design anchor receives the same full-pool ratio normalization as the
-    refit's starting weights.
+    On the legacy path, the refit's starting weights are the *selection stage's
+    calibrated weights*, which are already concentrated — so with
+    ``l2_anchor="initial"`` a strong penalty pulls toward their square (more
+    concentration, lower ESS). Pass ``l2_anchor="uniform"`` when the penalty's
+    job is to spread the shipped weights, or ``l2_anchor="design"`` to anchor at
+    the *pre-selection* initial weights of the surviving records — "stay near
+    the survey design", the natural choice when the candidate frame carries
+    real design weights rather than a uniform reset. On the explicit exact-k
+    path, the starting weights and design anchor instead use the original-frame
+    design weights after the same full-pool ratio normalization.
     """
     if l2_anchor not in ("initial", "uniform", "design"):
         raise ValueError(
