@@ -191,9 +191,7 @@ def main() -> int:
         "frs_adult": retained_leaves_transform.adult_tab_path,
         "frs_benefits": retained_leaves_transform.benefits_tab_path,
     }
-    artifacts = {
-        role: _artifact_info(path) for role, path in artifact_paths.items()
-    }
+    artifacts = {role: _artifact_info(path) for role, path in artifact_paths.items()}
     build_record = _aggregate_build_record(
         result=result,
         artifacts=artifacts,
@@ -295,9 +293,7 @@ def _aggregate_build_record(
             "mass_changes": mass_changes,
         },
         "source_rows": {
-            "frs_adult": int(
-                dict(retained_sources.get("adult", {})).get("rows", 0)
-            ),
+            "frs_adult": int(dict(retained_sources.get("adult", {})).get("rows", 0)),
             "frs_benefits": int(
                 dict(retained_sources.get("benefits", {})).get("rows", 0)
             ),
@@ -319,23 +315,15 @@ def _aggregate_build_record(
                 details.get("insufficient_effective_mass", ())
             ),
             "stale_exclusions": list(details.get("stale_exclusions", ())),
-            "effective_mass_policy": dict(
-                details.get("effective_mass_policy", {})
-            ),
-            "family_effective_mass": dict(
-                details.get("family_effective_mass", {})
-            ),
+            "effective_mass_policy": dict(details.get("effective_mass_policy", {})),
+            "family_effective_mass": dict(details.get("family_effective_mass", {})),
             "family_build_state": dict(details.get("family_build_state", {})),
         },
         "hmrc_replay": {
             "summary": dict(
-                dict(family_evidence.get("targets", {})).get(
-                    "classification", {}
-                )
+                dict(family_evidence.get("targets", {})).get("classification", {})
             ),
-            "post_draw_identity": dict(
-                family_evidence.get("post_draw_identity", {})
-            ),
+            "post_draw_identity": dict(family_evidence.get("post_draw_identity", {})),
         },
         "artifacts": safe_artifacts,
     }
@@ -376,6 +364,7 @@ def _write_stage_reports(
         "base_candidate": {
             "path": str(candidate.path),
             "filename": candidate.filename,
+            "tier": candidate.tier,
             "revision": candidate.revision,
             "sha256": candidate.sha256,
             "size_bytes": candidate.size_bytes,

@@ -32,6 +32,7 @@ from populace.build.uk_runtime.hmrc_restoration import (
     CERTIFIED_UK_CANDIDATE_REVISION,
     CERTIFIED_UK_CANDIDATE_SHA256,
     CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
+    CERTIFIED_UK_CANDIDATE_TIER,
     UKCertifiedCandidateIdentity,
     UKHMRCIncomeStageTransform,
     restore_uk_hmrc_income_family,
@@ -113,6 +114,7 @@ def _candidate_identity(
     identity = UKCertifiedCandidateIdentity(
         path=(tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME).resolve(),
         filename=CERTIFIED_UK_CANDIDATE_FILENAME,
+        tier=CERTIFIED_UK_CANDIDATE_TIER,
         revision=CERTIFIED_UK_CANDIDATE_REVISION,
         sha256=CERTIFIED_UK_CANDIDATE_SHA256,
         size_bytes=CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
@@ -425,6 +427,7 @@ def test_certified_candidate_verification_binds_size_sha_and_stable_bytes(
     identity = verify_certified_uk_candidate(candidate)
 
     assert identity.path == candidate.resolve()
+    assert identity.tier == "frs"
     assert identity.size_bytes == len(contents)
     assert identity.sha256 == hashlib.sha256(contents).hexdigest()
     assert identity._source_file_fingerprint is not None
@@ -490,6 +493,10 @@ def test_restoration_rejects_forged_or_unbound_candidate_identity(
     verified = _candidate_identity(tmp_path)
     with pytest.raises(ValueError, match="loaded from the verified"):
         _restore(_dataset(), verified, tmp_path)
+
+    object.__setattr__(verified, "tier", "public")
+    with pytest.raises(ValueError, match="base identity does not match"):
+        _restore(_dataset_from_source(verified.path), verified, tmp_path)
 
 
 def test_source_pair_is_verified_before_parse_or_support_rebuild(

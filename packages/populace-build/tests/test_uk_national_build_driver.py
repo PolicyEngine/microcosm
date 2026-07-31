@@ -110,6 +110,7 @@ def test_national_build_driver_uses_standalone_national_seam(
         lambda path: SimpleNamespace(
             path=Path(path).resolve(),
             filename="populace_uk_2023.h5",
+            tier="frs",
             revision="test-revision",
             sha256="a" * 64,
             size_bytes=4,
@@ -165,6 +166,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert payload["artifacts"]["staging_h5"]["sha256"]
     evidence_path = staging_h5.with_suffix(".hmrc_income.json")
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert evidence["base_candidate"]["tier"] == "frs"
     assert evidence["base_candidate"]["revision"] == "test-revision"
     assert evidence["retained_leaves"]["stage"] == "frs_hmrc_retained_leaves"
     assert evidence["family"]["stage"] == "hmrc_spi_income"
@@ -239,6 +241,7 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
         lambda path: SimpleNamespace(
             path=Path(path).resolve(),
             filename="populace_uk_2023.h5",
+            tier="frs",
             revision="test-revision",
             sha256="a" * 64,
             size_bytes=4,
@@ -318,6 +321,7 @@ def test_national_driver_does_not_write_reports_for_stage_failure(
         lambda path: SimpleNamespace(
             path=Path(path).resolve(),
             filename="populace_uk_2023.h5",
+            tier="frs",
             revision="test-revision",
             sha256="a" * 64,
             size_bytes=6,

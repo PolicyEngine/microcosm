@@ -41,6 +41,7 @@ from populace.build.uk_runtime.national_build import (
     _UKSourceFileFingerprint,
     validate_uk_national_dataset,
 )
+from populace.build.uk_runtime.release_identity import UK_RELEASE_TIER_FRS
 from populace.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "CERTIFIED_UK_CANDIDATE_REVISION",
     "CERTIFIED_UK_CANDIDATE_SHA256",
     "CERTIFIED_UK_CANDIDATE_SIZE_BYTES",
+    "CERTIFIED_UK_CANDIDATE_TIER",
     "HMRC_DISTRIBUTIONAL_INPUTS",
     "UKCertifiedCandidateIdentity",
     "UKHMRCIncomeRestorationResult",
@@ -79,6 +81,7 @@ __all__ = [
 
 CERTIFIED_UK_CANDIDATE_FILENAME = "populace_uk_2023.h5"
 CERTIFIED_UK_CANDIDATE_REVISION = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+CERTIFIED_UK_CANDIDATE_TIER = UK_RELEASE_TIER_FRS
 CERTIFIED_UK_CANDIDATE_SHA256 = (
     "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
 )
@@ -92,6 +95,7 @@ class UKCertifiedCandidateIdentity:
 
     path: Path
     filename: str
+    tier: str
     revision: str
     sha256: str
     size_bytes: int
@@ -268,6 +272,7 @@ def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdent
     identity = UKCertifiedCandidateIdentity(
         path=candidate,
         filename=CERTIFIED_UK_CANDIDATE_FILENAME,
+        tier=CERTIFIED_UK_CANDIDATE_TIER,
         revision=CERTIFIED_UK_CANDIDATE_REVISION,
         sha256=digest,
         size_bytes=size,
@@ -552,12 +557,14 @@ def _validate_certified_candidate_identity(
         )
     expected = (
         CERTIFIED_UK_CANDIDATE_FILENAME,
+        CERTIFIED_UK_CANDIDATE_TIER,
         CERTIFIED_UK_CANDIDATE_REVISION,
         CERTIFIED_UK_CANDIDATE_SHA256,
         CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
     )
     actual = (
         identity.filename,
+        identity.tier,
         identity.revision,
         identity.sha256,
         identity.size_bytes,

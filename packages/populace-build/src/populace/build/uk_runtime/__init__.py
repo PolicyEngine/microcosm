@@ -166,6 +166,7 @@ from populace.build.uk_runtime.hmrc_replay import (
 )
 from populace.build.uk_runtime.hmrc_restoration import (
     CERTIFIED_UK_CANDIDATE_SHA256,
+    CERTIFIED_UK_CANDIDATE_TIER,
     HMRC_DISTRIBUTIONAL_INPUTS,
     UKCertifiedCandidateIdentity,
     UKHMRCIncomeRestorationResult,
@@ -276,6 +277,14 @@ from populace.build.uk_runtime.parity_reference import (
     EfrsParitySource,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
+)
+from populace.build.uk_runtime.release_identity import (
+    UK_RELEASE_TIER_CPS_TRANSFER,
+    UK_RELEASE_TIER_FRS,
+    UK_RELEASE_TIERS,
+    UKReleaseIdentity,
+    format_uk_release_id,
+    validate_uk_release_tier,
 )
 from populace.build.uk_runtime.release_input_coverage import (
     RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS,
@@ -496,6 +505,9 @@ __all__ = [
     "UK_OA_LADDER_SCHEMA_VERSION",
     "UK_POSTCODE_OA_MAY25_ZIP_URL",
     "UK_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "UK_RELEASE_TIERS",
+    "UK_RELEASE_TIER_CPS_TRANSFER",
+    "UK_RELEASE_TIER_FRS",
     "UK_POSTCODE_PCON_MAY24_ZIP_URL",
     "UkOaLadder",
     "UKFirmCalibrationResult",
@@ -523,10 +535,12 @@ __all__ = [
     "UKRowwiseDatasetResult",
     "UKReleaseInputColumn",
     "UKReleaseInputCoverageManifest",
+    "UKReleaseIdentity",
     "UKEffectiveMassCoveragePolicy",
     "UKSPISupportResult",
     "UKSPIIncomeImputationResult",
     "CERTIFIED_UK_CANDIDATE_SHA256",
+    "CERTIFIED_UK_CANDIDATE_TIER",
     "UK_SINGLE_YEAR_TABLES",
     "UK_SPI_SUPPORT_STAGE_NAME",
     "VAT_LIABILITY_BANDS",
@@ -575,6 +589,7 @@ __all__ = [
     "create_uk_spi_support_tables",
     "employment_band_name",
     "fill_support_channel_from_source",
+    "format_uk_release_id",
     "impute_uk_spi_income_support",
     "replace_uk_spi_support_tables",
     "retain_uk_frs_hmrc_leaves",
@@ -660,6 +675,7 @@ __all__ = [
     "validate_uk_national_dataset",
     "validate_uk_ladder_rowwise_dataset_tables",
     "validate_uk_rowwise_dataset_tables",
+    "validate_uk_release_tier",
     "verify_certified_uk_candidate",
     "verify_hmrc_spi_collated_ods",
     "verify_spi_donor_identity",
