@@ -406,6 +406,24 @@ def _restore(
     )
 
 
+def test_hmrc_stage_transform_exposes_last_fit_weight_records(tmp_path: Path) -> None:
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    records = (
+        FitWeightRecord("uk_spi_2022_23_income", "design"),
+        FitWeightRecord("uk_frs_only_spi_fill", "importance"),
+    )
+
+    assert transform.fit_weight_records == ()
+    transform.last_result = SimpleNamespace(
+        imputation=SimpleNamespace(fit_weight_records=records)
+    )
+    assert transform.fit_weight_records == records
+
+
 def test_certified_candidate_verification_binds_size_sha_and_stable_bytes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

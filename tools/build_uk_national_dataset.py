@@ -60,12 +60,21 @@ def _parse_args() -> argparse.Namespace:
         required=True,
         help="Official HMRC Personal Incomes 2023-24 collated ODS.",
     )
-    parser.add_argument(
+    gate_output = parser.add_mutually_exclusive_group()
+    gate_output.add_argument(
+        "--terminal-gates-json",
+        type=Path,
+        help=(
+            "Consolidated terminal-gate report path. Defaults beside "
+            "--staging-h5 with suffix '.terminal_gates.json'."
+        ),
+    )
+    gate_output.add_argument(
         "--input-coverage-json",
         type=Path,
         help=(
-            "Coverage diagnostic path. Defaults beside --staging-h5 with "
-            "suffix '.input_coverage.json'."
+            "Legacy alias for --terminal-gates-json. Cannot be supplied with "
+            "the preferred option."
         ),
     )
     parser.add_argument(
@@ -99,8 +108,10 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    coverage_path = args.input_coverage_json or args.staging_h5.with_suffix(
-        ".input_coverage.json"
+    terminal_gate_path = (
+        args.terminal_gates_json
+        or args.input_coverage_json
+        or args.staging_h5.with_suffix(".terminal_gates.json")
     )
     evidence_path = args.hmrc_evidence_json or args.staging_h5.with_suffix(
         ".hmrc_income.json"
@@ -117,7 +128,7 @@ def main() -> int:
     _validate_distinct_paths(
         evidence_path=evidence_path,
         replay_path=replay_path,
-        coverage_path=coverage_path,
+        terminal_gate_path=terminal_gate_path,
         input_h5=args.input_h5,
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
@@ -139,6 +150,9 @@ def main() -> int:
         qrf_estimators=args.qrf_estimators,
     )
     try:
+        # This staging path performs no calibration and therefore has no real
+        # target-surface or target-fit evidence. Leave parity_evidence absent;
+        # the terminal report omits that trio instead of inventing passes.
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
@@ -152,7 +166,7 @@ def main() -> int:
                     transform=hmrc_transform,
                 ),
             ),
-            input_coverage_path=coverage_path,
+            terminal_gate_path=terminal_gate_path,
         )
     except RuntimeError as error:
         if (
@@ -183,7 +197,7 @@ def main() -> int:
     artifact_paths = {
         "input_h5": result.input_h5,
         "staging_h5": result.staging_h5,
-        "input_coverage": coverage_path,
+        "terminal_gates": terminal_gate_path,
         "hmrc_evidence": evidence_path,
         "hmrc_replay": replay_path,
         "spi_donor": args.spi_tab,
@@ -202,9 +216,10 @@ def main() -> int:
     )
     _write_json(build_record_path, build_record)
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "build_kind": "uk_national_staging_dataset",
         "stages": list(result.stage_names),
+        "terminal_gates": result.terminal_gates.to_manifest(),
         "input_coverage": {
             "passed": result.input_coverage.passed,
             "failures": list(result.input_coverage.failures),
@@ -273,7 +288,7 @@ def _aggregate_build_record(
         result.dataset.household["household_weight"], errors="raise"
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "build_kind": "uk_national_staging_dataset",
         "status": "passed",
         "stages": list(result.stage_names),
@@ -302,6 +317,7 @@ def _aggregate_build_record(
             ),
         },
         "source_vintages": dict(family_evidence.get("source_vintages", {})),
+        "terminal_gates": result.terminal_gates.to_manifest(),
         "input_coverage": {
             "passed": bool(result.input_coverage.passed),
             "failures": list(result.input_coverage.failures),
@@ -379,14 +395,14 @@ def _write_stage_reports(
 def _is_final_release_gate_failure(error: RuntimeError) -> bool:
     """Match only the national seam's post-stage, pre-staging hard gate."""
 
-    return str(error).startswith("Release gates failed: Input coverage failed:")
+    return str(error).startswith("Release gates failed:")
 
 
 def _validate_distinct_paths(
     *,
     evidence_path: Path,
     replay_path: Path,
-    coverage_path: Path,
+    terminal_gate_path: Path,
     input_h5: Path,
     staging_h5: Path,
     spi_tab: Path,
@@ -403,7 +419,7 @@ def _validate_distinct_paths(
         "--frs-raw-dir/adult.tab": adult_tab.resolve(),
         "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
         "--build-record-json": build_record_path.resolve(),
-        "--input-coverage-json": coverage_path.resolve(),
+        "--terminal-gates-json/--input-coverage-json": terminal_gate_path.resolve(),
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),
     }

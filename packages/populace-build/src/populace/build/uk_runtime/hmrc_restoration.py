@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from populace.build.gates import FitWeightRecord
 from populace.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -211,6 +212,14 @@ class UKHMRCIncomeStageTransform:
         default=None,
         init=False,
     )
+
+    @property
+    def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
+        """Return immutable fit-weight evidence from the most recent run."""
+
+        if self.last_result is None:
+            return ()
+        return tuple(self.last_result.imputation.fit_weight_records)
 
     def __call__(self, dataset: UKNationalDataset) -> UKNationalDataset:
         retained = (

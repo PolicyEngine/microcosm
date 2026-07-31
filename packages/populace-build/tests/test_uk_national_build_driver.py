@@ -12,7 +12,7 @@ import pytest
 _PATH_ARGUMENTS = (
     "evidence_path",
     "replay_path",
-    "coverage_path",
+    "terminal_gate_path",
     "input_h5",
     "staging_h5",
     "spi_tab",
@@ -21,6 +21,36 @@ _PATH_ARGUMENTS = (
     "benefits_tab",
     "build_record_path",
 )
+
+
+def _gate_result(*, passed: bool) -> SimpleNamespace:
+    return SimpleNamespace(
+        passed=passed,
+        failures=() if passed else ("seeded coverage failure",),
+        details={"required_columns": 145},
+    )
+
+
+def _terminal_gates(input_coverage: SimpleNamespace) -> SimpleNamespace:
+    manifest = {
+        "passed": bool(input_coverage.passed),
+        "gates": {
+            "uk_release_input_coverage": {
+                "passed": bool(input_coverage.passed),
+                "failures": list(input_coverage.failures),
+                "details": dict(input_coverage.details),
+            },
+            "weight_ess": {
+                "passed": True,
+                "failures": [],
+                "details": {"ess_fraction": 0.5},
+            },
+        },
+    }
+    return SimpleNamespace(
+        passed=bool(input_coverage.passed),
+        to_manifest=lambda: manifest,
+    )
 
 
 def _load_builder_module():
@@ -64,7 +94,8 @@ def test_national_build_driver_uses_standalone_national_seam(
             replay_report=SimpleNamespace(summary={"excluded_with_fence": 208}),
         )
         staging_h5.write_bytes(b"staged")
-        kwargs["input_coverage_path"].write_text('{"passed": true}\n')
+        kwargs["terminal_gate_path"].write_text('{"passed": true}\n')
+        input_coverage = _gate_result(passed=True)
         return SimpleNamespace(
             dataset=SimpleNamespace(
                 person=[1, 2],
@@ -88,11 +119,8 @@ def test_national_build_driver_uses_standalone_national_seam(
                 "frs_hmrc_retained_leaves",
                 "hmrc_spi_income",
             ),
-            input_coverage=SimpleNamespace(
-                passed=True,
-                failures=(),
-                details={"required_columns": 145},
-            ),
+            terminal_gates=_terminal_gates(input_coverage),
+            input_coverage=input_coverage,
         )
 
     monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
@@ -152,8 +180,8 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert hmrc_transform.hmrc_ods_path == hmrc_ods
     assert hmrc_transform.certified_candidate.revision == "test-revision"
     assert hmrc_transform.retained_leaves_transform is retained_transform
-    assert calls[0]["input_coverage_path"] == staging_h5.with_suffix(
-        ".input_coverage.json"
+    assert calls[0]["terminal_gate_path"] == staging_h5.with_suffix(
+        ".terminal_gates.json"
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["build_kind"] == "uk_national_staging_dataset"
@@ -162,6 +190,8 @@ def test_national_build_driver_uses_standalone_national_seam(
         "hmrc_spi_income",
     ]
     assert payload["input_coverage"]["passed"] is True
+    assert payload["terminal_gates"]["passed"] is True
+    assert payload["terminal_gates"]["gates"]["weight_ess"]["passed"] is True
     assert payload["hmrc_replay"]["summary"] == {"excluded_with_fence": 208}
     assert payload["artifacts"]["staging_h5"]["sha256"]
     evidence_path = staging_h5.with_suffix(".hmrc_income.json")
@@ -176,9 +206,11 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert payload["artifacts"]["hmrc_replay"]["sha256"]
     assert payload["artifacts"]["frs_adult"]["sha256"]
     assert payload["artifacts"]["frs_benefits"]["sha256"]
+    assert payload["artifacts"]["terminal_gates"]["sha256"]
     assert payload["artifacts"]["build_record"]["sha256"]
     record = json.loads(build_record_path.read_text(encoding="utf-8"))
     assert record["status"] == "passed"
+    assert record["terminal_gates"]["gates"]["weight_ess"]["passed"] is True
     assert record["dataset"] == {
         "entity_rows": {"benunit": 1, "household": 1, "person": 2},
         "household_weight_kind": "importance",
@@ -228,9 +260,9 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
             evidence=lambda: {"stage": "hmrc_spi_income"},
             replay_report=replay_report,
         )
-        kwargs["input_coverage_path"].write_text('{"passed": false}\n')
+        kwargs["terminal_gate_path"].write_text('{"passed": false}\n')
         raise RuntimeError(
-            "Release gates failed: Input coverage failed: gift_aid remains "
+            "Release gates failed: [uk_release_input_coverage] gift_aid remains "
             "a reviewed exclusion with positive effective-mass signal"
         )
 
@@ -284,6 +316,7 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
     assert replay_calls == [
         (replay_report, staging_h5.with_suffix(".hmrc_replay.json"))
     ]
+    assert staging_h5.with_suffix(".terminal_gates.json").is_file()
     assert not staging_h5.exists()
     assert not staging_h5.with_suffix(".build.json").exists()
 
@@ -387,7 +420,7 @@ def test_national_driver_rejects_case_only_path_aliases(tmp_path) -> None:
     candidate.write_bytes(b"certified base")
     paths = {name: tmp_path / f"{name}.artifact" for name in _PATH_ARGUMENTS}
     paths["input_h5"] = candidate
-    paths["coverage_path"] = tmp_path / "candidate.h5"
+    paths["terminal_gate_path"] = tmp_path / "candidate.h5"
 
     with pytest.raises(ValueError, match="pairwise distinct"):
         builder._validate_distinct_paths(**paths)
@@ -403,7 +436,7 @@ def test_national_driver_rejects_existing_hardlink_aliases(tmp_path) -> None:
     alias.hardlink_to(candidate)
     paths = {name: tmp_path / f"{name}.artifact" for name in _PATH_ARGUMENTS}
     paths["input_h5"] = candidate
-    paths["coverage_path"] = alias
+    paths["terminal_gate_path"] = alias
 
     with pytest.raises(ValueError, match="pairwise distinct"):
         builder._validate_distinct_paths(**paths)
@@ -468,6 +501,69 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
     assert spi_tab.read_bytes() == b"licensed donor"
     assert hmrc_ods.read_bytes() == b"official surface"
     assert evidence.read_bytes() == b"previous evidence"
+
+
+def test_national_driver_accepts_legacy_input_coverage_path_alias(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    legacy_path = tmp_path / "legacy-coverage.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--input-coverage-json",
+            str(legacy_path),
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.input_coverage_json == legacy_path
+    assert args.terminal_gates_json is None
+
+
+def test_national_driver_rejects_both_terminal_gate_cli_names(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--terminal-gates-json",
+            str(tmp_path / "terminal.json"),
+            "--input-coverage-json",
+            str(tmp_path / "legacy.json"),
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
 
 
 @pytest.mark.parametrize(
