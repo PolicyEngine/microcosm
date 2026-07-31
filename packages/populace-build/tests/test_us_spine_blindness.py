@@ -16,14 +16,23 @@ This guard enforces, and its tests certify, exactly these surfaces:
 - contraband guarded-name literals anywhere statically visible in non-owner
   modules.
 
-Two classes are out of scope by design, and naming them is the honest
-boundary. First, deliberately obfuscated construction -- reverse slicing,
-``format_map`` over dynamic maps, ``__doc__`` or ``__annotations__`` mining,
-container-indexed method aliases, and kin -- is controlled by code review and
-the adversarial merge-review process. A scanner that claimed to catch code
-written to deceive would be lying. Second, column names materialized purely
-from runtime data are controlled by the assembly receipt and runtime
-validation.
+Analysis is MODULE-LOCAL with single-hop name resolution. Three classes
+are out of scope by design, and naming them is the honest boundary.
+First, cross-module static dataflow -- constant tables imported from
+other modules and namespace re-export or attribute-mutation hops --
+resolves only within the scanned module; whole-program dataflow is code
+review's job. Second, deliberately obfuscated construction -- reverse
+slicing, ``format_map`` over dynamic maps, ``__doc__`` or
+``__annotations__`` mining, container-indexed method aliases, and kin --
+is controlled by code review and the adversarial merge-review process. A
+scanner that claimed to catch code written to deceive would be lying.
+Third, column names materialized purely from runtime data are controlled
+by the assembly receipt and runtime validation.
+
+Where multi-value loop bindings combine in one template, the guard may
+over-report combinations that no single row produces (a Cartesian
+over-catch). Over-reporting is the safe failure direction for a
+tripwire; a module that trips it restructures its table.
 """
 
 from __future__ import annotations
@@ -1358,7 +1367,21 @@ class _SourceReadVisitor(ast.NodeVisitor):
         scope (sol #583 round 6).
         """
 
-        literal = _static_literal_value(iterable, self.constants)
+        if (
+            isinstance(iterable, ast.Call)
+            and isinstance(iterable.func, ast.Attribute)
+            and iterable.func.attr == "items"
+            and not iterable.args
+            and not iterable.keywords
+        ):
+            # Static dict.items() iteration is module-local and ordinary
+            # (sol #583 round 7).
+            mapping = _static_literal_value(iterable.func.value, self.constants)
+            if not isinstance(mapping, dict):
+                return False
+            literal: object = tuple(mapping.items())
+        else:
+            literal = _static_literal_value(iterable, self.constants)
         if literal is _OPAQUE_STATIC_VALUE or not isinstance(literal, (list, tuple)):
             return False
         rows = tuple(literal)
@@ -1368,18 +1391,28 @@ class _SourceReadVisitor(ast.NodeVisitor):
             for row in rows
         ):
             return False
-        width = len(rows[0])
-        if any(len(row) != width for row in rows) or not (
-            isinstance(target, (ast.Tuple, ast.List))
-            and len(target.elts) == width
-            and all(isinstance(element, ast.Name) for element in target.elts)
-        ):
+        if not isinstance(target, (ast.Tuple, ast.List)):
             return False
-        for position, element in enumerate(target.elts):
+        elements = list(target.elts)
+        starred = bool(elements) and isinstance(elements[-1], ast.Starred)
+        leading = elements[:-1] if starred else elements
+        if not leading or not all(isinstance(element, ast.Name) for element in leading):
+            return False
+        prefix = len(leading)
+        if starred:
+            # Mixed row widths are fine when a *rest tail absorbs them
+            # (sol #583 round 7); the tail itself binds opaque.
+            if any(len(row) < prefix for row in rows):
+                return False
+        elif any(len(row) != prefix for row in rows):
+            return False
+        for position, element in enumerate(leading):
             self._bind_iteration_target(
                 element,
                 tuple(row[position] for row in rows),
             )
+        if starred and isinstance(elements[-1].value, ast.Name):
+            self._bind_iteration_target(elements[-1].value, None)
         return True
 
     def _bind_iteration_target(
@@ -3086,6 +3119,93 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_dict_items_and_starred_row_iteration_are_in_scope():
+    """Sol #583 round-7 module-local edges: static dict.items() and
+    starred/mixed-width row unpacking are ordinary declarative code."""
+
+    items_loop = """
+PAIRS = {"person": "support_channel"}
+
+
+def f():
+    for entity, suffix in PAIRS.items():
+        sink(f"{entity}_{suffix}")
+"""
+    items_comprehension = """
+PAIRS = {"person": "support_channel"}
+
+
+def f():
+    return [f"{e}_{sfx}" for e, sfx in PAIRS.items()]
+"""
+    starred_rows = """
+ROWS = (("person", "support_channel"), ("household", "age", "ignored"))
+
+
+def f():
+    for entity, suffix, *rest in ROWS:
+        sink(f"{entity}_{suffix}")
+"""
+    benign_starred = """
+ROWS = (("person", "age"), ("household", "weight", "x"))
+
+
+def f():
+    for entity, suffix, *rest in ROWS:
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (items_loop, items_comprehension, starred_rows):
+        assert _source_spine_accesses(source), source
+    assert _source_spine_accesses(benign_starred) == ()
+
+
+def test_cartesian_over_catch_is_documented_conservatism():
+    """Multi-value bindings combined in one template may report
+    combinations no single row produces. Over-reporting is the safe
+    failure direction for a tripwire (module docstring); this pins the
+    behavior so a silent change surfaces here."""
+
+    cross_row = """
+ROWS = (("person", "age"), ("metric", "support_channel"))
+
+
+def f():
+    for entity, suffix in ROWS:
+        sink(f"{entity}_{suffix}")
+"""
+    accesses = _source_spine_accesses(cross_row)
+    assert any("person_support_channel" in access for access in accesses)
+
+
+def test_cross_module_dataflow_is_documented_boundary():
+    """Imported constant tables and namespace re-export hops are
+    module-local-analysis boundaries (docstring class one): the consumer
+    module scans clean and code review is the stated control."""
+
+    imported_pairs_consumer = """
+from catalog import PAIRS
+
+
+def f():
+    for entity, suffix in PAIRS:
+        sink(f"{entity}_{suffix}")
+"""
+    namespace_rebound_alias = """
+import populace.build.us_runtime.support_provenance as provenance
+
+import factories
+
+factories.channel_factory = provenance.support_channel_column
+
+
+def f():
+    factory = factories.channel_factory
+    return factory("person")
+"""
+    assert _source_spine_accesses(imported_pairs_consumer) == ()
+    assert _source_spine_accesses(namespace_rebound_alias) == ()
 
 
 def test_qualified_factory_aliases_and_pair_loops_are_in_scope():
