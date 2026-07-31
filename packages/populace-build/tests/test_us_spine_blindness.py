@@ -4063,6 +4063,324 @@ def test_round_21_exact_filter_call_repro_classifies(mode: str) -> None:
     assert _ROUND_20_NAMED_FINDING in _finding_classifications("\n".join(lines))
 
 
+_ROUND_21_MEMBERSHIP_OPERANDS = (
+    pytest.param("bare_dict", id="bare-dict"),
+    pytest.param("items", id="items-view"),
+    pytest.param("values", id="values-view"),
+    pytest.param("keys", id="keys-view"),
+    pytest.param("partial", id="partial-dict"),
+)
+
+
+def _round_21_membership_operand(
+    operand_case: str,
+    *,
+    hostile: bool,
+) -> tuple[tuple[str, ...], str | None, str, str, str, bool]:
+    """Build one projection-sensitive operand for both wrapper matrices."""
+
+    if operand_case in {"bare_dict", "keys"}:
+        key = "person" if hostile else "state"
+        # A hostile benign-side value proves that only keys are projected.
+        value = "age" if hostile else "person"
+        return (
+            (f'DATA = {{"{key}": "{value}"}}',),
+            None,
+            "DATA" if operand_case == "bare_dict" else "DATA.keys()",
+            "entity",
+            'sink(f"{entity}_support_channel")',
+            False,
+        )
+    if operand_case == "items":
+        key = "person" if hostile else "state"
+        value = "support_channel" if hostile else "fips"
+        return (
+            (f'DATA = {{"{key}": "{value}"}}',),
+            None,
+            "DATA.items()",
+            "entity, suffix",
+            'sink(f"{entity}_{suffix}")',
+            False,
+        )
+    if operand_case == "values":
+        key = "known" if hostile else "person"
+        value = "person" if hostile else "state"
+        return (
+            (f'DATA = {{"{key}": "{value}"}}',),
+            None,
+            "DATA.values()",
+            "entity",
+            'sink(f"{entity}_support_channel")',
+            False,
+        )
+    key = "person" if hostile else "state"
+    # The benign value again catches an accidental values projection.
+    value = "age" if hostile else "person"
+    return (
+        (f'BASE = {{"{key}": "{value}"}}',),
+        "DATA = {**BASE, unknown_key: dynamic}",
+        "DATA",
+        "entity",
+        'sink(f"{entity}_support_channel")',
+        True,
+    )
+
+
+def _round_21_membership_source(
+    call_template: str,
+    *,
+    operand_case: str,
+    hostile: bool,
+    mode: str,
+) -> tuple[str, bool]:
+    setup, data_binding, operand, target, sink_statement, partial = (
+        _round_21_membership_operand(operand_case, hostile=hostile)
+    )
+    lines = [
+        *setup,
+        "def order_key(value):",
+        "    return repr(value)",
+        "def reject(value):",
+        "    return False",
+        "def f(unknown_key, dynamic, sink, dynamic_key, dynamic_reverse):",
+    ]
+    if data_binding is not None:
+        lines.append(f"    {data_binding}")
+    expression = call_template.format(operand=operand)
+    if mode == "bound":
+        lines.append(f"    WRAPPED = {expression}")
+        iterable = "WRAPPED"
+    else:
+        iterable = expression
+    lines.extend(
+        (
+            f"    for {target} in {iterable}:",
+            f"        {sink_statement}",
+        )
+    )
+    return "\n".join(lines), partial
+
+
+def _round_21_membership_expected(
+    *,
+    hostile: bool,
+    partial: bool,
+) -> tuple[str, ...]:
+    if hostile and partial:
+        return (_ROUND_20_NAMED_FINDING, _ROUND_20_FAIL_CLOSED_FINDING)
+    if hostile:
+        return (_ROUND_20_NAMED_FINDING,)
+    return ()
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    (
+        pytest.param("key=None", id="key-none"),
+        pytest.param("key=lambda value: repr(value)", id="key-lambda"),
+        pytest.param("key=order_key", id="key-named-function"),
+        pytest.param("reverse=False", id="reverse-false"),
+        pytest.param("reverse=True", id="reverse-true"),
+        pytest.param(
+            "key=dynamic_key, reverse=dynamic_reverse",
+            id="key-and-reverse",
+        ),
+    ),
+)
+@pytest.mark.parametrize("operand_case", _ROUND_21_MEMBERSHIP_OPERANDS)
+@pytest.mark.parametrize(
+    "hostile",
+    (pytest.param(True, id="hostile"), pytest.param(False, id="benign")),
+)
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_sorted_keyword_membership_matrix(
+    keyword: str,
+    operand_case: str,
+    hostile: bool,
+    mode: str,
+) -> None:
+    """Order-only sorted keywords never change candidate membership."""
+
+    source, partial = _round_21_membership_source(
+        f"sorted({{operand}}, {keyword})",
+        operand_case=operand_case,
+        hostile=hostile,
+        mode=mode,
+    )
+    assert _finding_classifications(source) == _round_21_membership_expected(
+        hostile=hostile,
+        partial=partial,
+    ), source
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    (
+        pytest.param("None", id="none"),
+        pytest.param("lambda value: False", id="lambda"),
+        pytest.param("reject", id="named-function"),
+    ),
+)
+@pytest.mark.parametrize("operand_case", _ROUND_21_MEMBERSHIP_OPERANDS)
+@pytest.mark.parametrize(
+    "hostile",
+    (pytest.param(True, id="hostile"), pytest.param(False, id="benign")),
+)
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_filter_membership_matrix(
+    predicate: str,
+    operand_case: str,
+    hostile: bool,
+    mode: str,
+) -> None:
+    """Every predicate resolves as the unfiltered candidate superset."""
+
+    source, partial = _round_21_membership_source(
+        f"filter({predicate}, {{operand}})",
+        operand_case=operand_case,
+        hostile=hostile,
+        mode=mode,
+    )
+    assert _finding_classifications(source) == _round_21_membership_expected(
+        hostile=hostile,
+        partial=partial,
+    ), source
+
+
+@pytest.mark.parametrize(
+    "call_template",
+    (
+        pytest.param("sorted({operand}, reverse=False)", id="sorted"),
+        pytest.param("filter(None, {operand})", id="filter"),
+    ),
+)
+@pytest.mark.parametrize("view", ("keys", "values", "items"))
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_partial_views_under_membership_wrappers_dual_report(
+    call_template: str,
+    view: str,
+    mode: str,
+) -> None:
+    """Both membership doctrines preserve every partial-view candidate."""
+
+    if view == "keys":
+        base = 'BASE = {"person": "age"}'
+        target = "entity"
+        sink_statement = 'sink(f"{entity}_support_channel")'
+    elif view == "values":
+        base = 'BASE = {"known": "person"}'
+        target = "entity"
+        sink_statement = 'sink(f"{entity}_support_channel")'
+    else:
+        base = 'BASE = {"person": "support_channel"}'
+        target = "entity, suffix"
+        sink_statement = 'sink(f"{entity}_{suffix}")'
+    lines = [
+        base,
+        "def f(unknown_key, dynamic, sink):",
+        "    DATA = {**BASE, unknown_key: dynamic}",
+    ]
+    expression = call_template.format(operand=f"DATA.{view}()")
+    if mode == "bound":
+        lines.append(f"    WRAPPED = {expression}")
+        iterable = "WRAPPED"
+    else:
+        iterable = expression
+    lines.extend(
+        (
+            f"    for {target} in {iterable}:",
+            f"        {sink_statement}",
+        )
+    )
+
+    assert _finding_classifications("\n".join(lines)) == (
+        _ROUND_20_NAMED_FINDING,
+        _ROUND_20_FAIL_CLOSED_FINDING,
+    )
+
+
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_filter_retains_duplicate_removed_row_candidates(mode: str) -> None:
+    """A filtered-out hostile duplicate remains in the safe candidate set."""
+
+    data = (
+        ("person", "support_channel"),
+        ("person", "age"),
+        ("state", "fips"),
+    )
+    assert tuple(filter(lambda row: row[1] == "age", data)) == (("person", "age"),)
+
+    lines = [
+        'DATA = (("person", "support_channel"), ("person", "age"), ("state", "fips"))',
+        "def f(sink):",
+    ]
+    expression = 'filter(lambda row: row[1] == "age", DATA)'
+    if mode == "bound":
+        lines.append(f"    ROWS = {expression}")
+        iterable = "ROWS"
+    else:
+        iterable = expression
+    lines.extend(
+        (
+            f"    for entity, suffix in {iterable}:",
+            '        sink(f"{entity}_{suffix}")',
+        )
+    )
+
+    assert _ROUND_20_NAMED_FINDING in _finding_classifications("\n".join(lines))
+
+
+_ROUND_21_REFUSED_WRAPPER_CALLS = tuple(
+    pytest.param(wrapper, shape, id=f"{wrapper}-{shape}")
+    for wrapper in (
+        *_ROUND_20_ELEMENT_PRESERVING_BUILTINS,
+        "filter",
+    )
+    for shape in ("keyword", "extra-positional")
+)
+
+
+@pytest.mark.parametrize(("wrapper", "shape"), _ROUND_21_REFUSED_WRAPPER_CALLS)
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_refused_wrapper_shapes_stay_fail_closed(
+    wrapper: str,
+    shape: str,
+    mode: str,
+) -> None:
+    """Rejected call shapes preserve fragments without entering the table."""
+
+    operand = "DATA.items()"
+    if wrapper == "filter":
+        expression = (
+            f"filter(None, iterable={operand})"
+            if shape == "keyword"
+            else f"filter(None, {operand}, None)"
+        )
+    elif shape == "keyword":
+        expression = f"{wrapper}({operand}, unexpected=None)"
+    else:
+        expression = f"{wrapper}({operand}, None)"
+    lines = [
+        'DATA = {"person": "support_channel"}',
+        "def f(sink):",
+    ]
+    if mode == "bound":
+        lines.append(f"    WRAPPED = {expression}")
+        iterable = "WRAPPED"
+    else:
+        iterable = expression
+    lines.extend(
+        (
+            f"    for entity, suffix in {iterable}:",
+            '        sink(f"{entity}_{suffix}")',
+        )
+    )
+
+    classifications = _finding_classifications("\n".join(lines))
+    assert classifications == (_ROUND_20_FAIL_CLOSED_FINDING,)
+    assert _ROUND_20_NAMED_FINDING not in classifications
+
+
 def test_round_20_exact_keys_wrapper_and_filtered_repros_classify():
     """The round-20 reviewer constructions catch inline and after binding."""
 
