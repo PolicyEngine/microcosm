@@ -720,6 +720,7 @@ class _ScopeAssignmentCounter(ast.NodeVisitor):
 
     def __init__(self) -> None:
         self.counts: dict[str, int] = {}
+        self.external_names: set[str] = set()
 
     def _count(self, name: str) -> None:
         self.counts[name] = self.counts.get(name, 0) + 1
@@ -773,27 +774,89 @@ class _ScopeAssignmentCounter(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
 
+    def visit_Global(self, node: ast.Global) -> None:
+        self.external_names.update(node.names)
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
+        self.external_names.update(node.names)
+
+    def _count_comprehension_named_expressions(
+        self,
+        node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+    ) -> None:
+        for descendant in ast.walk(node):
+            if isinstance(descendant, ast.NamedExpr):
+                for name in _assigned_names(descendant.target):
+                    self._count(name)
+
     def visit_ListComp(self, node: ast.ListComp) -> None:
-        self.visit(node.generators[0].iter)
+        self._count_comprehension_named_expressions(node)
 
     def visit_SetComp(self, node: ast.SetComp) -> None:
-        self.visit(node.generators[0].iter)
+        self._count_comprehension_named_expressions(node)
 
     def visit_DictComp(self, node: ast.DictComp) -> None:
-        self.visit(node.generators[0].iter)
+        self._count_comprehension_named_expressions(node)
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        self.visit(node.generators[0].iter)
+        self._count_comprehension_named_expressions(node)
+
+
+def _nested_external_writes(
+    body: list[ast.stmt],
+    declaration: type[ast.Global] | type[ast.Nonlocal],
+) -> set[str]:
+    class NestedWriteCollector(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.depth = 0
+            self.declared: set[str] = set()
+            self.stored: set[str] = set()
+
+        def _visit_function(
+            self,
+            node: ast.FunctionDef | ast.AsyncFunctionDef,
+        ) -> None:
+            self.depth += 1
+            self.generic_visit(node)
+            self.depth -= 1
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_Global(self, node: ast.Global) -> None:
+            if self.depth and declaration is ast.Global:
+                self.declared.update(node.names)
+
+        def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
+            if self.depth and declaration is ast.Nonlocal:
+                self.declared.update(node.names)
+
+        def visit_Name(self, node: ast.Name) -> None:
+            if self.depth and isinstance(node.ctx, ast.Store):
+                self.stored.add(node.id)
+
+    collector = NestedWriteCollector()
+    for statement in body:
+        collector.visit(statement)
+    return collector.declared & collector.stored
 
 
 def _scope_assignment_counts(
     body: list[ast.stmt],
     *,
     parameters: tuple[str, ...] = (),
+    nested_declaration: type[ast.Global] | type[ast.Nonlocal] = ast.Nonlocal,
 ) -> dict[str, int]:
     counter = _ScopeAssignmentCounter()
     for statement in body:
         counter.visit(statement)
+    for name in counter.external_names:
+        counter.counts.pop(name, None)
+    for name in _nested_external_writes(body, nested_declaration):
+        counter._count(name)
     for name in parameters:
         counter._count(name)
     return counter.counts
@@ -809,6 +872,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.method_aliases: list[dict[str, tuple[str, bool] | None]] = [{}]
         self.method_alias_history: list[set[str]] = [set()]
         self.assignment_counts: list[dict[str, int]] = [{}]
+        self.scope_kinds = ["module"]
         self.accesses: set[tuple[int, int, str]] = set()
 
     def _expression(self, node: ast.AST) -> str | None:
@@ -880,7 +944,13 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 return attribute, strict_opacity
         return None
 
-    def _bind_name(self, name: str, value: ast.AST) -> None:
+    def _bind_name(
+        self,
+        name: str,
+        value: ast.AST,
+        *,
+        scope_index: int = -1,
+    ) -> None:
         description = self._expression(value)
         constant: object = _static_string_shape(value, self.constants)
         if constant is None:
@@ -892,27 +962,33 @@ class _SourceReadVisitor(ast.NodeVisitor):
             if literal is not _OPAQUE_STATIC_VALUE:
                 constant = literal
         method_alias = self._method_alias(value)
-        if method_alias is None and name in self.method_alias_history[-1]:
+        if method_alias is None and name in self.method_alias_history[scope_index]:
             method_alias = _OPAQUE_METHOD_ALIAS
 
-        self.bindings[-1][name] = description
+        self.bindings[scope_index][name] = description
         # None is an explicit opaque shadow: lookups must stop here,
         # never fall through to a stale outer binding (shadowed
         # parameters and conditional reassignments — sol round 3).
-        self.constants[-1][name] = constant
-        self.column_containers[-1][name] = self._column_container(value)
-        self.attribute_containers[-1][name] = self._attribute_container(value)
-        self.method_aliases[-1][name] = method_alias
+        self.constants[scope_index][name] = constant
+        self.column_containers[scope_index][name] = self._column_container(value)
+        self.attribute_containers[scope_index][name] = self._attribute_container(value)
+        self.method_aliases[scope_index][name] = method_alias
         if method_alias is not None:
-            self.method_alias_history[-1].add(name)
+            self.method_alias_history[scope_index].add(name)
 
-    def _bind_target(self, target: ast.AST, value: ast.AST) -> None:
+    def _bind_target(
+        self,
+        target: ast.AST,
+        value: ast.AST,
+        *,
+        scope_index: int = -1,
+    ) -> None:
         if isinstance(target, ast.Name):
-            self._bind_name(target.id, value)
+            self._bind_name(target.id, value, scope_index=scope_index)
             return
         if isinstance(target, ast.Starred):
             for name in _assigned_names(target.value):
-                self._bind_name(name, value)
+                self._bind_name(name, value, scope_index=scope_index)
             return
         if isinstance(target, (ast.List, ast.Tuple)):
             if isinstance(value, (ast.List, ast.Tuple)) and len(target.elts) == len(
@@ -923,14 +999,24 @@ class _SourceReadVisitor(ast.NodeVisitor):
                     value.elts,
                     strict=True,
                 ):
-                    self._bind_target(child_target, child_value)
+                    self._bind_target(
+                        child_target,
+                        child_value,
+                        scope_index=scope_index,
+                    )
                 return
             for name in _assigned_names(target):
-                self._bind_name(name, value)
+                self._bind_name(name, value, scope_index=scope_index)
 
-    def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
+    def _bind(
+        self,
+        targets: list[ast.AST],
+        value: ast.AST,
+        *,
+        scope_index: int = -1,
+    ) -> None:
         for target in targets:
-            self._bind_target(target, value)
+            self._bind_target(target, value, scope_index=scope_index)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -963,7 +1049,12 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         self.visit(node.value)
-        self._bind([node.target], node.value)
+        scope_index = next(
+            index
+            for index in range(len(self.scope_kinds) - 1, -1, -1)
+            if self.scope_kinds[index] != "comprehension"
+        )
+        self._bind([node.target], node.value, scope_index=scope_index)
 
     def _bind_iteration_target(
         self,
@@ -976,6 +1067,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.column_containers[-1][name] = False
             self.attribute_containers[-1][name] = False
             self.method_aliases[-1][name] = None
+            if self.scope_kinds[-1] == "comprehension":
+                self.assignment_counts[-1][name] = 1
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
@@ -1000,6 +1093,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.method_aliases.append({})
         self.method_alias_history.append(set())
         self.assignment_counts.append({})
+        self.scope_kinds.append("comprehension")
         for generator in node.generators:
             self.visit(generator.iter)
             self._bind_iteration_target(
@@ -1014,6 +1108,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
         else:
             self.visit(node.elt)
         self.assignment_counts.pop()
+        self.scope_kinds.pop()
         self.method_alias_history.pop()
         self.method_aliases.pop()
         self.attribute_containers.pop()
@@ -1047,7 +1142,10 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.visit(function)
 
     def visit_Module(self, node: ast.Module) -> None:
-        counts = _scope_assignment_counts(node.body)
+        counts = _scope_assignment_counts(
+            node.body,
+            nested_declaration=ast.Global,
+        )
         self.assignment_counts[0] = counts
         for name in counts:
             self.bindings[0].setdefault(name, None)
@@ -1145,7 +1243,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.method_aliases.append(method_aliases)
         self.method_alias_history.append(alias_history)
         self.assignment_counts.append(counts)
+        self.scope_kinds.append("function")
         self._visit_scope_statements(node.body)
+        self.scope_kinds.pop()
         self.assignment_counts.pop()
         self.method_alias_history.pop()
         self.method_aliases.pop()
@@ -1214,7 +1314,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.method_aliases.append(method_aliases)
         self.method_alias_history.append(alias_history)
         self.assignment_counts.append(counts)
+        self.scope_kinds.append("lambda")
         self.visit(node.body)
+        self.scope_kinds.pop()
         self.assignment_counts.pop()
         self.method_alias_history.pop()
         self.method_aliases.pop()
@@ -1994,10 +2096,21 @@ def f(df):
         .replace("SOURCE", "support")
     ]
 """
+    comprehension_walrus = """
+def f(df):
+    col = "age"
+    [(col := "person_support_channel") for _ in (0,)]
+    return df[col]
+"""
 
     walrus_accesses = _source_spine_accesses(walrus)
     assert len(walrus_accesses) == 2
     assert all("person_support_channel" in access for access in walrus_accesses)
+    comprehension_accesses = _source_spine_accesses(comprehension_walrus)
+    assert comprehension_accesses
+    assert all(
+        "person_support_channel" in access for access in comprehension_accesses
+    )
 
     for source in (multiplication, percent_format, replace_chain):
         accesses = _source_spine_accesses(source)
@@ -2525,8 +2638,43 @@ def outer(df):
     expr = "person_support_channel == 1"
     return inner()
 """
+    comprehension_rebound = """
+def outer(df):
+    expr = "age >= 18"
+    def inner():
+        return df.query(expr)
+    [(expr := "person_support_channel == 1") for _ in (0,)]
+    return inner()
+"""
+    nonlocal_rebound = """
+def outer(df):
+    expr = "age >= 18"
+    def rebind():
+        nonlocal expr
+        expr = "person_support_channel == 1"
+    def inner():
+        return df.query(expr)
+    rebind()
+    return inner()
+"""
+    global_rebound = """
+expr = "age >= 18"
+def rebind():
+    global expr
+    expr = "person_support_channel == 1"
+def f(df):
+    rebind()
+    return df.query(expr)
+"""
 
-    for source in (late_bound, module_late_bound, lambda_late_bound):
+    for source in (
+        late_bound,
+        module_late_bound,
+        lambda_late_bound,
+        comprehension_rebound,
+        nonlocal_rebound,
+        global_rebound,
+    ):
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("fail-closed" in item for item in accesses)
