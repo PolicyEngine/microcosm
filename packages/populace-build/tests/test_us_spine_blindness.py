@@ -428,6 +428,7 @@ def _static_string_shape(
 
 _OPAQUE_STATIC_VALUE = object()
 _OPAQUE_STRING_PART = "\N{OBJECT REPLACEMENT CHARACTER}"
+_OPAQUE_METHOD_ALIAS = ("", True)
 
 
 def _static_format_value(
@@ -631,6 +632,90 @@ def _assigned_names(target: ast.AST) -> tuple[str, ...]:
     return ()
 
 
+class _ScopeAssignmentCounter(ast.NodeVisitor):
+    """Count binding sites in one lexical scope, excluding nested scopes."""
+
+    def __init__(self) -> None:
+        self.counts: dict[str, int] = {}
+
+    def _count(self, name: str) -> None:
+        self.counts[name] = self.counts.get(name, 0) + 1
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self._count(node.id)
+
+    def _visit_defaults_and_decorators(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        self._count(node.name)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_defaults_and_decorators(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_defaults_and_decorators(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._count(node.name)
+        for expression in (*node.decorator_list, *node.bases):
+            self.visit(expression)
+        for keyword in node.keywords:
+            self.visit(keyword.value)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for imported in node.names:
+            self._count(imported.asname or imported.name.split(".", maxsplit=1)[0])
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for imported in node.names:
+            self._count(imported.asname or imported.name)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name is not None:
+            self._count(node.name)
+        if node.type is not None:
+            self.visit(node.type)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self.visit(node.generators[0].iter)
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self.visit(node.generators[0].iter)
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self.visit(node.generators[0].iter)
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self.visit(node.generators[0].iter)
+
+
+def _scope_assignment_counts(
+    body: list[ast.stmt],
+    *,
+    parameters: tuple[str, ...] = (),
+) -> dict[str, int]:
+    counter = _ScopeAssignmentCounter()
+    for statement in body:
+        counter.visit(statement)
+    for name in parameters:
+        counter._count(name)
+    return counter.counts
+
+
 class _SourceReadVisitor(ast.NodeVisitor):
     def __init__(self, factory_aliases: set[str]) -> None:
         self.factory_aliases = factory_aliases
@@ -639,6 +724,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.column_containers: list[dict[str, bool]] = [{}]
         self.attribute_containers: list[dict[str, bool]] = [{}]
         self.method_aliases: list[dict[str, tuple[str, bool] | None]] = [{}]
+        self.method_alias_history: list[set[str]] = [set()]
+        self.assignment_counts: list[dict[str, int]] = [{}]
         self.accesses: set[tuple[int, int, str]] = set()
 
     def _expression(self, node: ast.AST) -> str | None:
@@ -726,6 +813,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 self.column_containers[-1][name] = container
                 self.attribute_containers[-1][name] = attribute_container
                 self.method_aliases[-1][name] = method_alias
+                if method_alias is not None:
+                    self.method_alias_history[-1].add(name)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -793,6 +882,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.column_containers.append({})
         self.attribute_containers.append({})
         self.method_aliases.append({})
+        self.method_alias_history.append(set())
+        self.assignment_counts.append({})
         for generator in node.generators:
             self.visit(generator.iter)
             self._bind_iteration_target(
@@ -806,6 +897,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.visit(node.value)
         else:
             self.visit(node.elt)
+        self.assignment_counts.pop()
+        self.method_alias_history.pop()
         self.method_aliases.pop()
         self.attribute_containers.pop()
         self.column_containers.pop()
@@ -824,6 +917,42 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         self._visit_comprehension(node)
 
+    def _visit_scope_statements(self, body: list[ast.stmt]) -> None:
+        deferred: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        for statement in body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                deferred.append(statement)
+            else:
+                self.visit(statement)
+        for function in deferred:
+            self.visit(function)
+
+    def visit_Module(self, node: ast.Module) -> None:
+        counts = _scope_assignment_counts(node.body)
+        self.assignment_counts[0] = counts
+        for name in counts:
+            self.bindings[0].setdefault(name, None)
+            self.constants[0].setdefault(name, None)
+            self.column_containers[0].setdefault(name, False)
+            self.attribute_containers[0].setdefault(name, False)
+            self.method_aliases[0].setdefault(name, None)
+        self._visit_scope_statements(node.body)
+
+    def _unstable_outer_names(self) -> dict[str, bool]:
+        unstable: dict[str, bool] = {}
+        seen: set[str] = set()
+        for index in range(len(self.constants) - 1, -1, -1):
+            names = (
+                set(self.assignment_counts[index])
+                | set(self.constants[index])
+                | self.method_alias_history[index]
+            )
+            for name in names - seen:
+                seen.add(name)
+                if self.assignment_counts[index].get(name, 0) != 1:
+                    unstable[name] = name in self.method_alias_history[index]
+        return unstable
+
     def _visit_function(
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -833,23 +962,23 @@ class _SourceReadVisitor(ast.NodeVisitor):
         for default in (*node.args.defaults, *node.args.kw_defaults):
             if default is not None:
                 self.visit(default)
-        local: dict[str, str | None] = {
-            argument.arg: None
-            for argument in (
-                *node.args.posonlyargs,
-                *node.args.args,
-                *node.args.kwonlyargs,
-            )
-        }
-        if node.args.vararg is not None:
-            local[node.args.vararg.arg] = None
-        if node.args.kwarg is not None:
-            local[node.args.kwarg.arg] = None
         arguments = (
             *node.args.posonlyargs,
             *node.args.args,
             *node.args.kwonlyargs,
         )
+        parameter_names = tuple(argument.arg for argument in arguments)
+        if node.args.vararg is not None:
+            parameter_names += (node.args.vararg.arg,)
+        if node.args.kwarg is not None:
+            parameter_names += (node.args.kwarg.arg,)
+        counts = _scope_assignment_counts(
+            node.body,
+            parameters=parameter_names,
+        )
+        unstable_outer = self._unstable_outer_names()
+        local_names = set(counts) | set(unstable_outer)
+        local: dict[str, str | None] = dict.fromkeys(local_names)
         containers = {
             argument.arg: argument.annotation is None
             and argument.arg not in {"self", "cls"}
@@ -874,13 +1003,32 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if node.args.kwarg is not None:
             containers[node.args.kwarg.arg] = False
             attribute_containers[node.args.kwarg.arg] = False
+        for name in local_names:
+            containers.setdefault(name, False)
+            attribute_containers.setdefault(name, False)
+        method_aliases = {
+            name: (
+                _OPAQUE_METHOD_ALIAS
+                if name not in counts and unstable_outer[name]
+                else None
+            )
+            for name in local_names
+        }
+        alias_history = {
+            name
+            for name, value in method_aliases.items()
+            if value == _OPAQUE_METHOD_ALIAS
+        }
         self.bindings.append(local)
-        self.constants.append({name: None for name in local})
+        self.constants.append(dict.fromkeys(local_names))
         self.column_containers.append(containers)
         self.attribute_containers.append(attribute_containers)
-        self.method_aliases.append({name: None for name in local})
-        for statement in node.body:
-            self.visit(statement)
+        self.method_aliases.append(method_aliases)
+        self.method_alias_history.append(alias_history)
+        self.assignment_counts.append(counts)
+        self._visit_scope_statements(node.body)
+        self.assignment_counts.pop()
+        self.method_alias_history.pop()
         self.method_aliases.pop()
         self.attribute_containers.pop()
         self.column_containers.pop()
@@ -894,26 +1042,28 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self._visit_function(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        local = {
-            argument.arg: None
-            for argument in (
-                *node.args.posonlyargs,
-                *node.args.args,
-                *node.args.kwonlyargs,
-            )
-        }
+        arguments = (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        )
+        parameter_names = tuple(argument.arg for argument in arguments)
         if node.args.vararg is not None:
-            local[node.args.vararg.arg] = None
+            parameter_names += (node.args.vararg.arg,)
         if node.args.kwarg is not None:
-            local[node.args.kwarg.arg] = None
+            parameter_names += (node.args.kwarg.arg,)
+        counter = _ScopeAssignmentCounter()
+        counter.visit(node.body)
+        for name in parameter_names:
+            counter._count(name)
+        counts = counter.counts
+        unstable_outer = self._unstable_outer_names()
+        local_names = set(counts) | set(unstable_outer)
+        local: dict[str, str | None] = dict.fromkeys(local_names)
         containers = {
             argument.arg: argument.annotation is None
             and argument.arg not in {"self", "cls"}
-            for argument in (
-                *node.args.posonlyargs,
-                *node.args.args,
-                *node.args.kwonlyargs,
-            )
+            for argument in arguments
         }
         attribute_containers = dict(containers)
         if node.args.vararg is not None:
@@ -922,12 +1072,32 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if node.args.kwarg is not None:
             containers[node.args.kwarg.arg] = False
             attribute_containers[node.args.kwarg.arg] = False
+        for name in local_names:
+            containers.setdefault(name, False)
+            attribute_containers.setdefault(name, False)
+        method_aliases = {
+            name: (
+                _OPAQUE_METHOD_ALIAS
+                if name not in counts and unstable_outer[name]
+                else None
+            )
+            for name in local_names
+        }
+        alias_history = {
+            name
+            for name, value in method_aliases.items()
+            if value == _OPAQUE_METHOD_ALIAS
+        }
         self.bindings.append(local)
-        self.constants.append({name: None for name in local})
+        self.constants.append(dict.fromkeys(local_names))
         self.column_containers.append(containers)
         self.attribute_containers.append(attribute_containers)
-        self.method_aliases.append({name: None for name in local})
+        self.method_aliases.append(method_aliases)
+        self.method_alias_history.append(alias_history)
+        self.assignment_counts.append(counts)
         self.visit(node.body)
+        self.assignment_counts.pop()
+        self.method_alias_history.pop()
         self.method_aliases.pop()
         self.attribute_containers.pop()
         self.column_containers.pop()
@@ -1107,12 +1277,18 @@ class _SourceReadVisitor(ast.NodeVisitor):
         elif name == "getattr":
             self._visit_getattr(node)
         elif (method_alias := self._method_alias(node.func)) is not None:
-            method, strict_opacity = method_alias
-            self._visit_strict_method_call(
-                node,
-                method=method,
-                strict_opacity=strict_opacity,
-            )
+            if method_alias == _OPAQUE_METHOD_ALIAS:
+                self._record(
+                    node,
+                    "call through an opaque late-bound method alias (fail-closed)",
+                )
+            else:
+                method, strict_opacity = method_alias
+                self._visit_strict_method_call(
+                    node,
+                    method=method,
+                    strict_opacity=strict_opacity,
+                )
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -2044,6 +2220,92 @@ def f(obj: object, attribute: str):
     assert any("fail-closed" in item for item in dynamic_accesses)
     assert _source_spine_accesses(benign_attribute) == ()
     assert _source_spine_accesses(generic_object) == ()
+
+
+def test_closure_free_names_obey_late_binding_assignment_counts() -> None:
+    """Multi-assignment free names are opaque; stable names remain exact."""
+
+    late_bound = """
+def outer(df):
+    expr = "age >= 18"
+    def inner():
+        return df.query(expr)
+    expr = "person_support_channel == 1"
+    return inner()
+"""
+    module_late_bound = """
+expr = "age >= 18"
+def f(df):
+    return df.query(expr)
+expr = "person_support_channel == 1"
+"""
+    stable_guarded = """
+def outer(df):
+    expr = "person_support_channel == 1"
+    def inner():
+        return df.query(expr)
+    return inner()
+"""
+    stable_benign = """
+def outer(df):
+    expr = "age >= 18"
+    def inner():
+        return df.query(expr)
+    return inner()
+"""
+    later_local_shadow = """
+expr = "person_support_channel == 1"
+def outer(df):
+    def inner():
+        return df.query(expr)
+    expr = "age >= 18"
+    return inner()
+"""
+    lambda_late_bound = """
+def outer(df):
+    expr = "age >= 18"
+    inner = lambda: df.query(expr)
+    expr = "person_support_channel == 1"
+    return inner()
+"""
+
+    for source in (late_bound, module_late_bound, lambda_late_bound):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("fail-closed" in item for item in accesses)
+    guarded_accesses = _source_spine_accesses(stable_guarded)
+    assert guarded_accesses
+    assert any("person_support_channel" in item for item in guarded_accesses)
+    assert all("fail-closed" not in item for item in guarded_accesses)
+    assert _source_spine_accesses(stable_benign) == ()
+    assert _source_spine_accesses(later_local_shadow) == ()
+
+
+def test_closure_method_aliases_are_stable_or_explicitly_opaque() -> None:
+    """Late alias rebinding cannot turn a strict call into a silent Name call."""
+
+    stable_alias = """
+def outer(df):
+    query = df.query
+    def inner():
+        return query("person_support_channel == 1")
+    return inner()
+"""
+    rebound_alias = """
+def outer(df):
+    query = df.query
+    def inner():
+        return query("person_support_channel == 1")
+    query = print
+    return inner()
+"""
+
+    stable_accesses = _source_spine_accesses(stable_alias)
+    assert stable_accesses
+    assert any("person_support_channel" in item for item in stable_accesses)
+    rebound_accesses = _source_spine_accesses(rebound_alias)
+    assert rebound_accesses
+    assert any("fail-closed" in item for item in rebound_accesses)
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:

@@ -8,8 +8,9 @@ round-4 evasions; loop and comprehension targets now propagate every static
 string choice or an opaque shadow; and the 54-module operator graph remains
 clean. `str.format` now resolves all requested static field forms precisely.
 Direct and aliased strict pandas methods now share the same checks, and dynamic
-DataFrame `getattr` is fail-closed. Late-bound closure values remain in
-progress.
+DataFrame `getattr` is fail-closed. Closure free variables now obey lexical
+late-binding assignment counts. The five requested subsystems are implemented;
+the cross-round invariant, final docstrings, and full validation remain.
 
 No push or external mutation is authorized.
 
@@ -54,11 +55,22 @@ No push or external mutation is authorized.
 - Added direct-vs-alias exact-name tests for all four methods, benign and opaque
   batteries, rebinding/parameter-shadow controls, and static/dynamic `getattr`
   probes. The guard file now passes 22 tests with the 54-module graph clean.
+- Added a lexical scope pre-pass that counts binding sites without descending
+  nested function/class bodies and pre-shadows all Python locals.
+- Deferred nested function-body analysis until the enclosing scope's bindings
+  are complete; free names with exactly one defining-scope assignment resolve,
+  while multi-assignment free names become explicit opacity.
+- Preserved the same late-binding rule for lambdas and strict method aliases,
+  so a rebound alias cannot degrade to an ignored ordinary Name call.
+- Added the exact reviewer late-bound closure, module-level and lambda variants,
+  stable guarded/benign controls, later-local shadowing, and stable/rebound
+  alias tests. The guard file now passes 24 tests with the graph clean.
 
 ## Next
 
-- Commit strict-method aliasing and dynamic `getattr`.
-- Add the closure late-binding assignment pre-pass and committed self-tests.
+- Commit closure late-binding handling.
+- Add the parametrized cross-round completeness invariant, expanded benign
+  battery, exact 54-module count assertion, and completed-contract docstrings.
 - Add the cross-round completeness invariant and benign battery.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.
