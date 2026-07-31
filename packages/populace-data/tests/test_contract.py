@@ -9,6 +9,7 @@ fails with each violation named.
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,9 @@ SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 TARGET_COUNT = 20
+UK_JUNE_FIXTURE_DIR = (
+    Path(__file__).parent / "fixtures" / "uk_june_2023" / UK_RELEASE_ID
+)
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -569,6 +573,22 @@ def _write_uk_release_dir(
     if tier is not None:
         manifest["tier"] = tier
     (directory / "release_manifest.json").write_text(json.dumps(manifest))
+    return directory
+
+
+def _copy_real_uk_june_release(tmp_path: Path) -> Path:
+    """Copy the semantic-real June JSONs sourced at df82567.
+
+    The committed fixtures retain all 149 targets from
+    ``policyengine-uk-data@df82567f598990b476cf0c26fe8f9bc7a06ddde1``.
+    Only JSON whitespace is trimmed; the release manifest diagnostics digest
+    is refreshed for those minified bytes. Original source hashes were
+    build ``630b05bc...``, diagnostics ``80b98127...``, and release
+    ``687c5c19...``.
+    """
+
+    directory = tmp_path / "releases" / UK_RELEASE_ID
+    shutil.copytree(UK_JUNE_FIXTURE_DIR, directory)
     return directory
 
 
@@ -1135,13 +1155,70 @@ def test_each_required_file_is_named_when_missing(
         validate_release_dir(release_dir)
 
 
-def test_non_us_release_does_not_require_us_source_coverage(tmp_path: Path) -> None:
-    directory = _write_uk_release_dir(tmp_path, UK_RELEASE_ID)
+def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
+    tmp_path: Path,
+) -> None:
+    directory = _copy_real_uk_june_release(tmp_path)
+    diagnostics = json.loads((directory / "calibration_diagnostics.json").read_text())
 
     validate_release_dir(directory)
+    assert diagnostics["schema_version"] == 2
+    assert len(diagnostics["targets"]) == 149
+    assert all("aggregation" in row for row in diagnostics["targets"])
+    assert all("measure" not in row for row in diagnostics["targets"])
+    assert all("filter" not in row for row in diagnostics["targets"])
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+@pytest.mark.parametrize(
+    ("tier", "accepted"),
+    [(None, True), ("frs", True), ("cps-transfer", False)],
+)
+def test_grandfathered_june_release_is_bound_to_its_frs_lineage(
+    tmp_path: Path,
+    tier: str | None,
+    accepted: bool,
+) -> None:
+    directory = _copy_real_uk_june_release(tmp_path)
+    manifest_path = directory / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if tier is not None:
+        manifest["tier"] = tier
+        manifest_path.write_text(json.dumps(manifest))
+
+    if accepted:
+        validate_release_dir(directory)
+    else:
+        with pytest.raises(ReleaseContractError, match="known FRS lineage"):
+            validate_release_dir(directory)
+
+
+def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    diagnostics["schema_version"] = 2
+    for row in diagnostics["targets"]:
+        row["aggregation"] = "weighted_sum"
+        row.pop("measure")
+        row.pop("filter")
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match="publishes version 5"):
+        validate_release_dir(directory)
 
 
 def test_exact_k_uk_release_requires_and_accepts_ratified_tier(tmp_path: Path) -> None:

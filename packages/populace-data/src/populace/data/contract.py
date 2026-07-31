@@ -103,11 +103,8 @@ _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _UK_EXACT_K_RELEASE_ID_RE = re.compile(
     r"^populace-uk-(?P<year>[1-9][0-9]*)-(?P<tier>.+)-k(?P<record_count>[1-9][0-9]*)$"
 )
-_UK_LEGACY_RELEASE_IDS = frozenset(
-    {
-        "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
-    }
-)
+_UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+_UK_LEGACY_RELEASE_IDS = frozenset({_UK_JUNE_RELEASE_ID})
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
@@ -480,15 +477,14 @@ def _check_uk_release_identity(
                 f"hash/timestamp id: {release_id!r}."
             )
             return
-        # Hash/timestamp ids predate the tier contract and do not need a
-        # re-cut. If one already records a tier, it still cannot mint an
-        # unratified value.
+        # This one known artifact predates the tier contract and does not need
+        # a re-cut. Its recorded construction is FRS-derived, so an added tier
+        # may only make that lineage explicit; it cannot relabel the artifact.
         legacy_tier = manifest.get("tier")
-        if legacy_tier is not None and legacy_tier not in _UK_RELEASE_TIERS:
+        if legacy_tier not in (None, "frs"):
             failures.append(
                 "release_manifest.json grandfathered UK 'tier', when present, "
-                f"must be one of {sorted(_UK_RELEASE_TIERS)}, got "
-                f"{legacy_tier!r}."
+                f"must be 'frs' for the known FRS lineage, got {legacy_tier!r}."
             )
         return
 
@@ -694,11 +690,33 @@ def _artifact_by_path(release_manifest: Mapping, path: str) -> Mapping | None:
     return None
 
 
-def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) -> None:
+def _check_calibration_diagnostics(
+    diagnostics: Mapping,
+    failures: list[str],
+    *,
+    grandfathered_uk_june: bool = False,
+) -> None:
+    """Validate shared diagnostics, with one byte-lineage-scoped exemption.
+
+    The release ``populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z``
+    predates diagnostics schema 5. Its real schema-2 rows use the legacy
+    ``aggregation`` selector instead of modern ``measure``/``filter`` selector
+    objects. Only that exact release id may use this path; every other release
+    remains on the modern contract.
+    """
+
     schema_version = diagnostics.get("schema_version")
     if schema_version is None:
         failures.append("calibration_diagnostics.json is missing 'schema_version'.")
-    elif schema_version != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    elif grandfathered_uk_june and schema_version != 2:
+        failures.append(
+            "calibration_diagnostics.json grandfathered June UK release "
+            f"requires legacy schema version 2, got {schema_version!r}."
+        )
+    elif (
+        not grandfathered_uk_june
+        and schema_version != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    ):
         failures.append(
             f"calibration_diagnostics.json 'schema_version' is {schema_version!r}; "
             f"this library publishes version "
@@ -748,19 +766,19 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                     f"calibration_diagnostics.json target row {index} must be an object."
                 )
                 continue
-            for field in (
+            required_fields = (
                 "name",
                 "target_name",
                 "period",
                 "entity",
-                "measure",
-                "filter",
                 "target",
                 "compiled_target",
                 "initial_estimate",
                 "final_estimate",
                 "relative_error",
-            ):
+                *(("aggregation",) if grandfathered_uk_june else ("measure", "filter")),
+            )
+            for field in required_fields:
                 if field not in target:
                     failures.append(
                         "calibration_diagnostics.json target row "
@@ -771,17 +789,18 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                     "calibration_diagnostics.json target row "
                     f"{index} is missing non-empty 'source'."
                 )
-            if not isinstance(target.get("measure"), Mapping):
-                failures.append(
-                    "calibration_diagnostics.json target row "
-                    f"{index} is missing 'measure' selector object."
-                )
-            target_filter = target.get("filter")
-            if target_filter is not None and not isinstance(target_filter, Mapping):
-                failures.append(
-                    "calibration_diagnostics.json target row "
-                    f"{index} has non-null 'filter' that is not a selector object."
-                )
+            if not grandfathered_uk_june:
+                if not isinstance(target.get("measure"), Mapping):
+                    failures.append(
+                        "calibration_diagnostics.json target row "
+                        f"{index} is missing 'measure' selector object."
+                    )
+                target_filter = target.get("filter")
+                if target_filter is not None and not isinstance(target_filter, Mapping):
+                    failures.append(
+                        "calibration_diagnostics.json target row "
+                        f"{index} has non-null 'filter' that is not a selector object."
+                    )
             if not isinstance(target.get("metadata"), Mapping):
                 failures.append(
                     "calibration_diagnostics.json target row "
@@ -1968,7 +1987,11 @@ def validate_release_dir(release_dir: Path | str) -> None:
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
-            _check_calibration_diagnostics(diagnostics, failures)
+            _check_calibration_diagnostics(
+                diagnostics,
+                failures,
+                grandfathered_uk_june=release_id == _UK_JUNE_RELEASE_ID,
+            )
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_calibration_diagnostics(diagnostics, failures)
             if release_id.startswith("populace-us-"):
