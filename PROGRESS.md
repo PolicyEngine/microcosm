@@ -2,96 +2,47 @@
 
 ## State
 
-PR #583 round-10 fixes are implemented and validated locally on
-`multispine-pool-build-578` from `9e9acf5`. The review HOLD's four mechanical
-closure gaps in the spine-blindness structural guard are closed: nested-star
-payload poisoning, non-name loop targets, static-dict `.values()` iteration,
-and partial structures propagated through bindings. The branch has not been
-pushed.
+Populace #516 whole-row donor outlier screen is complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
+whose grouped raw mortgage interest reaches $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuild.
 
 ## Done
 
-- Confirmed the requested branch, clean worktree, and exact starting commit.
-- Read `CLAUDE.md`, the GitNexus debugging skill, and the authenticated
-  round-10 review log.
-- Recorded the required implementation, regression, documentation, precision,
-  suite, lint, graph-cleanliness, and no-push constraints.
-- Confirmed the GitNexus CLI is installed but the repository has no index; a
-  non-augmenting index attempt was blocked by the managed global-registry
-  write, and its generated untracked local index was removed.
-- Reproduced all six authenticated forms as silent at the starting guard:
-  stale-outer nested star, attribute target, subscript target, literal
-  `.values()`, constructor `.values()`, and a bound mixed row.
-- Added those exact inputs as self-tests, with loop-diagnostic assertions for
-  unpropagatable geometry and exact-column assertions for successful
-  per-column propagation. The focused red run fails all three test groups as
-  expected before the implementation.
-- Reworked static-row binding to report recognized and fully propagated
-  status separately. Nested star payload names are all poisoned, partial and
-  refused targets now enter the loop fallback regardless of flattened-string
-  resolution, and fragment state is captured before target bindings mutate
-  the scope.
-- Added static `.items()`/`.values()` iteration resolution for literal,
-  bound, and supported `dict(...)` mappings, with value-only syntactic
-  fragment probing so guarded-looking mapping keys do not taint benign
-  `.values()` loops.
-- Preserved partial list/tuple structures at assignment bind time, allowing
-  bound mixed rows to propagate their static columns exactly.
-- The 121-case guard and focused 22-case benign/runtime/graph battery pass.
-  Direct scans report zero findings for both `acs_transfer.py` and
-  `congressional_district_vintage.py`; file-scoped ruff and formatting pass.
-- Completed the docstring truth pass: the module contract now names the
-  supported scalar, structural-row, and static dict-view forms; helper
-  docstrings distinguish exact propagation, deliberate opacity, and partial
-  geometry; the round-9 claim now states the actual iteration-site fallback.
-- Initial final validation passed (guard 121, focused graph 22, full
-  `populace-build` 3,343 passed/85 skipped, repository ruff), but the
-  independent net-diff audit found two precision defects before handoff:
-  partial Name/non-name targets retained stale outer constants, and opaque
-  constructor keys could collapse through the singleton sentinel.
-- Added red controls for both audit findings plus an every-name nested-star
-  opacity check. The two precision controls fail on the current implementation
-  as expected; the nested-star check already passes.
-- Corrected partial-row handling so direct-name positions still receive their
-  exact column choices while unsupported subtargets are poisoned and keep the
-  overall binding partial. This removes stale outer constants without
-  weakening the fragment-bearing loop fallback, including star-only payloads.
-- Narrowed `dict(iterable)` resolution to fully resolved entries; any opaque
-  key/value now refuses construction instead of collapsing distinct runtime
-  keys through the shared sentinel, leaving the syntactic value-only fragment
-  fallback to catch guarded content.
-- The guard (121), focused graph battery (22), explicit `acs_transfer.py` and
-  `congressional_district_vintage.py` scans, and file-scoped ruff pass again.
-- The last composition audit then identified three related cases not covered
-  by the exact reviewer inputs: scalar static `.values()` unnecessarily
-  entered the loop fallback, known strings disappeared from mixed columns,
-  and partial dict/constructor views were not retained through bindings.
-- Added red precision/composition controls for literal, bound, and constructor
-  scalar views; inline/bound mixed columns; and bound partial dict views.
-- Added an abstract ordered dict-entry representation: fully known keys retain
-  normal dict overwrite semantics, while opaque keys remain distinct possible
-  rows instead of collapsing through the sentinel. Partial literal and
-  constructor mappings now survive assignment bindings and feed their actual
-  keys, items, or values to iteration.
-- Static iteration now retains known top-level string choices for scalar views
-  and known string members within mixed row columns. Empty views preserve
-  empty-loop flow, all-opaque columns remain opaque, and the documented
-  conservative duplicate-key over-catch applies only to unresolved keys.
-- The expanded controls, 121-case guard, 22-case graph battery, and direct
-  production-file scans pass with both named files still at zero findings.
-- Re-ran the complete validation matrix at `0d0d39a`: the guard passes 121,
-  the focused graph battery passes 22, and the full `populace-build` suite
-  passes 3,343 with 85 skipped and five existing warnings. Repository-wide
-  ruff, file formatting, and `git diff --check` pass.
-- Authenticated the six reviewer repros directly at the same HEAD: the nested
-  star, attribute target, and subscript target fail closed at iteration; the
-  literal `.values()`, constructor `.values()`, and bound mixed-row forms
-  resolve the exact `person_support_channel` column. Direct scans of
-  `acs_transfer.py` and `congressional_district_vintage.py` remain empty.
-- Confirmed `origin/multispine-pool-build-578` still points to the requested
-  starting commit `9e9acf5`; all work remains local.
+- Confirmed a clean starting worktree at `aef1c56`.
+- Read the repository guidance and established the #515 donor carve as the
+  screen's required downstream boundary.
+- Started source-level audits of every donor-frame consumer, checkpoint
+  validation, row-count pins, and existing donor-fact summaries.
+- Attempted the requested GitNexus impact workflow; the managed filesystem
+  denied its global registry write. Its local index also exposed a broad
+  `build/` ignore mismatch, so the completed impact audit uses direct source
+  call sites and tests.
+- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
+  structural rationale and pinned-artifact receipts.
+- Added a whole-row screen on grouped raw person `home_mortgage_interest`
+  after tax-unit assembly, before the #515 carve, with retained-index reset.
+- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
+  or carries a stale donor-length vector; values and weights always originate
+  from the same screened frame.
+- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
+  checkpoint regression track the live constant while retaining literal-v1
+  corruptions.
+- Added regression coverage for the exact grouped boundary, whole-row removal,
+  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
+- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
+  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
+  audit, expected 208,611-row real-artifact effect, verification results, count
+  sweep, and deliberately untouched surfaces.
 
 ## Next
 
-- Restore `PROGRESS.md` exactly to `origin/main`, commit the restoration
-  locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on populace#515.
