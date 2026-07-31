@@ -13,6 +13,7 @@ late-binding assignment counts. The five requested subsystems, consolidated
 rounds 2-4 completeness invariant, benign battery, exact graph cardinality,
 and completed-contract docstrings are implemented. Adversarial audit and full
 validation remain. Adversarial alias composition probes are now closed.
+Starred and nested format-field composition is now closed too.
 
 No push or external mutation is authorized.
 
@@ -86,12 +87,21 @@ No push or external mutation is authorized.
 - Added guarded-name, benign, rebound, unpacked, aliased-`getattr`, and starred
   `getattr` binding tests. The guard file now passes 71 tests with the graph
   clean.
+- Expanded statically known `*args`/`**kwargs` before assigning format field
+  positions, while any unresolved expansion that can supply a referenced field
+  becomes opaque.
+- Recursively resolved nested format specifications and static collection
+  indexing, and resolved static mapping operands for percent formatting.
+- Added exact-name and benign controls for nested specs, indexed mappings,
+  static positional/keyword expansion, and percent mappings, plus the
+  adversarial star-index-shift failure. The guard remains 71 tests green with
+  the graph clean.
 
 ## Next
 
-- Commit the alias-composition hardening.
-- Resolve starred/nested format fields and closure writes found by the
-  independent adversarial audit, then replay the guard.
+- Commit complete composed format resolution.
+- Resolve closure writes found by the independent adversarial audit, then
+  replay the guard.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.
 - Write `/private/tmp/583_fix2_handoff.md` with per-subsystem rules, binding

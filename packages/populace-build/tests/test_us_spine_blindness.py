@@ -452,11 +452,50 @@ def _static_format_value(
     integer = _static_integer(node, constants)
     if integer is not None:
         return integer
+    return _static_literal_value(node, constants)
+
+
+def _static_literal_value(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> object:
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                return _OPAQUE_STATIC_VALUE if value is None else value
+        return _OPAQUE_STATIC_VALUE
     if isinstance(node, ast.Constant) and isinstance(
         node.value,
-        (float, bool, bytes, type(None)),
+        (str, int, float, bool, bytes, type(None)),
     ):
         return node.value
+    if isinstance(node, (ast.List, ast.Tuple)):
+        values = tuple(
+            _static_literal_value(element, constants) for element in node.elts
+        )
+        if any(value is _OPAQUE_STATIC_VALUE for value in values):
+            return _OPAQUE_STATIC_VALUE
+        return list(values) if isinstance(node, ast.List) else values
+    if isinstance(node, ast.Dict):
+        if any(key is None for key in node.keys):
+            return _OPAQUE_STATIC_VALUE
+        keys = tuple(
+            _static_literal_value(key, constants)
+            for key in node.keys
+            if key is not None
+        )
+        values = tuple(
+            _static_literal_value(value, constants) for value in node.values
+        )
+        if any(
+            value is _OPAQUE_STATIC_VALUE for value in (*keys, *values)
+        ):
+            return _OPAQUE_STATIC_VALUE
+        try:
+            return dict(zip(keys, values, strict=True))
+        except TypeError:
+            return _OPAQUE_STATIC_VALUE
     return _OPAQUE_STATIC_VALUE
 
 
@@ -468,54 +507,84 @@ def _resolve_static_format(
     """Substitute every statically known ``str.format`` field."""
 
     formatter = Formatter()
-    positional = tuple(
-        _OPAQUE_STATIC_VALUE
-        if isinstance(argument, ast.Starred)
-        else _static_format_value(argument, constants)
-        for argument in node.args
-    )
-    keywords = {
-        keyword.arg: _static_format_value(keyword.value, constants)
-        for keyword in node.keywords
-        if keyword.arg is not None
-    }
-    expanded_keywords = any(keyword.arg is None for keyword in node.keywords)
-    auto_index = 0
-    pieces: list[str] = []
-    try:
-        parsed = tuple(formatter.parse(template))
-    except ValueError:
-        return _OPAQUE_STRING_PART
-    for literal, field_name, format_spec, conversion in parsed:
-        pieces.append(literal)
-        if field_name is None:
+    positional: list[object] = []
+    expanded_positional = False
+    for argument in node.args:
+        if not isinstance(argument, ast.Starred):
+            positional.append(_static_format_value(argument, constants))
             continue
-        lookup_name = field_name
-        if field_name == "":
-            lookup_name = str(auto_index)
-            auto_index += 1
-        try:
-            value, _ = formatter.get_field(
-                lookup_name,
-                positional,
-                keywords,
-            )
-        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
-            value = _OPAQUE_STATIC_VALUE
-        if value is _OPAQUE_STATIC_VALUE or (
-            expanded_keywords and not lookup_name.isdecimal()
+        expanded = _static_literal_value(argument.value, constants)
+        if isinstance(expanded, (list, tuple)):
+            positional.extend(expanded)
+        else:
+            expanded_positional = True
+
+    keywords: dict[str, object] = {}
+    expanded_keywords = False
+    for keyword in node.keywords:
+        if keyword.arg is not None:
+            keywords[keyword.arg] = _static_format_value(keyword.value, constants)
+            continue
+        expanded = _static_literal_value(keyword.value, constants)
+        if isinstance(expanded, dict) and all(
+            isinstance(key, str) for key in expanded
         ):
-            pieces.append(_OPAQUE_STRING_PART)
-            continue
-        if "{" in format_spec or "}" in format_spec:
-            pieces.append(_OPAQUE_STRING_PART)
-            continue
+            keywords.update(expanded)
+        else:
+            expanded_keywords = True
+
+    auto_index = [0]
+
+    def resolve_fields(value: str) -> str:
+        pieces: list[str] = []
         try:
-            converted = formatter.convert_field(value, conversion)
-            pieces.append(formatter.format_field(converted, format_spec))
-        except (TypeError, ValueError):
-            pieces.append(_OPAQUE_STRING_PART)
-    return "".join(pieces)
+            parsed = tuple(formatter.parse(value))
+        except ValueError:
+            return _OPAQUE_STRING_PART
+        for literal, field_name, format_spec, conversion in parsed:
+            pieces.append(literal)
+            if field_name is None:
+                continue
+            lookup_name = field_name
+            if field_name == "":
+                lookup_name = str(auto_index[0])
+                auto_index[0] += 1
+            root_name = re.split(r"[.[]", lookup_name, maxsplit=1)[0]
+            if (
+                expanded_positional
+                and root_name.isdecimal()
+                or expanded_keywords
+                and not root_name.isdecimal()
+                and root_name not in keywords
+            ):
+                pieces.append(_OPAQUE_STRING_PART)
+                continue
+            try:
+                field_value, _ = formatter.get_field(
+                    lookup_name,
+                    tuple(positional),
+                    keywords,
+                )
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+                field_value = _OPAQUE_STATIC_VALUE
+            if field_value is _OPAQUE_STATIC_VALUE:
+                pieces.append(_OPAQUE_STRING_PART)
+                continue
+            resolved_spec = resolve_fields(format_spec) if format_spec else ""
+            if _OPAQUE_STRING_PART in resolved_spec:
+                pieces.append(_OPAQUE_STRING_PART)
+                continue
+            try:
+                converted = formatter.convert_field(field_value, conversion)
+                pieces.append(formatter.format_field(converted, resolved_spec))
+            except (TypeError, ValueError):
+                pieces.append(_OPAQUE_STRING_PART)
+        return "".join(pieces)
+
+    try:
+        return resolve_fields(template)
+    except (IndexError, KeyError, ValueError):
+        return _OPAQUE_STRING_PART
 
 
 def _static_integer(node: ast.AST, constants: list[dict[str, object]]) -> int | None:
@@ -543,7 +612,7 @@ def _static_percent_operand(
         for scope in reversed(constants):
             if node.id in scope:
                 value = scope[node.id]
-                if isinstance(value, (str, int, float, bytes, tuple)):
+                if isinstance(value, (str, int, float, bytes, tuple, dict)):
                     return value
                 return _OPAQUE_STATIC_VALUE
         return _OPAQUE_STATIC_VALUE
@@ -556,6 +625,9 @@ def _static_percent_operand(
         if any(value is _OPAQUE_STATIC_VALUE for value in values):
             return _OPAQUE_STATIC_VALUE
         return values
+    if isinstance(node, ast.Dict):
+        value = _static_literal_value(node, constants)
+        return value if isinstance(value, dict) else _OPAQUE_STATIC_VALUE
     return _OPAQUE_STATIC_VALUE
 
 
@@ -568,10 +640,10 @@ def _static_string_list(
         for scope in reversed(constants):
             if node.id in scope:
                 value = scope[node.id]
-                if isinstance(value, tuple) and all(
+                if isinstance(value, (list, tuple)) and all(
                     isinstance(item, str) for item in value
                 ):
-                    return value
+                    return tuple(value)
                 return None
         return None
     if isinstance(node, (ast.List, ast.Tuple)):
@@ -815,6 +887,10 @@ class _SourceReadVisitor(ast.NodeVisitor):
             constant = _static_string_list(value, self.constants)
         if constant is None:
             constant = _static_integer(value, self.constants)
+        if constant is None:
+            literal = _static_literal_value(value, self.constants)
+            if literal is not _OPAQUE_STATIC_VALUE:
+                constant = literal
         method_alias = self._method_alias(value)
         if method_alias is None and name in self.method_alias_history[-1]:
             method_alias = _OPAQUE_METHOD_ALIAS
@@ -2097,6 +2173,40 @@ def f(df):
         "{entity}_support_channel".format(entity="person")
     ]
 """,
+        """
+def f(df):
+    return df.query(
+        "{0:{1}} == 1".format("person_support_channel", "s")
+    )
+""",
+        """
+def f(df):
+    return df.query(
+        "{0[column]} == 1".format(
+            {"column": "person_support_channel"}
+        )
+    )
+""",
+        """
+def f(df):
+    return df.query(
+        "{} == 1".format(*("person_support_channel",))
+    )
+""",
+        """
+def f(df):
+    return df.query(
+        "{column} == 1".format(
+            **{"column": "person_support_channel"}
+        )
+    )
+""",
+        """
+def f(df):
+    return df.query(
+        "%(entity)s_support_channel == 1" % {"entity": "person"}
+    )
+""",
     )
 
     for source in unsafe_sources:
@@ -2126,6 +2236,26 @@ def f(df):
 def f(df):
     return df.query("{{age}} == {{age}}".format())
 """,
+        """
+def f(df):
+    return df.query("{0:{1}} >= 18".format("age", "s"))
+""",
+        """
+def f(df):
+    return df.query("{0[column]} >= 18".format({"column": "age"}))
+""",
+        """
+def f(df):
+    return df.query("{} >= 18".format(*("age",)))
+""",
+        """
+def f(df):
+    return df.query("{column} >= 18".format(**{"column": "age"}))
+""",
+        """
+def f(df):
+    return df.query("%(column)s >= 18" % {"column": "age"})
+""",
     )
     opaque_sources = (
         """
@@ -2143,6 +2273,10 @@ def f(df, values):
         """
 def f(df, values):
     return df.query("{col} == 1".format(**values))
+""",
+        """
+def f(df, values):
+    return df.query("{1} == 1".format(*values, "age"))
 """,
     )
 
