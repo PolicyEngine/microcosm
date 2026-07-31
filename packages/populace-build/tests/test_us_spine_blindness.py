@@ -323,6 +323,63 @@ def _subscript_source_expression(
     )
 
 
+def _static_string_shape(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> str | None:
+    """_string_shape with one level of static constant propagation.
+
+    Names bound to resolvable string literals in an enclosing scope resolve
+    to their value (including inside f-string interpolations), so
+    ``expr = '...'; df.query(expr)`` and ``df.query(f"{col} == 'x'")`` are
+    seen through. Anything still opaque returns None — and the caller
+    treats an opaque pandas expression as a violation (fail-closed).
+    """
+
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                return value if isinstance(value, str) else None
+        return None
+    if isinstance(node, ast.FormattedValue):
+        inner = _static_string_shape(node.value, constants)
+        return inner if inner is not None else "*"
+    if isinstance(node, ast.JoinedStr):
+        pieces = [_static_string_shape(value, constants) for value in node.values]
+        if any(piece is None for piece in pieces):
+            return None
+        return "".join(piece for piece in pieces if piece is not None)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _static_string_shape(node.left, constants)
+        right = _static_string_shape(node.right, constants)
+        if left is not None and right is not None:
+            return left + right
+        return None
+    return _string_shape(node)
+
+
+def _static_string_list(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> list[str] | None:
+    """Resolve a static list/tuple of strings, through one Name binding."""
+
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                return value if isinstance(value, list) else None
+        return None
+    if isinstance(node, (ast.List, ast.Tuple)):
+        items: list[str] = []
+        for element in node.elts:
+            shape = _static_string_shape(element, constants)
+            if shape is None:
+                return None
+            items.append(shape)
+        return items
+    return None
+
+
 def _pandas_expression_source(node: ast.AST) -> str | None:
     """Resolve guarded column-shaped tokens in a static pandas expression."""
 
@@ -344,11 +401,7 @@ def _call_argument(
     if len(node.args) > position:
         return node.args[position]
     return next(
-        (
-            candidate.value
-            for candidate in node.keywords
-            if candidate.arg == keyword
-        ),
+        (candidate.value for candidate in node.keywords if candidate.arg == keyword),
         None,
     )
 
@@ -367,6 +420,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def __init__(self, factory_aliases: set[str]) -> None:
         self.factory_aliases = factory_aliases
         self.bindings: list[dict[str, str | None]] = [{}]
+        self.constants: list[dict[str, object]] = [{}]
         self.accesses: set[tuple[int, int, str]] = set()
 
     def _expression(self, node: ast.AST) -> str | None:
@@ -381,9 +435,16 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
     def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
         description = self._expression(value)
+        constant: object = _static_string_shape(value, self.constants)
+        if constant is None:
+            constant = _static_string_list(value, self.constants)
         for target in targets:
             for name in _assigned_names(target):
                 self.bindings[-1][name] = description
+                if constant is not None:
+                    self.constants[-1][name] = constant
+                else:
+                    self.constants[-1].pop(name, None)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -423,8 +484,10 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if node.args.kwarg is not None:
             local[node.args.kwarg.arg] = None
         self.bindings.append(local)
+        self.constants.append({})
         for statement in node.body:
             self.visit(statement)
+        self.constants.pop()
         self.bindings.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -443,7 +506,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
             )
         }
         self.bindings.append(local)
+        self.constants.append({})
         self.visit(node.body)
+        self.constants.pop()
         self.bindings.pop()
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -467,19 +532,50 @@ class _SourceReadVisitor(ast.NodeVisitor):
         elif isinstance(node.func, ast.Attribute) and name in {"query", "eval"}:
             expression = _call_argument(node, position=0, keyword="expr")
             if expression is not None:
-                column = _pandas_expression_source(expression)
-                if column is not None:
-                    self._record(node, f".{name}() using {column}")
+                shape = _static_string_shape(expression, self.constants)
+                if shape is None:
+                    # Fail closed: an expression the guard cannot resolve
+                    # statically could name a guarded column — opacity is
+                    # a violation, not a pass (sol #583 round 2).
+                    self._record(
+                        node,
+                        f".{name}() with an unresolvable dynamic expression "
+                        "(fail-closed)",
+                    )
+                else:
+                    for token in re.findall(r"[\w*?\[\]-]+", shape):
+                        if _is_source_column_shape(token):
+                            self._record(
+                                node,
+                                f".{name}() using source column {token!r}",
+                            )
+                            break
         elif isinstance(node.func, ast.Attribute) and name == "filter":
             items = _call_argument(node, position=0, keyword="items")
             if items is not None:
-                column = _subscript_source_expression(
-                    items,
-                    bindings=self.bindings,
-                    factory_aliases=self.factory_aliases,
-                )
-                if column is not None:
-                    self._record(node, f".filter(items=...) using {column}")
+                resolved = _static_string_list(items, self.constants)
+                if resolved is None:
+                    column = _subscript_source_expression(
+                        items,
+                        bindings=self.bindings,
+                        factory_aliases=self.factory_aliases,
+                    )
+                    if column is not None:
+                        self._record(node, f".filter(items=...) using {column}")
+                    else:
+                        self._record(
+                            node,
+                            ".filter(items=...) with an unresolvable dynamic "
+                            "list (fail-closed)",
+                        )
+                else:
+                    for item in resolved:
+                        if _is_source_column_shape(item):
+                            self._record(
+                                node,
+                                f".filter(items=...) using source column {item!r}",
+                            )
+                            break
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -873,6 +969,48 @@ def op(df):
     assert _source_spine_accesses(pandas_filter)
     assert _source_spine_accesses(pandas_loc)
     assert _source_spine_accesses(benign_reads) == ()
+
+
+def test_guard_sees_through_static_indirection_and_fails_closed_on_opacity():
+    """Sol #583 round-2 bypasses: one level of static indirection must
+    resolve, and anything still opaque is a violation by default."""
+
+    bound_query = """
+def f(df):
+    expr = 'person_support_channel == "acs"'
+    return df.query(expr)
+"""
+    bound_eval = """
+def f(df):
+    expr = 'person_support_channel == "acs"'
+    return df.eval(expr)
+"""
+    bound_filter = """
+def f(df):
+    cols = ["person_support_channel"]
+    return df.filter(items=cols)
+"""
+    fstring_query = """
+def f(df):
+    col = "person_support_channel"
+    return df.query(f"{col} == 'acs'")
+"""
+    opaque_query = """
+def f(df, expr):
+    return df.query(expr)
+"""
+    benign_bound = """
+def f(df):
+    expr = "age >= 18"
+    return df.query(expr)
+"""
+    assert _source_spine_accesses(bound_query)
+    assert _source_spine_accesses(bound_eval)
+    assert _source_spine_accesses(bound_filter)
+    assert _source_spine_accesses(fstring_query)
+    accesses = _source_spine_accesses(opaque_query)
+    assert accesses and any("fail-closed" in access for access in accesses)
+    assert not _source_spine_accesses(benign_bound)
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
