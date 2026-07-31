@@ -9,6 +9,14 @@ from populace.build.uk_runtime.cgt_calibration import (
     materialize_uk_cgt_calibration_frame,
     uk_cgt_annual_exempt_amount,
 )
+from populace.build.uk_runtime.diagnostics import (
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
+    uk_calibration_diagnostics_payload,
+    uk_weight_summary,
+    uk_zero_weight_strata,
+    write_uk_calibration_diagnostics,
+)
 from populace.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -386,6 +394,7 @@ __all__ = [
     "UK_CGT_REQUIRED_COLUMNS",
     "UK_CGT_TARGET_COVERAGE_REQUIREMENTS",
     "UK_CGT_TARGET_SPECS",
+    "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_FISCAL_TARGET_REGISTRY",
     "AGE_BANDS",
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
@@ -543,6 +552,7 @@ __all__ = [
     "CERTIFIED_UK_CANDIDATE_TIER",
     "UK_SINGLE_YEAR_TABLES",
     "UK_SPI_SUPPORT_STAGE_NAME",
+    "UK_TARGET_GEOGRAPHY_LEVELS",
     "VAT_LIABILITY_BANDS",
     "VINTAGES",
     "align_area_targets",
@@ -665,11 +675,14 @@ __all__ = [
     "target_diagnostics",
     "uk_firm_source_data_from_frames",
     "uk_firm_source_data_from_ledger_facts",
+    "uk_calibration_diagnostics_payload",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
     "uk_release_input_coverage_gate",
     "uk_release_input_coverage_required_columns",
     "uk_release_input_coverage_reviewed_exclusions",
+    "uk_weight_summary",
+    "uk_zero_weight_strata",
     "update_england_wales_lad_codes",
     "validate_uk_firm_population",
     "validate_uk_national_dataset",
@@ -686,6 +699,7 @@ __all__ = [
     "write_local_candidate_outputs",
     "write_long_geography_weights",
     "write_uk_firm_population",
+    "write_uk_calibration_diagnostics",
     "write_uk_rowwise_dataset",
     "write_hmrc_replay_report",
 ]
