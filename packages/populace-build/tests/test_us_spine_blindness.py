@@ -20,6 +20,12 @@ _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
         "spine_assembly.py",
     }
 )
+_RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
+    {
+        "acs_multispine.py",
+        "base_pool.py",
+    }
+)
 
 # These modules own source-spine provenance rather than applying population
 # treatments. Keep the allowlist exact so adding a new exception requires a
@@ -665,6 +671,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         assert not missing_required, (
             f"{tool.name} does not reach the canonical pool seam modules: "
             f"{missing_required}"
+        )
+        retired_modules = sorted(_RETIRED_LATE_ASSEMBLY_MODULES & runtime_names)
+        assert not retired_modules, (
+            f"{tool.name} reaches retired late-assembly modules: {retired_modules}"
         )
         unclassified = _unclassified_runtime_modules(runtime_names)
         assert not unclassified, (
