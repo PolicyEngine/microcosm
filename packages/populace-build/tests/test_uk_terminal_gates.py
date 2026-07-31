@@ -497,6 +497,29 @@ def test_terminal_report_writer_rejects_sol_composed_raw_parity_trio(
     assert not output.exists()
 
 
+def test_private_constructor_token_cannot_mint_sol_raw_parity_trio() -> None:
+    """Even importing underscored internals cannot omit mandatory gates."""
+
+    from populace.build.uk_runtime import terminal_gates
+
+    results = (
+        uk_export_surface_gate({"person.age"}, {"person.age"}),
+        uk_target_surface_gate({"ons/population"}, {"ons/population"}),
+        uk_target_fit_gate({"ons/population": 0.0}),
+    )
+
+    with pytest.raises(ValueError, match="membership must follow"):
+        terminal_gates._AttestedUKTerminalGateReport(
+            results,
+            policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
+            evidence_sha256={
+                "release_dataset": "a" * 64,
+                "release_parity": "b" * 64,
+            },
+            _token=terminal_gates._UK_AGGREGATOR_TOKEN,
+        )
+
+
 def test_production_terminal_report_pins_policy_and_evidence_membership(
     monkeypatch,
     tmp_path,

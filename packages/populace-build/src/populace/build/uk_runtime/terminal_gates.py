@@ -482,6 +482,28 @@ class _AttestedUKTerminalGateReport(GateReport):
             for name, digest in evidence.items()
         ):
             raise ValueError("UK terminal evidence digests must be named sha256s.")
+        evidence_names = set(evidence)
+        if "release_dataset" not in evidence_names:
+            raise ValueError(
+                "UK terminal evidence must include the release_dataset digest."
+            )
+        unknown_evidence = sorted(
+            evidence_names - {"release_dataset", "hmrc_spi_income", "release_parity"}
+        )
+        if unknown_evidence:
+            raise ValueError(
+                f"UK terminal evidence has unknown stages: {unknown_evidence}."
+            )
+        expected_names = list(_UK_ALWAYS_APPLICABLE_GATE_NAMES)
+        if "hmrc_spi_income" in evidence_names:
+            expected_names.extend(_UK_HMRC_GATE_NAMES)
+        if "release_parity" in evidence_names:
+            expected_names.extend(_UK_PARITY_GATE_NAMES)
+        if names != tuple(expected_names):
+            raise ValueError(
+                "UK terminal gate membership must follow the attested evidence "
+                f"stages; expected {expected_names}, got {list(names)}."
+            )
         object.__setattr__(self, "evidence_sha256", MappingProxyType(evidence))
         object.__setattr__(self, "_sealed_sha256", self._current_attestation_sha256())
 
