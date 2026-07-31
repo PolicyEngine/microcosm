@@ -73,8 +73,8 @@ def _parse_args() -> argparse.Namespace:
         "--input-coverage-json",
         type=Path,
         help=(
-            "Legacy alias for --terminal-gates-json. Cannot be supplied with "
-            "the preferred option."
+            "Legacy schema-1 input-coverage diagnostic path. Cannot be "
+            "supplied with the preferred terminal-gate option."
         ),
     )
     parser.add_argument(
@@ -108,11 +108,17 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    legacy_input_coverage_path = args.input_coverage_json
     terminal_gate_path = (
-        args.terminal_gates_json
-        or args.input_coverage_json
-        or args.staging_h5.with_suffix(".terminal_gates.json")
+        None
+        if legacy_input_coverage_path is not None
+        else (
+            args.terminal_gates_json
+            or args.staging_h5.with_suffix(".terminal_gates.json")
+        )
     )
+    gate_output_path = legacy_input_coverage_path or terminal_gate_path
+    assert gate_output_path is not None
     evidence_path = args.hmrc_evidence_json or args.staging_h5.with_suffix(
         ".hmrc_income.json"
     )
@@ -128,7 +134,7 @@ def main() -> int:
     _validate_distinct_paths(
         evidence_path=evidence_path,
         replay_path=replay_path,
-        terminal_gate_path=terminal_gate_path,
+        terminal_gate_path=gate_output_path,
         input_h5=args.input_h5,
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
@@ -153,6 +159,11 @@ def main() -> int:
         # This staging path performs no calibration and therefore has no real
         # target-surface or target-fit evidence. Leave parity_evidence absent;
         # the terminal report omits that trio instead of inventing passes.
+        gate_path_argument = (
+            {"input_coverage_path": legacy_input_coverage_path}
+            if legacy_input_coverage_path is not None
+            else {"terminal_gate_path": terminal_gate_path}
+        )
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
@@ -166,7 +177,7 @@ def main() -> int:
                     transform=hmrc_transform,
                 ),
             ),
-            terminal_gate_path=terminal_gate_path,
+            **gate_path_argument,
         )
     except RuntimeError as error:
         if (
@@ -197,7 +208,7 @@ def main() -> int:
     artifact_paths = {
         "input_h5": result.input_h5,
         "staging_h5": result.staging_h5,
-        "terminal_gates": terminal_gate_path,
+        "terminal_gates": gate_output_path,
         "hmrc_evidence": evidence_path,
         "hmrc_replay": replay_path,
         "spi_donor": args.spi_tab,

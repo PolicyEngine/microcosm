@@ -535,6 +535,55 @@ def test_national_driver_accepts_legacy_input_coverage_path_alias(
     assert args.terminal_gates_json is None
 
 
+def test_national_driver_forwards_legacy_output_to_compatibility_serializer(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    legacy_path = tmp_path / "legacy-coverage.json"
+    calls = []
+
+    class StopAfterForwardingError(Exception):
+        pass
+
+    def fake_build(**kwargs):
+        calls.append(kwargs)
+        raise StopAfterForwardingError
+
+    monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda _path: object(),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            str(tmp_path / "base.h5"),
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--frs-raw-dir",
+            str(tmp_path / "frs_2023_24"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+            "--input-coverage-json",
+            str(legacy_path),
+        ],
+    )
+
+    with pytest.raises(StopAfterForwardingError):
+        builder.main()
+
+    assert len(calls) == 1
+    assert calls[0]["input_coverage_path"] == legacy_path
+    assert "terminal_gate_path" not in calls[0]
+
+
 def test_national_driver_rejects_both_terminal_gate_cli_names(
     monkeypatch,
     tmp_path,

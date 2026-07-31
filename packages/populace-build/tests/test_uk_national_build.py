@@ -235,7 +235,46 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     assert staged.household["household_weight"].tolist() == [2.0]
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
-    assert diagnostic["gates"]["uk_release_input_coverage"]["passed"] is True
+    assert diagnostic["input_coverage"]["passed"] is True
+
+
+def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    legacy_json = tmp_path / "input_coverage.json"
+    _write_toy_h5(input_h5, employment_income=40_000.0)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+
+    build_uk_national_dataset(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        coverage_engine=object(),
+        input_coverage_path=legacy_json,
+    )
+
+    # Pinned from origin/main's schema-1 serializer for this exact GateResult.
+    expected = (
+        b'{\n  "enforced": true,\n  "input_coverage": {\n'
+        b'    "details": {\n      "degenerate": [],\n      "missing": [],\n'
+        b'      "required_columns": 1\n    },\n    "failures": [],\n'
+        b'    "passed": true\n  },\n  "schema_version": 1\n}\n'
+    )
+    assert legacy_json.read_bytes() == expected
 
 
 def test_national_build_gate_failure_writes_diagnostic_not_h5(
@@ -269,9 +308,83 @@ def test_national_build_gate_failure_writes_diagnostic_not_h5(
 
     assert not staging_h5.exists()
     diagnostic = json.loads(coverage_json.read_text())
-    coverage = diagnostic["gates"]["uk_release_input_coverage"]
+    coverage = diagnostic["input_coverage"]
     assert coverage["passed"] is False
     assert coverage["details"]["degenerate"] == ["employment_income"]
+
+
+def test_default_terminal_report_write_precedes_gate_failure_raise(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    default_terminal_json = staging_h5.with_suffix(".terminal_gates.json")
+    _write_toy_h5(input_h5)
+    events: list[str] = []
+    real_loader = national_build.load_uk_national_dataset
+    real_report_writer = national_build.write_uk_terminal_gate_report
+
+    def preflight(**_kwargs) -> None:
+        events.append("preflight")
+
+    def stage_contract(_stage_names) -> None:
+        events.append("stage contract")
+
+    def load(path):
+        events.append("load")
+        return real_loader(path)
+
+    def evaluate(_dataset, _engine):
+        events.append("evaluate")
+        return _failing_gate()
+
+    def write_report(report, path):
+        events.append("write report")
+        assert Path(path) == default_terminal_json.resolve()
+        return real_report_writer(report, path)
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        preflight,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_build_stages",
+        stage_contract,
+    )
+    monkeypatch.setattr(national_build, "load_uk_national_dataset", load)
+    monkeypatch.setattr(national_build, "uk_release_input_coverage_gate", evaluate)
+    monkeypatch.setattr(
+        national_build,
+        "write_uk_terminal_gate_report",
+        write_report,
+    )
+
+    with pytest.raises(RuntimeError, match="Release gates failed"):
+        build_uk_national_dataset(
+            input_h5=input_h5,
+            staging_h5=staging_h5,
+            coverage_engine=object(),
+            terminal_gate_path=None,
+        )
+    events.append("raise")
+
+    assert events == [
+        "preflight",
+        "stage contract",
+        "load",
+        "evaluate",
+        "write report",
+        "raise",
+    ]
+    assert default_terminal_json.is_file()
+    assert json.loads(default_terminal_json.read_text())["passed"] is False
+    assert not staging_h5.exists()
 
 
 def test_national_build_real_terminal_batch_passes_before_staging(

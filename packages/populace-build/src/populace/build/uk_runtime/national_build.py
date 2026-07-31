@@ -171,7 +171,7 @@ class UKNationalBuildResult:
     staging_h5: Path
     stage_names: tuple[str, ...]
     terminal_gates: GateReport
-    terminal_gate_path: Path | None = None
+    terminal_gate_path: Path
 
     @property
     def input_coverage(self) -> GateResult:
@@ -184,7 +184,7 @@ class UKNationalBuildResult:
         )
 
     @property
-    def input_coverage_path(self) -> Path | None:
+    def input_coverage_path(self) -> Path:
         """Backward-compatible alias for :attr:`terminal_gate_path`."""
 
         return self.terminal_gate_path
@@ -373,12 +373,17 @@ def build_uk_national_dataset(
             "terminal_gate_path and input_coverage_path are mutually exclusive; "
             "input_coverage_path is a compatibility alias."
         )
+    legacy_input_coverage_output = input_coverage_path is not None
     requested_gate_path = (
-        terminal_gate_path if terminal_gate_path is not None else input_coverage_path
+        terminal_gate_path
+        if terminal_gate_path is not None
+        else (
+            input_coverage_path
+            if input_coverage_path is not None
+            else staging_path.with_suffix(".terminal_gates.json")
+        )
     )
-    diagnostic_path = (
-        Path(requested_gate_path).resolve() if requested_gate_path is not None else None
-    )
+    diagnostic_path = Path(requested_gate_path).resolve()
     if diagnostic_path in {input_path, staging_path}:
         raise ValueError(
             "terminal_gate_path must differ from the input and staging H5 paths."
@@ -387,8 +392,7 @@ def build_uk_national_dataset(
     materialized_stages = tuple(stages)
     _validate_stages(materialized_stages)
     staging_path.unlink(missing_ok=True)
-    if diagnostic_path is not None:
-        diagnostic_path.unlink(missing_ok=True)
+    diagnostic_path.unlink(missing_ok=True)
 
     engine = (
         coverage_engine
@@ -422,7 +426,14 @@ def build_uk_national_dataset(
         require_fit_weight_records=require_fit_weight_records,
         parity_evidence=parity_evidence,
     )
-    if diagnostic_path is not None:
+    if legacy_input_coverage_output:
+        input_coverage = next(
+            gate
+            for gate in terminal_gates.results
+            if gate.name == "uk_release_input_coverage"
+        )
+        _write_input_coverage_diagnostic(diagnostic_path, input_coverage)
+    else:
         write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
     if not terminal_gates.passed:
         raise RuntimeError(
@@ -469,6 +480,25 @@ def _stage_fit_weight_records(
         return (() if records is None else tuple(records), True)
     except Exception:  # noqa: BLE001 - the terminal report must name the failure
         return ((), True)
+
+
+def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
+    """Write the byte-compatible origin/main schema for the legacy alias."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "enforced": True,
+        "input_coverage": {
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _require_columns(
