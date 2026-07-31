@@ -42,6 +42,7 @@ from populace.build.us_runtime.ssi_take_up import (
     with_us_ssi_take_up,
     write_us_ssi_take_up_diagnostics,
 )
+from populace.build.us_runtime.take_up_contract import load_take_up_contract
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
@@ -178,7 +179,7 @@ def _assigned(
     return frame, result, potential, diagnostics
 
 
-def test_stage_contract_pins_archived_method_and_band_structure() -> None:
+def test_stage_and_contracts_pin_method_bands_and_arm_specific_enforcement() -> None:
     spec = us_ssi_take_up_stage_spec()
     assert spec.stage == US_SSI_TAKE_UP_STAGE_NAME
     assert spec.source == SSI_TAKE_UP_SSA_SOURCE_URL
@@ -205,9 +206,25 @@ def test_stage_contract_pins_archived_method_and_band_structure() -> None:
         (band.key, band.minimum_age, band.maximum_age)
         for band in US_SSI_TAKE_UP_AGE_TARGETS
     ] == [("under_18", None, 17), ("18_64", 18, 64), ("65_plus", 65, None)]
-    assert "all three enforced bands (under_18, 18_64, 65_plus)" in spec.notes
-    assert "no band remains fenced or scorecard-only" in spec.notes
-    assert "under-18 band is fenced pending" not in spec.notes
+    contract_notes = {
+        "source_stages.json": spec.notes,
+        "take_up_contract.json": str(
+            load_take_up_contract().program_map()[_OUTPUT].raw["notes"]
+        ),
+    }
+    for contract_name, notes in contract_notes.items():
+        assert "all three enforced bands (under_18, 18_64, 65_plus)" in notes, (
+            contract_name
+        )
+        assert "sparse certified" in notes, contract_name
+        assert "dense diagnostic" in notes, contract_name
+        assert "adult pair" in notes, contract_name
+        assert "under_18" in notes and "hard-gated" in notes, contract_name
+        assert "no band remains fenced or scorecard-only" not in notes, contract_name
+        assert "enforced adult band" not in notes, contract_name
+        assert "under-18 band stays fenced" not in notes, contract_name
+        assert "under-18 band is fenced pending" not in notes, contract_name
+        assert "gap ships in the release scorecard" not in notes, contract_name
 
 
 def test_assignment_preserves_asec_reporters_and_fans_source_decisions() -> None:
@@ -404,8 +421,8 @@ def test_saturated_band_prior_falls_back_to_the_observed_reporter_rate() -> None
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
-def test_every_band_saturated_stays_nonconstant_and_passes_the_gate() -> None:
-    """Universal saturation must not flag the whole pool.
+def test_every_band_saturated_stays_nonconstant_and_passes_assignment_gate() -> None:
+    """Universal saturation must not violate assignment integrity.
 
     Build M's first sparse run died here: the restored disability battery put
     SSI candidates in every age band, every band's candidate capacity fell
@@ -413,8 +430,9 @@ def test_every_band_saturated_stays_nonconstant_and_passes_the_gate() -> None:
     Bernoulli(1.0) — a constant, signal-free flag. The prior therefore falls
     back to the observed reporter rate (reporter mass over capacity) and the
     pool keeps signal. Candidates are no longer force-selected to chase the
-    count (populace#469): the SSA-count miss is calibration's to close
-    (populace#470) and ships in the scorecard.
+    count (populace#469). The assignment-integrity gate stays green; the
+    separate release delivery gate hard-fails normally enforced misses and
+    honors only explicit arm-specific fences.
     """
 
     targets = {"under_18": 1e6, "18_64": 1e6, "65_plus": 1e6}
@@ -626,9 +644,9 @@ def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
         prior_basis=ssi_take_up_prior_basis_from_diagnostics(stage_diagnostics),
     )
     np.testing.assert_array_equal(reweighted.table("person")[_OUTPUT], original)
-    # Weight drift pushes the measured recipient mass far off target, and the
-    # gate still passes: the count miss is calibration's residual
-    # (populace#469/#470), reported in the scorecard, never a module failure.
+    # Weight drift pushes the measured recipient mass far off target. This
+    # assignment-integrity gate still passes; the separate delivery gate owns
+    # the hard failure for normally enforced bands.
     # The published assignment prior stays the one that generated the frozen
     # flags — never recomputed from the drifted weights — while the
     # current-weight recomputation is reported separately and the flags
@@ -1056,6 +1074,22 @@ def test_delivery_gate_passes_when_all_bands_are_within_tolerance() -> None:
     assert gate.details["relative_tolerance"] == pytest.approx(
         US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     )
+    enforced = gate.details["enforced_bands"]
+    assert [
+        (
+            row["age_band"],
+            row["target"],
+            row["selected_recipient_weight"],
+        )
+        for row in enforced
+    ] == [
+        ("under_18", 50.0, 52.4),
+        ("18_64", 50.0, 52.4),
+        ("65_plus", 50.0, 47.6),
+    ]
+    assert [row["signed_relative_error"] for row in enforced] == pytest.approx(
+        [0.048, 0.048, -0.048]
+    )
     assert gate.details["fenced_bands"] == []
 
 
@@ -1145,9 +1179,7 @@ def test_delivery_gate_fences_override_enforcement_with_their_adjudication() -> 
     assert gate.passed
     assert gate.details["enforced_band_keys"] == ["under_18"]
     assert gate.details["adjudication_fenced_band_keys"] == ["18_64", "65_plus"]
-    assert [
-        row["age_band"] for row in gate.details["enforced_bands"]
-    ] == ["under_18"]
+    assert [row["age_band"] for row in gate.details["enforced_bands"]] == ["under_18"]
     fenced = {row["age_band"]: row for row in gate.details["fenced_bands"]}
     assert set(fenced) == {"18_64", "65_plus"}
     assert fenced["18_64"]["fence"] == fences["18_64"]

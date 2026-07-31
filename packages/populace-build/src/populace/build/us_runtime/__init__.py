@@ -102,14 +102,20 @@ from populace.build.us_runtime.child_disability import (
     SIPP_CHILD_DISABILITY_MODEL_PREDICTORS,
     SIPP_CHILD_DISABILITY_READ_PARAMETERS,
     SIPP_CHILD_DISABILITY_SOURCE_COLUMNS,
+    SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS,
+    SIPP_CHILD_SSI_SEVERITY_PARAMETERS,
+    SSI_CHILD_DISABILITY_STANDARD_URL,
     US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE,
     US_CHILD_DISABILITY_AGE_0_SHARE_BAND,
     US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND,
     US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE,
+    US_CHILD_DISABILITY_AGE_1_TARGET_RATE,
     US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND,
     US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE,
     US_CHILD_DISABILITY_OUTPUT_COLUMNS,
     US_CHILD_DISABILITY_STAGE_NAME,
+    US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR,
+    US_CHILD_SSI_SEVERITY_SHARE_BAND,
     load_sipp_2023_child_disability_donor,
     resolve_sipp_2023_child_disability_donor,
     us_child_disability_signal_gate,
@@ -1213,19 +1219,25 @@ __all__ = [
     "SIPP_2023_CHILD_DISABILITY_DONOR_URL",
     "SIPP_2023_CHILD_DISABILITY_LOCAL_PATH",
     "CHILD_DISABILITY_SIPP_USERS_GUIDE_URL",
+    "SSI_CHILD_DISABILITY_STANDARD_URL",
     "SIPP_CHILD_DISABILITY_AGE_0_PARAMETERS",
     "SIPP_CHILD_DISABILITY_FIT_PARAMETERS",
     "SIPP_CHILD_DISABILITY_MODEL_PREDICTORS",
     "SIPP_CHILD_DISABILITY_READ_PARAMETERS",
     "SIPP_CHILD_DISABILITY_SOURCE_COLUMNS",
+    "SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS",
+    "SIPP_CHILD_SSI_SEVERITY_PARAMETERS",
     "US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE",
     "US_CHILD_DISABILITY_AGE_0_SHARE_BAND",
+    "US_CHILD_DISABILITY_AGE_1_TARGET_RATE",
     "US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND",
     "US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE",
     "US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND",
     "US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE",
     "US_CHILD_DISABILITY_OUTPUT_COLUMNS",
     "US_CHILD_DISABILITY_STAGE_NAME",
+    "US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR",
+    "US_CHILD_SSI_SEVERITY_SHARE_BAND",
     "load_sipp_2023_child_disability_donor",
     "resolve_sipp_2023_child_disability_donor",
     "us_child_disability_signal_gate",
@@ -2032,8 +2044,10 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.census.gov/programs-surveys/sipp.html",
         notes=(
             "December complete RDIS_ALT child-item responses train the weighted "
-            "age-1--14 classifier with separate 1--4 and 5--14 calibration; only "
-            "age 0 transports the adjacent observed age-1--4 rate."
+            "age-1--14 general-difficulty classifier with separate 1--4 and "
+            "5--14 calibration; age 0 transports only the exact observed age-1 "
+            "rate. The item battery also predicts a seeded, receipt-anchored "
+            "severe subset for child SSI criteria."
         ),
     ),
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME: DonorSpec(

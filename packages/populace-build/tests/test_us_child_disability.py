@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -18,15 +19,20 @@ import populace.build.us_runtime.voluntary_filing as voluntary_filing_module
 from populace.build.us_runtime import (
     CHILD_DISABILITY_SIPP_USERS_GUIDE_URL,
     SIPP_CHILD_DISABILITY_SOURCE_COLUMNS,
+    SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS,
     SIPP_SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     SIPP_SSI_DISABILITY_MODEL_PREDICTORS,
+    SSI_CHILD_DISABILITY_STANDARD_URL,
     US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE,
     US_CHILD_DISABILITY_AGE_0_SHARE_BAND,
     US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND,
     US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE,
+    US_CHILD_DISABILITY_AGE_1_TARGET_RATE,
     US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND,
     US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE,
     US_CHILD_DISABILITY_STAGE_NAME,
+    US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR,
+    US_CHILD_SSI_SEVERITY_SHARE_BAND,
     US_STAGE_NAMES,
     clone_us_frame_for_puf_support,
     load_sipp_2023_child_disability_donor,
@@ -41,33 +47,68 @@ from populace.build.us_runtime import (
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 TIME_PERIOD = 2024
-_policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
-requires_us = pytest.mark.skipif(
-    not _policyengine_us_installed,
-    reason="requires the policyengine-us [us] extra",
-)
+
+
+def _load_builder_module():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "build_us_fiscal_refresh_release.py"
+    spec = importlib.util.spec_from_file_location(
+        "child_disability_engine_builder",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture
 def sipp_child_disability_donor() -> pd.DataFrame:
-    """Small SIPP-shaped donor with both reviewed calibration bands."""
+    """Synthetic child donor with full age/sex profile and receipt support."""
 
-    row = np.arange(2_800)
-    age = 1 + (row % 14)
-    within_age = row // 14
-    return pd.DataFrame(
+    ages = np.repeat(np.arange(1, 15, dtype=np.int64), 400)
+    female = np.tile(np.repeat([False, True], 200), 14)
+    within_cell = np.tile(np.arange(200, dtype=np.int64), 28)
+    period = np.where(ages <= 4, 20, 8)
+    general = (within_cell % period) == 0
+    positive_rank = within_cell // period
+    received = general & ((positive_rank % 10) == 0)
+    donor = pd.DataFrame(
         {
-            "age": age,
-            "is_female": (row % 2) == 0,
-            "household_income_proxy": (row % 30) * 5_000.0,
-            "is_disabled": np.where(
-                age <= 4,
-                (within_age % 20) == 0,
-                (within_age % 8) == 0,
-            ),
+            "age": ages,
+            "is_female": female,
+            "household_income_proxy": (within_cell % 30) * 5_000.0,
+            "is_disabled": general,
             "sipp_weight": 1.0,
+            "received_monthly_ssi": received,
+            "monthly_ssi_label_is_reported": True,
         }
     )
+    profile = (within_cell + ages + female.astype(np.int64)) % len(
+        SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS
+    )
+    for index, column in enumerate(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS):
+        donor[column] = general & (profile == index)
+    return donor
+
+
+def _severity_ready_donor(donor: pd.DataFrame) -> pd.DataFrame:
+    required = {
+        *SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS,
+        "received_monthly_ssi",
+        "monthly_ssi_label_is_reported",
+    }
+    if required <= set(donor):
+        return donor
+    result = donor.copy()
+    general = result["is_disabled"].to_numpy(dtype=bool)
+    positive_rank = np.cumsum(general) - 1
+    result["received_monthly_ssi"] = general & ((positive_rank % 10) == 0)
+    result["monthly_ssi_label_is_reported"] = True
+    profile = np.arange(len(result)) % len(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS)
+    for index, column in enumerate(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS):
+        result[column] = general & (profile == index)
+    return result
 
 
 def _frame(
@@ -99,6 +140,7 @@ def _frame(
             "is_female": (ids % 2) == 0,
             "employment_income_before_lsr": (ids % 40) * 2_500.0,
             "is_disabled": False,
+            "meets_ssi_disability_criteria": False,
             "adult_payload": [f"row-{value}" for value in ids],
         }
     )
@@ -132,7 +174,7 @@ def _run(frame: Frame, donor: pd.DataFrame, *, seed: int = 453) -> Frame:
         frame,
         seed=seed,
         time_period=TIME_PERIOD,
-        sipp_donor=donor,
+        sipp_donor=_severity_ready_donor(donor),
     )
 
 
@@ -145,6 +187,7 @@ def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -152,11 +195,15 @@ def test_manifest_declares_child_disability_stage() -> None:
     spec = us_child_disability_stage_spec()
     assert spec.stage == US_CHILD_DISABILITY_STAGE_NAME
     assert spec.grain == "person"
-    assert spec.outputs == ("is_disabled",)
+    assert spec.outputs == (
+        "is_disabled",
+        "meets_ssi_disability_criteria",
+    )
     assert [operation.kind for operation in spec.operations] == [
         "read_table",
         "fit_weighted_logistic",
         "assign_binary_from_rate",
+        "fit_weighted_imputer",
     ]
     fit = dict(spec.operations[1].parameters)
     assert fit["target_source_items"] == [
@@ -180,8 +227,19 @@ def test_manifest_declares_child_disability_stage() -> None:
     }
     age_0 = dict(spec.operations[2].parameters)
     assert age_0["age_domain"] == [0, 0]
-    assert age_0["source_age_domain"] == [1, 4]
+    assert age_0["source_age_domain"] == [1, 1]
+    assert "TAGE == 1" in age_0["source_rate_query"]
     assert age_0["rate"] == US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE
+    severity = dict(spec.operations[3].parameters)
+    assert severity["predictors"] == list(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS)
+    assert severity["target_proxy"] == "RSSI_MNYN == 1"
+    assert severity["observed_label_rule"] == ("ASSI_MNYN == 1 and RSSI_MNYN in [1, 2]")
+    assert severity["n_estimators"] == 100
+    assert severity["model_seed"] == 42
+    assert severity["pinned_conditional_receipt_rate"] == (
+        US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR
+    )
+    assert severity["legal_source"] == SSI_CHILD_DISABILITY_STANDARD_URL
     guide = [
         artifact
         for artifact in spec.artifacts
@@ -195,6 +253,19 @@ def test_manifest_declares_child_disability_stage() -> None:
             "locator": CHILD_DISABILITY_SIPP_USERS_GUIDE_URL,
             "section": "4.3.4 Disability",
             "measure": "RDIS_ALT",
+        }
+    ]
+    regulation = [
+        artifact for artifact in spec.artifacts if artifact.get("kind") == "regulation"
+    ]
+    assert regulation == [
+        {
+            "kind": "regulation",
+            "format": "html",
+            "vintage": "current",
+            "locator": SSI_CHILD_DISABILITY_STANDARD_URL,
+            "section": "20 CFR 416.906",
+            "measure": "SSI child disability marked-and-severe standard",
         }
     ]
     assert US_STAGE_NAMES.index(US_CHILD_DISABILITY_STAGE_NAME) == (
@@ -379,6 +450,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "ESEX": 2,
                 "TPTOTINC": 1_000,
                 "RSSI_MNYN": 2,
+                "ASSI_MNYN": 1,
                 "THHLDSTATUS": 1,
                 "RDIS_ALT": 2,
                 "ECOGNIT": 2,
@@ -397,6 +469,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "ESEX": 1,
                 "TPTOTINC": np.nan,
                 "RSSI_MNYN": 2,
+                "ASSI_MNYN": 1,
                 "THHLDSTATUS": 1,
                 "RDIS_ALT": 1,
                 "ECOGNIT": 2,
@@ -416,6 +489,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "ESEX": 2,
                 "TPTOTINC": 500,
                 "RSSI_MNYN": 1,
+                "ASSI_MNYN": 1,
                 "THHLDSTATUS": 1,
                 "RDIS_ALT": 1,
                 "ECOGNIT": 2,
@@ -435,6 +509,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "ESEX": 2,
                 "TPTOTINC": 500,
                 "RSSI_MNYN": 2,
+                "ASSI_MNYN": 1,
                 "THHLDSTATUS": 1,
                 "RDIS_ALT": 2,
                 "ECOGNIT": 2,
@@ -455,6 +530,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "ESEX": 2,
                 "TPTOTINC": 99_999,
                 "RSSI_MNYN": 1,
+                "ASSI_MNYN": 1,
                 "THHLDSTATUS": 1,
                 "RDIS_ALT": 1,
                 "ECOGNIT": 1,
@@ -474,6 +550,7 @@ def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
                 "ESEX": 1,
                 "TPTOTINC": np.nan,
                 "RSSI_MNYN": 2,
+                "ASSI_MNYN": 1,
                 "THHLDSTATUS": 1,
                 "RDIS_ALT": 1,
                 "ECOGNIT": 2,
@@ -517,9 +594,66 @@ def test_child_disability_is_deterministic_under_seed(
     first = _run(frame, sipp_child_disability_donor, seed=17)
     second = _run(frame, sipp_child_disability_donor, seed=17)
 
+    for column in ("is_disabled", "meets_ssi_disability_criteria"):
+        np.testing.assert_array_equal(
+            first.table("person")[column],
+            second.table("person")[column],
+        )
+
+
+def test_severity_forest_uses_pinned_seed_tree_count_and_weights(
+    sipp_child_disability_donor: pd.DataFrame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class RecordingForest:
+        classes_ = np.asarray([0, 1], dtype=np.int8)
+
+        def __init__(
+            self,
+            *,
+            n_estimators: int,
+            random_state: int,
+            n_jobs: int,
+        ) -> None:
+            captured["init"] = (n_estimators, random_state, n_jobs)
+
+        def fit(
+            self,
+            features: np.ndarray,
+            labels: np.ndarray,
+            *,
+            sample_weight: np.ndarray,
+        ):
+            captured["features"] = features.copy()
+            captured["labels"] = labels.copy()
+            captured["sample_weight"] = sample_weight.copy()
+            return self
+
+    donor = sipp_child_disability_donor.copy()
+    donor["sipp_weight"] = 1.0 + (np.arange(len(donor)) % 7)
+    monkeypatch.setattr(
+        child_disability_module,
+        "RandomForestClassifier",
+        RecordingForest,
+    )
+
+    model = child_disability_module._fit_child_ssi_severity_model(donor)
+    training = donor["is_disabled"] & donor["monthly_ssi_label_is_reported"]
+
+    assert captured["init"] == (100, 42, 1)
     np.testing.assert_array_equal(
-        first.table("person")["is_disabled"],
-        second.table("person")["is_disabled"],
+        captured["sample_weight"],
+        donor.loc[training, "sipp_weight"].to_numpy(),
+    )
+    assert np.asarray(captured["sample_weight"]).min() > 0.0
+    assert np.unique(captured["sample_weight"]).size > 1
+    assert model.receipt_anchor == pytest.approx(
+        np.average(
+            donor.loc[training, "received_monthly_ssi"],
+            weights=donor.loc[training, "sipp_weight"],
+        )
     )
 
 
@@ -551,7 +685,20 @@ def test_classifier_preserves_a_strong_sex_gradient() -> None:
             "sipp_weight": 1.0,
         }
     )
-    donor = pd.concat([early_donor, later_donor], ignore_index=True)
+    # The severity hot deck deliberately requires positive exact-age/sex
+    # support. Give every child cell a negligible-weight profile so this test
+    # remains about the general-disability classifier's sex gradient.
+    support_age = np.repeat(np.arange(1, 15), 2)
+    support = pd.DataFrame(
+        {
+            "age": support_age,
+            "is_female": np.tile([False, True], 14),
+            "household_income_proxy": 50_000.0,
+            "is_disabled": True,
+            "sipp_weight": 1e-6,
+        }
+    )
+    donor = pd.concat([early_donor, later_donor, support], ignore_index=True)
     result = _run(_frame(n_age_5_14=8_000), donor, seed=96)
     children = result.table("person").loc[lambda table: table["age"].between(5, 14)]
     assigned_share = children.groupby("is_female")["is_disabled"].mean()
@@ -573,6 +720,28 @@ def test_rows_age_15_and_over_keep_all_values(
         check_exact=True,
     )
     assert us_child_disability_signal_gate(result, input_frame=frame).passed
+
+
+def test_stage_creates_child_criteria_when_base_has_no_prior_column(
+    sipp_child_disability_donor: pd.DataFrame,
+) -> None:
+    frame = _frame()
+    person = frame.table("person").drop(columns=["meets_ssi_disability_criteria"])
+    without_criteria = _replace_person(frame, person)
+    adult = person["age"].ge(15)
+
+    result = _run(without_criteria, sipp_child_disability_donor)
+
+    assert "meets_ssi_disability_criteria" in result.table("person")
+    pd.testing.assert_frame_equal(
+        result.table("person").loc[adult, person.columns],
+        person.loc[adult],
+        check_exact=True,
+    )
+    assert us_child_disability_signal_gate(
+        result,
+        input_frame=without_criteria,
+    ).passed
 
 
 def test_noncanonical_adult_boolean_storage_is_not_rewritten(
@@ -666,7 +835,7 @@ def test_age_1_4_share_lands_inside_eddelay_informed_gate_band(
     assert US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE == 0.050645332184
 
 
-def test_age_0_share_uses_only_adjacent_observed_band_fallback(
+def test_age_0_share_uses_nearest_observed_exact_age_1_rate(
     sipp_child_disability_donor: pd.DataFrame,
 ) -> None:
     result = _run(_frame(), sipp_child_disability_donor)
@@ -674,12 +843,37 @@ def test_age_0_share_uses_only_adjacent_observed_band_fallback(
     low, high = US_CHILD_DISABILITY_AGE_0_SHARE_BAND
 
     assert low <= share <= high
-    assert share == pytest.approx(US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE, abs=0.015)
-    assert (
-        US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE
-        == US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE
+    assert share == pytest.approx(US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE, abs=0.012)
+    assert US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE == (
+        US_CHILD_DISABILITY_AGE_1_TARGET_RATE
     )
+    assert US_CHILD_DISABILITY_AGE_1_TARGET_RATE == 0.037790306234
+    assert not low <= US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE <= high
+    assert (
+        US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE / US_CHILD_DISABILITY_AGE_1_TARGET_RATE
+        - 1.0
+    ) == pytest.approx(0.340167, abs=1e-6)
     assert US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE == 0.124518076756
+
+
+def test_child_ssi_criteria_is_receipt_anchored_strict_subset(
+    sipp_child_disability_donor: pd.DataFrame,
+) -> None:
+    result = _run(_frame(), sipp_child_disability_donor)
+    person = result.table("person")
+    child = person["age"].lt(15).to_numpy()
+    general = person["is_disabled"].to_numpy(dtype=bool)
+    severe = person["meets_ssi_disability_criteria"].to_numpy(dtype=bool)
+    summary = us_child_disability_summary(result)
+    low, high = US_CHILD_SSI_SEVERITY_SHARE_BAND
+
+    assert not np.any(child & severe & ~general)
+    assert np.any(child & severe)
+    assert np.any(child & general & ~severe)
+    assert low <= summary["child_ssi_criteria_within_general_share"] <= high
+    assert summary["child_ssi_criteria_receipt_anchor"] == (
+        US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR
+    )
 
 
 def test_existing_child_true_is_never_cleared(
@@ -728,16 +922,16 @@ def test_signal_gate_fails_when_an_adult_row_changes(
     assert "age 15+: output rows differ from the stage input." in gate.failures
 
 
-@requires_us
+@pytest.mark.engine
 def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
     sipp_child_disability_donor: pd.DataFrame,
 ) -> None:
-    """Exercise the production stages and simulate the exact resulting frame."""
+    """Exercise the production bridge and census every child SSI path."""
 
     from policyengine_us import Microsimulation
-    from policyengine_us.data import USSingleYearDataset
 
-    household_ids = np.arange(1, 121, dtype=np.int64)
+    builder = _load_builder_module()
+    household_ids = np.arange(1, 2_801, dtype=np.int64)
     person_ids = np.arange(1, 2 * len(household_ids) + 1, dtype=np.int64)
     person_household_ids = np.repeat(household_ids, 2)
     is_child = person_ids % 2 == 0
@@ -746,6 +940,15 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
         1 + ((person_household_ids - 1) % 14),
         35,
     )
+    parent_group = (person_household_ids - 1) % 4
+
+    def parent_amount(values: list[float]) -> np.ndarray:
+        return np.where(
+            is_child,
+            0.0,
+            np.asarray(values, dtype=np.float64)[parent_group],
+        )
+
     zeros = np.zeros(len(person_ids), dtype=np.float64)
     person = pd.DataFrame(
         {
@@ -760,15 +963,21 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
             "is_tax_unit_dependent": is_child,
             "is_disabled": False,
             "A_MARITL": np.where(is_child, 7, 5),
-            "employment_income_before_lsr": zeros,
-            "taxable_interest_income": zeros,
-            "tax_exempt_interest_income": zeros,
-            "qualified_dividend_income": zeros,
-            "non_qualified_dividend_income": zeros,
-            "rental_income": zeros,
-            "bank_account_assets": zeros,
-            "stock_assets": zeros,
-            "bond_assets": zeros,
+            # Every parent has nonzero income and three nonzero asset
+            # components. The four income groups cross the deeming boundary;
+            # modest assets remain heterogeneous without independently
+            # exhausting the child's resource limit.
+            "employment_income_before_lsr": parent_amount(
+                [12_000.0, 36_000.0, 72_000.0, 144_000.0]
+            ),
+            "taxable_interest_income": parent_amount([24.0, 72.0, 144.0, 288.0]),
+            "tax_exempt_interest_income": parent_amount([12.0, 36.0, 72.0, 144.0]),
+            "qualified_dividend_income": parent_amount([12.0, 48.0, 96.0, 192.0]),
+            "non_qualified_dividend_income": parent_amount([12.0, 24.0, 48.0, 96.0]),
+            "rental_income": parent_amount([60.0, 120.0, 240.0, 480.0]),
+            "bank_account_assets": parent_amount([50.0, 100.0, 150.0, 200.0]),
+            "stock_assets": parent_amount([25.0, 50.0, 75.0, 100.0]),
+            "bond_assets": parent_amount([10.0, 20.0, 30.0, 40.0]),
             "PEDISDRS": np.full(len(person_ids), 2),
             "PEDISEAR": np.full(len(person_ids), 2),
             "PEDISEYE": np.full(len(person_ids), 2),
@@ -810,6 +1019,37 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
     )
     expanded = clone_us_frame_for_puf_support(base)
     disability_frame = _run(expanded, sipp_child_disability_donor, seed=453)
+    disability_person = disability_frame.table("person")
+    child_at_disability_stage = disability_person["age"].lt(15).to_numpy()
+    child_general_assignment = (
+        disability_person["is_disabled"].to_numpy(dtype=bool).copy()
+    )
+    child_criteria_assignment = (
+        disability_person["meets_ssi_disability_criteria"].to_numpy(dtype=bool).copy()
+    )
+    assert not np.any(
+        child_at_disability_stage
+        & child_criteria_assignment
+        & ~child_general_assignment
+    )
+    assert np.any(
+        child_at_disability_stage
+        & child_general_assignment
+        & ~child_criteria_assignment
+    )
+    child_stage_clone_counts = (
+        disability_person.loc[
+            child_at_disability_stage,
+            [
+                "person_source_id",
+                "is_disabled",
+                "meets_ssi_disability_criteria",
+            ],
+        ]
+        .groupby("person_source_id")[["is_disabled", "meets_ssi_disability_criteria"]]
+        .nunique()
+    )
+    assert child_stage_clone_counts.eq(1).all(axis=None)
 
     rng = np.random.default_rng(747)
     criteria_donor = pd.DataFrame(index=np.arange(120))
@@ -844,32 +1084,23 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
         time_period=TIME_PERIOD,
         sipp_donor=criteria_donor,
     )
-
-    def simulation(frame: Frame) -> Microsimulation:
-        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-        tables["household"]["household_weight"] = frame.weights_for("household").values
-        dataset = USSingleYearDataset(
-            person=tables["person"],
-            household=tables["household"],
-            tax_unit=tables["tax_unit"],
-            spm_unit=tables["spm_unit"],
-            family=tables["family"],
-            marital_unit=tables["marital_unit"],
-            time_period=TIME_PERIOD,
-        )
-        return Microsimulation(dataset=dataset)
-
-    criteria_simulation = simulation(criteria_frame)
-    uncapped_ssi = np.asarray(
-        criteria_simulation.calculate(
-            "uncapped_ssi",
-            period="2024-12",
-            map_to="person",
-        ),
-        dtype=np.float64,
+    criteria_person = criteria_frame.table("person")
+    criteria_child = criteria_person["age"].lt(15).to_numpy()
+    np.testing.assert_array_equal(
+        criteria_person.loc[
+            criteria_child,
+            "meets_ssi_disability_criteria",
+        ].to_numpy(dtype=bool),
+        child_criteria_assignment[child_at_disability_stage],
     )
 
-    criteria_person = criteria_frame.table("person")
+    # Use the fiscal builder's actual Frame -> Dataset bridge and SSI helper;
+    # this engine-marked leg must fail rather than skip if either breaks.
+    uncapped_ssi = builder._ssi_person_uncapped_amount(
+        criteria_frame,
+        maximum_microsim_batch_size=None,
+    )
+
     person_weights = np.asarray(
         criteria_frame.resolve_weights("person").values,
         dtype=np.float64,
@@ -893,29 +1124,21 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
 
     final_person = final_frame.table("person")
     child = final_person["age"].lt(15).to_numpy()
-    selected = (
-        child
-        & final_person["is_disabled"].to_numpy(dtype=bool)
-        & final_person["meets_ssi_disability_criteria"].to_numpy(dtype=bool)
-        & final_person["takes_up_ssi_if_eligible"].to_numpy(dtype=bool)
-        & (uncapped_ssi > 0.0)
+    general = final_person["is_disabled"].to_numpy(dtype=bool)
+    criteria = final_person["meets_ssi_disability_criteria"].to_numpy(dtype=bool)
+    take_up = final_person["takes_up_ssi_if_eligible"].to_numpy(dtype=bool)
+    np.testing.assert_array_equal(
+        criteria[child],
+        child_criteria_assignment[child_at_disability_stage],
     )
-    rejected_by_take_up = (
-        child
-        & final_person["meets_ssi_disability_criteria"].to_numpy(dtype=bool)
-        & ~final_person["takes_up_ssi_if_eligible"].to_numpy(dtype=bool)
-        & (uncapped_ssi > 0.0)
-    )
-    unselected = (
-        child
-        & ~final_person["is_disabled"].to_numpy(dtype=bool)
-        & ~final_person["meets_ssi_disability_criteria"].to_numpy(dtype=bool)
-    )
-    assert selected.any()
-    assert rejected_by_take_up.any()
-    assert unselected.any()
+    assert not np.any(child & criteria & ~general)
 
-    final_simulation = simulation(final_frame)
+    final_simulation = Microsimulation(
+        dataset=builder._dataset_from_frame(
+            final_frame,
+            assert_no_formula_owned_columns=False,
+        )
+    )
     ssi = np.asarray(
         final_simulation.calculate("ssi", period="2024-12", map_to="person"),
         dtype=np.float64,
@@ -928,14 +1151,73 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
         ),
         dtype=np.float64,
     )
-    selected_row = int(np.flatnonzero(selected)[0])
-    rejected_row = int(np.flatnonzero(rejected_by_take_up)[0])
-    unselected_row = int(np.flatnonzero(unselected)[0])
 
-    assert parent_deeming[selected_row] == 0.0
-    assert ssi[selected_row] > 0.0
-    assert parent_deeming[rejected_row] == 0.0
-    assert uncapped_ssi[rejected_row] > 0.0
-    assert ssi[rejected_row] == 0.0
-    assert uncapped_ssi[unselected_row] == 0.0
-    assert ssi[unselected_row] == 0.0
+    not_general = child & ~general
+    general_not_severe = child & general & ~criteria
+    deeming_zeroed = child & criteria & (uncapped_ssi <= 0.0)
+    passing = child & criteria & (uncapped_ssi > 0.0)
+    positive_deeming = parent_deeming > 0.0
+    deeming_passing_selected = passing & positive_deeming & take_up
+    deeming_passing_rejected = passing & positive_deeming & ~take_up
+    no_deeming_passing_selected = passing & ~positive_deeming & take_up
+    no_deeming_passing_rejected = passing & ~positive_deeming & ~take_up
+    paths = {
+        "not_general": not_general,
+        "general_not_severe": general_not_severe,
+        "deeming_zeroed": deeming_zeroed,
+        "deeming_passing_selected": deeming_passing_selected,
+        "deeming_passing_rejected": deeming_passing_rejected,
+        "no_deeming_passing_selected": no_deeming_passing_selected,
+        "no_deeming_passing_rejected": no_deeming_passing_rejected,
+    }
+    classified = sum(mask.astype(np.int8) for mask in paths.values())
+    np.testing.assert_array_equal(classified, child.astype(np.int8))
+    path_counts = {name: int(mask.sum()) for name, mask in paths.items()}
+    assert path_counts == {
+        "not_general": 5_014,
+        "general_not_severe": 514,
+        "deeming_zeroed": 40,
+        "deeming_passing_selected": 6,
+        "deeming_passing_rejected": 8,
+        "no_deeming_passing_selected": 12,
+        "no_deeming_passing_rejected": 6,
+    }
+
+    assert np.all(parent_deeming[deeming_zeroed] > 0.0)
+    assert np.all(ssi[deeming_zeroed] == 0.0)
+    deeming_passing = deeming_passing_selected | deeming_passing_rejected
+    assert np.all(parent_deeming[deeming_passing] > 0.0)
+    assert np.all(ssi[deeming_passing_selected] > 0.0)
+    assert np.all(ssi[deeming_passing_rejected] == 0.0)
+    no_deeming_passing = no_deeming_passing_selected | no_deeming_passing_rejected
+    assert np.all(parent_deeming[no_deeming_passing] == 0.0)
+    assert np.all(ssi[no_deeming_passing_selected] > 0.0)
+    assert np.all(ssi[no_deeming_passing_rejected] == 0.0)
+    assert np.all(uncapped_ssi[not_general | general_not_severe] == 0.0)
+    assert np.all(ssi[not_general | general_not_severe] == 0.0)
+
+    parents = ~final_person["is_tax_unit_dependent"].to_numpy(dtype=bool)
+    for column in (
+        "employment_income_before_lsr",
+        "bank_account_assets",
+        "stock_assets",
+        "bond_assets",
+    ):
+        parent_values = final_person.loc[parents, column]
+        assert parent_values.gt(0.0).all()
+        assert parent_values.nunique() == 4
+
+    clone_outputs = final_person.loc[
+        :,
+        [
+            "person_source_id",
+            "is_disabled",
+            "meets_ssi_disability_criteria",
+            "takes_up_ssi_if_eligible",
+        ],
+    ].copy()
+    clone_outputs["uncapped_ssi"] = uncapped_ssi
+    clone_outputs["parent_deeming"] = parent_deeming
+    clone_outputs["ssi"] = ssi
+    clone_nunique = clone_outputs.groupby("person_source_id").nunique()
+    assert clone_nunique.eq(1).all(axis=None)
