@@ -16,6 +16,8 @@ __all__ = [
     "has_support_role_metadata",
     "puf_tax_detail_clone_mask",
     "spine_assembly_manifest",
+    "spine_assembly_receipt",
+    "spine_provenance_counts",
     "spine_source_id_column",
     "support_channel_column",
     "support_clone_index_column",
@@ -242,6 +244,70 @@ def validate_assembly_provenance(
     return manifest
 
 
+def spine_assembly_receipt(
+    frame: _ProvenanceFrame,
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    """Return a mutable, JSON-ready copy of a validated assembly receipt.
+
+    :class:`~populace.frame.Frame` freezes metadata recursively. Build
+    manifests need ordinary dictionaries and lists, but must only publish a
+    receipt after validating it against the live provenance columns.
+    """
+
+    manifest = validate_assembly_provenance(frame, boundary=boundary)
+    if manifest is None:  # pragma: no cover - require_manifest defaults true
+        raise AssertionError("Validated assembly receipt unexpectedly absent.")
+    return _json_ready_mapping(manifest)
+
+
+def spine_provenance_counts(
+    frame: _ProvenanceFrame,
+    *,
+    boundary: str,
+) -> dict[str, dict[str, object]]:
+    """Count every source channel and clone index without exposing routing.
+
+    This reporting helper deliberately lives with the provenance owner.
+    Population operators remain unable to branch on source identity; manifests
+    can still publish a complete per-entity receipt after the shared validator
+    proves the live columns agree with assembly.
+    """
+
+    manifest = validate_assembly_provenance(frame, boundary=boundary)
+    if manifest is None:  # pragma: no cover - require_manifest defaults true
+        raise AssertionError("Validated assembly receipt unexpectedly absent.")
+    channels = tuple(str(channel) for channel in manifest["channels"])
+    counts: dict[str, dict[str, object]] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        source = table[support_channel_column(entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).astype("int64")
+        observed_clone_indices = sorted(int(value) for value in clone_index.unique())
+        counts[entity] = {
+            "rows": int(len(table)),
+            "by_source_channel": {
+                channel: int(source.eq(channel).sum()) for channel in channels
+            },
+            "by_clone_index": {
+                str(index): int(clone_index.eq(index).sum())
+                for index in observed_clone_indices
+            },
+            "by_source_channel_and_clone_index": {
+                channel: {
+                    str(index): int((source.eq(channel) & clone_index.eq(index)).sum())
+                    for index in observed_clone_indices
+                }
+                for channel in channels
+            },
+        }
+    return counts
+
+
 def has_support_role_metadata(
     table: pd.DataFrame,
     *,
@@ -426,3 +492,20 @@ def puf_tax_detail_clone_mask(
 def _require_entity_name(entity: str) -> None:
     if not isinstance(entity, str) or not entity:
         raise ValueError("entity must be a non-empty string.")
+
+
+def _json_ready_mapping(value: Mapping[str, Any]) -> dict[str, object]:
+    """Deep-copy frozen receipt values into JSON-compatible containers."""
+
+    def thaw(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            return {str(key): thaw(nested) for key, nested in item.items()}
+        if isinstance(item, tuple):
+            return [thaw(nested) for nested in item]
+        if isinstance(item, list):
+            return [thaw(nested) for nested in item]
+        if isinstance(item, np.generic):
+            return item.item()
+        return item
+
+    return {str(key): thaw(item) for key, item in value.items()}

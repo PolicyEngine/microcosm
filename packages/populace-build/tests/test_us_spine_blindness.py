@@ -68,6 +68,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "form_4952.py",
     "housing_inputs.py",
     "medicare_take_up.py",
+    "multispine_pool.py",
     "other_health_insurance.py",
     "prior_year_income.py",
     "qbi_inputs.py",

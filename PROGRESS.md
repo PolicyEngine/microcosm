@@ -35,12 +35,22 @@
   #581 metadata receipt.
 - Ran the focused #581 assembly, agreement, clone-routing, and AST-guard tests
   against the starting tree: 44 passed.
+- Added the canonical order-bearing runtime seam:
+  assemble → clone → impute → derive → seed → simulate → terminal agreement.
+  The simulated formula-output view is separate from the returned input-only
+  pool, and every operator boundary revalidates the immutable #581 receipt.
+- Added provenance-owner reporting helpers for JSON-ready assembly receipts and
+  per-entity source-channel/clone-index counts; population operators still
+  receive no source-routing interface.
+- Added small two-source tests for the ordered path, batched red agreement,
+  receipt loss, clone-safe ID refusal, manifest counts, and default take-up
+  inventory coverage. The new seam and the full spine-blindness guard pass.
 
 ## Next
 
-1. Implement missing-cell/raw-preserving transfer and receipt-safe
-   post-assembly stages.
-2. Add the canonical pool orchestrator and sha-pinned CLI with deterministic
+1. Finish missing-cell/raw-preserving transfer and receipt-safe production
+   operators.
+2. Add the sha-pinned CLI with deterministic
    manifest/diagnostic paths and no tolerance knobs.
 3. Convert the legacy CLI to a deprecated shim while preserving the helper
    imports its known consumer needs.
