@@ -314,7 +314,16 @@ def _factory_aliases(tree: ast.AST) -> set[str]:
                 )
             else:
                 continue
-            if not isinstance(value, ast.Name) or value.id not in aliases:
+            if isinstance(value, ast.Name):
+                if value.id not in aliases:
+                    continue
+            elif isinstance(value, ast.Attribute):
+                # provenance.support_channel_column — module-qualified
+                # references to canonical factories are ordinary imports,
+                # not obfuscation (sol #583 round 6).
+                if value.attr not in _SOURCE_SPINE_COLUMN_FACTORIES:
+                    continue
+            else:
                 continue
             for target in targets:
                 if isinstance(target, ast.Name) and target.id not in aliases:
@@ -1336,6 +1345,43 @@ class _SourceReadVisitor(ast.NodeVisitor):
         )
         self._bind([node.target], node.value, scope_index=scope_index)
 
+    def _bind_iteration_rows(
+        self,
+        target: ast.AST,
+        iterable: ast.AST,
+    ) -> bool:
+        """Bind tuple-unpacking loop targets over static rows of strings.
+
+        ``for entity, suffix in PAIRS`` with ``PAIRS = (("person",
+        "support_channel"),)`` binds ``entity``/``suffix`` to their
+        per-position choice sets — natural declarative loop code, in
+        scope (sol #583 round 6).
+        """
+
+        literal = _static_literal_value(iterable, self.constants)
+        if literal is _OPAQUE_STATIC_VALUE or not isinstance(literal, (list, tuple)):
+            return False
+        rows = tuple(literal)
+        if not rows or not all(
+            isinstance(row, (list, tuple))
+            and all(isinstance(item, str) for item in row)
+            for row in rows
+        ):
+            return False
+        width = len(rows[0])
+        if any(len(row) != width for row in rows) or not (
+            isinstance(target, (ast.Tuple, ast.List))
+            and len(target.elts) == width
+            and all(isinstance(element, ast.Name) for element in target.elts)
+        ):
+            return False
+        for position, element in enumerate(target.elts):
+            self._bind_iteration_target(
+                element,
+                tuple(row[position] for row in rows),
+            )
+        return True
+
     def _bind_iteration_target(
         self,
         target: ast.AST,
@@ -1512,10 +1558,13 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self._visit_access_target(node.target)
         before = self._flow_state()
         values = _static_string_list(node.iter, self.constants)
-        self._bind_iteration_target(
-            node.target,
-            values,
-        )
+        if values is None and self._bind_iteration_rows(node.target, node.iter):
+            values = ("",)  # rows bound per position; body always analyzed
+        else:
+            self._bind_iteration_target(
+                node.target,
+                values,
+            )
         for statement in node.body:
             self.visit(statement)
         body_state = self._flow_state()
@@ -1557,10 +1606,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 self.visit(generator.iter)
                 values = _static_string_list(generator.iter, self.constants)
             self._visit_access_target(generator.target)
-            self._bind_iteration_target(
-                generator.target,
-                values,
-            )
+            if values is None and self._bind_iteration_rows(
+                generator.target, generator.iter
+            ):
+                pass
+            else:
+                self._bind_iteration_target(
+                    generator.target,
+                    values,
+                )
             for condition in generator.ifs:
                 self.visit(condition)
         if isinstance(node, ast.DictComp):
@@ -3032,6 +3086,59 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_qualified_factory_aliases_and_pair_loops_are_in_scope():
+    """Sol #583 round-6 natural-code gaps: module-qualified factory
+    aliases and tuple-unpacking loops over static pair containers are
+    ordinary code, so they are enforced, not boundary."""
+
+    qualified_alias = """
+import populace.build.us_runtime.support_provenance as provenance
+
+
+def f():
+    factory = provenance.support_channel_column
+    return factory("person")
+"""
+    qualified_named_expr = """
+import populace.build.us_runtime.support_provenance as provenance
+
+
+def f():
+    return (factory := provenance.support_channel_column)("person")
+"""
+    pair_loop = """
+PAIRS = (("person", "support_channel"),)
+
+
+def f():
+    for entity, suffix in PAIRS:
+        sink(f"{entity}_{suffix}")
+"""
+    pair_comprehension = """
+PAIRS = (("person", "support_channel"),)
+
+
+def f():
+    return [f"{entity}_{suffix}" for entity, suffix in PAIRS]
+"""
+    benign_pair_loop = """
+PAIRS = (("person", "age"),)
+
+
+def f():
+    for entity, suffix in PAIRS:
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (
+        qualified_alias,
+        qualified_named_expr,
+        pair_loop,
+        pair_comprehension,
+    ):
+        assert _source_spine_accesses(source), source
+    assert _source_spine_accesses(benign_pair_loop) == ()
 
 
 def test_guard_treats_wildcards_hidden_args_and_mutations_as_opaque():
