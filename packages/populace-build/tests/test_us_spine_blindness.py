@@ -15,10 +15,11 @@ This guard enforces, and its tests certify, exactly these surfaces:
 - loop and comprehension propagation for supported literal or bound string
   choices, structural list/tuple rows, and static-dict ``.items()``,
   ``.values()``, and ``.keys()`` views (including supported ``dict(iterable)``
-  receivers); the element-preserving one-argument builtins ``list``, ``tuple``,
-  ``set``, ``frozenset``, ``sorted``, ``iter``, and ``reversed`` resolve through
-  that same iteration path; refused or partial binding over a fragment-bearing
-  supported static container fails closed at the iteration site; and
+  receivers); one layer of the element-preserving one-argument builtins
+  ``list``, ``tuple``, ``set``, ``frozenset``, ``sorted``, ``iter``, and
+  ``reversed`` resolves through that same iteration path; refused or partial
+  binding over a fragment-bearing supported static container fails closed at
+  the iteration site; and
 - contraband guarded-name literals anywhere statically visible in non-owner
   modules' executable dataflow; true docstrings and annotation forms are
   deliberately exempt.
@@ -1475,6 +1476,11 @@ def _static_iteration_value(
     value = _static_literal_value(node, constants)
     if isinstance(value, _StaticDictEntries):
         return tuple(key for key, _value in value)
+    if isinstance(value, dict):
+        # Iteration over a mapping projects keys. Normalize here so an inline
+        # element-preserving wrapper and a wrapper bound before iteration take
+        # the same shared path (sol #583 rounds 19-20).
+        return tuple(value)
     if value is not _OPAQUE_STATIC_VALUE:
         return value
     structure = _static_structure(node, constants)
@@ -3874,6 +3880,24 @@ def f(dynamic, sink):
     assert _source_spine_accesses(benign_partial_layer) == ()
 
 
+_ROUND_20_NAMED_FINDING = "contraband source column 'person_support_channel'"
+_ROUND_20_FAIL_CLOSED_FINDING = (
+    "iteration over a static container carrying guarded-name fragments "
+    "with unpropagatable target geometry (fail-closed)"
+)
+
+
+def _finding_classifications(source: str) -> tuple[str, ...]:
+    """Finding descriptions without locations, retaining duplicate reports."""
+
+    return tuple(
+        sorted(
+            access.split(": ", maxsplit=1)[1]
+            for access in _source_spine_accesses(source)
+        )
+    )
+
+
 def test_round_20_exact_keys_wrapper_and_filtered_repros_classify():
     """The round-20 reviewer constructions catch inline and after binding."""
 
@@ -3986,14 +4010,6 @@ for entity, suffix in ROWS:
 def test_round_20_partial_keys_views_preserve_the_dual_report():
     """Known keys classify while an opaque sibling still fails closed."""
 
-    def classifications(source: str) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                access.split(": ", maxsplit=1)[1]
-                for access in _source_spine_accesses(source)
-            )
-        )
-
     bound = """
 BASE = {"person": "age"}
 def f(key, dynamic, sink):
@@ -4025,15 +4041,366 @@ def f(key, dynamic, sink):
         sink(f"{entity}_age")
 """
 
-    expected = (
-        "contraband source column 'person_support_channel'",
-        "iteration over a static container carrying guarded-name fragments "
-        "with unpropagatable target geometry (fail-closed)",
-    )
-    assert classifications(bound) == expected
-    assert classifications(inline) == expected
+    expected = (_ROUND_20_NAMED_FINDING, _ROUND_20_FAIL_CLOSED_FINDING)
+    assert _finding_classifications(bound) == expected
+    assert _finding_classifications(inline) == expected
     assert _source_spine_accesses(benign_bound) == ()
     assert _source_spine_accesses(benign_inline) == ()
+
+
+@pytest.mark.parametrize("partial", [False, True], ids=["full", "partial"])
+@pytest.mark.parametrize(
+    "hostile",
+    [pytest.param(True, id="hostile"), pytest.param(False, id="benign")],
+)
+def test_round_20_keys_views_match_bare_dict_iteration(
+    partial: bool,
+    hostile: bool,
+) -> None:
+    """Keys project keys, including projection-sensitive benign controls."""
+
+    known_key = "person" if hostile else "state"
+    # The benign value is deliberately hostile as a key projection control.
+    known_value = "age" if hostile else "person"
+    if partial:
+        setup = f'BASE = {{"{known_key}": "{known_value}"}}'
+
+        def source(iterable: str, *, bind_view: bool = False) -> str:
+            lines = [setup, "def f(key, dynamic, sink):"]
+            lines.append("    DATA = {**BASE, key: dynamic}")
+            if bind_view:
+                lines.append("    KEYS = DATA.keys()")
+            lines.extend(
+                (
+                    f"    for entity in {iterable}:",
+                    '        sink(f"{entity}_support_channel")',
+                )
+            )
+            return "\n".join(lines)
+
+    else:
+        setup = f'DATA = {{"{known_key}": "{known_value}"}}'
+
+        def source(iterable: str, *, bind_view: bool = False) -> str:
+            lines = [setup, "def f(sink):"]
+            if bind_view:
+                lines.append("    KEYS = DATA.keys()")
+            lines.extend(
+                (
+                    f"    for entity in {iterable}:",
+                    '        sink(f"{entity}_support_channel")',
+                )
+            )
+            return "\n".join(lines)
+
+    inline = _finding_classifications(source("DATA.keys()"))
+    bound = _finding_classifications(source("KEYS", bind_view=True))
+    bare = _finding_classifications(source("DATA"))
+    expected = (
+        (_ROUND_20_NAMED_FINDING, _ROUND_20_FAIL_CLOSED_FINDING)
+        if hostile and partial
+        else (_ROUND_20_NAMED_FINDING,)
+        if hostile
+        else ()
+    )
+    assert inline == bound == bare == expected
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS),
+)
+@pytest.mark.parametrize(
+    ("operand_case", "target", "sink_statement"),
+    (
+        pytest.param(
+            "bare_dict",
+            "entity",
+            'sink(f"{entity}_support_channel")',
+            id="bare-dict",
+        ),
+        pytest.param(
+            "items",
+            "entity, suffix",
+            'sink(f"{entity}_{suffix}")',
+            id="items-view",
+        ),
+        pytest.param(
+            "values",
+            "entity",
+            'sink(f"{entity}_support_channel")',
+            id="values-view",
+        ),
+        pytest.param(
+            "keys",
+            "entity",
+            'sink(f"{entity}_support_channel")',
+            id="keys-view",
+        ),
+        pytest.param(
+            "partial_dict",
+            "entity",
+            'sink(f"{entity}_support_channel")',
+            id="partial-dict",
+        ),
+    ),
+)
+@pytest.mark.parametrize(
+    "hostile",
+    [pytest.param(True, id="hostile"), pytest.param(False, id="benign")],
+)
+def test_round_20_element_preserving_wrapper_view_matrix(
+    wrapper: str,
+    operand_case: str,
+    target: str,
+    sink_statement: str,
+    hostile: bool,
+) -> None:
+    """All seven wrappers classify like the same operand without a wrapper."""
+
+    if operand_case in {"bare_dict", "keys"}:
+        key = "person" if hostile else "state"
+        # A hostile benign-side value proves that only keys are projected.
+        value = "age" if hostile else "person"
+        setup = f'DATA = {{"{key}": "{value}"}}'
+        operand = "DATA" if operand_case == "bare_dict" else "DATA.keys()"
+    elif operand_case == "items":
+        key = "person" if hostile else "state"
+        value = "support_channel" if hostile else "fips"
+        setup = f'DATA = {{"{key}": "{value}"}}'
+        operand = "DATA.items()"
+    elif operand_case == "values":
+        key = "known" if hostile else "person"
+        value = "person" if hostile else "state"
+        setup = f'DATA = {{"{key}": "{value}"}}'
+        operand = "DATA.values()"
+    else:
+        key = "person" if hostile else "state"
+        # As above, the benign value catches an accidental values projection.
+        value = "age" if hostile else "person"
+        setup = f'BASE = {{"{key}": "{value}"}}'
+        operand = "{**BASE, key: dynamic}"
+
+    def source(mode: str) -> str:
+        lines = [setup, "def f(key, dynamic, sink):"]
+        if mode == "bound":
+            lines.append(f"    WRAPPED = {wrapper}({operand})")
+            iterable = "WRAPPED"
+        elif mode == "inline":
+            iterable = f"{wrapper}({operand})"
+        else:
+            iterable = operand
+        lines.extend(
+            (
+                f"    for {target} in {iterable}:",
+                f"        {sink_statement}",
+            )
+        )
+        return "\n".join(lines)
+
+    expected = (
+        (_ROUND_20_NAMED_FINDING, _ROUND_20_FAIL_CLOSED_FINDING)
+        if hostile and operand_case == "partial_dict"
+        else (_ROUND_20_NAMED_FINDING,)
+        if hostile
+        else ()
+    )
+    assert _finding_classifications(source("bound")) == expected
+    assert _finding_classifications(source("inline")) == expected
+    assert _finding_classifications(source("unwrapped")) == expected
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS),
+)
+@pytest.mark.parametrize("partial", [False, True], ids=["full", "partial"])
+@pytest.mark.parametrize(
+    "hostile",
+    [pytest.param(True, id="hostile"), pytest.param(False, id="benign")],
+)
+def test_round_20_wrappers_preserve_static_structural_rows(
+    wrapper: str,
+    partial: bool,
+    hostile: bool,
+) -> None:
+    """Opaque-with-fragments operands never collapse silently to empty."""
+
+    if hostile:
+        rows = (
+            '(("person", "support_channel"), ("state", dynamic))'
+            if partial
+            else '(("person", "support_channel"), ("state", "fips"))'
+        )
+    else:
+        rows = (
+            '(("state", "fips"), ("county", dynamic))'
+            if partial
+            else '(("state", "fips"), ("county", "code"))'
+        )
+
+    def source(mode: str) -> str:
+        lines = ["def f(dynamic, sink):"]
+        if mode == "bound":
+            lines.extend((f"    ROWS = {rows}", f"    WRAPPED = {wrapper}(ROWS)"))
+            iterable = "WRAPPED"
+        elif mode == "inline":
+            iterable = f"{wrapper}({rows})"
+        else:
+            iterable = rows
+        lines.extend(
+            (
+                f"    for entity, suffix in {iterable}:",
+                '        sink(f"{entity}_{suffix}")',
+            )
+        )
+        return "\n".join(lines)
+
+    expected = (
+        (_ROUND_20_NAMED_FINDING, _ROUND_20_FAIL_CLOSED_FINDING)
+        if hostile and partial
+        else (_ROUND_20_NAMED_FINDING,)
+        if hostile
+        else ()
+    )
+    assert _finding_classifications(source("bound")) == expected
+    assert _finding_classifications(source("inline")) == expected
+    assert _finding_classifications(source("unwrapped")) == expected
+
+
+def _round_20_identity_pair_comprehension(
+    kind: str,
+    iterable: str,
+    *,
+    filtered: bool,
+) -> str:
+    clause = f"for e, s in {iterable}"
+    if filtered:
+        clause += ' if e != "state"'
+    if kind == "list":
+        return f"[(e, s) {clause}]"
+    if kind == "set":
+        return f"{{(e, s) {clause}}}"
+    if kind == "generator":
+        return f"((e, s) {clause})"
+    return f"{{e: s {clause}}}"
+
+
+@pytest.mark.parametrize("kind", ("list", "set", "generator", "dict"))
+@pytest.mark.parametrize("partial", [False, True], ids=["full", "partial"])
+@pytest.mark.parametrize(
+    "hostile",
+    [pytest.param(True, id="hostile"), pytest.param(False, id="benign")],
+)
+def test_round_20_filtered_identity_comprehension_matrix(
+    kind: str,
+    partial: bool,
+    hostile: bool,
+) -> None:
+    """Every filtered identity form classifies as its unfiltered row set."""
+
+    if partial:
+        key = "person" if hostile else "state"
+        value = "support_channel" if hostile else "fips"
+        setup = f'BASE = {{"{key}": "{value}"}}'
+    else:
+        setup = (
+            'DATA = {"person": "support_channel", "state": "fips"}'
+            if hostile
+            else 'DATA = {"state": "fips"}'
+        )
+
+    def source(*, filtered: bool, bound: bool) -> str:
+        lines = [setup, "def f(key, dynamic, sink):"]
+        if partial:
+            lines.append("    DATA = {**BASE, key: dynamic}")
+        expression = _round_20_identity_pair_comprehension(
+            kind,
+            "DATA.items()",
+            filtered=filtered,
+        )
+        if bound:
+            lines.append(f"    ROWS = {expression}")
+            iterable = "ROWS.items()" if kind == "dict" else "ROWS"
+        else:
+            iterable = f"({expression}).items()" if kind == "dict" else expression
+        lines.extend(
+            (
+                f"    for entity, suffix in {iterable}:",
+                '        sink(f"{entity}_{suffix}")',
+            )
+        )
+        return "\n".join(lines)
+
+    expected = (
+        (
+            _ROUND_20_NAMED_FINDING,
+            _ROUND_20_FAIL_CLOSED_FINDING,
+            _ROUND_20_FAIL_CLOSED_FINDING,
+        )
+        if hostile and partial
+        else (_ROUND_20_NAMED_FINDING,)
+        if hostile
+        else ()
+    )
+    variants = (
+        source(filtered=True, bound=True),
+        source(filtered=True, bound=False),
+        source(filtered=False, bound=True),
+        source(filtered=False, bound=False),
+    )
+    for variant in variants:
+        assert _finding_classifications(variant) == expected, variant
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [pytest.param(True, id="hostile"), pytest.param(False, id="benign")],
+)
+def test_round_20_filtered_identity_dict_retains_duplicate_key_candidates(
+    hostile: bool,
+) -> None:
+    """A filter may remove a later duplicate, so every source row survives."""
+
+    key = "person" if hostile else "state"
+    first_value = "support_channel" if hostile else "fips"
+    setup = f'DATA = (("{key}", "{first_value}"), ("{key}", "age"))'
+    bound = f"""
+{setup}
+ROWS = {{entity: suffix for entity, suffix in DATA if suffix != "age"}}
+for entity, suffix in ROWS.items():
+    sink(f"{{entity}}_{{suffix}}")
+"""
+    inline = f"""
+{setup}
+for entity, suffix in (
+    {{entity: suffix for entity, suffix in DATA if suffix != "age"}}
+).items():
+    sink(f"{{entity}}_{{suffix}}")
+"""
+    expected = (_ROUND_20_NAMED_FINDING,) if hostile else ()
+    assert _finding_classifications(bound) == expected
+    assert _finding_classifications(inline) == expected
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    (
+        "acs_transfer.py",
+        "capital_gain_details.py",
+        "housing_inputs.py",
+        "congressional_district_vintage.py",
+        "congressional_district_vintage_crosswalk.py",
+    ),
+)
+def test_round_20_named_production_modules_scan_clean_raw_and_governed(
+    module_name: str,
+) -> None:
+    """The five requested production controls remain clean on both paths."""
+
+    source = (_US_RUNTIME / module_name).read_text(encoding="utf-8")
+    assert _source_spine_accesses(source) == ()
+    assert _non_owner_source_spine_accesses(module_name, source) == ()
 
 
 def test_round_19_bound_and_inline_iteration_classifications_are_identical():
@@ -4041,7 +4408,9 @@ def test_round_19_bound_and_inline_iteration_classifications_are_identical():
 
     Comparison strips source locations but preserves duplicate reports, so a
     bound layer cannot silently lose either a named catch or fail-closed
-    record. Each behavior also has a fragment-free mirror pinned clean.
+    record. Each behavior also has a fragment-free mirror pinned clean. The
+    round-20 keys, builtin-wrapper, and filtered-identity families extend the
+    same equivalence property.
     """
 
     def classifications(source: str) -> tuple[str, ...]:
@@ -4250,6 +4619,85 @@ def f(dynamic, sink):
         sink(f"{entity}_age")
 """
 
+    bound_keys_view = """
+DATA = {"person": "age"}
+KEYS = DATA.keys()
+for entity in KEYS:
+    sink(f"{entity}_support_channel")
+"""
+    inline_keys_view = """
+DATA = {"person": "age"}
+for entity in DATA.keys():
+    sink(f"{entity}_support_channel")
+"""
+    benign_bound_keys_view = """
+DATA = {"state": "person"}
+KEYS = DATA.keys()
+for entity in KEYS:
+    sink(f"{entity}_support_channel")
+"""
+    benign_inline_keys_view = """
+DATA = {"state": "person"}
+for entity in DATA.keys():
+    sink(f"{entity}_support_channel")
+"""
+
+    bound_filtered_rows = """
+DATA = {"person": "support_channel", "state": "fips"}
+ROWS = [(e, s) for e, s in DATA.items() if e != "state"]
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+"""
+    inline_filtered_rows = """
+DATA = {"person": "support_channel", "state": "fips"}
+for entity, suffix in [(e, s) for e, s in DATA.items() if e != "state"]:
+    sink(f"{entity}_{suffix}")
+"""
+    benign_bound_filtered_rows = """
+DATA = {"state": "fips"}
+ROWS = [(e, s) for e, s in DATA.items() if e != "state"]
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+"""
+    benign_inline_filtered_rows = """
+DATA = {"state": "fips"}
+for entity, suffix in [(e, s) for e, s in DATA.items() if e != "state"]:
+    sink(f"{entity}_{suffix}")
+"""
+
+    wrapper_equivalent_pairs = tuple(
+        (
+            f"""
+DATA = {{"person": "support_channel"}}
+ROWS = {wrapper}(DATA.items())
+for entity, suffix in ROWS:
+    sink(f"{{entity}}_{{suffix}}")
+""",
+            f"""
+DATA = {{"person": "support_channel"}}
+for entity, suffix in {wrapper}(DATA.items()):
+    sink(f"{{entity}}_{{suffix}}")
+""",
+        )
+        for wrapper in sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS)
+    )
+    benign_wrapper_equivalent_pairs = tuple(
+        (
+            f"""
+DATA = {{"state": "fips"}}
+ROWS = {wrapper}(DATA.items())
+for entity, suffix in ROWS:
+    sink(f"{{entity}}_{{suffix}}")
+""",
+            f"""
+DATA = {{"state": "fips"}}
+for entity, suffix in {wrapper}(DATA.items()):
+    sink(f"{{entity}}_{{suffix}}")
+""",
+        )
+        for wrapper in sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS)
+    )
+
     equivalent_pairs = (
         (bare_identity_dict, bare_dict),
         (bound_copy_keys, bare_identity_dict),
@@ -4258,6 +4706,9 @@ def f(dynamic, sink):
         (bound_rows, inline_rows),
         (bound_partial_data, inline_partial_data),
         (bound_partial_layer, inline_partial_layer),
+        (bound_keys_view, inline_keys_view),
+        (bound_filtered_rows, inline_filtered_rows),
+        *wrapper_equivalent_pairs,
     )
     for bound_or_composed, runtime_equivalent in equivalent_pairs:
         assert classifications(bound_or_composed) == classifications(
@@ -4283,6 +4734,9 @@ def f(dynamic, sink):
         (benign_bound_rows, benign_inline_rows),
         (benign_bound_partial_data, benign_inline_partial_data),
         (benign_bound_partial_layer, benign_inline_partial_layer),
+        (benign_bound_keys_view, benign_inline_keys_view),
+        (benign_bound_filtered_rows, benign_inline_filtered_rows),
+        *benign_wrapper_equivalent_pairs,
     )
     for bound_or_composed, runtime_equivalent in fragment_free_pairs:
         assert _source_spine_accesses(bound_or_composed) == ()
