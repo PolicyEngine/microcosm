@@ -15,9 +15,12 @@ This guard enforces, and its tests certify, exactly these surfaces:
 - loop and comprehension propagation for supported literal or bound string
   choices, structural list/tuple rows, and static-dict ``.items()``,
   ``.values()``, and ``.keys()`` views (including supported ``dict(iterable)``
-  receivers); one layer of the element-preserving one-argument builtins
-  ``list``, ``tuple``, ``set``, ``frozenset``, ``sorted``, ``iter``, and
-  ``reversed`` resolves through that same iteration path; refused or partial
+  receivers); one layer of builtin wrappers classified by membership resolves
+  through that same iteration path: the strict one-argument forms of ``list``,
+  ``tuple``, ``set``, ``frozenset``, ``iter``, and ``reversed`` preserve
+  elements, ``sorted`` also accepts its order-only ``key`` and ``reverse``
+  keywords, and ``filter(predicate, iterable)`` resolves as its unfiltered
+  operand because filtering can only remove elements; refused or partial
   binding over a fragment-bearing supported static container fails closed at
   the iteration site; and
 - contraband guarded-name literals anywhere statically visible in non-owner
@@ -41,12 +44,12 @@ Where multi-value loop bindings combine in one template, the guard may
 over-report combinations that no single row produces (a Cartesian
 over-catch). Over-reporting is the safe failure direction for a
 tripwire; a module that trips it restructures its table. Filtered identity
-comprehensions over supported static sources likewise resolve as their
-unfiltered row sets: predicates can only remove rows, so retaining every row
-is the sound over-approximation. Partial dict views likewise retain every entry
-with an opaque key because unknown runtime keys may be distinct; if they
-collide, a value overwritten at runtime can remain in the guard's conservative
-choice set.
+comprehensions and ``filter`` calls over supported static sources likewise
+resolve as their unfiltered row sets: predicates can only remove rows, so
+retaining every row is the sound over-approximation. Partial dict views likewise
+retain every entry with an opaque key because unknown runtime keys may be
+distinct; if they collide, a value overwritten at runtime can remain in the
+guard's conservative choice set.
 """
 
 from __future__ import annotations
@@ -519,9 +522,16 @@ def _static_string_shape(
 _OPAQUE_STATIC_VALUE = object()
 _OPAQUE_STRING_PART = "\N{OBJECT REPLACEMENT CHARACTER}"
 _OPAQUE_METHOD_ALIAS = ("", True)
-_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS = frozenset(
-    {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
+_REFUSED_STATIC_ITERATION_VALUE = object()
+_REFUSED_STATIC_ITERATION_WITH_GUARDED_FRAGMENTS = object()
+_STRICT_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS = frozenset(
+    {"frozenset", "iter", "list", "reversed", "set", "tuple"}
 )
+_SORTED_ORDER_ONLY_KEYWORDS = frozenset({"key", "reverse"})
+_ITERATION_MEMBERSHIP_BUILTINS = _STRICT_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS | {
+    "filter",
+    "sorted",
+}
 
 
 class _PartialStringChoices(tuple):
@@ -1420,23 +1430,90 @@ def _value_bears_strings(value: object) -> bool:
     return False
 
 
+def _static_iteration_wrapper_operand(node: ast.AST) -> ast.AST | None:
+    """Return a sound membership-superset operand for supported wrappers."""
+
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+        return None
+    name = node.func.id
+    if (
+        name in _STRICT_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        return node.args[0]
+    if name == "sorted" and len(node.args) == 1:
+        keyword_names = tuple(keyword.arg for keyword in node.keywords)
+        if len(keyword_names) == len(set(keyword_names)) and all(
+            keyword_name in _SORTED_ORDER_ONLY_KEYWORDS
+            for keyword_name in keyword_names
+        ):
+            return node.args[0]
+    if name == "filter" and len(node.args) == 2 and not node.keywords:
+        # A predicate can remove members but cannot introduce them, so the
+        # unfiltered iterable is the sound candidate superset.
+        return node.args[1]
+    return None
+
+
+def _iteration_value_carries_guarded_fragments(value: object) -> bool:
+    """Leaf-walk a resolved value without admitting refused wrappers."""
+
+    if value is _REFUSED_STATIC_ITERATION_WITH_GUARDED_FRAGMENTS:
+        return True
+    if value is _OPAQUE_STATIC_VALUE or value is _REFUSED_STATIC_ITERATION_VALUE:
+        return False
+    leaves: list[str] = []
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            if len(item) >= 4:
+                leaves.append(item)
+        elif isinstance(item, (list, tuple, set, frozenset)):
+            stack.extend(item)
+        elif isinstance(item, dict):
+            stack.extend(item.keys())
+            stack.extend(item.values())
+    return any(
+        fragment in column for fragment in leaves for column in _OPERATOR_SOURCE_COLUMNS
+    )
+
+
 def _static_iteration_value(
     node: ast.AST,
     constants: list[dict[str, object]],
 ) -> object:
     """Resolve the one structural value shared by binders and probes."""
 
+    wrapper_operand = _static_iteration_wrapper_operand(node)
+    if wrapper_operand is not None:
+        # Classification depends on possible membership, never order or
+        # multiplicity. Element-preserving wrappers keep the operand's exact
+        # members; filter keeps a subset, for which the operand is a sound
+        # over-approximation. Preserve opaque sentinels through either path.
+        return _static_iteration_value(wrapper_operand, constants)
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in _ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS
-        and len(node.args) == 1
-        and not node.keywords
+        and node.func.id in _ITERATION_MEMBERSHIP_BUILTINS
     ):
-        # Classification depends only on the iterated elements. These builtins
-        # materialize, reorder, or expose exactly those elements, so preserve
-        # the shared resolver's abstract value, including opaque sentinels.
-        return _static_iteration_value(node.args[0], constants)
+        # A recognized wrapper with a refused call shape must not enter the
+        # table. Retain only enough evidence for a later inline or bound
+        # iteration to fail closed when its operands carry guarded fragments.
+        argument_values = (
+            *(_static_iteration_value(argument, constants) for argument in node.args),
+            *(
+                _static_iteration_value(keyword.value, constants)
+                for keyword in node.keywords
+            ),
+        )
+        if any(
+            _iteration_value_carries_guarded_fragments(value)
+            for value in argument_values
+        ):
+            return _REFUSED_STATIC_ITERATION_WITH_GUARDED_FRAGMENTS
+        return _REFUSED_STATIC_ITERATION_VALUE
     structural_rows = _identity_structural_rows(node, constants)
     if structural_rows is not None and not isinstance(node, ast.DictComp):
         # Structural identity comprehensions map rows to themselves, so
@@ -1516,23 +1593,8 @@ def _structure_carries_guarded_fragments(
 ) -> bool:
     """Leaf-walk the same resolved iterable structure used by the binder."""
 
-    value = _static_iteration_value(node, constants)
-    if value is _OPAQUE_STATIC_VALUE:
-        return False
-    leaves: list[str] = []
-    stack = [value]
-    while stack:
-        item = stack.pop()
-        if isinstance(item, str):
-            if len(item) >= 4:
-                leaves.append(item)
-        elif isinstance(item, (list, tuple, set, frozenset)):
-            stack.extend(item)
-        elif isinstance(item, dict):
-            stack.extend(item.keys())
-            stack.extend(item.values())
-    return any(
-        fragment in column for fragment in leaves for column in _OPERATOR_SOURCE_COLUMNS
+    return _iteration_value_carries_guarded_fragments(
+        _static_iteration_value(node, constants)
     )
 
 
@@ -3905,6 +3967,100 @@ def _finding_classifications(source: str) -> tuple[str, ...]:
             for access in _source_spine_accesses(source)
         )
     )
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    (
+        pytest.param("reverse=False", id="reverse-false"),
+        pytest.param("key=None", id="key-none"),
+    ),
+)
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_exact_sorted_keyword_repros_classify(
+    keyword: str,
+    mode: str,
+) -> None:
+    """The exact round-21 sorted calls resolve inline and after binding."""
+
+    lines = [
+        'DATA = {"person": "support_channel"}',
+        "def f(sink):",
+    ]
+    if mode == "bound":
+        lines.append(f"    ROWS = sorted(DATA.items(), {keyword})")
+        iterable = "ROWS"
+    else:
+        iterable = f"sorted(DATA.items(), {keyword})"
+    lines.extend(
+        (
+            f"    for entity, suffix in {iterable}:",
+            '        sink(f"{entity}_{suffix}")',
+        )
+    )
+
+    assert _finding_classifications("\n".join(lines)) == (_ROUND_20_NAMED_FINDING,)
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    (
+        pytest.param("reverse=False", id="reverse-false"),
+        pytest.param("key=None", id="key-none"),
+    ),
+)
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_partial_keys_under_sorted_keywords_dual_report(
+    keyword: str,
+    mode: str,
+) -> None:
+    """A partial keys view retains both its known catch and its opacity."""
+
+    lines = [
+        'BASE = {"person": "age"}',
+        "def f(unknown_key, dynamic, sink):",
+        "    DATA = {**BASE, unknown_key: dynamic}",
+    ]
+    if mode == "bound":
+        lines.append(f"    ROWS = sorted(DATA.keys(), {keyword})")
+        iterable = "ROWS"
+    else:
+        iterable = f"sorted(DATA.keys(), {keyword})"
+    lines.extend(
+        (
+            f"    for entity in {iterable}:",
+            '        sink(f"{entity}_support_channel")',
+        )
+    )
+
+    assert _finding_classifications("\n".join(lines)) == (
+        _ROUND_20_NAMED_FINDING,
+        _ROUND_20_FAIL_CLOSED_FINDING,
+    )
+
+
+@pytest.mark.parametrize("mode", ("inline", "bound"))
+def test_round_21_exact_filter_call_repro_classifies(mode: str) -> None:
+    """The filtered-comprehension finding also resolves in builtin form."""
+
+    lines = [
+        'DATA = {"person": "support_channel", "state": "fips"}',
+        "def f(sink):",
+    ]
+    expression = 'filter(lambda kv: kv[0] != "state", DATA.items())'
+    if mode == "bound":
+        lines.append(f"    ROWS = {expression}")
+        iterable = "ROWS"
+    else:
+        iterable = expression
+    lines.extend(
+        (
+            f"    for entity, suffix in {iterable}:",
+            '        sink(f"{entity}_{suffix}")',
+        )
+    )
+
+    assert _ROUND_20_NAMED_FINDING in _finding_classifications("\n".join(lines))
 
 
 def test_round_20_exact_keys_wrapper_and_filtered_repros_classify():
