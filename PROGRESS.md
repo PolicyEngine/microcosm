@@ -23,14 +23,26 @@
 - Verified GitHub's current `main` tip is `6c14a0a`.
 - Created the requested branch and worktree without modifying the existing
   checkout.
+- Audited the legacy ACS multispine tool's consumers. The local-release builder
+  imports its H5 helpers and the published build recipe names its CLI, so the
+  legacy path will remain only as a deprecated compatibility shim.
+- Traced the production stage contracts from the ASEC pre-clone checkpoint and
+  byte-pinned ACS PUMS acquisition through assembly, PUF cloning and transfer,
+  derivation, seeding, SSI simulation, and the fixed agreement gate.
+- Identified two correctness fixes required by the new ordering:
+  `transfer_acs_inputs` must fill missing cells without overwriting measured
+  values, and every post-assembly `Frame` reconstruction must preserve the
+  #581 metadata receipt.
+- Ran the focused #581 assembly, agreement, clone-routing, and AST-guard tests
+  against the starting tree: 44 passed.
 
 ## Next
 
-1. Map the pre-clone ASEC product, ACS unit-frame builder, assembly/clone/gate
-   contracts, and existing multispine tool consumers.
-2. Design the canonical assemble → clone → impute/derive/seed → agreement
-   pipeline with sha-pinned explicit inputs and failure receipts.
-3. Implement the pool builder and retain the old tool only as a thin deprecated
-   shim if consumers require it.
+1. Implement missing-cell/raw-preserving transfer and receipt-safe
+   post-assembly stages.
+2. Add the canonical pool orchestrator and sha-pinned CLI with deterministic
+   manifest/diagnostic paths and no tolerance knobs.
+3. Convert the legacy CLI to a deprecated shim while preserving the helper
+   imports its known consumer needs.
 4. Add synthetic full-path tests, changelog fragment, focused verification, and
    the external review worklog.
