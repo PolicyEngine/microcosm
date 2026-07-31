@@ -1,0 +1,1 @@
+Add a SHA-pinned, pre-calibration US multispine pool builder that assembles ASEC and ACS before PUF cloning and source-blind operators, emits nullable input-only artifacts with provenance receipts, and runs the fixed spine-agreement gate as its terminal stage; this code increment has synthetic fixture coverage but does not certify a full-data build.

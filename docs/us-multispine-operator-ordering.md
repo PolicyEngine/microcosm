@@ -1,16 +1,16 @@
 # US multispine operator ordering
 
-This note records the build ordering visible in
-`tools/build_us_puf_support_base.py`,
-`tools/build_us_acs_multispine_base.py`, and their directly called US runtime
-modules. It defines the seam introduced by populace#395; it does not certify
-the distributions of an output artifact.
+This note records the executable pool ordering in
+`tools/build_us_multispine_pool.py` and the serial lineage it replaces. The
+assembly and agreement contracts originated in populace#581; populace#578
+increment 2 wires them into a build path. This documentation and its fixture
+tests do not certify a full-data output artifact.
 
-## Current ordering
+## Retired serial ordering
 
-The current lineage is two serial builds. The first build produces an
-operated ASEC-by-PUF-detail donor. The second build creates ACS records,
-transfers inputs from that donor, and only then appends ACS.
+The earlier lineage used two serial builds. The first build produced an
+operated ASEC-by-PUF-detail donor. The second build created ACS records,
+transferred inputs from that donor, and only then appended ACS.
 
 ### `build_us_puf_support_base.py`
 
@@ -35,8 +35,8 @@ stages.
 
 ### `build_us_acs_multispine_base.py`
 
-The ACS builder takes that exported H5 as `--base-h5`. Its runtime call graph
-is:
+The former ACS builder took that exported H5 as `--base-h5`. Its runtime call
+graph was:
 
 1. Load and validate the dense ASEC-by-PUF-detail base and declared transfer
    coverage.
@@ -55,14 +55,62 @@ is:
 Calibration is downstream of this tool. Simulation is not run by either
 builder in this call graph.
 
-The important ordering fact is structural: ACS receives model-input
+The important ordering flaw is structural: ACS receives model-input
 transfers from a donor after the donor has crossed the ASEC-only operator
 sequence. Appending the transferred ACS records later does not cause those
 operators to run over the combined population.
 
-## Current provenance axes
+`build_us_acs_multispine_base.py` is now a deprecated compatibility shim for
+shared legacy H5 helpers. It does not expose a second executable pool builder.
 
-The current lineage uses two related metadata schemes:
+## Executable increment-2 pool build
+
+`build_us_multispine_pool.py` consumes only explicit local files and their
+declared SHA-256 values:
+
+- the input-complete ASEC checkpoint from the
+  `pre_clone_enrichment` outer-stage boundary;
+- the ACS household and person PUMS archives, whose caller-supplied hashes
+  must also match the checked-in ACS source manifest; and
+- the processed PUF H5 and source-year PUF CSV used by the existing donor
+  loader.
+
+The tool does not download any source. It verifies all file pins before
+loading frames, maps measured ACS fields without overwriting them, and then
+runs this fixed sequence:
+
+1. `assemble_spines({"asec": ..., "acs": ...})` creates the first shared
+   population state and binds the immutable assembly receipt.
+2. `clone_us_frame_for_puf_support(...)` applies the PUF-detail clone to the
+   whole assembled pool. Clone-index provenance, not source-spine identity,
+   controls later PUF-detail routing.
+3. The primary PUF QRF chain and capital-gains tail transfer run over the
+   combined frame, followed by the declared ACS input-family QRF transfers.
+   Existing measured target cells remain unchanged, and transfer receipts
+   record fitted and imputed rows.
+4. Deterministic input reconciliation runs over that same pool.
+5. The seed stage preserves existing take-up values, applies the sourced
+   TANF and EITC mechanisms, and explicitly receipts live engine defaults
+   used for unresolved, non-transfer-owned take-up inputs. Those defaults
+   are not described as fitted or administrative mechanisms.
+6. SSI is materialized only on an ephemeral agreement view in fixed
+   household batches. Any engine defaults required solely for that
+   calculation are separately receipted; formula output is not written into
+   the input pool.
+7. The unchanged spine-agreement gate is terminal. It uses its checked-in
+   registry and fixed tolerances, batches all failures, and controls the
+   manifest's simulation-ready status.
+
+The output H5 is a nullable, input-only, pre-calibration pool. Its companion
+manifest carries input pins, the assembly receipt, per-source and per-clone
+counts, operator receipts, and the complete agreement result. A failed gate
+writes diagnostics and a non-ready manifest and exits nonzero. Calibration
+is deliberately absent; the downstream k-ladder may consume only a pool
+whose terminal agreement result passed.
+
+## Provenance axes
+
+The retired lineage used two related metadata schemes:
 
 - PUF support cloning adds, on every entity,
   `*_source_id`, `*_support_channel`, and
@@ -77,13 +125,13 @@ The current lineage uses two related metadata schemes:
   including the target family, donor spine/channel, predictors, seeds,
   weight kind, recipient patterns, and unmodeled-row count.
 
-Those fields currently mix two concepts: the population source that carried
-a record and the PUF-detail copy created by an operator. The new seam keeps
-those concepts separate.
+Those fields mixed two concepts: the population source that carried a record
+and the PUF-detail copy created by an operator. The assembly seam keeps those
+concepts separate.
 
-## Canonical target ordering
+## Canonical executable ordering
 
-The target US multispine build order is:
+The US multispine build order is:
 
 ```text
 source ingestion and faithful schema harmonization
@@ -94,8 +142,10 @@ source ingestion and faithful schema harmonization
     -> seed take-up and other stochastic inputs
     -> simulate
     -> spine-agreement gate
-    -> calibrate
+    -> emit input-only pool and receipts
 ```
+
+Calibration is a downstream consumer boundary, not a stage in this tool.
 
 `assemble_spines(...)` is the boundary between source preparation and
 population operators. It receives nullable, schema-compatible peer frames
@@ -149,8 +199,11 @@ marital-unit, and benefit-unit naming variants. It recognizes direct,
 aliased-helper, dynamic-subscript, `getattr`, and `*_spine_source_id` reads.
 Every US runtime module is classified as a reviewed population operator or an
 explicit non-operator/provenance owner, so a new unclassified module fails the
-guard. `transfer_acs_inputs` selects fit donors by the centrally derived clone
-role; assembled source-channel names never determine donor eligibility.
+guard. A second fail-closed scan starts at `build_us_multispine_pool.py` and
+covers the tool plus its transitive US-runtime import graph under the same
+owner registry. `transfer_acs_inputs` selects fit donors by the centrally
+derived clone role; assembled source-channel names never determine donor
+eligibility.
 
 Assembly accepts only integer-typed, nonnegative structural source IDs and
 names the source spine and offending IDs on failure. PUF cloning revalidates
@@ -217,15 +270,10 @@ This ordering makes the gate diagnostic of the shared operator surface:
 calibration cannot hide a disagreement, and no per-spine target, loss term,
 seed, or tolerance may be introduced to shape a passing result.
 
-## Increment-1 compatibility boundary
+## Increment-2 validation boundary
 
-This increment adds an opt-in assembly seam, operator contracts, structural
-enforcement, and the agreement-gate specification. It does not rewire
-`build_us_puf_support_base.py`,
-`build_us_acs_multispine_base.py`, or current sparse/dense release tools to
-the new sequence. Their current call paths and artifact behavior remain the
-compatibility lineage until a later increment explicitly adopts the seam.
-
-The seam is the foundation for the broader populace#578 build shape,
-including one suite per country and the US full-geography/exact-k work. Those
-release changes are outside this increment.
+This increment makes the assembly seam executable and covers it with small,
+synthetic two-spine fixtures. It does not execute or certify a full-data
+build, download a source dataset, calibrate the pool, select k, or change the
+current sparse/dense release artifacts. Those data-scale and release steps
+remain downstream of this code increment.

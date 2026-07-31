@@ -6,8 +6,19 @@ import ast
 import fnmatch
 from pathlib import Path
 
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _US_RUNTIME = (
     Path(__file__).resolve().parents[1] / "src" / "populace" / "build" / "us_runtime"
+)
+_US_RUNTIME_IMPORT_PREFIX = "populace.build.us_runtime"
+_SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
+_REQUIRED_POOL_RUNTIME_MODULES = frozenset(
+    {
+        "multispine_pool.py",
+        "puf_support.py",
+        "spine_agreement.py",
+        "spine_assembly.py",
+    }
 )
 
 # These modules own source-spine provenance rather than applying population
@@ -446,6 +457,63 @@ def _called_function_names(source: str) -> set[str]:
     }
 
 
+def _imported_us_runtime_modules(source: str) -> tuple[str, ...]:
+    """Return statically imported, flat ``us_runtime`` module filenames."""
+
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            module_names = (alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            if node.module == _US_RUNTIME_IMPORT_PREFIX:
+                module_names = (
+                    f"{_US_RUNTIME_IMPORT_PREFIX}.{alias.name}"
+                    for alias in node.names
+                    if (_US_RUNTIME / f"{alias.name}.py").is_file()
+                )
+            else:
+                module_names = (node.module,)
+        else:
+            continue
+
+        for module_name in module_names:
+            prefix = f"{_US_RUNTIME_IMPORT_PREFIX}."
+            if not module_name.startswith(prefix):
+                continue
+            relative = module_name.removeprefix(prefix)
+            leaf = relative.split(".", maxsplit=1)[0]
+            imported.add(f"{leaf}.py")
+    return tuple(sorted(imported))
+
+
+def _us_runtime_import_graph(
+    root: Path,
+) -> tuple[tuple[Path, ...], tuple[str, ...]]:
+    """Resolve the runtime portion of one tool's static import graph."""
+
+    pending = list(_imported_us_runtime_modules(root.read_text()))
+    visited: set[str] = set()
+    missing: set[str] = set()
+    while pending:
+        module_name = pending.pop()
+        if module_name in visited:
+            continue
+        visited.add(module_name)
+        path = _US_RUNTIME / module_name
+        if not path.is_file():
+            missing.add(module_name)
+            continue
+        pending.extend(
+            imported
+            for imported in _imported_us_runtime_modules(path.read_text())
+            if imported not in visited
+        )
+    return (
+        tuple(_US_RUNTIME / name for name in sorted(visited - missing)),
+        tuple(sorted(missing)),
+    )
+
+
 def _frame_metadata_drops(source: str) -> tuple[str, ...]:
     """Find Frame rebuilds that carry a mass log but drop stage metadata."""
 
@@ -574,6 +642,61 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
         "Registered population operators must use support_role_series() or "
         "support clone indices instead of source-channel columns. "
         f"Found: {offenders}"
+    )
+
+
+def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
+    """The wired CLI and every runtime operator it reaches remain blind."""
+
+    missing_tools = [
+        str(path) for path in _SPINE_BLIND_BUILD_TOOLS if not path.is_file()
+    ]
+    assert not missing_tools, (
+        f"registered spine-blind build tools are missing: {missing_tools}"
+    )
+
+    for tool in _SPINE_BLIND_BUILD_TOOLS:
+        runtime_graph, missing_modules = _us_runtime_import_graph(tool)
+        assert not missing_modules, (
+            f"{tool.name} imports unresolved US runtime modules: {missing_modules}"
+        )
+        runtime_names = {path.name for path in runtime_graph}
+        missing_required = sorted(_REQUIRED_POOL_RUNTIME_MODULES - runtime_names)
+        assert not missing_required, (
+            f"{tool.name} does not reach the canonical pool seam modules: "
+            f"{missing_required}"
+        )
+        unclassified = _unclassified_runtime_modules(runtime_names)
+        assert not unclassified, (
+            f"{tool.name} reaches unclassified US runtime modules: {unclassified}"
+        )
+
+        offenders: dict[str, tuple[str, ...]] = {}
+        for path in (tool, *runtime_graph):
+            if path.name in _SOURCE_SPINE_PROVENANCE_OWNERS:
+                continue
+            reads = _source_spine_accesses(path.read_text())
+            if reads:
+                offenders[str(path.relative_to(_REPOSITORY_ROOT))] = reads
+        assert not offenders, (
+            "The multispine pool build path must remain source-spine blind. "
+            "Only the existing provenance-owner modules may inspect source "
+            f"identity; found: {offenders}"
+        )
+
+
+def test_pool_build_import_graph_parser_covers_supported_import_forms() -> None:
+    """Direct, aliased, and package-qualified runtime imports are resolved."""
+
+    source = """
+import populace.build.us_runtime.acs_transfer as transfer
+from populace.build.us_runtime.multispine_pool import run_multispine_pool_path
+from populace.build.us_runtime import puf_support
+"""
+    assert _imported_us_runtime_modules(source) == (
+        "acs_transfer.py",
+        "multispine_pool.py",
+        "puf_support.py",
     )
 
 
