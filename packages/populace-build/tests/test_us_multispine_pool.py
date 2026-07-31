@@ -14,6 +14,7 @@ from populace.build.us_runtime.acs_transfer import (
 from populace.build.us_runtime.multispine_pool import (
     POOL_OPERATOR_ORDER,
     PoolStageOutput,
+    _complete_schedule_d_input,
     materialize_multispine_agreement_outputs,
     pool_transfer_target_families,
     run_multispine_pool_path,
@@ -262,6 +263,34 @@ def test_clone_safe_id_violation_surfaces_assembly_error() -> None:
 
 def test_pool_transfer_plan_is_the_fixed_declared_qrf_surface() -> None:
     assert pool_transfer_target_families() == declared_acs_transfer_target_families()
+
+
+def test_schedule_d_derivation_preserves_existing_values_and_receipt() -> None:
+    assembled = assemble_spines(
+        {"asec": _source_frame(), "acs": _source_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    from populace.build.us_runtime.puf_support import (
+        clone_us_frame_for_puf_support,
+    )
+
+    frame = clone_us_frame_for_puf_support(assembled)
+    person = frame.table("person").copy()
+    person["long_term_capital_gains_before_response"] = 100.0
+    person["non_sch_d_capital_gains"] = 0.0
+    person["schedule_d_capital_gain_distributions"] = np.nan
+    person.loc[person.index[0], "schedule_d_capital_gain_distributions"] = 7.0
+    frame = _replace_person(frame, person)
+
+    completed, receipt = _complete_schedule_d_input(frame)
+
+    output = completed.table("person")["schedule_d_capital_gain_distributions"]
+    assert output.loc[person.index[0]] == 7.0
+    assert not output.isna().any()
+    assert (output.loc[person.index[1:]] > 0.0).all()
+    assert completed.metadata == frame.metadata
+    assert receipt["preserved_nonnull_rows"] == 1
+    assert receipt["filled_rows"] == len(person) - 1
 
 
 class _FakeEngine:

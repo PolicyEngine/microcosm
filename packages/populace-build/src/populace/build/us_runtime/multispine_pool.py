@@ -23,8 +23,13 @@ from populace.build.gates import GateResult
 from populace.build.us_runtime.acs_transfer import (
     TargetFamilies,
     declared_acs_transfer_target_families,
+    derive_acs_schedule_d_capital_gain_distributions,
 )
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
+from populace.build.us_runtime.qbi_inputs import (
+    US_QBI_OUTPUT_COLUMNS,
+    with_us_qbi_input_reconciliation,
+)
 from populace.build.us_runtime.spine_agreement import spine_agreement_gate
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
@@ -47,6 +52,7 @@ __all__ = [
     "POOL_TIME_PERIOD",
     "MultispinePoolResult",
     "PoolStageOutput",
+    "derive_multispine_pool_inputs",
     "materialize_multispine_agreement_outputs",
     "pool_transfer_target_families",
     "run_multispine_pool_path",
@@ -146,6 +152,129 @@ def pool_transfer_target_families() -> TargetFamilies:
     return {
         entity: {family: tuple(columns) for family, columns in families.items()}
         for entity, families in declared_acs_transfer_target_families().items()
+    }
+
+
+def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
+    """Complete deterministic post-transfer inputs without reading a spine.
+
+    Schedule D capital-gain distributions are derived once per tax unit from
+    the transferred parent inputs, then carried by the first person only when
+    the unit has no pre-existing values. Existing non-null values are never
+    rewritten. The shared QBI reconciliation then restores its documented
+    all-or-nothing identities on the imputed PUF-detail surface.
+    """
+
+    with_schedule_d, schedule_d_receipt = _complete_schedule_d_input(frame)
+    reconciled = with_us_qbi_input_reconciliation(with_schedule_d)
+    return PoolStageOutput(
+        reconciled,
+        {
+            "schedule_d_capital_gain_distributions": schedule_d_receipt,
+            "qbi_input_reconciliation": {
+                "columns": list(US_QBI_OUTPUT_COLUMNS),
+                "operation": "shared_all_or_nothing_identity_reconciliation",
+            },
+        },
+    )
+
+
+def _complete_schedule_d_input(frame: Frame) -> tuple[Frame, dict[str, object]]:
+    person = frame.table("person")
+    membership_column = frame.schema.membership_column("tax_unit")
+    tax_unit_id_column = frame.schema.entity_id_column("tax_unit")
+    source_columns = (
+        "long_term_capital_gains_before_response",
+        "non_sch_d_capital_gains",
+    )
+    missing_sources = sorted(
+        column for column in source_columns if column not in person
+    )
+    if missing_sources:
+        raise ValueError(
+            "Schedule D pool derivation requires transferred parent input(s): "
+            f"{missing_sources}."
+        )
+    numeric_sources = person.loc[:, list(source_columns)].apply(
+        pd.to_numeric,
+        errors="coerce",
+    )
+    source_values = numeric_sources.to_numpy(dtype=np.float64)
+    if not np.isfinite(source_values).all():
+        raise ValueError(
+            "Schedule D pool derivation requires finite transferred parent inputs."
+        )
+
+    tax_unit_ids = frame.table("tax_unit")[tax_unit_id_column]
+    grouped = numeric_sources.groupby(
+        person[membership_column],
+        sort=False,
+    ).sum()
+    grouped = grouped.reindex(tax_unit_ids.to_numpy())
+    if grouped.isna().any().any():
+        raise ValueError(
+            "Schedule D pool derivation could not align every tax unit to people."
+        )
+    derived, derivation_receipt = derive_acs_schedule_d_capital_gain_distributions(
+        grouped
+    )
+    derived_by_tax_unit = dict(zip(tax_unit_ids.to_numpy(), derived, strict=True))
+
+    output_column = "schedule_d_capital_gain_distributions"
+    if output_column in person:
+        output = person[output_column].copy()
+        observed = output.notna()
+        observed_numeric = pd.to_numeric(output.loc[observed], errors="coerce")
+        if not np.isfinite(observed_numeric.to_numpy(dtype=np.float64)).all():
+            raise ValueError(
+                "Schedule D pool derivation cannot preserve non-finite existing values."
+            )
+    else:
+        output = pd.Series(np.nan, index=person.index, dtype=np.float64)
+        observed = pd.Series(False, index=person.index)
+
+    derived_units = 0
+    partially_observed_units = 0
+    filled_rows = 0
+    for tax_unit_id, row_indices in person.groupby(
+        membership_column,
+        sort=False,
+    ).groups.items():
+        indices = list(row_indices)
+        missing = [index for index in indices if not bool(observed.loc[index])]
+        if not missing:
+            continue
+        if len(missing) == len(indices):
+            output.loc[missing[0]] = derived_by_tax_unit[tax_unit_id]
+            if len(missing) > 1:
+                output.loc[missing[1:]] = 0.0
+            derived_units += 1
+        else:
+            output.loc[missing] = 0.0
+            partially_observed_units += 1
+        filled_rows += len(missing)
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][output_column] = pd.to_numeric(output, errors="raise").to_numpy(
+        dtype=np.float64
+    )
+    completed = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return completed, {
+        "entity": "person",
+        "source_grain": "tax_unit",
+        "source_columns": list(source_columns),
+        "preserved_nonnull_rows": int(observed.sum()),
+        "filled_rows": filled_rows,
+        "derived_tax_units": derived_units,
+        "partially_observed_tax_units_filled_with_zero": partially_observed_units,
+        "derivation": derivation_receipt,
     }
 
 
