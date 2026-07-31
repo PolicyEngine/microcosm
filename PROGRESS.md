@@ -15,6 +15,8 @@ and completed-contract docstrings are implemented. Adversarial audit and full
 validation remain. Adversarial alias composition probes are now closed.
 Starred and nested format-field composition is now closed too, as are
 late-bound writes through comprehensions, `nonlocal`, and `global`.
+Static iterable propagation now covers all built-in literal forms requested by
+the contract.
 
 No push or external mutation is authorized.
 
@@ -106,10 +108,15 @@ No push or external mutation is authorized.
 - Added direct subscript and closure tests for comprehension walruses plus
   sibling `nonlocal` and module `global` writers. The guard remains 71 tests
   green with the graph clean.
+- Generalized static string iteration from list/tuple syntax to sets, dict
+  keys, literal strings, and statically concatenated collections while
+  preserving literal containers for format-field indexing.
+- Added benign and guarded loop/comprehension controls for every new iterable
+  form. The guard file now passes 72 tests with the graph clean.
 
 ## Next
 
-- Commit closure write composition.
+- Commit complete static-iterable propagation.
 - Reconcile the universal column-container contract with the typed runtime
   graph findings from the independent audit.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module

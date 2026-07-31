@@ -470,13 +470,20 @@ def _static_literal_value(
         (str, int, float, bool, bytes, type(None)),
     ):
         return node.value
-    if isinstance(node, (ast.List, ast.Tuple)):
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
         values = tuple(
             _static_literal_value(element, constants) for element in node.elts
         )
         if any(value is _OPAQUE_STATIC_VALUE for value in values):
             return _OPAQUE_STATIC_VALUE
-        return list(values) if isinstance(node, ast.List) else values
+        if isinstance(node, ast.List):
+            return list(values)
+        if isinstance(node, ast.Set):
+            try:
+                return set(values)
+            except TypeError:
+                return _OPAQUE_STATIC_VALUE
+        return values
     if isinstance(node, ast.Dict):
         if any(key is None for key in node.keys):
             return _OPAQUE_STATIC_VALUE
@@ -634,19 +641,28 @@ def _static_percent_operand(
 def _static_string_list(
     node: ast.AST, constants: list[dict[str, object]]
 ) -> tuple[str, ...] | None:
-    """Resolve a static list/tuple of strings, through one Name binding."""
+    """Resolve any statically enumerable string iterable."""
 
     if isinstance(node, ast.Name):
         for scope in reversed(constants):
             if node.id in scope:
                 value = scope[node.id]
-                if isinstance(value, (list, tuple)) and all(
+                if isinstance(value, dict) and all(
                     isinstance(item, str) for item in value
                 ):
                     return tuple(value)
+                if isinstance(value, (list, set, tuple)) and all(
+                    isinstance(item, str) for item in value
+                ):
+                    return tuple(value)
+                if isinstance(value, str):
+                    return tuple(value)
                 return None
         return None
-    if isinstance(node, (ast.List, ast.Tuple)):
+    literal = _literal_string(node)
+    if literal is not None:
+        return tuple(literal)
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
         items: list[str] = []
         for element in node.elts:
             values = _static_string_values(element, constants)
@@ -654,6 +670,22 @@ def _static_string_list(
                 return None
             items.extend(values)
         return tuple(items)
+    if isinstance(node, ast.Dict):
+        items: list[str] = []
+        for key in node.keys:
+            if key is None:
+                return None
+            values = _static_string_values(key, constants)
+            if values is None:
+                return None
+            items.extend(values)
+        return tuple(items)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _static_string_list(node.left, constants)
+        right = _static_string_list(node.right, constants)
+        if left is not None and right is not None:
+            return (*left, *right)
+        return None
     if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
         local: dict[str, object] = {}
         nested_constants = [*constants, local]
@@ -954,13 +986,13 @@ class _SourceReadVisitor(ast.NodeVisitor):
         description = self._expression(value)
         constant: object = _static_string_shape(value, self.constants)
         if constant is None:
-            constant = _static_string_list(value, self.constants)
-        if constant is None:
             constant = _static_integer(value, self.constants)
         if constant is None:
             literal = _static_literal_value(value, self.constants)
             if literal is not _OPAQUE_STATIC_VALUE:
                 constant = literal
+        if constant is None:
+            constant = _static_string_list(value, self.constants)
         method_alias = self._method_alias(value)
         if method_alias is None and name in self.method_alias_history[scope_index]:
             method_alias = _OPAQUE_METHOD_ALIAS
@@ -2188,6 +2220,64 @@ def f(df, columns):
     dynamic_accesses = _source_spine_accesses(dynamic)
     assert dynamic_accesses
     assert all("fail-closed" in item for item in dynamic_accesses)
+
+
+def test_loop_targets_accept_every_static_string_iterable_form() -> None:
+    """Sets, dict keys, strings, and concatenation bind exact choices."""
+
+    benign_sources = (
+        """
+def f(df):
+    for col in {"age", "income"}:
+        df[col]
+""",
+        """
+def f(df):
+    for col in {"age": 1, "income": 2}:
+        df[col]
+""",
+        """
+def f(df):
+    for col in "ab":
+        df[col]
+""",
+        """
+def f(df):
+    for col in ("age",) + ("income",):
+        df[col]
+""",
+        """
+def f(df):
+    return [df[col] for col in {"age", "income"}]
+""",
+    )
+    guarded_sources = (
+        """
+def f(df):
+    for col in {"age", "person_support_channel"}:
+        df[col]
+""",
+        """
+def f(df):
+    for col in {"person_support_channel": 1, "age": 2}:
+        df[col]
+""",
+        """
+def f(df):
+    return [
+        df[col]
+        for col in ("age",) + ("person_support_channel",)
+    ]
+""",
+    )
+
+    for source in benign_sources:
+        assert _source_spine_accesses(source) == (), source
+    for source in guarded_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in item for item in accesses)
+        assert all("fail-closed" not in item for item in accesses)
 
 
 def test_comprehension_targets_propagate_static_and_opaque_choices() -> None:
