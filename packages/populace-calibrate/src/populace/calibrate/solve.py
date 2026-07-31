@@ -1073,43 +1073,64 @@ def _search_l0_lambda_for_budget(
 
     evaluation = 0
 
-    def evaluate(lam: float) -> tuple[np.ndarray, np.ndarray, int, np.ndarray]:
+    def evaluate(
+        lam: float,
+    ) -> tuple[np.ndarray, np.ndarray, int, np.ndarray | None]:
         nonlocal evaluation
         evaluation += 1
         torch.manual_seed(seed)
-        weights, trajectory, gate_open_probabilities = _optimize(
-            matrix,
-            targets,
-            target_loss_weights,
-            target_loss_scales,
-            target_loss_cap,
-            initial_weights,
-            epochs=epochs,
-            learning_rate=learning_rate,
-            conserve_mass=conserve_mass,
-            max_weight_ratio=max_weight_ratio,
-            l0_lambda=lam,
-            l2_lambda=l2_lambda,
-            l2_anchor=l2_anchor,
-            l2_anchor_weights=l2_anchor_weights,
-            target_records=target_records,
-            init_mean=init_mean,
-            temperature=temperature,
-            progress_callback=progress_callback,
-            progress_context={
+        optimize_kwargs = {
+            "epochs": epochs,
+            "learning_rate": learning_rate,
+            "conserve_mass": conserve_mass,
+            "max_weight_ratio": max_weight_ratio,
+            "l0_lambda": lam,
+            "l2_lambda": l2_lambda,
+            "l2_anchor": l2_anchor,
+            "l2_anchor_weights": l2_anchor_weights,
+            "target_records": target_records,
+            "init_mean": init_mean,
+            "temperature": temperature,
+            "progress_callback": progress_callback,
+            "progress_context": {
                 "budget_search": True,
                 "budget_iteration": evaluation,
                 "budget_iters": budget_iters,
                 "l0_lambda": lam,
             },
-            return_gate_open_probabilities=True,
-        )
-        if gate_open_probabilities is None:  # pragma: no cover - L0 invariant
-            raise RuntimeError("L0 budget search did not produce gate probabilities.")
+        }
+        if return_gate_open_probabilities:
+            weights, trajectory, gate_open_probabilities = _optimize(
+                matrix,
+                targets,
+                target_loss_weights,
+                target_loss_scales,
+                target_loss_cap,
+                initial_weights,
+                **optimize_kwargs,
+                return_gate_open_probabilities=True,
+            )
+            if gate_open_probabilities is None:  # pragma: no cover - L0 invariant
+                raise RuntimeError(
+                    "L0 budget search did not produce gate probabilities."
+                )
+        else:
+            # Preserve the historical call and two-item tuple for private
+            # workspace consumers that do not opt into the probability seam.
+            weights, trajectory = _optimize(
+                matrix,
+                targets,
+                target_loss_weights,
+                target_loss_scales,
+                target_loss_cap,
+                initial_weights,
+                **optimize_kwargs,
+            )
+            gate_open_probabilities = None
         n_nonzero = int((weights > prune_atol).sum())
         return weights, trajectory, n_nonzero, gate_open_probabilities
 
-    best: tuple[np.ndarray, np.ndarray, float, int, np.ndarray] | None = None
+    best: tuple[np.ndarray, np.ndarray, float, int, np.ndarray | None] | None = None
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
     # so it steers the search the same way "too few survivors" does — toward a
@@ -1175,6 +1196,8 @@ def _search_l0_lambda_for_budget(
             "record budget."
         )
     if return_gate_open_probabilities:
+        if best[4] is None:  # pragma: no cover - opt-in invariant
+            raise RuntimeError("L0 budget search lost its gate probabilities.")
         return best
     return best[:4]
 

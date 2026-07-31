@@ -24,6 +24,7 @@ from populace.calibrate import (
     refit_l0_selection,
     relative_error_loss,
 )
+from populace.calibrate import solve as solve_module
 from populace.calibrate.gates import hard_concrete_open_probability_threshold
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
@@ -598,6 +599,86 @@ def test_target_records_controls_the_budget_not_just_lambda(
     assert high.gate_open_probabilities.shape == high.weights.shape
     # The smaller pool took the stronger penalty (more pruning pressure).
     assert low.l0_lambda > high.l0_lambda
+
+
+def test_budget_search_returns_probabilities_from_the_winning_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    counts = [5, 2, 1]
+
+    def fake_optimize(*args, return_gate_open_probabilities=False, **kwargs):
+        evaluation = len(counts_seen)
+        counts_seen.append(counts[evaluation])
+        weights = np.concatenate(
+            (np.ones(counts[evaluation]), np.zeros(5 - counts[evaluation]))
+        )
+        trajectory = np.asarray([float(evaluation)])
+        probabilities = np.full(5, float(evaluation + 1))
+        assert return_gate_open_probabilities is True
+        return weights, trajectory, probabilities
+
+    counts_seen: list[int] = []
+    monkeypatch.setattr(solve_module, "_optimize", fake_optimize)
+    result = solve_module._search_l0_lambda_for_budget(
+        None,
+        None,
+        None,
+        None,
+        10.0,
+        np.ones(5),
+        target_records=3,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        max_weight_ratio=None,
+        l2_lambda=0.0,
+        init_mean=0.9,
+        temperature=0.25,
+        seed=0,
+        prune_atol=1e-6,
+        initial_lambda=None,
+        budget_iters=3,
+        return_gate_open_probabilities=True,
+    )
+
+    weights, trajectory, realized_lambda, n_nonzero, probabilities = result
+    np.testing.assert_array_equal(weights, [1.0, 1.0, 0.0, 0.0, 0.0])
+    np.testing.assert_array_equal(trajectory, [1.0])
+    assert realized_lambda == pytest.approx(0.1)
+    assert n_nonzero == 2
+    np.testing.assert_array_equal(probabilities, np.full(5, 2.0))
+
+
+def test_budget_search_default_preserves_legacy_optimizer_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def legacy_optimize(*args, **kwargs):
+        assert "return_gate_open_probabilities" not in kwargs
+        return np.ones(5), np.asarray([0.0])
+
+    monkeypatch.setattr(solve_module, "_optimize", legacy_optimize)
+    result = solve_module._search_l0_lambda_for_budget(
+        None,
+        None,
+        None,
+        None,
+        10.0,
+        np.ones(5),
+        target_records=3,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        max_weight_ratio=None,
+        l2_lambda=0.0,
+        init_mean=0.9,
+        temperature=0.25,
+        seed=0,
+        prune_atol=1e-6,
+        initial_lambda=None,
+        budget_iters=1,
+    )
+
+    assert len(result) == 4
 
 
 def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> None:
