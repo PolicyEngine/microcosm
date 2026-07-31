@@ -178,6 +178,10 @@ class CalibrationResult:
             (``"dense"`` or ``"sparse_csr"``). This is what a build records in its release
             manifest — the max_weight_ratio bound is part of the dataset's
             provenance, not a local solver detail.
+        gate_open_probabilities: Per-record hard-concrete open probabilities
+            ``pi_i``, aligned to :attr:`weights`, for an L0 solve. ``None`` for
+            ordinary Adam, proximal, and score-only results, which have no
+            learned gate state.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -195,6 +199,7 @@ class CalibrationResult:
     n_nonzero: int
     closing_loss: float
     options: Mapping[str, object] = field(default_factory=dict)
+    gate_open_probabilities: np.ndarray | None = None
 
     @property
     def initial_loss(self) -> float:
@@ -717,14 +722,20 @@ def _optimize(
     temperature: float,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     progress_context: Mapping[str, object] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Run the torch optimization and return ``(final_weights, loss_trajectory)``.
+    return_gate_open_probabilities: bool = False,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Run the torch optimization and return weights plus its trajectory.
 
     Optimizes the log-weights with Adam against capped weighted MAPE.
     Positivity is by construction (``w = exp(log_w)`` times optional gates). The
     hard constraints — mass conservation and ``max_weight_ratio`` — are applied
     by projecting the realized weights after each step, so they hold on the
     returned vector exactly, not merely in expectation.
+
+    The private opt-in ``return_gate_open_probabilities`` adds a third return
+    value without changing the two-item tuple used by existing workspace
+    callers. The third value is aligned per-record ``pi_i`` for an L0 run and
+    ``None`` when no gates were active.
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
@@ -834,11 +845,20 @@ def _optimize(
                         # hard so it can never be violated mid-run.
                         log_w.clamp_(max=torch.log(upper))
 
+    gate_open_probabilities: np.ndarray | None = None
     with torch.no_grad():
         weights = torch.exp(log_w)
         if gates is not None:
             gates.eval()
             weights = weights * gates()
+            if return_gate_open_probabilities:
+                gate_open_probabilities = (
+                    gates.get_active_prob()
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .astype(np.float64, copy=True)
+                )
         final = weights.detach().numpy().astype(np.float64)
 
     # Make the hard ratio bound exact on the returned vector. The per-step
@@ -859,6 +879,8 @@ def _optimize(
             final <= prune_atol if (gates is not None and l0_lambda > 0.0) else None
         )
         final = _project_to_total(final, total0, max_weight_ratio, w0, pruned=pruned)
+    if return_gate_open_probabilities:
+        return final, trajectory, gate_open_probabilities
     return final, trajectory
 
 
@@ -1000,7 +1022,11 @@ def _search_l0_lambda_for_budget(
     initial_lambda: float | None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
-) -> tuple[np.ndarray, np.ndarray, float, int]:
+    return_gate_open_probabilities: bool = False,
+) -> (
+    tuple[np.ndarray, np.ndarray, float, int]
+    | tuple[np.ndarray, np.ndarray, float, int, np.ndarray]
+):
     """Search ``l0_lambda`` so the achieved non-zero count tracks the budget.
 
     The realized non-zero count is monotone *decreasing* in ``l0_lambda`` (a
@@ -1037,17 +1063,20 @@ def _search_l0_lambda_for_budget(
 
     Returns:
         ``(weights, trajectory, l0_lambda, n_nonzero)`` of the best run found.
+        When ``return_gate_open_probabilities`` is true, the aligned ``pi_i``
+        vector is appended. The default four-item tuple is retained for
+        existing workspace callers.
     """
     lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
     tol = max(1, round(0.05 * target_records))
 
     evaluation = 0
 
-    def evaluate(lam: float) -> tuple[np.ndarray, np.ndarray, int]:
+    def evaluate(lam: float) -> tuple[np.ndarray, np.ndarray, int, np.ndarray]:
         nonlocal evaluation
         evaluation += 1
         torch.manual_seed(seed)
-        weights, trajectory = _optimize(
+        weights, trajectory, gate_open_probabilities = _optimize(
             matrix,
             targets,
             target_loss_weights,
@@ -1072,11 +1101,14 @@ def _search_l0_lambda_for_budget(
                 "budget_iters": budget_iters,
                 "l0_lambda": lam,
             },
+            return_gate_open_probabilities=True,
         )
+        if gate_open_probabilities is None:  # pragma: no cover - L0 invariant
+            raise RuntimeError("L0 budget search did not produce gate probabilities.")
         n_nonzero = int((weights > prune_atol).sum())
-        return weights, trajectory, n_nonzero
+        return weights, trajectory, n_nonzero, gate_open_probabilities
 
-    best: tuple[np.ndarray, np.ndarray, float, int] | None = None
+    best: tuple[np.ndarray, np.ndarray, float, int, np.ndarray] | None = None
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
     # so it steers the search the same way "too few survivors" does — toward a
@@ -1086,7 +1118,7 @@ def _search_l0_lambda_for_budget(
     def consider(lam: float) -> int:
         nonlocal best
         try:
-            weights, trajectory, n_nonzero = evaluate(lam)
+            weights, trajectory, n_nonzero, gate_open_probabilities = evaluate(lam)
         except ValueError as exc:
             if "Infeasible combination" in str(exc):
                 return _over_pruned
@@ -1094,7 +1126,13 @@ def _search_l0_lambda_for_budget(
         if best is None or abs(n_nonzero - target_records) < abs(
             best[3] - target_records
         ):
-            best = (weights, trajectory, lam, n_nonzero)
+            best = (
+                weights,
+                trajectory,
+                lam,
+                n_nonzero,
+                gate_open_probabilities,
+            )
         return n_nonzero
 
     # Warm start: evaluate the user's lambda (or the bracket mid-point) first.
@@ -1135,7 +1173,9 @@ def _search_l0_lambda_for_budget(
             "cap. Loosen max_weight_ratio, relax mass conservation, or raise the "
             "record budget."
         )
-    return best
+    if return_gate_open_probabilities:
+        return best
+    return best[:4]
 
 
 def _project_to_total(
@@ -1521,6 +1561,7 @@ def calibrate(
         # drives unneeded records to exact zero, so L1 selects a sparse weighted
         # subset jointly with calibrating it (the convex analog of the L0 gates).
         effective_l0 = 0.0
+        gate_open_probabilities = None
         final_weights, trajectory = _optimize_proximal(
             matrix_t,
             targets_t,
@@ -1554,34 +1595,39 @@ def calibrate(
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
         # count tracks target_records. The supplied l0_lambda (if any) is the
         # warm start; the search reports the penalty it settled on.
-        final_weights, trajectory, effective_l0, n_nonzero = (
-            _search_l0_lambda_for_budget(
-                matrix_t,
-                targets_t,
-                target_loss_weights_t,
-                target_loss_scales_t,
-                target_loss_cap,
-                w0,
-                target_records=target_records,
-                epochs=epochs,
-                learning_rate=learning_rate,
-                conserve_mass=(mass == CONSERVE_MASS),
-                max_weight_ratio=max_weight_ratio,
-                l2_lambda=l2_lambda,
-                l2_anchor=l2_anchor,
-                l2_anchor_weights=l2_anchor_weights,
-                init_mean=init_mean,
-                temperature=temperature,
-                seed=seed,
-                prune_atol=prune_atol,
-                initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
-                progress_callback=progress_callback,
-                budget_iters=budget_iters,
-            )
+        (
+            final_weights,
+            trajectory,
+            effective_l0,
+            n_nonzero,
+            gate_open_probabilities,
+        ) = _search_l0_lambda_for_budget(
+            matrix_t,
+            targets_t,
+            target_loss_weights_t,
+            target_loss_scales_t,
+            target_loss_cap,
+            w0,
+            target_records=target_records,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            conserve_mass=(mass == CONSERVE_MASS),
+            max_weight_ratio=max_weight_ratio,
+            l2_lambda=l2_lambda,
+            l2_anchor=l2_anchor,
+            l2_anchor_weights=l2_anchor_weights,
+            init_mean=init_mean,
+            temperature=temperature,
+            seed=seed,
+            prune_atol=prune_atol,
+            initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
+            progress_callback=progress_callback,
+            budget_iters=budget_iters,
+            return_gate_open_probabilities=True,
         )
     else:
         effective_l0 = l0_lambda
-        final_weights, trajectory = _optimize(
+        final_weights, trajectory, gate_open_probabilities = _optimize(
             matrix_t,
             targets_t,
             target_loss_weights_t,
@@ -1601,6 +1647,7 @@ def calibrate(
             init_mean=init_mean,
             temperature=temperature,
             progress_callback=progress_callback,
+            return_gate_open_probabilities=True,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if effective_l0 > 0.0 and n_nonzero == 0:
@@ -1678,6 +1725,7 @@ def calibrate(
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),
         },
+        gate_open_probabilities=gate_open_probabilities,
     )
 
 

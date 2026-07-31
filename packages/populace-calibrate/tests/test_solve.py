@@ -24,6 +24,7 @@ from populace.calibrate import (
     refit_l0_selection,
     relative_error_loss,
 )
+from populace.calibrate.gates import hard_concrete_open_probability_threshold
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 
@@ -303,6 +304,7 @@ def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> N
         )
     )
     result = calibrate(frame, targets, epochs=400, seed=0)
+    assert result.gate_open_probabilities is None
     assert result.final_loss < result.initial_loss * 0.01
     for diag in result.diagnostics:
         assert abs(diag.relative_error) < 0.01  # within 1%
@@ -590,6 +592,10 @@ def test_target_records_controls_the_budget_not_just_lambda(
     assert abs(high.n_nonzero - 250) <= 60, high.n_nonzero
     # A budget-controlled run reports the penalty it settled on.
     assert low.l0_lambda > 0.0 and high.l0_lambda > 0.0
+    assert low.gate_open_probabilities is not None
+    assert high.gate_open_probabilities is not None
+    assert low.gate_open_probabilities.shape == low.weights.shape
+    assert high.gate_open_probabilities.shape == high.weights.shape
     # The smaller pool took the stronger penalty (more pruning pressure).
     assert low.l0_lambda > high.l0_lambda
 
@@ -614,6 +620,23 @@ def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> N
     # Reported penalty is the value supplied, unchanged.
     assert weak.l0_lambda == 3e-4
     assert strong.l0_lambda == 3e-3
+    assert weak.gate_open_probabilities is not None
+    assert weak.gate_open_probabilities.shape == weak.weights.shape
+    assert weak.gate_open_probabilities.dtype == np.float64
+    assert np.isfinite(weak.gate_open_probabilities).all()
+    assert (
+        (0.0 <= weak.gate_open_probabilities) & (weak.gate_open_probabilities <= 1.0)
+    ).all()
+
+    # On this fixture latent weights stay comfortably above the pruning
+    # tolerance, so expressing the existing deterministic-gate threshold on pi
+    # reproduces today's weight-thresholded support exactly.
+    probability_threshold = hard_concrete_open_probability_threshold(0.25)
+    current_support = weak.weights > 1e-6 * float(np.mean(weak.initial_weights))
+    np.testing.assert_array_equal(
+        weak.gate_open_probabilities > probability_threshold,
+        current_support,
+    )
 
 
 def test_l0_refit_returns_refit_on_selected_support(feasible_frame) -> None:
