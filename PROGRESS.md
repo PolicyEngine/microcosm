@@ -15,13 +15,21 @@ and partial structures propagated through bindings.
   round-10 review log.
 - Recorded the required implementation, regression, documentation, precision,
   suite, lint, graph-cleanliness, and no-push constraints.
+- Confirmed the GitNexus CLI is installed but the repository has no index; a
+  non-augmenting index attempt was blocked by the managed global-registry
+  write, and its generated untracked local index was removed.
+- Reproduced all six authenticated forms as silent at the starting guard:
+  stale-outer nested star, attribute target, subscript target, literal
+  `.values()`, constructor `.values()`, and a bound mixed row.
+- Added those exact inputs as self-tests, with loop-diagnostic assertions for
+  unpropagatable geometry and exact-column assertions for successful
+  per-column propagation. The focused red run fails all three test groups as
+  expected before the implementation.
 
 ## Next
 
-- Reproduce and trace all four bypasses through the current binder and loop
-  fallback.
-- Commit the reviewer's repros as self-tests, implement the four structural
-  fixes, and make the guard docstring match the final mechanics.
+- Implement the four structural fixes and make the guard docstrings match the
+  final mechanics.
 - Run the guard file, full `populace-build` suite, repository ruff, and the
   requested `acs_transfer` plus `congressional_district_vintage` cleanliness
   checks.

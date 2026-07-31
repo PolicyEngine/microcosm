@@ -3336,11 +3336,16 @@ def test_unpropagatable_geometry_over_guarded_fragments_fails_closed():
     fragment-free static tables stay clean."""
 
     nested_star_payload = """
+entity = "age"
+middle = "income"
 ROWS = (("person", "support", "channel"),)
 
 
 def f(df):
-    return [df.filter(items=[f"{e}_{m}_{sfx}"]) for *(e, m), sfx in ROWS]
+    return [
+        df.filter(items=[f"{entity}_{middle}_{suffix}"])
+        for *(entity, middle), suffix in ROWS
+    ]
 """
     rows_of_rows = """
 ROWS = ((("person", "support_channel"), "metadata"),)
@@ -3367,10 +3372,92 @@ def f():
     for (a, b), meta in ROWS:
         sink(f"{a}_{b}")
 """
-    for source in (nested_star_payload, rows_of_rows, dict_constructor):
+    nested_star_accesses = _source_spine_accesses(nested_star_payload)
+    assert any(
+        "unpropagatable target geometry" in access
+        for access in nested_star_accesses
+    )
+    for source in (rows_of_rows, dict_constructor):
         assert _source_spine_accesses(source), source
     assert _source_spine_accesses(dynamic_mentioning_strings) == ()
     assert _source_spine_accesses(fragment_free_nested) == ()
+
+
+def test_non_name_targets_over_guarded_static_rows_fail_closed_at_loop():
+    """Sol #583 round-10: attribute and subscript stores cannot receive
+    abstract row choices, so a fragment-bearing static iterable is rejected
+    at the loop even when its flattened strings are statically enumerable."""
+
+    attribute_target = """class Row:
+    pass
+
+row = Row()
+seen = []
+for row.entity, row.suffix in (("person", "support_channel"),):
+    seen.append(f"{row.entity}_{row.suffix}")
+"""
+    subscript_target = """row = [None, None]
+seen = []
+for row[0], row[1] in (("person", "support_channel"),):
+    seen.append(f"{row[0]}_{row[1]}")
+"""
+    for source in (attribute_target, subscript_target):
+        accesses = _source_spine_accesses(source)
+        assert any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
+
+
+def test_static_dict_values_and_bound_partial_rows_propagate_per_column():
+    """Sol #583 round-10: static mapping values and partial structures
+    retained through a name binding propagate their resolvable columns."""
+
+    literal_values = """
+def f():
+    for entity, middle, suffix in {
+        "row": ("person", "support", "channel")
+    }.values():
+        sink(f"{entity}_{middle}_{suffix}")
+"""
+    constructor_values = """
+def f():
+    for entity, middle, suffix in dict(
+        [("row", ("person", "support", "channel"))]
+    ).values():
+        sink(f"{entity}_{middle}_{suffix}")
+"""
+    bound_mixed_rows = """
+def f(dynamic_object):
+    rows = (("person", dynamic_object, "support_channel"),)
+    for entity, obj, suffix in rows:
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (literal_values, constructor_values, bound_mixed_rows):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert not any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
+
+    literal_values_bad_geometry = """
+def f(row):
+    for row.entity, row.middle, row.suffix in {
+        "row": ("person", "support", "channel")
+    }.values():
+        sink(f"{row.entity}_{row.middle}_{row.suffix}")
+"""
+    constructor_values_bad_geometry = """
+def f(row):
+    for row.entity, row.middle, row.suffix in dict(
+        [("row", ("person", "support", "channel"))]
+    ).values():
+        sink(f"{row.entity}_{row.middle}_{row.suffix}")
+"""
+    for source in (literal_values_bad_geometry, constructor_values_bad_geometry):
+        accesses = _source_spine_accesses(source)
+        assert any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
 
 
 def test_mid_star_rows_and_concatenated_dict_entries_are_in_scope():
