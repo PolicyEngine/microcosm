@@ -327,9 +327,10 @@ class L0RefitResult:
         """The refit's starting weights on its frozen support.
 
         The legacy path inherits surviving L0 weights. The explicit exact-k
-        path starts from the original frame weights, ratio-normalized to the
-        full-pool mass, so a positive-probability record whose deterministic
-        gate closed remains refittable without losing population mass.
+        path starts from original-frame ``w_i / q_i`` design weights and
+        projects them to the known full-pool total, so a positive-probability
+        record whose deterministic gate closed remains refittable without
+        losing population mass.
         """
         return self.refit.initial_weights
 
@@ -1986,8 +1987,20 @@ def refit_l0_selection(
                 "frozen-support refit."
             )
         try:
+            supplied_probabilities = np.asarray(support_inclusion_probabilities)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "support_inclusion_probabilities must be a one-dimensional "
+                "numeric vector aligned with support."
+            ) from None
+        if supplied_probabilities.dtype.kind == "c":
+            raise ValueError(
+                "support_inclusion_probabilities must be a one-dimensional "
+                "numeric vector aligned with support."
+            )
+        try:
             supplied_probabilities = np.asarray(
-                support_inclusion_probabilities,
+                supplied_probabilities,
                 dtype=np.float64,
             )
         except (TypeError, ValueError):

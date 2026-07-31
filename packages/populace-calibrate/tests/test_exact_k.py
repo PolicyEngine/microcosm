@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import warnings
 
 import numpy as np
 import pytest
@@ -419,6 +420,31 @@ def test_enumerated_subsets_match_sampford_joint_law() -> None:
 def test_invalid_probability_values_fail(pi: list[float]) -> None:
     with pytest.raises(ValueError, match=r"finite|\[0, 1\]"):
         select_exact_k(pi, k=1, pi_hi=0.95, seed=0)
+
+
+@pytest.mark.parametrize(
+    "pi",
+    [
+        pytest.param(
+            np.asarray([0.2 + 7j, 0.8 + 8j], dtype=np.complex128),
+            id="finite-imaginary",
+        ),
+        pytest.param(
+            np.asarray([complex(0.2, np.nan), 0.8 + 8j], dtype=np.complex128),
+            id="nan-imaginary",
+        ),
+    ],
+)
+def test_complex_probability_arrays_fail_by_name_before_float_conversion(
+    pi: np.ndarray,
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", np.exceptions.ComplexWarning)
+        with pytest.raises(
+            ValueError,
+            match=r"^pi must be a one-dimensional numeric vector\.$",
+        ):
+            select_exact_k(pi, k=1, pi_hi=0.95, seed=0)
 
 
 @pytest.mark.parametrize("pi_hi", [-0.1, 1.1, np.nan, np.inf])

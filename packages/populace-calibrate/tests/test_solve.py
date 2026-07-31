@@ -9,6 +9,8 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -944,6 +946,50 @@ def test_exact_k_refit_conserves_full_pool_mass(feasible_frame) -> None:
     assert result.initial_weights.sum() == truths["population"]
     assert result.weights.sum() == pytest.approx(truths["population"])
     assert result.diagnostics[0].final_estimate == pytest.approx(truths["population"])
+
+
+@pytest.mark.parametrize(
+    "inclusion_probabilities",
+    [
+        pytest.param(
+            np.asarray([0.2 + 7j, 0.6 + 8j, 0.8 + 9j], dtype=np.complex128),
+            id="finite-imaginary",
+        ),
+        pytest.param(
+            np.asarray(
+                [complex(0.2, np.nan), 0.6 + 8j, 0.8 + 9j],
+                dtype=np.complex128,
+            ),
+            id="nan-imaginary",
+        ),
+    ],
+)
+def test_exact_k_refit_rejects_complex_inclusion_probabilities_by_name(
+    inclusion_probabilities: np.ndarray,
+) -> None:
+    frame, targets, selection = _exact_k_design_fixture(
+        np.asarray([2.0, 3.0, 5.0]),
+        np.ones(3),
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", np.exceptions.ComplexWarning)
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"^support_inclusion_probabilities must be a one-dimensional "
+                r"numeric vector aligned with support\.$"
+            ),
+        ):
+            refit_l0_selection(
+                frame,
+                targets,
+                selection,
+                support=np.arange(3, dtype=np.int64),
+                k=3,
+                support_inclusion_probabilities=inclusion_probabilities,
+                epochs=1,
+            )
 
 
 def test_exact_k_refit_cap_uses_full_pool_expansion_weights(feasible_frame) -> None:

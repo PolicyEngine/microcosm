@@ -443,7 +443,13 @@ def select_exact_k(
     and the deliberately minimal ``group_ids`` contract.
     """
     try:
-        probabilities = np.asarray(pi, dtype=np.float64)
+        supplied_probabilities = np.asarray(pi)
+    except (TypeError, ValueError):
+        raise ValueError("pi must be a one-dimensional numeric vector.") from None
+    if supplied_probabilities.dtype.kind == "c":
+        raise ValueError("pi must be a one-dimensional numeric vector.")
+    try:
+        probabilities = np.asarray(supplied_probabilities, dtype=np.float64)
     except (TypeError, ValueError):
         raise ValueError("pi must be a one-dimensional numeric vector.") from None
     if probabilities.ndim != 1:
