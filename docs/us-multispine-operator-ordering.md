@@ -21,11 +21,11 @@ sequence.
 | Boundary | Operators | State consumed |
 |---|---|---|
 | `source_construction` | `_load_base_frame_from_args` | Either an existing US base H5 or pooled ASEC unit frames built from the declared source years. |
-| `pre_clone_enrichment` | `derive_us_cps_carried_inputs`; prior-year income, relationships, Medicare take-up, housing, eligibility, pregnancy, WIC, child support, disability benefits, workers compensation, weeks unemployed, childcare, energy subsidy, retirement contribution/distribution, and immigration operators | The ASEC-only frame, build year and seed; some operators also consume pinned external source tables. Housing can consume the pinned ACS 2022 rent donor when its input gate is not already satisfied. |
+| `pre_clone_enrichment` | `derive_us_cps_carried_inputs`; prior-year income, relationships, Medicare take-up, housing, eligibility, pregnancy, WIC, child support, disability benefits, workers compensation, weeks unemployed, childcare, energy subsidy, retirement contribution/distribution, and immigration operators | The ASEC-only frame, build year and seed; some operators also consume pinned external source tables. The adjacent-year income join and rent draw happen here, before row expansion. Housing can consume the pinned ACS 2022 rent donor when its input gate is not already satisfied. |
 | `clone_feature_extraction` | `clone_us_frame_for_puf_support`; PUF donor extraction; primary-QRF initialization | The already enriched ASEC frame and processed PUF donor arrays. Cloning creates an ASEC copy and a PUF-tax-detail copy and splits weights across them. |
 | `primary_qrf_chain` and `qrf_finalization` | Chained weighted QRF fits and finalization | Predictors on the cloned frame, PUF donor targets, design weights, fit seed, and estimator count. Predictions are assigned to the PUF-detail copy. |
 | PUF tail and derived-detail stages | Capital-gains tail transfer, capital-gain distributions, QBI reconciliation | The cloned, QRF-imputed frame plus PUF donor detail and declared deterministic reconciliation rules. |
-| post-clone input stages | WIC, housing assistance, prior-year income, child support, disability benefits, workers compensation, weeks unemployed, childcare, adult care, energy subsidy, retirement contributions/distributions, and education inputs | The operated ASEC/PUF-detail frame, source columns, build year, seed, and operator-specific external tables. Signal gates run between these mutations. |
+| post-clone input stages | WIC, housing assistance, prior-year income, child support, disability benefits, workers compensation, weeks unemployed, childcare, adult care, energy subsidy, retirement contributions/distributions, and education inputs | The operated ASEC/PUF-detail frame, source columns, build year, seed, and operator-specific external tables. Prior-year income's second invocation performs the PUF-support QRF from the values derived before cloning; it does not repeat the adjacent-year join. Signal gates run between these mutations. |
 | geography and export | Congressional-district assignment, block-ladder assignment, H5 export | The operated frame, geography artifacts and seeds, followed by the final frame writer. |
 
 Thus many derivation, imputation, and seeded-assignment operators run before
@@ -105,25 +105,28 @@ fixed sequence:
 
 1. `assemble_spines({"asec": ..., "acs": ...})` creates the first shared
    population state and binds the immutable assembly receipt.
-2. `clone_us_frame_for_puf_support(...)` applies the PUF-detail clone to the
-   whole assembled pool. Clone-index provenance, not source-spine identity,
-   controls later PUF-detail routing.
-3. CPS-carried predictor inputs are derived after assembly on rows with the
-   required measured CPS source fields. The pool wrapper validates the complete
-   assembly receipt first, then gives the historical CPS kernel an ephemeral
-   `PERIDNUM`-available structural projection. That projection deliberately
-   carries neither the full-pool assembly receipt nor its mass history. Only
-   the kernel's declared output family is merged back into the still-receipted
-   full pool. Unavailable peer rows remain nullable; no operator uses
-   source-channel identity to choose behavior.
-4. The primary PUF QRF chain and capital-gains tail transfer run over the
-   combined frame. The remaining historical ASEC input families then run in
-   their declared order on source-evidenced rows: prior-year income,
-   relationship and Medicare inputs, housing, eligibility, pregnancy, WIC,
-   housing-assistance support transfer, child support, disability benefits,
-   workers compensation, weeks unemployed, childcare, adult care, energy
-   subsidy, retirement contributions/distributions, immigration, and
-   education inputs.
+2. The coarse `clone` stage first prepares the clone-sensitive source inputs
+   on the assembled pool, then calls `clone_us_frame_for_puf_support(...)`.
+   Preparation selects rows only by raw `PERIDNUM` availability and removes
+   every `*_support_channel` and `*_support_clone_index` column from the
+   historical kernel's ephemeral projection. This matters because assembly
+   assigns clone index zero: exposing that metadata would make the legacy
+   prior-year wrapper treat an unexpanded frame as support-cloned. CPS-carried
+   inputs, the adjacent-year prior-income join, relationships, the household
+   rent draw, and parent-pointer eligibility inputs run in that order. Only
+   their declared outputs are merged into the still-receipted pool. Physical
+   cloning then copies those values and remaps structural IDs. Unavailable peer
+   rows remain nullable; no operator reads source-channel identity.
+3. The primary PUF QRF chain and capital-gains tail transfer run over the
+   combined, physically cloned frame. Clone-index provenance, not source-spine
+   identity, controls PUF-detail routing.
+4. The post-clone source chain runs the prior-year PUF-support QRF, Medicare,
+   pregnancy, WIC, housing-assistance support transfer, child support,
+   disability benefits, workers compensation, weeks unemployed, childcare,
+   adult care, energy subsidy, retirement contributions/distributions,
+   immigration, and education inputs. The prior-year wage target is carried
+   through cloning only long enough to train that QRF and is then deleted from
+   the whole pool because it is formula-owned.
 5. The pool-specific ACS transfer plan fills only still-null peer cells from
    those post-assembly results. Existing measured/native cells remain
    byte-for-byte unchanged, and transfer receipts record fitted and imputed
@@ -145,6 +148,38 @@ fixed sequence:
    checked jointly so matching marginals cannot conceal incompatible pairs.
    The gate batches all failures and controls the manifest's simulation-ready
    status.
+
+The source-operator contract registry makes clone placement total and
+executable. Adding an operator without a phase declaration, or calling one in
+an undeclared phase, fails before the kernel runs:
+
+| Operator | Clone phase | Mechanism receipt |
+|---|---|---|
+| CPS-carried inputs | pre | Deterministic measured mappings supply rent and primary-QRF predictors. |
+| Prior-year income | pre and post | The `(source_year, PERIDNUM)` join must be unique before cloning; the PUF-only QRF requires clone roles afterward. |
+| Relationships | pre | Household-head status is a rent-recipient predictor. |
+| Medicare take-up | post | Rowwise carry/completion is clone-safe. |
+| Housing inputs | pre | Rent is drawn once per source household and then cloned unchanged. |
+| Eligibility inputs | pre | Raw `PH_SEQ`/`A_LINENO` parent pointers would count every cloned child twice. |
+| Pregnancy | post | Stable source-identity hashes share draws across clones. |
+| WIC | post | Remapped family grouping and source-identity draws are clone-safe. |
+| Housing assistance | post | The QRF intentionally replaces only the PUF support role. |
+| Child support | post | Role-aware QRF uses remapped structural IDs. |
+| Disability benefits | post | Role-aware QRF uses remapped structural IDs. |
+| Workers compensation | post | Role-aware QRF uses remapped structural IDs. |
+| Weeks unemployed | post | Role-aware QRF uses remapped structural IDs. |
+| Childcare | post | Role-aware QRF uses remapped SPM-unit IDs. |
+| Adult care | post | Clone-local unit imputation requires support roles. |
+| Energy subsidy | post | Role-aware QRF uses remapped SPM-unit IDs. |
+| Retirement contributions | post | Role-aware QRF uses remapped structural IDs. |
+| Retirement distributions | post | Forced PUF imputation requires support roles. |
+| Immigration | post | Source-keyed draws preserve equality across clones. |
+| Education | post | Deterministic rowwise derivation follows PUF tuition imputation. |
+
+The ASEC checkpoint remains the operator-untouched `raw_source_mapping`
+artifact. Clone-stage preparation deliberately happens after loading,
+operator-free validation, and assembly, so this ordering correction neither
+changes nor requires reproduction of that checkpoint.
 
 The output H5 is a nullable, input-only, pre-calibration pool. Its companion
 manifest carries input pins, the assembly receipt, per-source and per-clone
@@ -188,7 +223,7 @@ The US multispine build order is:
 ```text
 source ingestion and faithful schema harmonization
     -> assemble peer spines
-    -> clone PUF detail
+    -> clone stage (prepare clone-sensitive inputs, then clone PUF detail)
     -> impute
     -> derive
     -> seed take-up and other stochastic inputs
@@ -201,20 +236,21 @@ Calibration is a downstream consumer boundary, not a stage in this tool.
 
 `assemble_spines(...)` is the boundary between source preparation and
 population operators. It receives nullable, schema-compatible peer frames
-and produces one combined frame before cloning, fitted transfer, derivation,
-seeded assignment, simulation, or calibration. Downstream pool-stage
-entrypoints receive that combined frame and operate on measured
-characteristics without selecting behavior by source spine. A historical
-source kernel that requires CPS-only raw fields receives an ephemeral
-availability projection after the combined-frame boundary is validated. Such
-a projection is not published or described as a full-pool lineage state; its
-declared outputs are merged back into the combined frame, whose immutable
-assembly receipt remains the authority.
+and produces one combined frame before clone-stage preparation, physical
+cloning, fitted transfer, seeded assignment, simulation, or calibration.
+Downstream pool-stage entrypoints receive that combined frame and operate on
+measured characteristics without selecting behavior by source spine. A
+historical source kernel that requires CPS-only raw fields receives an
+ephemeral availability projection after the combined-frame boundary is
+validated. Such a projection is not published or described as a full-pool
+lineage state; its declared outputs are merged back into the combined frame,
+whose immutable assembly receipt remains the authority.
 
 ASEC and ACS are peer household spines. A future household source can join
 the same assembly contract. PUF tax detail is not a peer spine: it remains a
-clone operator applied after assembly, so every assembled household source
-is subject to the same clone and downstream operator sequence.
+clone operator applied after assembly and after the clone stage's spine-blind
+preparation, so every assembled household source is subject to the same clone
+and downstream operator sequence.
 
 The new provenance contract is:
 
