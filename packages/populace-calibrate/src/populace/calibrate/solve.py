@@ -51,6 +51,17 @@ Six declared options, each a real feature (and each its own test):
   This penalty is only implemented by ``method="adam"``. In the two-stage
   :func:`calibrate_l0_refit` path it applies to both stages unless
   ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
+
+An explicit exact-k frozen refit first benchmarks its selected records to the
+known full-pool weight total. The seam receives the realized support but not its
+marginal inclusion probabilities, so it uses the Hájek-style ratio estimator
+``w_i * sum_pool(w) / sum_support(w)`` rather than an unavailable
+Horvitz--Thompson ``w_i / q_i`` estimator. This preserves the original relative
+design weights within the support while setting the known pool mass as the
+estimator's control total. Thus ``mass="conserve"`` conserves full-pool mass,
+and ``max_weight_ratio`` bounds the resulting expansion weights with useful
+headroom. The legacy thresholded L0 refit does not perform this normalization
+and remains unchanged.
 """
 
 from __future__ import annotations
@@ -315,8 +326,9 @@ class L0RefitResult:
         """The refit's starting weights on its frozen support.
 
         The legacy path inherits surviving L0 weights. The explicit exact-k
-        path starts from the original frame weights so a positive-probability
-        record whose deterministic gate closed remains refittable.
+        path starts from the original frame weights, ratio-normalized to the
+        full-pool mass, so a positive-probability record whose deterministic
+        gate closed remains refittable without losing population mass.
         """
         return self.refit.initial_weights
 
@@ -1831,6 +1843,34 @@ def _selected_person_mask(
     return person_mask, selected_ids.copy()
 
 
+def _with_exact_k_full_pool_weights(
+    subset: Frame,
+    pool: Frame,
+    weight_entity: str,
+) -> Frame:
+    """Benchmark selected design weights to the known full-pool mass."""
+    selected = subset.resolve_weights(weight_entity)
+    pool_total = pool.resolve_weights(weight_entity).total
+    expanded_values = _project_to_total(
+        selected.values,
+        pool_total,
+        max_weight_ratio=None,
+        initial_weights=selected.values,
+    )
+    expanded = selected.with_values(expanded_values, kind=selected.kind)
+    return subset.with_weights(
+        weight_entity,
+        expanded,
+        mass=MassChange(
+            factor=pool_total / selected.total,
+            reason=(
+                "exact-k selected-support design weights ratio-normalized to "
+                "the known full-pool mass"
+            ),
+        ),
+    )
+
+
 def refit_l0_selection(
     frame: Frame,
     targets: TargetSet,
@@ -1869,6 +1909,8 @@ def refit_l0_selection(
     ``selection.frame``. A record may have positive open probability while its
     deterministic L0 gate is closed; starting from the original frame keeps
     such a valid stage-2 draw available to ordinary log-weight calibration.
+    Its selected design weights are then ratio-normalized to the original
+    frame's full-pool mass, as described in this module's estimator note.
     Omitting ``support`` and ``k`` leaves the existing thresholded path and its
     starting weights unchanged.
     ``l2_lambda`` applies the soft concentration penalty to the refit itself —
@@ -1882,7 +1924,9 @@ def refit_l0_selection(
     the shipped weights, or ``l2_anchor="design"`` to anchor at the
     *pre-selection* initial weights of the surviving records — "stay near the
     survey design", the natural choice when the candidate frame carries real
-    design weights rather than a uniform reset.
+    design weights rather than a uniform reset. On the explicit exact-k path,
+    that design anchor receives the same full-pool ratio normalization as the
+    refit's starting weights.
     """
     if l2_anchor not in ("initial", "uniform", "design"):
         raise ValueError(
@@ -1926,20 +1970,26 @@ def refit_l0_selection(
         frame, refit_entity, selected_mask
     )
     subset = subset_source.select(person_mask)
-    if k is not None and subset.n(refit_entity) != k:
-        raise ValueError(
-            "exact-k cardinality gate failed after frame subsetting: "
-            f"realized {subset.n(refit_entity)} records != k={k}."
+    if k is not None:
+        realized_count = subset.n(refit_entity)
+        assert_exact_k_support(
+            np.arange(realized_count, dtype=np.int64),
+            k,
+            pool_size=realized_count,
         )
+        subset = _with_exact_k_full_pool_weights(subset, frame, refit_entity)
 
     refit_l2_anchor_weights = None
     if l2_anchor == "design":
-        # The selection stage's INITIAL weights are the design prior the
-        # candidate frame entered calibration with; subset to survivors so
-        # the anchor aligns with the refit's weight vector.
-        refit_l2_anchor_weights = np.asarray(
-            selection.initial_weights, dtype=np.float64
-        )[selected_mask]
+        # The legacy branch uses the pre-selection design prior on survivors.
+        # The exact-k branch uses that same prior after its full-pool ratio
+        # normalization, keeping the anchor on the refit's expanded mass scale.
+        if k is None:
+            refit_l2_anchor_weights = np.asarray(
+                selection.initial_weights, dtype=np.float64
+            )[selected_mask]
+        else:
+            refit_l2_anchor_weights = subset.resolve_weights(refit_entity).values
 
     refit = calibrate(
         subset,
