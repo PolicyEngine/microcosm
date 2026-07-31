@@ -745,9 +745,7 @@ def _new_publication_run_id() -> str:
 
 def _publication_temporary_path(path: Path, *, publication_run_id: str) -> Path:
     output = Path(path)
-    return output.with_name(
-        f".{output.name}.{publication_run_id}.publication.tmp"
-    )
+    return output.with_name(f".{output.name}.{publication_run_id}.publication.tmp")
 
 
 def _write_outputs(

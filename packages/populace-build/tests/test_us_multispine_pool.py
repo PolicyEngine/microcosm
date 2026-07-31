@@ -269,9 +269,7 @@ def _real_pre_clone_source_frame() -> Frame:
         ),
         "spm_unit": pd.DataFrame({"spm_unit_id": [201, 202]}),
         "family": pd.DataFrame({"family_id": [301, 302]}),
-        "marital_unit": pd.DataFrame(
-            {"marital_unit_id": [401, 402, 403, 404]}
-        ),
+        "marital_unit": pd.DataFrame({"marital_unit_id": [401, 402, 403, 404]}),
     }
     return Frame(
         tables,
@@ -534,8 +532,7 @@ def test_pool_transfer_plan_extends_legacy_without_duplicates() -> None:
         for family, columns in families.items():
             for column in columns:
                 assert column not in owners, (
-                    f"{column} is duplicated by {owners[column]} and "
-                    f"{(entity, family)}"
+                    f"{column} is duplicated by {owners[column]} and {(entity, family)}"
                 )
                 owners[column] = (entity, family)
 
@@ -586,8 +583,7 @@ def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
     immigration_spec = next(
         spec
         for spec in POOL_SPINE_AGREEMENT_REGISTRY
-        if (spec.entity, spec.family)
-        == ("person", "source_operator_immigration")
+        if (spec.entity, spec.family) == ("person", "source_operator_immigration")
     )
     assert immigration_spec.columns == (
         "immigration_status_str",
@@ -650,9 +646,7 @@ def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
         for name, contract in POOL_OPERATOR_CONTRACTS.items()
         if len(contract.phases) == 2
     } == {"with_us_prior_year_income_inputs"}
-    assert all(
-        contract.mechanism for contract in POOL_OPERATOR_CONTRACTS.values()
-    )
+    assert all(contract.mechanism for contract in POOL_OPERATOR_CONTRACTS.values())
     assert {
         name
         for name, contract in POOL_OPERATOR_CONTRACTS.items()
@@ -691,8 +685,7 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "phase": phase,
                 "operator_order": list(operator_names),
                 "suboperators": [
-                    {"operator": name, "kernel_receipt": {}}
-                    for name in operator_names
+                    {"operator": name, "kernel_receipt": {}} for name in operator_names
                 ],
             },
         )
@@ -716,9 +709,7 @@ def test_production_operator_invocations_are_total_and_guarded(
         ("post_clone", POOL_DERIVE_OPERATOR_ORDER),
     ]
     observed_placements = {
-        (name, phase)
-        for phase, operator_names in observed
-        for name in operator_names
+        (name, phase) for phase, operator_names in observed for name in operator_names
     }
     registered_placements = {
         (name, phase)
@@ -1062,9 +1053,7 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
             assert not available.mass_log
             person = available.table("person")
             assert ("person_support_channel" in person.columns) is physically_clone
-            assert (
-                "person_support_clone_index" in person.columns
-            ) is physically_clone
+            assert ("person_support_clone_index" in person.columns) is physically_clone
             assert person["PERIDNUM"].notna().all()
             updated = person.copy()
             updated[column] = value
@@ -1078,9 +1067,13 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
         table: pd.DataFrame,
         key: object,
     ) -> object:
-        keys = [key] if isinstance(key, str) else list(key) if isinstance(
-            key, (list, tuple)
-        ) else []
+        keys = (
+            [key]
+            if isinstance(key, str)
+            else list(key)
+            if isinstance(key, (list, tuple))
+            else []
+        )
         if any(str(column).endswith("_support_channel") for column in keys):
             raise AssertionError("population source channel was read")
         return original_getitem(table, key)
@@ -1118,11 +1111,7 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
     person = result.frame.table("person")
     cps = person["PERIDNUM"].notna()
     assert person.loc[cps, first_output].tolist() == [1.0] * cps_rows
-    expected_acs = (
-        [900.0, 900.0, 901.0, 901.0]
-        if physically_clone
-        else [900.0, 901.0]
-    )
+    expected_acs = [900.0, 900.0, 901.0, 901.0] if physically_clone else [900.0, 901.0]
     assert sorted(person.loc[~cps, first_output].tolist()) == expected_acs
     unavailable = "fixture_source_output_01"
     assert person.loc[cps, unavailable].tolist() == [2.0] * cps_rows
@@ -1291,9 +1280,7 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
     tanf = result.receipt["programs"]["takes_up_tanf_if_eligible"]
     assert tanf["provenance_kind"] == "administrative_seed_or_preserved_input"
     medicare = result.receipt["programs"]["takes_up_medicare_if_eligible"]
-    assert medicare["provenance_kind"] == (
-        "transferred_or_preserved_input"
-    )
+    assert medicare["provenance_kind"] == ("transferred_or_preserved_input")
     assert medicare["defaulted_rows"] == 0
 
     spm = result.frame.table("spm_unit")

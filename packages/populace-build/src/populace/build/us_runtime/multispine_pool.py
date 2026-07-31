@@ -386,8 +386,7 @@ POOL_POST_CLONE_SOURCE_OPERATOR_ORDER = tuple(
 
 _CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
 _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
-    name: contract.family
-    for name, contract in POOL_OPERATOR_CONTRACTS.items()
+    name: contract.family for name, contract in POOL_OPERATOR_CONTRACTS.items()
 }
 _FORMULA_OWNED_SOURCE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset({"employment_income_last_year"}),
@@ -575,12 +574,10 @@ def complete_multispine_source_inputs(
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
         ),
-        "with_us_workers_compensation": lambda current: (
-            with_us_workers_compensation(
-                current,
-                seed=POOL_RANDOM_SEED,
-                time_period=POOL_TIME_PERIOD,
-            )
+        "with_us_workers_compensation": lambda current: with_us_workers_compensation(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
         ),
         "with_us_weeks_unemployed": lambda current: with_us_weeks_unemployed(
             current,
@@ -653,8 +650,7 @@ def _run_source_operator_chain(
 
     if not isinstance(frame, Frame):
         raise TypeError(
-            "Multispine source operators require a Frame, got "
-            f"{type(frame).__name__}."
+            f"Multispine source operators require a Frame, got {type(frame).__name__}."
         )
     if phase not in {_PRE_CLONE_PHASE, _POST_CLONE_PHASE}:
         raise ValueError(f"Unknown multispine source-operator phase {phase!r}.")
@@ -677,8 +673,7 @@ def _run_source_operator_chain(
     ]
     if misplaced:
         raise ValueError(
-            f"Multispine source operator(s) are not declared for {phase}: "
-            f"{misplaced}."
+            f"Multispine source operator(s) are not declared for {phase}: {misplaced}."
         )
 
     _assert_source_operator_boundary(frame, phase=phase)
@@ -758,8 +753,7 @@ def _run_source_operator_chain(
         ):
             formula_owned = {
                 entity: frozenset(
-                    set(columns)
-                    & set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+                    set(columns) & set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
                 )
                 for entity, columns in output_families[family].items()
             }
@@ -810,8 +804,7 @@ def _run_source_operator_chain(
             }
         )
     uses_cps_source = any(
-        POOL_OPERATOR_CONTRACTS[name].execution_scope
-        == _CPS_SOURCE_EXECUTION_SCOPE
+        POOL_OPERATOR_CONTRACTS[name].execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
         for name in operator_names
     )
     return PoolStageOutput(
@@ -862,9 +855,7 @@ def _assert_source_operator_boundary(frame: Frame, *, phase: str) -> None:
     invalid_numeric = (clone_values < 0.0).any() or not np.equal(
         clone_values, np.floor(clone_values)
     ).all()
-    pre_clone_invalid = phase == _PRE_CLONE_PHASE and not np.all(
-        clone_values == 0.0
-    )
+    pre_clone_invalid = phase == _PRE_CLONE_PHASE and not np.all(clone_values == 0.0)
     post_clone_invalid = phase == _POST_CLONE_PHASE and (
         not np.any(clone_values == 0.0) or not np.any(clone_values > 0.0)
     )
@@ -939,10 +930,7 @@ def _source_available_projection(
     return Frame(
         tables,
         selected.schema,
-        {
-            entity: selected.weights_for(entity)
-            for entity in selected.weighted_entities
-        },
+        {entity: selected.weights_for(entity) for entity in selected.weighted_entities},
         selected.strata,
     )
 
@@ -1033,9 +1021,8 @@ def _assert_source_operator_structure(
         entity_id = before.schema.entity_id_column(entity)
         before_ids = before.table(entity)[entity_id]
         after_ids = after.table(entity)[entity_id]
-        if (
-            after_ids.duplicated().any()
-            or set(after_ids.tolist()) != set(before_ids.tolist())
+        if after_ids.duplicated().any() or set(after_ids.tolist()) != set(
+            before_ids.tolist()
         ):
             raise ValueError(
                 f"Multispine source operator {operator_name!r} changed structural "
@@ -1276,9 +1263,7 @@ def _complete_schedule_d_input(frame: Frame) -> PoolStageOutput:
             "preserved_nonnull_rows": int(observed.sum()),
             "filled_rows": filled_rows,
             "derived_tax_units": derived_units,
-            "partially_observed_tax_units_filled_with_zero": (
-                partially_observed_units
-            ),
+            "partially_observed_tax_units_filled_with_zero": (partially_observed_units),
             "derivation": derivation_receipt,
         },
     )

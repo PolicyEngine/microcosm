@@ -308,9 +308,7 @@ def _assert_publication_tombstone(
         "status": "publication_in_progress",
     }
     with pytest.raises(ValueError, match="not simulation-ready"):
-        pool_tool.load_simulation_ready_us_multispine_pool_manifest(
-            outputs.manifest
-        )
+        pool_tool.load_simulation_ready_us_multispine_pool_manifest(outputs.manifest)
 
 
 def test_parser_exposes_only_six_pinned_inputs_and_out(
@@ -365,8 +363,7 @@ def test_pool_tool_structurally_accepts_only_the_raw_stage_loader(
     called = {
         node.func.id
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
 
     assert "load_asec_raw_stage_checkpoint" in imported
@@ -577,9 +574,7 @@ def test_wired_path_uses_real_raw_preserving_transfer_before_gate(
     def impute(frame: Frame) -> PoolStageOutput:
         person = frame.table("person").copy()
         person["age"] = pd.to_numeric(person["A_AGE"], errors="raise")
-        person["is_female"] = (
-            pd.to_numeric(person["A_SEX"], errors="raise") == 2
-        )
+        person["is_female"] = pd.to_numeric(person["A_SEX"], errors="raise") == 2
         prepared = _replace_person(frame, person)
         transferred = transfer_acs_inputs(
             prepared,
@@ -671,13 +666,11 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     }
     assert manifest["pool_h5"]["formula_outputs_persisted"] is False
     assert manifest["pool_h5"]["input_only"] is True
+    assert manifest["pool_h5"]["publication_run_id"] == manifest["publication_run_id"]
     assert (
-        manifest["pool_h5"]["publication_run_id"]
-        == manifest["publication_run_id"]
+        manifest["pool_h5"]["sha256"]
+        == hashlib.sha256(outputs.pool_h5.read_bytes()).hexdigest()
     )
-    assert manifest["pool_h5"]["sha256"] == hashlib.sha256(
-        outputs.pool_h5.read_bytes()
-    ).hexdigest()
 
     with pd.HDFStore(outputs.pool_h5, mode="r") as store:
         assert "ssi" not in store["person"].columns
@@ -746,9 +739,7 @@ def test_ready_reader_rejects_manifest_h5_run_id_mismatch(
     )
 
     with pytest.raises(ValueError, match="H5.*run ID does not match"):
-        pool_tool.load_simulation_ready_us_multispine_pool_manifest(
-            outputs.manifest
-        )
+        pool_tool.load_simulation_ready_us_multispine_pool_manifest(outputs.manifest)
 
 
 def test_h5_publication_failure_invalidates_stale_green_manifest(
@@ -895,9 +886,7 @@ def test_final_manifest_failure_leaves_tombstone_as_readiness_authority(
         outputs,
         publication_run_id=publication_run_id,
     )
-    diagnostics = json.loads(
-        outputs.agreement_diagnostics.read_text(encoding="utf-8")
-    )
+    diagnostics = json.loads(outputs.agreement_diagnostics.read_text(encoding="utf-8"))
     assert diagnostics["publication_run_id"] == publication_run_id
     with pd.HDFStore(outputs.pool_h5, mode="r") as store:
         metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
