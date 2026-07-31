@@ -23,11 +23,15 @@ loop records.
 - Added the three exact round-13 loop repros and their comprehension mirrors,
   pinning loop-only classification for the starred target and dual reports for
   the partial dict merge and dynamic-tail starred rows.
+- Unified the binder and both fragment probes on one structure-based iterable
+  resolver, including starred splicing and dict-entry views.
+- Preserved resolvable partial-dict merge entries beside opaque sentinels and
+  retained partial nested structures while marking their bindings incomplete.
+- Confirmed all 15 new loop/comprehension fixtures pass and the complete guard
+  file is green after the implementation.
 
 ## Next
 
-- Route every probe through shared structure-based resolution, retaining
-  resolvable dict-merge entries alongside opaque sentinels.
 - Run the guard file, precision and benign batteries, full `populace-build`
   suite, repository Ruff, and `git diff --check`.
 - Restore `PROGRESS.md` exactly to `origin/main`, commit every coherent step

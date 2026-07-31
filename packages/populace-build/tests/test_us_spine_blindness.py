@@ -1182,6 +1182,8 @@ def _static_structure(
         for element in node.elts:
             if isinstance(element, ast.Starred):
                 inner_value = _static_literal_value(element.value, constants)
+                if not isinstance(inner_value, (list, tuple)):
+                    inner_value = _static_structure(element.value, constants)
                 if isinstance(inner_value, (list, tuple)):
                     resolved.extend(inner_value)
                 else:
@@ -1190,8 +1192,7 @@ def _static_structure(
                 inner = _static_structure(element, constants)
                 resolved.append(inner if inner is not None else _OPAQUE_STATIC_VALUE)
             else:
-                value = _static_literal_value(element, constants)
-                resolved.append(value)
+                resolved.append(_static_value_or_structure(element, constants))
         return tuple(resolved)
     return None
 
@@ -1208,16 +1209,25 @@ def _static_dict_entries(
     if isinstance(mapping, dict):
         return _StaticDictEntries(mapping.items())
     if isinstance(node, ast.Dict):
-        if any(key is None for key in node.keys):
-            return None
-        entries = _StaticDictEntries(
-            (
-                _static_value_or_structure(key, constants),
-                _static_value_or_structure(value, constants),
-            )
-            for key, value in zip(node.keys, node.values, strict=True)
-            if key is not None
-        )
+        resolved_entries: list[tuple[object, object]] = []
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is not None:
+                resolved_entries.append(
+                    (
+                        _static_value_or_structure(key, constants),
+                        _static_value_or_structure(value, constants),
+                    )
+                )
+                continue
+            expanded = _static_dict_entries(value, constants)
+            if expanded is None:
+                # An unknown **mapping may contribute or replace any key.
+                # Preserve that uncertainty without discarding entries
+                # resolved before or after it.
+                resolved_entries.append((_OPAQUE_STATIC_VALUE, _OPAQUE_STATIC_VALUE))
+            else:
+                resolved_entries.extend(expanded)
+        entries = _StaticDictEntries(resolved_entries)
     elif (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
@@ -1299,33 +1309,6 @@ def _contains_opaque_static_value(value: object) -> bool:
     return False
 
 
-def _static_dict_values_expression(node: ast.AST) -> ast.AST | None:
-    """Return only the syntactic value payload of a supported static dict."""
-
-    if isinstance(node, ast.Dict):
-        if any(key is None for key in node.keys):
-            return None
-        return ast.Tuple(elts=list(node.values), ctx=ast.Load())
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "dict"
-        and len(node.args) == 1
-        and not node.keywords
-    ):
-        argument = node.args[0]
-        if isinstance(argument, ast.Dict):
-            return _static_dict_values_expression(argument)
-        if isinstance(argument, (ast.List, ast.Tuple, ast.Set)):
-            values: list[ast.AST] = []
-            for entry in argument.elts:
-                if not isinstance(entry, (ast.List, ast.Tuple)) or len(entry.elts) != 2:
-                    return None
-                values.append(entry.elts[1])
-            return ast.Tuple(elts=values, ctx=ast.Load())
-    return None
-
-
 def _value_bears_strings(value: object) -> bool:
     """True when a resolved value carries string material at any depth."""
 
@@ -1340,44 +1323,11 @@ def _value_bears_strings(value: object) -> bool:
     return False
 
 
-def _static_container_expression(node: ast.AST) -> ast.AST | None:
-    """The literal-container core of an iterable expression, if any.
-
-    Recognizes literal containers directly, static-dict ``.items()`` and
-    ``.values()``, and ``dict(<static literal>)``. Their literal content is
-    eligible for the conservative fragment fallback; ``.values()`` narrows
-    the core to values rather than mapping keys. Dynamic expressions that
-    merely mention strings (``mapping.get("person", {}).values()``) return
-    None so key lookups never trip the fragment rule."""
-
-    if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
-        return node
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr in {"items", "values"}
-        and not node.args
-        and not node.keywords
-    ):
-        if node.func.attr == "values":
-            return _static_dict_values_expression(node.func.value)
-        return _static_container_expression(node.func.value)
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "dict"
-        and len(node.args) == 1
-        and not node.keywords
-    ):
-        return _static_container_expression(node.args[0])
-    return None
-
-
 def _static_iteration_value(
     node: ast.AST,
     constants: list[dict[str, object]],
 ) -> object:
-    """Resolve the supported static value iterated by a loop binder."""
+    """Resolve the one structural value shared by binders and probes."""
 
     if (
         isinstance(node, ast.Call)
@@ -1397,7 +1347,15 @@ def _static_iteration_value(
     value = _static_literal_value(node, constants)
     if isinstance(value, _StaticDictEntries):
         return tuple(key for key, _value in value)
-    return value
+    if value is not _OPAQUE_STATIC_VALUE:
+        return value
+    structure = _static_structure(node, constants)
+    if structure is not None:
+        return structure
+    entries = _static_dict_entries(node, constants)
+    if entries is not None:
+        return tuple(key for key, _value in entries)
+    return _OPAQUE_STATIC_VALUE
 
 
 def _static_iteration_string_choices(
@@ -1415,38 +1373,10 @@ def _static_iteration_string_choices(
     return choices or None
 
 
-def _iterable_carries_guarded_fragments(node: ast.AST) -> bool:
-    """True when a literal-container iterable holds string constants that
-    assemble into a guarded column name. Applies only to genuinely static
-    container expressions (see _static_container_expression) so dynamic
-    iterables that merely mention strings never trip it. Fragments shorter
-    than four characters are ignored."""
-
-    container = _static_container_expression(node)
-    if container is None:
-        return False
-    fragments = [
-        constant.value
-        for constant in ast.walk(container)
-        if isinstance(constant, ast.Constant)
-        and isinstance(constant.value, str)
-        and len(constant.value) >= 4
-    ]
-    return any(
-        fragment in column
-        for fragment in fragments
-        for column in _OPERATOR_SOURCE_COLUMNS
-    )
-
-
-def _resolved_value_carries_guarded_fragments(
+def _structure_carries_guarded_fragments(
     node: ast.AST, constants: list[dict[str, object]]
 ) -> bool:
-    """Bound-value counterpart of the syntactic fragment probe.
-
-    Names, structures, and supported static-dict views resolve to the value
-    actually iterated; its string leaves are checked for guarded fragments.
-    """
+    """Leaf-walk the same resolved iterable structure used by the binder."""
 
     value = _static_iteration_value(node, constants)
     if value is _OPAQUE_STATIC_VALUE:
@@ -1466,6 +1396,22 @@ def _resolved_value_carries_guarded_fragments(
     return any(
         fragment in column for fragment in leaves for column in _OPERATOR_SOURCE_COLUMNS
     )
+
+
+def _iterable_carries_guarded_fragments(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> bool:
+    """Inline-container fragment probe over the shared structural value."""
+
+    return _structure_carries_guarded_fragments(node, constants)
+
+
+def _resolved_value_carries_guarded_fragments(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> bool:
+    """Bound-value fragment probe over the shared structural value."""
+
+    return _structure_carries_guarded_fragments(node, constants)
 
 
 class _SourceReadVisitor(ast.NodeVisitor):
@@ -1762,10 +1708,6 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
         literal = _static_iteration_value(iterable, self.constants)
         if literal is _OPAQUE_STATIC_VALUE or not isinstance(literal, (list, tuple)):
-            structure = _static_structure(iterable, self.constants)
-            if structure is not None:
-                literal = structure
-        if literal is _OPAQUE_STATIC_VALUE or not isinstance(literal, (list, tuple)):
             return False, False
         rows = tuple(literal)
         if not rows or not all(isinstance(row, (list, tuple)) for row in rows):
@@ -1821,6 +1763,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
                     # it precisely (sol #583 round 12).
                     self._bind_iteration_target(element, None)
                     self.constants[-1][element.id] = structured[0]
+                    if _contains_opaque_static_value(structured[0]):
+                        # Retaining the structure makes its known leaves
+                        # available to later destructuring, but its opaque
+                        # leaves still make this binding incomplete.
+                        fully_propagated = False
                     return
 
                 def _leaves(value: object) -> tuple[str, ...]:
@@ -2090,7 +2037,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if values is None:
             values = _static_iteration_string_choices(node.iter, self.constants)
         carries_guarded_fragments = _iterable_carries_guarded_fragments(
-            node.iter
+            node.iter,
+            self.constants,
         ) or _resolved_value_carries_guarded_fragments(node.iter, self.constants)
         rows_recognized, fully_propagated = self._bind_iteration_rows(
             node.target,
@@ -2166,7 +2114,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
                     )
             self._visit_access_target(generator.target)
             carries_guarded_fragments = _iterable_carries_guarded_fragments(
-                generator.iter
+                generator.iter,
+                self.constants,
             ) or _resolved_value_carries_guarded_fragments(
                 generator.iter,
                 self.constants,
@@ -3781,9 +3730,9 @@ def f(dynamic):
     }
     for name, source in sources.items():
         accesses = _source_spine_accesses(source)
-        assert any(
-            "unpropagatable target geometry" in access for access in accesses
-        ), name
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            name
+        )
 
 
 def test_starred_iterable_wrappers_fail_closed_for_star_targets():
@@ -3809,9 +3758,9 @@ def f():
 """
     for source in (loop, comprehension):
         accesses = _source_spine_accesses(source)
-        assert any(
-            "unpropagatable target geometry" in access for access in accesses
-        ), source
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            source
+        )
 
 
 def test_partial_static_dict_merges_retain_entries_and_incompleteness():
@@ -3838,9 +3787,9 @@ def f(dynamic):
     for source in (loop, comprehension):
         accesses = _source_spine_accesses(source)
         assert any("person_support_channel" in access for access in accesses), source
-        assert any(
-            "unpropagatable target geometry" in access for access in accesses
-        ), source
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            source
+        )
 
 
 def test_starred_static_rows_with_dynamic_tail_dual_report():
@@ -3867,9 +3816,9 @@ def f(dynamic):
     for source in (loop, comprehension):
         accesses = _source_spine_accesses(source)
         assert any("person_support_channel" in access for access in accesses), source
-        assert any(
-            "unpropagatable target geometry" in access for access in accesses
-        ), source
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            source
+        )
 
 
 def test_dict_items_and_starred_row_iteration_are_in_scope():
