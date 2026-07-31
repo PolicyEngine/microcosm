@@ -5,9 +5,10 @@ fixed-size boundary draw. Records with hard-concrete open probability
 ``pi_i >= pi_hi`` are included first. If ``m`` places remain, positive boundary
 scores are converted to target first-order inclusion probabilities
 ``q_i = m * pi_i / sum(pi_boundary)``. A boundary vector that would require
-any ``q_i >= 1`` fails as degenerate rather than silently clamping or creating
-certainty units outside the caller's declared ``pi_hi`` rule. The census and
-only-positive-support cases are deterministic special cases.
+any ``q_i > 1`` fails as degenerate rather than silently clamping. A ``q_i``
+that is exactly one is a deterministic take-all implied by the proportional
+design, distinct from the caller's declared ``pi_hi`` certainty split. The
+full-pool census is also a deterministic special case.
 
 The boundary design is Sampford probability-proportional-to-size sampling
 without replacement. Sampford is used instead of naively conditioning
@@ -181,9 +182,6 @@ def _draw_boundary(
         )
     if sample_size == len(boundary_probabilities):
         return np.arange(len(boundary_probabilities), dtype=np.int64)
-    if sample_size == len(positive_indices):
-        return positive_indices.astype(np.int64, copy=False)
-
     positive_probabilities = boundary_probabilities[positive]
     total = float(np.sum(positive_probabilities, dtype=np.float64))
     if total <= 0.0:
@@ -192,10 +190,10 @@ def _draw_boundary(
             "positive boundary pi mass."
         )
     target_probabilities = positive_probabilities * (sample_size / total)
-    if (target_probabilities >= 1.0).any():
+    if (target_probabilities > 1.0).any():
         raise ValueError(
             "degenerate boundary mass: proportional normalization would require "
-            "a boundary inclusion probability greater than or equal to one; "
+            "a boundary inclusion probability greater than one; "
             "adjust pi_hi or k."
         )
 
@@ -208,18 +206,28 @@ def _draw_boundary(
     if (
         not np.isfinite(target_probabilities).all()
         or (target_probabilities <= 0.0).any()
-        or (target_probabilities >= 1.0).any()
+        or (target_probabilities > 1.0).any()
     ):
         raise ValueError(
-            "degenerate boundary mass: no feasible strictly between-zero-and-one "
-            "Sampford inclusion probabilities exist."
+            "degenerate boundary mass: no feasible Sampford inclusion "
+            "probabilities exist."
         )
 
-    selected_positive = _sampford_core(
-        target_probabilities,
-        sample_size,
-        rng,
-    )
+    take_all = target_probabilities == 1.0
+    take_all_indices = np.flatnonzero(take_all)
+    fractional_indices = np.flatnonzero(~take_all)
+    remaining_draw = sample_size - len(take_all_indices)
+    if remaining_draw == 0:
+        selected_positive = take_all_indices
+    else:
+        selected_fractional = _sampford_core(
+            target_probabilities[fractional_indices],
+            remaining_draw,
+            rng,
+        )
+        selected_positive = np.concatenate(
+            (take_all_indices, fractional_indices[selected_fractional])
+        )
     return positive_indices[selected_positive].astype(np.int64, copy=False)
 
 

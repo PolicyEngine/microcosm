@@ -44,12 +44,12 @@ def test_exact_cardinality_for_threshold_and_budget_combinations(
     assert receipt["k"] == k
 
 
-def test_census_and_only_positive_support_are_valid_deterministic_designs() -> None:
+def test_census_and_proportional_take_alls_are_deterministic() -> None:
     census, _ = select_exact_k([0.0, 0.2, 0.8], k=3, pi_hi=1.0, seed=0)
-    positive, _ = select_exact_k([0.0, 0.2, 0.8], k=2, pi_hi=1.0, seed=0)
+    take_all, _ = select_exact_k([0.0, 0.5, 0.5], k=2, pi_hi=1.0, seed=0)
 
     np.testing.assert_array_equal(census, [0, 1, 2])
-    np.testing.assert_array_equal(positive, [1, 2])
+    np.testing.assert_array_equal(take_all, [1, 2])
 
 
 @pytest.mark.parametrize(
@@ -89,8 +89,10 @@ def test_invalid_cardinality_and_certainty_conflicts_fail() -> None:
 def test_degenerate_boundary_mass_fails() -> None:
     with pytest.raises(ValueError, match="fewer positive pi values"):
         select_exact_k([0.0, 0.0, 0.8], k=2, pi_hi=0.95, seed=0)
-    with pytest.raises(ValueError, match="greater than or equal to one"):
+    with pytest.raises(ValueError, match="greater than one"):
         select_exact_k([0.90, 0.01, 0.01], k=2, pi_hi=0.95, seed=0)
+    with pytest.raises(ValueError, match="greater than one"):
+        select_exact_k([0.0, 0.20, 0.80], k=2, pi_hi=1.0, seed=0)
 
 
 def test_same_seed_is_identical_and_different_seeds_change_valid_support() -> None:
