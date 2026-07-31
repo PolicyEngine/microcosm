@@ -799,6 +799,14 @@ def _static_string_list(
                 return None
             values = _static_string_list(generator.iter, nested_constants)
             if values is None:
+                # Shared iteration resolver: identity comprehensions over
+                # dict views classify like the bare views
+                # (sol #583 round 16). Partial enumerations propagate
+                # their marker so incompleteness survives the layer.
+                values = _static_iteration_string_choices(
+                    generator.iter, nested_constants
+                )
+            if values is None:
                 return None
             for name in _assigned_names(generator.target):
                 local[name] = _StaticStringChoices(values)
@@ -2158,7 +2166,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
                     generator.target,
                     values,
                 )
-                fully_propagated = values is not None and target_propagated
+                fully_propagated = (
+                    values is not None
+                    and not isinstance(values, _PartialStringChoices)
+                    and target_propagated
+                )
             if not fully_propagated and carries_guarded_fragments:
                 self._record(
                     generator.iter,
@@ -3637,6 +3649,46 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_identity_comprehensions_and_partial_comprehension_bindings():
+    """Sol #583 round 16: identity comprehensions over dict views resolve
+    through the shared iteration path (classifying like the bare view),
+    and partial enumerations keep their marker through comprehension
+    binding so the dual report survives the layer."""
+
+    identity_comprehension = """
+VALUES = {"known": "person"}
+
+
+def f():
+    for entity in [value for value in VALUES.values()]:
+        sink(f"{entity}_support_channel")
+"""
+    partial_comprehension = """
+BASE = {"known": "person"}
+
+
+def f(dynamic):
+    return [
+        f"{entity}_support_channel"
+        for entity in {**BASE, "other": dynamic}.values()
+    ]
+"""
+    benign_identity = """
+VALUES = {"known": "state"}
+
+
+def f():
+    for entity in [value for value in VALUES.values()]:
+        sink(entity)
+"""
+    identity_accesses = _source_spine_accesses(identity_comprehension)
+    assert any("person_support_channel" in a for a in identity_accesses)
+    partial_accesses = _source_spine_accesses(partial_comprehension)
+    assert any("person_support_channel" in a for a in partial_accesses)
+    assert any("unpropagatable target geometry" in a for a in partial_accesses)
+    assert _source_spine_accesses(benign_identity) == ()
 
 
 def test_dict_view_nestings_and_partial_scalar_values_dual_report():
