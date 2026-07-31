@@ -50,14 +50,15 @@ the deprecated-but-supported local ACS release producer.
   interruption regressions now exercise that reader as well as the tombstone.
 - Committed the reviewed assembly-first lineage and readiness integration in
   `5b930ab`.
-- Ran the complete `populace-build` suite: 3,232 passed, 85 skipped, with only
+- Ran the complete `populace-build` suite: 3,233 passed, 85 skipped, with only
   five pre-existing runtime/deprecation warnings. Repository-wide Ruff passes.
+- Independent final adversarial review of committed `b421bfa` found no
+  remaining blocker across the four round-1 HOLD items.
 - Established the required final constraint: this live checkpoint will be
   restored byte-for-byte to `origin/main` before handoff so no root journal
   ships in the PR diff.
 
 ## Next
 
-- Resolve any finding from the final independent adversarial audit.
 - Write the external handoff.
 - Restore `PROGRESS.md` to `origin/main` and commit the cleanup.
