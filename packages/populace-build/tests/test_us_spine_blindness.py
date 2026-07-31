@@ -1,4 +1,13 @@
-"""Structural guard for source-spine-blind US population operators."""
+"""Fail-closed guard for source-spine-blind US population operators.
+
+In every non-owner operator module, each column-access surface must either
+resolve to static string choices that are checked by name or be recorded as a
+fail-closed violation; there is no silent third state. Covered surfaces are
+subscript and ``.loc`` reads/writes, attributes and dynamic ``getattr``,
+canonical column factories, and direct or aliased pandas ``get``, ``filter``,
+``query``, and ``eval`` calls. Loop/comprehension choices and closure free
+variables obey the same contract.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +16,8 @@ import fnmatch
 import re
 from pathlib import Path
 from string import Formatter
+
+import pytest
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _US_RUNTIME = (
@@ -917,6 +928,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         self._visit_comprehension(node)
 
+    def visit_TypeAlias(self, node: ast.TypeAlias) -> None:
+        """Type parameters are not executable column selectors."""
+
     def _visit_scope_statements(self, body: list[ast.stmt]) -> None:
         deferred: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
         for statement in body:
@@ -1343,7 +1357,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
 
 def _source_spine_accesses(source: str) -> tuple[str, ...]:
-    """Describe data reads that resolve any entity's source-spine identity."""
+    """Describe named or fail-closed violations on every column surface."""
 
     tree = ast.parse(source)
     aliases = _factory_aliases(tree)
@@ -1502,12 +1516,13 @@ def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
 
 
 def test_runtime_population_operators_are_source_spine_blind() -> None:
-    """Only provenance owners may resolve any entity's source-spine identity.
+    """Every operator column surface resolves-and-checks or fails closed.
 
     The guard parses executable syntax rather than searching raw text, so
     comments, docstrings, and source-manifest declarations may explain the
-    invariant without creating an exception. Data access through a concrete
-    column, a dynamic string, ``getattr``, or a canonical factory fails.
+    invariant without creating an exception. It covers subscript/``.loc``
+    reads and writes, attributes/``getattr``, canonical factories, and direct
+    or aliased ``get``, ``filter``, ``query``, and ``eval`` calls.
     """
 
     missing_owners = sorted(
@@ -1565,6 +1580,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
+        assert len(runtime_graph) == 54, (
+            f"{tool.name} must reach the pinned 54-module runtime graph; "
+            f"reached {len(runtime_graph)}"
+        )
         assert not missing_modules, (
             f"{tool.name} imports unresolved US runtime modules: {missing_modules}"
         )
@@ -2306,6 +2325,384 @@ def outer(df):
     rebound_accesses = _source_spine_accesses(rebound_alias)
     assert rebound_accesses
     assert any("fail-closed" in item for item in rebound_accesses)
+
+
+@pytest.mark.parametrize(
+    ("evasion", "source"),
+    (
+        (
+            "round2-bound-query",
+            """
+def f(df):
+    expr = "person_support_channel == 1"
+    return df.query(expr)
+""",
+        ),
+        (
+            "round2-bound-eval",
+            """
+def f(df):
+    expr = "person_support_channel == 1"
+    return df.eval(expr)
+""",
+        ),
+        (
+            "round2-bound-filter",
+            """
+def f(df):
+    columns = ["person_support_channel"]
+    return df.filter(items=columns)
+""",
+        ),
+        (
+            "round2-bound-fstring",
+            """
+def f(df):
+    column = "person_support_channel"
+    return df.query(f"{column} == 1")
+""",
+        ),
+        (
+            "round3-parameter-fstring",
+            """
+def f(df, column):
+    return df.query(f"{column} == 1")
+""",
+        ),
+        (
+            "round3-expanded-kwargs",
+            """
+def f(df, kwargs):
+    return df.query(**kwargs)
+""",
+        ),
+        (
+            "round3-shadowed-parameter",
+            """
+column = "person_support_channel"
+def f(df, column):
+    return df.query(f"{column} == 1")
+""",
+        ),
+        (
+            "round3-conditional",
+            """
+def f(df, flag):
+    column = "age" if flag else "person_support_channel"
+    return df.query(f"{column} == 1")
+""",
+        ),
+        (
+            "round3-mutated-list",
+            """
+def f(df):
+    columns = ["age"]
+    columns.append("person_support_channel")
+    return df.filter(items=columns)
+""",
+        ),
+        (
+            "format-automatic",
+            """
+def f(df):
+    return df.query("{} == 1".format("person_support_channel"))
+""",
+        ),
+        (
+            "format-indexed",
+            """
+def f(df):
+    return df.query("{0} == 1".format("person_support_channel"))
+""",
+        ),
+        (
+            "format-named",
+            """
+def f(df):
+    return df.query(
+        "{column} == 1".format(column="person_support_channel")
+    )
+""",
+        ),
+        (
+            "format-convert-s",
+            """
+def f(df):
+    return df.query("{!s} == 1".format("person_support_channel"))
+""",
+        ),
+        (
+            "format-convert-r",
+            """
+def f(df):
+    return df.query("{!r} == 1".format("person_support_channel"))
+""",
+        ),
+        (
+            "format-spec",
+            """
+def f(df):
+    return df.query("{:s} == 1".format("person_support_channel"))
+""",
+        ),
+        (
+            "subscript-walrus",
+            """
+def f(df):
+    return df[(column := "person_support_channel")]
+""",
+        ),
+        (
+            "subscript-nested-call",
+            """
+def f(df):
+    def column():
+        return "person_support_channel"
+    return df[column()]
+""",
+        ),
+        (
+            "subscript-dict-indirection",
+            """
+COLUMNS = {"source": "person_support_channel"}
+def f(df):
+    return df[COLUMNS["source"]]
+""",
+        ),
+        (
+            "subscript-multiplication",
+            """
+def f(df):
+    return df["person_support_channel" * 1]
+""",
+        ),
+        (
+            "subscript-percent-format",
+            """
+def f(df):
+    return df["%s_support_channel" % "person"]
+""",
+        ),
+        (
+            "subscript-replace-chain",
+            """
+def f(df):
+    return df["person_x".replace("x", "support_channel")]
+""",
+        ),
+        (
+            "aliased-query",
+            """
+def f(df):
+    query = df.query
+    return query("person_support_channel == 1")
+""",
+        ),
+        (
+            "aliased-eval",
+            """
+def f(df):
+    evaluate = df.eval
+    return evaluate("person_support_channel == 1")
+""",
+        ),
+        (
+            "aliased-filter",
+            """
+def f(df):
+    select = df.filter
+    return select(items=["person_support_channel"])
+""",
+        ),
+        (
+            "aliased-get",
+            """
+def f(df):
+    get = df.get
+    return get("person_support_channel")
+""",
+        ),
+        (
+            "dynamic-getattr",
+            """
+def f(df, attribute):
+    return getattr(df, attribute)
+""",
+        ),
+        (
+            "late-bound-closure",
+            """
+def outer(df):
+    expr = "age >= 18"
+    def inner():
+        return df.query(expr)
+    expr = "person_support_channel == 1"
+    return inner()
+""",
+        ),
+    ),
+)
+def test_every_review_evasion_is_caught(evasion: str, source: str) -> None:
+    """Rounds 2-4 are one permanent resolve-or-fail-closed invariant."""
+
+    assert _source_spine_accesses(source), evasion
+
+
+@pytest.mark.parametrize(
+    ("control", "source"),
+    (
+        (
+            "literal-query",
+            """
+def f(df):
+    return df.query("age >= 18")
+""",
+        ),
+        (
+            "bound-query",
+            """
+def f(df):
+    expr = "age >= 18"
+    return df.query(expr)
+""",
+        ),
+        (
+            "resolved-fstring",
+            """
+def f(df):
+    column = "age"
+    return df.query(f"{column} >= 18")
+""",
+        ),
+        (
+            "bare-format",
+            """
+def f(df):
+    column = "age"
+    return df.query("{} >= 18".format(column))
+""",
+        ),
+        (
+            "named-format",
+            """
+def f(df):
+    return df.query("{column} >= 18".format(column="age"))
+""",
+        ),
+        (
+            "bound-filter-list",
+            """
+def f(df):
+    columns = ["age", "income"]
+    return df.filter(items=columns)
+""",
+        ),
+        (
+            "literal-subscript",
+            """
+def f(df):
+    return df["age"]
+""",
+        ),
+        (
+            "bound-subscript",
+            """
+def f(df):
+    column = "age"
+    return df[column]
+""",
+        ),
+        (
+            "static-loop",
+            """
+def f(df):
+    for column in ("age", "income"):
+        df[column]
+""",
+        ),
+        (
+            "static-comprehension",
+            """
+def f(df):
+    return [df[column] for column in ("age", "income")]
+""",
+        ),
+        (
+            "aliased-query",
+            """
+def f(df):
+    query = df.query
+    return query("age >= 18")
+""",
+        ),
+        (
+            "aliased-eval",
+            """
+def f(df):
+    evaluate = df.eval
+    return evaluate("age + 1")
+""",
+        ),
+        (
+            "aliased-filter",
+            """
+def f(df):
+    select = df.filter
+    return select(items=["age", "income"])
+""",
+        ),
+        (
+            "aliased-get",
+            """
+def f(df):
+    get = df.get
+    return get("age")
+""",
+        ),
+        (
+            "static-getattr",
+            """
+def f(df):
+    return getattr(df, "age")
+""",
+        ),
+        (
+            "single-assignment-closure",
+            """
+def outer(df):
+    expr = "age >= 18"
+    def inner():
+        return df.query(expr)
+    return inner()
+""",
+        ),
+        (
+            "literal-expression-multiplication",
+            """
+def f(df):
+    return df.query("age * 2 >= 18")
+""",
+        ),
+        (
+            "typed-row-mask",
+            """
+def f(values: list[float], mask: list[bool]):
+    return values[mask]
+""",
+        ),
+        (
+            "typed-mapping-get",
+            """
+def f(values: dict[str, float], key: str):
+    return values.get(key)
+""",
+        ),
+    ),
+)
+def test_benign_column_access_battery_is_clean(control: str, source: str) -> None:
+    """Static benign columns and proven non-column access produce no finding."""
+
+    assert _source_spine_accesses(source) == (), control
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:

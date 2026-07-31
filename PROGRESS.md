@@ -9,8 +9,10 @@ string choice or an opaque shadow; and the 54-module operator graph remains
 clean. `str.format` now resolves all requested static field forms precisely.
 Direct and aliased strict pandas methods now share the same checks, and dynamic
 DataFrame `getattr` is fail-closed. Closure free variables now obey lexical
-late-binding assignment counts. The five requested subsystems are implemented;
-the cross-round invariant, final docstrings, and full validation remain.
+late-binding assignment counts. The five requested subsystems, consolidated
+rounds 2-4 completeness invariant, benign battery, exact graph cardinality,
+and completed-contract docstrings are implemented. Adversarial audit and full
+validation remain.
 
 No push or external mutation is authorized.
 
@@ -65,13 +67,23 @@ No push or external mutation is authorized.
 - Added the exact reviewer late-bound closure, module-level and lambda variants,
   stable guarded/benign controls, later-local shadowing, and stable/rebound
   alias tests. The guard file now passes 24 tests with the graph clean.
+- Replaced the guard module and scan-test docstrings with the completed
+  resolve-and-check-or-fail-closed contract and an explicit surface inventory.
+- Added one parametrized invariant covering bound names, parameter f-strings,
+  expanded kwargs, shadows, conditionals, mutation, all requested format
+  variants, all six round-4 subscript evasions, all four method aliases,
+  dynamic `getattr`, and late closure binding.
+- Added a parametrized benign battery spanning every corresponding static
+  surface and typed non-column controls.
+- Pinned the multispine tool graph to exactly 54 runtime modules.
+- Replayed the expanded guard file (70 passed), focused Ruff, and
+  `git diff --check`; the exact 54-module graph remains clean.
 
 ## Next
 
-- Commit closure late-binding handling.
-- Add the parametrized cross-round completeness invariant, expanded benign
-  battery, exact 54-module count assertion, and completed-contract docstrings.
-- Add the cross-round completeness invariant and benign battery.
+- Commit the consolidated invariant, benign battery, graph pin, and docstrings.
+- Resolve any acceptance-relevant findings from the independent adversarial
+  audit and replay the guard.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.
 - Write `/private/tmp/583_fix2_handoff.md` with per-subsystem rules, binding
