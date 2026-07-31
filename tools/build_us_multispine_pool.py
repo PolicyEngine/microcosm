@@ -51,6 +51,7 @@ from populace.build.us_runtime.asec_checkpoint import (
 )
 from populace.build.us_runtime.h5_io import write_nullable_us_h5
 from populace.build.us_runtime.multispine_pool import (
+    POOL_HOUSEHOLD_MASS_SHARES,
     POOL_OPERATOR_ORDER,
     POOL_RANDOM_SEED,
     POOL_TIME_PERIOD,
@@ -73,7 +74,10 @@ from populace.build.us_runtime.puf_qrf_chain import (
     initialize_primary_puf_qrf_chain,
     run_primary_puf_qrf_chain,
 )
-from populace.build.us_runtime.puf_support import US_PUF_SUPPORT_FIT_NAME
+from populace.build.us_runtime.puf_support import (
+    PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+    US_PUF_SUPPORT_FIT_NAME,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -531,6 +535,17 @@ def _manifest_payload(
             "build_receipt": loaded.puf_donor_build,
         },
         "assembly_receipt": result.assembly_receipt,
+        "assembly_contract": {
+            "household_mass_shares": dict(POOL_HOUSEHOLD_MASS_SHARES),
+            "clone_safe_source_id_upper_bound": (PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID),
+            "output_household_weight_kind": result.frame.weights_for(
+                "household"
+            ).kind.value,
+            "output_household_weight_total": result.frame.weights_for(
+                "household"
+            ).total,
+            "mass_log": list(result.frame.mass_log),
+        },
         "provenance_counts": result.provenance_counts,
         "stage_receipts": result.stage_receipts,
         "agreement_gate": _agreement_payload(result),
