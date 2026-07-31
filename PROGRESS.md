@@ -19,6 +19,19 @@ Static iterable propagation now covers all built-in literal forms requested by
 the contract.
 Conditional statements and optional loop execution now merge bindings
 conservatively instead of retaining the last syntactically visited value.
+All explicit rounds 2-4 reviewer repros and the expanded adversarial
+composition battery are green. Full package validation and repository-wide
+Ruff pass.
+
+One literal-contract blocker remains: the receiver inference deliberately does
+not classify annotated `pd.DataFrame` parameters or `Frame.table(...)` results
+as subscript containers. Enabling only annotated DataFrame inference exposes
+about 150 existing dynamic accesses across roughly 39 modules in the pinned
+graph; adding table-result inference exposes more. Therefore the current
+54-module clean result still has a typed-container third state and cannot
+truthfully certify the requested universal “every column surface” wording
+without either broad runtime rewrites/interprocedural proof or an explicitly
+narrower contract.
 
 No push or external mutation is authorized.
 
@@ -122,14 +135,18 @@ No push or external mutation is authorized.
 - Preserved exact pre-loop bindings across provably empty static iterables.
 - Added guarded, benign, conditional-alias, optional-loop, and empty-loop
   binding tests. The guard file now passes 73 tests with the graph clean.
+- Ran the full `populace-build` suite: 3,295 passed, 85 skipped, 5 warnings.
+- Ran repository-wide `ruff check .`: passed.
+- Ran repository-wide `ruff format --check .`: found the existing 44-file
+  formatting baseline; formatted only this guard file and replayed its 73 tests.
 
 ## Next
 
-- Commit flow-sensitive branch and loop joins.
-- Reconcile the universal column-container contract with the typed runtime
-  graph findings from the independent audit.
-- Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
-  graph scan.
+- Resolve the typed DataFrame/`Frame.table(...)` third state. The literal
+  contract requires broad static resolution or runtime-module rewrites; merely
+  suppressing those findings would violate the “never allowlisted” order.
+- After that resolution, rerun the guard, full `populace-build` suite, and
+  repository-wide Ruff before declaring the lane complete.
 - Write `/private/tmp/583_fix2_handoff.md` with per-subsystem rules, binding
   tests, any operator rewrite rationale, exact validation results, and commit
   inventory.

@@ -492,12 +492,8 @@ def _static_literal_value(
             for key in node.keys
             if key is not None
         )
-        values = tuple(
-            _static_literal_value(value, constants) for value in node.values
-        )
-        if any(
-            value is _OPAQUE_STATIC_VALUE for value in (*keys, *values)
-        ):
+        values = tuple(_static_literal_value(value, constants) for value in node.values)
+        if any(value is _OPAQUE_STATIC_VALUE for value in (*keys, *values)):
             return _OPAQUE_STATIC_VALUE
         try:
             return dict(zip(keys, values, strict=True))
@@ -533,9 +529,7 @@ def _resolve_static_format(
             keywords[keyword.arg] = _static_format_value(keyword.value, constants)
             continue
         expanded = _static_literal_value(keyword.value, constants)
-        if isinstance(expanded, dict) and all(
-            isinstance(key, str) for key in expanded
-        ):
+        if isinstance(expanded, dict) and all(isinstance(key, str) for key in expanded):
             keywords.update(expanded)
         else:
             expanded_keywords = True
@@ -1099,9 +1093,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.column_containers[-1][name] = False
             self.attribute_containers[-1][name] = False
             self.method_aliases[-1][name] = (
-                _OPAQUE_METHOD_ALIAS
-                if name in self.method_alias_history[-1]
-                else None
+                _OPAQUE_METHOD_ALIAS if name in self.method_alias_history[-1] else None
             )
             if self.scope_kinds[-1] == "comprehension":
                 self.assignment_counts[-1][name] = 1
@@ -1168,7 +1160,14 @@ class _SourceReadVisitor(ast.NodeVisitor):
             set[str],
         ],
     ) -> None:
-        left_bindings, left_constants, left_columns, left_attributes, left_aliases, left_history = left
+        (
+            left_bindings,
+            left_constants,
+            left_columns,
+            left_attributes,
+            left_aliases,
+            left_history,
+        ) = left
         (
             right_bindings,
             right_constants,
@@ -1213,8 +1212,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
             for name in names
         }
         self.attribute_containers[-1] = {
-            name: left_attributes.get(name, False)
-            or right_attributes.get(name, False)
+            name: left_attributes.get(name, False) or right_attributes.get(name, False)
             for name in names
         }
         self.method_aliases[-1] = {}
@@ -2359,9 +2357,7 @@ def f(df):
     assert all("person_support_channel" in access for access in walrus_accesses)
     comprehension_accesses = _source_spine_accesses(comprehension_walrus)
     assert comprehension_accesses
-    assert all(
-        "person_support_channel" in access for access in comprehension_accesses
-    )
+    assert all("person_support_channel" in access for access in comprehension_accesses)
 
     for source in (multiplication, percent_format, replace_chain):
         accesses = _source_spine_accesses(source)
