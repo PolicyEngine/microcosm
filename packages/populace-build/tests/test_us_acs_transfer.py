@@ -252,6 +252,19 @@ def _with_columns(
     )
 
 
+def _with_metadata(frame: Frame, metadata: dict[str, object]) -> Frame:
+    tables = {name: frame.table(name).copy() for name in frame.entities}
+    tables.update({name: frame.link(name).copy() for name in frame.links})
+    return Frame(
+        tables,
+        frame.schema,
+        {name: frame.weights_for(name) for name in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=metadata,
+    )
+
+
 def _with_full_us_schema(frame: Frame) -> Frame:
     """Promote the compact transfer fixture to all PolicyEngine-US grains."""
 
@@ -1112,6 +1125,133 @@ def test_explicit_family_is_seed_deterministic_and_preserves_recipient_index() -
     assert first.imputed_inputs[0].donor_channel == "puf_tax_detail"
 
 
+def test_nullable_recipient_target_fills_only_nulls_and_preserves_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "qualified_dividend_income": pd.array(
+                [111.0, pd.NA, 333.0, pd.NA, 555.0, 666.0],
+                dtype="Float64",
+            ),
+            "takes_up_medicaid_if_eligible": pd.array(
+                [True, pd.NA, False, pd.NA, True, False],
+                dtype="boolean",
+            ),
+        },
+    )
+    recipient = _with_metadata(
+        recipient,
+        {
+            "assembly_receipt": {
+                "channels": ("asec", "acs"),
+                "id_bound": 10_000,
+            }
+        },
+    )
+    before = {
+        target: recipient.person[target].copy()
+        for target in (
+            "qualified_dividend_income",
+            "takes_up_medicaid_if_eligible",
+        )
+    }
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        _donor_frame(),
+        target_families={
+            "person": {
+                "tax_detail": (
+                    "qualified_dividend_income",
+                    "takes_up_medicaid_if_eligible",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    for target, target_before in before.items():
+        after = result.frame.person[target]
+        observed = target_before.notna()
+        pd.testing.assert_series_equal(
+            after.loc[observed],
+            target_before.loc[observed],
+        )
+        assert after.loc[~observed].notna().all()
+        assert recipient.person[target].isna().sum() == 2
+    assert result.frame.metadata == recipient.metadata
+    provenance = {item.column: item for item in result.imputed_inputs}
+    assert set(provenance) == set(before)
+    assert all(item.imputed_recipient_rows == 2 for item in provenance.values())
+    assert all(item.unmodeled_recipient_rows == 0 for item in provenance.values())
+    assert all(
+        sum(pattern.recipient_rows for pattern in item.patterns) == 2
+        for item in provenance.values()
+    )
+
+
+def test_donor_family_fit_uses_rows_complete_for_every_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "nullable_target_a": [
+                np.nan,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                8.0,
+            ],
+            "nullable_target_b": [
+                10.0,
+                np.nan,
+                30.0,
+                40.0,
+                50.0,
+                60.0,
+                70.0,
+                80.0,
+            ],
+        },
+    )
+    recipient = _recipient_frame()
+    for column in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ):
+        donor = _drop_column(donor, "person", column)
+        recipient = _drop_column(recipient, "person", column)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "nullable_pair": ("nullable_target_a", "nullable_target_b"),
+            },
+        },
+        n_estimators=1,
+    )
+
+    assert len(_MeanQRF.calls) == 1
+    fitted_targets = _MeanQRF.calls[0]["targets"]
+    assert len(fitted_targets) == 6
+    assert np.isfinite(fitted_targets.to_numpy(dtype=np.float64)).all()
+    assert {item.patterns[0].donor_rows for item in result.imputed_inputs} == {6}
+
+
 def test_formula_owned_target_is_refused_before_fit() -> None:
     with pytest.raises(ValueError, match="formula-owned.*interest_deduction"):
         transfer_acs_inputs(
@@ -1124,17 +1264,17 @@ def test_formula_owned_target_is_refused_before_fit() -> None:
         )
 
 
-def test_non_finite_donor_target_is_refused_without_zero_fill() -> None:
+def test_all_missing_donor_target_is_refused_without_zero_fill() -> None:
     donor = _replace_column(
         _donor_frame(),
         "person",
         "qualified_dividend_income",
-        [900.0, 200.0, np.nan, 20.0, 3_000.0, 1_500.0, 8_000.0, 40.0],
+        [np.nan] * 8,
     )
 
     with pytest.raises(
         ValueError,
-        match="donor targets.*non-finite.*qualified_dividend_income",
+        match="no donor rows complete for every target.*qualified_dividend_income",
     ):
         transfer_acs_inputs(
             _recipient_frame(),
@@ -1144,6 +1284,159 @@ def test_non_finite_donor_target_is_refused_without_zero_fill() -> None:
             },
             n_estimators=2,
         )
+
+
+def test_schedule_d_post_transfer_fills_only_newly_imputed_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "long_term_capital_gains_before_response": [
+                100.0,
+                200.0,
+                300.0,
+                400.0,
+                500.0,
+                600.0,
+                700.0,
+                800.0,
+            ],
+            "non_sch_d_capital_gains": [0.0] * 8,
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "long_term_capital_gains_before_response": [
+                1_000.0,
+                np.nan,
+                2_000.0,
+                np.nan,
+                3_000.0,
+                np.nan,
+            ],
+            "non_sch_d_capital_gains": [
+                0.0,
+                np.nan,
+                500.0,
+                np.nan,
+                0.0,
+                np.nan,
+            ],
+            "schedule_d_capital_gain_distributions": [
+                777.0,
+                np.nan,
+                222.0,
+                888.0,
+                333.0,
+                np.nan,
+            ],
+        },
+    )
+    cgd_before = recipient.person["schedule_d_capital_gain_distributions"].copy()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "capital_gain_details": (
+                    "long_term_capital_gains_before_response",
+                    "non_sch_d_capital_gains",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    cgd = result.frame.person["schedule_d_capital_gain_distributions"]
+    measured = cgd_before.notna()
+    pd.testing.assert_series_equal(cgd.loc[measured], cgd_before.loc[measured])
+    assert cgd.iloc[[1, 5]].gt(0.0).all()
+    derived = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "schedule_d_capital_gain_distributions"
+    )
+    assert derived.imputed_recipient_rows == 2
+
+
+def test_adult_care_reconciliation_changes_only_imputed_expenses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "is_incapable_of_self_care": [True] * 8,
+            "pre_subsidy_care_expenses": [
+                100.0,
+                200.0,
+                300.0,
+                400.0,
+                500.0,
+                600.0,
+                700.0,
+                800.0,
+            ],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "is_incapable_of_self_care": [True] * 6,
+            "pre_subsidy_care_expenses": [
+                900.0,
+                np.nan,
+                0.0,
+                np.nan,
+                0.0,
+                np.nan,
+            ],
+            "tax_unit_role_input": ["DEPENDENT"] * 6,
+        },
+    )
+    before = recipient.person["pre_subsidy_care_expenses"].copy()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "adult_care": (
+                    "is_incapable_of_self_care",
+                    "pre_subsidy_care_expenses",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    expenses = result.frame.person["pre_subsidy_care_expenses"]
+    measured = before.notna()
+    pd.testing.assert_series_equal(expenses.loc[measured], before.loc[measured])
+    assert expenses.iloc[1] == 0.0
+    assert expenses.iloc[3] > 0.0
+    assert expenses.iloc[5] == 0.0
+    provenance = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "pre_subsidy_care_expenses"
+    )
+    assert provenance.imputed_recipient_rows == 3
+    assert provenance.reconciliation == {
+        "cleared_ineligible_carriers": 0,
+        "cleared_multi_carrier_rows": 2,
+        "remaining_carriers": 2,
+    }
 
 
 def test_non_finite_recipient_predictor_is_refused_without_zero_fill() -> None:
