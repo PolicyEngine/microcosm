@@ -2,12 +2,11 @@
 
 ## State
 
-PR #583 round-13 fix lane is in progress on
-`multispine-pool-build-578` from `6d903a6`. The review HOLD identifies one
-resolver divergence: the loop fail-closed trigger and fragment/value probes do
-not use the binder's structure-based resolution, so starred wrappers and
-partially static dict merges can hide guarded fragments or suppress required
-loop records.
+PR #583 round-13 guard remediation is implemented and validated locally on
+`multispine-pool-build-578` from `6d903a6`. The loop fail-closed trigger,
+fragment probes, and binder now share structure-based iterable resolution, so
+starred wrappers and partially static dict merges cannot hide guarded
+fragments or suppress required loop records.
 
 ## Done
 
@@ -29,10 +28,18 @@ loop records.
   retained partial nested structures while marking their bindings incomplete.
 - Confirmed all 15 new loop/comprehension fixtures pass and the complete guard
   file is green after the implementation.
+- Confirmed zero direct guard findings in `acs_transfer.py`,
+  `capital_gain_details.py`, `housing_inputs.py`, and both congressional
+  district vintage modules; the focused graph/registry/benign battery passed
+  23 tests.
+- Passed the five focused runtime precision files: 90 passed, 4 skipped, with
+  three pre-existing warnings.
+- Passed the full `populace-build` suite: 3,348 passed, 85 skipped, with five
+  pre-existing warnings.
+- Passed repository-wide Ruff, guard-file format checking, and
+  `git diff --check`.
 
 ## Next
 
-- Run the guard file, precision and benign batteries, full `populace-build`
-  suite, repository Ruff, and `git diff --check`.
 - Restore `PROGRESS.md` exactly to `origin/main`, commit every coherent step
   locally without pushing, and write `/private/tmp/583_fix6_handoff.md`.
