@@ -37,5 +37,6 @@ testpaths = ["packages"]
 # test_compat.py) without the prepend-mode rootdir collision.
 addopts = "-q --import-mode=importlib"
 markers = [
+    "engine: tests requiring the real optional country rules engine",
     "slow: end-to-end tests that require large local source artifacts",
 ]
