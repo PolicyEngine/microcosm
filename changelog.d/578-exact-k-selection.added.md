@@ -1,0 +1,1 @@
+Add deterministic exact-cardinality selection to `populace-calibrate`: expose hard-concrete gate open probabilities, force caller-declared certainty units, use a seeded fixed-size Sampford draw for the boundary, gate the final cardinality, and pass explicit supports into the existing frozen-support refit.
