@@ -1184,6 +1184,13 @@ def _static_structure(
                 inner_value = _static_literal_value(element.value, constants)
                 if not isinstance(inner_value, (list, tuple)):
                     inner_value = _static_structure(element.value, constants)
+                if not isinstance(inner_value, (list, tuple)):
+                    # Starred dict views ([*mapping.items()]) resolve
+                    # through the SAME iteration resolver the binder uses,
+                    # so partial merges keep their retained entries and
+                    # opaque sentinels instead of collapsing
+                    # (sol #583 round 14).
+                    inner_value = _static_iteration_value(element.value, constants)
                 if isinstance(inner_value, (list, tuple)):
                     resolved.extend(inner_value)
                 else:
@@ -3608,6 +3615,58 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_starred_dict_views_resolve_through_the_shared_iteration_path():
+    """Sol #583 round 14: [*mapping.items()] wrappers — including partial
+    {**BASE, k: dynamic} merges — resolve through the same iteration
+    resolver as bare views, so retained entries catch by name and the
+    dynamic sibling dual-reports; fully static views catch by name alone;
+    fragment-free views stay clean."""
+
+    composed_partial = """
+BASE = {"person": "support_channel"}
+
+
+def f(dynamic):
+    for entity, suffix in [*{**BASE, "state": dynamic}.items()]:
+        sink(f"{entity}_{suffix}")
+"""
+    composed_comprehension = """
+BASE = {"person": "support_channel"}
+
+
+def f(dynamic):
+    return [f"{e}_{sfx}" for e, sfx in [*{**BASE, "state": dynamic}.items()]]
+"""
+    fully_static_view = """
+BASE = {"person": "support_channel"}
+
+
+def f():
+    for entity, suffix in [*BASE.items()]:
+        sink(f"{entity}_{suffix}")
+"""
+    benign_view = """
+BASE = {"state": "fips"}
+
+
+def f():
+    for entity, suffix in [*BASE.items()]:
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (composed_partial, composed_comprehension):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            source
+        )
+    static_accesses = _source_spine_accesses(fully_static_view)
+    assert any("person_support_channel" in access for access in static_accesses)
+    assert not any(
+        "unpropagatable target geometry" in access for access in static_accesses
+    )
+    assert _source_spine_accesses(benign_view) == ()
 
 
 def test_round_11_and_12_string_material_never_reaches_opaque_bindings():
