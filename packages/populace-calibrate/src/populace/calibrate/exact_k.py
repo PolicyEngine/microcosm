@@ -33,6 +33,7 @@ to the increment-2 pool and lands there. ``group_ids=None`` means no grouping.
 
 from __future__ import annotations
 
+import math
 import operator
 from collections.abc import Sequence
 
@@ -41,6 +42,12 @@ import numpy as np
 __all__ = ["assert_exact_k_support", "select_exact_k"]
 
 SelectionReceipt = dict[str, int | float | str]
+
+# Exact dynamic programming is robust for numerically concentrated designs but
+# costs O(pool_size * sample_size) time and memory. Larger designs use the
+# vectorized accept/reject law with a finite, fail-closed attempt budget.
+_SAMPFORD_DP_MAX_CELLS = 2_000_000
+_SAMPFORD_MAX_REJECTION_ATTEMPTS = 8_192
 
 
 def _integer(value: object, *, name: str, minimum: int = 0) -> int:
@@ -112,6 +119,18 @@ def _validate_group_ids(group_ids: np.ndarray | None, shape: tuple[int, ...]) ->
             "group_ids must be one-dimensional and aligned with pi: "
             f"got shape {groups.shape}, expected {shape}."
         )
+    if groups.dtype.kind == "O":
+        for group_id in groups:
+            if group_id is None:
+                raise ValueError("group_ids cannot contain missing identifiers.")
+            try:
+                reflexive = group_id == group_id
+            except Exception:
+                reflexive = False
+            if not isinstance(reflexive, (bool, np.bool_)) or not bool(reflexive):
+                raise ValueError(
+                    "group_ids cannot contain missing or non-reflexive identifiers."
+                )
     try:
         unique_count = np.unique(groups).size
     except TypeError:
@@ -156,7 +175,16 @@ def _sampford_core(
         included[excluded] = False
         return np.flatnonzero(included).astype(np.int64, copy=False)
 
-    while True:
+    if pool_size * (sample_size + 1) <= _SAMPFORD_DP_MAX_CELLS:
+        return _sampford_dynamic_programming(probabilities, sample_size, rng)
+
+    variance = float(np.sum(probabilities * (1.0 - probabilities), dtype=np.float64))
+    expected_count_scale = math.sqrt(2.0 * math.pi * max(variance, 1.0))
+    max_attempts = min(
+        _SAMPFORD_MAX_REJECTION_ATTEMPTS,
+        max(256, math.ceil(32.0 * expected_count_scale)),
+    )
+    for _ in range(max_attempts):
         selected = rng.random(pool_size) < probabilities
         if int(selected.sum()) != sample_size:
             continue
@@ -166,6 +194,94 @@ def _sampford_core(
         )
         if float(rng.random()) < acceptance_probability:
             return np.flatnonzero(selected).astype(np.int64, copy=False)
+    raise RuntimeError(
+        "Sampford sampling failed closed after "
+        f"{max_attempts} attempts for a numerically ill-conditioned boundary "
+        "design; revise pi_hi or k."
+    )
+
+
+def _sampford_dynamic_programming(
+    probabilities: np.ndarray,
+    sample_size: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Draw exactly from Sampford subset masses using suffix recurrences.
+
+    For a suffix and subset size ``r``, ``elementary`` stores the sum of odds
+    products and ``weighted`` additionally multiplies each product by its
+    subset's ``sum(1 - q_i)`` factor. Rows are normalized together to avoid
+    overflow; each inclusion decision compares entries from the same suffix
+    row, so the common scale cancels.
+    """
+    pool_size = len(probabilities)
+    odds = probabilities / (1.0 - probabilities)
+    complement = 1.0 - probabilities
+    shape = (pool_size + 1, sample_size + 1)
+    elementary = np.zeros(shape, dtype=np.float64)
+    weighted = np.zeros(shape, dtype=np.float64)
+    elementary[pool_size, 0] = 1.0
+
+    for index in range(pool_size - 1, -1, -1):
+        max_size = min(sample_size, pool_size - index)
+        elementary[index, 0] = elementary[index + 1, 0]
+        weighted[index, 0] = weighted[index + 1, 0]
+        for size in range(1, max_size + 1):
+            elementary[index, size] = (
+                elementary[index + 1, size]
+                + odds[index] * elementary[index + 1, size - 1]
+            )
+            weighted[index, size] = weighted[index + 1, size] + odds[index] * (
+                weighted[index + 1, size - 1]
+                + complement[index] * elementary[index + 1, size - 1]
+            )
+        scale = max(
+            float(np.max(elementary[index, : max_size + 1])),
+            float(np.max(weighted[index, : max_size + 1])),
+        )
+        if not math.isfinite(scale) or scale <= 0.0:
+            raise RuntimeError(
+                "Sampford dynamic program failed closed on a numerically "
+                "ill-conditioned boundary design."
+            )
+        elementary[index, : max_size + 1] /= scale
+        weighted[index, : max_size + 1] /= scale
+
+    selected: list[int] = []
+    accumulated_complement = 0.0
+    for index in range(pool_size):
+        remaining = sample_size - len(selected)
+        if remaining == 0:
+            break
+        if pool_size - index == remaining:
+            choose = True
+        else:
+            exclude_mass = (
+                accumulated_complement * elementary[index + 1, remaining]
+                + weighted[index + 1, remaining]
+            )
+            include_mass = odds[index] * (
+                (accumulated_complement + complement[index])
+                * elementary[index + 1, remaining - 1]
+                + weighted[index + 1, remaining - 1]
+            )
+            total_mass = include_mass + exclude_mass
+            if not math.isfinite(total_mass) or total_mass <= 0.0:
+                raise RuntimeError(
+                    "Sampford dynamic program failed closed while drawing from "
+                    "a numerically ill-conditioned boundary design."
+                )
+            choose = float(rng.random()) < include_mass / total_mass
+        if choose:
+            selected.append(index)
+            accumulated_complement += float(complement[index])
+
+    if len(selected) != sample_size:  # pragma: no cover - recurrence invariant
+        raise RuntimeError(
+            "Sampford dynamic program violated its fixed-size invariant: "
+            f"selected {len(selected)} != {sample_size}."
+        )
+    return np.asarray(selected, dtype=np.int64)
 
 
 def _draw_boundary(

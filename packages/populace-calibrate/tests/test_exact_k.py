@@ -52,6 +52,43 @@ def test_census_and_proportional_take_alls_are_deterministic() -> None:
     np.testing.assert_array_equal(take_all, [1, 2])
 
 
+def test_mixed_boundary_take_all_and_fractional_draw() -> None:
+    # Scaling by 2 / 1.6 gives target probabilities [1, .5, .25, .25].
+    pi = np.asarray([0.8, 0.4, 0.2, 0.2])
+    draws = 2_000
+    counts = np.zeros(len(pi), dtype=np.int64)
+
+    for seed in range(draws):
+        support, receipt = select_exact_k(pi, k=2, pi_hi=0.95, seed=seed)
+        counts[support] += 1
+
+    frequencies = counts / draws
+    assert receipt["certainty_count"] == 0
+    np.testing.assert_allclose(frequencies, [1.0, 0.5, 0.25, 0.25], atol=0.04)
+
+
+def test_majority_draw_uses_complementary_sampford_design() -> None:
+    pi = np.full(10, 0.7)
+    draws = 2_000
+    counts = np.zeros(len(pi), dtype=np.int64)
+
+    for seed in range(draws):
+        support, _ = select_exact_k(pi, k=7, pi_hi=1.0, seed=seed)
+        counts[support] += 1
+
+    assert counts.sum() == draws * 7
+    np.testing.assert_allclose(counts / draws, pi, atol=0.04)
+
+
+def test_near_deterministic_feasible_design_does_not_stall() -> None:
+    pi = np.asarray([0.4999999999995, 0.4999999999995, 5e-13, 5e-13])
+
+    support, _ = select_exact_k(pi, k=2, pi_hi=0.95, seed=0)
+
+    assert len(support) == 2
+    assert np.unique(support).size == 2
+
+
 @pytest.mark.parametrize(
     "pi",
     [
@@ -159,6 +196,14 @@ def test_group_ids_unique_only_seam_is_explicit() -> None:
         )
     with pytest.raises(ValueError, match="aligned with pi"):
         select_exact_k(pi, k=2, pi_hi=0.95, seed=9, group_ids=np.asarray(["a"]))
+    with pytest.raises(ValueError, match="non-reflexive"):
+        select_exact_k(
+            pi,
+            k=2,
+            pi_hi=0.95,
+            seed=9,
+            group_ids=np.asarray([np.nan, np.nan, "c", "d"], dtype=object),
+        )
 
 
 def test_named_cardinality_gate_fails_closed() -> None:
