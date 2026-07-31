@@ -96,6 +96,8 @@ POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
+_PRIMARY_QRF_INPUT_BINDING_FILENAME = "pool-input-binding.json"
+_PRIMARY_QRF_INPUT_BINDING_SCHEMA_VERSION = 1
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
@@ -357,13 +359,51 @@ def _primary_qrf_manifest_path(checkpoint_dir: Path) -> Path:
     return checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
 
 
+def _primary_qrf_input_binding_path(checkpoint_dir: Path) -> Path:
+    return checkpoint_dir / _PRIMARY_QRF_INPUT_BINDING_FILENAME
+
+
+def _checkpoint_input_binding(
+    verified_inputs: Mapping[str, _VerifiedInput],
+) -> dict[str, object]:
+    return {
+        "artifact_kind": "populace_us_multispine_primary_qrf_input_binding",
+        "schema_version": _PRIMARY_QRF_INPUT_BINDING_SCHEMA_VERSION,
+        "period": POOL_TIME_PERIOD,
+        "seed": POOL_RANDOM_SEED,
+        "n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
+        "inputs": {
+            role: {
+                "sha256": pin.actual_sha256,
+                "size_bytes": pin.size_bytes,
+            }
+            for role, pin in verified_inputs.items()
+        },
+    }
+
+
 def _initialize_or_resume_primary_qrf(
     frame: Frame,
     donor: pd.DataFrame,
     checkpoint_dir: Path,
+    *,
+    input_binding: Mapping[str, object],
 ) -> None:
     manifest_path = _primary_qrf_manifest_path(checkpoint_dir)
+    binding_path = _primary_qrf_input_binding_path(checkpoint_dir)
+    expected_binding = _json_ready(input_binding)
     if manifest_path.is_file():
+        if not binding_path.is_file():
+            raise ValueError(
+                "Primary QRF checkpoint has no pool-input provenance binding: "
+                f"{binding_path}."
+            )
+        observed_binding = _read_json_object(binding_path)
+        if observed_binding != expected_binding:
+            raise ValueError(
+                "Primary QRF checkpoint input binding differs from the verified "
+                "pool inputs; refusing to reuse stale predictions."
+            )
         return
     if checkpoint_dir.exists():
         if not checkpoint_dir.is_dir():
@@ -383,6 +423,7 @@ def _initialize_or_resume_primary_qrf(
         seed=POOL_RANDOM_SEED,
         n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
     )
+    _atomic_write_json(binding_path, input_binding)
 
 
 def _impute_pool(
@@ -390,8 +431,14 @@ def _impute_pool(
     *,
     puf_donor: pd.DataFrame,
     checkpoint_dir: Path,
+    checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
-    _initialize_or_resume_primary_qrf(frame, puf_donor, checkpoint_dir)
+    _initialize_or_resume_primary_qrf(
+        frame,
+        puf_donor,
+        checkpoint_dir,
+        input_binding=checkpoint_input_binding,
+    )
     run_primary_puf_qrf_chain(checkpoint_dir)
 
     tail_bound_diagnostics: list[dict[str, object]] = []
@@ -437,12 +484,15 @@ def _impute_pool(
         )
 
     qrf_manifest_path = _primary_qrf_manifest_path(checkpoint_dir)
+    qrf_binding_path = _primary_qrf_input_binding_path(checkpoint_dir)
     return PoolStageOutput(
         transferred.frame,
         {
             "primary_puf_qrf": {
                 "checkpoint_manifest": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
+                "input_binding": _read_json_object(qrf_binding_path),
+                "input_binding_sha256": _file_sha256(qrf_binding_path),
                 "n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
                 "tail_bound_diagnostics": tail_bound_diagnostics,
             },
@@ -467,6 +517,7 @@ def build_multispine_pool(
     *,
     puf_donor: pd.DataFrame,
     primary_qrf_checkpoint_dir: Path,
+    checkpoint_input_binding: Mapping[str, object] | None = None,
     impute: PoolOperator | None = None,
     derive: PoolOperator = derive_multispine_pool_inputs,
     seed: PoolOperator = seed_multispine_pool_inputs,
@@ -479,17 +530,23 @@ def build_multispine_pool(
     its registry or fixed tolerances.
     """
 
-    impute_operator = (
-        (
-            lambda frame: _impute_pool(
+    if impute is None:
+        if checkpoint_input_binding is None:
+            raise ValueError(
+                "Production pool imputation requires a verified checkpoint "
+                "input binding."
+            )
+
+        def impute_operator(frame: Frame) -> PoolStageOutput:
+            return _impute_pool(
                 frame,
                 puf_donor=puf_donor,
                 checkpoint_dir=primary_qrf_checkpoint_dir,
+                checkpoint_input_binding=checkpoint_input_binding,
             )
-        )
-        if impute is None
-        else impute
-    )
+
+    else:
+        impute_operator = impute
     return run_multispine_pool_path(
         asec,
         acs,
@@ -677,6 +734,7 @@ def main(argv: list[str] | None = None) -> int:
         loaded.acs,
         puf_donor=loaded.puf_donor,
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+        checkpoint_input_binding=_checkpoint_input_binding(verified_inputs),
     )
     _write_outputs(
         result,

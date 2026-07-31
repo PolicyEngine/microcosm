@@ -73,12 +73,21 @@
 - Extended the AST guard transitively from the new CLI through its US runtime
   imports, with no new source-provenance owner exceptions, and rejected the
   retired late-assembly graph.
+- Bound resumable primary-QRF checkpoints to the exact five verified input
+  digests and sizes. A missing or changed binding now refuses stale
+  predictions instead of allowing a manifest to claim different input bytes.
+- Harmonized only the ACS adapter's generated lineage fields to ASEC-compatible
+  dtypes before assembly. Raw `SERIALNO`, wages, nulls, and other measured ACS
+  values remain unchanged; a real tiny ASEC/ACS adapter comparison found no
+  remaining shared-column dtype mismatch.
+- Added focused tool-boundary fixtures covering the exact CLI surface,
+  refuse-before-load SHA checks, the complete ordered two-spine seam and red
+  terminal gate, failure H5/diagnostic/manifest receipts, unchanged #581
+  clone-bound and receipt-loss errors, and stale QRF checkpoint refusal.
 
 ## Next
 
-1. Add synthetic full-path CLI tests for red agreement receipts, manifest
-   contents, structural #581 errors, and pre-load SHA refusal.
-2. Verify and fix the ACS/ASEC source-lineage dtype boundary discovered during
-   the production input audit.
-3. Run focused verification, update the committed ledger, and write
+1. Add one wired small-fixture test using the real raw-preserving ACS transfer
+   entrypoint between clone and terminal gate.
+2. Run focused verification, update this committed ledger, and write
    the external review worklog.

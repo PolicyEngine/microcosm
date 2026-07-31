@@ -103,9 +103,10 @@ def _red_pool_result(pool_tool: ModuleType, tmp_path: Path):
         def apply(frame: Frame) -> PoolStageOutput:
             order.append(name)
             person = frame.table("person").copy()
-            assert set(
-                person[support_clone_index_column("person")].astype(int)
-            ) == {0, 1}
+            assert set(person[support_clone_index_column("person")].astype(int)) == {
+                0,
+                1,
+            }
             assert set(person[support_channel_column("person")]) == {
                 "asec",
                 "acs",
@@ -159,9 +160,7 @@ def test_parser_exposes_only_five_pinned_inputs_and_out(
 ) -> None:
     parser = pool_tool._parser()
     actions = {
-        action.dest: action
-        for action in parser._actions
-        if action.dest != "help"
+        action.dest: action for action in parser._actions if action.dest != "help"
     }
     pairs = (
         ("asec_pre_clone_h5", "asec_pre_clone_h5_sha256"),
@@ -170,9 +169,9 @@ def test_parser_exposes_only_five_pinned_inputs_and_out(
         ("puf_h5", "puf_h5_sha256"),
         ("puf_source_year_csv", "puf_source_year_csv_sha256"),
     )
-    expected_destinations = {
-        destination for pair in pairs for destination in pair
-    } | {"out"}
+    expected_destinations = {destination for pair in pairs for destination in pair} | {
+        "out"
+    }
 
     assert set(actions) == expected_destinations
     assert all(action.required for action in actions.values())
@@ -184,9 +183,7 @@ def test_parser_exposes_only_five_pinned_inputs_and_out(
         assert len(actions[sha_destination].option_strings) == 1
 
     option_names = {
-        option
-        for action in actions.values()
-        for option in action.option_strings
+        option for action in actions.values() for option in action.option_strings
     }
     assert not any(
         forbidden in option
@@ -236,6 +233,39 @@ def test_sha_mismatch_refuses_before_loading_or_writing(
     assert not output.exists()
     assert not output.with_suffix(".manifest.json").exists()
     assert not output.with_suffix(".agreement.json").exists()
+
+
+def test_primary_qrf_resume_refuses_a_changed_input_binding(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    checkpoint_dir = tmp_path / "primary-qrf"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / pool_tool.PRIMARY_QRF_MANIFEST_FILENAME).write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    original = {
+        "artifact_kind": "fixture_binding",
+        "schema_version": 1,
+        "inputs": {"processed_puf": {"sha256": "a" * 64}},
+    }
+    pool_tool._atomic_write_json(
+        checkpoint_dir / pool_tool._PRIMARY_QRF_INPUT_BINDING_FILENAME,
+        original,
+    )
+    changed = {
+        **original,
+        "inputs": {"processed_puf": {"sha256": "b" * 64}},
+    }
+
+    with pytest.raises(ValueError, match="refusing to reuse stale predictions"):
+        pool_tool._initialize_or_resume_primary_qrf(
+            _source_frame(),
+            pd.DataFrame(),
+            checkpoint_dir,
+            input_binding=changed,
+        )
 
 
 def test_synthetic_two_spine_path_reaches_fixed_red_terminal_gate(
@@ -317,9 +347,7 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     )
 
     manifest = json.loads(outputs.manifest.read_text(encoding="utf-8"))
-    diagnostics = json.loads(
-        outputs.agreement_diagnostics.read_text(encoding="utf-8")
-    )
+    diagnostics = json.loads(outputs.agreement_diagnostics.read_text(encoding="utf-8"))
     expected_gate = GateReport((result.agreement_gate,)).to_manifest()
 
     assert manifest["status"] == "agreement_failed"
@@ -348,9 +376,7 @@ def test_clone_safe_id_error_surfaces_unchanged_through_tool(
 ) -> None:
     asec = _source_frame()
     tables = {entity: asec.table(entity).copy() for entity in asec.entities}
-    tables["person"].loc[0, "person_id"] = (
-        PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID + 1
-    )
+    tables["person"].loc[0, "person_id"] = PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID + 1
     invalid = Frame(
         tables,
         asec.schema,
