@@ -103,9 +103,10 @@ _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _UK_EXACT_K_RELEASE_ID_RE = re.compile(
     r"^populace-uk-(?P<year>[1-9][0-9]*)-(?P<tier>.+)-k(?P<record_count>[1-9][0-9]*)$"
 )
-_UK_LEGACY_RELEASE_ID_RE = re.compile(
-    r"^populace-uk-[1-9][0-9]{3}-(?:[0-9a-f]{7,40}-){1,2}"
-    r"(?:[0-9]{8}|[0-9]{8}T[0-9]{6}Z)$"
+_UK_LEGACY_RELEASE_IDS = frozenset(
+    {
+        "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+    }
 )
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
@@ -472,10 +473,10 @@ def _check_uk_release_identity(
 
     match = _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id)
     if match is None:
-        if _UK_LEGACY_RELEASE_ID_RE.fullmatch(release_id) is None:
+        if release_id not in _UK_LEGACY_RELEASE_IDS:
             failures.append(
                 "release_manifest.json UK release id is neither canonical "
-                "'populace-uk-<year>-<tier>-k<N>' nor a grandfathered "
+                "'populace-uk-<year>-<tier>-k<N>' nor the grandfathered June "
                 f"hash/timestamp id: {release_id!r}."
             )
             return
@@ -867,6 +868,11 @@ def _check_uk_calibration_diagnostics(
         field="uk_diagnostics.weights.n_records",
         failures=failures,
     )
+    if n_records == 0:
+        failures.append(
+            "calibration_diagnostics.json UK release diagnostics require at "
+            "least one weight record."
+        )
     positive_records = _uk_non_negative_int(
         weights.get("positive_weight_records"),
         field="uk_diagnostics.weights.positive_weight_records",
@@ -877,34 +883,123 @@ def _check_uk_calibration_diagnostics(
         field="uk_diagnostics.weights.zero_weight_records",
         failures=failures,
     )
-    for field in (
-        "total_weight",
-        "effective_sample_size",
-        "max_weight",
-        "top_1pct_weight_share",
-    ):
+    for field in ("total_weight", "max_weight"):
         _uk_finite_number(
             weights.get(field),
             field=f"uk_diagnostics.weights.{field}",
             failures=failures,
             minimum=0.0,
-            maximum=1.0 if field == "top_1pct_weight_share" else None,
         )
-    _uk_finite_number(
+    ess = _uk_finite_number(
+        weights.get("effective_sample_size"),
+        field="uk_diagnostics.weights.effective_sample_size",
+        failures=failures,
+        minimum=0.0,
+        maximum=float(n_records) if n_records is not None else None,
+    )
+    ess_fraction = _uk_finite_number(
         weights.get("ess_fraction"),
         field="uk_diagnostics.weights.ess_fraction",
         failures=failures,
         minimum=0.0,
         maximum=1.0,
     )
-    for field in ("median_positive_weight", "max_to_median_positive_weight"):
-        value = weights.get(field)
-        if value is not None:
-            _uk_finite_number(
-                value,
-                field=f"uk_diagnostics.weights.{field}",
-                failures=failures,
-                minimum=0.0,
+    top_share = _uk_finite_number(
+        weights.get("top_1pct_weight_share"),
+        field="uk_diagnostics.weights.top_1pct_weight_share",
+        failures=failures,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    if (
+        n_records is not None
+        and n_records > 0
+        and ess is not None
+        and ess_fraction is not None
+        and not math.isclose(
+            ess_fraction,
+            ess / n_records,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+    ):
+        failures.append(
+            "calibration_diagnostics.json UK ess_fraction must equal "
+            "effective_sample_size/n_records."
+        )
+    shared_n_records = diagnostics.get("n_records")
+    if not isinstance(shared_n_records, int) or isinstance(shared_n_records, bool):
+        failures.append(
+            "calibration_diagnostics.json canonical UK releases require numeric "
+            "top-level n_records."
+        )
+    elif n_records is not None and shared_n_records != n_records:
+        failures.append(
+            "calibration_diagnostics.json UK weights.n_records must match "
+            "top-level n_records."
+        )
+    target_surface = diagnostics.get("target_surface")
+    if (
+        isinstance(target_surface, Mapping)
+        and n_records is not None
+        and target_surface.get("n_records") != n_records
+    ):
+        failures.append(
+            "calibration_diagnostics.json UK weights.n_records must match "
+            "target_surface.n_records."
+        )
+    for field, observed in (
+        ("effective_sample_size", ess),
+        ("top_1pct_weight_share", top_share),
+    ):
+        shared = diagnostics.get(field)
+        if isinstance(shared, bool) or not isinstance(shared, int | float):
+            failures.append(
+                "calibration_diagnostics.json canonical UK releases require "
+                f"numeric top-level {field}."
+            )
+        elif observed is not None and not math.isclose(
+            float(shared),
+            observed,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        ):
+            failures.append(
+                f"calibration_diagnostics.json UK weights.{field} must match "
+                f"top-level {field}."
+            )
+    ratio_fields = ("median_positive_weight", "max_to_median_positive_weight")
+    for field in ratio_fields:
+        if field not in weights:
+            failures.append(
+                "calibration_diagnostics.json UK weight diagnostics require "
+                f"uk_diagnostics.weights.{field}."
+            )
+    median = weights.get("median_positive_weight")
+    ratio = weights.get("max_to_median_positive_weight")
+    if positive_records == 0:
+        if median is not None or ratio is not None:
+            failures.append(
+                "calibration_diagnostics.json UK all-zero weights require null "
+                "median_positive_weight and max_to_median_positive_weight."
+            )
+    elif positive_records is not None:
+        valid_median = _uk_finite_number(
+            median,
+            field="uk_diagnostics.weights.median_positive_weight",
+            failures=failures,
+            minimum=0.0,
+        )
+        _uk_finite_number(
+            ratio,
+            field="uk_diagnostics.weights.max_to_median_positive_weight",
+            failures=failures,
+            minimum=1.0,
+        )
+        if valid_median is not None and valid_median <= 0.0:
+            failures.append(
+                "calibration_diagnostics.json UK positive weights require a "
+                "strictly positive median_positive_weight."
             )
     if (
         n_records is not None

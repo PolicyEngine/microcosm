@@ -22,7 +22,7 @@ from populace.data import (
 )
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
-UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
+UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -510,6 +510,9 @@ def _write_uk_release_dir(
     diagnostics = _calibration_diagnostics()
     if "-k" in release_id:
         diagnostics["target_registry"]["country"] = "uk"
+        diagnostics["n_records"] = 2
+        diagnostics["effective_sample_size"] = 1.0
+        diagnostics["top_1pct_weight_share"] = 1.0
         diagnostics["uk_diagnostics"] = {
             "schema_version": 1,
             "weights": {
@@ -1187,6 +1190,7 @@ def test_exact_k_uk_release_rejects_tier_mismatch(tmp_path: Path) -> None:
         "populace-uk-2023-frs-k0",
         "populace-uk-2023-public-k535080-extra",
         "populace-uk-2023-frs",
+        "populace-uk-2099-deadbee-20990101",
     ],
 )
 def test_malformed_uk_release_ids_are_not_grandfathered(
@@ -1250,6 +1254,56 @@ def test_exact_k_uk_release_diagnostics_fail_closed(
     )
 
     with pytest.raises(ReleaseContractError, match=match):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["median_positive_weight", "max_to_median_positive_weight"],
+)
+def test_exact_k_uk_release_requires_weight_ratio_fields(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    diagnostics["uk_diagnostics"]["weights"].pop(field)
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match=field):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_impossible_or_inconsistent_ess(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    diagnostics["uk_diagnostics"]["weights"]["effective_sample_size"] = 999.0
+    diagnostics["uk_diagnostics"]["weights"]["ess_fraction"] = 0.25
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match="effective_sample_size"):
         validate_release_dir(directory)
 
 
