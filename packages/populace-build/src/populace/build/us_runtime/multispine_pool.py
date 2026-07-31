@@ -83,6 +83,10 @@ POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE = 5_000
 class _PoolRulesEngine(Protocol):
     def default_values(self, names: list[str]) -> Mapping[str, object]: ...
 
+    def variable_metadata(self, name: str) -> object: ...
+
+    def variables(self) -> list[str]: ...
+
     def materialize(
         self,
         bundle: Frame,
@@ -293,7 +297,8 @@ def materialize_multispine_agreement_outputs(
 
         rules_engine = PolicyEngineUSEngine()
 
-    household_ids = frame.table("household")["household_id"].to_numpy()
+    simulation_frame, default_fills = _simulation_projection(frame, rules_engine)
+    household_ids = simulation_frame.table("household")["household_id"].to_numpy()
     person = frame.table("person")
     membership = person["person_household_id"]
     person_ids = person["person_id"]
@@ -311,7 +316,7 @@ def materialize_multispine_agreement_outputs(
             low : low + POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE
         ]
         person_mask = membership.isin(selected_households).to_numpy()
-        selected = frame.select(person_mask)
+        selected = simulation_frame.select(person_mask)
         materialized = np.asarray(
             rules_engine.materialize(
                 selected,
@@ -354,8 +359,60 @@ def materialize_multispine_agreement_outputs(
             },
             "household_batch_size": POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,
             "batches": batch_count,
+            "simulation_projection_default_fills": default_fills,
             "persisted_to_pool": False,
         },
+    )
+
+
+def _simulation_projection(
+    frame: Frame,
+    engine: _PoolRulesEngine,
+) -> tuple[Frame, dict[str, dict[str, object]]]:
+    """Fill nullable engine inputs only on the disposable simulation copy."""
+
+    variables_method = getattr(engine, "variables", None)
+    metadata_method = getattr(engine, "variable_metadata", None)
+    if not callable(variables_method) or not callable(metadata_method):
+        return frame, {}
+
+    input_names = list(variables_method())
+    defaults = dict(engine.default_values(input_names))
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    fills: dict[str, dict[str, object]] = {}
+    for name in input_names:
+        metadata = metadata_method(name)
+        entity = getattr(metadata, "entity", None)
+        if entity not in tables or name not in tables[entity]:
+            continue
+        missing = tables[entity][name].isna()
+        if not missing.any():
+            continue
+        if name not in defaults:
+            raise ValueError(
+                f"SSI simulation projection cannot resolve {int(missing.sum())} "
+                f"missing value(s) in engine input {entity}.{name}; the engine "
+                "declares no default."
+            )
+        tables[entity].loc[missing, name] = defaults[name]
+        fills[name] = {
+            "entity": entity,
+            "rows": int(missing.sum()),
+            "value": defaults[name],
+            "persisted_to_pool": False,
+        }
+    if not fills:
+        return frame, {}
+    return (
+        Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        ),
+        fills,
     )
 
 

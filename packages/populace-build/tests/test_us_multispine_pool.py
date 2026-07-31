@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -371,3 +372,48 @@ def test_simulated_ssi_lives_only_on_receipt_preserving_gate_view() -> None:
     assert result.receipt["persisted_to_pool"] is False
     assert result.receipt["formula_outputs"]["ssi"]["rows"] == frame.n("person")
     assert sum(map(len, engine.materialized_person_ids)) == frame.n("person")
+
+
+def test_simulation_defaults_are_disposable_and_receipted() -> None:
+    frame = seed_multispine_pool_inputs(
+        _assembled_cloned_with_partial_take_up(),
+        engine=_FakeEngine(),
+    ).frame
+    person = frame.table("person").copy()
+    person.loc[person.index[0], "age"] = np.nan
+    frame = _replace_person(frame, person)
+
+    class ProjectionEngine(_FakeEngine):
+        def variables(self) -> list[str]:
+            return ["age"]
+
+        def variable_metadata(self, name: str) -> object:
+            assert name == "age"
+            return SimpleNamespace(entity="person")
+
+        def default_values(self, names: list[str]) -> dict[str, object]:
+            assert names == ["age"]
+            return {"age": 0.0}
+
+        def materialize(
+            self,
+            bundle: Frame,
+            variables: list[str],
+            period: int,
+        ) -> dict[str, np.ndarray]:
+            assert not bundle.table("person")["age"].isna().any()
+            return super().materialize(bundle, variables, period)
+
+    result = materialize_multispine_agreement_outputs(
+        frame,
+        engine=ProjectionEngine(),
+    )
+
+    assert result.frame.table("person")["age"].isna().sum() == 1
+    assert result.frame.table("person").loc[person.index[0], "ssi"] == 0.0
+    assert result.receipt["simulation_projection_default_fills"]["age"] == {
+        "entity": "person",
+        "rows": 1,
+        "value": 0.0,
+        "persisted_to_pool": False,
+    }

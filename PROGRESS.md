@@ -55,14 +55,18 @@
 - Added fixed-batch SSI materialization on an ephemeral, receipt-preserving
   gate view. Formula-owned `ssi` is deliberately absent from the returned
   input pool.
+- Added a disposable simulation projection that fills any still-null engine
+  inputs from the live engine defaults solely while materializing SSI. The
+  nullable pool remains untouched, and every temporary fill is receipted.
+- Added the bounded ASEC pre-clone checkpoint loader: it requires the exact
+  `pre_clone_enrichment` stage binding, revalidates the stored frame identity,
+  and rejects non-US or invalid household-weight artifacts.
 
 ## Next
 
-1. Finish missing-cell/raw-preserving transfer and receipt-safe production
-   operators.
-2. Add the sha-pinned CLI with deterministic
+1. Add the sha-pinned CLI with deterministic
    manifest/diagnostic paths and no tolerance knobs.
-3. Convert the legacy CLI to a deprecated shim while preserving the helper
-   imports its known consumer needs.
-4. Add synthetic full-path tests, changelog fragment, focused verification, and
+2. Wire the raw-preserving transfer and receipt-safe production operators into
+   that CLI.
+3. Add synthetic full-path tests, changelog fragment, focused verification, and
    the external review worklog.
