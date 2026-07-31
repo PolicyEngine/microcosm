@@ -18,7 +18,8 @@ This guard enforces, and its tests certify, exactly these surfaces:
   refused or partial binding over a fragment-bearing supported static
   container fails closed at the iteration site; and
 - contraband guarded-name literals anywhere statically visible in non-owner
-  modules.
+  modules' executable dataflow; true docstrings and annotation forms are
+  deliberately exempt.
 
 Analysis is MODULE-LOCAL with single-hop name resolution. Three classes
 are out of scope by design, and naming them is the honest boundary.
@@ -1281,6 +1282,18 @@ def _static_dict_entries(
             else:
                 resolved_entries.extend(expanded)
         entries = _StaticDictEntries(resolved_entries)
+    elif isinstance(node, ast.DictComp):
+        # An identity dict comprehension is a MAPPING whose abstract entries
+        # are the source rows. Keeping that mapping identity here lets a bound
+        # result retain .items()/.values() semantics, while the iteration
+        # resolver remains free to derive runtime-correct keys for a bare
+        # iteration (sol #583 round 19).
+        identity_rows = _identity_structural_rows(node, constants)
+        if identity_rows is None or not all(
+            isinstance(row, (list, tuple)) and len(row) == 2 for row in identity_rows
+        ):
+            return None
+        entries = _StaticDictEntries((row[0], row[1]) for row in identity_rows)
     elif (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
@@ -1391,9 +1404,12 @@ def _static_iteration_value(
     """Resolve the one structural value shared by binders and probes."""
 
     structural_rows = _identity_structural_rows(node, constants)
-    if structural_rows is not None:
+    if structural_rows is not None and not isinstance(node, ast.DictComp):
         # Structural identity comprehensions map rows to themselves, so
-        # they resolve to the source's rows (sol #583 round 17).
+        # list/set/generator forms resolve to the source's rows. Identity
+        # DICTS instead fall through to the entries resolver below: direct
+        # iteration then yields keys, exactly as it does at runtime
+        # (sol #583 rounds 17 and 19).
         return structural_rows
     if (
         isinstance(node, ast.Call)
@@ -1685,6 +1701,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
             constant = _static_structure(value, self.constants)
         if constant is None:
             constant = _static_string_list(value, self.constants)
+        if constant is None:
+            iteration_value = _static_iteration_value(value, self.constants)
+            if iteration_value is not _OPAQUE_STATIC_VALUE:
+                # Comprehension results and other supported structural
+                # iterables must survive one binding exactly as their inline
+                # forms do. Dict comprehensions have already resolved to
+                # _StaticDictEntries above, retaining mapping-view semantics
+                # rather than degrading to untyped pair rows (round 19).
+                constant = iteration_value
         method_alias = self._method_alias(value)
         if method_alias is None and name in self.method_alias_history[scope_index]:
             method_alias = _OPAQUE_METHOD_ALIAS
@@ -3608,7 +3633,7 @@ def f(df: pd.DataFrame, column="age"):
 
 
 def test_annotations_and_true_docstrings_are_not_dataflow() -> None:
-    """Every annotation form and each scope's real docstring are exempt."""
+    """Annotations and real docstrings are exempt from executable dataflow."""
 
     source = '''"""person_support_channel"""
 type Alias = Literal["person_support_channel"]
@@ -3814,6 +3839,259 @@ def f(dynamic, sink):
     assert any("unpropagatable target geometry" in a for a in partial_accesses)
     assert _source_spine_accesses(benign_dict_identity) == ()
     assert _source_spine_accesses(benign_partial_layer) == ()
+
+
+def test_round_19_bound_and_inline_iteration_classifications_are_identical():
+    """Every round-19 reviewer repro matches its runtime-equivalent form.
+
+    Comparison strips source locations but preserves duplicate reports, so a
+    bound layer cannot silently lose either a named catch or fail-closed
+    record. Each behavior also has a fragment-free mirror pinned clean.
+    """
+
+    def classifications(source: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                access.split(": ", maxsplit=1)[1]
+                for access in _source_spine_accesses(source)
+            )
+        )
+
+    bare_identity_dict = """
+DATA = {"person": "support_channel"}
+
+for entity in {e: s for e, s in DATA.items()}:
+    sink(f"{entity}_support_channel")
+"""
+    bare_dict = """
+DATA = {"person": "support_channel"}
+
+for entity in DATA:
+    sink(f"{entity}_support_channel")
+"""
+    benign_bare_identity_dict = """
+DATA = {"state": "fips"}
+
+for entity in {e: s for e, s in DATA.items()}:
+    sink(f"{entity}_age")
+"""
+    benign_bare_dict = """
+DATA = {"state": "fips"}
+
+for entity in DATA:
+    sink(f"{entity}_age")
+"""
+    bound_copy_keys = """
+DATA = {"person": "support_channel"}
+COPY = {e: s for e, s in DATA.items()}
+
+for entity in COPY:
+    sink(f"{entity}_support_channel")
+"""
+    benign_bound_copy_keys = """
+DATA = {"state": "fips"}
+COPY = {e: s for e, s in DATA.items()}
+
+for entity in COPY:
+    sink(f"{entity}_age")
+"""
+
+    bound_copy_items = """
+BASE = {"person": "support_channel"}
+COPY = {e: s for e, s in BASE.items()}
+
+for entity, suffix in COPY.items():
+    sink(f"{entity}_{suffix}")
+"""
+    inline_copy_items = """
+BASE = {"person": "support_channel"}
+
+for entity, suffix in {
+    e: s for e, s in BASE.items()
+}.items():
+    sink(f"{entity}_{suffix}")
+"""
+    benign_bound_copy_items = """
+BASE = {"state": "fips"}
+COPY = {e: s for e, s in BASE.items()}
+
+for entity, suffix in COPY.items():
+    sink(f"{entity}_{suffix}")
+"""
+    benign_inline_copy_items = """
+BASE = {"state": "fips"}
+
+for entity, suffix in {
+    e: s for e, s in BASE.items()
+}.items():
+    sink(f"{entity}_{suffix}")
+"""
+
+    bound_copy_values = """
+BASE = {"known": "person"}
+COPY = {e: s for e, s in BASE.items()}
+
+for entity in COPY.values():
+    sink(f"{entity}_support_channel")
+"""
+    inline_copy_values = """
+BASE = {"known": "person"}
+
+for entity in {
+    e: s for e, s in BASE.items()
+}.values():
+    sink(f"{entity}_support_channel")
+"""
+    benign_bound_copy_values = """
+BASE = {"known": "state"}
+COPY = {e: s for e, s in BASE.items()}
+
+for entity in COPY.values():
+    sink(f"{entity}_age")
+"""
+    benign_inline_copy_values = """
+BASE = {"known": "state"}
+
+for entity in {
+    e: s for e, s in BASE.items()
+}.values():
+    sink(f"{entity}_age")
+"""
+
+    bound_rows = """
+SOURCE = {"person": "support_channel"}
+ROWS = [(entity, suffix) for entity, suffix in SOURCE.items()]
+
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+"""
+    inline_rows = """
+SOURCE = {"person": "support_channel"}
+
+for entity, suffix in [
+    (key, value) for key, value in SOURCE.items()
+]:
+    sink(f"{entity}_{suffix}")
+"""
+    benign_bound_rows = """
+SOURCE = {"state": "fips"}
+ROWS = [(entity, suffix) for entity, suffix in SOURCE.items()]
+
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+"""
+    benign_inline_rows = """
+SOURCE = {"state": "fips"}
+
+for entity, suffix in [
+    (key, value) for key, value in SOURCE.items()
+]:
+    sink(f"{entity}_{suffix}")
+"""
+
+    bound_partial_data = """
+BASE = {"known": "person"}
+
+def f(key, dynamic, sink):
+    DATA = {**BASE, key: dynamic}
+    for entity in DATA.values():
+        sink(f"{entity}_support_channel")
+"""
+    inline_partial_data = """
+BASE = {"known": "person"}
+
+def f(key, dynamic, sink):
+    for entity in {**BASE, key: dynamic}.values():
+        sink(f"{entity}_support_channel")
+"""
+    benign_bound_partial_data = """
+BASE = {"known": "state"}
+
+def f(key, dynamic, sink):
+    DATA = {**BASE, key: dynamic}
+    for entity in DATA.values():
+        sink(f"{entity}_age")
+"""
+    benign_inline_partial_data = """
+BASE = {"known": "state"}
+
+def f(key, dynamic, sink):
+    for entity in {**BASE, key: dynamic}.values():
+        sink(f"{entity}_age")
+"""
+
+    bound_partial_layer = """
+BASE = {"known": "person"}
+
+def f(dynamic, sink):
+    DATA = {**BASE, "other": dynamic}
+    VALUES = [v for v in DATA.values()]
+    for entity in VALUES:
+        sink(f"{entity}_support_channel")
+"""
+    inline_partial_layer = """
+BASE = {"known": "person"}
+
+def f(dynamic, sink):
+    DATA = {**BASE, "other": dynamic}
+    for entity in [v for v in DATA.values()]:
+        sink(f"{entity}_support_channel")
+"""
+    benign_bound_partial_layer = """
+BASE = {"known": "state"}
+
+def f(dynamic, sink):
+    DATA = {**BASE, "other": dynamic}
+    VALUES = [v for v in DATA.values()]
+    for entity in VALUES:
+        sink(f"{entity}_age")
+"""
+    benign_inline_partial_layer = """
+BASE = {"known": "state"}
+
+def f(dynamic, sink):
+    DATA = {**BASE, "other": dynamic}
+    for entity in [v for v in DATA.values()]:
+        sink(f"{entity}_age")
+"""
+
+    equivalent_pairs = (
+        (bare_identity_dict, bare_dict),
+        (bound_copy_keys, bare_identity_dict),
+        (bound_copy_items, inline_copy_items),
+        (bound_copy_values, inline_copy_values),
+        (bound_rows, inline_rows),
+        (bound_partial_data, inline_partial_data),
+        (bound_partial_layer, inline_partial_layer),
+    )
+    for bound_or_composed, runtime_equivalent in equivalent_pairs:
+        assert classifications(bound_or_composed) == classifications(
+            runtime_equivalent
+        ), bound_or_composed
+
+    assert (
+        classifications(bound_partial_layer).count(
+            "iteration over a static container carrying guarded-name fragments "
+            "with unpropagatable target geometry (fail-closed)"
+        )
+        == 2
+    )
+    assert "contraband source column 'person_support_channel'" in classifications(
+        bound_partial_layer
+    )
+
+    fragment_free_pairs = (
+        (benign_bare_identity_dict, benign_bare_dict),
+        (benign_bound_copy_keys, benign_bare_identity_dict),
+        (benign_bound_copy_items, benign_inline_copy_items),
+        (benign_bound_copy_values, benign_inline_copy_values),
+        (benign_bound_rows, benign_inline_rows),
+        (benign_bound_partial_data, benign_inline_partial_data),
+        (benign_bound_partial_layer, benign_inline_partial_layer),
+    )
+    for bound_or_composed, runtime_equivalent in fragment_free_pairs:
+        assert _source_spine_accesses(bound_or_composed) == ()
+        assert _source_spine_accesses(runtime_equivalent) == ()
 
 
 def test_structural_identity_layers_and_partial_sets_classify():
