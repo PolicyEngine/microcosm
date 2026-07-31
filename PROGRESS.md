@@ -35,6 +35,23 @@ No push or external mutation is authorized.
   `ssi_take_up.py`, leaving both treatment modules fully guarded.
 - Ran the guard file: 94 passed, with the all-runtime and exact 54-module graph
   scans clean. Focused Ruff and `git diff --check` pass.
+- Closed post-implementation adversarial findings: function defaults and
+  decorators now resolve at definition time while bodies retain late-binding
+  analysis; class namespaces no longer corrupt enclosing constants; PEP 695
+  class type parameters remain annotation-exempt; and attribute assignment,
+  annotated-assignment, loop, and comprehension targets are visited.
+- Documented the full non-strict receiver composition boundary for typed,
+  constructed-DataFrame, and `Frame.table(...)` result subscripts, with no
+  interprocedural proof and the same sole runtime-data residual.
+- Added binding regressions for definition-time constant state, class namespace
+  isolation, PEP 695 annotations, every attribute-store form, and the broader
+  truthful subscript boundary.
+- Preserved real nested lambda/comprehension closures while excluding class
+  namespaces, and distinguished abstract static iteration choices so composed
+  fragments resolve across those closures without treating ordinary tuple
+  formatting as alternative values.
+- The expanded guard file passes 99 tests; the all-runtime and exact 54-module
+  scans remain clean.
 - Read `CLAUDE.md` and the round-4 review log.
 - Confirmed the required clean starting HEAD and branch.
 - Confirmed the local GitNexus index is absent; direct AST/source tracing will

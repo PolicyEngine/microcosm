@@ -2,10 +2,11 @@
 
 The contract has three layers in every non-owner operator module:
 
-1. Every column-access surface resolves to static choices that are checked by
-   name or fails closed: subscripts and ``.loc`` reads/writes, attributes,
-   ``getattr``, canonical column factories, and direct or aliased pandas
-   ``get``, ``filter``, ``query``, and ``eval`` calls.
+1. Every column-access surface kind is visited, and every locally strict
+   occurrence resolves to static choices that are checked by name or fails
+   closed: subscripts and ``.loc`` reads/writes, attributes, ``getattr``,
+   canonical column factories, and direct or aliased pandas ``get``,
+   ``filter``, ``query``, and ``eval`` calls.
 2. Opacity is a violation at every strict surface; unresolved selectors,
    expressions, aliases, and expanded arguments never create a silent state.
 3. Guarded column names are contraband anywhere statically visible in an
@@ -17,10 +18,12 @@ name, and that name must be written somewhere. Wherever it is statically
 written, layer 3 catches it using the same constant and string-composition
 resolution as the access checks. Therefore a typed parameter-to-parameter
 ``df[column]`` subscript is deliberately permitted: its producing site bears
-the name check. The single accepted residual is a guarded name materialized
-purely from runtime file, configuration, or environment content, where no
-static spelling exists to inspect. Annotations and docstrings are exempt
-because they are not dataflow.
+the name check. Constructed-DataFrame and ``Frame.table(...)`` result
+subscripts outside local strict-receiver inference use the same composition
+boundary. No interprocedural proof is attempted. The single accepted residual
+is a guarded name materialized purely from runtime file, configuration, or
+environment content, where no static spelling exists to inspect. Annotations
+and docstrings are exempt because they are not dataflow.
 """
 
 from __future__ import annotations
@@ -458,6 +461,10 @@ _OPAQUE_STRING_PART = "\N{OBJECT REPLACEMENT CHARACTER}"
 _OPAQUE_METHOD_ALIAS = ("", True)
 
 
+class _StaticStringChoices(tuple):
+    """Abstract alternatives bound by one static loop/comprehension target."""
+
+
 def _static_format_value(
     node: ast.AST,
     constants: list[dict[str, object]],
@@ -722,7 +729,47 @@ def _static_string_values(
     shape = _static_string_shape(node, constants)
     if shape is not None:
         return (shape,)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        alternatives = _static_concatenated_string_values(node, constants)
+        if alternatives is not None:
+            return alternatives
     return _static_string_list(node, constants)
+
+
+def _static_composition_operand_values(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> tuple[str, ...] | None:
+    """Resolve scalar strings or abstract iteration choices for composition."""
+
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                if isinstance(value, _StaticStringChoices):
+                    return tuple(value)
+                break
+    if isinstance(node, ast.NamedExpr):
+        return _static_composition_operand_values(node.value, constants)
+    shape = _static_string_shape(node, constants)
+    if shape is not None:
+        return (shape,)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _static_concatenated_string_values(node, constants)
+    return None
+
+
+def _static_concatenated_string_values(
+    node: ast.BinOp,
+    constants: list[dict[str, object]],
+) -> tuple[str, ...] | None:
+    """Expand concatenation across abstract loop/comprehension alternatives."""
+
+    left = _static_composition_operand_values(node.left, constants)
+    right = _static_composition_operand_values(node.right, constants)
+    if left is None or right is None:
+        return None
+    return tuple(prefix + suffix for prefix in left for suffix in right)
 
 
 def _static_joined_string_values(
@@ -736,9 +783,17 @@ def _static_joined_string_values(
         if isinstance(part, ast.Constant) and isinstance(part.value, str):
             choices = (part.value,)
         elif isinstance(part, ast.FormattedValue):
-            choices = _static_string_values(part.value, constants)
-            if choices is None:
-                return None
+            composition_choices = _static_composition_operand_values(
+                part.value,
+                constants,
+            )
+            if composition_choices is not None:
+                choices: tuple[object, ...] = composition_choices
+            else:
+                static_value = _static_format_value(part.value, constants)
+                if static_value is _OPAQUE_STATIC_VALUE:
+                    return None
+                choices = (static_value,)
             format_spec = (
                 ""
                 if part.format_spec is None
@@ -1003,6 +1058,17 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.method_alias_history: list[set[str]] = [set()]
         self.assignment_counts: list[dict[str, int]] = [{}]
         self.scope_kinds = ["module"]
+        self.class_lexical_flow_states: list[
+            tuple[
+                dict[str, str | None],
+                dict[str, object],
+                dict[str, bool],
+                dict[str, bool],
+                dict[str, tuple[str, bool] | None],
+                set[str],
+            ]
+        ] = []
+        self.class_lexical_scope_depths: list[int] = []
         self.accesses: set[tuple[int, int, str]] = set()
 
     def visit(self, node: ast.AST) -> object:
@@ -1157,13 +1223,23 @@ class _SourceReadVisitor(ast.NodeVisitor):
         for target in targets:
             self._bind_target(target, value, scope_index=scope_index)
 
+    def _visit_access_target(self, target: ast.AST) -> None:
+        """Visit column-bearing stores without treating names as string uses."""
+
+        if isinstance(target, (ast.Attribute, ast.Subscript)):
+            self.visit(target)
+        elif isinstance(target, ast.Starred):
+            self._visit_access_target(target.value)
+        elif isinstance(target, (ast.List, ast.Tuple)):
+            for element in target.elts:
+                self._visit_access_target(element)
+
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
         for target in node.targets:
-            if isinstance(target, ast.Subscript):
-                self.visit(target)
-                if isinstance(target.value, ast.Name):
-                    self._poison(target.value.id)
+            self._visit_access_target(target)
+            if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
+                self._poison(target.value.id)
         self._bind(list(node.targets), node.value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -1174,6 +1250,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is None:
+            self._visit_access_target(node.target)
             for name in _assigned_names(node.target):
                 self.bindings[-1][name] = None
                 self.constants[-1][name] = None
@@ -1182,8 +1259,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 self.method_aliases[-1][name] = None
             return
         self.visit(node.value)
-        if isinstance(node.target, ast.Subscript):
-            self.visit(node.target)
+        self._visit_access_target(node.target)
         self._bind([node.target], node.value)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
@@ -1202,7 +1278,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
     ) -> None:
         for name in _assigned_names(target):
             self.bindings[-1][name] = None
-            self.constants[-1][name] = values
+            self.constants[-1][name] = (
+                None if values is None else _StaticStringChoices(values)
+            )
             self.column_containers[-1][name] = False
             self.attribute_containers[-1][name] = False
             self.method_aliases[-1][name] = (
@@ -1366,6 +1444,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
+        self._visit_access_target(node.target)
         before = self._flow_state()
         values = _static_string_list(node.iter, self.constants)
         self._bind_iteration_target(
@@ -1389,6 +1468,16 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self,
         node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
     ) -> None:
+        first_generator = node.generators[0]
+        self.visit(first_generator.iter)
+        first_values = _static_string_list(first_generator.iter, self.constants)
+        direct_class_body = bool(
+            self.class_lexical_scope_depths
+            and len(self.scope_kinds) == self.class_lexical_scope_depths[-1]
+        )
+        class_body_state = self._flow_state() if direct_class_body else None
+        if class_body_state is not None:
+            self._restore_flow_state(self.class_lexical_flow_states[-1])
         self.bindings.append({})
         self.constants.append({})
         self.column_containers.append({})
@@ -1397,11 +1486,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.method_alias_history.append(set())
         self.assignment_counts.append({})
         self.scope_kinds.append("comprehension")
-        for generator in node.generators:
-            self.visit(generator.iter)
+        for index, generator in enumerate(node.generators):
+            values = first_values
+            if index:
+                self.visit(generator.iter)
+                values = _static_string_list(generator.iter, self.constants)
+            self._visit_access_target(generator.target)
             self._bind_iteration_target(
                 generator.target,
-                _static_string_list(generator.iter, self.constants),
+                values,
             )
             for condition in generator.ifs:
                 self.visit(condition)
@@ -1418,6 +1511,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
+        if class_body_state is not None:
+            self._restore_flow_state(class_body_state)
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self._visit_comprehension(node)
@@ -1434,15 +1529,69 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def visit_TypeAlias(self, node: ast.TypeAlias) -> None:
         """Type parameters are not executable column selectors."""
 
+    def _visit_function_definition_expressions(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        """Visit expressions evaluated when a function is defined."""
+
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+
+    def _visit_class_definition(
+        self,
+        node: ast.ClassDef,
+    ) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+        """Visit a class body without leaking its namespace or annotations."""
+
+        for expression in (*node.decorator_list, *node.bases):
+            self.visit(expression)
+        for keyword in node.keywords:
+            self.visit(keyword.value)
+
+        caller_state = self._flow_state()
+        lexical_state = (
+            self.class_lexical_flow_states[-1]
+            if self.class_lexical_flow_states
+            else caller_state
+        )
+        self._restore_flow_state(lexical_state)
+        self.class_lexical_flow_states.append(lexical_state)
+        self.class_lexical_scope_depths.append(len(self.scope_kinds))
+        deferred: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        for statement in node.body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self._visit_function_definition_expressions(statement)
+                deferred.append(statement)
+            elif isinstance(statement, ast.ClassDef):
+                deferred.extend(self._visit_class_definition(statement))
+            else:
+                self.visit(statement)
+        self.class_lexical_scope_depths.pop()
+        self.class_lexical_flow_states.pop()
+        self._restore_flow_state(caller_state)
+        return deferred
+
     def _visit_scope_statements(self, body: list[ast.stmt]) -> None:
         deferred: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
         for statement in body:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self._visit_function_definition_expressions(statement)
                 deferred.append(statement)
+            elif isinstance(statement, ast.ClassDef):
+                deferred.extend(self._visit_class_definition(statement))
             else:
                 self.visit(statement)
         for function in deferred:
-            self.visit(function)
+            self._visit_function(function, visit_definition_expressions=False)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        deferred = self._visit_class_definition(node)
+        for function in deferred:
+            self._visit_function(function, visit_definition_expressions=False)
 
     def visit_Module(self, node: ast.Module) -> None:
         counts = _scope_assignment_counts(
@@ -1476,12 +1625,18 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def _visit_function(
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
+        *,
+        visit_definition_expressions: bool = True,
     ) -> None:
-        for decorator in node.decorator_list:
-            self.visit(decorator)
-        for default in (*node.args.defaults, *node.args.kw_defaults):
-            if default is not None:
-                self.visit(default)
+        if visit_definition_expressions:
+            self._visit_function_definition_expressions(node)
+        direct_class_body = bool(
+            self.class_lexical_scope_depths
+            and len(self.scope_kinds) == self.class_lexical_scope_depths[-1]
+        )
+        class_body_state = self._flow_state() if direct_class_body else None
+        if class_body_state is not None:
+            self._restore_flow_state(self.class_lexical_flow_states[-1])
         arguments = (
             *node.args.posonlyargs,
             *node.args.args,
@@ -1556,6 +1711,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
+        if class_body_state is not None:
+            self._restore_flow_state(class_body_state)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -1567,6 +1724,13 @@ class _SourceReadVisitor(ast.NodeVisitor):
         for default in (*node.args.defaults, *node.args.kw_defaults):
             if default is not None:
                 self.visit(default)
+        direct_class_body = bool(
+            self.class_lexical_scope_depths
+            and len(self.scope_kinds) == self.class_lexical_scope_depths[-1]
+        )
+        class_body_state = self._flow_state() if direct_class_body else None
+        if class_body_state is not None:
+            self._restore_flow_state(self.class_lexical_flow_states[-1])
         arguments = (
             *node.args.posonlyargs,
             *node.args.args,
@@ -1630,6 +1794,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
+        if class_body_state is not None:
+            self._restore_flow_state(class_body_state)
 
     _MUTATORS = frozenset(
         {
@@ -2297,12 +2463,119 @@ def select(df: pd.DataFrame, column: str):
 """
 
     accesses = _source_spine_accesses(guarded)
-    assert len(accesses) == 1
-    assert accesses[0].startswith("line 5:")
-    assert "contraband source column 'person_support_channel'" in accesses[0]
-    assert "fail-closed" not in accesses[0]
+    caller_accesses = [access for access in accesses if access.startswith("line 5:")]
+    assert caller_accesses
+    assert all(
+        "contraband source column 'person_support_channel'" in access
+        for access in caller_accesses
+    )
+    assert not any(access.startswith(("line 2:", "line 3:")) for access in accesses)
     assert _source_spine_accesses(benign) == ()
     assert _source_spine_accesses(typed_boundary) == ()
+
+
+def test_non_strict_subscript_forms_share_the_composition_boundary() -> None:
+    """Receiver forms outside local strict inference rely on the producer rule."""
+
+    sources = (
+        """
+def f(column: str):
+    df = pd.DataFrame()
+    return df[column]
+""",
+        """
+def f(frame: Frame, column: str):
+    return frame.table("person")[column]
+""",
+        """
+def f(df: pd.DataFrame):
+    return df[load_runtime_column()]
+""",
+    )
+
+    for source in sources:
+        assert _source_spine_accesses(source) == (), source
+
+
+def test_function_definition_expressions_use_definition_time_constants() -> None:
+    """Defaults and decorators resolve before later enclosing rebindings."""
+
+    guarded_default = """
+PREFIX = "person_support"
+def f(column=PREFIX + "_channel"):
+    return column
+PREFIX = "age"
+"""
+    guarded_decorator = """
+PREFIX = "person_support"
+@register(PREFIX + "_channel")
+def f():
+    pass
+PREFIX = "age"
+"""
+    nested_guarded_default = """
+def outer():
+    prefix = "person_support"
+    def inner(column=prefix + "_channel"):
+        return column
+    prefix = "age"
+    return inner
+"""
+    benign_default = """
+PREFIX = "age"
+def f(column=PREFIX + "_channel"):
+    return column
+PREFIX = "person_support"
+"""
+
+    for source in (guarded_default, guarded_decorator, nested_guarded_default):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in access for access in accesses)
+    assert _source_spine_accesses(benign_default) == ()
+
+
+def test_class_namespaces_do_not_overwrite_enclosing_constant_state() -> None:
+    """Sequential class locals are checked but never leak into outer flow."""
+
+    guarded_outer = """
+PREFIX = "person_support"
+class Spec:
+    PREFIX = "age"
+sink(PREFIX + "_channel")
+"""
+    benign_outer = """
+PREFIX = "age"
+class Spec:
+    PREFIX = "person_support"
+sink(PREFIX + "_channel")
+"""
+
+    guarded_accesses = _source_spine_accesses(guarded_outer)
+    assert any("person_support_channel" in access for access in guarded_accesses)
+    assert _source_spine_accesses(benign_outer) == ()
+
+
+def test_class_created_closures_keep_their_real_nonclass_scopes() -> None:
+    """Leaving class scope must preserve nested lambda/comprehension bindings."""
+
+    nested_lambda = """
+class Spec:
+    make = lambda: (
+        (prefix := "person_support"),
+        lambda: prefix + "_channel",
+    )
+"""
+    comprehension_lambda = """
+class Spec:
+    VALUES = ("person_support",)
+    funcs = [lambda: prefix + "_channel" for prefix in VALUES]
+"""
+
+    for source in (nested_lambda, comprehension_lambda):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in access for access in accesses)
 
 
 @pytest.mark.parametrize(
@@ -2399,7 +2672,7 @@ def test_contraband_names_are_rejected_in_every_expression_position(
         ("format", '"{}_support_channel".format("person")'),
         ("percent", '"%s_support_channel" % "person"'),
         ("replace", '"person_x".replace("x", "support_channel")'),
-        ("multiplication", '"person_support_channel" * 1'),
+        ("multiplication", '"person_" + ("support" * 1) + "_channel"'),
     ),
 )
 def test_contraband_names_reuse_static_expression_resolution(
@@ -2430,12 +2703,17 @@ VALUES = {
     for entity in ENTITIES
 }
 """
+    ordinary_tuple = """
+ENTITIES = ("person", "age")
+VALUE = f"{ENTITIES}_support_channel"
+"""
 
     bound_accesses = _source_spine_accesses(bound)
     assert any("person_support_channel" in access for access in bound_accesses)
     enumerated_accesses = _source_spine_accesses(enumerated)
     assert any("person_support_channel" in access for access in enumerated_accesses)
     assert any("household_support_channel" in access for access in enumerated_accesses)
+    assert _source_spine_accesses(ordinary_tuple) == ()
 
 
 def test_benign_helpers_and_containers_remain_clean() -> None:
@@ -2460,10 +2738,14 @@ def test_annotations_and_true_docstrings_are_not_dataflow() -> None:
     """Every annotation form and each scope's real docstring are exempt."""
 
     source = '''"""person_support_channel"""
-class Spec:
+type Alias = Literal["person_support_channel"]
+class Spec[
+    T: Literal["person_support_channel"],
+    U = Literal["person_support_channel"],
+]:
     """person_support_channel"""
     field: Literal["person_support_channel"]
-def f(
+def f[V: Literal["person_support_channel"]](
     df: pd.DataFrame,
     column: Literal["person_support_channel"],
 ) -> Literal["person_support_channel"]:
@@ -2479,6 +2761,28 @@ def f():
 
     assert _source_spine_accesses(source) == ()
     assert _source_spine_accesses(later_expression)
+
+
+def test_attribute_store_surfaces_are_always_visited() -> None:
+    """Assignments and loop targets cannot hide guarded attribute writes."""
+
+    source = """
+def f(row, values):
+    row.person_support_channel = "asec"
+    row.household_spine_source_id: str = "source"
+    for row.tax_unit_spine in values:
+        pass
+    row.spm_unit_spine += 1
+"""
+
+    accesses = _source_spine_accesses(source)
+    for column in (
+        "person_support_channel",
+        "household_spine_source_id",
+        "tax_unit_spine",
+        "spm_unit_spine",
+    ):
+        assert any(column in access for access in accesses), column
 
 
 def test_reviewed_provenance_owners_are_unaffected_by_contraband_rule() -> None:
