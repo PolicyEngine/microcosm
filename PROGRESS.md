@@ -37,9 +37,16 @@ module and the pinned 54-module build graph.
   the unchanged `"person_support_channel"` value; guarded consumers
   `adult_care.py` and `ssi_take_up.py` import it without behavior changes.
 - Passed repository-wide Ruff and `git diff --check`.
+- Passed the full `populace-build` suite: 3,335 passed, 85 skipped, with five
+  pre-existing warnings, in 107.47 seconds.
+- Prepared an accurate replacement PR body covering the enumerated contract,
+  the sole `operator_boundary.py` owner addition, and all three runtime
+  constant-plumbing files. The live connector update was canceled, so the
+  replacement will be preserved verbatim in the final handoff rather than
+  applied through another channel.
 
 ## Next
 
-- Run the full `populace-build` suite; update the PR body and write
-  `/private/tmp/583_fix4_handoff.md` with exact receipts.
+- Write `/private/tmp/583_fix4_handoff.md` with exact receipts and the
+  unapplied PR-body replacement.
 - Restore `PROGRESS.md` byte-for-byte to `origin/main` before final handoff.
