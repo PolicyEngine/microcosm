@@ -817,7 +817,13 @@ def _static_string_list(
     if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
         structural_rows = _identity_structural_rows(node, constants)
         if structural_rows is not None:
-            return structural_rows
+            # This resolver's contract is a tuple of STRINGS; structural
+            # rows carrying non-string members (opaque sentinels, nested
+            # rows) belong to the iteration resolver, not here — returning
+            # them raised TypeError downstream (sol #583 round 18).
+            if all(isinstance(row, str) for row in structural_rows):
+                return tuple(structural_rows)
+            return None
         local: dict[str, object] = {}
         nested_constants = [*constants, local]
         for generator in node.generators:
@@ -1398,6 +1404,19 @@ def _static_iteration_value(
     ):
         entries = _static_dict_entries(node.func.value, constants)
         if entries is None:
+            # {k: v for k, v in SOURCE}.items(): the identity dict
+            # comprehension's rows ARE the source's rows, so the view
+            # resolves through the identity resolver (sol #583 round 18).
+            identity_rows = _identity_structural_rows(node.func.value, constants)
+            if isinstance(identity_rows, (list, tuple)):
+                if node.func.attr == "items":
+                    return tuple(identity_rows)
+                return tuple(
+                    row[1]
+                    if isinstance(row, (list, tuple)) and len(row) == 2
+                    else _OPAQUE_STATIC_VALUE
+                    for row in identity_rows
+                )
             return _OPAQUE_STATIC_VALUE
         return (
             tuple(entries)
@@ -1475,13 +1494,32 @@ def _identity_structural_rows(
     target in order, or a bare Name mirroring a name target.
     """
 
-    if not isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+    if not isinstance(
+        node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
+    ):
         return None
     if len(node.generators) != 1:
         return None
     generator = node.generators[0]
     if generator.ifs or generator.is_async:
         return None
+    if isinstance(node, ast.DictComp):
+        # {k: v for k, v in SOURCE} is an identity mapping when key and
+        # value mirror the tuple target in order — its rows ARE the
+        # source's rows (sol #583 round 18).
+        target = generator.target
+        if (
+            not isinstance(target, (ast.Tuple, ast.List))
+            or len(target.elts) != 2
+            or not all(isinstance(element, ast.Name) for element in target.elts)
+            or not isinstance(node.key, ast.Name)
+            or not isinstance(node.value, ast.Name)
+            or node.key.id != target.elts[0].id
+            or node.value.id != target.elts[1].id
+        ):
+            return None
+        rows = _static_iteration_value(generator.iter, constants)
+        return rows if isinstance(rows, (list, tuple)) else None
     target, elt = generator.target, node.elt
     if isinstance(target, ast.Name) and isinstance(elt, ast.Name):
         if target.id != elt.id:
@@ -3718,6 +3756,64 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_dict_comprehension_identity_and_partial_layers_are_stable():
+    """Sol #583 round 18: identity DICT comprehensions resolve like every
+    other identity form, and partial enumerations survive identity layers
+    with their dual report intact (a round-17 shortcut raised TypeError
+    there — this pins the repaired behavior)."""
+
+    dict_identity = """
+DATA = {"person": "support_channel"}
+
+
+def f(sink):
+    for entity, suffix in {e: s for e, s in DATA.items()}.items():
+        sink(f"{entity}_{suffix}")
+"""
+    dict_identity_values = """
+DATA = {"known": "person"}
+
+
+def f(sink):
+    for entity in {k: v for k, v in DATA.items()}.values():
+        sink(f"{entity}_support_channel")
+"""
+    partial_identity_layer = """
+BASE = {"known": "person"}
+
+
+def f(dynamic, sink):
+    DATA = {**BASE, "other": dynamic}
+    for entity in [value for value in DATA.values()]:
+        sink(f"{entity}_support_channel")
+"""
+    benign_dict_identity = """
+DATA = {"state": "fips"}
+
+
+def f(sink):
+    for entity, suffix in {e: s for e, s in DATA.items()}.items():
+        sink(f"{entity}_{suffix}")
+"""
+    benign_partial_layer = """
+BASE = {"known": "state"}
+
+
+def f(dynamic, sink):
+    DATA = {**BASE, "other": dynamic}
+    for entity in [value for value in DATA.values()]:
+        sink(entity)
+"""
+    for source in (dict_identity, dict_identity_values):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in a for a in accesses), source
+    partial_accesses = _source_spine_accesses(partial_identity_layer)
+    assert any("person_support_channel" in a for a in partial_accesses)
+    assert any("unpropagatable target geometry" in a for a in partial_accesses)
+    assert _source_spine_accesses(benign_dict_identity) == ()
+    assert _source_spine_accesses(benign_partial_layer) == ()
 
 
 def test_structural_identity_layers_and_partial_sets_classify():
