@@ -131,7 +131,9 @@ def test_near_deterministic_feasible_design_does_not_stall() -> None:
     assert np.unique(support).size == 2
 
 
-def test_concentrated_design_just_above_old_dp_cutoff_succeeds() -> None:
+def test_concentrated_design_just_above_old_dp_cutoff_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pool_size = 2_001
     sample_size = 999
     target_probabilities = np.concatenate(
@@ -144,6 +146,22 @@ def test_concentrated_design_just_above_old_dp_cutoff_succeeds() -> None:
         )
     )
     pi = 0.9 * target_probabilities
+    dp_calls: list[tuple[int, int]] = []
+    original_dp = exact_k_module._sampford_dynamic_programming
+
+    def recording_dp(
+        probabilities: np.ndarray,
+        draw_size: int,
+        rng: np.random.Generator,
+    ) -> np.ndarray:
+        dp_calls.append((len(probabilities), draw_size))
+        return original_dp(probabilities, draw_size, rng)
+
+    monkeypatch.setattr(
+        exact_k_module,
+        "_sampford_dynamic_programming",
+        recording_dp,
+    )
 
     support, receipt = select_exact_k(
         pi,
@@ -164,6 +182,7 @@ def test_concentrated_design_just_above_old_dp_cutoff_succeeds() -> None:
     )
     np.testing.assert_array_equal(replay, support)
     assert receipt["boundary_pool_size"] == pool_size
+    assert dp_calls == [(pool_size, sample_size), (pool_size, sample_size)]
 
 
 def test_realistic_ladder_shaped_large_design_completes() -> None:
@@ -172,7 +191,12 @@ def test_realistic_ladder_shaped_large_design_completes() -> None:
     ladder = np.linspace(0.001, 0.149, 40_000)
     pi = np.concatenate((near_one, ladder, near_zero))
     assert len(pi) == 50_000
-    assert float(np.sum(pi, dtype=np.float64)) == 8_000.0
+    np.testing.assert_allclose(
+        np.sum(pi, dtype=np.float64),
+        8_000.0,
+        rtol=0.0,
+        atol=1e-9,
+    )
 
     support, receipt = select_exact_k(pi, k=8_000, pi_hi=1.0, seed=0)
 
@@ -225,9 +249,14 @@ def test_dp_rejection_and_complement_paths_agree_on_inclusion_frequencies(
     sample_size = 4
     draws = 3_000
 
-    def inclusion_frequencies(*, complement: bool = False) -> np.ndarray:
+    def inclusion_frequencies(
+        *,
+        seed_offset: int,
+        complement: bool = False,
+    ) -> np.ndarray:
         counts = np.zeros(len(probabilities), dtype=np.int64)
-        for seed in range(draws):
+        for draw in range(draws):
+            seed = seed_offset + draw
             if complement:
                 selected, _ = select_exact_k(
                     1.0 - probabilities,
@@ -249,10 +278,13 @@ def test_dp_rejection_and_complement_paths_agree_on_inclusion_frequencies(
         return counts / draws
 
     _set_dp_cell_limits(monkeypatch, 10_000)
-    dp_frequencies = inclusion_frequencies()
+    dp_frequencies = inclusion_frequencies(seed_offset=0)
     _set_dp_cell_limits(monkeypatch, 0)
-    rejection_frequencies = inclusion_frequencies()
-    complement_frequencies = inclusion_frequencies(complement=True)
+    rejection_frequencies = inclusion_frequencies(seed_offset=10_000)
+    complement_frequencies = inclusion_frequencies(
+        seed_offset=20_000,
+        complement=True,
+    )
 
     for frequencies in (
         dp_frequencies,
@@ -280,7 +312,7 @@ def test_dp_rejection_and_complement_paths_agree_on_inclusion_frequencies(
 
 
 def test_enumerated_subsets_match_sampford_joint_law() -> None:
-    probabilities = np.asarray([0.15, 0.30, 0.45, 0.55, 0.70, 0.85])
+    probabilities = np.asarray([0.15, 0.35, 0.55, 0.65, 0.60, 0.70])
     sample_size = 3
     subsets = list(itertools.combinations(range(len(probabilities)), sample_size))
     subset_positions = {subset: position for position, subset in enumerate(subsets)}
@@ -308,7 +340,41 @@ def test_enumerated_subsets_match_sampford_joint_law() -> None:
     expected = draws * expected_probabilities
     chi_squared = float(np.sum((observed - expected) ** 2 / expected))
     assert float(expected.min()) > 100.0
+    assert chi_squared == pytest.approx(13.24, abs=0.01)
     assert chi_squared < 43.82  # chi-square 0.999 quantile with 19 df
+
+    # This probability transfer preserves every first-order inclusion
+    # probability but changes the joint law. The chi-square gate rejects it,
+    # showing why marginal-frequency checks alone are insufficient.
+    wrong_probabilities = expected_probabilities.copy()
+    subtract = ((0, 1, 3), (2, 4, 5))
+    add = ((0, 1, 2), (3, 4, 5))
+    delta = 0.25 * min(
+        wrong_probabilities[subset_positions[subset]] for subset in subtract
+    )
+    for subset in subtract:
+        wrong_probabilities[subset_positions[subset]] -= delta
+    for subset in add:
+        wrong_probabilities[subset_positions[subset]] += delta
+    incidence = np.asarray(
+        [
+            [index in subset for index in range(len(probabilities))]
+            for subset in subsets
+        ],
+        dtype=np.float64,
+    )
+    np.testing.assert_allclose(
+        wrong_probabilities @ incidence,
+        expected_probabilities @ incidence,
+        rtol=0.0,
+        atol=1e-15,
+    )
+    wrong_chi_squared = draws * float(
+        np.sum(
+            (wrong_probabilities - expected_probabilities) ** 2 / expected_probabilities
+        )
+    )
+    assert wrong_chi_squared > 43.82
 
 
 @pytest.mark.parametrize(

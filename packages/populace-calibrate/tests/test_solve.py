@@ -696,11 +696,11 @@ def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> N
         )
     )
     weak = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3e-4)
-    strong = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3e-3)
+    strong = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3.5e-3)
     assert strong.n_nonzero < weak.n_nonzero
     # Reported penalty is the value supplied, unchanged.
     assert weak.l0_lambda == 3e-4
-    assert strong.l0_lambda == 3e-3
+    assert strong.l0_lambda == 3.5e-3
     assert weak.gate_open_probabilities is not None
     assert weak.gate_open_probabilities.shape == weak.weights.shape
     assert weak.gate_open_probabilities.dtype == np.float64
