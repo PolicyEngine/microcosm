@@ -61,9 +61,18 @@ and partial structures propagated through bindings.
   fallback to catch guarded content.
 - The guard (121), focused graph battery (22), explicit `acs_transfer.py` and
   `congressional_district_vintage.py` scans, and file-scoped ruff pass again.
+- The last composition audit then identified three related cases not covered
+  by the exact reviewer inputs: scalar static `.values()` unnecessarily
+  entered the loop fallback, known strings disappeared from mixed columns,
+  and partial dict/constructor views were not retained through bindings.
+- Added red precision/composition controls for literal, bound, and constructor
+  scalar views; inline/bound mixed columns; and bound partial dict views.
 
 ## Next
 
+- Preserve partial dict entries without materializing opaque keys, feed scalar
+  dict views into exact string choices, and retain known strings in mixed
+  columns.
 - Re-run the full validation matrix after those corrections.
 - Restore `PROGRESS.md` exactly to `origin/main`, commit all coherent steps
   locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.

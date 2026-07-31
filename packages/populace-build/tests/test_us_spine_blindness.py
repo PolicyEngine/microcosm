@@ -3685,6 +3685,40 @@ def f(row):
     for source in key_only_fragment_controls:
         assert _source_spine_accesses(source) == (), source
 
+    scalar_values_controls = (
+        """
+def f():
+    for entity in {"row": "person"}.values():
+        sink(entity)
+""",
+        """
+ROWS = {"row": "person"}
+
+
+def f():
+    for entity in ROWS.values():
+        sink(entity)
+""",
+        """
+def f():
+    for entity in dict([("row", "person")]).values():
+        sink(entity)
+""",
+    )
+    for source in scalar_values_controls:
+        assert _source_spine_accesses(source) == (), source
+
+    scalar_values_guarded = """
+def f():
+    for entity in {"row": "person"}.values():
+        sink(f"{entity}_support_channel")
+"""
+    scalar_accesses = _source_spine_accesses(scalar_values_guarded)
+    assert any("person_support_channel" in access for access in scalar_accesses)
+    assert not any(
+        "unpropagatable target geometry" in access for access in scalar_accesses
+    )
+
     dynamic_constructor_keys = """
 def f(key1, key2):
     for entity, suffix in dict(
@@ -3695,7 +3729,65 @@ def f(key1, key2):
     ).values():
         sink(f"{entity}_{suffix}")
 """
-    assert _source_spine_accesses(dynamic_constructor_keys)
+    dynamic_key_accesses = _source_spine_accesses(dynamic_constructor_keys)
+    assert any("person_support_channel" in access for access in dynamic_key_accesses)
+    assert not any(
+        "unpropagatable target geometry" in access for access in dynamic_key_accesses
+    )
+
+    mixed_column_rows = (
+        """
+def f(dynamic_object):
+    for entity, suffix in (
+        ("person", "support_channel"),
+        ("state", dynamic_object),
+    ):
+        sink(f"{entity}_{suffix}")
+""",
+        """
+def f(dynamic_object):
+    rows = (
+        ("person", "support_channel"),
+        ("state", dynamic_object),
+    )
+    for entity, suffix in rows:
+        sink(f"{entity}_{suffix}")
+""",
+    )
+    for source in mixed_column_rows:
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert not any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
+
+    bound_partial_dict_views = (
+        """
+def f(dynamic_object):
+    rows = {"row": ("person", dynamic_object, "support_channel")}
+    for entity, obj, suffix in rows.values():
+        sink(f"{entity}_{suffix}")
+""",
+        """
+def f(dynamic_object):
+    entries = [("row", ("person", dynamic_object, "support_channel"))]
+    for entity, obj, suffix in dict(entries).values():
+        sink(f"{entity}_{suffix}")
+""",
+        """
+def f(dynamic_object):
+    entries = [("row", ("person", dynamic_object, "support_channel"))]
+    rows = dict(entries)
+    for entity, obj, suffix in rows.values():
+        sink(f"{entity}_{suffix}")
+""",
+    )
+    for source in bound_partial_dict_views:
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert not any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
 
 
 def test_mid_star_rows_and_concatenated_dict_entries_are_in_scope():
