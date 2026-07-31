@@ -4,9 +4,10 @@
 
 Round-4 hold remediation is in progress on `multispine-pool-build-578`, from
 clean starting commit `19a7a1d`. Subscript resolution now catches all six
-round-4 evasions, and the 54-module operator graph remains clean. Loop and
-comprehension binding, complete `str.format` fields, method aliases, and
-late-bound closure values remain in progress.
+round-4 evasions; loop and comprehension targets now propagate every static
+string choice or an opaque shadow; and the 54-module operator graph remains
+clean. Complete `str.format` fields, method aliases, and late-bound closure
+values remain in progress.
 
 No push or external mutation is authorized.
 
@@ -27,13 +28,19 @@ No push or external mutation is authorized.
   nested calls and dict indirection report fail-closed.
 - Replayed the guard file (15 passed), focused Ruff, and the exact 54-module
   graph (no missing modules or offenders).
+- Bound `for`/`async for` targets and list, set, dict, and generator
+  comprehension targets before their bodies are visited.
+- Represented statically resolvable iterables as tuples of every possible
+  string, checking every member at a subscript; dynamic iterables explicitly
+  shadow stale outer bindings with opacity.
+- Added benign, mixed guarded, module-bound, dynamic, and comprehension-wrapped
+  selector regressions. The guard file now passes 17 tests with the graph clean.
 
 ## Next
 
-- Commit the subscript/resolver completion.
-- Add committed self-tests and implementation commits for, in order:
-  loop/comprehension propagation; complete format fields; method aliasing;
-  closure late binding.
+- Commit loop/comprehension propagation.
+- Add committed self-tests and implementation commits for complete format
+  fields, method aliasing, and closure late binding.
 - Add the cross-round completeness invariant and benign battery.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.

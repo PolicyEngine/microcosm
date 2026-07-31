@@ -478,11 +478,23 @@ def _static_string_list(
     if isinstance(node, (ast.List, ast.Tuple)):
         items: list[str] = []
         for element in node.elts:
-            shape = _static_string_shape(element, constants)
-            if shape is None:
+            values = _static_string_values(element, constants)
+            if values is None:
                 return None
-            items.append(shape)
+            items.extend(values)
         return tuple(items)
+    if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        local: dict[str, object] = {}
+        nested_constants = [*constants, local]
+        for generator in node.generators:
+            if generator.ifs or generator.is_async:
+                return None
+            values = _static_string_list(generator.iter, nested_constants)
+            if values is None:
+                return None
+            for name in _assigned_names(generator.target):
+                local[name] = values
+        return _static_string_values(node.elt, nested_constants)
     return None
 
 
@@ -611,6 +623,64 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         self.visit(node.value)
         self._bind([node.target], node.value)
+
+    def _bind_iteration_target(
+        self,
+        target: ast.AST,
+        values: tuple[str, ...] | None,
+    ) -> None:
+        for name in _assigned_names(target):
+            self.bindings[-1][name] = None
+            self.constants[-1][name] = values
+            self.column_containers[-1][name] = False
+
+    def visit_For(self, node: ast.For) -> None:
+        self.visit(node.iter)
+        self._bind_iteration_target(
+            node.target,
+            _static_string_list(node.iter, self.constants),
+        )
+        for statement in (*node.body, *node.orelse):
+            self.visit(statement)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self.visit_For(node)
+
+    def _visit_comprehension(
+        self,
+        node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+    ) -> None:
+        self.bindings.append({})
+        self.constants.append({})
+        self.column_containers.append({})
+        for generator in node.generators:
+            self.visit(generator.iter)
+            self._bind_iteration_target(
+                generator.target,
+                _static_string_list(generator.iter, self.constants),
+            )
+            for condition in generator.ifs:
+                self.visit(condition)
+        if isinstance(node, ast.DictComp):
+            self.visit(node.key)
+            self.visit(node.value)
+        else:
+            self.visit(node.elt)
+        self.column_containers.pop()
+        self.constants.pop()
+        self.bindings.pop()
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension(node)
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension(node)
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension(node)
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension(node)
 
     def _visit_function(
         self,
@@ -1403,6 +1473,92 @@ def f(df):
         assert accesses, source
         assert all("person_support_channel" in access for access in accesses)
         assert all("fail-closed" not in access for access in accesses)
+
+
+def test_loop_targets_propagate_every_static_string_choice() -> None:
+    """Loop selectors check every static member and shadow dynamic iterables."""
+
+    benign = """
+def f(df):
+    for col in ("age", "income"):
+        df[col]
+"""
+    guarded = """
+COLUMNS = ("age", "person_support_channel", "household_spine")
+def f(df):
+    for col in COLUMNS:
+        df[col]
+"""
+    dynamic = """
+col = "age"
+def f(df, columns):
+    for col in columns:
+        df[col]
+"""
+
+    assert _source_spine_accesses(benign) == ()
+    guarded_accesses = _source_spine_accesses(guarded)
+    assert len(guarded_accesses) == 2
+    assert any("person_support_channel" in item for item in guarded_accesses)
+    assert any("household_spine" in item for item in guarded_accesses)
+    dynamic_accesses = _source_spine_accesses(dynamic)
+    assert dynamic_accesses
+    assert all("fail-closed" in item for item in dynamic_accesses)
+
+
+def test_comprehension_targets_propagate_static_and_opaque_choices() -> None:
+    """All comprehension forms bind targets before visiting their bodies."""
+
+    benign_sources = (
+        """
+def f(df):
+    return [df[col] for col in ("age", "income")]
+""",
+        """
+def f(df):
+    return {df[col] for col in ("age", "income")}
+""",
+        """
+def f(df):
+    return {col: df[col] for col in ("age", "income")}
+""",
+        """
+def f(df):
+    return tuple(df[col] for col in ("age", "income"))
+""",
+        """
+def f(df):
+    return df[[col for col in ("age", "income")]]
+""",
+    )
+    guarded_sources = tuple(
+        source.replace(
+            '("age", "income")',
+            '("age", "person_support_channel")',
+        )
+        for source in benign_sources
+    )
+    dynamic_sources = tuple(
+        source.replace(
+            "def f(df):",
+            "def f(df, columns):",
+        ).replace(
+            '("age", "income")',
+            "columns",
+        )
+        for source in benign_sources
+    )
+
+    for source in benign_sources:
+        assert _source_spine_accesses(source) == (), source
+    for source in guarded_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in item for item in accesses)
+    for source in dynamic_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("fail-closed" in item for item in accesses)
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
