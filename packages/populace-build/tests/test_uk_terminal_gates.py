@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -411,7 +412,7 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
     assert payload["passed"] is True
     assert payload["gates"] == _gates(report)
     attestation = payload["attestation"]
-    assert attestation["schema_version"] == 1
+    assert attestation["schema_version"] == 2
     assert attestation["producer"] == UK_TERMINAL_GATE_PRODUCER
     assert attestation["policy_sha256"] != UK_TERMINAL_GATE_POLICY_SHA256
     assert attestation["evaluated_gates"] == [
@@ -496,3 +497,28 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
         "hmrc_spi_income",
         "release_parity",
     }
+    weight_details = payload["gates"]["weight_ratio"]["details"]
+    weight_fields = (
+        "n_records",
+        "positive_weight_records",
+        "zero_weight_records",
+        "total_weight",
+        "effective_sample_size",
+        "ess_fraction",
+        "median_positive_weight",
+        "max_weight",
+        "max_to_median_positive_weight",
+        "top_1pct_weight_share",
+    )
+    release_evidence = {
+        "weights": {field: weight_details[field] for field in weight_fields}
+    }
+    encoded = json.dumps(
+        release_evidence,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode()
+    assert payload["attestation"]["evidence_sha256"]["release_dataset"] == (
+        hashlib.sha256(encoded).hexdigest()
+    )

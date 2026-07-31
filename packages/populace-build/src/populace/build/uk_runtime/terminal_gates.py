@@ -66,7 +66,7 @@ __all__ = [
 ]
 
 UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 1
+UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 2
 UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
@@ -93,6 +93,18 @@ _UK_ALWAYS_APPLICABLE_GATE_NAMES = (
 )
 _UK_HMRC_GATE_NAMES = ("weights_audit",)
 _UK_PARITY_GATE_NAMES = ("export_surface", "target_surface", "target_fit")
+_UK_WEIGHT_SUMMARY_FIELDS = (
+    "n_records",
+    "positive_weight_records",
+    "zero_weight_records",
+    "total_weight",
+    "effective_sample_size",
+    "ess_fraction",
+    "median_positive_weight",
+    "max_weight",
+    "max_to_median_positive_weight",
+    "top_1pct_weight_share",
+)
 _UK_AGGREGATOR_TOKEN = object()
 
 
@@ -378,6 +390,28 @@ def _gate_results_payload(results: Sequence[GateResult]) -> dict[str, object]:
             "details": dict(result.details),
         }
         for result in results
+    }
+
+
+def _release_dataset_evidence_payload(
+    results: Sequence[GateResult],
+) -> dict[str, object]:
+    """Bind the attestation to the evaluated release's weight observables.
+
+    The ratio gate receives the final shipped household-weight vector and
+    records the same ten-field summary written to ``uk_diagnostics.weights``.
+    Projecting that summary gives the publication contract an independently
+    reconstructible release-data digest.  Erroring gates deliberately project
+    missing fields as null so a failed terminal report can still be written.
+    """
+
+    ratio = next((result for result in results if result.name == "weight_ratio"), None)
+    details = ratio.details if ratio is not None else {}
+    return {
+        "weights": {
+            field: _json_scalar(details.get(field))
+            for field in _UK_WEIGHT_SUMMARY_FIELDS
+        }
     }
 
 
@@ -1098,9 +1132,7 @@ def uk_terminal_gate_report(
         raise ValueError(f"UK terminal gate names must be unique: {duplicates}.")
     results = tuple(_evaluate_gate(name, evaluator) for name, evaluator in evaluators)
     evidence_sha256 = {
-        "release_dataset": _canonical_sha256(
-            _gate_results_payload(results[: len(_UK_ALWAYS_APPLICABLE_GATE_NAMES)])
-        )
+        "release_dataset": _canonical_sha256(_release_dataset_evidence_payload(results))
     }
     if fit_stage_present:
         evidence_sha256["hmrc_spi_income"] = _canonical_sha256(
