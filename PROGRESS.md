@@ -7,7 +7,9 @@ clean starting commit `19a7a1d`. Subscript resolution now catches all six
 round-4 evasions; loop and comprehension targets now propagate every static
 string choice or an opaque shadow; and the 54-module operator graph remains
 clean. `str.format` now resolves all requested static field forms precisely.
-Method aliases and late-bound closure values remain in progress.
+Direct and aliased strict pandas methods now share the same checks, and dynamic
+DataFrame `getattr` is fail-closed. Late-bound closure values remain in
+progress.
 
 No push or external mutation is authorized.
 
@@ -43,12 +45,20 @@ No push or external mutation is authorized.
   controls for named benign formatting, conversions/specs, escaped braces, and
   multiplication syntax. The guard file now passes 19 tests with the graph
   clean.
+- Tracked scoped aliases of `query`, `eval`, `filter`, and `get`, including
+  alias chains, explicit rebinding shadows, and static `getattr` aliases.
+- Routed direct and aliased calls through shared strict handlers, including
+  hidden/expanded argument and opaque-key failures.
+- Made dynamic `getattr` fail closed for inferred DataFrame/Frame containers
+  while distinguishing generic object and Series index access.
+- Added direct-vs-alias exact-name tests for all four methods, benign and opaque
+  batteries, rebinding/parameter-shadow controls, and static/dynamic `getattr`
+  probes. The guard file now passes 22 tests with the 54-module graph clean.
 
 ## Next
 
-- Commit complete format-field resolution.
-- Add committed self-tests and implementation commits for method aliasing and
-  closure late binding.
+- Commit strict-method aliasing and dynamic `getattr`.
+- Add the closure late-binding assignment pre-pass and committed self-tests.
 - Add the cross-round completeness invariant and benign battery.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.

@@ -66,6 +66,7 @@ _SOURCE_SPINE_COLUMN_FACTORIES = frozenset(
         "support_channel_column",
     }
 )
+_STRICT_COLUMN_METHODS = frozenset({"query", "eval", "filter", "get"})
 _PUF_CLONE_OPERATOR_MODULES = (
     "puf_capital_gains_tail.py",
     "puf_qrf_chain.py",
@@ -636,6 +637,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.bindings: list[dict[str, str | None]] = [{}]
         self.constants: list[dict[str, object]] = [{}]
         self.column_containers: list[dict[str, bool]] = [{}]
+        self.attribute_containers: list[dict[str, bool]] = [{}]
+        self.method_aliases: list[dict[str, tuple[str, bool] | None]] = [{}]
         self.accesses: set[tuple[int, int, str]] = set()
 
     def _expression(self, node: ast.AST) -> str | None:
@@ -662,6 +665,47 @@ class _SourceReadVisitor(ast.NodeVisitor):
             return self._column_container(node.func.value)
         return False
 
+    def _attribute_container(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            for scope in reversed(self.attribute_containers):
+                if node.id in scope:
+                    return scope[node.id]
+            return False
+        if isinstance(node, ast.Call):
+            if _call_name(node) in {"DataFrame", "table"}:
+                return True
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "copy":
+                return self._attribute_container(node.func.value)
+        return False
+
+    def _method_alias(
+        self,
+        node: ast.AST,
+    ) -> tuple[str, bool] | None:
+        if isinstance(node, ast.Name):
+            for scope in reversed(self.method_aliases):
+                if node.id in scope:
+                    return scope[node.id]
+            return None
+        if isinstance(node, ast.Attribute) and node.attr in _STRICT_COLUMN_METHODS:
+            strict_opacity = node.attr != "get" or self._attribute_container(node.value)
+            return node.attr, strict_opacity
+        if (
+            isinstance(node, ast.Call)
+            and _call_name(node) == "getattr"
+            and len(node.args) >= 2
+        ):
+            attribute = _static_string_shape(node.args[1], self.constants)
+            if (
+                attribute in _STRICT_COLUMN_METHODS
+                and _OPAQUE_STRING_PART not in attribute
+            ):
+                strict_opacity = attribute != "get" or self._attribute_container(
+                    node.args[0]
+                )
+                return attribute, strict_opacity
+        return None
+
     def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
         description = self._expression(value)
         constant: object = _static_string_shape(value, self.constants)
@@ -670,6 +714,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if constant is None:
             constant = _static_integer(value, self.constants)
         container = self._column_container(value)
+        attribute_container = self._attribute_container(value)
+        method_alias = self._method_alias(value)
         for target in targets:
             for name in _assigned_names(target):
                 self.bindings[-1][name] = description
@@ -678,6 +724,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 # parameters and conditional reassignments — sol round 3).
                 self.constants[-1][name] = constant
                 self.column_containers[-1][name] = container
+                self.attribute_containers[-1][name] = attribute_container
+                self.method_aliases[-1][name] = method_alias
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -700,6 +748,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 self.bindings[-1][name] = None
                 self.constants[-1][name] = None
                 self.column_containers[-1][name] = False
+                self.attribute_containers[-1][name] = False
+                self.method_aliases[-1][name] = None
             return
         self.visit(node.value)
         if isinstance(node.target, ast.Subscript):
@@ -719,6 +769,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.bindings[-1][name] = None
             self.constants[-1][name] = values
             self.column_containers[-1][name] = False
+            self.attribute_containers[-1][name] = False
+            self.method_aliases[-1][name] = None
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
@@ -739,6 +791,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.bindings.append({})
         self.constants.append({})
         self.column_containers.append({})
+        self.attribute_containers.append({})
+        self.method_aliases.append({})
         for generator in node.generators:
             self.visit(generator.iter)
             self._bind_iteration_target(
@@ -752,6 +806,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self.visit(node.value)
         else:
             self.visit(node.elt)
+        self.method_aliases.pop()
+        self.attribute_containers.pop()
         self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
@@ -799,15 +855,34 @@ class _SourceReadVisitor(ast.NodeVisitor):
             and argument.arg not in {"self", "cls"}
             for argument in arguments
         }
+        attribute_containers = {
+            argument.arg: (
+                argument.annotation is None and argument.arg not in {"self", "cls"}
+            )
+            or (
+                argument.annotation is not None
+                and any(
+                    marker in ast.unparse(argument.annotation)
+                    for marker in ("DataFrame", "Frame")
+                )
+            )
+            for argument in arguments
+        }
         if node.args.vararg is not None:
             containers[node.args.vararg.arg] = False
+            attribute_containers[node.args.vararg.arg] = False
         if node.args.kwarg is not None:
             containers[node.args.kwarg.arg] = False
+            attribute_containers[node.args.kwarg.arg] = False
         self.bindings.append(local)
         self.constants.append({name: None for name in local})
         self.column_containers.append(containers)
+        self.attribute_containers.append(attribute_containers)
+        self.method_aliases.append({name: None for name in local})
         for statement in node.body:
             self.visit(statement)
+        self.method_aliases.pop()
+        self.attribute_containers.pop()
         self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
@@ -827,6 +902,10 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 *node.args.kwonlyargs,
             )
         }
+        if node.args.vararg is not None:
+            local[node.args.vararg.arg] = None
+        if node.args.kwarg is not None:
+            local[node.args.kwarg.arg] = None
         containers = {
             argument.arg: argument.annotation is None
             and argument.arg not in {"self", "cls"}
@@ -836,10 +915,21 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 *node.args.kwonlyargs,
             )
         }
+        attribute_containers = dict(containers)
+        if node.args.vararg is not None:
+            containers[node.args.vararg.arg] = False
+            attribute_containers[node.args.vararg.arg] = False
+        if node.args.kwarg is not None:
+            containers[node.args.kwarg.arg] = False
+            attribute_containers[node.args.kwarg.arg] = False
         self.bindings.append(local)
         self.constants.append({name: None for name in local})
         self.column_containers.append(containers)
+        self.attribute_containers.append(attribute_containers)
+        self.method_aliases.append({name: None for name in local})
         self.visit(node.body)
+        self.method_aliases.pop()
+        self.attribute_containers.pop()
         self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
@@ -862,6 +952,148 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def _poison(self, name: str) -> None:
         self.constants[-1][name] = None
 
+    def _visit_getattr(self, node: ast.Call) -> None:
+        if len(node.args) < 2:
+            return
+        attribute = _static_string_shape(node.args[1], self.constants)
+        if attribute is None or _OPAQUE_STRING_PART in attribute:
+            if self._attribute_container(node.args[0]):
+                self._record(
+                    node,
+                    "getattr with an unresolvable dynamic attribute (fail-closed)",
+                )
+        elif _is_source_column_shape(attribute):
+            self._record(
+                node,
+                f"getattr using source column {attribute!r}",
+            )
+
+    def _visit_get_call(
+        self,
+        node: ast.Call,
+        *,
+        strict_opacity: bool,
+    ) -> None:
+        key = _call_argument(node, position=0, keyword="key")
+        if key is None:
+            if strict_opacity and (node.args or node.keywords):
+                self._record(
+                    node,
+                    ".get() with hidden or expanded arguments (fail-closed)",
+                )
+            return
+        resolved = _static_string_values(key, self.constants)
+        column = _subscript_source_expression(
+            key,
+            bindings=self.bindings,
+            factory_aliases=self.factory_aliases,
+        )
+        if resolved is None:
+            if column is not None:
+                self._record(node, f".get() using {column}")
+            elif strict_opacity:
+                self._record(
+                    node,
+                    ".get() with an unresolvable dynamic key (fail-closed)",
+                )
+            return
+        if any(_OPAQUE_STRING_PART in item for item in resolved):
+            if strict_opacity or column is not None:
+                self._record(
+                    node,
+                    ".get() with an unresolvable dynamic key (fail-closed)",
+                )
+            return
+        for item in resolved:
+            if _is_source_column_shape(item):
+                self._record(
+                    node,
+                    f".get() using source column {item!r}",
+                )
+
+    def _visit_query_or_eval_call(
+        self,
+        node: ast.Call,
+        *,
+        method: str,
+    ) -> None:
+        expression = _call_argument(node, position=0, keyword="expr")
+        if expression is None and (node.args or node.keywords):
+            self._record(
+                node,
+                f".{method}() with hidden or expanded arguments (fail-closed)",
+            )
+            return
+        if expression is None:
+            return
+        shape = _static_string_shape(expression, self.constants)
+        if shape is None or _OPAQUE_STRING_PART in shape:
+            self._record(
+                node,
+                f".{method}() with an unresolvable dynamic expression (fail-closed)",
+            )
+            return
+        for token in re.findall(r"[\w*?\[\]-]+", shape):
+            if _is_source_column_shape(token):
+                self._record(
+                    node,
+                    f".{method}() using source column {token!r}",
+                )
+                break
+
+    def _visit_filter_call(self, node: ast.Call) -> None:
+        items = _call_argument(node, position=0, keyword="items")
+        if items is None and (node.args or node.keywords):
+            self._record(
+                node,
+                ".filter() with hidden or expanded arguments (fail-closed)",
+            )
+            return
+        if items is None:
+            return
+        resolved = _static_string_list(items, self.constants)
+        if resolved is None:
+            column = _subscript_source_expression(
+                items,
+                bindings=self.bindings,
+                factory_aliases=self.factory_aliases,
+            )
+            if column is not None:
+                self._record(node, f".filter(items=...) using {column}")
+            else:
+                self._record(
+                    node,
+                    ".filter(items=...) with an unresolvable dynamic "
+                    "list (fail-closed)",
+                )
+            return
+        if any(_OPAQUE_STRING_PART in item for item in resolved):
+            self._record(
+                node,
+                ".filter(items=...) with an unresolvable dynamic list (fail-closed)",
+            )
+            return
+        for item in resolved:
+            if _is_source_column_shape(item):
+                self._record(
+                    node,
+                    f".filter(items=...) using source column {item!r}",
+                )
+
+    def _visit_strict_method_call(
+        self,
+        node: ast.Call,
+        *,
+        method: str,
+        strict_opacity: bool,
+    ) -> None:
+        if method == "get":
+            self._visit_get_call(node, strict_opacity=strict_opacity)
+        elif method in {"query", "eval"}:
+            self._visit_query_or_eval_call(node, method=method)
+        else:
+            self._visit_filter_call(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         if (
             isinstance(node.func, ast.Attribute)
@@ -872,83 +1104,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
         name = _call_name(node)
         if name in self.factory_aliases:
             self._record(node, f"call to {name}")
-        elif name == "getattr" and len(node.args) >= 2:
-            attribute = self._expression(node.args[1])
-            if attribute is not None:
-                self._record(node, f"getattr using {attribute}")
-        elif isinstance(node.func, ast.Attribute) and name == "get":
-            key = _call_argument(node, position=0, keyword="key")
-            if key is not None:
-                column = _subscript_source_expression(
-                    key,
-                    bindings=self.bindings,
-                    factory_aliases=self.factory_aliases,
-                )
-                if column is not None:
-                    self._record(node, f".get() using {column}")
-        elif isinstance(node.func, ast.Attribute) and name in {"query", "eval"}:
-            expression = _call_argument(node, position=0, keyword="expr")
-            if expression is None and (node.args or node.keywords):
-                self._record(
-                    node,
-                    f".{name}() with hidden or expanded arguments (fail-closed)",
-                )
-            elif expression is not None:
-                shape = _static_string_shape(expression, self.constants)
-                if shape is None or _OPAQUE_STRING_PART in shape:
-                    # Fail closed: an expression the guard cannot resolve
-                    # statically could name a guarded column — opacity is
-                    # a violation, not a pass (sol #583 round 2).
-                    self._record(
-                        node,
-                        f".{name}() with an unresolvable dynamic expression "
-                        "(fail-closed)",
-                    )
-                else:
-                    for token in re.findall(r"[\w*?\[\]-]+", shape):
-                        if _is_source_column_shape(token):
-                            self._record(
-                                node,
-                                f".{name}() using source column {token!r}",
-                            )
-                            break
-        elif isinstance(node.func, ast.Attribute) and name == "filter":
-            items = _call_argument(node, position=0, keyword="items")
-            if items is None and (node.args or node.keywords):
-                self._record(
-                    node,
-                    ".filter() with hidden or expanded arguments (fail-closed)",
-                )
-            elif items is not None:
-                resolved = _static_string_list(items, self.constants)
-                if resolved is None:
-                    column = _subscript_source_expression(
-                        items,
-                        bindings=self.bindings,
-                        factory_aliases=self.factory_aliases,
-                    )
-                    if column is not None:
-                        self._record(node, f".filter(items=...) using {column}")
-                    else:
-                        self._record(
-                            node,
-                            ".filter(items=...) with an unresolvable dynamic "
-                            "list (fail-closed)",
-                        )
-                elif any(_OPAQUE_STRING_PART in item for item in resolved):
-                    self._record(
-                        node,
-                        ".filter(items=...) with an unresolvable dynamic "
-                        "list (fail-closed)",
-                    )
-                else:
-                    for item in resolved:
-                        if _is_source_column_shape(item):
-                            self._record(
-                                node,
-                                f".filter(items=...) using source column {item!r}",
-                            )
-                            break
+        elif name == "getattr":
+            self._visit_getattr(node)
+        elif (method_alias := self._method_alias(node.func)) is not None:
+            method, strict_opacity = method_alias
+            self._visit_strict_method_call(
+                node,
+                method=method,
+                strict_opacity=strict_opacity,
+            )
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -1745,6 +1909,141 @@ def f(df, values):
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("fail-closed" in item for item in accesses)
+
+
+def test_strict_method_aliases_match_direct_column_checks() -> None:
+    """Aliases of query, eval, filter, and get retain exact strict behavior."""
+
+    unsafe = {
+        "query": '"person_support_channel == 1"',
+        "eval": '"person_support_channel == 1"',
+        "filter": 'items=["person_support_channel"]',
+        "get": '"person_support_channel"',
+    }
+    benign = {
+        "query": '"age >= 18"',
+        "eval": '"age + 1"',
+        "filter": 'items=["age", "income"]',
+        "get": '"age"',
+    }
+
+    for method, arguments in unsafe.items():
+        direct = f"""
+def f(df):
+    return df.{method}({arguments})
+"""
+        aliased = f"""
+def f(df):
+    method = df.{method}
+    return method({arguments})
+"""
+        direct_accesses = _source_spine_accesses(direct)
+        alias_accesses = _source_spine_accesses(aliased)
+        assert direct_accesses, direct
+        assert alias_accesses, aliased
+        assert any("person_support_channel" in item for item in alias_accesses)
+        assert all("fail-closed" not in item for item in alias_accesses)
+
+    for method, arguments in benign.items():
+        source = f"""
+def f(df):
+    method = df.{method}
+    return method({arguments})
+"""
+        assert _source_spine_accesses(source) == (), source
+
+
+def test_strict_method_aliases_fail_closed_and_shadow_precisely() -> None:
+    """Opaque alias arguments fail; rebinding and parameters stop stale aliases."""
+
+    opaque_sources = (
+        """
+def f(df, expr):
+    query = df.query
+    return query(expr)
+""",
+        """
+def f(df, expr):
+    evaluate = df.eval
+    return evaluate(expr)
+""",
+        """
+def f(df, columns):
+    select = df.filter
+    return select(items=columns)
+""",
+        """
+def f(df, key):
+    get = df.get
+    return get(key)
+""",
+        """
+def f(df, kwargs):
+    query = df.query
+    return query(**kwargs)
+""",
+    )
+    shadowed_sources = (
+        """
+def f(df):
+    query = df.query
+    query = print
+    return query("age >= 18")
+""",
+        """
+query = df.query
+def f(query):
+    return query("age >= 18")
+""",
+    )
+
+    for source in opaque_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("fail-closed" in item for item in accesses)
+    for source in shadowed_sources:
+        assert _source_spine_accesses(source) == (), source
+
+
+def test_getattr_column_access_resolves_or_fails_closed() -> None:
+    """Static attributes are checked by name; dynamic table attrs are opaque."""
+
+    static_alias = """
+def f(df):
+    query = getattr(df, "query")
+    return query("person_support_channel == 1")
+"""
+    immediate_alias = """
+def f(df):
+    return getattr(df, "eval")("person_support_channel == 1")
+"""
+    guarded_attribute = """
+def f(df):
+    return getattr(df, "person_support_channel")
+"""
+    dynamic_attribute = """
+def f(df, attribute):
+    return getattr(df, attribute)
+"""
+    benign_attribute = """
+def f(df):
+    attribute = "age"
+    return getattr(df, attribute)
+"""
+    generic_object = """
+def f(obj: object, attribute: str):
+    return getattr(obj, attribute)
+"""
+
+    for source in (static_alias, immediate_alias, guarded_attribute):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in item for item in accesses)
+    dynamic_accesses = _source_spine_accesses(dynamic_attribute)
+    assert dynamic_accesses
+    assert any("fail-closed" in item for item in dynamic_accesses)
+    assert _source_spine_accesses(benign_attribute) == ()
+    assert _source_spine_accesses(generic_object) == ()
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
