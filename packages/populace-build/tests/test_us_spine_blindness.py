@@ -557,10 +557,33 @@ def _static_literal_value(
     ):
         return node.value
     if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
-        values = tuple(
-            _static_literal_value(element, constants) for element in node.elts
-        )
+        spliced_elements: list[object] = []
+        for element in node.elts:
+            if isinstance(element, ast.Starred):
+                # Starred expansions splice like the runtime, resolving
+                # through literal -> structure -> shared iteration paths
+                # so {*BASE.values()} keeps its members
+                # (sol #583 round 17).
+                inner = _static_literal_value(element.value, constants)
+                if not isinstance(inner, (list, tuple, set, frozenset)):
+                    candidate = _static_iteration_value(element.value, constants)
+                    if isinstance(candidate, (list, tuple)):
+                        inner = candidate
+                if isinstance(inner, (list, tuple, set, frozenset)):
+                    spliced_elements.extend(inner)
+                else:
+                    spliced_elements.append(_OPAQUE_STATIC_VALUE)
+            else:
+                spliced_elements.append(_static_literal_value(element, constants))
+        values = tuple(spliced_elements)
         if any(value is _OPAQUE_STATIC_VALUE for value in values):
+            if isinstance(node, ast.Set) and any(
+                isinstance(value, str) for value in values
+            ):
+                # Partial sets keep their known members beside opaque
+                # sentinels so string material stays visible and the
+                # partiality dual-reports (sol #583 round 17).
+                return tuple(values)
             return _OPAQUE_STATIC_VALUE
         if isinstance(node, ast.List):
             return list(values)
@@ -792,6 +815,9 @@ def _static_string_list(
             return (*left, *right)
         return None
     if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        structural_rows = _identity_structural_rows(node, constants)
+        if structural_rows is not None:
+            return structural_rows
         local: dict[str, object] = {}
         nested_constants = [*constants, local]
         for generator in node.generators:
@@ -1358,6 +1384,11 @@ def _static_iteration_value(
 ) -> object:
     """Resolve the one structural value shared by binders and probes."""
 
+    structural_rows = _identity_structural_rows(node, constants)
+    if structural_rows is not None:
+        # Structural identity comprehensions map rows to themselves, so
+        # they resolve to the source's rows (sol #583 round 17).
+        return structural_rows
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -1429,6 +1460,44 @@ def _structure_carries_guarded_fragments(
     return any(
         fragment in column for fragment in leaves for column in _OPERATOR_SOURCE_COLUMNS
     )
+
+
+def _identity_structural_rows(
+    node: ast.AST, constants: list[dict[str, object]]
+) -> tuple | None:
+    """Rows of a STRUCTURAL identity comprehension.
+
+    ``[(e, s) for e, s in SOURCE]`` (and set/generator forms) maps each
+    row to itself, so it resolves to SOURCE's rows through the shared
+    iteration resolver — tuple rows classify exactly like the bare
+    iterable (sol #583 round 17). Only pure identity elements qualify:
+    a Tuple/List elt whose names mirror the single generator's tuple
+    target in order, or a bare Name mirroring a name target.
+    """
+
+    if not isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        return None
+    if len(node.generators) != 1:
+        return None
+    generator = node.generators[0]
+    if generator.ifs or generator.is_async:
+        return None
+    target, elt = generator.target, node.elt
+    if isinstance(target, ast.Name) and isinstance(elt, ast.Name):
+        if target.id != elt.id:
+            return None
+    elif isinstance(target, (ast.Tuple, ast.List)) and isinstance(
+        elt, (ast.Tuple, ast.List)
+    ):
+        if len(target.elts) != len(elt.elts) or not all(
+            isinstance(t, ast.Name) and isinstance(e, ast.Name) and t.id == e.id
+            for t, e in zip(target.elts, elt.elts, strict=True)
+        ):
+            return None
+    else:
+        return None
+    rows = _static_iteration_value(generator.iter, constants)
+    return rows if isinstance(rows, (list, tuple)) else None
 
 
 def _iterable_carries_guarded_fragments(
@@ -3649,6 +3718,50 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_structural_identity_layers_and_partial_sets_classify():
+    """Sol #583 round 17: structural identity comprehensions resolve to
+    their source rows through the shared iteration resolver, starred set
+    splices keep their members, and partial sets preserve known strings
+    beside opaque sentinels for the dual report."""
+
+    structural_identity = """
+BASE = {"person": "support_channel"}
+
+
+def f():
+    for entity, suffix in [(e, s) for e, s in BASE.items()]:
+        sink(f"{entity}_{suffix}")
+"""
+    set_splice = """
+BASE = {"known": "person"}
+
+
+def f():
+    for entity in {*BASE.values()}:
+        sink(f"{entity}_support_channel")
+"""
+    partial_set = """
+def f(dynamic):
+    for entity in {"person", dynamic}:
+        sink(f"{entity}_support_channel")
+"""
+    benign_structural = """
+BASE = {"state": "fips"}
+
+
+def f():
+    for entity, suffix in [(e, s) for e, s in BASE.items()]:
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (structural_identity, set_splice):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in a for a in accesses), source
+    partial_accesses = _source_spine_accesses(partial_set)
+    assert any("person_support_channel" in a for a in partial_accesses)
+    assert any("unpropagatable target geometry" in a for a in partial_accesses)
+    assert _source_spine_accesses(benign_structural) == ()
 
 
 def test_identity_comprehensions_and_partial_comprehension_bindings():
