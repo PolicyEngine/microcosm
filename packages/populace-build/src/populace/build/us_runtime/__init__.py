@@ -59,6 +59,9 @@ from populace.build.us_runtime.alimony import (
     us_alimony_stage_spec,
     us_alimony_summary,
 )
+from populace.build.us_runtime.asec_checkpoint import (
+    load_asec_pre_clone_checkpoint,
+)
 from populace.build.us_runtime.asec_pool import (
     AsecSource,
     build_pooled_asec_unit_frame,
@@ -1796,6 +1799,7 @@ __all__ = [
     "load_default_reform_specs",
     "load_congressional_district_vintage_crosswalk",
     "load_default_congressional_district_vintage_crosswalk",
+    "load_asec_pre_clone_checkpoint",
     "load_puf_tax_unit_donor",
     "normalize_district_code",
     "parse_baf_cd_layer",

@@ -95,6 +95,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_multispine.py",
         "acs_pums.py",
         "acs_sources.py",
+        "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_pool.py",
         "base_pool.py",
         "block_ladder_sources.py",
