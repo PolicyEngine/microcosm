@@ -17,11 +17,13 @@ loop records.
 - Recorded the required shared structure resolution, partial-dict retention,
   dual-report, fixture-backfill, precision, suite, lint, no-push, root-journal,
   and handoff constraints.
+- Recovered the exact nine previously silent round-12 nested-structure mirrors
+  from the authenticated reviewer transcript and committed them as explicit
+  fail-closed regression fixtures.
 
 ## Next
 
-- Trace the binder and all three fragment/loop probes, then commit the missing
-  round-12 mirror fixtures and all round-13 repro/comprehension mirrors.
+- Commit all three round-13 repros and their comprehension mirrors.
 - Route every probe through shared structure-based resolution, retaining
   resolvable dict-merge entries alongside opaque sentinels.
 - Run the guard file, precision and benign batteries, full `populace-build`

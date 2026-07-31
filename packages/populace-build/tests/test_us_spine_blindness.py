@@ -3727,6 +3727,65 @@ def f(a, b):
     assert _source_spine_accesses(dynamic_star) == ()
 
 
+def test_round_12_nested_string_material_mirrors_fail_closed():
+    """The exact nine round-12 review mirrors remain committed fixtures."""
+
+    sources = {
+        "literal_loop": """
+def f(dynamic):
+    for payload, suffix in ((("person", dynamic), "support_channel"),):
+        sink(f"{payload}_{suffix}")
+""",
+        "bound_loop": """
+def f(dynamic):
+    rows = ((("person", dynamic), "support_channel"),)
+    for payload, suffix in rows:
+        sink(f"{payload}_{suffix}")
+""",
+        "literal_comp": """
+def f(dynamic):
+    return [f"{payload}_{suffix}" for payload, suffix in ((("person", dynamic), "support_channel"),)]
+""",
+        "bound_comp": """
+def f(dynamic):
+    rows = ((("person", dynamic), "support_channel"),)
+    return [f"{payload}_{suffix}" for payload, suffix in rows]
+""",
+        "literal_values": """
+def f(dynamic):
+    for payload, suffix in {"row": (("person", dynamic), "support_channel")}.values():
+        sink(f"{payload}_{suffix}")
+""",
+        "bound_values": """
+def f(dynamic):
+    rows = {"row": (("person", dynamic), "support_channel")}
+    for payload, suffix in rows.values():
+        sink(f"{payload}_{suffix}")
+""",
+        "ctor_values": """
+def f(dynamic):
+    rows = dict([("row", (("person", dynamic), "support_channel"))])
+    for payload, suffix in rows.values():
+        sink(f"{payload}_{suffix}")
+""",
+        "literal_items": """
+def f(dynamic):
+    for payload, suffix in {("person", dynamic): "support_channel"}.items():
+        sink(f"{payload}_{suffix}")
+""",
+        "bound_items_comp": """
+def f(dynamic):
+    rows = {("person", dynamic): "support_channel"}
+    return [f"{payload}_{suffix}" for payload, suffix in rows.items()]
+""",
+    }
+    for name, source in sources.items():
+        accesses = _source_spine_accesses(source)
+        assert any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), name
+
+
 def test_dict_items_and_starred_row_iteration_are_in_scope():
     """Sol #583 round-7 module-local edges: static dict.items() and
     starred/mixed-width row unpacking are ordinary declarative code."""
