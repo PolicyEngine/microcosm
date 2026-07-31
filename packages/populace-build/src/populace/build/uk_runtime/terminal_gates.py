@@ -1,0 +1,849 @@
+"""Batched terminal acceptance gates for UK release candidates.
+
+The national builder evaluates this battery once, after every source stage and
+immediately before writing its staging H5.  Every evaluator runs even when an
+earlier evaluator fails, so one expensive build produces one complete named
+failure report.  Evidence that does not exist yet is omitted: in particular,
+future weighted-integrity and delivered-take-up gates are not represented by
+placeholder passes.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import uuid
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from populace.build.gates import (
+    FitWeightRecord,
+    GateReport,
+    GateResult,
+    export_surface_gate,
+    weights_audit_gate,
+)
+from populace.build.gates import (
+    target_surface_gate as _target_surface_gate,
+)
+from populace.build.uk_runtime.diagnostics import uk_weight_summary
+from populace.build.uk_runtime.release_input_coverage import (
+    uk_release_input_coverage_gate,
+)
+
+__all__ = [
+    "UK_ALLOWED_EXTRA_EXPORT_COLUMNS",
+    "UK_CANDIDATE_DATASET_NAME",
+    "UK_DEFAULT_ZERO_WEIGHT_STRATA",
+    "UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS",
+    "UK_MAX_TARGET_ABS_RELATIVE_ERROR",
+    "UK_MAX_TO_MEDIAN_WEIGHT_RATIO",
+    "UK_MIN_ESS_FRACTION",
+    "UK_REFERENCE_DATASET_NAME",
+    "UK_REVIEWED_EXPORT_EXCLUSIONS",
+    "UK_TERMINAL_GATE_SCHEMA_VERSION",
+    "UKReleaseParityEvidence",
+    "UKZeroWeightStratumDeclaration",
+    "uk_degenerate_release_surface_gate",
+    "uk_export_surface_gate",
+    "uk_target_fit_gate",
+    "uk_target_surface_gate",
+    "uk_terminal_gate_report",
+    "uk_weight_ess_gate",
+    "uk_weight_ratio_gate",
+    "uk_zero_weight_strata_gate",
+    "write_uk_terminal_gate_report",
+]
+
+UK_TERMINAL_GATE_SCHEMA_VERSION = 1
+UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
+UK_REFERENCE_DATASET_NAME = "enhanced_frs_2023_24_recalibrated"
+UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
+
+# The June artifact is at 0.039953 ESS fraction and 1,151.254 max/positive-
+# median ratio.  These reviewed backstops admit that artifact while rejecting
+# the #578 effective-support collapse (0.003) and a further material ratio
+# blowout.  They are acceptance fences, not solver knobs.
+UK_MIN_ESS_FRACTION = 0.01
+UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 2_000.0
+
+_SPI_FLAG = "household_is_spi_synthetic"
+_CAPITAL_GAINS_FLAG = "household_is_capital_gains_clone"
+_WEIGHT_COLUMN = "household_weight"
+
+
+@dataclass(frozen=True)
+class UKZeroWeightStratumDeclaration:
+    """One reviewed zero-weight household stratum and its maximum size."""
+
+    name: str
+    selector: Mapping[str, object]
+    maximum_zero_weight_rows: int
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("UK zero-weight stratum name must be non-empty.")
+        if not isinstance(self.selector, Mapping) or not self.selector:
+            raise ValueError(
+                f"UK zero-weight stratum {self.name!r} needs a non-empty selector."
+            )
+        normalized: dict[str, object] = {}
+        for raw_column, value in self.selector.items():
+            column = str(raw_column)
+            if not column:
+                raise ValueError(
+                    f"UK zero-weight stratum {self.name!r} has an empty selector "
+                    "column."
+                )
+            if isinstance(value, np.generic):
+                value = value.item()
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError(
+                    f"UK zero-weight stratum {self.name!r} selector {column!r} "
+                    "must be finite."
+                )
+            if value is not None and not isinstance(value, str | bool | int | float):
+                raise TypeError(
+                    f"UK zero-weight stratum {self.name!r} selector {column!r} "
+                    f"has unsupported value type {type(value).__name__}."
+                )
+            normalized[column] = value
+        maximum = self.maximum_zero_weight_rows
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 0:
+            raise ValueError(
+                f"UK zero-weight stratum {self.name!r} maximum must be a "
+                "non-negative integer."
+            )
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            raise ValueError(
+                f"UK zero-weight stratum {self.name!r} needs a reviewed reason."
+            )
+        object.__setattr__(self, "selector", dict(sorted(normalized.items())))
+
+
+UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
+    UKZeroWeightStratumDeclaration(
+        name="june_spi_synthetic_base",
+        selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: False},
+        maximum_zero_weight_rows=100_000,
+        reason=(
+            "The certified June FRS-derived artifact ships 100,000 zero-weight "
+            "SPI-synthetic non-capital-gains rows."
+        ),
+    ),
+    UKZeroWeightStratumDeclaration(
+        name="june_spi_synthetic_capital_gains",
+        selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: True},
+        maximum_zero_weight_rows=100_000,
+        reason=(
+            "The certified June FRS-derived artifact ships 100,000 zero-weight "
+            "SPI-synthetic capital-gains-clone rows."
+        ),
+    ),
+)
+
+
+# Reviewed candidate-only fields from the June UK prototype.  They are source
+# provenance or genuine additional model inputs, not incumbent-surface losses.
+UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
+    "benunit.child_benefit_opts_out",
+    "household.bus_fare_spending",
+    "household.bus_subsidy_spending",
+    "household.clone_index",
+    "household.constituency_code_oa",
+    "household.consumer_debt",
+    "household.electricity_consumption",
+    "household.gas_consumption",
+    "household.has_fuel_consumption",
+    "household.household_is_capital_gains_clone",
+    "household.household_is_spi_synthetic",
+    "household.la_code_oa",
+    "household.lsoa_code",
+    "household.mortgage_debt",
+    "household.msoa_code",
+    "household.num_vehicles",
+    "household.oa_code",
+    "household.property_purchased",
+    "household.rail_usage",
+    "household.region_code_oa",
+    "person.aa_category",
+    "person.age_started_or_accepted_current_education_or_training",
+    "person.attends_private_school_random_draw",
+    "person.charitable_investment_gifts",
+    "person.dla_m_category",
+    "person.dla_sc_category",
+    "person.esa_health_condition_proxy",
+    "person.esa_support_group_proxy",
+    "person.employment_sector",
+    "person.gift_aid",
+    "person.higher_earner_tie_break",
+    "person.highest_education",
+    "person.is_before_universal_credit_qualifying_young_person_terminal_date",
+    "person.is_in_non_advanced_education",
+    "person.is_parent",
+    "person.legacy_jobseeker_proxy",
+    "person.pension_contributions_via_salary_sacrifice",
+    "person.pip_dl_category",
+    "person.pip_m_category",
+    "person.receives_benefits_in_own_right",
+    "person.salary_sacrifice_asked",
+    "person.salary_sacrifice_reported",
+    "person.sic_industry_division",
+    "person.student_loan_balance",
+    "person.student_loan_plan",
+    "person.would_claim_marriage_allowance",
+    "person.would_claim_scp",
+)
+
+UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
+    "person.attends_private_school",
+    "person.is_higher_earner",
+)
+
+UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
+    "person.incapacity_benefit_reported": (
+        "The enhanced FRS stores this legacy reported-benefit input as an "
+        "all-zero layer; the candidate must drop dead zero layers."
+    ),
+}
+
+_STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
+    "person": frozenset({"person_id", "person_household_id", "person_benunit_id"}),
+    "benunit": frozenset({"benunit_id"}),
+    "household": frozenset({"household_id", _WEIGHT_COLUMN}),
+}
+
+
+@dataclass(frozen=True)
+class UKReleaseParityEvidence:
+    """Complete real evidence needed to run the June parity-gate trio."""
+
+    candidate_columns: Iterable[str]
+    reference_columns: Iterable[str]
+    candidate_targets: Iterable[str]
+    reference_targets: Iterable[str]
+    target_relative_errors: Mapping[str, float]
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "candidate_columns",
+            "reference_columns",
+            "candidate_targets",
+            "reference_targets",
+        ):
+            raw = getattr(self, field_name)
+            materialized = tuple(sorted({str(value) for value in raw}))
+            if not materialized or any(not value for value in materialized):
+                raise ValueError(f"UK parity evidence {field_name} must be non-empty.")
+            object.__setattr__(self, field_name, materialized)
+        errors = {
+            str(name): float(error)
+            for name, error in self.target_relative_errors.items()
+        }
+        if not errors or any(not math.isfinite(error) for error in errors.values()):
+            raise ValueError(
+                "UK parity evidence target_relative_errors must be non-empty and "
+                "finite."
+            )
+        if set(errors) != set(self.candidate_targets):
+            raise ValueError(
+                "UK parity evidence target_relative_errors must exactly cover "
+                "candidate_targets."
+            )
+        object.__setattr__(self, "target_relative_errors", dict(sorted(errors.items())))
+
+
+def _entity_tables(dataset: Any) -> tuple[tuple[str, pd.DataFrame], ...]:
+    if isinstance(dataset, Mapping):
+        raw = tuple((entity, dataset.get(entity)) for entity in _STRUCTURAL_COLUMNS)
+    else:
+        raw = tuple(
+            (entity, getattr(dataset, entity, None)) for entity in _STRUCTURAL_COLUMNS
+        )
+    if any(not isinstance(table, pd.DataFrame) for _entity, table in raw):
+        raise TypeError(
+            "UK terminal gates require person, benunit, and household DataFrames."
+        )
+    return tuple(
+        (entity, table) for entity, table in raw if isinstance(table, pd.DataFrame)
+    )
+
+
+def _reviewed_reasons(values: Mapping[str, str] | None) -> dict[str, str]:
+    if values is None:
+        return {}
+    if not isinstance(values, Mapping):
+        raise TypeError("UK reviewed exclusions must be a mapping.")
+    normalized = {str(name): str(reason) for name, reason in values.items()}
+    missing = sorted(name for name, reason in normalized.items() if not reason.strip())
+    if missing:
+        raise ValueError(f"UK reviewed exclusions need reasons: {missing}.")
+    return normalized
+
+
+def _json_scalar(value: object) -> object:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)
+    if value is None or isinstance(value, str | bool | int | float):
+        return value
+    return repr(value)
+
+
+def _degenerate_kind(series: pd.Series) -> tuple[str, object | None] | None:
+    missing = series.isna()
+    if bool(missing.all()):
+        return ("all_null", None)
+    observed = series.loc[~missing]
+    if (
+        pd.api.types.is_numeric_dtype(observed.dtype)
+        or pd.api.types.is_bool_dtype(observed.dtype)
+    ) and bool((observed == 0).all()):
+        return ("all_zero", 0)
+    try:
+        unique = pd.unique(observed)
+    except (TypeError, ValueError):
+        unique = np.asarray(list(dict.fromkeys(map(repr, observed))), dtype=object)
+    if len(unique) == 1:
+        return ("constant", _json_scalar(unique[0]))
+    return None
+
+
+def uk_degenerate_release_surface_gate(
+    dataset: Any,
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Reject every all-null, all-zero, or constant nonstructural column."""
+
+    exclusions = _reviewed_reasons(reviewed_exclusions)
+    present: set[str] = set()
+    live: dict[str, dict[str, object]] = {}
+    excluded: dict[str, dict[str, object]] = {}
+    failures: list[str] = []
+    checked = 0
+    for entity, table in _entity_tables(dataset):
+        structural = _STRUCTURAL_COLUMNS[entity]
+        for column in table.columns:
+            if column in structural:
+                continue
+            checked += 1
+            name = f"{entity}.{column}"
+            present.add(name)
+            finding = _degenerate_kind(table[column])
+            if finding is None:
+                continue
+            kind, value = finding
+            detail = {"kind": kind, "value": value}
+            if name in exclusions:
+                excluded[name] = {**detail, "reason": exclusions[name]}
+                continue
+            live[name] = detail
+            failures.append(
+                f"{name}: persisted release column is {kind.replace('_', '-')}"
+                + (f" at {value!r}" if kind == "constant" else "")
+                + "; populate it with signal, drop it, or record a reviewed "
+                "exclusion."
+            )
+
+    stale = sorted(
+        name for name in exclusions if name in present and name not in excluded
+    )
+    dormant = sorted(set(exclusions) - present)
+    if stale:
+        failures.append(
+            "Stale reviewed degenerate-column exclusions now carry signal; remove "
+            f"them: {stale}."
+        )
+    by_kind = {
+        kind: sorted(name for name, detail in live.items() if detail["kind"] == kind)
+        for kind in ("all_null", "all_zero", "constant")
+    }
+    return GateResult(
+        name="degenerate_release_surface",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_checked": checked,
+            "findings": dict(sorted(live.items())),
+            "all_null_columns": by_kind["all_null"],
+            "all_zero_columns": by_kind["all_zero"],
+            "constant_columns": by_kind["constant"],
+            "reviewed_exclusions": dict(sorted(excluded.items())),
+            "stale_exclusions": stale,
+            "dormant_exclusions": dormant,
+        },
+    )
+
+
+def _household_weights(household: pd.DataFrame) -> np.ndarray:
+    if _WEIGHT_COLUMN not in household:
+        raise ValueError(f"UK household table is missing {_WEIGHT_COLUMN!r}.")
+    weights = pd.to_numeric(household[_WEIGHT_COLUMN], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    if weights.ndim != 1 or weights.size == 0:
+        raise ValueError("UK household weights must be a non-empty vector.")
+    if not np.isfinite(weights).all() or (weights < 0.0).any():
+        raise ValueError("UK household weights must be finite and non-negative.")
+    return weights
+
+
+def _selector_mask(
+    household: pd.DataFrame,
+    selector: Mapping[str, object],
+) -> tuple[np.ndarray, list[str]]:
+    missing = sorted(set(selector) - set(household.columns))
+    if missing:
+        return np.zeros(len(household), dtype=bool), missing
+    mask = np.ones(len(household), dtype=bool)
+    for column, expected in selector.items():
+        values = household[column]
+        matched = (
+            values.isna() if expected is None else values.eq(expected).fillna(False)
+        )
+        mask &= matched.to_numpy(dtype=bool)
+    return mask, []
+
+
+def uk_zero_weight_strata_gate(
+    household: pd.DataFrame,
+    *,
+    declarations: Sequence[UKZeroWeightStratumDeclaration] = (
+        UK_DEFAULT_ZERO_WEIGHT_STRATA
+    ),
+) -> GateResult:
+    """Reject zero-weight rows outside or beyond reviewed declarations."""
+
+    if not isinstance(household, pd.DataFrame):
+        raise TypeError("UK zero-weight strata gate requires a household DataFrame.")
+    weights = _household_weights(household)
+    materialized = tuple(declarations)
+    if any(
+        not isinstance(item, UKZeroWeightStratumDeclaration) for item in materialized
+    ):
+        raise TypeError(
+            "UK zero-weight declarations must be UKZeroWeightStratumDeclaration "
+            "instances."
+        )
+    names = [item.name for item in materialized]
+    if len(names) != len(set(names)):
+        raise ValueError("UK zero-weight stratum declaration names must be unique.")
+
+    zero = weights == 0.0
+    matches = np.zeros(len(household), dtype=np.int64)
+    details: list[dict[str, object]] = []
+    failures: list[str] = []
+    for declaration in materialized:
+        mask, missing = _selector_mask(household, declaration.selector)
+        selected = zero & mask
+        matches += selected.astype(np.int64)
+        count = int(selected.sum())
+        details.append(
+            {
+                "name": declaration.name,
+                "selector": dict(declaration.selector),
+                "maximum_zero_weight_rows": declaration.maximum_zero_weight_rows,
+                "zero_weight_rows": count,
+                "missing_selector_columns": missing,
+                "reason": declaration.reason,
+            }
+        )
+        if count > declaration.maximum_zero_weight_rows:
+            failures.append(
+                f"{declaration.name}: {count} zero-weight rows exceed the declared "
+                f"maximum {declaration.maximum_zero_weight_rows}."
+            )
+
+    unmatched_positions = np.flatnonzero(zero & (matches == 0))
+    ambiguous_positions = np.flatnonzero(zero & (matches > 1))
+    if unmatched_positions.size:
+        failures.append(
+            f"{unmatched_positions.size} zero-weight household row(s) match no "
+            "declared stratum."
+        )
+    if ambiguous_positions.size:
+        failures.append(
+            f"{ambiguous_positions.size} zero-weight household row(s) match more "
+            "than one declared stratum."
+        )
+    id_values = (
+        household["household_id"].tolist()
+        if "household_id" in household
+        else list(household.index)
+    )
+    return GateResult(
+        name="zero_weight_strata",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "household_rows": len(household),
+            "zero_weight_rows": int(zero.sum()),
+            "declared_strata": details,
+            "unmatched_zero_weight_rows": int(unmatched_positions.size),
+            "unmatched_household_examples": [
+                _json_scalar(id_values[index]) for index in unmatched_positions[:20]
+            ],
+            "ambiguous_zero_weight_rows": int(ambiguous_positions.size),
+            "ambiguous_household_examples": [
+                _json_scalar(id_values[index]) for index in ambiguous_positions[:20]
+            ],
+        },
+    )
+
+
+def uk_weight_ess_gate(
+    weights: Sequence[float] | np.ndarray,
+    *,
+    minimum_ess_fraction: float = UK_MIN_ESS_FRACTION,
+) -> GateResult:
+    """Require the shipped household weights to retain effective support."""
+
+    minimum = float(minimum_ess_fraction)
+    if not math.isfinite(minimum) or not 0.0 < minimum <= 1.0:
+        raise ValueError("minimum_ess_fraction must be finite and in (0, 1].")
+    summary = uk_weight_summary(weights)
+    fraction = float(summary["ess_fraction"])
+    if fraction < minimum:
+        failures = (
+            f"ESS fraction {fraction:.6g} is below the reviewed minimum {minimum:.6g}.",
+        )
+    else:
+        failures = ()
+    return GateResult(
+        name="weight_ess",
+        passed=not failures,
+        failures=failures,
+        details={**summary, "minimum_ess_fraction": minimum},
+    )
+
+
+def uk_weight_ratio_gate(
+    weights: Sequence[float] | np.ndarray,
+    *,
+    maximum_max_to_median_ratio: float = UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+) -> GateResult:
+    """Backstop a shipped-weight max/positive-median concentration blowout."""
+
+    maximum = float(maximum_max_to_median_ratio)
+    if not math.isfinite(maximum) or maximum <= 0.0:
+        raise ValueError(
+            "maximum_max_to_median_ratio must be finite and strictly positive."
+        )
+    summary = uk_weight_summary(weights)
+    raw_ratio = summary["max_to_median_positive_weight"]
+    failures: tuple[str, ...]
+    if raw_ratio is None:
+        failures = (
+            "Max/positive-median weight ratio is undefined because the release "
+            "has no positive median weight.",
+        )
+    else:
+        ratio = float(raw_ratio)
+        failures = (
+            (
+                f"Max/positive-median weight ratio {ratio:.6g} exceeds the "
+                f"reviewed maximum {maximum:.6g}.",
+            )
+            if ratio > maximum
+            else ()
+        )
+    return GateResult(
+        name="weight_ratio",
+        passed=not failures,
+        failures=failures,
+        details={**summary, "maximum_max_to_median_ratio": maximum},
+    )
+
+
+def _reviewed_export_exclusions(
+    overrides: Mapping[str, str] | None,
+) -> dict[str, str]:
+    exclusions = dict(UK_REVIEWED_EXPORT_EXCLUSIONS)
+    if overrides:
+        exclusions.update(_reviewed_reasons(overrides))
+    hard = sorted(set(exclusions) & set(UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS))
+    if hard:
+        raise ValueError(
+            "UK export-surface reviewed exclusions cannot waive hard-required "
+            f"reference columns: {hard}."
+        )
+    return exclusions
+
+
+def uk_export_surface_gate(
+    candidate_columns: Iterable[str],
+    reference_columns: Iterable[str],
+    *,
+    allowed_extra_columns: Iterable[str] = UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Run the incumbent-compatible UK export-surface gate."""
+
+    candidate = {str(name) for name in candidate_columns}
+    exclusions = _reviewed_export_exclusions(reviewed_exclusions)
+    result = export_surface_gate(
+        candidate,
+        reference_columns,
+        candidate_name=UK_CANDIDATE_DATASET_NAME,
+        reference_name=UK_REFERENCE_DATASET_NAME,
+        allowed_extra_columns=allowed_extra_columns,
+        reviewed_exclusions=exclusions,
+    )
+    forbidden = sorted(candidate & set(exclusions))
+    failures = [*result.failures]
+    if forbidden:
+        failures.append(
+            f"{UK_CANDIDATE_DATASET_NAME}: exports {len(forbidden)} reviewed "
+            f"reference-only column(s) that must be dropped: {forbidden[:20]}."
+        )
+    return GateResult(
+        name=result.name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={**dict(result.details), "forbidden_candidate_columns": forbidden},
+    )
+
+
+def uk_target_surface_gate(
+    candidate_targets: Iterable[str],
+    reference_targets: Iterable[str],
+) -> GateResult:
+    """Require the UK candidate target surface to cover enhanced FRS."""
+
+    return _target_surface_gate(
+        candidate_targets,
+        reference_targets,
+        candidate_name=UK_CANDIDATE_DATASET_NAME,
+        reference_name=UK_REFERENCE_DATASET_NAME,
+    )
+
+
+def uk_target_fit_gate(
+    target_relative_errors: Mapping[str, float],
+    *,
+    max_abs_relative_error: float = UK_MAX_TARGET_ABS_RELATIVE_ERROR,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Fail a UK artifact with severe shipped-weight target errors."""
+
+    maximum = float(max_abs_relative_error)
+    if not math.isfinite(maximum) or maximum < 0.0:
+        raise ValueError("max_abs_relative_error must be finite and non-negative.")
+    exclusions = _reviewed_reasons(reviewed_exclusions)
+    errors = {str(name): float(error) for name, error in target_relative_errors.items()}
+    nonfinite = sorted(
+        name for name, error in errors.items() if not math.isfinite(error)
+    )
+    if nonfinite:
+        raise ValueError(f"UK target relative errors must be finite: {nonfinite}.")
+    failing = {
+        name: error
+        for name, error in errors.items()
+        if abs(error) > maximum and name not in exclusions
+    }
+    worst = sorted(failing, key=lambda name: abs(failing[name]), reverse=True)
+    failures = tuple(
+        f"{UK_CANDIDATE_DATASET_NAME}: {name} relative error "
+        f"{failing[name]:+.1%} exceeds {maximum:.0%}."
+        for name in worst[:20]
+    )
+    return GateResult(
+        name="target_fit",
+        passed=not failures,
+        failures=failures,
+        details={
+            "candidate_name": UK_CANDIDATE_DATASET_NAME,
+            "targets_checked": len(errors),
+            "max_abs_relative_error": maximum,
+            "reviewed_exclusions": exclusions,
+            "failing_targets": {name: failing[name] for name in worst},
+        },
+    )
+
+
+def _missing_fit_weight_evidence_gate() -> GateResult:
+    return GateResult(
+        name="weights_audit",
+        passed=False,
+        failures=(
+            "A production fit stage ran but emitted no FitWeightRecord evidence; "
+            "an absent audit is not a passing audit.",
+        ),
+        details={"fits_checked": 0, "evidence_missing": True},
+    )
+
+
+def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
+    try:
+        result = evaluator()
+    except Exception as exc:  # noqa: BLE001 - terminal batch must keep evaluating
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                f"Gate evaluation failed closed with {type(exc).__name__}: {exc}",
+            ),
+            details={
+                "evaluation_error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            },
+        )
+    if not isinstance(result, GateResult):
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                "Gate evaluation failed closed because the evaluator did not "
+                "return GateResult.",
+            ),
+            details={"returned_type": type(result).__name__},
+        )
+    if result.name != name:
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                f"Gate evaluator returned name {result.name!r}, expected {name!r}.",
+            ),
+            details={"returned_gate": result.name},
+        )
+    return result
+
+
+def uk_terminal_gate_report(
+    dataset: Any,
+    coverage_engine: Any,
+    *,
+    input_coverage_evaluator: Callable[[], GateResult] | None = None,
+    reviewed_degenerate_exclusions: Mapping[str, str] | None = None,
+    zero_weight_declarations: Sequence[UKZeroWeightStratumDeclaration] = (
+        UK_DEFAULT_ZERO_WEIGHT_STRATA
+    ),
+    minimum_ess_fraction: float = UK_MIN_ESS_FRACTION,
+    maximum_max_to_median_ratio: float = UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    fit_weight_records: Iterable[FitWeightRecord] | None = None,
+    require_fit_weight_records: bool = False,
+    parity_evidence: UKReleaseParityEvidence | None = None,
+) -> GateReport:
+    """Evaluate every evidenced UK terminal gate and return one report."""
+
+    tables = dict(_entity_tables(dataset))
+    weights = _household_weights(tables["household"])
+    coverage = input_coverage_evaluator or (
+        lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
+    )
+    evaluators: list[tuple[str, Callable[[], GateResult]]] = [
+        ("uk_release_input_coverage", coverage),
+        (
+            "degenerate_release_surface",
+            lambda: uk_degenerate_release_surface_gate(
+                dataset,
+                reviewed_exclusions=reviewed_degenerate_exclusions,
+            ),
+        ),
+        (
+            "zero_weight_strata",
+            lambda: uk_zero_weight_strata_gate(
+                tables["household"], declarations=zero_weight_declarations
+            ),
+        ),
+        (
+            "weight_ess",
+            lambda: uk_weight_ess_gate(
+                weights,
+                minimum_ess_fraction=minimum_ess_fraction,
+            ),
+        ),
+        (
+            "weight_ratio",
+            lambda: uk_weight_ratio_gate(
+                weights,
+                maximum_max_to_median_ratio=maximum_max_to_median_ratio,
+            ),
+        ),
+    ]
+
+    records = None if fit_weight_records is None else tuple(fit_weight_records)
+    if records is not None or require_fit_weight_records:
+        evaluators.append(
+            (
+                "weights_audit",
+                (
+                    (lambda: weights_audit_gate(records))
+                    if records
+                    else _missing_fit_weight_evidence_gate
+                ),
+            )
+        )
+
+    if parity_evidence is not None:
+        if not isinstance(parity_evidence, UKReleaseParityEvidence):
+            raise TypeError("parity_evidence must be UKReleaseParityEvidence.")
+        evaluators.extend(
+            (
+                (
+                    "export_surface",
+                    lambda: uk_export_surface_gate(
+                        parity_evidence.candidate_columns,
+                        parity_evidence.reference_columns,
+                    ),
+                ),
+                (
+                    "target_surface",
+                    lambda: uk_target_surface_gate(
+                        parity_evidence.candidate_targets,
+                        parity_evidence.reference_targets,
+                    ),
+                ),
+                (
+                    "target_fit",
+                    lambda: uk_target_fit_gate(
+                        parity_evidence.target_relative_errors,
+                    ),
+                ),
+            )
+        )
+
+    names = [name for name, _evaluator in evaluators]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"UK terminal gate names must be unique: {duplicates}.")
+    return GateReport(
+        tuple(_evaluate_gate(name, evaluator) for name, evaluator in evaluators)
+    )
+
+
+def write_uk_terminal_gate_report(
+    report: GateReport,
+    path: str | Path,
+) -> Path:
+    """Atomically write one strict JSON terminal-gate report."""
+
+    if not isinstance(report, GateReport):
+        raise TypeError("UK terminal gate report writer requires GateReport.")
+    output = Path(path)
+    payload = {
+        "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
+        "enforced": True,
+        **report.to_manifest(),
+    }
+    encoded = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(encoded, encoding="utf-8")
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return output
