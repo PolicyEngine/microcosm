@@ -13,10 +13,12 @@ This guard enforces, and its tests certify, exactly these surfaces:
   static ``.replace`` chains, and the static-receiver case methods ``lower``,
   ``upper``, ``casefold``, ``title``, and ``capitalize``;
 - loop and comprehension propagation for supported literal or bound string
-  choices, structural list/tuple rows, and static-dict ``.items()`` and
-  ``.values()`` views (including supported ``dict(iterable)`` receivers);
-  refused or partial binding over a fragment-bearing supported static
-  container fails closed at the iteration site; and
+  choices, structural list/tuple rows, and static-dict ``.items()``,
+  ``.values()``, and ``.keys()`` views (including supported ``dict(iterable)``
+  receivers); the element-preserving one-argument builtins ``list``, ``tuple``,
+  ``set``, ``frozenset``, ``sorted``, ``iter``, and ``reversed`` resolve through
+  that same iteration path; refused or partial binding over a fragment-bearing
+  supported static container fails closed at the iteration site; and
 - contraband guarded-name literals anywhere statically visible in non-owner
   modules' executable dataflow; true docstrings and annotation forms are
   deliberately exempt.
@@ -37,10 +39,13 @@ by the assembly receipt and runtime validation.
 Where multi-value loop bindings combine in one template, the guard may
 over-report combinations that no single row produces (a Cartesian
 over-catch). Over-reporting is the safe failure direction for a
-tripwire; a module that trips it restructures its table. Partial dict
-views likewise retain every entry with an opaque key because unknown
-runtime keys may be distinct; if they collide, a value overwritten at
-runtime can remain in the guard's conservative choice set.
+tripwire; a module that trips it restructures its table. Filtered identity
+comprehensions over supported static sources likewise resolve as their
+unfiltered row sets: predicates can only remove rows, so retaining every row
+is the sound over-approximation. Partial dict views likewise retain every entry
+with an opaque key because unknown runtime keys may be distinct; if they
+collide, a value overwritten at runtime can remain in the guard's conservative
+choice set.
 """
 
 from __future__ import annotations
@@ -513,6 +518,9 @@ def _static_string_shape(
 _OPAQUE_STATIC_VALUE = object()
 _OPAQUE_STRING_PART = "\N{OBJECT REPLACEMENT CHARACTER}"
 _OPAQUE_METHOD_ALIAS = ("", True)
+_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS = frozenset(
+    {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
+)
 
 
 class _PartialStringChoices(tuple):
@@ -1326,6 +1334,13 @@ def _static_dict_entries(
     else:
         return None
 
+    if isinstance(node, ast.DictComp) and any(
+        generator.ifs for generator in node.generators
+    ):
+        # A predicate may remove a later duplicate key that would otherwise
+        # overwrite an earlier candidate. Retain the entire unfiltered row set
+        # so filtered identity mappings stay a sound over-approximation.
+        return entries
     if any(_contains_opaque_static_value(key) for key, _value in entries):
         # Unknown keys may or may not collide at runtime. Retain every row
         # rather than materializing them through one shared sentinel.
@@ -1359,7 +1374,14 @@ def _static_dict_value(
     """Resolve a fully static dict or supported ``dict(iterable)``."""
 
     entries = _static_dict_entries(node, constants)
-    if entries is None or _contains_opaque_static_value(entries):
+    if (
+        entries is None
+        or _contains_opaque_static_value(entries)
+        or (
+            isinstance(node, ast.DictComp)
+            and any(generator.ifs for generator in node.generators)
+        )
+    ):
         return None
     try:
         return dict(entries)
@@ -1403,6 +1425,17 @@ def _static_iteration_value(
 ) -> object:
     """Resolve the one structural value shared by binders and probes."""
 
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in _ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        # Classification depends only on the iterated elements. These builtins
+        # materialize, reorder, or expose exactly those elements, so preserve
+        # the shared resolver's abstract value, including opaque sentinels.
+        return _static_iteration_value(node.args[0], constants)
     structural_rows = _identity_structural_rows(node, constants)
     if structural_rows is not None and not isinstance(node, ast.DictComp):
         # Structural identity comprehensions map rows to themselves, so
@@ -1414,7 +1447,7 @@ def _static_iteration_value(
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
-        and node.func.attr in {"items", "values"}
+        and node.func.attr in {"items", "keys", "values"}
         and not node.args
         and not node.keywords
     ):
@@ -1427,18 +1460,18 @@ def _static_iteration_value(
             if isinstance(identity_rows, (list, tuple)):
                 if node.func.attr == "items":
                     return tuple(identity_rows)
+                position = 0 if node.func.attr == "keys" else 1
                 return tuple(
-                    row[1]
+                    row[position]
                     if isinstance(row, (list, tuple)) and len(row) == 2
                     else _OPAQUE_STATIC_VALUE
                     for row in identity_rows
                 )
             return _OPAQUE_STATIC_VALUE
-        return (
-            tuple(entries)
-            if node.func.attr == "items"
-            else tuple(value for _key, value in entries)
-        )
+        if node.func.attr == "items":
+            return tuple(entries)
+        position = 0 if node.func.attr == "keys" else 1
+        return tuple(entry[position] for entry in entries)
     value = _static_literal_value(node, constants)
     if isinstance(value, _StaticDictEntries):
         return tuple(key for key, _value in value)
@@ -1517,7 +1550,7 @@ def _identity_structural_rows(
     if len(node.generators) != 1:
         return None
     generator = node.generators[0]
-    if generator.ifs or generator.is_async:
+    if generator.is_async:
         return None
     if isinstance(node, ast.DictComp):
         # {k: v for k, v in SOURCE} is an identity mapping when key and
@@ -3839,6 +3872,168 @@ def f(dynamic, sink):
     assert any("unpropagatable target geometry" in a for a in partial_accesses)
     assert _source_spine_accesses(benign_dict_identity) == ()
     assert _source_spine_accesses(benign_partial_layer) == ()
+
+
+def test_round_20_exact_keys_wrapper_and_filtered_repros_classify():
+    """The round-20 reviewer constructions catch inline and after binding."""
+
+    hostile_sources = (
+        """
+DATA = {"person": "support_channel"}
+for entity in DATA.keys():
+    sink(f"{entity}_support_channel")
+""",
+        """
+DATA = {"person": "support_channel"}
+KEYS = DATA.keys()
+for entity in KEYS:
+    sink(f"{entity}_support_channel")
+""",
+        """
+DATA = {"person": "support_channel"}
+for entity, suffix in list(DATA.items()):
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"person": "support_channel"}
+ROWS = list(DATA.items())
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"person": "support_channel"}
+for entity, suffix in sorted(DATA.items()):
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"person": "support_channel"}
+ROWS = sorted(DATA.items())
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"person": "support_channel", "state": "fips"}
+for entity, suffix in [
+    (e, s) for e, s in DATA.items() if e != "state"
+]:
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"person": "support_channel", "state": "fips"}
+ROWS = [(e, s) for e, s in DATA.items() if e != "state"]
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+""",
+    )
+    benign_sources = (
+        """
+DATA = {"state": "fips"}
+for entity in DATA.keys():
+    sink(f"{entity}_support_channel")
+""",
+        """
+DATA = {"state": "fips"}
+KEYS = DATA.keys()
+for entity in KEYS:
+    sink(f"{entity}_support_channel")
+""",
+        """
+DATA = {"state": "fips"}
+for entity, suffix in list(DATA.items()):
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"state": "fips"}
+ROWS = list(DATA.items())
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"state": "fips"}
+for entity, suffix in sorted(DATA.items()):
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"state": "fips"}
+ROWS = sorted(DATA.items())
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"state": "fips"}
+for entity, suffix in [
+    (e, s) for e, s in DATA.items() if e != "state"
+]:
+    sink(f"{entity}_{suffix}")
+""",
+        """
+DATA = {"state": "fips"}
+ROWS = [(e, s) for e, s in DATA.items() if e != "state"]
+for entity, suffix in ROWS:
+    sink(f"{entity}_{suffix}")
+""",
+    )
+
+    for source in hostile_sources:
+        assert any(
+            "person_support_channel" in access
+            for access in _source_spine_accesses(source)
+        ), source
+    for source in benign_sources:
+        assert _source_spine_accesses(source) == (), source
+
+
+def test_round_20_partial_keys_views_preserve_the_dual_report():
+    """Known keys classify while an opaque sibling still fails closed."""
+
+    def classifications(source: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                access.split(": ", maxsplit=1)[1]
+                for access in _source_spine_accesses(source)
+            )
+        )
+
+    bound = """
+BASE = {"person": "age"}
+def f(key, dynamic, sink):
+    DATA = {**BASE, key: dynamic}
+    KEYS = DATA.keys()
+    for entity in KEYS:
+        sink(f"{entity}_support_channel")
+"""
+    inline = """
+BASE = {"person": "age"}
+def f(key, dynamic, sink):
+    DATA = {**BASE, key: dynamic}
+    for entity in DATA.keys():
+        sink(f"{entity}_support_channel")
+"""
+    benign_bound = """
+BASE = {"state": "fips"}
+def f(key, dynamic, sink):
+    DATA = {**BASE, key: dynamic}
+    KEYS = DATA.keys()
+    for entity in KEYS:
+        sink(f"{entity}_age")
+"""
+    benign_inline = """
+BASE = {"state": "fips"}
+def f(key, dynamic, sink):
+    DATA = {**BASE, key: dynamic}
+    for entity in DATA.keys():
+        sink(f"{entity}_age")
+"""
+
+    expected = (
+        "contraband source column 'person_support_channel'",
+        "iteration over a static container carrying guarded-name fragments "
+        "with unpropagatable target geometry (fail-closed)",
+    )
+    assert classifications(bound) == expected
+    assert classifications(inline) == expected
+    assert _source_spine_accesses(benign_bound) == ()
+    assert _source_spine_accesses(benign_inline) == ()
 
 
 def test_round_19_bound_and_inline_iteration_classifications_are_identical():
