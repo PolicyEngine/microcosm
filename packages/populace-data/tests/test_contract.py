@@ -527,6 +527,101 @@ def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _terminal_weight_summary() -> dict:
+    return {
+        "n_records": UK_RECORD_COUNT,
+        "positive_weight_records": 335_080,
+        "zero_weight_records": 200_000,
+        "total_weight": 335_080.0,
+        "effective_sample_size": 335_080.0,
+        "ess_fraction": 335_080 / UK_RECORD_COUNT,
+        "median_positive_weight": 1.0,
+        "max_weight": 1.0,
+        "max_to_median_positive_weight": 1.0,
+        "top_1pct_weight_share": 0.01,
+    }
+
+
+def _terminal_gate_details(name: str) -> dict:
+    if name == "uk_release_input_coverage":
+        return {
+            "required_columns": 1,
+            "present_columns": 1,
+            "missing": [],
+            "degenerate_required": [],
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+        }
+    if name == "degenerate_release_surface":
+        return {
+            "columns_checked": 1,
+            "findings": {},
+            "all_null_columns": [],
+            "all_zero_columns": [],
+            "constant_columns": [],
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+        }
+    if name == "zero_weight_strata":
+        return {
+            "household_rows": UK_RECORD_COUNT,
+            "zero_weight_rows": 200_000,
+            "declared_strata": [
+                {
+                    "name": "june_spi_synthetic_base",
+                    "zero_weight_rows": 100_000,
+                },
+                {
+                    "name": "june_spi_synthetic_capital_gains",
+                    "zero_weight_rows": 100_000,
+                },
+            ],
+            "unmatched_zero_weight_rows": 0,
+            "unmatched_household_examples": [],
+            "ambiguous_zero_weight_rows": 0,
+            "ambiguous_household_examples": [],
+        }
+    if name == "weight_ess":
+        return {**_terminal_weight_summary(), "minimum_ess_fraction": 0.01}
+    if name == "weight_ratio":
+        return {
+            **_terminal_weight_summary(),
+            "maximum_max_to_median_ratio": 1_151.2542195939373,
+        }
+    if name == "weights_audit":
+        return {
+            "fits_checked": 1,
+            "resolved_weight_kinds": {"spi_qrf": "importance"},
+            "unweighted_fits": [],
+            "allowed_unweighted": {},
+            "unused_allowed_unweighted": [],
+        }
+    if name == "export_surface":
+        return {
+            "candidate_columns": 1,
+            "reference_columns": 1,
+            "missing_reference_columns": [],
+            "unexpected_candidate_columns": [],
+            "forbidden_candidate_columns": [],
+        }
+    if name == "target_surface":
+        return {
+            "candidate_targets": TARGET_COUNT,
+            "reference_targets": TARGET_COUNT,
+            "extra_candidate_targets": [],
+            "missing_reference_targets": [],
+        }
+    if name == "target_fit":
+        return {
+            "targets_checked": TARGET_COUNT,
+            "max_abs_relative_error": 0.25,
+            "failing_targets": {},
+        }
+    raise AssertionError(f"No terminal fixture details for {name!r}")
+
+
 def _terminal_gate_payload(
     *,
     evidence_stages: tuple[str, ...] = ("hmrc_spi_income", "release_parity"),
@@ -536,19 +631,22 @@ def _terminal_gate_payload(
         if stage in evidence_stages:
             gate_names.extend(names)
     gates = {
-        name: {"passed": True, "failures": [], "details": {}} for name in gate_names
+        name: {
+            "passed": True,
+            "failures": [],
+            "details": _terminal_gate_details(name),
+        }
+        for name in gate_names
     }
     evidence = {
-        "release_dataset": _canonical_sha256(
-            {name: gates[name] for name in UK_ALWAYS_APPLICABLE_GATE_NAMES}
-        ),
+        "release_dataset": _canonical_sha256({"weights": _terminal_weight_summary()}),
         **{
             stage: _canonical_sha256({"fixture_evidence_stage": stage})
             for stage in evidence_stages
         },
     }
     unsigned_attestation = {
-        "schema_version": 1,
+        "schema_version": 2,
         "producer": UK_TERMINAL_GATE_PRODUCER,
         "policy_sha256": UK_TERMINAL_GATE_POLICY_SHA256,
         "evaluated_gates": gate_names,
@@ -568,6 +666,14 @@ def _terminal_gate_payload(
 
 def _refresh_terminal_gate_attestation(payload: dict) -> None:
     attestation = payload["attestation"]
+    ratio = payload["gates"].get("weight_ratio")
+    if isinstance(ratio, dict) and isinstance(ratio.get("details"), dict):
+        details = ratio["details"]
+        fields = tuple(_terminal_weight_summary())
+        if all(field in details for field in fields):
+            attestation["evidence_sha256"]["release_dataset"] = _canonical_sha256(
+                {"weights": {field: details[field] for field in fields}}
+            )
     attestation["gate_results_sha256"] = _canonical_sha256(payload["gates"])
     unsigned_attestation = {
         key: value for key, value in attestation.items() if key != "sha256"
@@ -1479,6 +1585,118 @@ def test_exact_k_uk_release_rejects_sol_hand_composed_passing_parity_trio(
     failures = "\n".join(excinfo.value.failures)
     assert "evaluated gate membership" in failures
     assert "attestation.evaluated_gates" in failures
+
+
+def test_exact_k_uk_release_rejects_complete_public_hash_forgery(
+    tmp_path: Path,
+) -> None:
+    """All expected names plus reproducible public hashes are not evidence."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    assert set(payload["gates"]) == {
+        *UK_ALWAYS_APPLICABLE_GATE_NAMES,
+        "weights_audit",
+        "export_surface",
+        "target_surface",
+        "target_fit",
+    }
+    for gate in payload["gates"].values():
+        gate["details"] = {}
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "honest aggregator detail schema" in failures
+
+
+def test_exact_k_uk_release_rejects_aggregator_report_transplant(
+    tmp_path: Path,
+) -> None:
+    """A genuine four-row gate report cannot attest the k535080 fixture."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    four_row_summary = {
+        "n_records": 4,
+        "positive_weight_records": 4,
+        "zero_weight_records": 0,
+        "total_weight": 4.0,
+        "effective_sample_size": 4.0,
+        "ess_fraction": 1.0,
+        "median_positive_weight": 1.0,
+        "max_weight": 1.0,
+        "max_to_median_positive_weight": 1.0,
+        "top_1pct_weight_share": 0.25,
+    }
+    for name in ("weight_ess", "weight_ratio"):
+        payload["gates"][name]["details"].update(four_row_summary)
+    payload["gates"]["zero_weight_strata"]["details"].update(
+        household_rows=4,
+        zero_weight_rows=0,
+        declared_strata=[
+            {"name": "june_spi_synthetic_base", "zero_weight_rows": 0},
+            {
+                "name": "june_spi_synthetic_capital_gains",
+                "zero_weight_rows": 0,
+            },
+        ],
+    )
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "weight_ess'.details.n_records must match" in failures
+    assert "weight_ratio'.details.n_records must match" in failures
+    assert "zero_weight_strata.details.household_rows must match" in failures
+
+
+def test_exact_k_uk_release_rejects_rehashed_weight_observable_mutation(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    for name in ("weight_ess", "weight_ratio"):
+        payload["gates"][name]["details"]["total_weight"] = 1.0
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "weight_ess'.details.total_weight must match" in failures
+    assert "weight_ratio'.details.total_weight must match" in failures
+    assert "release_dataset evidence digest" in failures
 
 
 @pytest.mark.parametrize(

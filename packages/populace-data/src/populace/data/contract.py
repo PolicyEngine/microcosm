@@ -109,7 +109,7 @@ _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 _UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 1
+_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 2
 _UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
@@ -135,6 +135,94 @@ _UK_TERMINAL_EVIDENCE_GATE_NAMES = {
 _UK_TERMINAL_EVIDENCE_STAGES = frozenset(
     {"release_dataset", *_UK_TERMINAL_EVIDENCE_GATE_NAMES}
 )
+_UK_WEIGHT_SUMMARY_FIELDS = (
+    "n_records",
+    "positive_weight_records",
+    "zero_weight_records",
+    "total_weight",
+    "effective_sample_size",
+    "ess_fraction",
+    "median_positive_weight",
+    "max_weight",
+    "max_to_median_positive_weight",
+    "top_1pct_weight_share",
+)
+_UK_MIN_ESS_FRACTION = 0.01
+_UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
+_UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
+_UK_TERMINAL_GATE_DETAIL_FIELDS = {
+    "uk_release_input_coverage": frozenset(
+        {
+            "required_columns",
+            "present_columns",
+            "missing",
+            "degenerate_required",
+            "reviewed_exclusions",
+            "stale_exclusions",
+            "dormant_exclusions",
+        }
+    ),
+    "degenerate_release_surface": frozenset(
+        {
+            "columns_checked",
+            "findings",
+            "all_null_columns",
+            "all_zero_columns",
+            "constant_columns",
+            "reviewed_exclusions",
+            "stale_exclusions",
+            "dormant_exclusions",
+        }
+    ),
+    "zero_weight_strata": frozenset(
+        {
+            "household_rows",
+            "zero_weight_rows",
+            "declared_strata",
+            "unmatched_zero_weight_rows",
+            "unmatched_household_examples",
+            "ambiguous_zero_weight_rows",
+            "ambiguous_household_examples",
+        }
+    ),
+    "weight_ess": frozenset({*_UK_WEIGHT_SUMMARY_FIELDS, "minimum_ess_fraction"}),
+    "weight_ratio": frozenset(
+        {*_UK_WEIGHT_SUMMARY_FIELDS, "maximum_max_to_median_ratio"}
+    ),
+    "weights_audit": frozenset(
+        {
+            "fits_checked",
+            "resolved_weight_kinds",
+            "unweighted_fits",
+            "allowed_unweighted",
+            "unused_allowed_unweighted",
+        }
+    ),
+    "export_surface": frozenset(
+        {
+            "candidate_columns",
+            "reference_columns",
+            "missing_reference_columns",
+            "unexpected_candidate_columns",
+            "forbidden_candidate_columns",
+        }
+    ),
+    "target_surface": frozenset(
+        {
+            "candidate_targets",
+            "reference_targets",
+            "extra_candidate_targets",
+            "missing_reference_targets",
+        }
+    ),
+    "target_fit": frozenset(
+        {
+            "targets_checked",
+            "max_abs_relative_error",
+            "failing_targets",
+        }
+    ),
+}
 _UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
     {"national", "region", "country", "local_authority", "constituency"}
 )
@@ -940,10 +1028,280 @@ def _check_uk_terminal_gate_links(
             )
 
 
+def _uk_terminal_observable_matches(observed: object, expected: object) -> bool:
+    """Compare JSON observables without letting booleans masquerade as counts."""
+
+    if isinstance(observed, bool) or isinstance(expected, bool):
+        return type(observed) is type(expected) and observed == expected
+    if isinstance(observed, int | float) and isinstance(expected, int | float):
+        return (
+            math.isfinite(float(observed))
+            and math.isfinite(float(expected))
+            and (
+                math.isclose(
+                    float(observed),
+                    float(expected),
+                    rel_tol=1e-12,
+                    abs_tol=1e-12,
+                )
+            )
+        )
+    return observed == expected
+
+
+def _uk_terminal_gate_details(
+    gates: Mapping,
+    name: str,
+) -> Mapping | None:
+    gate = gates.get(name)
+    if not isinstance(gate, Mapping):
+        return None
+    details = gate.get("details")
+    return details if isinstance(details, Mapping) else None
+
+
+def _check_uk_terminal_gate_observables(
+    gates: Mapping,
+    *,
+    calibration_diagnostics: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Bind passing gate detail schemas to the accepted release diagnostics."""
+
+    for name, required_fields in _UK_TERMINAL_GATE_DETAIL_FIELDS.items():
+        if name not in gates:
+            continue
+        details = _uk_terminal_gate_details(gates, name)
+        if details is None:
+            continue
+        missing = sorted(required_fields - set(details))
+        if missing:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} gate {name!r}.details is not "
+                f"the honest aggregator detail schema; missing {missing}."
+            )
+
+    coverage = _uk_terminal_gate_details(gates, "uk_release_input_coverage")
+    if coverage is not None:
+        required = coverage.get("required_columns")
+        present = coverage.get("present_columns")
+        if (
+            isinstance(required, bool)
+            or not isinstance(required, int)
+            or required <= 0
+            or isinstance(present, bool)
+            or not isinstance(present, int)
+            or present < required
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input-coverage details must "
+                "record positive required_columns covered by present_columns."
+            )
+        for field in ("missing", "degenerate_required", "stale_exclusions"):
+            if coverage.get(field) != []:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input coverage "
+                    f"requires details.{field} to be an empty list."
+                )
+
+    degenerate = _uk_terminal_gate_details(gates, "degenerate_release_surface")
+    if degenerate is not None:
+        checked = degenerate.get("columns_checked")
+        if isinstance(checked, bool) or not isinstance(checked, int) or checked <= 0:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} degenerate-surface details "
+                "must record a positive columns_checked count."
+            )
+        for field, empty in (
+            ("findings", {}),
+            ("all_null_columns", []),
+            ("all_zero_columns", []),
+            ("constant_columns", []),
+            ("stale_exclusions", []),
+        ):
+            if degenerate.get(field) != empty:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing degenerate-surface "
+                    f"gate requires details.{field} to be {empty!r}."
+                )
+
+    diagnostic_weights: Mapping | None = None
+    if calibration_diagnostics is not None:
+        uk = calibration_diagnostics.get("uk_diagnostics")
+        if isinstance(uk, Mapping) and isinstance(uk.get("weights"), Mapping):
+            diagnostic_weights = uk["weights"]
+
+    for name in ("weight_ess", "weight_ratio"):
+        details = _uk_terminal_gate_details(gates, name)
+        if details is None or diagnostic_weights is None:
+            continue
+        for field in _UK_WEIGHT_SUMMARY_FIELDS:
+            if field not in details or field not in diagnostic_weights:
+                continue
+            if not _uk_terminal_observable_matches(
+                details[field], diagnostic_weights[field]
+            ):
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} gate {name!r}.details.{field} "
+                    "must match calibration_diagnostics.json "
+                    f"uk_diagnostics.weights.{field}."
+                )
+
+    ess = _uk_terminal_gate_details(gates, "weight_ess")
+    if ess is not None and not _uk_terminal_observable_matches(
+        ess.get("minimum_ess_fraction"), _UK_MIN_ESS_FRACTION
+    ):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} weight_ess.details."
+            f"minimum_ess_fraction must equal {_UK_MIN_ESS_FRACTION}."
+        )
+    ratio = _uk_terminal_gate_details(gates, "weight_ratio")
+    if ratio is not None and not _uk_terminal_observable_matches(
+        ratio.get("maximum_max_to_median_ratio"),
+        _UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    ):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} weight_ratio.details."
+            "maximum_max_to_median_ratio must equal the certified June bound "
+            f"{_UK_MAX_TO_MEDIAN_WEIGHT_RATIO}."
+        )
+
+    zero = _uk_terminal_gate_details(gates, "zero_weight_strata")
+    if zero is not None and diagnostic_weights is not None:
+        for terminal_field, diagnostic_field in (
+            ("household_rows", "n_records"),
+            ("zero_weight_rows", "zero_weight_records"),
+        ):
+            if not _uk_terminal_observable_matches(
+                zero.get(terminal_field), diagnostic_weights.get(diagnostic_field)
+            ):
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} zero_weight_strata.details."
+                    f"{terminal_field} must match calibration_diagnostics.json "
+                    f"uk_diagnostics.weights.{diagnostic_field}."
+                )
+        for field in ("unmatched_zero_weight_rows", "ambiguous_zero_weight_rows"):
+            if zero.get(field) != 0:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing zero-weight gate "
+                    f"requires details.{field} to be zero."
+                )
+        declared = zero.get("declared_strata")
+        if not isinstance(declared, list) or not declared:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} zero_weight_strata.details."
+                "declared_strata must be a non-empty list."
+            )
+        elif all(isinstance(row, Mapping) for row in declared):
+            declared_zero = sum(
+                row.get("zero_weight_rows", 0)
+                for row in declared
+                if isinstance(row.get("zero_weight_rows"), int)
+                and not isinstance(row.get("zero_weight_rows"), bool)
+            )
+            if declared_zero != zero.get("zero_weight_rows"):
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} declared zero-weight "
+                    "strata must reconcile to details.zero_weight_rows."
+                )
+
+    weights_audit = _uk_terminal_gate_details(gates, "weights_audit")
+    if weights_audit is not None:
+        fits = weights_audit.get("fits_checked")
+        kinds = weights_audit.get("resolved_weight_kinds")
+        if (
+            isinstance(fits, bool)
+            or not isinstance(fits, int)
+            or fits <= 0
+            or not isinstance(kinds, Mapping)
+            or len(kinds) != fits
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing weights_audit details "
+                "must enumerate at least one resolved production fit."
+            )
+        if weights_audit.get("unweighted_fits") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing weights_audit details "
+                "must not contain unweighted fits."
+            )
+
+    export = _uk_terminal_gate_details(gates, "export_surface")
+    if export is not None:
+        for field in ("candidate_columns", "reference_columns"):
+            value = export.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} export_surface.details."
+                    f"{field} must be a positive integer."
+                )
+        for field in (
+            "missing_reference_columns",
+            "unexpected_candidate_columns",
+            "forbidden_candidate_columns",
+        ):
+            if export.get(field) != []:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing export surface "
+                    f"requires details.{field} to be an empty list."
+                )
+
+    target_count = None
+    if calibration_diagnostics is not None and isinstance(
+        calibration_diagnostics.get("targets"), list
+    ):
+        target_count = len(calibration_diagnostics["targets"])
+    target_surface = _uk_terminal_gate_details(gates, "target_surface")
+    if target_surface is not None:
+        if target_surface.get("candidate_targets") != target_count:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} target_surface.details."
+                "candidate_targets must match len(calibration diagnostics targets)."
+            )
+        reference_targets = target_surface.get("reference_targets")
+        if (
+            isinstance(reference_targets, bool)
+            or not isinstance(reference_targets, int)
+            or reference_targets <= 0
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} target_surface.details."
+                "reference_targets must be a positive integer."
+            )
+        if target_surface.get("missing_reference_targets") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing target surface requires "
+                "details.missing_reference_targets to be an empty list."
+            )
+
+    target_fit = _uk_terminal_gate_details(gates, "target_fit")
+    if target_fit is not None:
+        if target_fit.get("targets_checked") != target_count:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} target_fit.details."
+                "targets_checked must match len(calibration diagnostics targets)."
+            )
+        if not _uk_terminal_observable_matches(
+            target_fit.get("max_abs_relative_error"),
+            _UK_MAX_TARGET_ABS_RELATIVE_ERROR,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} target_fit.details."
+                "max_abs_relative_error must equal "
+                f"{_UK_MAX_TARGET_ABS_RELATIVE_ERROR}."
+            )
+        if target_fit.get("failing_targets") != {}:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing target fit requires "
+                "details.failing_targets to be an empty object."
+            )
+
+
 def _check_uk_terminal_gate_report(
     report: Mapping,
     *,
     build_manifest: Mapping | None,
+    calibration_diagnostics: Mapping | None,
     failures: list[str],
 ) -> None:
     """Independently verify the exact-k UK terminal-gate attestation.
@@ -1017,6 +1375,12 @@ def _check_uk_terminal_gate_report(
             if not isinstance(gate.get("details"), Mapping):
                 failures.append(f"{owner}.details must be an object.")
 
+    _check_uk_terminal_gate_observables(
+        valid_gates,
+        calibration_diagnostics=calibration_diagnostics,
+        failures=failures,
+    )
+
     attestation = report.get("attestation")
     if not isinstance(attestation, Mapping):
         failures.append(
@@ -1083,15 +1447,25 @@ def _check_uk_terminal_gate_report(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evidence_sha256 "
                 "must exactly match build_manifest.json terminal_gate_evidence."
             )
-        if set(_UK_ALWAYS_APPLICABLE_GATE_NAMES).issubset(valid_gates):
-            always_gate_results = {
-                name: valid_gates[name] for name in _UK_ALWAYS_APPLICABLE_GATE_NAMES
-            }
-            expected_release_dataset_sha = _canonical_sha256(always_gate_results)
+        diagnostic_weights: Mapping | None = None
+        if calibration_diagnostics is not None:
+            uk = calibration_diagnostics.get("uk_diagnostics")
+            if isinstance(uk, Mapping) and isinstance(uk.get("weights"), Mapping):
+                diagnostic_weights = uk["weights"]
+        if diagnostic_weights is not None:
+            expected_release_dataset_sha = _canonical_sha256(
+                {
+                    "weights": {
+                        field: diagnostic_weights.get(field)
+                        for field in _UK_WEIGHT_SUMMARY_FIELDS
+                    }
+                }
+            )
             if evidence.get("release_dataset") != expected_release_dataset_sha:
                 failures.append(
                     f"{_UK_TERMINAL_GATE_REPORT_FILE} release_dataset evidence "
-                    "digest must bind the always-applicable gate results."
+                    "digest must bind calibration_diagnostics.json shipped-weight "
+                    "observables."
                 )
 
     expected_gate_results_sha = _canonical_sha256(valid_gates)
@@ -2483,6 +2857,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
             _check_uk_terminal_gate_report(
                 terminal_gate_report,
                 build_manifest=build_manifest,
+                calibration_diagnostics=calibration_diagnostics,
                 failures=failures,
             )
 
