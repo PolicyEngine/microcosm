@@ -376,13 +376,12 @@ def test_pool_tool_structurally_accepts_only_the_raw_stage_loader(
     assert "pre_clone_enrichment" not in source
 
 
-def test_pool_imputation_wires_full_source_chain_after_primary_and_tail(
+def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
     pool_tool: ModuleType,
 ) -> None:
     source = inspect.getsource(pool_tool._impute_pool)
     tree = ast.parse(source)
     expected = (
-        "prepare_multispine_puf_predictors",
         "_initialize_or_resume_primary_qrf",
         "run_primary_puf_qrf_chain",
         "finalize_primary_puf_qrf_chain",
@@ -403,6 +402,15 @@ def test_pool_imputation_wires_full_source_chain_after_primary_and_tail(
     )
 
     assert tuple(name for _line, name in calls) == expected
+
+
+def test_production_pool_wires_source_preparation_into_clone_stage(
+    pool_tool: ModuleType,
+) -> None:
+    source = inspect.getsource(pool_tool.build_multispine_pool)
+
+    assert "prepare_multispine_source_inputs_for_clone" in source
+    assert "prepare_clone=prepare_clone_operator" in source
 
 
 def test_direct_pool_fixtures_are_operator_free_before_assembly() -> None:

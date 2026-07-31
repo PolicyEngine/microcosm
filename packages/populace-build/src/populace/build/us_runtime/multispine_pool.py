@@ -4,10 +4,11 @@ The path is intentionally small and order-bearing:
 
 ``assemble -> clone -> impute -> derive -> seed -> simulate -> agreement``.
 
-Assembly owns source provenance. Every later operator receives the whole pool
-and must be source-spine blind; PUF-detail routing is clone-index based. The
-simulation copy exists only to evaluate formula-owned agreement outputs and is
-not the input-only pool returned for H5 publication.
+Assembly owns source provenance. The clone stage first prepares source-derived
+values that must exist before row expansion, then physically clones the pool.
+Every population operator remains source-spine blind; PUF-detail routing is
+clone-index based. The simulation copy exists only to evaluate formula-owned
+agreement outputs and is not the input-only pool returned for H5 publication.
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ from populace.build.us_runtime.support_provenance import (
     spine_provenance_counts,
     support_clone_index_column,
     validate_assembly_provenance,
+    without_support_role_metadata,
 )
 from populace.build.us_runtime.take_up import with_us_take_up_inputs
 from populace.build.us_runtime.take_up_contract import (
@@ -98,16 +100,21 @@ __all__ = [
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
+    "POOL_POST_CLONE_SOURCE_OPERATOR_ORDER",
+    "POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER",
+    "POOL_SOURCE_OPERATOR_CONTRACTS",
     "POOL_SOURCE_OPERATOR_ORDER",
     "POOL_SPINE_AGREEMENT_REGISTRY",
     "POOL_TIME_PERIOD",
     "MultispinePoolResult",
     "PoolStageOutput",
+    "SourceOperatorContract",
     "complete_multispine_source_inputs",
     "derive_multispine_pool_inputs",
     "materialize_multispine_agreement_outputs",
     "pool_transfer_target_families",
     "prepare_multispine_puf_predictors",
+    "prepare_multispine_source_inputs_for_clone",
     "run_multispine_pool_path",
     "seed_multispine_pool_inputs",
 ]
@@ -151,10 +158,10 @@ POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_immigration_inputs",
     "with_us_education_inputs",
 )
-"""Migrated source-input order.
+"""Logical source-input ownership inventory in legacy relative order.
 
-CPS predictor preparation runs before primary QRF; every remaining entry runs
-post-tail on the already assembled and cloned population.
+Executable placement is declared separately because prior-year income has a
+pre-clone derivation and a post-clone PUF-imputation pass.
 """
 
 POOL_RANDOM_SEED = 0
@@ -220,28 +227,140 @@ type PoolOperator = Callable[[Frame], PoolStageOutput]
 type AgreementGate = Callable[[Frame], GateResult]
 type SourceFrameOperator = Callable[[Frame], Frame]
 
+
+@dataclass(frozen=True)
+class SourceOperatorContract:
+    """Clone-phase placement and the mechanism that requires it."""
+
+    family: str
+    phases: tuple[str, ...]
+    mechanism: str
+
+
+_PRE_CLONE_PHASE = "pre_clone"
+_POST_CLONE_PHASE = "post_clone"
+
+POOL_SOURCE_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
+    "derive_us_cps_carried_inputs": SourceOperatorContract(
+        "cps_carried",
+        (_PRE_CLONE_PHASE,),
+        "rowwise measured mappings needed by the pre-clone rent predictors",
+    ),
+    "with_us_prior_year_income_inputs": SourceOperatorContract(
+        "prior_year_income",
+        (_PRE_CLONE_PHASE, _POST_CLONE_PHASE),
+        "unique adjacent-year source join before cloning, then role-aware PUF QRF",
+    ),
+    "with_us_relationship_inputs": SourceOperatorContract(
+        "relationship_inputs",
+        (_PRE_CLONE_PHASE,),
+        "household-head input needed by the pre-clone rent recipient",
+    ),
+    "with_us_medicare_take_up_input": SourceOperatorContract(
+        "medicare_take_up",
+        (_POST_CLONE_PHASE,),
+        "rowwise source carry with clone-role-aware completion",
+    ),
+    "with_us_housing_inputs": SourceOperatorContract(
+        "housing_inputs",
+        (_PRE_CLONE_PHASE,),
+        "rent must be drawn once per source household and cloned unchanged",
+    ),
+    "with_us_eligibility_inputs": SourceOperatorContract(
+        "eligibility_inputs",
+        (_PRE_CLONE_PHASE,),
+        "raw household parent pointers must be counted before rows duplicate",
+    ),
+    "with_us_pregnancy_inputs": SourceOperatorContract(
+        "pregnancy",
+        (_POST_CLONE_PHASE,),
+        "stable source-identity draws are shared across support clones",
+    ),
+    "with_us_wic_claim_input": SourceOperatorContract(
+        "wic_claim",
+        (_POST_CLONE_PHASE,),
+        "remapped family grouping and stable source-identity draws are clone-safe",
+    ),
+    "impute_us_housing_assistance_to_puf_support": SourceOperatorContract(
+        "housing_assistance",
+        (_POST_CLONE_PHASE,),
+        "PUF-only assistance replacement requires clone roles",
+    ),
+    "with_us_child_support_inputs": SourceOperatorContract(
+        "child_support",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped structural IDs",
+    ),
+    "with_us_disability_benefits": SourceOperatorContract(
+        "disability_benefits",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped structural IDs",
+    ),
+    "with_us_workers_compensation": SourceOperatorContract(
+        "workers_compensation",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped structural IDs",
+    ),
+    "with_us_weeks_unemployed": SourceOperatorContract(
+        "weeks_unemployed",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped structural IDs",
+    ),
+    "with_us_childcare_inputs": SourceOperatorContract(
+        "childcare",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped SPM-unit IDs",
+    ),
+    "with_us_adult_care_inputs": SourceOperatorContract(
+        "adult_care",
+        (_POST_CLONE_PHASE,),
+        "clone-local unit imputation explicitly requires support roles",
+    ),
+    "with_us_energy_subsidy_input": SourceOperatorContract(
+        "energy_subsidy",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped SPM-unit IDs",
+    ),
+    "with_us_retirement_contribution_inputs": SourceOperatorContract(
+        "retirement_contributions",
+        (_POST_CLONE_PHASE,),
+        "role-aware QRF replacement uses remapped structural IDs",
+    ),
+    "with_us_retirement_distribution_inputs": SourceOperatorContract(
+        "retirement_distributions",
+        (_POST_CLONE_PHASE,),
+        "forced PUF imputation explicitly requires support roles",
+    ),
+    "with_us_immigration_inputs": SourceOperatorContract(
+        "immigration",
+        (_POST_CLONE_PHASE,),
+        "source-keyed draws preserve equality across support clones",
+    ),
+    "with_us_education_inputs": SourceOperatorContract(
+        "education_inputs",
+        (_POST_CLONE_PHASE,),
+        "deterministic rowwise derivation follows PUF tuition imputation",
+    ),
+}
+
+POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER = tuple(
+    name
+    for name in POOL_SOURCE_OPERATOR_ORDER
+    if _PRE_CLONE_PHASE in POOL_SOURCE_OPERATOR_CONTRACTS[name].phases
+)
+"""Source operations owned by the clone stage before physical expansion."""
+
+POOL_POST_CLONE_SOURCE_OPERATOR_ORDER = tuple(
+    name
+    for name in POOL_SOURCE_OPERATOR_ORDER
+    if _POST_CLONE_PHASE in POOL_SOURCE_OPERATOR_CONTRACTS[name].phases
+)
+"""Source operations safe or required after physical support expansion."""
+
 _CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
 _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
-    "derive_us_cps_carried_inputs": "cps_carried",
-    "with_us_prior_year_income_inputs": "prior_year_income",
-    "with_us_relationship_inputs": "relationship_inputs",
-    "with_us_medicare_take_up_input": "medicare_take_up",
-    "with_us_housing_inputs": "housing_inputs",
-    "with_us_eligibility_inputs": "eligibility_inputs",
-    "with_us_pregnancy_inputs": "pregnancy",
-    "with_us_wic_claim_input": "wic_claim",
-    "impute_us_housing_assistance_to_puf_support": "housing_assistance",
-    "with_us_child_support_inputs": "child_support",
-    "with_us_disability_benefits": "disability_benefits",
-    "with_us_workers_compensation": "workers_compensation",
-    "with_us_weeks_unemployed": "weeks_unemployed",
-    "with_us_childcare_inputs": "childcare",
-    "with_us_adult_care_inputs": "adult_care",
-    "with_us_energy_subsidy_input": "energy_subsidy",
-    "with_us_retirement_contribution_inputs": "retirement_contributions",
-    "with_us_retirement_distribution_inputs": "retirement_distributions",
-    "with_us_immigration_inputs": "immigration",
-    "with_us_education_inputs": "education_inputs",
+    name: contract.family
+    for name, contract in POOL_SOURCE_OPERATOR_CONTRACTS.items()
 }
 _FORMULA_OWNED_SOURCE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset({"employment_income_last_year"}),
@@ -310,7 +429,7 @@ POOL_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry(
 
 
 def prepare_multispine_puf_predictors(frame: Frame) -> PoolStageOutput:
-    """Derive CPS-carried primary-QRF predictors after assembly and cloning.
+    """Derive CPS-carried primary-QRF predictors after assembly, before cloning.
 
     ``PERIDNUM`` is raw CPS evidence and is absent from the harmonized ACS
     source. Only rows carrying that raw evidence enter the historical
@@ -321,19 +440,65 @@ def prepare_multispine_puf_predictors(frame: Frame) -> PoolStageOutput:
 
     return _run_source_operator_chain(
         frame,
-        operator_names=(POOL_SOURCE_OPERATOR_ORDER[0],),
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("derive_us_cps_carried_inputs",),
         operators={
-            POOL_SOURCE_OPERATOR_ORDER[0]: derive_us_cps_carried_inputs,
+            "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
         },
+    )
+
+
+def prepare_multispine_source_inputs_for_clone(
+    frame: Frame,
+    *,
+    acs_rent_donor: pd.DataFrame,
+) -> PoolStageOutput:
+    """Prepare source-derived values whose grain would be corrupted by cloning.
+
+    This is the source-blind preparation subphase of the coarse ``clone``
+    stage. It runs only after assembly and on a CPS-evidence projection with
+    support-role metadata removed. Physical cloning then copies the outputs,
+    including the transient prior-year wage target needed by the later PUF QRF.
+    """
+
+    operators: Mapping[str, SourceFrameOperator] = {
+        "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
+        "with_us_prior_year_income_inputs": lambda current: (
+            with_us_prior_year_income_inputs(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+            )
+        ),
+        "with_us_relationship_inputs": lambda current: with_us_relationship_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+        "with_us_housing_inputs": lambda current: with_us_housing_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+            acs_rent_donor=acs_rent_donor,
+        ),
+        "with_us_eligibility_inputs": lambda current: with_us_eligibility_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+    }
+    return _run_source_operator_chain(
+        frame,
+        phase=_PRE_CLONE_PHASE,
+        operator_names=POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
+        operators=operators,
     )
 
 
 def complete_multispine_source_inputs(
     frame: Frame,
-    *,
-    acs_rent_donor: pd.DataFrame,
 ) -> PoolStageOutput:
-    """Run the remaining historical source chain on the assembled clone pool.
+    """Run clone-safe or clone-required source work after primary imputation.
 
     The function is intentionally fixed-seed/fixed-period. Each operator runs
     over the CPS-evidenced portion of the already assembled and cloned frame;
@@ -350,28 +515,12 @@ def complete_multispine_source_inputs(
                 time_period=POOL_TIME_PERIOD,
             )
         ),
-        "with_us_relationship_inputs": lambda current: with_us_relationship_inputs(
-            current,
-            seed=POOL_RANDOM_SEED,
-            time_period=POOL_TIME_PERIOD,
-        ),
         "with_us_medicare_take_up_input": lambda current: (
             with_us_medicare_take_up_input(
                 current,
                 seed=POOL_RANDOM_SEED,
                 time_period=POOL_TIME_PERIOD,
             )
-        ),
-        "with_us_housing_inputs": lambda current: with_us_housing_inputs(
-            current,
-            seed=POOL_RANDOM_SEED,
-            time_period=POOL_TIME_PERIOD,
-            acs_rent_donor=acs_rent_donor,
-        ),
-        "with_us_eligibility_inputs": lambda current: with_us_eligibility_inputs(
-            current,
-            seed=POOL_RANDOM_SEED,
-            time_period=POOL_TIME_PERIOD,
         ),
         "with_us_pregnancy_inputs": lambda current: with_us_pregnancy_inputs(
             current,
@@ -452,16 +601,20 @@ def complete_multispine_source_inputs(
             time_period=POOL_TIME_PERIOD,
         ),
     }
-    return _run_source_operator_chain(
+    completed = _run_source_operator_chain(
         frame,
-        operator_names=POOL_SOURCE_OPERATOR_ORDER[1:],
+        phase=_POST_CLONE_PHASE,
+        operator_names=POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
         operators=operators,
     )
+    _assert_formula_owned_source_outputs_absent(completed.frame)
+    return completed
 
 
 def _run_source_operator_chain(
     frame: Frame,
     *,
+    phase: str,
     operator_names: tuple[str, ...],
     operators: Mapping[str, SourceFrameOperator],
     output_families: Mapping[
@@ -476,6 +629,8 @@ def _run_source_operator_chain(
             "Multispine source operators require a Frame, got "
             f"{type(frame).__name__}."
         )
+    if phase not in {_PRE_CLONE_PHASE, _POST_CLONE_PHASE}:
+        raise ValueError(f"Unknown multispine source-operator phase {phase!r}.")
     expected_operators = set(operator_names)
     if set(operators) != expected_operators:
         raise ValueError(
@@ -487,7 +642,19 @@ def _run_source_operator_chain(
     if invalid:
         raise TypeError(f"Multispine source operator(s) are not callable: {invalid}.")
 
-    _assert_source_operator_boundary(frame)
+    misplaced = [
+        name
+        for name in operator_names
+        if name not in POOL_SOURCE_OPERATOR_CONTRACTS
+        or phase not in POOL_SOURCE_OPERATOR_CONTRACTS[name].phases
+    ]
+    if misplaced:
+        raise ValueError(
+            f"Multispine source operator(s) are not declared for {phase}: "
+            f"{misplaced}."
+        )
+
+    _assert_source_operator_boundary(frame, phase=phase)
     current = frame
     receipts: list[dict[str, object]] = []
     for order_index, operator_name in enumerate(operator_names):
@@ -497,11 +664,17 @@ def _run_source_operator_chain(
                 f"Multispine source operator {operator_name!r} has no declared "
                 f"output family {family!r}."
             )
-        declared_outputs = _persisted_source_outputs(
-            output_families[family],
+        declared_outputs = (
+            dict(output_families[family])
+            if phase == _PRE_CLONE_PHASE
+            else _persisted_source_outputs(output_families[family])
         )
-        available_mask = _cps_source_evidence_mask(current)
-        available = _source_available_projection(current, available_mask)
+        available_mask = _cps_source_evidence_mask(current, phase=phase)
+        available = _source_available_projection(
+            current,
+            available_mask,
+            phase=phase,
+        )
         available = _without_unavailable_output_columns(
             available,
             declared_outputs,
@@ -531,6 +704,19 @@ def _run_source_operator_chain(
             declared_outputs,
             operator_name=operator_name,
         )
+        formula_owned_removed: dict[str, list[str]] = {}
+        if phase == _POST_CLONE_PHASE:
+            formula_owned = {
+                entity: frozenset(
+                    set(columns)
+                    & set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+                )
+                for entity, columns in output_families[family].items()
+            }
+            current, formula_owned_removed = _drop_source_output_columns(
+                current,
+                formula_owned,
+            )
         after_rows = _frame_row_counts(current)
         if after_rows != before_rows:
             raise AssertionError(
@@ -542,6 +728,7 @@ def _run_source_operator_chain(
                 "order_index": order_index,
                 "operator": operator_name,
                 "family": family,
+                "phase": phase,
                 "pool_input_rows": before_rows,
                 "cps_available_rows": available_rows,
                 "operator_output_rows": output_rows,
@@ -549,28 +736,38 @@ def _run_source_operator_chain(
                 "operator_projection": {
                     "selection": _CPS_SOURCE_EVIDENCE_COLUMN,
                     "lineage_state_persisted": False,
+                    "support_role_metadata_exposed": phase == _POST_CLONE_PHASE,
                 },
                 "output_columns": {
                     entity: sorted(columns)
                     for entity, columns in declared_outputs.items()
                     if columns
                 },
+                "formula_owned_outputs_removed": formula_owned_removed,
             }
         )
     return PoolStageOutput(
         current,
         {
+            "phase": phase,
             "operator_order": list(operator_names),
             "cps_source_evidence": {
                 "column": _CPS_SOURCE_EVIDENCE_COLUMN,
-                "person_rows": int(_cps_source_evidence_mask(frame).sum()),
+                "person_rows": int(
+                    _cps_source_evidence_mask(frame, phase=phase).sum()
+                ),
             },
+            "transient_outputs_carried_through_clone": (
+                _transient_source_outputs(operator_names, output_families)
+                if phase == _PRE_CLONE_PHASE
+                else {}
+            ),
             "suboperators": receipts,
         },
     )
 
 
-def _assert_source_operator_boundary(frame: Frame) -> None:
+def _assert_source_operator_boundary(frame: Frame, *, phase: str) -> None:
     manifest = frame.metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
     if not isinstance(manifest, Mapping):
         raise ValueError(
@@ -590,20 +787,25 @@ def _assert_source_operator_boundary(frame: Frame) -> None:
             f"Multispine source clone provenance {clone_column!r} must be integral."
         )
     clone_values = clone_index.to_numpy(dtype=np.float64)
-    if (
-        (clone_values < 0.0).any()
-        or not np.equal(clone_values, np.floor(clone_values)).all()
-        or not np.any(clone_values == 0.0)
-        or not np.any(clone_values > 0.0)
-    ):
+    invalid_numeric = (clone_values < 0.0).any() or not np.equal(
+        clone_values, np.floor(clone_values)
+    ).all()
+    pre_clone_invalid = phase == _PRE_CLONE_PHASE and not np.all(
+        clone_values == 0.0
+    )
+    post_clone_invalid = phase == _POST_CLONE_PHASE and (
+        not np.any(clone_values == 0.0) or not np.any(clone_values > 0.0)
+    )
+    if invalid_numeric or pre_clone_invalid or post_clone_invalid:
         raise ValueError(
-            "Multispine source operators require both native and cloned rows with "
-            "nonnegative integral clone provenance."
+            f"Multispine {phase} source operators received incompatible clone "
+            "provenance; pre-clone requires only index 0, while post-clone "
+            "requires both native and positive clone indices."
         )
-    _cps_source_evidence_mask(frame)
+    _cps_source_evidence_mask(frame, phase=phase)
 
 
-def _cps_source_evidence_mask(frame: Frame) -> pd.Series:
+def _cps_source_evidence_mask(frame: Frame, *, phase: str) -> pd.Series:
     """Select CPS lineage only from a raw column unavailable on ACS."""
 
     person = frame.table(frame.schema.person_entity)
@@ -624,15 +826,26 @@ def _cps_source_evidence_mask(frame: Frame) -> pd.Series:
     clone_column = support_clone_index_column(frame.schema.person_entity)
     clone_index = pd.to_numeric(person[clone_column], errors="coerce")
     evidenced_clones = set(clone_index.loc[available].astype(int).tolist())
-    if 0 not in evidenced_clones or not any(index > 0 for index in evidenced_clones):
+    invalid_evidence = (
+        evidenced_clones != {0}
+        if phase == _PRE_CLONE_PHASE
+        else 0 not in evidenced_clones
+        or not any(index > 0 for index in evidenced_clones)
+    )
+    if invalid_evidence:
         raise ValueError(
-            "Raw CPS evidence must cover both native and cloned rows before "
-            "source operators run."
+            f"Raw CPS evidence is incompatible with the {phase} source-operator "
+            "boundary."
         )
     return available.astype(bool)
 
 
-def _source_available_projection(frame: Frame, person_mask: pd.Series) -> Frame:
+def _source_available_projection(
+    frame: Frame,
+    person_mask: pd.Series,
+    *,
+    phase: str,
+) -> Frame:
     """Build an ephemeral CPS-only kernel input without a false pool receipt.
 
     The public source-chain boundary receives and validates the fully assembled
@@ -644,11 +857,16 @@ def _source_available_projection(frame: Frame, person_mask: pd.Series) -> Frame:
     """
 
     selected = frame.select(person_mask)
+    tables = {
+        entity: (
+            without_support_role_metadata(selected.table(entity), entity=entity)
+            if phase == _PRE_CLONE_PHASE
+            else selected.table(entity).copy()
+        )
+        for entity in selected.entities
+    }
     return Frame(
-        {
-            entity: selected.table(entity).copy()
-            for entity in selected.entities
-        },
+        tables,
         selected.schema,
         {
             entity: selected.weights_for(entity)
@@ -656,6 +874,66 @@ def _source_available_projection(frame: Frame, person_mask: pd.Series) -> Frame:
         },
         selected.strata,
     )
+
+
+def _drop_source_output_columns(
+    frame: Frame,
+    outputs: Mapping[str, frozenset[str]],
+) -> tuple[Frame, dict[str, list[str]]]:
+    """Drop transient source outputs from the whole pool after their consumer."""
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    removed: dict[str, list[str]] = {}
+    for entity, columns in outputs.items():
+        if entity not in tables:
+            continue
+        present = sorted(set(columns) & set(tables[entity].columns))
+        if present:
+            tables[entity] = tables[entity].drop(columns=present)
+            removed[entity] = present
+    if not removed:
+        return frame, removed
+    return (
+        Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        ),
+        removed,
+    )
+
+
+def _transient_source_outputs(
+    operator_names: tuple[str, ...],
+    output_families: Mapping[str, Mapping[str, frozenset[str]]],
+) -> dict[str, list[str]]:
+    transients: dict[str, set[str]] = {}
+    for operator_name in operator_names:
+        family = _SOURCE_OPERATOR_FAMILIES[operator_name]
+        for entity, columns in output_families[family].items():
+            formula_owned = set(columns) & set(
+                _FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ())
+            )
+            if formula_owned:
+                transients.setdefault(entity, set()).update(formula_owned)
+    return {entity: sorted(columns) for entity, columns in transients.items()}
+
+
+def _assert_formula_owned_source_outputs_absent(frame: Frame) -> None:
+    remaining = {
+        entity: sorted(set(columns) & set(frame.table(entity).columns))
+        for entity, columns in _FORMULA_OWNED_SOURCE_OUTPUTS.items()
+        if entity in frame.entities
+        and set(columns).intersection(frame.table(entity).columns)
+    }
+    if remaining:
+        raise ValueError(
+            "Completed multispine source inputs retain formula-owned transient "
+            f"output(s): {remaining}."
+        )
 
 
 def _persisted_source_outputs(
@@ -1225,6 +1503,7 @@ def run_multispine_pool_path(
     asec: Frame,
     acs: Frame,
     *,
+    prepare_clone: PoolOperator | None = None,
     impute: PoolOperator,
     derive: PoolOperator,
     seed: PoolOperator,
@@ -1233,7 +1512,9 @@ def run_multispine_pool_path(
 ) -> MultispinePoolResult:
     """Run the fixed assembly-to-agreement path over two peer source frames.
 
-    ``impute``, ``derive``, and ``seed`` each receive the entire cloned pool.
+    ``prepare_clone`` is the source-blind preparation subphase of ``clone`` and
+    receives the assembled all-native pool. ``impute``, ``derive``, and
+    ``seed`` each receive the entire physically cloned pool.
     They have no source label argument and are checked at their output boundary
     against the immutable assembly receipt. ``simulate`` returns a temporary
     evaluation frame: formula-owned outputs on that copy are visible to the
@@ -1265,13 +1546,40 @@ def run_multispine_pool_path(
         boundary="multispine pool assembly",
     )
 
-    current = clone_us_frame_for_puf_support(assembled)
+    receipts: dict[str, Mapping[str, object]] = {}
+    clone_input = assembled
+    clone_preparation_receipt: Mapping[str, object] = {}
+    if prepare_clone is not None:
+        if not callable(prepare_clone):
+            raise TypeError("Pool prepare_clone operator must be callable.")
+        prepared = prepare_clone(clone_input)
+        if not isinstance(prepared, PoolStageOutput):
+            raise TypeError(
+                "Pool prepare_clone operator must return PoolStageOutput, got "
+                f"{type(prepared).__name__}."
+            )
+        clone_input = prepared.frame
+        validate_assembly_provenance(
+            clone_input,
+            boundary="multispine pool clone preparation output",
+        )
+        clone_preparation_receipt = dict(prepared.receipt)
+
+    clone_input_rows = _frame_row_counts(clone_input)
+    current = clone_us_frame_for_puf_support(clone_input)
     validate_assembly_provenance(
         current,
         boundary="multispine pool clone output",
     )
 
-    receipts: dict[str, Mapping[str, object]] = {}
+    if prepare_clone is not None:
+        receipts["clone"] = {
+            "source_preparation": clone_preparation_receipt,
+            "physical_clone": {
+                "input_rows": clone_input_rows,
+                "output_rows": _frame_row_counts(current),
+            },
+        }
     for stage_name in ("impute", "derive", "seed"):
         outcome = operators[stage_name](current)
         if not isinstance(outcome, PoolStageOutput):

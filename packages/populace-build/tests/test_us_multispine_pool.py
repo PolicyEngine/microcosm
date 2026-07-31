@@ -8,14 +8,20 @@ import pandas as pd
 import pytest
 
 from populace.build.gates import GateResult
+from populace.build.source_runtime import SourceRuntimeError
 from populace.build.us_runtime import multispine_pool as multispine_pool_module
+from populace.build.us_runtime import prior_year_income as prior_year_income_module
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
     POOL_OPERATOR_ORDER,
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_SOURCE_OPERATOR_CONTRACTS,
     POOL_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    MultispinePoolResult,
     PoolStageOutput,
     _complete_schedule_d_input,
     materialize_multispine_agreement_outputs,
@@ -26,6 +32,9 @@ from populace.build.us_runtime.multispine_pool import (
 )
 from populace.build.us_runtime.operator_boundary import (
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
+from populace.build.us_runtime.prior_year_income import (
+    with_us_prior_year_income_inputs,
 )
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
@@ -52,6 +61,33 @@ _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_medicare_take_up_input",
     "with_us_housing_inputs",
     "with_us_eligibility_inputs",
+    "with_us_pregnancy_inputs",
+    "with_us_wic_claim_input",
+    "impute_us_housing_assistance_to_puf_support",
+    "with_us_child_support_inputs",
+    "with_us_disability_benefits",
+    "with_us_workers_compensation",
+    "with_us_weeks_unemployed",
+    "with_us_childcare_inputs",
+    "with_us_adult_care_inputs",
+    "with_us_energy_subsidy_input",
+    "with_us_retirement_contribution_inputs",
+    "with_us_retirement_distribution_inputs",
+    "with_us_immigration_inputs",
+    "with_us_education_inputs",
+)
+
+_EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER = (
+    "derive_us_cps_carried_inputs",
+    "with_us_prior_year_income_inputs",
+    "with_us_relationship_inputs",
+    "with_us_housing_inputs",
+    "with_us_eligibility_inputs",
+)
+
+_EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
+    "with_us_prior_year_income_inputs",
+    "with_us_medicare_take_up_input",
     "with_us_pregnancy_inputs",
     "with_us_wic_claim_input",
     "impute_us_housing_assistance_to_puf_support",
@@ -101,6 +137,76 @@ def _source_frame(*, offset: float = 0.0) -> Frame:
         },
         pd.Series(["fixture", "fixture"], dtype=object),
     )
+
+
+def _prior_year_source_frame() -> Frame:
+    ids = np.arange(1, 5, dtype=np.int64)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "source_year": [2023, 2024, 2023, 2024],
+            "PERIDNUM": ["A", "A", "B", "B"],
+            "WSAL_VAL": [100.0, 200.0, 300.0, 400.0],
+            "SEMP_VAL": [-20.0, 30.0, 40.0, -50.0],
+            "I_ERNVAL": [0, 0, 0, 0],
+            "I_SEVAL": [0, 0, 0, 0],
+            "age": [30.0, 31.0, 40.0, 41.0],
+            "is_female": [False, False, True, True],
+            "has_esi": [True, True, False, False],
+            "tax_unit_role_input": ["PRIMARY"] * 4,
+            "employment_income_before_lsr": [100.0, 200.0, 300.0, 400.0],
+            "self_employment_income_before_lsr": [-20.0, 30.0, 40.0, -50.0],
+            "SS_VAL": [0.0, 0.0, 10.0, 10.0],
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids}),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": ids,
+                "filing_status_input": ["SINGLE"] * 4,
+            }
+        ),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.ones(4, dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+class _PriorYearFitted:
+    def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
+        rows = np.arange(len(test), dtype=np.float64)
+        return pd.DataFrame(
+            {
+                "employment_income_last_year": 1_000.0 + rows,
+                "self_employment_income_last_year": -10.0 + rows,
+            },
+            index=test.index,
+        )
+
+
+class _PriorYearQRF:
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
+    def fit(self, *_args: object, **_kwargs: object) -> _PriorYearFitted:
+        return _PriorYearFitted()
 
 
 def _replace_person(
@@ -407,6 +513,111 @@ def test_pool_source_operator_order_is_the_full_legacy_chain() -> None:
     assert POOL_SOURCE_OPERATOR_ORDER == _EXPECTED_POOL_SOURCE_OPERATOR_ORDER
 
 
+def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
+    assert tuple(POOL_SOURCE_OPERATOR_CONTRACTS) == POOL_SOURCE_OPERATOR_ORDER
+    assert POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER == (
+        _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER
+    )
+    assert POOL_POST_CLONE_SOURCE_OPERATOR_ORDER == (
+        _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER
+    )
+    assert {
+        name
+        for name, contract in POOL_SOURCE_OPERATOR_CONTRACTS.items()
+        if len(contract.phases) == 2
+    } == {"with_us_prior_year_income_inputs"}
+    assert all(
+        contract.mechanism for contract in POOL_SOURCE_OPERATOR_CONTRACTS.values()
+    )
+
+
+def test_prior_year_contract_fails_on_raw_clone_and_succeeds_in_clone_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(prior_year_income_module, "QRF", _PriorYearQRF)
+    asec = _prior_year_source_frame()
+    acs = _source_frame(offset=100.0)
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned_raw = clone_us_frame_for_puf_support(assembled)
+    prior_operator = {
+        "with_us_prior_year_income_inputs": lambda frame: (
+            with_us_prior_year_income_inputs(frame, seed=0, time_period=2024)
+        )
+    }
+
+    with pytest.raises(
+        SourceRuntimeError,
+        match="must be derived before support cloning",
+    ):
+        multispine_pool_module._run_source_operator_chain(
+            cloned_raw,
+            phase="post_clone",
+            operator_names=("with_us_prior_year_income_inputs",),
+            operators=prior_operator,
+        )
+
+    def prepare_clone(frame: Frame) -> PoolStageOutput:
+        return multispine_pool_module._run_source_operator_chain(
+            frame,
+            phase="pre_clone",
+            operator_names=("with_us_prior_year_income_inputs",),
+            operators=prior_operator,
+        )
+
+    def impute(frame: Frame) -> PoolStageOutput:
+        return multispine_pool_module._run_source_operator_chain(
+            frame,
+            phase="post_clone",
+            operator_names=("with_us_prior_year_income_inputs",),
+            operators=prior_operator,
+        )
+
+    def no_op(frame: Frame) -> PoolStageOutput:
+        return PoolStageOutput(frame)
+
+    def run() -> MultispinePoolResult:
+        return run_multispine_pool_path(
+            asec,
+            acs,
+            prepare_clone=prepare_clone,
+            impute=impute,
+            derive=no_op,
+            seed=no_op,
+            simulate=no_op,
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+        )
+
+    first = run()
+    second = run()
+    for entity in first.frame.entities:
+        pd.testing.assert_frame_equal(
+            first.frame.table(entity),
+            second.frame.table(entity),
+        )
+
+    person = first.frame.table("person")
+    cps = person["PERIDNUM"].notna()
+    assert "employment_income_last_year" not in person
+    assert person.loc[cps, "self_employment_income_last_year"].notna().all()
+    assert person.loc[~cps, "self_employment_income_last_year"].isna().all()
+    assert (
+        person.loc[cps]
+        .groupby("person_source_id")["previous_year_income_available"]
+        .nunique()
+        .eq(1)
+        .all()
+    )
+    assert first.stage_receipts["clone"]["source_preparation"][
+        "transient_outputs_carried_through_clone"
+    ] == {"person": ["employment_income_last_year"]}
+    assert first.stage_receipts["impute"]["suboperators"][0][
+        "formula_owned_outputs_removed"
+    ] == {"person": ["employment_income_last_year"]}
+
+
 def test_every_source_operator_output_has_a_pool_owner() -> None:
     transferred = {
         column
@@ -440,8 +651,18 @@ def test_every_source_operator_output_has_a_pool_owner() -> None:
     assert not unowned
 
 
-def test_source_operator_chain_is_availability_aware_and_source_blind(
+@pytest.mark.parametrize(
+    ("phase", "operator_names", "physically_clone"),
+    [
+        ("pre_clone", POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER, False),
+        ("post_clone", POOL_POST_CLONE_SOURCE_OPERATOR_ORDER, True),
+    ],
+)
+def test_source_operator_chains_are_availability_aware_and_source_blind(
     monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    operator_names: tuple[str, ...],
+    physically_clone: bool,
 ) -> None:
     asec = _source_frame()
     asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
@@ -466,12 +687,14 @@ def test_source_operator_chain_is_availability_aware_and_source_blind(
         {"asec": asec, "acs": acs},
         household_mass_shares={"asec": 0.5, "acs": 0.5},
     )
-    cloned = clone_us_frame_for_puf_support(assembled)
+    boundary_frame = (
+        clone_us_frame_for_puf_support(assembled) if physically_clone else assembled
+    )
 
     calls: list[str] = []
     output_families: dict[str, dict[str, frozenset[str]]] = {}
     operators: dict[str, Callable[[Frame], Frame]] = {}
-    for index, operator_name in enumerate(POOL_SOURCE_OPERATOR_ORDER):
+    for index, operator_name in enumerate(operator_names):
         family = multispine_pool_module._SOURCE_OPERATOR_FAMILIES[operator_name]
         output = f"fixture_source_output_{index:02d}"
         output_families[family] = {"person": frozenset({output})}
@@ -487,8 +710,10 @@ def test_source_operator_chain_is_availability_aware_and_source_blind(
             assert "us_spine_assembly_manifest" not in available.metadata
             assert not available.mass_log
             person = available.table("person")
-            assert "person_support_channel" in person.columns
-            assert set(person["person_support_clone_index"]) == {0, 1}
+            assert ("person_support_channel" in person.columns) is physically_clone
+            assert (
+                "person_support_clone_index" in person.columns
+            ) is physically_clone
             assert person["PERIDNUM"].notna().all()
             updated = person.copy()
             updated[column] = value
@@ -511,44 +736,48 @@ def test_source_operator_chain_is_availability_aware_and_source_blind(
 
     monkeypatch.setattr(pd.DataFrame, "__getitem__", reject_source_channel_read)
     result = multispine_pool_module._run_source_operator_chain(
-        cloned,
-        operator_names=POOL_SOURCE_OPERATOR_ORDER,
+        boundary_frame,
+        phase=phase,
+        operator_names=operator_names,
         operators=operators,
         output_families=output_families,
     )
 
-    assert calls == list(POOL_SOURCE_OPERATOR_ORDER)
-    assert result.receipt["operator_order"] == list(POOL_SOURCE_OPERATOR_ORDER)
+    pool_rows = 8 if physically_clone else 4
+    cps_rows = 4 if physically_clone else 2
+    assert calls == list(operator_names)
+    assert result.receipt["operator_order"] == list(operator_names)
     assert result.receipt["cps_source_evidence"] == {
         "column": "PERIDNUM",
-        "person_rows": 4,
+        "person_rows": cps_rows,
     }
     for index, receipt in enumerate(result.receipt["suboperators"]):
         assert receipt["order_index"] == index
-        assert receipt["operator"] == POOL_SOURCE_OPERATOR_ORDER[index]
-        assert receipt["pool_input_rows"]["person"] == 8
-        assert receipt["cps_available_rows"]["person"] == 4
-        assert receipt["operator_output_rows"]["person"] == 4
-        assert receipt["merged_rows"]["person"] == 4
+        assert receipt["operator"] == operator_names[index]
+        assert receipt["pool_input_rows"]["person"] == pool_rows
+        assert receipt["cps_available_rows"]["person"] == cps_rows
+        assert receipt["operator_output_rows"]["person"] == cps_rows
+        assert receipt["merged_rows"]["person"] == cps_rows
         assert receipt["operator_projection"] == {
             "selection": "PERIDNUM",
             "lineage_state_persisted": False,
+            "support_role_metadata_exposed": physically_clone,
         }
 
     person = result.frame.table("person")
     cps = person["PERIDNUM"].notna()
-    assert person.loc[cps, first_output].tolist() == [1.0] * 4
-    assert sorted(person.loc[~cps, first_output].tolist()) == [
-        900.0,
-        900.0,
-        901.0,
-        901.0,
-    ]
+    assert person.loc[cps, first_output].tolist() == [1.0] * cps_rows
+    expected_acs = (
+        [900.0, 900.0, 901.0, 901.0]
+        if physically_clone
+        else [900.0, 901.0]
+    )
+    assert sorted(person.loc[~cps, first_output].tolist()) == expected_acs
     unavailable = "fixture_source_output_01"
-    assert person.loc[cps, unavailable].tolist() == [2.0] * 4
+    assert person.loc[cps, unavailable].tolist() == [2.0] * cps_rows
     assert person.loc[~cps, unavailable].isna().all()
-    assert result.frame.metadata == cloned.metadata
-    assert result.frame.mass_log == cloned.mass_log
+    assert result.frame.metadata == boundary_frame.metadata
+    assert result.frame.mass_log == boundary_frame.mass_log
 
 
 def test_predictor_prep_fills_cps_rows_without_overwriting_acs_native() -> None:
@@ -578,29 +807,23 @@ def test_predictor_prep_fills_cps_rows_without_overwriting_acs_native() -> None:
         {"household": acs.weights_for("household")},
         acs.strata,
     )
-    cloned = clone_us_frame_for_puf_support(
-        assemble_spines(
-            {"asec": asec, "acs": acs},
-            household_mass_shares={"asec": 0.5, "acs": 0.5},
-        )
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
     )
 
-    result = prepare_multispine_puf_predictors(cloned)
+    result = prepare_multispine_puf_predictors(assembled)
 
     person = result.frame.table("person")
     cps = person["PERIDNUM"].notna()
-    assert sorted(person.loc[cps, "age"].tolist()) == [31.0, 31.0, 52.0, 52.0]
-    assert sorted(person.loc[~cps, "age"].tolist()) == [70.0, 70.0, 80.0, 80.0]
+    assert sorted(person.loc[cps, "age"].tolist()) == [31.0, 52.0]
+    assert sorted(person.loc[~cps, "age"].tolist()) == [70.0, 80.0]
     assert sorted(person.loc[cps, "is_female"].tolist()) == [
         False,
-        False,
-        True,
         True,
     ]
     assert sorted(person.loc[~cps, "is_female"].tolist()) == [
         False,
-        False,
-        True,
         True,
     ]
     assert result.receipt["operator_order"] == ["derive_us_cps_carried_inputs"]
