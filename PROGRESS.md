@@ -1,43 +1,23 @@
-# PR #583 Guard Completion Progress
+# PR #583 Fix-3 Guard Completion Progress
 
 ## State
 
-Round-4 hold remediation is in progress on `multispine-pool-build-578`, from
-clean starting commit `19a7a1d`. Subscript resolution now catches all six
-round-4 evasions; loop and comprehension targets now propagate every static
-string choice or an opaque shadow; and the 54-module operator graph remains
-clean. `str.format` now resolves all requested static field forms precisely.
-Direct and aliased strict pandas methods now share the same checks, and dynamic
-DataFrame `getattr` is fail-closed. Closure free variables now obey lexical
-late-binding assignment counts. The five requested subsystems, consolidated
-rounds 2-4 completeness invariant, benign battery, exact graph cardinality,
-and completed-contract docstrings are implemented. Adversarial audit and full
-validation remain. Adversarial alias composition probes are now closed.
-Starred and nested format-field composition is now closed too, as are
-late-bound writes through comprehensions, `nonlocal`, and `global`.
-Static iterable propagation now covers all built-in literal forms requested by
-the contract.
-Conditional statements and optional loop execution now merge bindings
-conservatively instead of retaining the last syntactically visited value.
-All explicit rounds 2-4 reviewer repros and the expanded adversarial
-composition battery are green. Full package validation and repository-wide
-Ruff pass.
-The requested handoff is written at `/private/tmp/583_fix2_handoff.md`.
-
-One literal-contract blocker remains: the receiver inference deliberately does
-not classify annotated `pd.DataFrame` parameters or `Frame.table(...)` results
-as subscript containers. Enabling only annotated DataFrame inference exposes
-about 150 existing dynamic accesses across roughly 39 modules in the pinned
-graph; adding table-result inference exposes more. Therefore the current
-54-module clean result still has a typed-container third state and cannot
-truthfully certify the requested universal “every column surface” wording
-without either broad runtime rewrites/interprocedural proof or an explicitly
-narrower contract.
+Fix-3 completion is in progress on `multispine-pool-build-578`, from clean
+starting commit `b219b21`. The populace owner resolved the typed-DataFrame
+decision: parameterized `df[column]` is a permitted boundary, while every
+statically resolvable guarded column name is contraband in every expression
+position in a non-owner operator module. The completed contract must document
+that composition argument and the sole accepted residual of names materialized
+purely from runtime file/config/environment data. Guard implementation, binding
+tests, a clean 54-module scan, full validation, and the fix-3 handoff remain.
 
 No push or external mutation is authorized.
 
 ## Done
 
+- Read `CLAUDE.md` and `/private/tmp/583_fix2_handoff.md`.
+- Confirmed the required branch, clean worktree, and starting HEAD `b219b21`.
+- Recorded the owner's explicit typed-parameter and contraband-literal decision.
 - Read `CLAUDE.md` and the round-4 review log.
 - Confirmed the required clean starting HEAD and branch.
 - Confirmed the local GitNexus index is absent; direct AST/source tracing will
@@ -146,8 +126,10 @@ No push or external mutation is authorized.
 
 ## Next
 
-- Resolve the typed DataFrame/`Frame.table(...)` third state. The literal
-  contract requires broad static resolution or runtime-module rewrites; merely
-  suppressing those findings would violate the “never allowlisted” order.
-- After that resolution, rerun the guard, full `populace-build` suite, and
-  repository-wide Ruff before declaring the lane complete.
+- Implement the all-expression contraband-literal rule and completed-contract
+  docstring, keeping annotations and docstrings exempt.
+- Add the requested violation/pass/owner tests and adjudicate any findings in
+  the pinned 54-module graph with the smallest owner-side change.
+- Run the guard file, full `populace-build` suite, and repository-wide Ruff.
+- Write `/private/tmp/583_fix3_handoff.md`, then restore `PROGRESS.md` to
+  `origin/main` and commit that restoration so root journals stay out of the PR.
