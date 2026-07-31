@@ -780,10 +780,14 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self,
         node: ast.AST,
     ) -> tuple[str, bool] | None:
+        if isinstance(node, ast.NamedExpr):
+            return self._method_alias(node.value)
         if isinstance(node, ast.Name):
             for scope in reversed(self.method_aliases):
                 if node.id in scope:
                     return scope[node.id]
+            if node.id == "getattr":
+                return "getattr", True
             return None
         if isinstance(node, ast.Attribute) and node.attr in _STRICT_COLUMN_METHODS:
             strict_opacity = node.attr != "get" or self._attribute_container(node.value)
@@ -804,28 +808,53 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 return attribute, strict_opacity
         return None
 
-    def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
+    def _bind_name(self, name: str, value: ast.AST) -> None:
         description = self._expression(value)
         constant: object = _static_string_shape(value, self.constants)
         if constant is None:
             constant = _static_string_list(value, self.constants)
         if constant is None:
             constant = _static_integer(value, self.constants)
-        container = self._column_container(value)
-        attribute_container = self._attribute_container(value)
         method_alias = self._method_alias(value)
-        for target in targets:
+        if method_alias is None and name in self.method_alias_history[-1]:
+            method_alias = _OPAQUE_METHOD_ALIAS
+
+        self.bindings[-1][name] = description
+        # None is an explicit opaque shadow: lookups must stop here,
+        # never fall through to a stale outer binding (shadowed
+        # parameters and conditional reassignments — sol round 3).
+        self.constants[-1][name] = constant
+        self.column_containers[-1][name] = self._column_container(value)
+        self.attribute_containers[-1][name] = self._attribute_container(value)
+        self.method_aliases[-1][name] = method_alias
+        if method_alias is not None:
+            self.method_alias_history[-1].add(name)
+
+    def _bind_target(self, target: ast.AST, value: ast.AST) -> None:
+        if isinstance(target, ast.Name):
+            self._bind_name(target.id, value)
+            return
+        if isinstance(target, ast.Starred):
+            for name in _assigned_names(target.value):
+                self._bind_name(name, value)
+            return
+        if isinstance(target, (ast.List, ast.Tuple)):
+            if isinstance(value, (ast.List, ast.Tuple)) and len(target.elts) == len(
+                value.elts
+            ):
+                for child_target, child_value in zip(
+                    target.elts,
+                    value.elts,
+                    strict=True,
+                ):
+                    self._bind_target(child_target, child_value)
+                return
             for name in _assigned_names(target):
-                self.bindings[-1][name] = description
-                # None is an explicit opaque shadow: lookups must stop here,
-                # never fall through to a stale outer binding (shadowed
-                # parameters and conditional reassignments — sol round 3).
-                self.constants[-1][name] = constant
-                self.column_containers[-1][name] = container
-                self.attribute_containers[-1][name] = attribute_container
-                self.method_aliases[-1][name] = method_alias
-                if method_alias is not None:
-                    self.method_alias_history[-1].add(name)
+                self._bind_name(name, value)
+
+    def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
+        for target in targets:
+            self._bind_target(target, value)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -1137,11 +1166,28 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.constants[-1][name] = None
 
     def _visit_getattr(self, node: ast.Call) -> None:
-        if len(node.args) < 2:
+        arguments: list[ast.AST] = []
+        for argument in node.args:
+            if isinstance(argument, ast.Starred):
+                if not isinstance(argument.value, (ast.List, ast.Tuple)):
+                    self._record(
+                        node,
+                        "getattr() with hidden or expanded arguments (fail-closed)",
+                    )
+                    return
+                arguments.extend(argument.value.elts)
+            else:
+                arguments.append(argument)
+        if node.keywords or len(arguments) < 2:
+            if node.args or node.keywords:
+                self._record(
+                    node,
+                    "getattr() with hidden or expanded arguments (fail-closed)",
+                )
             return
-        attribute = _static_string_shape(node.args[1], self.constants)
+        attribute = _static_string_shape(arguments[1], self.constants)
         if attribute is None or _OPAQUE_STRING_PART in attribute:
-            if self._attribute_container(node.args[0]):
+            if self._attribute_container(arguments[0]):
                 self._record(
                     node,
                     "getattr with an unresolvable dynamic attribute (fail-closed)",
@@ -1271,7 +1317,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
         method: str,
         strict_opacity: bool,
     ) -> None:
-        if method == "get":
+        if method == "getattr":
+            self._visit_getattr(node)
+        elif method == "get":
             self._visit_get_call(node, strict_opacity=strict_opacity)
         elif method in {"query", "eval"}:
             self._visit_query_or_eval_call(node, method=method)
@@ -2149,7 +2197,7 @@ def f(df):
 
 
 def test_strict_method_aliases_fail_closed_and_shadow_precisely() -> None:
-    """Opaque alias arguments fail; rebinding and parameters stop stale aliases."""
+    """Opaque alias arguments/rebindings fail; parameters stop stale aliases."""
 
     opaque_sources = (
         """
@@ -2178,25 +2226,59 @@ def f(df, kwargs):
     return query(**kwargs)
 """,
     )
-    shadowed_sources = (
-        """
+    rebound_source = """
 def f(df):
     query = df.query
     query = print
     return query("age >= 18")
-""",
-        """
+"""
+    parameter_shadow = """
 query = df.query
 def f(query):
     return query("age >= 18")
-""",
-    )
+"""
 
     for source in opaque_sources:
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("fail-closed" in item for item in accesses)
-    for source in shadowed_sources:
+    rebound_accesses = _source_spine_accesses(rebound_source)
+    assert rebound_accesses
+    assert any("fail-closed" in item for item in rebound_accesses)
+    assert _source_spine_accesses(parameter_shadow) == ()
+
+
+def test_strict_method_aliases_cover_expression_and_structural_bindings() -> None:
+    """Walrus and unpacked aliases retain strict method identity."""
+
+    guarded_sources = (
+        """
+def f(df):
+    return (query := df.query)("person_support_channel == 1")
+""",
+        """
+def f(df):
+    query, printer = (df.query, print)
+    return query("person_support_channel == 1")
+""",
+    )
+    benign_sources = (
+        """
+def f(df):
+    return (query := df.query)("age >= 18")
+""",
+        """
+def f(df):
+    query, printer = (df.query, print)
+    return query("age >= 18")
+""",
+    )
+
+    for source in guarded_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in item for item in accesses)
+    for source in benign_sources:
         assert _source_spine_accesses(source) == (), source
 
 
@@ -2220,6 +2302,19 @@ def f(df):
 def f(df, attribute):
     return getattr(df, attribute)
 """
+    aliased_getattr = """
+def f(df):
+    lookup = getattr
+    return lookup(df, "person_support_channel")
+"""
+    starred_getattr = """
+def f(df):
+    return getattr(*(df, "person_support_channel"))
+"""
+    opaque_starred_getattr = """
+def f(arguments):
+    return getattr(*arguments)
+"""
     benign_attribute = """
 def f(df):
     attribute = "age"
@@ -2230,13 +2325,22 @@ def f(obj: object, attribute: str):
     return getattr(obj, attribute)
 """
 
-    for source in (static_alias, immediate_alias, guarded_attribute):
+    for source in (
+        static_alias,
+        immediate_alias,
+        guarded_attribute,
+        aliased_getattr,
+        starred_getattr,
+    ):
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("person_support_channel" in item for item in accesses)
     dynamic_accesses = _source_spine_accesses(dynamic_attribute)
     assert dynamic_accesses
     assert any("fail-closed" in item for item in dynamic_accesses)
+    opaque_starred_accesses = _source_spine_accesses(opaque_starred_getattr)
+    assert opaque_starred_accesses
+    assert any("fail-closed" in item for item in opaque_starred_accesses)
     assert _source_spine_accesses(benign_attribute) == ()
     assert _source_spine_accesses(generic_object) == ()
 

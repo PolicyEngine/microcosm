@@ -12,7 +12,7 @@ DataFrame `getattr` is fail-closed. Closure free variables now obey lexical
 late-binding assignment counts. The five requested subsystems, consolidated
 rounds 2-4 completeness invariant, benign battery, exact graph cardinality,
 and completed-contract docstrings are implemented. Adversarial audit and full
-validation remain.
+validation remain. Adversarial alias composition probes are now closed.
 
 No push or external mutation is authorized.
 
@@ -78,12 +78,20 @@ No push or external mutation is authorized.
 - Pinned the multispine tool graph to exactly 54 runtime modules.
 - Replayed the expanded guard file (70 passed), focused Ruff, and
   `git diff --check`; the exact 54-module graph remains clean.
+- Preserved strict method identity through walrus expressions and structural
+  tuple/list bindings; a previously strict alias rebound to an unresolved
+  callable now becomes an explicit opaque alias rather than disappearing.
+- Tracked aliases of builtin `getattr` and expanded literal starred arguments;
+  unresolved starred calls fail closed.
+- Added guarded-name, benign, rebound, unpacked, aliased-`getattr`, and starred
+  `getattr` binding tests. The guard file now passes 71 tests with the graph
+  clean.
 
 ## Next
 
-- Commit the consolidated invariant, benign battery, graph pin, and docstrings.
-- Resolve any acceptance-relevant findings from the independent adversarial
-  audit and replay the guard.
+- Commit the alias-composition hardening.
+- Resolve starred/nested format fields and closure writes found by the
+  independent adversarial audit, then replay the guard.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.
 - Write `/private/tmp/583_fix2_handoff.md` with per-subsystem rules, binding
