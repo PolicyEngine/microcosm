@@ -7,11 +7,16 @@ import pandas as pd
 import pytest
 
 from populace.build.gates import GateResult
+from populace.build.us_runtime.acs_transfer import (
+    declared_acs_transfer_target_families,
+)
 from populace.build.us_runtime.multispine_pool import (
     POOL_OPERATOR_ORDER,
     PoolStageOutput,
+    materialize_multispine_agreement_outputs,
     pool_transfer_target_families,
     run_multispine_pool_path,
+    seed_multispine_pool_inputs,
 )
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
@@ -20,6 +25,12 @@ from populace.build.us_runtime.spine_agreement import (
     SpineAgreementSpec,
     spine_agreement_gate,
 )
+from populace.build.us_runtime.spine_assembly import assemble_spines
+from populace.build.us_runtime.support_provenance import (
+    support_clone_index_column,
+    support_source_id_column,
+)
+from populace.build.us_runtime.take_up_contract import load_take_up_contract
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -248,28 +259,115 @@ def test_clone_safe_id_violation_surfaces_assembly_error() -> None:
         )
 
 
-def test_pool_transfer_plan_covers_every_take_up_without_duplicates() -> None:
-    families = pool_transfer_target_families()
-    ownership: dict[str, tuple[str, str]] = {}
-    for entity, by_family in families.items():
-        for family, columns in by_family.items():
-            for column in columns:
-                assert column not in ownership
-                ownership[column] = (entity, family)
+def test_pool_transfer_plan_is_the_fixed_declared_qrf_surface() -> None:
+    assert pool_transfer_target_families() == declared_acs_transfer_target_families()
 
-    expected = {
-        "takes_up_snap_if_eligible",
-        "takes_up_tanf_if_eligible",
-        "takes_up_eitc",
-        "takes_up_medicaid_if_eligible",
-        "takes_up_chip_if_eligible",
-        "takes_up_basic_health_program_if_eligible",
-        "takes_up_medicare_if_eligible",
-        "takes_up_ssi_if_eligible",
-        "takes_up_dc_ptc",
-        "takes_up_head_start_if_eligible",
-        "takes_up_early_head_start_if_eligible",
-        "takes_up_housing_assistance_if_eligible",
-        "takes_up_aca_if_eligible",
-    }
-    assert expected <= set(ownership)
+
+class _FakeEngine:
+    def __init__(self) -> None:
+        self.materialized_person_ids: list[list[int]] = []
+
+    def default_values(self, names: list[str]) -> dict[str, object]:
+        programs = load_take_up_contract().program_map()
+        return {name: programs[name].default for name in names}
+
+    def materialize(
+        self,
+        bundle: Frame,
+        variables: list[str],
+        period: int,
+    ) -> dict[str, np.ndarray]:
+        assert variables == ["ssi"]
+        assert period == 2024
+        person = bundle.table("person")
+        self.materialized_person_ids.append(person["person_id"].astype(int).tolist())
+        return {"ssi": person["age"].to_numpy(dtype=np.float64)}
+
+
+def _assembled_cloned_with_partial_take_up() -> Frame:
+    asec = _source_frame()
+    tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    tables["spm_unit"]["takes_up_tanf_if_eligible"] = [True, False]
+    tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = [True, False]
+    tables["person"]["takes_up_medicare_if_eligible"] = [False, True]
+    asec = Frame(
+        tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+    acs = _source_frame()
+    tables = {entity: acs.table(entity).copy() for entity in acs.entities}
+    tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = [False, True]
+    acs = Frame(
+        tables,
+        acs.schema,
+        {"household": acs.weights_for("household")},
+        acs.strata,
+    )
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    from populace.build.us_runtime.puf_support import (
+        clone_us_frame_for_puf_support,
+    )
+
+    return clone_us_frame_for_puf_support(assembled)
+
+
+def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+    before_person = frame.table("person")
+    before_spm = frame.table("spm_unit")
+    engine = _FakeEngine()
+
+    result = seed_multispine_pool_inputs(frame, engine=engine)
+
+    after_person = result.frame.table("person")
+    after_spm = result.frame.table("spm_unit")
+    measured_person = before_person["takes_up_medicare_if_eligible"].notna()
+    measured_spm = before_spm["takes_up_tanf_if_eligible"].notna()
+    assert (
+        after_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
+        == before_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
+    )
+    assert (
+        after_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
+        == before_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
+    )
+
+    contract = load_take_up_contract()
+    for program in contract.programs:
+        assert not result.frame.table(program.entity)[program.variable].isna().any()
+    tanf = result.receipt["programs"]["takes_up_tanf_if_eligible"]
+    assert tanf["provenance_kind"] == "administrative_seed_or_preserved_input"
+    medicare = result.receipt["programs"]["takes_up_medicare_if_eligible"]
+    assert medicare["provenance_kind"] == (
+        "preserved_input_or_disclosed_engine_default"
+    )
+    assert medicare["defaulted_rows"] == 4
+
+    spm = result.frame.table("spm_unit")
+    source_id = support_source_id_column("spm_unit")
+    clone_index = support_clone_index_column("spm_unit")
+    for _source, rows in spm.groupby(source_id):
+        assert set(rows[clone_index]) == {0, 1}
+        assert rows["takes_up_tanf_if_eligible"].nunique() == 1
+
+
+def test_simulated_ssi_lives_only_on_receipt_preserving_gate_view() -> None:
+    frame = seed_multispine_pool_inputs(
+        _assembled_cloned_with_partial_take_up(),
+        engine=_FakeEngine(),
+    ).frame
+    engine = _FakeEngine()
+
+    result = materialize_multispine_agreement_outputs(frame, engine=engine)
+
+    assert "ssi" not in frame.table("person")
+    assert "ssi" in result.frame.table("person")
+    assert result.frame.metadata == frame.metadata
+    assert result.receipt["persisted_to_pool"] is False
+    assert result.receipt["formula_outputs"]["ssi"]["rows"] == frame.n("person")
+    assert sum(map(len, engine.materialized_person_ids)) == frame.n("person")

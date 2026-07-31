@@ -45,6 +45,16 @@
 - Added small two-source tests for the ordered path, batched red agreement,
   receipt loss, clone-safe ID refusal, manifest counts, and default take-up
   inventory coverage. The new seam and the full spine-blindness guard pass.
+- Added a public, bounded PUF donor loader that retains the existing
+  source-year E00100 alignment and processed-H5 refusal contracts.
+- Made the TANF/EITC seed stage pool-safe: clone-stable IDs are a rowwise
+  fallback for draw keys, and assembled-pool cells already carrying values are
+  never overwritten. Other unresolved take-up defaults are filled only with
+  the live engine default and explicitly labeled as such; a missing
+  transfer-owned flag still fails closed.
+- Added fixed-batch SSI materialization on an ephemeral, receipt-preserving
+  gate view. Formula-owned `ssi` is deliberately absent from the returned
+  input pool.
 
 ## Next
 
