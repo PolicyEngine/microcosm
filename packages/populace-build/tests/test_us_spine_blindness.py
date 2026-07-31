@@ -341,6 +341,8 @@ def _static_string_shape(
                 value = scope[node.id]
                 return value if isinstance(value, str) else None
         return None
+    if isinstance(node, ast.IfExp):
+        return None
     if isinstance(node, ast.FormattedValue):
         inner = _static_string_shape(node.value, constants)
         return inner if inner is not None else "*"
@@ -355,6 +357,19 @@ def _static_string_shape(
         if left is not None and right is not None:
             return left + right
         return None
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+        and not node.keywords
+    ):
+        template = _static_string_shape(node.func.value, constants)
+        if template is None:
+            return None
+        for argument in node.args:
+            value = _static_string_shape(argument, constants)
+            template = template.replace("{}", "*" if value is None else value, 1)
+        return template
     return _string_shape(node)
 
 
@@ -441,14 +456,22 @@ class _SourceReadVisitor(ast.NodeVisitor):
         for target in targets:
             for name in _assigned_names(target):
                 self.bindings[-1][name] = description
-                if constant is not None:
-                    self.constants[-1][name] = constant
-                else:
-                    self.constants[-1].pop(name, None)
+                # None is an explicit opaque shadow: lookups must stop here,
+                # never fall through to a stale outer binding (shadowed
+                # parameters and conditional reassignments — sol round 3).
+                self.constants[-1][name] = constant
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
+        for target in node.targets:
+            if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
+                self._poison(target.value.id)
         self._bind(list(node.targets), node.value)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.visit(node.value)
+        for name in _assigned_names(node.target):
+            self._poison(name)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is None:
@@ -484,7 +507,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if node.args.kwarg is not None:
             local[node.args.kwarg.arg] = None
         self.bindings.append(local)
-        self.constants.append({})
+        self.constants.append({name: None for name in local})
         for statement in node.body:
             self.visit(statement)
         self.constants.pop()
@@ -506,12 +529,36 @@ class _SourceReadVisitor(ast.NodeVisitor):
             )
         }
         self.bindings.append(local)
-        self.constants.append({})
+        self.constants.append({name: None for name in local})
         self.visit(node.body)
         self.constants.pop()
         self.bindings.pop()
 
+    _MUTATORS = frozenset(
+        {
+            "append",
+            "extend",
+            "insert",
+            "remove",
+            "clear",
+            "pop",
+            "sort",
+            "reverse",
+            "update",
+            "setdefault",
+        }
+    )
+
+    def _poison(self, name: str) -> None:
+        self.constants[-1][name] = None
+
     def visit_Call(self, node: ast.Call) -> None:
+        if (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.attr in self._MUTATORS
+        ):
+            self._poison(node.func.value.id)
         name = _call_name(node)
         if name in self.factory_aliases:
             self._record(node, f"call to {name}")
@@ -531,9 +578,14 @@ class _SourceReadVisitor(ast.NodeVisitor):
                     self._record(node, f".get() using {column}")
         elif isinstance(node.func, ast.Attribute) and name in {"query", "eval"}:
             expression = _call_argument(node, position=0, keyword="expr")
-            if expression is not None:
+            if expression is None and (node.args or node.keywords):
+                self._record(
+                    node,
+                    f".{name}() with hidden or expanded arguments (fail-closed)",
+                )
+            elif expression is not None:
                 shape = _static_string_shape(expression, self.constants)
-                if shape is None:
+                if shape is None or "*" in shape:
                     # Fail closed: an expression the guard cannot resolve
                     # statically could name a guarded column — opacity is
                     # a violation, not a pass (sol #583 round 2).
@@ -552,7 +604,12 @@ class _SourceReadVisitor(ast.NodeVisitor):
                             break
         elif isinstance(node.func, ast.Attribute) and name == "filter":
             items = _call_argument(node, position=0, keyword="items")
-            if items is not None:
+            if items is None and (node.args or node.keywords):
+                self._record(
+                    node,
+                    ".filter() with hidden or expanded arguments (fail-closed)",
+                )
+            elif items is not None:
                 resolved = _static_string_list(items, self.constants)
                 if resolved is None:
                     column = _subscript_source_expression(
@@ -568,6 +625,12 @@ class _SourceReadVisitor(ast.NodeVisitor):
                             ".filter(items=...) with an unresolvable dynamic "
                             "list (fail-closed)",
                         )
+                elif any("*" in item for item in resolved):
+                    self._record(
+                        node,
+                        ".filter(items=...) with an unresolvable dynamic "
+                        "list (fail-closed)",
+                    )
                 else:
                     for item in resolved:
                         if _is_source_column_shape(item):
@@ -1011,6 +1074,61 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_guard_treats_wildcards_hidden_args_and_mutations_as_opaque():
+    """Sol #583 round-3 evasions: str.format and parameter interpolation
+    resolved to a '*' wildcard and read as benign; kwargs-expansion hid
+    the expression; mutation staled a resolved list; a shadowing
+    parameter fell through to an outer constant. All are opaque now."""
+
+    format_bound = """
+def f(df):
+    col = "person_support_channel"
+    return df.query("{} == 'acs'".format(col))
+"""
+    param_fstring = """
+def f(df, col):
+    return df.query(f"{col} == 'acs'")
+"""
+    kwargs_hidden = """
+def f(df, kw):
+    return df.query(**kw)
+"""
+    mutated_filter = """
+def f(df):
+    cols = ["age"]
+    cols.append("person_support_channel")
+    return df.filter(items=cols)
+"""
+    conditional_bound = """
+def f(df, flag):
+    col = "age" if flag else "person_support_channel"
+    return df.query(f"{col} >= 1")
+"""
+    shadowed_param = """
+col = "person_support_channel"
+
+
+def f(df, col):
+    return df.query(f"{col} >= 1")
+"""
+    for source in (
+        format_bound,
+        param_fstring,
+        kwargs_hidden,
+        mutated_filter,
+        conditional_bound,
+        shadowed_param,
+    ):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+    # Precision is preserved where resolution succeeds: format_bound's
+    # template resolves fully, so it reports the column, not opacity.
+    assert any(
+        "person_support_channel" in access
+        for access in _source_spine_accesses(format_bound)
+    )
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
