@@ -568,6 +568,12 @@ def _static_literal_value(
             return dict(zip(keys, values, strict=True))
         except TypeError:
             return _OPAQUE_STATIC_VALUE
+    shape = _static_string_shape(node, constants)
+    if shape is not None and _OPAQUE_STRING_PART not in shape:
+        # Static string construction (concatenation, format, case folding)
+        # inside container entries resolves like any other literal
+        # (sol #583 round 8).
+        return shape
     return _OPAQUE_STATIC_VALUE
 
 
@@ -1394,25 +1400,45 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if not isinstance(target, (ast.Tuple, ast.List)):
             return False
         elements = list(target.elts)
-        starred = bool(elements) and isinstance(elements[-1], ast.Starred)
-        leading = elements[:-1] if starred else elements
-        if not leading or not all(isinstance(element, ast.Name) for element in leading):
+        star_positions = [
+            index
+            for index, element in enumerate(elements)
+            if isinstance(element, ast.Starred)
+        ]
+        if len(star_positions) > 1:
             return False
-        prefix = len(leading)
-        if starred:
-            # Mixed row widths are fine when a *rest tail absorbs them
-            # (sol #583 round 7); the tail itself binds opaque.
-            if any(len(row) < prefix for row in rows):
+        if star_positions:
+            # A star ANYWHERE absorbs mixed widths; names before it bind
+            # from the row front, names after it bind from the row END
+            # (sol #583 rounds 7-8). The star itself binds opaque.
+            star = star_positions[0]
+            leading = elements[:star]
+            trailing = elements[star + 1 :]
+        else:
+            leading = elements
+            trailing = []
+        if not (leading or trailing) or not all(
+            isinstance(element, ast.Name) for element in (*leading, *trailing)
+        ):
+            return False
+        needed = len(leading) + len(trailing)
+        if star_positions:
+            if any(len(row) < needed for row in rows):
                 return False
-        elif any(len(row) != prefix for row in rows):
+        elif any(len(row) != len(leading) for row in rows):
             return False
         for position, element in enumerate(leading):
             self._bind_iteration_target(
                 element,
                 tuple(row[position] for row in rows),
             )
-        if starred and isinstance(elements[-1].value, ast.Name):
-            self._bind_iteration_target(elements[-1].value, None)
+        for back, element in enumerate(reversed(trailing), start=1):
+            self._bind_iteration_target(
+                element,
+                tuple(row[-back] for row in rows),
+            )
+        if star_positions and isinstance(elements[star_positions[0]].value, ast.Name):
+            self._bind_iteration_target(elements[star_positions[0]].value, None)
         return True
 
     def _bind_iteration_target(
@@ -3159,6 +3185,46 @@ def f():
     for source in (items_loop, items_comprehension, starred_rows):
         assert _source_spine_accesses(source), source
     assert _source_spine_accesses(benign_starred) == ()
+
+
+def test_mid_star_rows_and_concatenated_dict_entries_are_in_scope():
+    """Sol #583 round-8 module-local edges: a star in any single target
+    position binds trailing names from the row end, and static string
+    construction inside dict entries resolves like any literal."""
+
+    mid_star = """
+ROWS = (("person", "x", "support_channel"), ("household", "a", "b", "age"))
+
+
+def f():
+    for entity, *rest, suffix in ROWS:
+        sink(f"{entity}_{suffix}")
+"""
+    mid_star_comprehension = """
+ROWS = (("person", "x", "support_channel"),)
+
+
+def f():
+    return [f"{e}_{sfx}" for e, *rest, sfx in ROWS]
+"""
+    concat_items = """
+def f():
+    return [
+        f"{entity}_{suffix}"
+        for entity, suffix in {"per" + "son": "support_" + "channel"}.items()
+    ]
+"""
+    benign_items = """
+PAIRS = {"person": "age"}
+
+
+def f():
+    for entity, suffix in PAIRS.items():
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (mid_star, mid_star_comprehension, concat_items):
+        assert _source_spine_accesses(source), source
+    assert _source_spine_accesses(benign_items) == ()
 
 
 def test_cartesian_over_catch_is_documented_conservatism():
