@@ -3885,6 +3885,15 @@ _ROUND_20_FAIL_CLOSED_FINDING = (
     "iteration over a static container carrying guarded-name fragments "
     "with unpropagatable target geometry (fail-closed)"
 )
+_ROUND_20_ELEMENT_PRESERVING_BUILTINS = (
+    "list",
+    "tuple",
+    "set",
+    "frozenset",
+    "sorted",
+    "iter",
+    "reversed",
+)
 
 
 def _finding_classifications(source: str) -> tuple[str, ...]:
@@ -4108,7 +4117,7 @@ def test_round_20_keys_views_match_bare_dict_iteration(
 
 @pytest.mark.parametrize(
     "wrapper",
-    sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS),
+    _ROUND_20_ELEMENT_PRESERVING_BUILTINS,
 )
 @pytest.mark.parametrize(
     ("operand_case", "target", "sink_statement"),
@@ -4212,7 +4221,7 @@ def test_round_20_element_preserving_wrapper_view_matrix(
 
 @pytest.mark.parametrize(
     "wrapper",
-    sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS),
+    _ROUND_20_ELEMENT_PRESERVING_BUILTINS,
 )
 @pytest.mark.parametrize("partial", [False, True], ids=["full", "partial"])
 @pytest.mark.parametrize(
@@ -4360,21 +4369,21 @@ def test_round_20_filtered_identity_comprehension_matrix(
 def test_round_20_filtered_identity_dict_retains_duplicate_key_candidates(
     hostile: bool,
 ) -> None:
-    """A filter may remove a later duplicate, so every source row survives."""
+    """Even a hostile row removed at runtime stays in the over-approximation."""
 
     key = "person" if hostile else "state"
     first_value = "support_channel" if hostile else "fips"
     setup = f'DATA = (("{key}", "{first_value}"), ("{key}", "age"))'
     bound = f"""
 {setup}
-ROWS = {{entity: suffix for entity, suffix in DATA if suffix != "age"}}
+ROWS = {{entity: suffix for entity, suffix in DATA if suffix == "age"}}
 for entity, suffix in ROWS.items():
     sink(f"{{entity}}_{{suffix}}")
 """
     inline = f"""
 {setup}
 for entity, suffix in (
-    {{entity: suffix for entity, suffix in DATA if suffix != "age"}}
+    {{entity: suffix for entity, suffix in DATA if suffix == "age"}}
 ).items():
     sink(f"{{entity}}_{{suffix}}")
 """
@@ -4679,7 +4688,7 @@ for entity, suffix in {wrapper}(DATA.items()):
     sink(f"{{entity}}_{{suffix}}")
 """,
         )
-        for wrapper in sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS)
+        for wrapper in _ROUND_20_ELEMENT_PRESERVING_BUILTINS
     )
     benign_wrapper_equivalent_pairs = tuple(
         (
@@ -4695,7 +4704,7 @@ for entity, suffix in {wrapper}(DATA.items()):
     sink(f"{{entity}}_{{suffix}}")
 """,
         )
-        for wrapper in sorted(_ELEMENT_PRESERVING_ONE_ARGUMENT_BUILTINS)
+        for wrapper in _ROUND_20_ELEMENT_PRESERVING_BUILTINS
     )
 
     equivalent_pairs = (
