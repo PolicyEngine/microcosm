@@ -209,6 +209,95 @@ def _red_pool_result(pool_tool: ModuleType, tmp_path: Path):
     return result
 
 
+def _output_context(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+):
+    result = _red_pool_result(pool_tool, tmp_path)
+    outputs = pool_tool._output_paths(tmp_path / "pool.h5")
+    source_manifest = pool_tool.load_acs_source_manifest()
+    verified_inputs = {}
+    for index, role in enumerate(
+        (
+            "asec_pre_clone",
+            "acs_household",
+            "acs_person",
+            "processed_puf",
+            "puf_source_year",
+        ),
+        start=1,
+    ):
+        path = tmp_path / f"{role}.fixture"
+        path.write_bytes(f"input-{index}".encode())
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        verified_inputs[role] = pool_tool._VerifiedInput(
+            role=role,
+            path=path,
+            expected_sha256=digest,
+            actual_sha256=digest,
+            size_bytes=path.stat().st_size,
+        )
+    loaded = pool_tool._LoadedInputs(
+        asec=_source_frame(),
+        acs=_source_frame(measured_offset=99.0),
+        puf_donor=pd.DataFrame({"RECID": [1]}),
+        asec_checkpoint={"artifact": "fixture-pre-clone"},
+        acs_build={"artifact": "fixture-unit-frame"},
+        acs_native_inputs={"person": {"age": {"source": "fixture"}}},
+        puf_donor_build={"artifact": "fixture-donor"},
+    )
+    return result, outputs, verified_inputs, source_manifest, loaded
+
+
+def _seed_stale_green_outputs(outputs) -> None:
+    outputs.pool_h5.write_bytes(b"stale green h5")
+    outputs.agreement_diagnostics.write_text(
+        json.dumps(
+            {
+                "simulation_ready": True,
+                "publication_run_id": "stale-run",
+            }
+        ),
+        encoding="utf-8",
+    )
+    outputs.manifest.write_text(
+        json.dumps(
+            {
+                "status": "simulation_ready",
+                "simulation_ready": True,
+                "publication_run_id": "stale-run",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _assert_publication_tombstone(
+    pool_tool: ModuleType,
+    outputs,
+    *,
+    publication_run_id: str,
+) -> None:
+    manifest = json.loads(outputs.manifest.read_text(encoding="utf-8"))
+    assert manifest == {
+        "agreement_diagnostics": {
+            "path": str(outputs.agreement_diagnostics.resolve()),
+            "publication_run_id": publication_run_id,
+        },
+        "artifact_kind": "populace_us_multispine_pool_manifest",
+        "message": "publication in progress",
+        "pool_h5": {
+            "artifact_kind": "populace_us_multispine_input_pool",
+            "path": str(outputs.pool_h5.resolve()),
+            "publication_run_id": publication_run_id,
+        },
+        "publication_run_id": publication_run_id,
+        "schema_version": pool_tool.POOL_MANIFEST_SCHEMA_VERSION,
+        "simulation_ready": False,
+        "status": "publication_in_progress",
+    }
+
+
 def test_parser_exposes_only_five_pinned_inputs_and_out(
     pool_tool: ModuleType,
 ) -> None:
@@ -418,39 +507,9 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    result = _red_pool_result(pool_tool, tmp_path)
-    outputs = pool_tool._output_paths(tmp_path / "pool.h5")
-    source_manifest = pool_tool.load_acs_source_manifest()
-
-    verified_inputs = {}
-    for index, role in enumerate(
-        (
-            "asec_pre_clone",
-            "acs_household",
-            "acs_person",
-            "processed_puf",
-            "puf_source_year",
-        ),
-        start=1,
-    ):
-        path = tmp_path / f"{role}.fixture"
-        path.write_bytes(f"input-{index}".encode())
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        verified_inputs[role] = pool_tool._VerifiedInput(
-            role=role,
-            path=path,
-            expected_sha256=digest,
-            actual_sha256=digest,
-            size_bytes=path.stat().st_size,
-        )
-    loaded = pool_tool._LoadedInputs(
-        asec=_source_frame(),
-        acs=_source_frame(measured_offset=99.0),
-        puf_donor=pd.DataFrame({"RECID": [1]}),
-        asec_checkpoint={"artifact": "fixture-pre-clone"},
-        acs_build={"artifact": "fixture-unit-frame"},
-        acs_native_inputs={"person": {"age": {"source": "fixture"}}},
-        puf_donor_build={"artifact": "fixture-donor"},
+    result, outputs, verified_inputs, source_manifest, loaded = _output_context(
+        pool_tool,
+        tmp_path,
     )
 
     pool_tool._write_outputs(
@@ -475,14 +534,177 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     assert manifest["agreement_gate"] == expected_gate
     assert diagnostics["agreement_gate"] == expected_gate
     assert diagnostics["simulation_ready"] is False
+    assert diagnostics["publication_run_id"] == manifest["publication_run_id"]
     assert manifest["provenance_pins"] == {
         role: pin.to_manifest() for role, pin in verified_inputs.items()
     }
     assert manifest["pool_h5"]["formula_outputs_persisted"] is False
     assert manifest["pool_h5"]["input_only"] is True
+    assert (
+        manifest["pool_h5"]["publication_run_id"]
+        == manifest["publication_run_id"]
+    )
+    assert manifest["pool_h5"]["sha256"] == hashlib.sha256(
+        outputs.pool_h5.read_bytes()
+    ).hexdigest()
 
     with pd.HDFStore(outputs.pool_h5, mode="r") as store:
         assert "ssi" not in store["person"].columns
+        metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
+    assert metadata["publication_run_id"] == manifest["publication_run_id"]
+
+
+def test_h5_publication_failure_invalidates_stale_green_manifest(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    result, outputs, verified_inputs, source_manifest, loaded = _output_context(
+        pool_tool,
+        tmp_path,
+    )
+    _seed_stale_green_outputs(outputs)
+    publication_run_id = "h5-failure-run"
+    monkeypatch.setattr(
+        pool_tool,
+        "_new_publication_run_id",
+        lambda: publication_run_id,
+    )
+
+    def fail_h5(*_args, **_kwargs) -> None:
+        _assert_publication_tombstone(
+            pool_tool,
+            outputs,
+            publication_run_id=publication_run_id,
+        )
+        raise RuntimeError("injected H5 publication failure")
+
+    monkeypatch.setattr(pool_tool, "write_nullable_us_h5", fail_h5)
+
+    with pytest.raises(RuntimeError, match="injected H5 publication failure"):
+        pool_tool._write_outputs(
+            result,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=source_manifest,
+            loaded=loaded,
+        )
+
+    _assert_publication_tombstone(
+        pool_tool,
+        outputs,
+        publication_run_id=publication_run_id,
+    )
+    assert outputs.pool_h5.read_bytes() == b"stale green h5"
+
+
+def test_diagnostics_publication_failure_keeps_pool_not_ready(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    result, outputs, verified_inputs, source_manifest, loaded = _output_context(
+        pool_tool,
+        tmp_path,
+    )
+    _seed_stale_green_outputs(outputs)
+    publication_run_id = "diagnostics-failure-run"
+    monkeypatch.setattr(
+        pool_tool,
+        "_new_publication_run_id",
+        lambda: publication_run_id,
+    )
+    temporary_diagnostics = pool_tool._publication_temporary_path(
+        outputs.agreement_diagnostics,
+        publication_run_id=publication_run_id,
+    )
+    atomic_write_json = pool_tool._atomic_write_json
+
+    def fail_diagnostics(path, payload) -> None:
+        if Path(path) == temporary_diagnostics:
+            raise RuntimeError("injected diagnostics publication failure")
+        atomic_write_json(path, payload)
+
+    monkeypatch.setattr(pool_tool, "_atomic_write_json", fail_diagnostics)
+
+    with pytest.raises(
+        RuntimeError,
+        match="injected diagnostics publication failure",
+    ):
+        pool_tool._write_outputs(
+            result,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=source_manifest,
+            loaded=loaded,
+        )
+
+    _assert_publication_tombstone(
+        pool_tool,
+        outputs,
+        publication_run_id=publication_run_id,
+    )
+    assert outputs.pool_h5.read_bytes() == b"stale green h5"
+    assert not pool_tool._publication_temporary_path(
+        outputs.pool_h5,
+        publication_run_id=publication_run_id,
+    ).exists()
+
+
+def test_final_manifest_failure_leaves_tombstone_as_readiness_authority(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    result, outputs, verified_inputs, source_manifest, loaded = _output_context(
+        pool_tool,
+        tmp_path,
+    )
+    _seed_stale_green_outputs(outputs)
+    publication_run_id = "manifest-failure-run"
+    monkeypatch.setattr(
+        pool_tool,
+        "_new_publication_run_id",
+        lambda: publication_run_id,
+    )
+    atomic_write_json = pool_tool._atomic_write_json
+
+    def fail_final_manifest(path, payload) -> None:
+        if (
+            Path(path) == outputs.manifest
+            and payload["status"] != "publication_in_progress"
+        ):
+            raise RuntimeError("injected final manifest publication failure")
+        atomic_write_json(path, payload)
+
+    monkeypatch.setattr(pool_tool, "_atomic_write_json", fail_final_manifest)
+
+    with pytest.raises(
+        RuntimeError,
+        match="injected final manifest publication failure",
+    ):
+        pool_tool._write_outputs(
+            result,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=source_manifest,
+            loaded=loaded,
+        )
+
+    _assert_publication_tombstone(
+        pool_tool,
+        outputs,
+        publication_run_id=publication_run_id,
+    )
+    diagnostics = json.loads(
+        outputs.agreement_diagnostics.read_text(encoding="utf-8")
+    )
+    assert diagnostics["publication_run_id"] == publication_run_id
+    with pd.HDFStore(outputs.pool_h5, mode="r") as store:
+        metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
+    assert metadata["publication_run_id"] == publication_run_id
 
 
 def test_clone_safe_id_error_surfaces_unchanged_through_tool(

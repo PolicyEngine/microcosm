@@ -74,6 +74,7 @@ def write_nullable_us_h5(
     *,
     period: int,
     artifact_kind: str,
+    publication_run_id: str | None = None,
 ) -> None:
     """Atomically write and verify a nullable US single-year H5.
 
@@ -87,6 +88,10 @@ def write_nullable_us_h5(
         raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
     if not isinstance(artifact_kind, str) or not artifact_kind.strip():
         raise ValueError("artifact_kind must be a non-empty string.")
+    if publication_run_id is not None and (
+        not isinstance(publication_run_id, str) or not publication_run_id.strip()
+    ):
+        raise ValueError("publication_run_id must be a non-empty string when set.")
 
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -97,12 +102,14 @@ def write_nullable_us_h5(
             temporary,
             period=int(period),
             artifact_kind=artifact_kind,
+            publication_run_id=publication_run_id,
         )
         _verify_nullable_us_h5(
             frame,
             temporary,
             period=int(period),
             artifact_kind=artifact_kind,
+            publication_run_id=publication_run_id,
         )
         os.replace(temporary, output)
     except BaseException:
@@ -116,6 +123,7 @@ def _write_nullable_us_h5_file(
     *,
     period: int,
     artifact_kind: str,
+    publication_run_id: str | None,
 ) -> None:
     with pd.HDFStore(path, mode="w") as store:
         for entity in frame.entities:
@@ -138,7 +146,11 @@ def _write_nullable_us_h5_file(
             pd.Series(
                 [
                     json.dumps(
-                        _artifact_metadata(frame, artifact_kind=artifact_kind),
+                        _artifact_metadata(
+                            frame,
+                            artifact_kind=artifact_kind,
+                            publication_run_id=publication_run_id,
+                        ),
                         sort_keys=True,
                     )
                 ]
@@ -153,6 +165,7 @@ def _verify_nullable_us_h5(
     *,
     period: int,
     artifact_kind: str,
+    publication_run_id: str | None,
 ) -> None:
     with pd.HDFStore(path, mode="r") as store:
         for entity in frame.entities:
@@ -197,7 +210,11 @@ def _verify_nullable_us_h5(
             raise RuntimeError(
                 "Nullable US H5 artifact metadata is not valid JSON."
             ) from exc
-        expected_metadata = _artifact_metadata(frame, artifact_kind=artifact_kind)
+        expected_metadata = _artifact_metadata(
+            frame,
+            artifact_kind=artifact_kind,
+            publication_run_id=publication_run_id,
+        )
         if stored_metadata != expected_metadata:
             raise RuntimeError(
                 "Nullable US H5 round trip changed artifact metadata: "
@@ -214,9 +231,17 @@ def _export_table(frame: Frame, entity: str) -> pd.DataFrame:
     return household
 
 
-def _artifact_metadata(frame: Frame, *, artifact_kind: str) -> dict[str, str]:
-    return {
+def _artifact_metadata(
+    frame: Frame,
+    *,
+    artifact_kind: str,
+    publication_run_id: str | None,
+) -> dict[str, str]:
+    metadata = {
         "artifact_kind": artifact_kind,
         "entity_hdf_format": "fixed_nullable",
         "household_weight_kind": frame.weights_for("household").kind.value,
     }
+    if publication_run_id is not None:
+        metadata["publication_run_id"] = publication_run_id
+    return metadata

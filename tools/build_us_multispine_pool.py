@@ -88,7 +88,7 @@ __all__ = [
     "main",
 ]
 
-POOL_MANIFEST_SCHEMA_VERSION = 1
+POOL_MANIFEST_SCHEMA_VERSION = 2
 """Schema version for the companion pool build manifest."""
 
 POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
@@ -568,6 +568,7 @@ def _manifest_payload(
     verified_inputs: Mapping[str, _VerifiedInput],
     acs_source_manifest: AcsSourceManifest,
     loaded: _LoadedInputs,
+    publication_run_id: str,
 ) -> dict[str, object]:
     status = "simulation_ready" if result.simulation_ready else "agreement_failed"
     return {
@@ -575,6 +576,7 @@ def _manifest_payload(
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
         "status": status,
         "simulation_ready": result.simulation_ready,
+        "publication_run_id": publication_run_id,
         "calibration_applied": False,
         "operator_order": list(POOL_OPERATOR_ORDER),
         "period": POOL_TIME_PERIOD,
@@ -611,6 +613,7 @@ def _manifest_payload(
             "sha256": _file_sha256(outputs.pool_h5),
             "size_bytes": outputs.pool_h5.stat().st_size,
             "artifact_kind": POOL_H5_ARTIFACT_KIND,
+            "publication_run_id": publication_run_id,
             "nullable": True,
             "input_only": True,
             "formula_outputs_persisted": False,
@@ -630,6 +633,41 @@ def _manifest_payload(
     }
 
 
+def _publication_tombstone(
+    outputs: PoolBuildOutputs,
+    *,
+    publication_run_id: str,
+) -> dict[str, object]:
+    return {
+        "artifact_kind": "populace_us_multispine_pool_manifest",
+        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "status": "publication_in_progress",
+        "simulation_ready": False,
+        "publication_run_id": publication_run_id,
+        "message": "publication in progress",
+        "pool_h5": {
+            "path": str(outputs.pool_h5.resolve()),
+            "artifact_kind": POOL_H5_ARTIFACT_KIND,
+            "publication_run_id": publication_run_id,
+        },
+        "agreement_diagnostics": {
+            "path": str(outputs.agreement_diagnostics.resolve()),
+            "publication_run_id": publication_run_id,
+        },
+    }
+
+
+def _new_publication_run_id() -> str:
+    return uuid.uuid4().hex
+
+
+def _publication_temporary_path(path: Path, *, publication_run_id: str) -> Path:
+    output = Path(path)
+    return output.with_name(
+        f".{output.name}.{publication_run_id}.publication.tmp"
+    )
+
+
 def _write_outputs(
     result: MultispinePoolResult,
     *,
@@ -638,27 +676,52 @@ def _write_outputs(
     acs_source_manifest: AcsSourceManifest,
     loaded: _LoadedInputs,
 ) -> None:
-    write_nullable_us_h5(
-        result.frame,
+    publication_run_id = _new_publication_run_id()
+    _atomic_write_json(
+        outputs.manifest,
+        _publication_tombstone(
+            outputs,
+            publication_run_id=publication_run_id,
+        ),
+    )
+    temporary_h5 = _publication_temporary_path(
         outputs.pool_h5,
-        period=POOL_TIME_PERIOD,
-        artifact_kind=POOL_H5_ARTIFACT_KIND,
+        publication_run_id=publication_run_id,
+    )
+    temporary_diagnostics = _publication_temporary_path(
+        outputs.agreement_diagnostics,
+        publication_run_id=publication_run_id,
     )
     diagnostics = {
         "artifact_kind": "populace_us_multispine_agreement_diagnostics",
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
         "simulation_ready": result.simulation_ready,
+        "publication_run_id": publication_run_id,
         "agreement_gate": _agreement_payload(result),
     }
-    _atomic_write_json(outputs.agreement_diagnostics, diagnostics)
-    manifest = _manifest_payload(
-        result=result,
-        outputs=outputs,
-        verified_inputs=verified_inputs,
-        acs_source_manifest=acs_source_manifest,
-        loaded=loaded,
-    )
-    _atomic_write_json(outputs.manifest, manifest)
+    try:
+        write_nullable_us_h5(
+            result.frame,
+            temporary_h5,
+            period=POOL_TIME_PERIOD,
+            artifact_kind=POOL_H5_ARTIFACT_KIND,
+            publication_run_id=publication_run_id,
+        )
+        _atomic_write_json(temporary_diagnostics, diagnostics)
+        os.replace(temporary_h5, outputs.pool_h5)
+        os.replace(temporary_diagnostics, outputs.agreement_diagnostics)
+        manifest = _manifest_payload(
+            result=result,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=acs_source_manifest,
+            loaded=loaded,
+            publication_run_id=publication_run_id,
+        )
+        _atomic_write_json(outputs.manifest, manifest)
+    finally:
+        temporary_h5.unlink(missing_ok=True)
+        temporary_diagnostics.unlink(missing_ok=True)
 
 
 def _file_sha256(path: Path) -> str:
