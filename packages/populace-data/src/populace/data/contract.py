@@ -107,6 +107,34 @@ _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 _UK_LEGACY_RELEASE_IDS = frozenset({_UK_JUNE_RELEASE_ID})
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
+_UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
+_UK_TERMINAL_GATE_SCHEMA_VERSION = 2
+_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 1
+_UK_TERMINAL_GATE_PRODUCER = (
+    "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
+)
+# Lockstep with
+# populace.build.uk_runtime.terminal_gates.UK_TERMINAL_GATE_POLICY_SHA256.  The
+# data shard deliberately does not depend on the build shard: publication must
+# independently pin the reviewed gate policy rather than trust a producer's
+# self-description.
+_UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
+)
+_UK_ALWAYS_APPLICABLE_GATE_NAMES = (
+    "uk_release_input_coverage",
+    "degenerate_release_surface",
+    "zero_weight_strata",
+    "weight_ess",
+    "weight_ratio",
+)
+_UK_TERMINAL_EVIDENCE_GATE_NAMES = {
+    "hmrc_spi_income": ("weights_audit",),
+    "release_parity": ("export_surface", "target_surface", "target_fit"),
+}
+_UK_TERMINAL_EVIDENCE_STAGES = frozenset(
+    {"release_dataset", *_UK_TERMINAL_EVIDENCE_GATE_NAMES}
+)
 _UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
     {"national", "region", "country", "local_authority", "constituency"}
 )
@@ -116,6 +144,8 @@ def required_release_files(release_id: str) -> tuple[str, ...]:
     """Files required for a release id's country-specific contract."""
     if release_id.startswith("populace-us-"):
         return (*REQUIRED_RELEASE_FILES, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
+    if _is_uk_exact_k_release_id(release_id):
+        return (*REQUIRED_RELEASE_FILES, _UK_TERMINAL_GATE_REPORT_FILE)
     return REQUIRED_RELEASE_FILES
 
 
@@ -159,6 +189,18 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    """Hash JSON exactly as the UK gate aggregator's attestation does."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _reject_json_constant(token: str) -> None:
@@ -307,16 +349,78 @@ def _check_build_manifest(
             owner="'calibration'",
             failures=failures,
         )
-    if not isinstance(manifest.get("gates"), Mapping):
+    gates = manifest.get("gates")
+    if not isinstance(gates, Mapping):
         failures.append(
             "build_manifest.json is missing the 'gates' object (the "
             "acceptance-gate verdicts are the point of the manifest)."
         )
+    if _is_uk_exact_k_release_id(release_id):
+        _check_uk_terminal_build_manifest(manifest, failures)
     _check_uk_exact_k_manifest_fields(
         manifest,
         release_id,
         filename="build_manifest.json",
         count_fields=("n_records",),
+        failures=failures,
+    )
+
+
+def _check_uk_terminal_build_manifest(
+    manifest: Mapping,
+    failures: list[str],
+) -> None:
+    """Require exact-k UK builds to bind gate evidence and the report bytes."""
+
+    evidence = manifest.get("terminal_gate_evidence")
+    if not isinstance(evidence, Mapping):
+        failures.append(
+            "build_manifest.json canonical UK releases require a "
+            "'terminal_gate_evidence' object."
+        )
+    else:
+        stages = set(evidence)
+        missing = sorted({"release_dataset"} - stages)
+        unexpected = sorted(
+            str(stage) for stage in stages - _UK_TERMINAL_EVIDENCE_STAGES
+        )
+        if missing:
+            failures.append(
+                "build_manifest.json terminal_gate_evidence is missing "
+                f"always-applicable stage(s): {missing}."
+            )
+        if unexpected:
+            failures.append(
+                "build_manifest.json terminal_gate_evidence has unknown "
+                f"stage(s): {unexpected}."
+            )
+        for stage, digest in evidence.items():
+            _check_sha256_field(
+                filename="build_manifest.json",
+                owner=f"terminal_gate_evidence[{stage!r}]",
+                value=digest,
+                failures=failures,
+            )
+
+    gates = manifest.get("gates")
+    terminal = gates.get("uk_terminal") if isinstance(gates, Mapping) else None
+    if not isinstance(terminal, Mapping):
+        failures.append(
+            "build_manifest.json canonical UK gates must include an "
+            "'uk_terminal' report pointer."
+        )
+        return
+    if terminal.get("passed") is not True:
+        failures.append("build_manifest.json gates.uk_terminal.passed must be true.")
+    if terminal.get("path") != _UK_TERMINAL_GATE_REPORT_FILE:
+        failures.append(
+            "build_manifest.json gates.uk_terminal.path must be "
+            f"{_UK_TERMINAL_GATE_REPORT_FILE!r}."
+        )
+    _check_sha256_field(
+        filename="build_manifest.json",
+        owner="gates.uk_terminal.sha256",
+        value=terminal.get("sha256"),
         failures=failures,
     )
 
@@ -445,6 +549,21 @@ def _check_release_manifest(
                 "release_manifest.json artifacts must include "
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
             )
+        if _is_uk_exact_k_release_id(release_id):
+            terminal_artifact = _artifact_by_path(
+                manifest, _UK_TERMINAL_GATE_REPORT_FILE
+            )
+            if terminal_artifact is None:
+                failures.append(
+                    "release_manifest.json artifacts must include "
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE!r} for canonical UK "
+                    "releases."
+                )
+            elif terminal_artifact.get("kind") != "diagnostics":
+                failures.append(
+                    "release_manifest.json terminal gate report artifact "
+                    "must have kind 'diagnostics'."
+                )
         if isinstance(default_datasets, Mapping):
             national = default_datasets.get("national")
             if isinstance(national, str) and national not in artifacts:
@@ -773,6 +892,240 @@ def _artifact_by_path(release_manifest: Mapping, path: str) -> Mapping | None:
         if isinstance(artifact, Mapping) and artifact.get("path") == path:
             return artifact
     return None
+
+
+def _check_uk_terminal_gate_links(
+    *,
+    build_manifest: Mapping | None,
+    release_manifest: Mapping | None,
+    report_sha256: str,
+    failures: list[str],
+) -> None:
+    """Cross-link both manifests to the exact terminal-report bytes."""
+
+    build_terminal: object = None
+    if build_manifest is not None:
+        gates = build_manifest.get("gates")
+        if isinstance(gates, Mapping):
+            build_terminal = gates.get("uk_terminal")
+    build_sha: object = None
+    if isinstance(build_terminal, Mapping):
+        build_sha = build_terminal.get("sha256")
+        if build_sha != report_sha256:
+            failures.append(
+                "build_manifest.json gates.uk_terminal.sha256 must match the "
+                f"local {_UK_TERMINAL_GATE_REPORT_FILE} bytes."
+            )
+
+    release_artifact: Mapping | None = None
+    if release_manifest is not None:
+        release_artifact = _artifact_by_path(
+            release_manifest, _UK_TERMINAL_GATE_REPORT_FILE
+        )
+    if release_artifact is not None:
+        release_sha = release_artifact.get("sha256")
+        if release_sha != report_sha256:
+            failures.append(
+                "release_manifest.json terminal gate report artifact sha256 "
+                f"must match the local {_UK_TERMINAL_GATE_REPORT_FILE} bytes."
+            )
+        if (
+            isinstance(build_sha, str)
+            and isinstance(release_sha, str)
+            and (build_sha != release_sha)
+        ):
+            failures.append(
+                "build_manifest.json and release_manifest.json terminal gate "
+                "report sha256 values must match."
+            )
+
+
+def _check_uk_terminal_gate_report(
+    report: Mapping,
+    *,
+    build_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Independently verify the exact-k UK terminal-gate attestation.
+
+    The gate producer is not imported into populace-data.  This verifier pins
+    its producer and policy identities, derives the only permissible gate set
+    from build-manifest evidence stages, and recomputes the two attestation
+    digests.  A caller therefore cannot promote a hand-composed collection of
+    passing ``GateResult`` objects as the canonical terminal verdict.
+    """
+
+    required_report_fields = {
+        "schema_version",
+        "enforced",
+        "passed",
+        "gates",
+        "attestation",
+    }
+    if set(report) != required_report_fields:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} must contain exactly "
+            f"{sorted(required_report_fields)}, got {sorted(map(str, report))}."
+        )
+    if report.get("schema_version") != _UK_TERMINAL_GATE_SCHEMA_VERSION:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} schema_version must be "
+            f"{_UK_TERMINAL_GATE_SCHEMA_VERSION}."
+        )
+    if report.get("enforced") is not True:
+        failures.append(f"{_UK_TERMINAL_GATE_REPORT_FILE} enforced must be true.")
+    if report.get("passed") is not True:
+        failures.append(f"{_UK_TERMINAL_GATE_REPORT_FILE} passed must be true.")
+
+    build_evidence: Mapping = {}
+    if build_manifest is not None and isinstance(
+        build_manifest.get("terminal_gate_evidence"), Mapping
+    ):
+        build_evidence = build_manifest["terminal_gate_evidence"]
+    expected_gate_names = list(_UK_ALWAYS_APPLICABLE_GATE_NAMES)
+    for stage, stage_gate_names in _UK_TERMINAL_EVIDENCE_GATE_NAMES.items():
+        if stage in build_evidence:
+            expected_gate_names.extend(stage_gate_names)
+    expected_gate_set = set(expected_gate_names)
+
+    gates = report.get("gates")
+    valid_gates: Mapping = {}
+    if not isinstance(gates, Mapping):
+        failures.append(f"{_UK_TERMINAL_GATE_REPORT_FILE} gates must be an object.")
+    else:
+        valid_gates = gates
+        actual_gate_set = set(gates)
+        if actual_gate_set != expected_gate_set:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} evaluated gate membership "
+                "must be derived from build_manifest.json evidence stages; "
+                f"expected {expected_gate_names}, got {sorted(map(str, gates))}."
+            )
+        for name, gate in gates.items():
+            owner = f"{_UK_TERMINAL_GATE_REPORT_FILE} gate {name!r}"
+            if not isinstance(gate, Mapping):
+                failures.append(f"{owner} must be an object.")
+                continue
+            if set(gate) != {"passed", "failures", "details"}:
+                failures.append(
+                    f"{owner} must contain exactly passed, failures, and details."
+                )
+            if gate.get("passed") is not True:
+                failures.append(f"{owner}.passed must be true.")
+            if gate.get("failures") != []:
+                failures.append(f"{owner}.failures must be an empty list.")
+            if not isinstance(gate.get("details"), Mapping):
+                failures.append(f"{owner}.details must be an object.")
+
+    attestation = report.get("attestation")
+    if not isinstance(attestation, Mapping):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation must be an object."
+        )
+        return
+    unsigned_fields = {
+        "schema_version",
+        "producer",
+        "policy_sha256",
+        "evaluated_gates",
+        "evidence_sha256",
+        "gate_results_sha256",
+    }
+    required_attestation_fields = {*unsigned_fields, "sha256"}
+    if set(attestation) != required_attestation_fields:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation must contain exactly "
+            f"{sorted(required_attestation_fields)}."
+        )
+    if (
+        attestation.get("schema_version")
+        != _UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION
+    ):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.schema_version must be "
+            f"{_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION}."
+        )
+    if attestation.get("producer") != _UK_TERMINAL_GATE_PRODUCER:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.producer must name the "
+            "honest UK terminal gate aggregator."
+        )
+    if attestation.get("policy_sha256") != _UK_TERMINAL_GATE_POLICY_SHA256:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.policy_sha256 does "
+            "not match the certified UK gate policy."
+        )
+
+    evaluated_gates = attestation.get("evaluated_gates")
+    if evaluated_gates != expected_gate_names:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evaluated_gates must "
+            "exactly follow build-manifest evidence membership; "
+            f"expected {expected_gate_names}, got {evaluated_gates!r}."
+        )
+
+    evidence = attestation.get("evidence_sha256")
+    if not isinstance(evidence, Mapping):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evidence_sha256 must "
+            "be an object."
+        )
+    else:
+        for stage, digest in evidence.items():
+            _check_sha256_field(
+                filename=_UK_TERMINAL_GATE_REPORT_FILE,
+                owner=f"attestation.evidence_sha256[{stage!r}]",
+                value=digest,
+                failures=failures,
+            )
+        if dict(evidence) != dict(build_evidence):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evidence_sha256 "
+                "must exactly match build_manifest.json terminal_gate_evidence."
+            )
+        if set(_UK_ALWAYS_APPLICABLE_GATE_NAMES).issubset(valid_gates):
+            always_gate_results = {
+                name: valid_gates[name] for name in _UK_ALWAYS_APPLICABLE_GATE_NAMES
+            }
+            expected_release_dataset_sha = _canonical_sha256(always_gate_results)
+            if evidence.get("release_dataset") != expected_release_dataset_sha:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} release_dataset evidence "
+                    "digest must bind the always-applicable gate results."
+                )
+
+    expected_gate_results_sha = _canonical_sha256(valid_gates)
+    if attestation.get("gate_results_sha256") != expected_gate_results_sha:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.gate_results_sha256 "
+            "does not match gates."
+        )
+
+    unsigned_attestation = {
+        field: attestation.get(field)
+        for field in (
+            "schema_version",
+            "producer",
+            "policy_sha256",
+            "evaluated_gates",
+            "evidence_sha256",
+            "gate_results_sha256",
+        )
+    }
+    expected_attestation_sha = _canonical_sha256(
+        {
+            "schema_version": report.get("schema_version"),
+            "enforced": report.get("enforced"),
+            "passed": report.get("passed"),
+            "gates": valid_gates,
+            "attestation": unsigned_attestation,
+        }
+    )
+    if attestation.get("sha256") != expected_attestation_sha:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.sha256 does not bind "
+            "the complete terminal report."
+        )
 
 
 def _check_calibration_diagnostics(
@@ -2115,6 +2468,23 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 )
             if release_id.startswith("populace-us-"):
                 _check_us_critical_target_fit(diagnostics, failures)
+
+    terminal_gate_path = release_dir / _UK_TERMINAL_GATE_REPORT_FILE
+    if _is_uk_exact_k_release_id(release_id) and terminal_gate_path.is_file():
+        terminal_gate_sha256 = _sha256(terminal_gate_path)
+        _check_uk_terminal_gate_links(
+            build_manifest=build_manifest,
+            release_manifest=release_manifest,
+            report_sha256=terminal_gate_sha256,
+            failures=failures,
+        )
+        terminal_gate_report = _load_json(terminal_gate_path, failures)
+        if terminal_gate_report is not None:
+            _check_uk_terminal_gate_report(
+                terminal_gate_report,
+                build_manifest=build_manifest,
+                failures=failures,
+            )
 
     _check_cross_manifest_consistency(
         build_manifest,
