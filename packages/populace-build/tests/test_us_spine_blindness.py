@@ -12,7 +12,11 @@ This guard enforces, and its tests certify, exactly these surfaces:
   ``str.format`` with full field syntax, ``%`` formatting, ``str * int``,
   static ``.replace`` chains, and the static-receiver case methods ``lower``,
   ``upper``, ``casefold``, ``title``, and ``capitalize``;
-- loop and comprehension propagation over static iterables; and
+- loop and comprehension propagation for supported literal or bound string
+  choices, structural list/tuple rows, and static-dict ``.items()`` and
+  ``.values()`` views (including supported ``dict(iterable)`` receivers);
+  refused or partial binding over a fragment-bearing supported static
+  container fails closed at the iteration site; and
 - contraband guarded-name literals anywhere statically visible in non-owner
   modules.
 
@@ -710,7 +714,7 @@ def _static_percent_operand(
 def _static_string_list(
     node: ast.AST, constants: list[dict[str, object]]
 ) -> tuple[str, ...] | None:
-    """Resolve any statically enumerable string iterable."""
+    """Resolve the supported literal/bound string-choice iterable forms."""
 
     if isinstance(node, ast.Name):
         for scope in reversed(constants):
@@ -1133,9 +1137,11 @@ def _scope_assignment_counts(
 def _static_structure(
     node: ast.AST, constants: list[dict[str, object]]
 ) -> tuple | None:
-    """Resolve a list/tuple container STRUCTURALLY, tolerating opaque
-    leaves (kept as the opaque sentinel). Lets the rows binder propagate
-    mixed rows — static labels beside dynamic objects — per column."""
+    """Resolve an inline or bound list/tuple structure with opaque leaves.
+
+    Preserving the sentinel through name bindings lets the rows binder
+    propagate static columns beside dynamic objects per position.
+    """
 
     if isinstance(node, ast.Name):
         for scope in reversed(constants):
@@ -1218,10 +1224,11 @@ def _static_container_expression(node: ast.AST) -> ast.AST | None:
     """The literal-container core of an iterable expression, if any.
 
     Recognizes literal containers directly, static-dict ``.items()`` and
-    ``.values()``, and ``dict(<static literal>)`` — the forms whose string
-    leaves are guaranteed iterated container content. Dynamic expressions
-    that merely mention strings (``mapping.get("person", {}).values()``)
-    return None so key lookups never trip the fragment rule."""
+    ``.values()``, and ``dict(<static literal>)``. Their literal content is
+    eligible for the conservative fragment fallback; ``.values()`` narrows
+    the core to values rather than mapping keys. Dynamic expressions that
+    merely mention strings (``mapping.get("person", {}).values()``) return
+    None so key lookups never trip the fragment rule."""
 
     if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
         return node
@@ -1297,9 +1304,11 @@ def _iterable_carries_guarded_fragments(node: ast.AST) -> bool:
 def _resolved_value_carries_guarded_fragments(
     node: ast.AST, constants: list[dict[str, object]]
 ) -> bool:
-    """The bound-value counterpart of the syntactic probe: when the
-    iterable is a name (or expression) resolving to a static structure,
-    walk that structure's string leaves for guarded fragments."""
+    """Bound-value counterpart of the syntactic fragment probe.
+
+    Names, structures, and supported static-dict views resolve to the value
+    actually iterated; its string leaves are checked for guarded fragments.
+    """
 
     value = _static_iteration_value(node, constants)
     if value is _OPAQUE_STATIC_VALUE:
@@ -1563,10 +1572,12 @@ class _SourceReadVisitor(ast.NodeVisitor):
         ``for entity, suffix in PAIRS`` with ``PAIRS = (("person",
         "support_channel"),)`` binds ``entity``/``suffix`` to their
         per-position choice sets — natural declarative loop code, in
-        scope (sol #583 round 6). The result reports whether nonempty
-        static rows were recognized and whether every target position was
-        fully propagated. Resolvable string columns remain exact; dynamic
-        columns and every name in a star payload bind opaque.
+        scope (sol #583 round 6). The result reports whether nonempty static
+        rows were recognized and whether the target geometry was completely
+        handled. Resolvable string columns remain exact and dynamic columns
+        bind opaque. A direct-name star is completely handled as opaque;
+        every name in a nested star payload is poisoned, but that geometry
+        remains partial and therefore enters the fragment fallback.
         """
 
         literal = _static_iteration_value(iterable, self.constants)
@@ -1639,6 +1650,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         target: ast.AST,
         values: tuple[str, ...] | None,
     ) -> bool:
+        """Bind name targets and report whether the geometry is all names."""
+
         for name in _assigned_names(target):
             self.bindings[-1][name] = None
             self.constants[-1][name] = (
@@ -3425,11 +3438,10 @@ def f():
 
 
 def test_unpropagatable_geometry_over_guarded_fragments_fails_closed():
-    """Sol #583 round-9: any target/container geometry the binder cannot
-    propagate fails closed AT THE LOOP when the container statically
-    carries guarded-name fragments — ending geometry-by-geometry chasing.
-    Dynamic iterables that merely mention strings (key lookups) and
-    fragment-free static tables stay clean."""
+    """Sol #583 rounds 9-10: refused or partial binding over a supported
+    static container carrying guarded-name fragments fails closed at the
+    loop/comprehension generator. Dynamic expressions that merely mention
+    strings and fragment-free static tables stay clean."""
 
     nested_star_payload = """
 entity = "age"
@@ -4023,7 +4035,7 @@ def f(df, columns):
     assert all("fail-closed" in item for item in dynamic_accesses)
 
 
-def test_loop_targets_accept_every_static_string_iterable_form() -> None:
+def test_loop_targets_accept_supported_static_string_iterable_forms() -> None:
     """Sets, dict keys, strings, and concatenation bind exact choices."""
 
     benign_sources = (

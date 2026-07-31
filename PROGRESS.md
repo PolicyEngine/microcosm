@@ -39,10 +39,13 @@ and partial structures propagated through bindings.
 - The 121-case guard and focused 22-case benign/runtime/graph battery pass.
   Direct scans report zero findings for both `acs_transfer.py` and
   `congressional_district_vintage.py`; file-scoped ruff and formatting pass.
+- Completed the docstring truth pass: the module contract now names the
+  supported scalar, structural-row, and static dict-view forms; helper
+  docstrings distinguish exact propagation, deliberate opacity, and partial
+  geometry; the round-9 claim now states the actual iteration-site fallback.
 
 ## Next
 
-- Make the guard docstrings match the final mechanics exactly.
 - Run the guard file, full `populace-build` suite, repository ruff, and the
   requested `acs_transfer` plus `congressional_district_vintage` cleanliness
   checks.
