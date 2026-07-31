@@ -89,13 +89,14 @@ class UKReleaseIdentity:
         return format_uk_release_id(self.year, self.tier, self.record_count)
 
     def as_release_manifest_fields(self) -> dict[str, object]:
-        """Return the validated fields copied into a UK release manifest."""
+        """Return identity fields, including the shared ``n_records`` seam."""
 
         return {
             "country": "uk",
             "year": self.year,
             "tier": self.tier,
             "record_count": self.record_count,
+            "n_records": self.record_count,
             "build": {"build_id": self.release_id},
         }
 
@@ -122,6 +123,7 @@ def apply_uk_release_identity(
         "year": identity.year,
         "tier": identity.tier,
         "record_count": identity.record_count,
+        "n_records": identity.record_count,
     }
     for field, expected in expected_fields.items():
         if field in manifest and manifest[field] != expected:

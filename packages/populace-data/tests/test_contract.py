@@ -25,6 +25,7 @@ from populace.data import (
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
+UK_RECORD_COUNT = 535_080
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -81,7 +82,7 @@ def _model_package(release_id: str) -> tuple[str, str]:
 
 def _build_manifest(release_id: str = RELEASE_ID) -> dict:
     model_package, model_version = _model_package(release_id)
-    return {
+    manifest = {
         "build_id": release_id,
         "builder": "populace",
         "build_sha": GIT_COMMIT[:7],
@@ -104,6 +105,9 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
         },
         "gates": {"exported_nonzero": {"passed": True}},
     }
+    if "-k" in release_id and release_id.startswith("populace-uk-"):
+        manifest.update(country="uk", year=2023, n_records=UK_RECORD_COUNT)
+    return manifest
 
 
 def _release_manifest(
@@ -514,36 +518,37 @@ def _write_uk_release_dir(
     diagnostics = _calibration_diagnostics()
     if "-k" in release_id:
         diagnostics["target_registry"]["country"] = "uk"
-        diagnostics["n_records"] = 2
-        diagnostics["effective_sample_size"] = 1.0
-        diagnostics["top_1pct_weight_share"] = 1.0
+        diagnostics["target_surface"]["n_records"] = UK_RECORD_COUNT
+        diagnostics["n_records"] = UK_RECORD_COUNT
+        diagnostics["effective_sample_size"] = 335_080.0
+        diagnostics["top_1pct_weight_share"] = 0.01
         diagnostics["uk_diagnostics"] = {
             "schema_version": 1,
             "weights": {
-                "n_records": 2,
-                "positive_weight_records": 1,
-                "zero_weight_records": 1,
-                "total_weight": 1.0,
-                "effective_sample_size": 1.0,
-                "ess_fraction": 0.5,
+                "n_records": UK_RECORD_COUNT,
+                "positive_weight_records": 335_080,
+                "zero_weight_records": 200_000,
+                "total_weight": 335_080.0,
+                "effective_sample_size": 335_080.0,
+                "ess_fraction": 335_080 / UK_RECORD_COUNT,
                 "median_positive_weight": 1.0,
                 "max_weight": 1.0,
                 "max_to_median_positive_weight": 1.0,
-                "top_1pct_weight_share": 1.0,
+                "top_1pct_weight_share": 0.01,
             },
             "zero_weight_rows_by_stratum": [
                 {
                     "stratum": {"household_is_spi_synthetic": False},
-                    "rows": 1,
-                    "positive_weight_rows": 1,
+                    "rows": 335_080,
+                    "positive_weight_rows": 335_080,
                     "zero_weight_rows": 0,
-                    "weight_sum": 1.0,
+                    "weight_sum": 335_080.0,
                 },
                 {
                     "stratum": {"household_is_spi_synthetic": True},
-                    "rows": 1,
+                    "rows": 200_000,
                     "positive_weight_rows": 0,
-                    "zero_weight_rows": 1,
+                    "zero_weight_rows": 200_000,
                     "weight_sum": 0.0,
                 },
             ],
@@ -570,6 +575,13 @@ def _write_uk_release_dir(
         release_id,
         diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
     )
+    if "-k" in release_id:
+        manifest.update(
+            country="uk",
+            year=2023,
+            record_count=UK_RECORD_COUNT,
+            n_records=UK_RECORD_COUNT,
+        )
     if tier is not None:
         manifest["tier"] = tier
     (directory / "release_manifest.json").write_text(json.dumps(manifest))
@@ -590,6 +602,46 @@ def _copy_real_uk_june_release(tmp_path: Path) -> Path:
     directory = tmp_path / "releases" / UK_RELEASE_ID
     shutil.copytree(UK_JUNE_FIXTURE_DIR, directory)
     return directory
+
+
+def _rewrite_exact_k_fixture_to_two_records(directory: Path) -> None:
+    """Reproduce Sol's internally consistent k535080/n_records=2 probe."""
+
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["n_records"] = 2
+    build_path.write_text(json.dumps(build))
+
+    diagnostics = json.loads((directory / "calibration_diagnostics.json").read_text())
+    diagnostics["n_records"] = 2
+    diagnostics["target_surface"]["n_records"] = 2
+    diagnostics["effective_sample_size"] = 1.0
+    diagnostics["top_1pct_weight_share"] = 1.0
+    weights = diagnostics["uk_diagnostics"]["weights"]
+    weights.update(
+        n_records=2,
+        positive_weight_records=1,
+        zero_weight_records=1,
+        total_weight=1.0,
+        effective_sample_size=1.0,
+        ess_fraction=0.5,
+        top_1pct_weight_share=1.0,
+    )
+    positive, zero = diagnostics["uk_diagnostics"]["zero_weight_rows_by_stratum"]
+    positive.update(rows=1, positive_weight_rows=1, zero_weight_rows=0, weight_sum=1.0)
+    zero.update(rows=1, positive_weight_rows=0, zero_weight_rows=1, weight_sum=0.0)
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["record_count"] = 2
+    release["n_records"] = 2
+    release_path.write_text(json.dumps(release))
 
 
 def _split_microdata_artifact_entry(release_id: str, key: str) -> dict:
@@ -1231,6 +1283,46 @@ def test_exact_k_uk_release_requires_and_accepts_ratified_tier(tmp_path: Path) -
     validate_release_dir(directory)
 
 
+def test_exact_k_uk_release_rejects_sol_k535080_n_records_two_probe(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    _rewrite_exact_k_fixture_to_two_records(directory)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "release-id record count 535080" in failures
+    assert "top-level n_records" in failures
+    assert "target_surface.n_records" in failures
+
+
+def test_exact_k_uk_release_rejects_sol_identity_field_probe(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    _rewrite_exact_k_fixture_to_two_records(directory)
+    manifest_path = directory / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(country="xx", year=1900)
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "canonical UK 'country' must be 'uk', got 'xx'" in failures
+    assert "release-id year 2023, got 1900" in failures
+    assert "release-id record count 535080" in failures
+
+
 @pytest.mark.parametrize("tier", ["public", "true", "full"])
 def test_exact_k_uk_release_rejects_unratified_tier(
     tmp_path: Path,
@@ -1381,6 +1473,33 @@ def test_exact_k_uk_release_rejects_impossible_or_inconsistent_ess(
     )
 
     with pytest.raises(ReleaseContractError, match="effective_sample_size"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_recomputes_max_to_positive_median_ratio(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    weights = diagnostics["uk_diagnostics"]["weights"]
+    assert weights["max_weight"] == weights["median_positive_weight"] == 1.0
+    weights["max_to_median_positive_weight"] = 999.0
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="must equal max_weight/median_positive_weight",
+    ):
         validate_release_dir(directory)
 
 

@@ -92,6 +92,7 @@ def test_uk_release_identity_is_the_manifest_assembly_surface() -> None:
         "year": 2023,
         "tier": "frs",
         "record_count": 535_080,
+        "n_records": 535_080,
         "build": {"build_id": "populace-uk-2023-frs-k535080"},
     }
 
@@ -138,6 +139,7 @@ def test_apply_uk_release_identity_preserves_existing_build_metadata() -> None:
     "manifest",
     [
         {"tier": "cps-transfer"},
+        {"n_records": 2},
         {"build": {"build_id": "populace-uk-2023-cps-transfer-k535080"}},
     ],
 )
@@ -146,5 +148,5 @@ def test_apply_uk_release_identity_rejects_conflicting_identity(
 ) -> None:
     identity = UKReleaseIdentity(year=2023, tier="frs", record_count=535_080)
 
-    with pytest.raises(ValueError, match="tier|build.build_id"):
+    with pytest.raises(ValueError, match="tier|n_records|build.build_id"):
         apply_uk_release_identity(manifest, identity)

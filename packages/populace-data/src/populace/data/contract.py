@@ -312,6 +312,13 @@ def _check_build_manifest(
             "build_manifest.json is missing the 'gates' object (the "
             "acceptance-gate verdicts are the point of the manifest)."
         )
+    _check_uk_exact_k_manifest_fields(
+        manifest,
+        release_id,
+        filename="build_manifest.json",
+        count_fields=("n_records",),
+        failures=failures,
+    )
 
 
 def _check_release_manifest(
@@ -500,8 +507,7 @@ def _check_uk_release_identity(
         failures.append(
             "release_manifest.json exact-k UK releases require top-level 'tier'."
         )
-        return
-    if not isinstance(manifest_tier, str) or manifest_tier not in _UK_RELEASE_TIERS:
+    elif not isinstance(manifest_tier, str) or manifest_tier not in _UK_RELEASE_TIERS:
         failures.append(
             "release_manifest.json exact-k UK 'tier' must be one of "
             f"{sorted(_UK_RELEASE_TIERS)}, got {manifest_tier!r}."
@@ -511,10 +517,89 @@ def _check_uk_release_identity(
             f"release_manifest.json top-level 'tier' is {manifest_tier!r} but "
             f"the release id names tier {release_id_tier!r}."
         )
+    _check_uk_exact_k_manifest_fields(
+        manifest,
+        release_id,
+        filename="release_manifest.json",
+        count_fields=("record_count", "n_records"),
+        failures=failures,
+    )
 
 
 def _is_uk_exact_k_release_id(release_id: str) -> bool:
     return _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id) is not None
+
+
+def _check_uk_exact_k_manifest_fields(
+    manifest: Mapping,
+    release_id: str,
+    *,
+    filename: str,
+    count_fields: tuple[str, ...],
+    failures: list[str],
+) -> None:
+    """Bind canonical UK manifest identity fields to the exact-k id."""
+
+    match = _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id)
+    if match is None:
+        return
+    expected_year = int(match.group("year"))
+    expected_records = int(match.group("record_count"))
+    if manifest.get("country") != "uk":
+        failures.append(
+            f"{filename} canonical UK 'country' must be 'uk', got "
+            f"{manifest.get('country')!r}."
+        )
+    year = manifest.get("year")
+    if isinstance(year, bool) or not isinstance(year, int) or year != expected_year:
+        failures.append(
+            f"{filename} canonical UK 'year' must equal release-id year "
+            f"{expected_year}, got {year!r}."
+        )
+    for field in count_fields:
+        value = manifest.get(field)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value != expected_records
+        ):
+            failures.append(
+                f"{filename} canonical UK {field!r} must equal release-id "
+                f"record count {expected_records}, got {value!r}."
+            )
+
+
+def _check_uk_exact_k_diagnostics_identity(
+    diagnostics: Mapping,
+    release_id: str,
+    failures: list[str],
+) -> None:
+    """Reconcile the exact-k id with every shipped-record diagnostic."""
+
+    match = _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id)
+    if match is None:
+        return
+    expected = int(match.group("record_count"))
+    observations: list[tuple[str, object]] = [
+        ("top-level n_records", diagnostics.get("n_records")),
+    ]
+    uk = diagnostics.get("uk_diagnostics")
+    if isinstance(uk, Mapping):
+        weights = uk.get("weights")
+        if isinstance(weights, Mapping):
+            observations.append(
+                ("uk_diagnostics.weights.n_records", weights.get("n_records"))
+            )
+    target_surface = diagnostics.get("target_surface")
+    if isinstance(target_surface, Mapping) and "n_records" in target_surface:
+        observations.append(("target_surface.n_records", target_surface["n_records"]))
+    for field, value in observations:
+        if isinstance(value, bool) or not isinstance(value, int) or value != expected:
+            failures.append(
+                "calibration_diagnostics.json canonical UK "
+                f"{field} must equal release-id record count {expected}, got "
+                f"{value!r}."
+            )
 
 
 def _check_us_release_has_no_split_microdata_artifacts(
@@ -902,13 +987,18 @@ def _check_uk_calibration_diagnostics(
         field="uk_diagnostics.weights.zero_weight_records",
         failures=failures,
     )
-    for field in ("total_weight", "max_weight"):
-        _uk_finite_number(
-            weights.get(field),
-            field=f"uk_diagnostics.weights.{field}",
-            failures=failures,
-            minimum=0.0,
-        )
+    _uk_finite_number(
+        weights.get("total_weight"),
+        field="uk_diagnostics.weights.total_weight",
+        failures=failures,
+        minimum=0.0,
+    )
+    max_weight = _uk_finite_number(
+        weights.get("max_weight"),
+        field="uk_diagnostics.weights.max_weight",
+        failures=failures,
+        minimum=0.0,
+    )
     ess = _uk_finite_number(
         weights.get("effective_sample_size"),
         field="uk_diagnostics.weights.effective_sample_size",
@@ -960,6 +1050,7 @@ def _check_uk_calibration_diagnostics(
     target_surface = diagnostics.get("target_surface")
     if (
         isinstance(target_surface, Mapping)
+        and "n_records" in target_surface
         and n_records is not None
         and target_surface.get("n_records") != n_records
     ):
@@ -1009,7 +1100,7 @@ def _check_uk_calibration_diagnostics(
             failures=failures,
             minimum=0.0,
         )
-        _uk_finite_number(
+        valid_ratio = _uk_finite_number(
             ratio,
             field="uk_diagnostics.weights.max_to_median_positive_weight",
             failures=failures,
@@ -1019,6 +1110,23 @@ def _check_uk_calibration_diagnostics(
             failures.append(
                 "calibration_diagnostics.json UK positive weights require a "
                 "strictly positive median_positive_weight."
+            )
+        if (
+            valid_median is not None
+            and valid_median > 0.0
+            and max_weight is not None
+            and valid_ratio is not None
+            and not math.isclose(
+                valid_ratio,
+                max_weight / valid_median,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+        ):
+            failures.append(
+                "calibration_diagnostics.json UK "
+                "max_to_median_positive_weight must equal "
+                "max_weight/median_positive_weight."
             )
     if (
         n_records is not None
@@ -1589,6 +1697,9 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
             _check_local_area_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_calibration_diagnostics(diagnostics, failures)
+                _check_uk_exact_k_diagnostics_identity(
+                    diagnostics, release_id, failures
+                )
 
     coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if coverage_path.is_file():
@@ -1912,6 +2023,11 @@ def validate_release_dir(release_dir: Path | str) -> None:
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
 
+    TODO(#578 H5 household-count reconciliation): when the first modern UK
+    exact-k release is actually cut, bind these manifest/diagnostic counts to
+    the household row count read from its shipped H5. There is deliberately no
+    stub H5 check before that release artifact exists.
+
     Args:
         release_dir: The local ``releases/<build_id>`` directory about to be
             published.
@@ -1994,6 +2110,9 @@ def validate_release_dir(release_dir: Path | str) -> None:
             )
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_calibration_diagnostics(diagnostics, failures)
+                _check_uk_exact_k_diagnostics_identity(
+                    diagnostics, release_id, failures
+                )
             if release_id.startswith("populace-us-"):
                 _check_us_critical_target_fit(diagnostics, failures)
 
