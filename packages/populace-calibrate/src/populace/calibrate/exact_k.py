@@ -42,6 +42,7 @@ import numpy as np
 __all__ = ["assert_exact_k_support", "select_exact_k"]
 
 SelectionReceipt = dict[str, int | float | str]
+_INDEX_DTYPE = np.dtype("<i8")
 
 # Exact dynamic programming is robust for numerically concentrated designs but
 # costs O(pool_size * sample_size) time and memory. Larger designs use the
@@ -88,13 +89,13 @@ def assert_exact_k_support(
             f"len(support)={len(indices)} != k={expected}."
         )
     if indices.size == 0:
-        normalized = np.empty(0, dtype=np.int64)
+        normalized = np.empty(0, dtype=_INDEX_DTYPE)
     else:
         if not np.issubdtype(indices.dtype, np.integer) or np.issubdtype(
             indices.dtype, np.bool_
         ):
             raise ValueError("exact-k support indices must be integers.")
-        normalized = np.asarray(indices, dtype=np.int64).copy()
+        normalized = np.asarray(indices, dtype=_INDEX_DTYPE).copy()
         if np.unique(normalized).size != normalized.size:
             raise ValueError("exact-k support indices must be unique.")
 

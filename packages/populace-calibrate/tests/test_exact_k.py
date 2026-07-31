@@ -140,6 +140,8 @@ def test_same_seed_is_identical_and_different_seeds_change_valid_support() -> No
     different, _ = select_exact_k(pi, k=7, pi_hi=0.95, seed=124)
 
     np.testing.assert_array_equal(first, replay)
+    np.testing.assert_array_equal(first, [1, 2, 3, 4, 11, 13, 17])
+    assert first.dtype.str == "<i8"
     assert first.tobytes() == replay.tobytes()
     assert first_receipt == replay_receipt
     assert not np.array_equal(first, different)
