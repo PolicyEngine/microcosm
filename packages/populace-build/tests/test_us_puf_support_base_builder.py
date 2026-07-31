@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from populace.build import FitWeightRecord
+from populace.build.outer_stage_runtime import frame_identity
 from populace.build.us_runtime import (
     US_PUF_SUPPORT_FIT_NAME,
     clone_us_frame_for_puf_support,
@@ -77,6 +78,150 @@ def _minimal_us_frame() -> Frame:
         )
     }
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def _raw_asec_frame() -> Frame:
+    source = _minimal_us_frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    person = tables["person"].drop(columns=["employment_income_before_lsr"])
+    person["source_year"] = np.asarray([2022, 2022, 2022], dtype=np.int64)
+    person["source_household_id"] = np.asarray([101, 101, 202], dtype=np.int64)
+    person["source_person_id"] = np.asarray(
+        [f"{value:022d}" for value in (1, 2, 3)],
+        dtype=object,
+    )
+    person["source_row_id"] = np.asarray([0, 1, 2], dtype=np.int64)
+    person["PERIDNUM"] = person["source_person_id"].to_numpy()
+    person["P_SEQ"] = np.asarray([1, 2, 1], dtype=np.int64)
+    person["A_LINENO"] = np.asarray([1, 2, 1], dtype=np.int64)
+    person["A_AGE"] = np.asarray([31, 29, 50], dtype=np.int64)
+    tables["person"] = person
+    return Frame(
+        tables,
+        source.schema,
+        {
+            entity: source.weights_for(entity)
+            for entity in source.weighted_entities
+        },
+        pd.Series(["asec_2022"] * 3, name="stratum"),
+    )
+
+
+def _weeks_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "LKWEEKS": [7, -1, 12],
+        }
+    )
+    source.attrs["source_audit"] = {"rows": 3}
+    return source
+
+
+def _education_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "source_year": [2022, 2022, 2022],
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "ED_VAL": [0.0, 500.0, 1_000.0],
+        }
+    )
+    source.attrs["source_audit"] = {2022: {"rows": 3}}
+    return source
+
+
+def _pooled_source_receipt(tmp_path: Path) -> dict[str, object]:
+    return {
+        "kind": "pooled_asec",
+        "target_year": 2022,
+        "sources": [
+            {
+                "year": 2022,
+                "path": str((tmp_path / "asec_2022.h5").resolve()),
+                "sha256": "a" * 64,
+                "share": 1.0,
+                "max_households": None,
+            }
+        ],
+        "support_spine_spec": None,
+        "metadata": {"weighted_person_population": 400.0},
+    }
+
+
+def _with_person_column(frame: Frame, column: str, values: np.ndarray) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][column] = values
+    return Frame(
+        tables,
+        frame.schema,
+        {
+            entity: frame.weights_for(entity)
+            for entity in frame.weighted_entities
+        },
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _raw_stage_args(builder, tmp_path: Path):
+    return builder._parse_args(
+        [
+            "--asec-h5",
+            f"2022={tmp_path / 'asec_2022.h5'}",
+            "--target-year",
+            "2022",
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--asec-2023-weeks-unemployed-source",
+            str(tmp_path / "asec_weeks.zip"),
+            "--asec-education-source",
+            f"2022={tmp_path / 'asec_education.zip'}",
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+            "--stage",
+            "source_construction",
+            "--checkpoint-dir",
+            str(tmp_path / "checkpoints"),
+        ]
+    )
+
+
+def _patch_raw_stage_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    builder,
+    *,
+    frame: Frame,
+    source_receipt: dict[str, object],
+) -> None:
+    monkeypatch.setattr(
+        builder,
+        "_load_base_frame_from_args",
+        lambda _args: (frame, source_receipt),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        lambda _path: _weeks_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_education_assistance_sources",
+        lambda _paths, *, income_years: _education_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "raw-stage-fixture"},
+    )
+    monkeypatch.setattr(builder, "_sha256", lambda _path: "f" * 64)
 
 
 def _support_donor() -> pd.DataFrame:
@@ -532,6 +677,178 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
     assert tuple(name for name, _boundaries in builder.STAGE_BOUNDARIES) == expected
 
 
+def test_raw_stage_copy_adds_only_exact_source_mappings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    source = _raw_asec_frame()
+    before = frame_identity(source)
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        lambda _path: _weeks_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_education_assistance_sources",
+        lambda _paths, *, income_years: _education_source(),
+    )
+
+    raw, mappings = builder._asec_raw_source_mapping_frame(
+        args,
+        source,
+        weeks_path=tmp_path / "asec_weeks.zip",
+    )
+
+    assert frame_identity(source) == before
+    assert "LKWEEKS" not in source.table("person")
+    assert "ED_VAL" not in source.table("person")
+    assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
+    assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert set(mappings) == {"ED_VAL", "LKWEEKS"}
+    assert all(
+        mapping["operation"] == "exact_source_join"
+        and mapping["join_keys"] == ["source_year", "PERIDNUM"]
+        for mapping in mappings.values()
+    )
+    builder.assert_operator_free_source_frame(raw, label="raw-stage fixture")
+
+
+def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    source = _raw_asec_frame()
+    _patch_raw_stage_sources(
+        monkeypatch,
+        builder,
+        frame=source,
+        source_receipt=_pooled_source_receipt(tmp_path),
+    )
+
+    def add_age(frame: Frame, **_kwargs) -> Frame:
+        return _with_person_column(
+            frame,
+            "age",
+            frame.table("person")["A_AGE"].to_numpy(),
+        )
+
+    baseline_runtime = builder.StageRuntime(
+        tmp_path / "legacy-baseline",
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=builder._stage_run_config(args),
+    )
+    baseline_source = baseline_runtime.complete("source_construction", source)
+    baseline_enriched = baseline_runtime.complete(
+        "pre_clone_enrichment",
+        add_age(source),
+    )
+
+    monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", add_age)
+    identity_transforms = (
+        "with_us_prior_year_income_inputs",
+        "with_us_relationship_inputs",
+        "with_us_medicare_take_up_input",
+        "with_us_eligibility_inputs",
+        "with_us_pregnancy_inputs",
+        "with_us_wic_claim_input",
+        "with_us_child_support_inputs",
+        "with_us_disability_benefits",
+        "with_us_workers_compensation",
+        "with_us_weeks_unemployed",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_retirement_distribution_inputs",
+        "with_us_immigration_inputs",
+    )
+    for name in identity_transforms:
+        monkeypatch.setattr(builder, name, lambda value, **_kwargs: value)
+    passing_gate = SimpleNamespace(passed=True, failures=(), details={})
+    for name in (
+        "us_relationship_inputs_signal_gate",
+        "us_medicare_take_up_signal_gate",
+        "us_housing_inputs_signal_gate",
+        "us_eligibility_inputs_signal_gate",
+        "us_pregnancy_signal_gate",
+        "us_wic_claim_signal_gate",
+    ):
+        monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
+
+    builder._run_outer_stage(args)
+    runtime = builder.StageRuntime(
+        args.checkpoint_dir,
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=builder._stage_run_config(args),
+    )
+    source_checkpoint = runtime.load("source_construction")
+    assert frame_identity(source_checkpoint.frame) == frame_identity(source)
+    assert source_checkpoint.path.read_bytes() == baseline_source.path.read_bytes()
+    assert "ED_VAL" not in source_checkpoint.frame.table("person")
+    assert "LKWEEKS" not in source_checkpoint.frame.table("person")
+
+    raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    raw, raw_metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
+    assert raw_metadata["stage"] == "raw_source_mapping"
+    assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
+    assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert "age" not in raw.table("person")
+    assert [path.name for path in args.checkpoint_dir.glob("*.frame.h5")] == [
+        "000_source_construction.frame.h5"
+    ]
+
+    args.stage = "pre_clone_enrichment"
+    builder._run_outer_stage(args)
+    enriched_checkpoint = runtime.load("pre_clone_enrichment")
+    enriched = enriched_checkpoint.frame
+    assert enriched_checkpoint.path.read_bytes() == baseline_enriched.path.read_bytes()
+    assert enriched.table("person")["age"].tolist() == [31, 29, 50]
+    assert "ED_VAL" not in enriched.table("person")
+    assert "LKWEEKS" not in enriched.table("person")
+    assert sorted(
+        path.name for path in args.checkpoint_dir.glob("*.frame.h5")
+    ) == [
+        "000_source_construction.frame.h5",
+        "001_pre_clone_enrichment.frame.h5",
+    ]
+
+
+def test_completed_source_stage_repairs_raw_auxiliary_without_rewriting_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    source = _raw_asec_frame()
+    _patch_raw_stage_sources(
+        monkeypatch,
+        builder,
+        frame=source,
+        source_receipt=_pooled_source_receipt(tmp_path),
+    )
+
+    builder._run_outer_stage(args)
+    raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    source_path = args.checkpoint_dir / "000_source_construction.frame.h5"
+    context_path = args.checkpoint_dir / "stage_run_context.json"
+    expected_raw = raw_path.read_bytes()
+    expected_source = source_path.read_bytes()
+    expected_context = context_path.read_bytes()
+    raw_path.unlink()
+
+    builder._run_outer_stage(args)
+
+    assert raw_path.read_bytes() == expected_raw
+    assert source_path.read_bytes() == expected_source
+    assert context_path.read_bytes() == expected_context
+    repaired, _metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
+    assert repaired.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+
+
 def test_source_and_preclone_stages_round_trip_design_weight_kind(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -615,6 +932,9 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "pre_clone_enrichment",
     )
     assert loaded.frame.weights_for("household").kind is WeightKind.DESIGN
+    assert not (
+        args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    ).exists()
 
 
 def test_weeks_post_clone_rejects_source_content_drift(

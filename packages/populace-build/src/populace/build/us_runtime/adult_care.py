@@ -72,6 +72,7 @@ from populace.build.source_runtime import (
 )
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PERSON_SUPPORT_CHANNEL_COLUMN,
     has_support_role_metadata,
     support_role_series,
 )
@@ -104,7 +105,7 @@ US_ADULT_CARE_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "PEDISDRS",
     "spm_unit_pre_subsidy_childcare_expenses",
     "is_full_time_college_student",
-    "person_support_channel",
+    PERSON_SUPPORT_CHANNEL_COLUMN,
 )
 # 26 USC 21(b)(1)(A): a dependent under this age qualifies by age (the
 # engine's gov.irs.credits.cdcc.eligibility.child_age parameter carries the
@@ -124,7 +125,6 @@ _STUDENT_SOURCE = "is_full_time_college_student"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _TAX_UNIT_WEIGHT_COLUMN = "adult_care_tax_unit_weight"
 _SPM_UNIT_WEIGHT_COLUMN = "adult_care_spm_unit_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _ROLE_COLUMN = "tax_unit_role_input"
 _AGE_COLUMN = "age"
 _FLAG_SHARE_BAND = (0.002, 0.12)
@@ -262,7 +262,7 @@ def derive_us_adult_care_from_manifest(
         "self_care_difficulty_source": _SELF_CARE_SOURCE,
         "childcare_expense_source": _CHILDCARE_SOURCE,
         "full_time_student_source": _STUDENT_SOURCE,
-        "support_channel_source": _PERSON_SUPPORT_CHANNEL_COLUMN,
+        "support_channel_source": PERSON_SUPPORT_CHANNEL_COLUMN,
         "child_qualifying_age_limit": US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT,
         "earned_income_sources": list(US_ADULT_CARE_EARNED_INCOME_SOURCES),
         "seed_from_build_config": True,

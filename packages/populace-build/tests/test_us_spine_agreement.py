@@ -12,6 +12,7 @@ from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.spine_agreement import (
+    DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE,
     DEFAULT_INCIDENCE_RATIO_BOUNDS,
     DEFAULT_QUANTILE_ENVELOPE_TOLERANCE,
     DEFAULT_SPINE_AGREEMENT_QUANTILES,
@@ -94,6 +95,7 @@ def test_default_registry_exactly_covers_chartered_agreement_surface() -> None:
     assert DEFAULT_INCIDENCE_RATIO_BOUNDS == (0.8, 1.25)
     assert DEFAULT_SPINE_AGREEMENT_QUANTILES == (0.10, 0.25, 0.50, 0.75, 0.90)
     assert DEFAULT_QUANTILE_ENVELOPE_TOLERANCE == 0.25
+    assert DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE == 0.25
 
 
 def test_registry_normalizes_and_merges_qrf_batches() -> None:
@@ -205,6 +207,72 @@ def test_gate_batches_incidence_and_quantile_failures_across_columns() -> None:
     assert all(
         failure.startswith("[us_spine_agreement]") for failure in report.failures
     )
+
+
+def test_gate_checks_joint_categorical_distribution_not_only_marginals() -> None:
+    frame = _Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_support_channel": [
+                        "acs",
+                        "acs",
+                        "asec",
+                        "asec",
+                    ],
+                    "ssn_card_type": [
+                        "CITIZEN",
+                        "NONE",
+                        "CITIZEN",
+                        "NONE",
+                    ],
+                    "immigration_status_str": [
+                        "CITIZEN",
+                        "UNDOCUMENTED",
+                        "UNDOCUMENTED",
+                        "CITIZEN",
+                    ],
+                }
+            )
+        },
+        {"person": [1.0, 1.0, 1.0, 1.0]},
+    )
+    spec = SpineAgreementSpec(
+        entity="person",
+        family="source_operator_immigration",
+        columns=("ssn_card_type", "immigration_status_str"),
+        joint_categorical_groups=(
+            ("ssn_card_type", "immigration_status_str"),
+        ),
+    )
+
+    result = spine_agreement_gate(frame, registry=(spec,))
+
+    assert not result.passed
+    assert result.failures == (
+        "person/source_operator_immigration/"
+        "joint[ssn_card_type,immigration_status_str]/acs_vs_asec: weighted "
+        "categorical total-variation distance 1 exceeds 0.25.",
+    )
+    comparisons = result.details["comparisons"]
+    assert comparisons[
+        "person/source_operator_immigration/ssn_card_type/acs_vs_asec"
+    ]["categorical_total_variation_distance"] == 0.0
+    assert comparisons[
+        "person/source_operator_immigration/immigration_status_str/acs_vs_asec"
+    ]["categorical_total_variation_distance"] == 0.0
+    joint = comparisons[
+        "person/source_operator_immigration/"
+        "joint[ssn_card_type,immigration_status_str]/acs_vs_asec"
+    ]
+    assert joint["categorical_total_variation_distance"] == 1.0
+    assert result.details["checked_columns"] == 2
+    assert result.details["checked_joint_categorical_groups"] == 1
+    assert result.details["checked_spine_pairs"] == 3
+    assert result.details["tested_spine_pairs"] == 3
+    assert result.details["tolerances"][
+        "max_categorical_total_variation_distance"
+    ] == 0.25
 
 
 def test_default_registry_rejects_403_shaped_ssi_spine_disagreement() -> None:
@@ -508,4 +576,11 @@ def test_malformed_registry_fails_closed() -> None:
             entity="person",
             family="numeric",
             columns=["amount"],
+        )
+    with pytest.raises(ValueError, match="invalid joint categorical"):
+        SpineAgreementSpec(
+            entity="person",
+            family="categorical",
+            columns=("first", "second"),
+            joint_categorical_groups=(("first", "missing"),),
         )

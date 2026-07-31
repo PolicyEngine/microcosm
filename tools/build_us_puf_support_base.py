@@ -32,12 +32,23 @@ from populace.build.outer_stage_runtime import (
     StageRuntime,
     assert_clone_expansion,
     assert_unchanged_identity,
+    frame_identity,
 )
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime import (
+    ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
+    ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+    ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_YEAR,
+    ASEC_2023_WEEKS_UNEMPLOYED_ZIP_URL,
+    ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
+    ASEC_RAW_STAGE_ARTIFACT_KIND,
+    ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
+    ASEC_RAW_STAGE_OPERATOR_STATUS,
+    ASEC_RAW_STAGE_SCHEMA_VERSION,
+    ASEC_RAW_STAGE_STAGE,
     BASE_ASEC_SUPPORT_CHANNEL,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -52,6 +63,7 @@ from populace.build.us_runtime import (
     US_SOURCE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
     AsecSource,
+    assert_operator_free_source_frame,
     build_pooled_asec_unit_frame,
     build_puf_e01000_reconciliation_basis,
     clone_us_frame_for_puf_support,
@@ -59,12 +71,15 @@ from populace.build.us_runtime import (
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
     fetch_asec_2023_weeks_unemployed_source,
+    fill_asec_2022_weeks_unemployed_source,
+    fill_asec_education_assistance_source,
     finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
     load_acs_2022_rent_donor,
     load_asec_2023_weeks_unemployed_source,
     load_asec_education_assistance_sources,
+    load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
@@ -1652,7 +1667,14 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         run_config=_stage_run_config(args),
     )
     if args.stage in runtime.context.completed:
-        if args.stage == "final_export":
+        if args.stage == "source_construction" and args.asec_h5 is not None:
+            loaded = runtime.load("source_construction")
+            _ensure_asec_raw_stage_checkpoint(
+                args,
+                loaded.frame,
+                runtime.metadata["source_construction"],
+            )
+        elif args.stage == "final_export":
             _repair_completed_final_stage(args, runtime)
         elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
             _ensure_capital_gains_tail_manifest(
@@ -1668,6 +1690,8 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                     "source construction unexpectedly has a predecessor"
                 )
             frame, metadata = _source_construction_stage(args)
+            if args.asec_h5 is not None:
+                _ensure_asec_raw_stage_checkpoint(args, frame, metadata)
             runtime.complete(args.stage, frame, metadata=metadata)
             return
 
@@ -1782,6 +1806,177 @@ def _source_construction_stage(
         "base_rows": _row_counts(frame),
         "base_household_weight_total": float(frame.weights_for("household").total),
         "weeks_unemployed_source_path": str(Path(weeks_path).resolve()),
+    }
+
+
+def _ensure_asec_raw_stage_checkpoint(
+    args: argparse.Namespace,
+    source_frame: Frame,
+    source_metadata: Mapping[str, object],
+) -> dict[str, object]:
+    """Verify or atomically repair the auxiliary operator-untouched artifact."""
+
+    if args.asec_h5 is None:
+        raise ValueError("ASEC raw-stage checkpoint requires pooled --asec-h5 inputs.")
+    source_receipt = source_metadata.get("base_source")
+    if not isinstance(source_receipt, Mapping) or (
+        source_receipt.get("kind") != "pooled_asec"
+    ):
+        raise ValueError(
+            "ASEC raw-stage checkpoint requires the source-construction "
+            "pooled_asec receipt."
+        )
+    raw_frame, raw_source_mappings = _asec_raw_source_mapping_frame(
+        args,
+        source_frame,
+        weeks_path=Path(str(source_metadata["weeks_unemployed_source_path"])),
+    )
+    metadata: dict[str, object] = json.loads(
+        json.dumps(
+            {
+                "artifact_kind": ASEC_RAW_STAGE_ARTIFACT_KIND,
+                "identity": frame_identity(raw_frame).to_payload(),
+                "operator_status": ASEC_RAW_STAGE_OPERATOR_STATUS,
+                "pipeline_sha256": OUTER_STAGE_PIPELINE.sha256,
+                "raw_source_mappings": raw_source_mappings,
+                "schema_version": ASEC_RAW_STAGE_SCHEMA_VERSION,
+                "source_construction_identity": frame_identity(
+                    source_frame
+                ).to_payload(),
+                "source_receipt": dict(source_receipt),
+                "stage": ASEC_RAW_STAGE_STAGE,
+            },
+            allow_nan=False,
+            sort_keys=True,
+        )
+    )
+    checkpoint_path = args.checkpoint_dir / ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    if checkpoint_path.is_file():
+        try:
+            existing_frame, existing_metadata = load_asec_raw_stage_checkpoint(
+                checkpoint_path
+            )
+        except (OSError, TypeError, ValueError):
+            pass
+        else:
+            if existing_metadata == metadata and _frames_exactly_equal(
+                existing_frame,
+                raw_frame,
+            ):
+                return existing_metadata
+
+    write_frame_checkpoint(checkpoint_path, raw_frame, metadata=metadata)
+    return metadata
+
+
+def _frames_exactly_equal(left: Frame, right: Frame) -> bool:
+    """Compare every persisted Frame component without value coercion."""
+
+    if (
+        left.schema != right.schema
+        or left.entities != right.entities
+        or left.links != right.links
+        or left.weighted_entities != right.weighted_entities
+        or left.mass_log != right.mass_log
+        or left.metadata != right.metadata
+        or not left.strata.equals(right.strata)
+    ):
+        return False
+    if any(
+        not left.table(entity).equals(right.table(entity))
+        for entity in left.entities
+    ):
+        return False
+    if any(not left.link(name).equals(right.link(name)) for name in left.links):
+        return False
+    return all(
+        left.weights_for(entity).kind == right.weights_for(entity).kind
+        and np.array_equal(
+            left.weights_for(entity).values,
+            right.weights_for(entity).values,
+        )
+        for entity in left.weighted_entities
+    )
+
+
+def _asec_raw_source_mapping_frame(
+    args: argparse.Namespace,
+    source_frame: Frame,
+    *,
+    weeks_path: Path,
+) -> tuple[Frame, dict[str, object]]:
+    """Copy source construction and add only exact measured ASEC joins."""
+
+    weeks_source = load_asec_2023_weeks_unemployed_source(weeks_path)
+    education_source = load_asec_education_assistance_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
+    tables = {
+        entity: source_frame.table(entity).copy(deep=True)
+        for entity in source_frame.entities
+    }
+    person = fill_asec_2022_weeks_unemployed_source(
+        tables["person"],
+        weeks_source,
+    )
+    person = fill_asec_education_assistance_source(person, education_source)
+    tables["person"] = person
+    raw_frame = Frame(
+        tables,
+        source_frame.schema,
+        {
+            entity: Weights(
+                source_frame.weights_for(entity).values.copy(),
+                source_frame.weights_for(entity).kind,
+            )
+            for entity in source_frame.weighted_entities
+        },
+        source_frame.strata.copy(deep=True),
+        mass_log=source_frame.mass_log,
+        metadata=source_frame.metadata,
+    )
+    assert_operator_free_source_frame(
+        raw_frame,
+        label="producer ASEC raw_source_mapping artifact",
+    )
+    education_pins = [
+        {
+            "income_year": income_year,
+            "locator": ASEC_EDUCATION_ASSISTANCE_ARCHIVES[income_year].zip_url,
+            "member": ASEC_EDUCATION_ASSISTANCE_ARCHIVES[income_year].member,
+            "member_sha256": (
+                ASEC_EDUCATION_ASSISTANCE_ARCHIVES[income_year].member_sha256
+            ),
+            "sha256": ASEC_EDUCATION_ASSISTANCE_ARCHIVES[income_year].zip_sha256,
+        }
+        for income_year in _pooled_income_years(args)
+    ]
+    return raw_frame, {
+        "ED_VAL": {
+            "audit": dict(education_source.attrs.get("source_audit", {})),
+            "column": "ED_VAL",
+            "entity": "person",
+            "join_keys": ["source_year", "PERIDNUM"],
+            "operation": "exact_source_join",
+            "source_pins": education_pins,
+        },
+        "LKWEEKS": {
+            "audit": dict(weeks_source.attrs.get("source_audit", {})),
+            "column": "LKWEEKS",
+            "entity": "person",
+            "join_keys": ["source_year", "PERIDNUM"],
+            "operation": "exact_source_join",
+            "source_pins": [
+                {
+                    "income_year": ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_YEAR,
+                    "locator": ASEC_2023_WEEKS_UNEMPLOYED_ZIP_URL,
+                    "member": ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
+                    "member_sha256": ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
+                    "sha256": ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+                }
+            ],
+        },
     }
 
 
