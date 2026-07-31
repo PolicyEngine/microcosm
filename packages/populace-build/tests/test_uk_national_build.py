@@ -36,9 +36,28 @@ def _isolate_generic_seam_from_shipped_family_contract(monkeypatch) -> None:
     monkeypatch.setattr(
         national_build,
         "uk_terminal_gate_report",
-        lambda _dataset, _engine, *, input_coverage_evaluator, **_kwargs: GateReport(
-            (input_coverage_evaluator(),)
+        lambda dataset, engine, **_kwargs: GateReport(
+            (national_build.uk_release_input_coverage_gate(dataset, engine),)
         ),
+    )
+
+    def write_generic_seam_report(report, path):
+        output = Path(path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {"schema_version": 2, "enforced": True, **report.to_manifest()},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        return output
+
+    monkeypatch.setattr(
+        national_build,
+        "write_uk_terminal_gate_report",
+        write_generic_seam_report,
     )
 
 
@@ -259,7 +278,6 @@ def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _passing_gate(),
     )
-
     build_uk_national_dataset(
         input_h5=input_h5,
         staging_h5=staging_h5,
@@ -297,7 +315,6 @@ def test_national_build_gate_failure_writes_diagnostic_not_h5(
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _failing_gate(),
     )
-
     with pytest.raises(RuntimeError, match="Release gates failed"):
         build_uk_national_dataset(
             input_h5=input_h5,
@@ -392,7 +409,7 @@ def test_national_build_real_terminal_batch_passes_before_staging(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from populace.build.uk_runtime import national_build
+    from populace.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "healthy.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -405,6 +422,11 @@ def test_national_build_real_terminal_batch_passes_before_staging(
     )
     monkeypatch.setattr(
         national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _passing_gate(),
     )
@@ -452,7 +474,7 @@ def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from populace.build.uk_runtime import national_build
+    from populace.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "defective.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -465,6 +487,11 @@ def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
     )
     monkeypatch.setattr(
         national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _failing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _failing_gate(),
     )
@@ -507,7 +534,7 @@ def test_national_build_includes_parity_trio_only_with_real_evidence(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from populace.build.uk_runtime import national_build
+    from populace.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "healthy.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -520,6 +547,11 @@ def test_national_build_includes_parity_trio_only_with_real_evidence(
     )
     monkeypatch.setattr(
         national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _passing_gate(),
     )

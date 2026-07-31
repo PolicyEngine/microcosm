@@ -18,12 +18,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+import populace.build.uk_runtime.release_input_coverage as _release_input_coverage
 from populace.build.gates import GateReport, GateResult
 from populace.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
-    uk_release_input_coverage_gate,
 )
 from populace.build.uk_runtime.terminal_gates import (
     UKReleaseParityEvidence,
@@ -31,6 +31,11 @@ from populace.build.uk_runtime.terminal_gates import (
     write_uk_terminal_gate_report,
 )
 from populace.frame import MassChangeRecord, WeightKind
+
+# Retained as the existing library-test monkeypatch seam. Production terminal
+# evaluation resolves the same function inside terminal_gates so its policy
+# attestation can identify the builtin evaluator.
+uk_release_input_coverage_gate = _release_input_coverage.uk_release_input_coverage_gate
 
 __all__ = [
     "UKNationalBuildResult",
@@ -418,10 +423,6 @@ def build_uk_national_dataset(
     terminal_gates = uk_terminal_gate_report(
         dataset,
         engine,
-        input_coverage_evaluator=lambda: uk_release_input_coverage_gate(
-            dataset,
-            engine,
-        ),
         fit_weight_records=fit_weight_records,
         require_fit_weight_records=require_fit_weight_records,
         parity_evidence=parity_evidence,

@@ -9,10 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.gates import FitWeightRecord, GateResult
+from populace.build.gates import FitWeightRecord, GateReport, GateResult
 from populace.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    UK_TERMINAL_GATE_POLICY_SHA256,
+    UK_TERMINAL_GATE_PRODUCER,
     UKReleaseParityEvidence,
     UKZeroWeightStratumDeclaration,
     uk_degenerate_release_surface_gate,
@@ -404,8 +406,93 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
     written = write_uk_terminal_gate_report(report, output)
     payload = json.loads(written.read_text(encoding="utf-8"))
 
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["enforced"] is True
     assert payload["passed"] is True
     assert payload["gates"] == _gates(report)
+    attestation = payload["attestation"]
+    assert attestation["schema_version"] == 1
+    assert attestation["producer"] == UK_TERMINAL_GATE_PRODUCER
+    assert attestation["policy_sha256"] != UK_TERMINAL_GATE_POLICY_SHA256
+    assert attestation["evaluated_gates"] == [
+        "uk_release_input_coverage",
+        "degenerate_release_surface",
+        "zero_weight_strata",
+        "weight_ess",
+        "weight_ratio",
+    ]
+    assert set(attestation["evidence_sha256"]) == {"release_dataset"}
+    assert len(attestation["gate_results_sha256"]) == 64
+    assert len(attestation["sha256"]) == 64
     assert list(tmp_path.glob(".terminal_gates.json.*.tmp")) == []
+
+
+def test_terminal_report_writer_rejects_sol_composed_raw_parity_trio(
+    tmp_path,
+) -> None:
+    report = GateReport(
+        (
+            uk_export_surface_gate({"person.age"}, {"person.age"}),
+            uk_target_surface_gate({"ons/population"}, {"ons/population"}),
+            uk_target_fit_gate({"ons/population": 0.0}),
+        )
+    )
+    assert report.passed
+    output = tmp_path / "terminal_gates.json"
+
+    with pytest.raises(TypeError, match="returned by uk_terminal_gate_report"):
+        write_uk_terminal_gate_report(report, output)
+
+    assert not output.exists()
+
+
+def test_production_terminal_report_pins_policy_and_evidence_membership(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from populace.build.uk_runtime import terminal_gates
+
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _coverage(),
+    )
+    evidence = UKReleaseParityEvidence(
+        candidate_columns={"person.age"},
+        reference_columns={"person.age"},
+        candidate_targets={"ons/population"},
+        reference_targets={"ons/population"},
+        target_relative_errors={"ons/population": 0.01},
+    )
+    report = uk_terminal_gate_report(
+        _dataset(),
+        object(),
+        fit_weight_records=(FitWeightRecord("spi_qrf", "importance"),),
+        parity_evidence=evidence,
+    )
+    output = write_uk_terminal_gate_report(
+        report,
+        tmp_path / "terminal_gates.json",
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert UK_TERMINAL_GATE_POLICY_SHA256 == (
+        "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
+    )
+    assert payload["attestation"]["policy_sha256"] == (UK_TERMINAL_GATE_POLICY_SHA256)
+    assert payload["attestation"]["evaluated_gates"] == [
+        "uk_release_input_coverage",
+        "degenerate_release_surface",
+        "zero_weight_strata",
+        "weight_ess",
+        "weight_ratio",
+        "weights_audit",
+        "export_surface",
+        "target_surface",
+        "target_fit",
+    ]
+    assert set(payload["attestation"]["evidence_sha256"]) == {
+        "release_dataset",
+        "hmrc_spi_income",
+        "release_parity",
+    }
