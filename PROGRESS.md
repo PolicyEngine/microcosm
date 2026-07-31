@@ -2,47 +2,28 @@
 
 ## State
 
-Populace #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+PR #583 round-10 fix lane is in progress on
+`multispine-pool-build-578` from `9e9acf5`. The review HOLD identifies four
+mechanical closure gaps in the spine-blindness structural guard: nested-star
+payload poisoning, non-name loop targets, static-dict `.values()` iteration,
+and partial structures propagated through bindings.
 
 ## Done
 
-- Confirmed a clean starting worktree at `aef1c56`.
-- Read the repository guidance and established the #515 donor carve as the
-  screen's required downstream boundary.
-- Started source-level audits of every donor-frame consumer, checkpoint
-  validation, row-count pins, and existing donor-fact summaries.
-- Attempted the requested GitNexus impact workflow; the managed filesystem
-  denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
-  call sites and tests.
-- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
-  structural rationale and pinned-artifact receipts.
-- Added a whole-row screen on grouped raw person `home_mortgage_interest`
-  after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
-- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
-  checkpoint regression track the live constant while retaining literal-v1
-  corruptions.
-- Added regression coverage for the exact grouped boundary, whole-row removal,
-  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
-- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
-  audit, expected 208,611-row real-artifact effect, verification results, count
-  sweep, and deliberately untouched surfaces.
+- Confirmed the requested branch, clean worktree, and exact starting commit.
+- Read `CLAUDE.md`, the GitNexus debugging skill, and the authenticated
+  round-10 review log.
+- Recorded the required implementation, regression, documentation, precision,
+  suite, lint, graph-cleanliness, and no-push constraints.
 
 ## Next
 
-- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on populace#515.
+- Reproduce and trace all four bypasses through the current binder and loop
+  fallback.
+- Commit the reviewer's repros as self-tests, implement the four structural
+  fixes, and make the guard docstring match the final mechanics.
+- Run the guard file, full `populace-build` suite, repository ruff, and the
+  requested `acs_transfer` plus `congressional_district_vintage` cleanliness
+  checks.
+- Restore `PROGRESS.md` exactly to `origin/main`, commit all coherent steps
+  locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.
