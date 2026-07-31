@@ -1948,9 +1948,16 @@ def test_exact_k_uk_release_rejects_sol_k535080_n_records_two_probe(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "release-id record count 535080" in failures
-    assert "top-level n_records" in failures
-    assert "target_surface.n_records" in failures
+    for expected in (
+        "build_manifest.json canonical UK 'n_records'",
+        "release_manifest.json canonical UK 'record_count'",
+        "release_manifest.json canonical UK 'n_records'",
+        "canonical UK top-level n_records",
+        "canonical UK uk_diagnostics.weights.n_records",
+        "canonical UK target_surface.n_records",
+    ):
+        assert expected in failures
+    assert failures.count("release-id record count 535080") >= 6
 
 
 def test_exact_k_uk_release_rejects_sol_identity_field_probe(tmp_path: Path) -> None:
