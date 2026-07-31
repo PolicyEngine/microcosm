@@ -43,6 +43,8 @@ the deprecated-but-supported local ACS release producer.
   receipt, production wiring and the immutable 20-operator order are tested,
   and the pool-specific agreement registry covers every expanded transfer,
   take-up, SSI, and joint immigration surface.
+- Bound the raw artifact's declared source-construction identity to the live
+  structural identity, with a substituted-identity regression.
 - Added a readiness loader that accepts only a green manifest whose publication
   run ID and digests match the H5 metadata and agreement diagnostics; the three
   interruption regressions now exercise that reader as well as the tombstone.

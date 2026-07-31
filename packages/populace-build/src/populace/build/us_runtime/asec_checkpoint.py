@@ -177,6 +177,11 @@ def load_asec_raw_stage_checkpoint(
         metadata["source_construction_identity"],
         label="ASEC raw-stage source-construction identity",
     )
+    if source_construction_identity != actual_identity:
+        raise ValueError(
+            f"ASEC raw-stage checkpoint {checkpoint_path} no longer has the "
+            "source-construction structural identity it declares."
+        )
     metadata["identity"] = stored_identity.to_payload()
     metadata["source_construction_identity"] = (
         source_construction_identity.to_payload()

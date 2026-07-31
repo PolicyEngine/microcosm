@@ -344,6 +344,21 @@ def test_raw_loader_rejects_identity_not_bound_to_frame(tmp_path: Path) -> None:
         load_asec_raw_stage_checkpoint(path)
 
 
+def test_raw_loader_rejects_wrong_source_construction_identity(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "raw-wrong-source-identity.checkpoint.h5"
+    frame = _raw_us_frame()
+    metadata = _raw_binding(frame)
+    metadata["source_construction_identity"] = frame_identity(
+        _raw_us_frame(id_offset=100)
+    ).to_payload()
+    _write_checkpoint(path, frame, metadata=metadata)
+
+    with pytest.raises(ValueError, match="source-construction structural identity"):
+        load_asec_raw_stage_checkpoint(path)
+
+
 _OPERATOR_OUTPUT_CASES = tuple(
     (family, entity, column)
     for family, by_entity in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES.items()
