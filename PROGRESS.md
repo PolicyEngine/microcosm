@@ -25,15 +25,19 @@ the deprecated-but-supported local ACS release producer.
   under one run ID, publish them atomically, and write the readiness manifest
   last in `b75f352`. The three reviewer interruption points now retain a
   non-ready tombstone; focused H5/pool coverage passes (17 tests).
+- Restored the deprecated ACS staging CLI by delegating to the preserved
+  pre-shim implementation in `tools/_legacy` in `f8bcb3b`. Its local-release
+  recipe, summary/reviewed-null contract, helper compatibility, and legacy
+  suite pass (37 tests); focused Ruff is clean.
 - Established the required final constraint: this live checkpoint will be
   restored byte-for-byte to `origin/main` before handoff so no root journal
   ships in the PR diff.
 
 ## Next
 
-- Finish tracing the producer/pool and legacy-release artifact contracts.
+- Finish tracing the producer/pool raw artifact and operator contracts.
 - Add each reviewer repro as a failing regression before its implementation
   fix.
-- Fix and commit the raw-boundary and legacy-shim blockers.
+- Fix and commit the raw-boundary blocker.
 - Run the full `populace-build` suite and Ruff, write the external handoff, and
   restore `PROGRESS.md` to `origin/main`.
