@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from populace.calibrate import TargetRegistry, TargetSpec, calibrate
-from populace.frame import Frame, WeightKind
+from populace.frame import Frame, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -62,6 +62,335 @@ def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
     assert payload["enabled"] is True
     assert payload["n_households"] == 3
     assert payload["sha256"] == builder._sha256(path)
+
+
+def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> None:
+    builder = _load_builder_module()
+    import hashlib as _hashlib
+
+    import pandas as _pd
+
+    weights = Weights(
+        np.asarray([0.0, 12.0, 35.0]),
+        WeightKind.CALIBRATED,
+    )
+    ids = np.asarray([101, 202, 303], dtype="int64")
+    frame = SimpleNamespace(
+        n=lambda entity: 3 if entity == "household" else None,
+        weights_for=lambda entity: weights if entity == "household" else None,
+        table=lambda entity: _pd.DataFrame({"household_id": ids}),
+    )
+    identity = {"base_dataset_sha256": "probe-base", "seed": 0}
+
+    metadata = builder._write_final_household_weight_evidence(
+        tmp_path, frame, identity=identity
+    )
+
+    values_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
+    metadata_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    np.testing.assert_array_equal(
+        np.load(values_path, allow_pickle=False),
+        np.asarray([0.0, 12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(np.load(ids_path, allow_pickle=False), ids)
+    assert json.loads(metadata_path.read_text()) == metadata
+    assert metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "identity": {"base_dataset_sha256": "probe-base", "seed": 0},
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [3],
+            "sha256": builder._sha256(values_path),
+        },
+        "household_ids": {
+            "file": "final_household_weight_ids.npy",
+            "dtype": "int64",
+            "shape": [3],
+            "sha256": builder._sha256(ids_path),
+            "ordering_sha256": _hashlib.sha256(ids.tobytes()).hexdigest(),
+        },
+        "summary": {
+            "n_households": 3,
+            "household_weight_sum": 47.0,
+            "minimum": 0.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 1,
+        },
+    }
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
+    """populace#568 round 4: refusal placement is part of the contract —
+    one refusal call must precede the base download (the --release-id
+    path), and one must precede every output-directory mkdir (the
+    auto-generated-id path)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    refusals = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_refuse_certified_release_dir_reuse"
+    ]
+    downloads = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_download_base_h5"
+    ]
+    mkdirs = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mkdir"
+    ]
+    assert len(refusals) == 2
+    assert downloads and min(r.lineno for r in refusals) < min(
+        d.lineno for d in downloads
+    ), "the known-id refusal must precede the base download"
+    assert mkdirs and sorted(r.lineno for r in refusals)[1] < min(
+        m.lineno for m in mkdirs
+    ), "the unconditional refusal must precede every output mkdir"
+
+
+def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
+    """populace#568 round 3: a run pointed at a directory already carrying
+    release_manifest.json must refuse before writing anything — a failed
+    retry would otherwise mix its weight evidence with the prior certified
+    release."""
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "some-id"
+    release_dir.mkdir(parents=True)
+    builder._refuse_certified_release_dir_reuse(release_dir)  # absent: fine
+    (release_dir / "release_manifest.json").write_text("{}")
+    with pytest.raises(RuntimeError, match="already carries a certified"):
+        builder._refuse_certified_release_dir_reuse(release_dir)
+
+
+def test_dense_ssi_fences_cover_only_adults_and_cite_the_adjudication() -> None:
+    """The dense arm fences the adjudicated adult pair, not the child band."""
+    from populace.build.us_runtime.ssi_take_up import (
+        US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
+    )
+
+    builder = _load_builder_module()
+    fences = builder.US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
+    assert set(fences) == {"18_64", "65_plus"}
+    assert set(fences) < set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
+    assert "under_18" in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS
+    assert "under_18" not in fences
+    for band, text in fences.items():
+        assert "populace#566/#567" in text, band
+        assert "populace#508" in text, band
+        assert "Re-adjudicates" in text, band
+        assert "sparse certified" in text, band
+        # The adjudication must claim only what the artifacts support:
+        # recomputes failed to land the pair in band — NOT a proven
+        # periodic map (sol round-1 blocker 3). The refusal scans the
+        # WHOLE production sources, not just the constant, so a stray
+        # comment cannot reintroduce the overclaim (sol round 2).
+        assert "oscillat" not in text.lower(), band
+    import populace.build.us_runtime.ssi_take_up as ssi_module
+
+    for source_path in (Path(builder.__file__), Path(ssi_module.__file__)):
+        assert "oscillat" not in source_path.read_text().lower(), source_path
+
+
+def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
+    """The sparse certified arm must keep hard enforcement: structurally,
+    main()'s single _enforce_ssi_take_up_delivery call may pass the fence
+    table only under args.dense_default_dataset, with None otherwise (the
+    #443 AST-guard pattern)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_enforce_ssi_take_up_delivery"
+    ]
+    assert len(calls) == 1, "exactly one delivery-enforcement call site"
+    fence_kwargs = [kw for kw in calls[0].keywords if kw.arg == "enforcement_fences"]
+    assert len(fence_kwargs) == 1, "the call site must pass enforcement_fences"
+    value = fence_kwargs[0].value
+    assert isinstance(value, ast.IfExp), "fences must be arm-conditional"
+    assert isinstance(value.test, ast.Attribute)
+    assert getattr(value.test.value, "id", "") == "args"
+    assert value.test.attr == "dense_default_dataset"
+    assert getattr(value.body, "id", "") == "US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES"
+    assert isinstance(value.orelse, ast.Constant) and value.orelse.value is None
+
+
+def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
+    """A release built with fences must be distinguishable from one whose
+    bands passed enforcement: the delivery gate result (effective enforced
+    set + fenced rows with adjudication text) must ride the manifest gates
+    block, and main() must thread it into _build_manifests."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    manifest_calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_build_manifests"
+    ]
+    assert manifest_calls, "main() must call _build_manifests"
+    assert all(
+        any(kw.arg == "ssi_take_up_delivery_gate_result" for kw in call.keywords)
+        for call in manifest_calls
+    ), "every _build_manifests call must thread the delivery gate result"
+    build_fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_build_manifests"
+    )
+    carrier_dicts = [
+        node
+        for node in ast.walk(build_fn)
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value == "ssi_take_up_delivery"
+            for key in node.keys
+        )
+    ]
+    assert len(carrier_dicts) >= 2, (
+        "BOTH manifest writers (build_manifest.json gates block AND "
+        "release_manifest.json build section) must record the "
+        "ssi_take_up_delivery receipt — release_manifest.json alone has "
+        f"to distinguish fenced from enforced delivery; found "
+        f"{len(carrier_dicts)} carrier dict(s)"
+    )
+
+
+def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> None:
+    """populace#568 review blocker 2: the evidence pair must be written on
+    the batched gate-failure path ONLY — green runs carry weights in the
+    certified H5. Enforced structurally (the #443 AST-guard pattern): the
+    sole main() call site must sit inside the ``if terminal_gate_failures:``
+    branch, before its raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    calls: list[tuple[ast.Call, list[ast.AST]]] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.stack: list[ast.AST] = []
+
+        def generic_visit(self, node):
+            self.stack.append(node)
+            super().generic_visit(node)
+            self.stack.pop()
+
+        def visit_Call(self, node):
+            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+            if name == "_write_final_household_weight_evidence":
+                calls.append((node, list(self.stack)))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    main_calls = [
+        (node, stack)
+        for node, stack in calls
+        if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
+    ]
+    assert len(main_calls) == 1
+    call_node, stack = main_calls[0]
+    guarding_ifs = [
+        anc
+        for anc in stack
+        if isinstance(anc, ast.If)
+        and isinstance(anc.test, ast.Name)
+        and anc.test.id == "terminal_gate_failures"
+    ]
+    assert guarding_ifs, (
+        "final-household-weight evidence must be written inside the "
+        "terminal_gate_failures branch only"
+    )
+    guard = guarding_ifs[-1]
+    # The call must sit in the IF BODY (an else-branch call would run on
+    # green runs) and strictly before the branch's raise.
+    body_nodes = [n for stmt in guard.body for n in ast.walk(stmt)]
+    assert call_node in body_nodes, (
+        "evidence call must be in the terminal_gate_failures if-body, "
+        "not its else branch"
+    )
+    raises = [n for n in body_nodes if isinstance(n, ast.Raise)]
+    assert raises and call_node.lineno < min(r.lineno for r in raises), (
+        "evidence must be persisted before the batched raise"
+    )
+    # The green continuation must clean up a prior failed attempt's
+    # evidence (release-dir reuse, populace#568 round 2) before the
+    # certified dataset write.
+    main_fn = next(
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
+    )
+
+    def _is_bound_cleanup_for(node):
+        if not isinstance(node, ast.For) or node.lineno <= guard.end_lineno:
+            return False
+        # The iterable must BE a tuple (no slicing/subscript tricks) whose
+        # elements name all three evidence filename constants.
+        if not isinstance(node.iter, ast.Tuple):
+            return False
+        iter_names = {
+            name.id for name in ast.walk(node.iter) if isinstance(name, ast.Name)
+        }
+        if not iter_names >= {
+            "FINAL_HOUSEHOLD_WEIGHTS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME",
+        }:
+            return False
+        # The unlink must be called ON THE LOOP TARGET, not a decoy.
+        target = node.target.id if isinstance(node.target, ast.Name) else None
+        return target is not None and any(
+            isinstance(c, ast.Call)
+            and getattr(c.func, "attr", "") == "unlink"
+            and isinstance(getattr(c.func, "value", None), ast.Name)
+            and c.func.value.id == target
+            for stmt in node.body
+            for c in ast.walk(stmt)
+        )
+
+    cleanup_unlinks = [n for n in ast.walk(main_fn) if _is_bound_cleanup_for(n)]
+    dataset_writes = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "attr", "") == "write_dataset"
+        and n.lineno > guard.end_lineno
+    ]
+    assert cleanup_unlinks and dataset_writes, (
+        "green path must unlink ALL THREE stale evidence files (bound by "
+        "constant name) and write the dataset"
+    )
+    assert min(n.lineno for n in cleanup_unlinks) < min(
+        n.lineno for n in dataset_writes
+    ), "stale-evidence cleanup must precede the certified dataset write"
 
 
 def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
@@ -117,10 +446,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
-    # 10 = the child-disability stage rewrites under-15 is_disabled and the
-    # downstream SSI criterion before materialization; version-9 SIPP+SCF
-    # blend checkpoints do not carry that eligibility surface (#453/#509).
+    # 10 = #557 preserves the staged retirement surface through release
+    # materialization; pre-#557 QRF-refitted checkpoints (9) must not serve.
     assert identity["materializer_version"] == 10
     # The SSI prior-weight basis is identity-bearing (populace#543 instance
     # 2): unflagged runs carry the key as None.
@@ -179,10 +508,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    The child-disability stage changes pre-materialization input rows without
-    changing the on-disk base hash, so version-9 checkpoints lack child
-    disability and SSI-criteria signal.  The version constant participates in
-    the identity comparison; this pins the immediately previous version miss.
+    #557 changed the staged retirement-surface semantics: version-9
+    checkpoints can carry release-refitted leaves instead of the preserved
+    support-built surface. The version constant participates in the identity
+    comparison; this pins the stored-9 versus current-10 rejection directly.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -214,9 +543,11 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
-    # 9 = the #374 SIPP+SCF blend; 8 = the post-#539 ORG rewrite; and
-    # 7 = pre-#539. All must miss against expected materializer version 10.
+    # 9 = the pre-#557 release-refit world; 8 = the still-older pre-#374 blend
+    # world; 7 is the still-older pre-#539 world. All must miss against
+    # expected materializer version 10.
     stale_identity = {**dict(identity), "materializer_version": 9}
     older_identity = {**dict(identity), "materializer_version": 8}
     oldest_identity = {**dict(identity), "materializer_version": 7}
@@ -282,6 +613,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         # the basis-artifact key (populace#543 instance 2). The broader
         # frozen-assignment digest is covered separately below.
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
         ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
     )
     basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
@@ -414,6 +746,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
     stale_identity = {
         **fresh_identity,
@@ -459,6 +792,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256=None,
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
 
     def fail_materialize(*args, **kwargs):
@@ -938,7 +1272,16 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
 
+    base_load = source.index("base_frame = _load_frame(base_h5)")
+    tail_presence = source.index(
+        "capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(",
+        base_load,
+    )
     selection = source.index("base_frame, selection_report = select_frozen_support(")
+    tail_retention = source.index(
+        "assert_puf_capital_gains_tail_survives_selection(",
+        selection,
+    )
     regate = source.index(
         "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
     )
@@ -946,7 +1289,7 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
         "base_frame, base_population_repair = _with_base_population_mass_repair("
     )
 
-    assert selection < regate < mass_repair
+    assert base_load < tail_presence < selection < tail_retention < regate < mass_repair
     assert "Post-selection weeks-unemployed input signal failed" in source
 
 
@@ -3056,7 +3399,10 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
-@pytest.mark.parametrize("terminal_mode", ["merge", "crash", "telemetry"])
+@pytest.mark.parametrize(
+    "terminal_mode",
+    ["merge", "integrity", "retirement", "crash", "telemetry"],
+)
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
 ) -> None:
@@ -3065,6 +3411,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``merge``: SSI delivery + export other-health + the ctc sentinel all
     fail in one run — the batch carries every group in corridor order and
     the diagnostics artifact is written first.
+    ``integrity``: the persisted-flag FINAL-INTEGRITY gate reports a
+    Bernoulli-law violation; that failure reaches the written diagnostics
+    and the single terminal batch while the delivery gate passes and every
+    later terminal group still runs.
+    ``retirement``: an incomplete consume-only retirement surface reports its
+    missing leaves through the same written diagnostics and terminal batch,
+    while later terminal groups still run.
     ``crash``: the degraded-mode guards themselves are exercised — the
     health-input evaluation raises, the incumbent path is missing, and
     ``_release_gate_failures`` raises; each records a line instead of
@@ -3107,11 +3460,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "source_stage_events": [],
         "terminal_gate_events": [],
     }
+    retirement_missing_failure = (
+        "person columns missing: ['taxable_403b_distributions', 'keogh_distributions']."
+    )
 
     class FakeFrame:
         def n(self, entity):
             assert entity == "household"
             return 4
+
+    class FakeExportFrame:
+        def n(self, entity):
+            assert entity == "household"
+            return 2
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.asarray([12.0, 35.0]),
+                WeightKind.CALIBRATED,
+            )
+
+        def table(self, entity):
+            assert entity == "household"
+            return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
 
     argv = [
         "build_us_fiscal_refresh_release.py",
@@ -3182,6 +3554,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
+    if terminal_mode in {"integrity", "retirement", "telemetry"}:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -3244,6 +3617,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
     monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        lambda base_frame, selected_frame, *, require_present=False: {
+            "passed": True,
+            "status": "fixture",
+        },
+    )
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
@@ -3747,14 +4128,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_retirement_distributions_signal_gate(frame):
+        missing = terminal_mode == "retirement"
+        return builder.GateResult(
+            name="retirement_distributions_signal",
+            passed=not missing,
+            failures=((retirement_missing_failure,) if missing else ()),
+            details=(
+                {
+                    "missing": [
+                        "taxable_403b_distributions",
+                        "keogh_distributions",
+                    ]
+                }
+                if missing
+                else {"checked": True}
+            ),
+        )
+
     monkeypatch.setattr(
         builder,
         "us_retirement_distributions_signal_gate",
-        lambda frame: builder.GateResult(
-            name="retirement_distributions_signal",
-            passed=True,
-            details={"checked": True},
-        ),
+        fake_retirement_distributions_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4108,12 +4504,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return dict(fake_band_targets)
 
     fake_stage_priors = {"under_18": 0.3, "18_64": 0.4, "65_plus": 0.5}
-    # Schema-3 shape (populace#507/#508): main() reconstructs the prior
+    # Current schema-4 shape (populace#507/#508): main() reconstructs the prior
     # weight basis from these stage diagnostics with the REAL module helper
     # and threads it into the final release-weight measurement.
     fake_stage_diagnostics = {
         "checked": True,
-        "schema_version": 3,
+        "schema_version": 4,
         "measurement_phase": "assignment_stage",
         "prior_weight_basis": {
             "kind": "current_frame",
@@ -4151,13 +4547,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
         captured["ssi_take_up_gate_called"] = True
-        captured.setdefault("ssi_take_up_gate_calls", []).append(
-            {"diagnostics": diagnostics, "targets": dict(targets)}
-        )
+        gate_calls = captured.setdefault("ssi_take_up_gate_calls", [])
+        gate_calls.append({"diagnostics": diagnostics, "targets": dict(targets)})
         captured.setdefault("ssi_event_order", []).append("integrity_gate")
+        final_integrity_failure = terminal_mode == "integrity" and len(gate_calls) == 2
         return builder.GateResult(
             name="ssi_take_up",
-            passed=True,
+            passed=not final_integrity_failure,
+            failures=(
+                ("Bernoulli-law violation [final-integrity-sentinel]",)
+                if final_integrity_failure
+                else ()
+            ),
             details=diagnostics,
         )
 
@@ -4428,14 +4829,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
 
-    monkeypatch.setattr(
-        builder,
-        "_degenerate_input_signal_gate",
-        lambda frame, engine: builder.GateResult(
+    def fake_degenerate_input_signal_gate(frame, engine):
+        # In retirement mode this gate ALSO fails: the production masking
+        # route (PR #557 round 2 finding 1) was the generic degenerate raise
+        # superseding the specific missing-leaf diagnosis. The degraded-mode
+        # append must carry BOTH lines to the single terminal batch while the
+        # run continues through the solve (the #547/#548 evidence contract).
+        if terminal_mode == "retirement":
+            return builder.GateResult(
+                name="degenerate_input_signal",
+                passed=False,
+                failures=("keogh_distributions flattened [degenerate-sentinel]",),
+                details={"checked": True},
+            )
+        return builder.GateResult(
             name="degenerate_input_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_degenerate_input_signal_gate",
+        fake_degenerate_input_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4450,18 +4866,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["target_loss_cap"] = kwargs["target_loss_cap"]
         return result
 
-    def fake_write_diagnostics(**kwargs):
+    real_write_release_diagnostics = builder._write_release_calibration_diagnostics
+
+    def recording_write_release_diagnostics(**kwargs):
         captured["diagnostics"] = kwargs
-        release_dir = kwargs["release_dir"]
-        release_dir.mkdir(parents=True, exist_ok=True)
-        (release_dir / "calibration_diagnostics.json").write_text("{}")
-        return release_dir / "calibration_diagnostics.json"
+        return real_write_release_diagnostics(**kwargs)
+
+    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "build": {
+                        "release_gates": dict(build["release_gates"]),
+                    }
+                }
+            )
+        )
+        return path
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
 
     def fake_l0_refit_weights(frame, refit_result):
         captured["export_frame_from_l0_refit"] = True
-        return frame
+        return FakeExportFrame()
 
     def fake_final_ssi_diagnostics(
         frame,
@@ -4498,18 +4926,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_final_ssi_diagnostics,
     )
 
-    def fake_ssi_delivery_gate(diagnostics, *, targets):
+    def fake_ssi_delivery_gate(diagnostics, *, targets, enforcement_fences=None):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
-        # Fails deliberately: the populace#547 cofailure regression proves
-        # the delivery failure reaches the diagnostics artifact and the
-        # terminal batch while other gates also fail, and that the basis
-        # artifact is written for the retry.
+        # The sparse e2e paths must never see dense fences (populace#566/#567).
+        captured["ssi_delivery_gate_enforcement_fences"] = enforcement_fences
+        # The integrity and retirement cases pass delivery to isolate their
+        # own early failure. Other modes retain the populace#547 delivery
+        # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
+        passes = terminal_mode in {"integrity", "retirement"}
         return builder.GateResult(
             name="ssi_take_up_delivery",
-            passed=False,
-            failures=("18_64 delivered over envelope [cofailure-sentinel]",),
+            passed=passes,
+            failures=(
+                ()
+                if passes
+                else ("18_64 delivered over envelope [cofailure-sentinel]",)
+            ),
             details=diagnostics,
         )
 
@@ -4539,6 +4973,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_release_gate_failures(*args, **kwargs):
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        if terminal_mode == "retirement":
+            # The degraded pre-solve contract (PR #557 round 3): the failing
+            # degenerate gate is NOT raised early — the gate object itself
+            # must arrive here, failures intact, and ride the single
+            # terminal batch. Emitting from the argument (the real
+            # function's contract) proves the un-raised object reached us.
+            degenerate_gate = args[8]
+            assert degenerate_gate is not None
+            assert not degenerate_gate.passed
+            return [
+                *(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_gate.failures
+                ),
+                "ctc failed",
+            ]
         return ["ctc failed"]
 
     monkeypatch.setattr(
@@ -4549,7 +4999,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_write_release_calibration_diagnostics",
-        fake_write_diagnostics,
+        recording_write_release_diagnostics,
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        fake_write_calibration_diagnostics,
     )
 
     try:
@@ -4561,10 +5016,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
-        assert message.startswith(
-            "Release gates failed: SSI take-up delivery failed: "
-            "18_64 delivered over envelope [cofailure-sentinel]"
-        )
+        if terminal_mode == "retirement":
+            assert message.startswith(
+                "Release gates failed: Retirement-distribution signal failed: "
+                f"{retirement_missing_failure}"
+            )
+            # The co-failing degenerate gate must batch AFTER the specific
+            # retirement diagnosis, never supersede it with an early raise
+            # (PR #557 round 2 finding 1).
+            assert (
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]" in message
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "integrity":
+            assert message.startswith(
+                "Release gates failed: SSI take-up final measurement failed: "
+                "Bernoulli-law violation [final-integrity-sentinel]"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        else:
+            assert message.startswith(
+                "Release gates failed: SSI take-up delivery failed: "
+                "18_64 delivered over envelope [cofailure-sentinel]"
+            )
         assert (
             "Other health insurance signal failed on the export frame: "
             "premiums signal flattened [cofailure-sentinel]" in message
@@ -4585,40 +5060,148 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         raise AssertionError("Expected post-calibration gate failure.")
 
     release_dir = out / "releases" / release_id
-    assert (release_dir / "calibration_diagnostics.json").exists()
+    written_diagnostics = json.loads(
+        (release_dir / "calibration_diagnostics.json").read_text()
+    )
+    if terminal_mode == "retirement":
+        assert (
+            "Retirement-distribution signal failed: "
+            f"{retirement_missing_failure}"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "integrity":
+        assert (
+            "SSI take-up final measurement failed: "
+            "Bernoulli-law violation [final-integrity-sentinel]"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
+    final_weights_path = release_dir / "final_household_weights.npy"
+    final_ids_path = release_dir / "final_household_weight_ids.npy"
+    final_weights_metadata = json.loads(
+        (release_dir / "final_household_weights.json").read_text()
+    )
+    np.testing.assert_array_equal(
+        np.load(final_weights_path, allow_pickle=False),
+        np.asarray([12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(
+        np.load(final_ids_path, allow_pickle=False),
+        np.asarray([10, 20], dtype="int64"),
+    )
+    # Identity binds the evidence to this run's target-frame context; the
+    # ids block reattaches every weight to its household. Their inner
+    # values are run-derived, so assert them structurally and compare the
+    # stable remainder exactly.
+    evidence_identity = final_weights_metadata.pop("identity")
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    expected_evidence_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
+    )
+    assert evidence_identity == dict(expected_evidence_identity)
+    ids_block = final_weights_metadata.pop("household_ids")
+    assert ids_block["file"] == "final_household_weight_ids.npy"
+    assert ids_block["shape"] == [2]
+    assert (
+        ids_block["ordering_sha256"]
+        == __import__("hashlib")
+        .sha256(np.asarray([10, 20], dtype="int64").tobytes())
+        .hexdigest()
+    )
+    assert final_weights_metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [2],
+            # This end-to-end fixture stubs every non-weeks file hash; the
+            # direct helper test above validates the real hash path.
+            "sha256": "base-sha",
+        },
+        "summary": {
+            "n_households": 2,
+            "household_weight_sum": 47.0,
+            "minimum": 12.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 0,
+        },
+    }
     # Artifact exclusion: the failed run leaves evidence, never artifacts.
     # H5s land under the out root (not the release dir), so sweep the tree.
     assert not list(out.rglob("*.h5"))
     assert not list(release_dir.glob("*manifest*"))
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
+    if terminal_mode in {"integrity", "retirement", "telemetry"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
             "qrf_tail_concentration",
         ]
     if terminal_mode != "crash":
-        # The retry line carries the written artifact's sha256 — the
-        # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
-        # by the failure itself (sol round 2, new minor).
-        import hashlib
+        if terminal_mode == "retirement":
+            expected_gate_failures = [
+                f"Retirement-distribution signal failed: {retirement_missing_failure}",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                # The co-failing pre-solve degenerate gate is never raised
+                # early and never duplicated: its line arrives once, through
+                # _release_gate_failures (PR #557 round 3).
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]",
+                "ctc failed",
+            ]
+        elif terminal_mode == "integrity":
+            expected_gate_failures = [
+                "SSI take-up final measurement failed: "
+                "Bernoulli-law violation [final-integrity-sentinel]",
+                "Medicaid final diagnostics not evaluated: SSI decision "
+                "integrity failed upstream (Bernoulli-law violation) and "
+                "Medicaid eligibility consumes the frozen SSI decisions; "
+                "quarantined instead of mis-measured (populace#547).",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        else:
+            # The retry line carries the written artifact's sha256 — the
+            # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
+            # by the failure itself (sol round 2, new minor).
+            import hashlib
 
-        written_sha = hashlib.sha256(
-            (release_dir / "us_ssi_take_up.json").read_bytes()
-        ).hexdigest()
-        assert captured["diagnostics"]["gate_failures"] == [
-            "SSI take-up delivery failed: 18_64 delivered over envelope "
-            "[cofailure-sentinel]",
-            "SSI take-up delivered-weight prior basis written to "
-            f"{release_dir / 'us_ssi_take_up.json'} (sha256 {written_sha}) "
-            "for the --ssi-take-up-prior-weight-basis retry.",
-            "Other health insurance signal failed on the export frame: "
-            "premiums signal flattened [cofailure-sentinel]",
-            "ctc failed",
-        ]
+            written_sha = hashlib.sha256(
+                (release_dir / "us_ssi_take_up.json").read_bytes()
+            ).hexdigest()
+            expected_gate_failures = [
+                "SSI take-up delivery failed: 18_64 delivered over envelope "
+                "[cofailure-sentinel]",
+                "SSI take-up delivered-weight prior basis written to "
+                f"{release_dir / 'us_ssi_take_up.json'} (sha256 {written_sha}) "
+                "for the --ssi-take-up-prior-weight-basis retry.",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        assert captured["diagnostics"]["gate_failures"] == expected_gate_failures
     else:
         # Corridor order: SSI delivery + basis note, health-input crash
         # guard, other-health gate failure, incumbent guard, release-gate
@@ -4845,29 +5428,52 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert final_basis.kind == "current_frame"
     assert final_basis.band("65_plus").candidate_capacity == pytest.approx(1_000.0)
     assert captured["ssi_delivery_gate_called"] is True
+    # This e2e harness runs the sparse arm: the dense-only enforcement
+    # fences must never reach the gate here (populace#566/#567).
+    assert captured["ssi_delivery_gate_enforcement_fences"] is None
     assert captured["ssi_delivery_gate_targets"] == fake_band_targets
     # The frozen-assignment digest invalidates the materialization cache on
     # any retry whose flags differ (populace#507/#508 split-brain fix).
-    assert (
-        captured["materialize_kwargs"]["target_materialization_cache_context"][
-            "ssi_take_up_assignment_sha256"
-        ]
-        == "ssi-digest-sentinel"
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    assert cache_context["ssi_take_up_assignment_sha256"] == "ssi-digest-sentinel"
+    assert cache_context["selection_identities_sha256"] is None
+    expected_materializer_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
     )
+    assert cache_context[
+        "target_frame_materializer_identity_sha256"
+    ] == builder._target_frame_checkpoint_digest(expected_materializer_identity)
     # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
     # the #548 batched terminal gates): the final measurement hits disk
-    # BEFORE the final integrity gate runs, so an integrity+delivery
-    # cofailure still leaves the retry basis; the deliberately-failing
-    # delivery gate then rewrites the same artifact inside the enforce
-    # helper (its failure line carries the sha pin).
-    assert captured["ssi_event_order"] == [
+    # BEFORE the final integrity gate runs. Delivery still evaluates after
+    # an integrity failure; on a delivery miss, the enforce helper rewrites
+    # the same artifact and its failure line carries the sha pin.
+    expected_ssi_event_order = [
         "integrity_gate",  # stage diagnostics, at assignment time
         "write:us_ssi_take_up.json",  # final measurement, written first
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
-        "write:us_ssi_take_up.json",  # enforce rewrites the retry basis
     ]
-    assert captured["final_medicaid_diagnostics_called"] is True
+    if terminal_mode not in {"integrity", "retirement"}:
+        # A delivery miss rewrites the final measurement as the retry basis.
+        expected_ssi_event_order.append("write:us_ssi_take_up.json")
+    assert captured["ssi_event_order"] == expected_ssi_event_order
+    if terminal_mode == "integrity":
+        assert "final_medicaid_diagnostics_called" not in captured
+    else:
+        assert captured["final_medicaid_diagnostics_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
         captured["voluntary_filing_donor_sha256"]
@@ -5974,7 +6580,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         "seed": 0,
         "target_period": builder.PERIOD,
         "target_registry_version": "test-target-registry",
+        # Required declaration (PR #557): the reform-vector projection
+        # fail-closes without it — see the dedicated rejection test.
+        "target_frame_materializer_identity_sha256": "test-materializer-digest",
     }
+    with pytest.raises(ValueError, match="target_frame_materializer_identity_sha256"):
+        builder._reform_vector_cache_context(
+            {
+                k: v
+                for k, v in cache_context.items()
+                if k != "target_frame_materializer_identity_sha256"
+            }
+        )
     target_frame, registry, dropped = builder._materialize_target_frame(
         frame,
         (target,),
@@ -6093,10 +6710,82 @@ def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> N
         )
 
 
-def test_soi_eitc_child_targets_materialize_distinct_child_slices(
+def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> None:
+    """Schema-2 and pre-preservation materializer vectors cannot serve."""
+
+    builder = _load_builder_module()
+    assert builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION == 3
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+    current_context = {
+        "target_frame_materializer_identity_sha256": "version-10-preserved-surface",
+    }
+    current_identity = builder._target_materialization_cache_identity(
+        context=current_context,
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+
+    for stale_schema in (2, 1):
+        stale_identity = {
+            **current_identity,
+            "schema_version": stale_schema,
+        }
+        builder._write_reform_income_tax_cache(
+            tmp_path,
+            stale_identity,
+            np.asarray([1.0, 2.0]),
+        )
+        assert (
+            builder._read_reform_income_tax_cache(
+                tmp_path,
+                current_identity,
+                n_households=2,
+            )
+            is None
+        )
+
+    pre_557_identity = builder._target_materialization_cache_identity(
+        context={
+            "target_frame_materializer_identity_sha256": (
+                "version-9-release-refitted-surface"
+            ),
+        },
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+    builder._write_reform_income_tax_cache(
+        tmp_path,
+        pre_557_identity,
+        np.asarray([3.0, 4.0]),
+    )
+    assert (
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            current_identity,
+            n_households=2,
+        )
+        is None
+    )
+
+
+def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
     monkeypatch,
 ) -> None:
+    from populace.build.us_runtime import split_us_puf_e19200_by_agi_band
+
     builder = _load_builder_module()
+    e19200_total = np.asarray([100.0, 200.0, 300.0, 400.0])
+    source_year_agi = np.asarray([-5_000.0, 20_000.0, 100_000.0, 10_000_000.0])
+    mortgage_interest, non_mortgage_interest = split_us_puf_e19200_by_agi_band(
+        e19200_total, source_year_agi
+    )
+    assert np.all(non_mortgage_interest > 0)
+    broader_interest = mortgage_interest + non_mortgage_interest
+    np.testing.assert_array_equal(broader_interest, e19200_total)
+
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -6424,6 +7113,22 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_only": "true",
             },
         ),
+        TargetSpec(
+            name="home_mortgage_interest_amount",
+            entity="household",
+            measure="home_mortgage_interest_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "deductible_mortgage_interest",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "home_mortgage_interest_amount",
+                "itemized_only": "true",
+            },
+        ),
     )
 
     class FakeVariable:
@@ -6442,6 +7147,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "eitc_child_count",
                 "itemized_taxable_income_deductions",
                 "charitable_deduction",
+                "deductible_mortgage_interest",
                 "interest_deduction",
                 "medical_expense_deduction",
                 "real_estate_taxes",
@@ -6480,7 +7186,8 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                     [1_000.0, 2_000.0, 3_000.0, 4_000.0]
                 ),
                 "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
-                "interest_deduction": np.asarray([1.0, 2.0, 3.0, 4.0]),
+                "deductible_mortgage_interest": mortgage_interest,
+                "interest_deduction": broader_interest,
                 "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
                 "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
@@ -6512,6 +7219,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_taxable_income_deductions"
             ),
             "charitable_deduction": "charitable_deduction",
+            "deductible_mortgage_interest": "deductible_mortgage_interest",
             "interest_deduction": "interest_deduction",
             "medical_expense_deduction": "medical_expense_deduction",
             "real_estate_taxes": "real_estate_taxes",
@@ -6567,9 +7275,23 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     )
     assert np.array_equal(household["charitable_amount"], np.asarray([20.0, 0.0]))
     assert np.array_equal(
-        household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
+        household["interest_paid_deduction_amount"],
+        np.asarray([broader_interest[1], 0.0]),
     )
-    assert len(registry) == 20
+    assert np.array_equal(
+        household["home_mortgage_interest_amount"],
+        np.asarray([mortgage_interest[1], 0.0]),
+    )
+    np.testing.assert_allclose(
+        household["interest_paid_deduction_amount"]
+        - household["home_mortgage_interest_amount"],
+        np.asarray([non_mortgage_interest[1], 0.0]),
+    )
+    assert not np.array_equal(
+        household["home_mortgage_interest_amount"],
+        household["interest_paid_deduction_amount"],
+    )
+    assert len(registry) == 21
     assert compilation["dropped_target_names"] == []
 
 
@@ -7594,6 +8316,23 @@ def test_post_export_sanity_rejects_dropped_export_targets(
         raise AssertionError("Expected dropped-target post-export sanity failure.")
 
 
+def test_short_term_parity_exclusion_is_reviewed_and_scoped() -> None:
+    """populace#567 dense-P3: short_term_capital_gains is an UNTARGETED
+    signed dimension measured against the incumbent's incidental $118B —
+    the #432/#433 rental_income class, called in advance by the preflight.
+    The entry must exist with the adjudication and its lift condition, and
+    the combined-CG surface (which IS pinned) must not be excluded."""
+    builder = _load_builder_module()
+    register = builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    assert "short_term_capital_gains" in register
+    reason = register["short_term_capital_gains"]
+    assert "#432" in reason or "rental_income class" in reason
+    assert "RE-ADJUDICATES" in reason and "Table 1.4A" in reason
+    assert "long_term_capital_gains_before_response" not in register
+    assert "capital_gains" not in register
+    assert "long_term_capital_gains" not in register
+
+
 def test_reviewed_exclusions_are_exact_for_fiscal_refresh() -> None:
     builder = _load_builder_module()
 
@@ -7946,6 +8685,7 @@ def _base_cache_context(builder):
         "target_period": builder.PERIOD,
         "target_registry_version": "registry-A",
         "congressional_district_vintage_crosswalk_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-sha-A",
     }
 
 
@@ -8094,6 +8834,7 @@ def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
     [
         ("base_dataset_sha256", "base-sha-B"),
         ("weeks_unemployed_source_sha256", "weeks-source-sha-B"),
+        ("target_frame_materializer_identity_sha256", "materializer-sha-B"),
     ],
 )
 def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
@@ -8127,8 +8868,8 @@ def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # A different base H5 or measured LKWEEKS source must not share
-    # per-household vectors even at the same record count.
+    # A different base H5, measured LKWEEKS source, or complete target-frame
+    # materializer identity must not share vectors at the same record count.
     context_b = _base_cache_context(builder)
     context_b[identity_key] = new_value
     calls_b: list[str] = []
@@ -8156,9 +8897,8 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     monkeypatch,
     tmp_path,
 ) -> None:
-    # #217 acceptance criterion 1: a rerun that changes only build state that does
-    # not affect per-household reform estimates (build commit, seed, registry
-    # version) must reuse the cached reform vectors rather than recompute them.
+    # #217 acceptance criterion 1: a rerun that changes only the build commit
+    # must reuse the cached reform vectors rather than recompute them.
     builder = _load_builder_module()
     frame = _multi_reform_frame(builder)
     reforms = (("jct_reform_a", "credit_a"),)
@@ -8183,13 +8923,10 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # Only build_commit / seed / target_registry_version change (a code-only or
-    # calibration-only rerun). Everything that determines the reform estimate is
-    # identical, so the reform must load from cache.
+    # Only build_commit changes. The full materializer identity remains equal,
+    # so the reform must load from cache.
     context_b = _base_cache_context(builder)
     context_b["build_commit"] = "commit-B"
-    context_b["seed"] = 12345
-    context_b["target_registry_version"] = "registry-B"
     calls_b: list[str] = []
     _install_multi_reform_fakes(
         builder,
@@ -8551,6 +9288,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
     )
     legacy = builder._target_frame_checkpoint_identity(**common)
     default_kwarg = builder._target_frame_checkpoint_identity(
@@ -8590,6 +9328,65 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
     )
     assert (
         builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
+        is None
+    )
+
+
+def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
+    monkeypatch, tmp_path, small_frame
+) -> None:
+    """A frozen-support change invalidates the checkpoint identity.
+
+    The assignment digest hashes positional flags, priors, and provenance,
+    but two same-length supports can share those flag bytes. The selected
+    source identities therefore remain an independent checkpoint input, and
+    even the full-pool ``None`` value must reject a pre-fix identity that
+    omitted the key entirely.
+    """
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    common = {
+        "base_dataset_sha256": "base-sha",
+        "policyengine_us_version": "1.2.3",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-sha",
+        "weeks_unemployed_source_sha256": "weeks-source-sha",
+        "congressional_district_vintage_crosswalk_sha256": None,
+        "ssi_take_up_assignment_sha256": "ssi-flags-sha",
+    }
+    full_pool = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256=None
+    )
+    selected = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256="cd" * 32
+    )
+    selected_other = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256="ef" * 32
+    )
+    digest = builder._target_frame_checkpoint_digest
+    assert digest(full_pool) != digest(selected)
+    assert digest(selected) != digest(selected_other)
+
+    prefix_shape = {
+        key: value
+        for key, value in full_pool.items()
+        if key != "selection_identities_sha256"
+    }
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity=prefix_shape,
+        compilation={},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=full_pool,
+            target_specs=(),
+        )
         is None
     )
 
@@ -8998,7 +9795,7 @@ def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> 
 
 def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "measurement_phase": "release_final",
         "age_bands": [
             {
@@ -9030,7 +9827,7 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9038,6 +9835,8 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     )
 
     assert failures
+    # The returned gate result is the manifest receipt for this run.
+    assert not gate_result.passed
     assert all(failure.startswith("SSI take-up deliver") for failure in failures)
     assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
     written_path = release_dir / "us_ssi_take_up.json"
@@ -9066,7 +9865,7 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9074,6 +9873,9 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     )
 
     assert failures == []
+    assert gate_result.passed
+    # No fences on this sparse-shaped call: full enforcement documented.
+    assert gate_result.details["adjudication_fenced_band_keys"] == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
 
 
@@ -9095,7 +9897,7 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    failures = builder._enforce_ssi_take_up_delivery(
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
@@ -9103,6 +9905,7 @@ def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
     )
 
     assert failures
+    assert not gate_result.passed
     assert failures[0].startswith("SSI take-up delivery failed:")
     assert any("could NOT be written" in failure for failure in failures)
     # json.dumps runs before write_text, so no partial artifact exists.
@@ -9170,13 +9973,14 @@ def test_final_medicaid_green_path_evaluates_normally() -> None:
     assert failures == []
 
 
-def test_reform_vector_cache_context_tracks_the_ssi_assignment_digest() -> None:
-    """The #217 reform-vector cache whitelist must carry the SSI digest.
+def test_reform_vector_cache_context_tracks_support_and_materializer() -> None:
+    """The reform-vector whitelist carries support and materializer digests.
 
     Whether a JCT reform income-tax estimate can move with
     takes_up_ssi_if_eligible is an engine-graph question the build must not
-    answer by assumption — the digest invalidates reform vectors too
-    (sol round 2, finding 2)."""
+    answer by assumption, while two selected supports can share positional
+    SSI flag bytes. The assignment, selection, and complete target-frame
+    materializer digests therefore invalidate reform vectors independently."""
 
     builder = _load_builder_module()
     base = {
@@ -9187,12 +9991,33 @@ def test_reform_vector_cache_context_tracks_the_ssi_assignment_digest() -> None:
         "congressional_district_vintage_crosswalk_sha256": None,
         "build_commit": "irrelevant-to-reform-vectors",
         "ssi_take_up_assignment_sha256": "digest-a",
+        "selection_identities_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-a",
     }
-    changed = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
+    changed_assignment = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
+    selected = {**base, "selection_identities_sha256": "cd" * 32}
+    selected_other = {**base, "selection_identities_sha256": "ef" * 32}
+    changed_materializer = {
+        **base,
+        "target_frame_materializer_identity_sha256": "materializer-b",
+    }
+    projected = builder._reform_vector_cache_context(base)
     assert builder._reform_vector_cache_context(
         base
-    ) != builder._reform_vector_cache_context(changed)
-    assert "build_commit" not in builder._reform_vector_cache_context(base)
+    ) != builder._reform_vector_cache_context(changed_assignment)
+    assert projected != builder._reform_vector_cache_context(selected)
+    assert builder._reform_vector_cache_context(
+        selected
+    ) != builder._reform_vector_cache_context(selected_other)
+    assert projected != builder._reform_vector_cache_context(changed_materializer)
+    assert "selection_identities_sha256" in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    assert projected["selection_identities_sha256"] is None
+    assert (
+        "target_frame_materializer_identity_sha256"
+        in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    )
+    assert projected["target_frame_materializer_identity_sha256"] == "materializer-a"
+    assert "build_commit" not in projected
 
 
 def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:

@@ -13,13 +13,36 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File, including state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
+          "locator": "IRS SOI Public Use File, including source-year adjusted gross income E00100, weight S006, total interest paid deduction E19200, state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
+        },
+        {
+          "kind": "published_aggregate_table",
+          "format": "xls_and_pdf",
+          "vintage": "tax year 2015",
+          "source": "https://www.irs.gov/pub/irs-soi/15in21id.xls",
+          "report_source": "https://www.irs.gov/pub/irs-soi/15inalcr.pdf",
+          "locator": "IRS SOI Table 2.1, rows 10-32; total interest CF, home mortgage interest CH, points CN, qualified mortgage insurance premiums CP, and investment interest CR; verbatim values and workbook coordinates packaged in soi_table_2_1_interest_components_ty2015.json"
         },
         {
           "kind": "versioned_derived_microdata",
           "format": "hdf5_arrays",
           "vintage": "2024 (2015-based)",
-          "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
+          "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "lineage": {
+            "archived_commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+            "generator_path_parts": ["policyengine_", "us_data", "datasets", "puf", "puf.py"],
+            "generator_lines": "1378-1398",
+            "disaggregator_path_parts": ["policyengine_", "us_data", "datasets", "puf", "disaggregate_puf.py"],
+            "disaggregator_lines": "55-60,85-123",
+            "operation_order": [
+              "uprate",
+              "disaggregate_aggregate_records"
+            ],
+            "aggregate_disaggregation_seed": 42,
+            "forbes_top_tail_enabled": true,
+            "forbes_aggregate_recid": 999999,
+            "forbes_synthetic_record_count": 3900
+          }
         },
         {
           "kind": "archived_derivation_evidence",
@@ -97,6 +120,25 @@
           "to_year_from_build_config": true
         },
         {
+          "kind": "derive",
+          "method": "decompose_e19200_by_soi_agi_band",
+          "raw_total": "home_mortgage_interest",
+          "banding_variable": "E00100",
+          "banding_period": "source_year_2015",
+          "band_alignment": "direct RECID join for regular returns; archived seed-42 aggregate-record donor allocation for the three bounded synthetic buckets; source bucket floor for the Forbes-backed $100 million-plus tail",
+          "archived_processed_puf_disaggregation_seed": 42,
+          "published_source_year": 2015,
+          "published_total_column": "CF",
+          "published_home_mortgage_column": "CH",
+          "mortgage_output": "home_mortgage_interest",
+          "non_mortgage_output": "investment_interest_expense",
+          "allocation": "deterministic proportional allocation within each published AGI band",
+          "outlier_screen_before_split": {
+            "variable": "home_mortgage_interest",
+            "maximum": 10000000
+          }
+        },
+        {
           "kind": "fit_weighted_qrf",
           "predictors": [
             "employment_income",
@@ -138,6 +180,7 @@
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
         "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
@@ -202,6 +245,7 @@
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
         "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
@@ -225,7 +269,7 @@
         "unadjusted_basis_qualified_property",
         "w2_wages_from_qualified_business"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Populace places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Populace therefore aggregates each processed donor leaf to its identifiable tax-unit total, places that total on the unit's first person, and sparsifies only the PUF support channel to the donor positive rate rather than inventing an earnings-based split or reproducing the retired both-half override. This within-unit placement is policy-neutral in PolicyEngine-US 1.764.6 because the relevant formulas sum these leaves to the tax unit. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Populace deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Populace source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. The pinned PUF lineage uprates the raw TY2015 rows before replacing the four IRS disclosure aggregate records (archived puf.py lines 1378-1398). Its seed-42 disaggregator enables the Forbes backbone for aggregate RECID 999999 (archived disaggregate_puf.py lines 55-60 and 85-123), producing the 3,900-record open tail retained by puf_2024.h5. This build consumes that versioned H5 and does not request unsupported Forbes synthesis from the source-stage runtime. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Populace places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Populace therefore aggregates each processed donor leaf to its identifiable tax-unit total, places that total on the unit's first person, and sparsifies only the PUF support channel to the donor positive rate rather than inventing an earnings-based split or reproducing the retired both-half override. This within-unit placement is policy-neutral in PolicyEngine-US 1.764.6 because the relevant formulas sum these leaves to the tax unit. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Populace deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Populace source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
     },
     {
       "stage": "education_inputs",
@@ -2425,7 +2469,7 @@
         {
           "kind": "derived_from_prior_stages",
           "inputs": [
-            "interest_deduction",
+            "home_mortgage_interest",
             "scf_mortgage_debt",
             "tenure_type"
           ]
@@ -2435,7 +2479,7 @@
         {
           "kind": "derive_mortgage_balance_hints",
           "inputs": [
-            "interest_deduction",
+            "home_mortgage_interest",
             "scf_mortgage_debt",
             "filing_status"
           ]
@@ -2454,17 +2498,15 @@
         "deductible_mortgage_interest",
         "home_mortgage_interest",
         "mortgage_interest",
-        "mortgage_principal",
-        "investment_interest_expense"
+        "mortgage_principal"
       ],
       "nonnegative_outputs": [
         "deductible_mortgage_interest",
         "home_mortgage_interest",
         "mortgage_interest",
-        "mortgage_principal",
-        "investment_interest_expense"
+        "mortgage_principal"
       ],
-      "notes": "The archived conversion maps the sole interest field used by the retired derivation, E19200, to interest_deduction, assigns the identical amount as deductible mortgage interest (archived puf.py lines 654 and 1548-1550), and derives investment_interest_expense only as their nonnegative residual (utils/mortgage_interest.py lines 268-320). The retired enhanced-CPS QRF predicted those source-identical aliases separately before conversion, so positive residuals are stochastic prediction divergence rather than observed detail. The SHA-pinned PUF 1.8.0 artifact contains 499,045 all-zero investment_interest_expense values and omits both aliases and raw E19200; all three locked ASEC inputs omit them too. A nonzero hermetic restoration would synthesize an unobserved mortgage-versus-investment split, so investment_interest_expense remains a SOURCE UNAVAILABILITY WITH EVIDENCE exclusion."
+      "notes": "This structural stage consumes the mortgage-only lineage already produced by puf_tax_detail's source-backed Table 2.1 E19200 decomposition. It combines that lineage with SCF mortgage-debt hints to derive mortgage balances and person-carried mortgage inputs; it neither constructs nor overwrites investment_interest_expense."
     },
     {
       "stage": "acs_rent",

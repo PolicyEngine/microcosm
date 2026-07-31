@@ -1,0 +1,1 @@
+Persist the final calibrated household-weight vector and a hashed JSON receipt in each release evidence directory before post-calibration gates run, so failed releases retain the exact weights needed for diagnosis.

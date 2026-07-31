@@ -256,6 +256,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *RETIREMENT_DISTRIBUTION_INPUTS,
     "domestic_production_ald",
     "household_weight",
+    "investment_interest_expense",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
     *QBI_INPUTS,

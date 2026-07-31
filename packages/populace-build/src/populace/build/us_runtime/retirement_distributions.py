@@ -42,6 +42,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -108,7 +112,6 @@ _EXPECTED_OUTPUT_BY_ACCOUNT_CODE: dict[int, str] = {
 _VALID_ACCOUNT_CODES = frozenset(range(8))
 _DERIVE_PARAMETER_KEYS = frozenset({"output_by_account_code"})
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PUF_PREDICTORS: tuple[str, ...] = (
@@ -298,14 +301,14 @@ def derive_us_retirement_distributions_from_manifest(
     derived = _derived_outputs(result, output_by_code)
     preserved_puf_taxable_ira: np.ndarray | None = None
     puf_mask: np.ndarray | None = None
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in result:
+    if has_support_role_metadata(result, entity="person"):
         if "taxable_ira_distributions" not in result:
             raise SourceRuntimeError(
                 "US retirement-distribution support derivation requires the "
                 "PUF-sourced taxable_ira_distributions column."
             )
         puf_mask = (
-            result[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+            support_role_series(result, entity="person").to_numpy()
             == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
         )
         preserved_puf_taxable_ira = pd.to_numeric(
@@ -367,7 +370,7 @@ def impute_us_retirement_distributions_to_puf_support_from_manifest(
             f"the archived method; missing={missing_parameters}, "
             f"unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -407,9 +410,9 @@ def impute_us_retirement_distributions_to_puf_support_from_manifest(
             f"column(s): {missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    roles = support_role_series(frame, entity="person")
+    asec_mask = roles == _BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = roles == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US retirement-distribution PUF imputation requires nonempty ASEC "
@@ -595,22 +598,31 @@ def with_us_retirement_distribution_inputs(
     *,
     seed: int,
     time_period: int,
+    force_puf_imputation: bool = False,
 ) -> Frame:
-    """Materialize measured retirement-distribution leaves on a US frame."""
+    """Materialize measured retirement-distribution leaves on a US frame.
+
+    ``force_puf_imputation`` belongs only at the base builder's post-clone
+    boundary.  Every later support-frame call is consume-only, including when
+    a frozen selection is missing or has flattened a rare leaf.  Refitting
+    there would make support selection redefine the donor universe and can
+    broadcast a rare leaf such as ``keogh_distributions`` across the retained
+    PUF rows.  The downstream signal gate, rather than a refit, owns support
+    surface completeness and signal.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US retirement distributions require the US schema.")
     person = frame.table("person")
-    has_support_channels = _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns
-    if (
-        _retirement_distribution_surface_carries_signal(frame)
-        and not has_support_channels
-    ):
+    has_support_roles = has_support_role_metadata(person, entity="person")
+    if has_support_roles and not force_puf_imputation:
+        return frame
+    if not has_support_roles and _retirement_distribution_surface_carries_signal(frame):
         return frame
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if has_support_channels:
+    if has_support_roles:
         predictors = _person_retirement_distribution_predictors(frame)
         for column in _PUF_PREDICTORS:
             stage_person[_PUF_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
@@ -644,6 +656,7 @@ def with_us_retirement_distribution_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -667,9 +680,9 @@ def us_retirement_distributions_summary(frame: Frame) -> dict[str, object]:
     ):
         expected = _derived_outputs(person, _EXPECTED_OUTPUT_BY_ACCOUNT_CODE)
         compare = np.ones(len(person), dtype=bool)
-        if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+        if has_support_role_metadata(person, entity="person"):
             compare = (
-                person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+                support_role_series(person, entity="person").to_numpy()
                 == _BASE_ASEC_SUPPORT_CHANNEL
             )
         source_mismatches = {

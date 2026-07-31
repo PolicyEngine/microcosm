@@ -22,6 +22,12 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -61,9 +67,6 @@ US_FORM_4952_OUTPUT_COLUMNS: tuple[str, ...] = ("investment_income_elected_form_
 US_FORM_4952_NONCONSTANT_PERSON_COLUMNS = US_FORM_4952_OUTPUT_COLUMNS
 
 _OUTPUT = US_FORM_4952_OUTPUT_COLUMNS[0]
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
-_PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _OVERALL_POSITIVE_SHARE_BAND = (0.00005, 0.02)
 _PUF_POSITIVE_SHARE_BAND = (0.0001, 0.04)
 
@@ -135,10 +138,10 @@ def us_form_4952_election_summary(frame: Frame) -> dict[str, object]:
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns:
+    if has_support_role_metadata(person, entity="person"):
         channels: dict[str, dict[str, float | int]] = {}
-        channel_values = person[_PERSON_SUPPORT_CHANNEL_COLUMN].to_numpy()
-        for channel in person[_PERSON_SUPPORT_CHANNEL_COLUMN].dropna().unique():
+        channel_values = support_role_series(person, entity="person").to_numpy()
+        for channel in sorted(set(channel_values.tolist())):
             channel_mask = channel_values == channel
             channel_weight = float(weights[channel_mask].sum())
             channel_positive = channel_mask & positive
@@ -188,8 +191,8 @@ def us_form_4952_election_signal_gate(frame: Frame) -> GateResult:
 
     channels = summary.get("channels")
     if isinstance(channels, dict):
-        asec = channels.get(_BASE_ASEC_SUPPORT_CHANNEL)
-        puf = channels.get(_PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+        asec = channels.get(BASE_ASEC_SUPPORT_CHANNEL)
+        puf = channels.get(PUF_TAX_DETAIL_SUPPORT_CHANNEL)
         if asec is None:
             failures.append(
                 "Form 4952 signal gate is missing the ASEC support channel."

@@ -27,6 +27,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -79,7 +83,6 @@ US_WORKERS_COMPENSATION_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = ("WC_VAL",)
 
 _OUTPUT = US_WORKERS_COMPENSATION_OUTPUT_COLUMNS[0]
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PREDICTORS: tuple[str, ...] = (
@@ -236,7 +239,7 @@ def impute_us_workers_compensation_to_puf_support_from_manifest(
             f"archived method; missing={missing_parameters}, "
             f"unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -270,9 +273,9 @@ def impute_us_workers_compensation_to_puf_support_from_manifest(
             f"US workers-compensation PUF imputation is missing column(s): {missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    roles = support_role_series(frame, entity="person")
+    asec_mask = roles == _BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = roles == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US workers-compensation PUF imputation requires nonempty ASEC and "
@@ -490,7 +493,7 @@ def with_us_workers_compensation(
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+    if has_support_role_metadata(person, entity="person"):
         predictors = _person_workers_compensation_predictors(frame)
         for column in _PREDICTORS:
             stage_person[_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
@@ -522,6 +525,7 @@ def with_us_workers_compensation(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -543,11 +547,11 @@ def us_workers_compensation_summary(frame: Frame) -> dict[str, object]:
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel = person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+    if has_support_role_metadata(person, entity="person"):
+        roles = support_role_series(person, entity="person").to_numpy()
         channels: dict[str, dict[str, float | int]] = {}
         for name in (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL):
-            mask = channel == name
+            mask = roles == name
             channel_weight = float(weights[mask].sum())
             channels[name] = {
                 "positive_rows": int(np.count_nonzero(mask & positive)),
@@ -566,9 +570,9 @@ def us_workers_compensation_summary(frame: Frame) -> dict[str, object]:
             dtype=np.float64
         )
         source_mask = np.ones(len(person), dtype=bool)
-        if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+        if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+                support_role_series(person, entity="person").to_numpy()
                 == _BASE_ASEC_SUPPORT_CHANNEL
             )
         source_valid = np.isfinite(source) & (source >= 0.0)

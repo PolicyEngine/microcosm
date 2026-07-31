@@ -40,6 +40,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -145,7 +149,6 @@ US_WEEKS_UNEMPLOYED_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 _OUTPUT = US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS[0]
 _SOURCE = "LKWEEKS"
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _ASEC_CHANNEL = "asec"
 _PUF_CHANNEL = "puf_tax_detail"
 _PREDICTOR_PREFIX = "weeks_unemployed_predictor_"
@@ -848,18 +851,12 @@ def impute_us_weeks_unemployed_to_puf_support_from_manifest(
             "US weeks-unemployed PUF imputation parameters drifted from the "
             "reviewed QRF contract."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    unexpected_channels = sorted(set(channel) - {_ASEC_CHANNEL, _PUF_CHANNEL})
-    if unexpected_channels:
-        raise SourceRuntimeError(
-            "US weeks-unemployed found unsupported support channel(s): "
-            f"{unexpected_channels}."
-        )
-    asec_mask = channel.eq(_ASEC_CHANNEL)
-    puf_mask = channel.eq(_PUF_CHANNEL)
+    roles = support_role_series(frame, entity="person")
+    asec_mask = roles.eq(_ASEC_CHANNEL)
+    puf_mask = roles.eq(_PUF_CHANNEL)
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US weeks-unemployed PUF imputation requires nonempty ASEC and "
@@ -1105,7 +1102,7 @@ def _person_weeks_unemployed_predictors(frame: Frame) -> pd.DataFrame:
     uc_column: str | None = None
     if _OPTIONAL_UC_PREDICTOR in person:
         uc_column = _OPTIONAL_UC_PREDICTOR
-    elif _PERSON_SUPPORT_CHANNEL_COLUMN not in person and "UC_VAL" in person:
+    elif not has_support_role_metadata(person, entity="person") and "UC_VAL" in person:
         uc_column = "UC_VAL"
     if uc_column is not None:
         uc = pd.to_numeric(person[uc_column], errors="coerce").to_numpy(
@@ -1129,6 +1126,7 @@ def _replace_person_table(frame: Frame, person: pd.DataFrame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -1174,7 +1172,7 @@ def with_us_weeks_unemployed(
         )
 
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in stage_person:
+    if has_support_role_metadata(stage_person, entity="person"):
         # Predictor construction only needs modeled person/tax-unit columns;
         # keep the temporary reserved person_weight column outside Frame.
         predictors = _person_weeks_unemployed_predictors(frame)
@@ -1222,8 +1220,8 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
     in_range = integer & (values >= 0.0) & (values <= 52.0)
     positive = in_range & (values > 0.0)
 
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel = _decoded_strings(person[_PERSON_SUPPORT_CHANNEL_COLUMN]).to_numpy()
+    if has_support_role_metadata(person, entity="person"):
+        channel = support_role_series(person, entity="person").to_numpy()
     else:
         channel = np.full(len(person), _ASEC_CHANNEL, dtype=object)
     channels: dict[str, dict[str, float | int]] = {}
@@ -1246,9 +1244,7 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
                 else 0.0
             ),
             "positive_share_band": list(_CHANNEL_POSITIVE_SHARE_BANDS[name]),
-            "weighted_mean_weeks_band": list(
-                _CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[name]
-            ),
+            "weighted_mean_weeks_band": list(_CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[name]),
         }
 
     source_missing = _SOURCE not in person
@@ -1339,9 +1335,9 @@ def us_weeks_unemployed_signal_gate(frame: Frame) -> GateResult:
             f"{_OUTPUT} has {summary['puf_uc_zero_mismatch_count']} PUF row(s) "
             "positive without unemployment compensation."
         )
-    has_support_channels = _PERSON_SUPPORT_CHANNEL_COLUMN in person
+    has_support_roles = has_support_role_metadata(person, entity="person")
     required_channels = (
-        (_ASEC_CHANNEL, _PUF_CHANNEL) if has_support_channels else (_ASEC_CHANNEL,)
+        (_ASEC_CHANNEL, _PUF_CHANNEL) if has_support_roles else (_ASEC_CHANNEL,)
     )
     channels = summary["channels"]
     for name in required_channels:

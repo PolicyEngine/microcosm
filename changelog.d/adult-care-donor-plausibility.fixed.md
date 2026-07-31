@@ -1,0 +1,1 @@
+The adult-care expense imputation refuses donor knots above its plausibility ceiling (measured frame values untouched), with a logged receipt — implausible measured ASEC values can no longer become imputation donors regardless of quantile-grid geometry.

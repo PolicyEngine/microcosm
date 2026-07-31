@@ -23,6 +23,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -64,7 +68,6 @@ US_SALT_REFUND_OUTPUT_COLUMNS: tuple[str, ...] = ("salt_refund_income",)
 US_SALT_REFUND_NONCONSTANT_PERSON_COLUMNS = US_SALT_REFUND_OUTPUT_COLUMNS
 
 _OUTPUT = US_SALT_REFUND_OUTPUT_COLUMNS[0]
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 
@@ -142,11 +145,11 @@ def us_salt_refund_income_summary(frame: Frame) -> dict[str, object]:
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (values < 0.0))),
     }
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns:
-        channel_values = person[_PERSON_SUPPORT_CHANNEL_COLUMN].to_numpy()
+    if has_support_role_metadata(person, entity="person"):
+        role_values = support_role_series(person, entity="person").to_numpy()
         channels: dict[str, dict[str, float | int]] = {}
-        for channel in person[_PERSON_SUPPORT_CHANNEL_COLUMN].dropna().unique():
-            channel_mask = channel_values == channel
+        for channel in pd.unique(role_values):
+            channel_mask = role_values == channel
             channel_weight = float(weights[channel_mask].sum())
             channel_positive = channel_mask & positive
             channels[str(channel)] = {

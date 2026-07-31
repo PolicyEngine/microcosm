@@ -235,6 +235,9 @@ from populace.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    assert_puf_capital_gains_tail_survives_selection,
+)
 from populace.build.us_runtime.reform_validation import (
     default_baseline_level_specs,
     default_simulate_factory,
@@ -244,6 +247,7 @@ from populace.build.us_runtime.reform_validation import (
 )
 from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
+    US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
 )
@@ -280,8 +284,51 @@ PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
+FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
+FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
+FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
+# populace#566/#567 dense-arm adjudication: populace#508 delivered-weight
+# recomputes have not landed the dense frame's adult band pair in the
+# envelope on either observed frame. P2 is the clean one-retry record
+# (current-frame attempt then its one permitted recompute: 18-64
+# +5.8%/65+ +24.8% -> +8.2%/+20.0%). P3's attempts were already anchored
+# on delivered bases (65+ +34.6% with 18-64 in-band, then +8.3%/+19.8%
+# after recomputing again — the recompute moved 18-64 OUT of band while
+# improving 65+); that chain shape is now refused outright by the
+# chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
+# diagnostic arm therefore FENCES its adult bands: those misses ship in the
+# scorecard as known boundaries, never as enforced contracts and never as
+# saturation-as-success. The child band remains hard-gated on both arms; the
+# sparse certified default passes no fences and hard-gates all three bands.
+# RE-ADJUDICATES when populace#566's damped fixed-point protocol lands.
+_US_DENSE_SSI_FENCE_ADJUDICATION = (
+    "Fenced for the dense diagnostic arm (populace#566/#567): "
+    "populace#508 delivered-weight recomputes have not landed the adult "
+    "band pair in the envelope on either observed frame (P2, current-"
+    "frame attempt then its one permitted recompute: +5.8%/+24.8% -> "
+    "+8.2%/+20.0%; P3, attempts already anchored on delivered bases: "
+    "65+ +34.6%, then +8.3%/+19.8% after recomputing again — a chain "
+    "the populace#508 loader now refuses). Further recomputes are the "
+    "deleted populace#463-class loop. This band's miss ships in the "
+    "scorecard as a known boundary — never as an enforced contract. "
+    "Re-adjudicates when the populace#566 damped fixed-point protocol "
+    "lands. The sparse certified default keeps hard enforcement."
+)
+US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
+    "18_64": _US_DENSE_SSI_FENCE_ADJUDICATION,
+    "65_plus": _US_DENSE_SSI_FENCE_ADJUDICATION,
+}
+assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == {"18_64", "65_plus"}
+assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) < set(
+    US_SSI_TAKE_UP_ENFORCED_BAND_KEYS
+), (
+    "The dense-arm adjudication fences exactly the adult pair while the "
+    "under-18 band remains hard-gated."
+)
+
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
     "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
 )
@@ -291,14 +338,15 @@ US_FISCAL_TARGET_LOSS_CAP = 1.0
 # the inputs that actually determine per-household reform estimates and no longer
 # includes build_commit / seed / target_registry_version. Old (v1) coarse-key
 # entries live under different filenames, so a mixed cache dir never collides.
-TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 2
+# Bumped 2 -> 3 for #557: absolute reform vectors now bind to the target-frame
+# materializer identity. Pre-#557 vectors can reflect release-refitted retirement
+# leaves and must not mix with a preserved-surface baseline.
+TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 3
 # The subset of the materialization cache context that determines per-household JCT
-# reform income-tax vectors (#217). Anything outside this set — build commit, RNG
-# seed, target registry version, calibration settings — cannot change a reform's
-# per-household estimate, so it is deliberately excluded from the reform-vector
-# cache key. That lets a restart at a newer build commit (or after a registry-only
-# change) reuse already-materialized reforms instead of recomputing all of them,
-# while a change to any of these keys still invalidates the entry (no stale reuse).
+# reform income-tax vectors (#217). The raw build commit and calibration settings
+# stay excluded. The materializer-identity digest transitively binds staged-frame
+# semantics, seed, registry, and support selection, so any such change invalidates
+# the vectors even when the on-disk base hash is stable.
 REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "base_dataset_sha256",
     "weeks_unemployed_source_sha256",
@@ -312,6 +360,14 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # invalidates reform vectors too — correctness over cache warmth
     # (populace#507/#508 sol review round 2, finding 2).
     "ssi_take_up_assignment_sha256",
+    # The selected identities determine which household rows the vectors
+    # describe. Same-length supports can share positional SSI flag bytes, so
+    # this digest remains independent of the assignment digest.
+    "selection_identities_sha256",
+    # Absolute reform-tax vectors are later subtracted from the freshly
+    # materialized baseline. Bind them to the complete target-frame identity
+    # so pre-#557 release-refitted surfaces cannot mix with preserved surfaces.
+    "target_frame_materializer_identity_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 2: the medicaid_take_up stage (populace #331) changed base_frame's
@@ -341,10 +397,9 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # reused (populace#543, post-merge audit).
 # 9: #374 SIPP+SCF financial-asset blend changes the pre-materialization
 # frame; warm SCF-only checkpoints must not calibrate the blended frame.
-# 10: the child-disability stage (#453/#509) rewrites staged under-15
-# is_disabled and the downstream meets_ssi_disability_criteria input before
-# target materialization while the on-disk base hash remains unchanged;
-# version-9 checkpoints therefore miss the child SSI eligibility surface.
+# 10: #557 preserves the staged retirement-distribution surface through
+# release materialization; pre-#557 checkpoints can carry QRF-refitted leaves
+# and must not serve the preserved-surface baseline.
 TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 10
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
@@ -986,18 +1041,18 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional us_ssi_take_up.json diagnostics artifact from a prior "
-            "attempt's final release-weight measurement (schema 2 or 3, e.g. "
-            "the certified predecessor release's). The SSI take-up Bernoulli "
-            "thresholds are then computed against that attempt's delivered "
-            "per-band candidate capacities instead of this run's "
-            "pre-calibration weights — the populace#508 fix for the "
-            "populace#507 aged-band collapse: thresholds truthful against "
-            "release-kind weights, still drawn exactly once, with no "
-            "reconcile loop. The artifact must carry the same SSA band "
-            "target contract this build compiles; the enforced-band "
-            "delivery gate verifies the landed counts either way, and on "
-            "failure writes this run's us_ssi_take_up.json as the basis for "
-            "the retry. Requires --ssi-take-up-prior-weight-basis-sha256."
+            "attempt's final release-weight measurement (current schema 4, or "
+            "legacy schema 2/3 capacity-floor seeds such as the certified "
+            "predecessor release's). The SSI take-up Bernoulli thresholds are "
+            "then computed against that attempt's delivered per-band candidate "
+            "capacities instead of this run's pre-calibration weights — the "
+            "populace#508 fix for the populace#507 aged-band collapse: "
+            "thresholds truthful against release-kind weights, still drawn "
+            "exactly once, with no reconcile loop. The artifact must carry the "
+            "same SSA band target contract this build compiles; the enforced-"
+            "band delivery gate verifies the landed counts either way, and on "
+            "failure writes this run's us_ssi_take_up.json as the basis for the "
+            "retry. Requires --ssi-take-up-prior-weight-basis-sha256."
         ),
     )
     parser.add_argument(
@@ -1159,7 +1214,7 @@ def _parse_args() -> argparse.Namespace:
             "stores expensive per-household target materialization artifacts "
             "such as JCT reform income-tax vectors and is content-addressed by "
             "base H5, policyengine-us version, period, geography crosswalk, and "
-            "reform (see #217)."
+            "the target-frame materializer identity and reform (see #217/#557)."
         ),
     )
     parser.add_argument(
@@ -1440,6 +1495,18 @@ def _reform_vector_cache_context(context: Mapping[str, object]) -> dict[str, obj
     that omits the crosswalk sha is distinct from one that sets it); absent keys
     are simply not part of the identity.
     """
+    # The materializer identity is the anti-mixing key (PR #557): a producer
+    # that cannot state which target-frame semantics built its vectors must
+    # not share the cache. Presence is required; an explicit None is a valid
+    # declaration for non-release producers (the scorers) and is
+    # identity-distinct from every release digest.
+    if "target_frame_materializer_identity_sha256" not in context:
+        raise ValueError(
+            "Reform-vector cache context must declare "
+            "target_frame_materializer_identity_sha256 (explicit None for "
+            "non-release producers); silently omitting it would let vectors "
+            "from different target-frame semantics mix (PR #557 review)."
+        )
     return {
         key: context[key] for key in REFORM_VECTOR_CACHE_CONTEXT_KEYS if key in context
     }
@@ -1459,10 +1526,9 @@ def _target_materialization_cache_identity(
         "n_households": int(n_households),
         "reform_measure": str(reform_spec.measure),
         "neutralized_variable": str(reform_spec.neutralized_variable),
-        # #217: reform-vector identity uses only the inputs that determine the
-        # per-household estimate. Build commit / seed / registry version are
-        # intentionally excluded so calibration-only or commit-only reruns reuse
-        # the cache; base H5 / PE-US version / period / geography still invalidate.
+        # #217/#557: build commit remains intentionally excluded, while the
+        # target-frame materializer digest binds seed, registry, staged-frame
+        # semantics, and support selection to the absolute reform vector.
         "context": dict(sorted(_reform_vector_cache_context(context).items())),
     }
 
@@ -1566,6 +1632,124 @@ def _write_reform_income_tax_cache(
     return digest, values_path
 
 
+def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
+    """Fail loud when --out/--release-id points at a certified release.
+
+    populace#568 round 3: a failed retry into a directory that already
+    carries a certified release would write failed-attempt weight evidence
+    beside the prior run's manifest and H5 — mixing attempts the manifest
+    knows nothing about. Release ids are immutable once certified; reruns
+    pick a new id (every launcher stamps a fresh UTC timestamp) or remove
+    the directory deliberately.
+    """
+
+    manifest_path = Path(release_dir) / "release_manifest.json"
+    if manifest_path.exists():
+        raise RuntimeError(
+            f"Release directory {release_dir} already carries a certified "
+            "release (release_manifest.json present). Choose a new "
+            "--release-id or deliberately remove the stale directory before "
+            "rerunning."
+        )
+
+
+def _write_final_household_weight_evidence(
+    release_dir: Path,
+    export_frame: Frame,
+    *,
+    identity: Mapping[str, object],
+) -> dict[str, object]:
+    """Atomically persist the final release-grain household weight vector.
+
+    Written on the gate-failure path only (populace#568 review): a failed
+    pre-export run minted no H5, so this evidence pair — the weight vector
+    plus the ORDERED household ids it aligns to, bound to the target-frame
+    identity — is the only way to reattach weights to records for
+    record-level diagnosis. Green runs never write it: the certified H5
+    carries the weights itself.
+    """
+
+    weights = export_frame.weights_for("household")
+    if weights.kind is not WeightKind.CALIBRATED:
+        raise ValueError(
+            "Final household weight evidence requires calibrated weights, got "
+            f"{weights.kind.value!r}."
+        )
+    values = np.asarray(weights.values, dtype=np.float64)
+    if values.ndim != 1 or len(values) != export_frame.n("household"):
+        raise ValueError(
+            "Final household weights must align one-for-one with exported households."
+        )
+
+    household_ids = np.asarray(
+        export_frame.table("household")["household_id"].to_numpy(),
+        dtype=np.int64,
+    )
+    if household_ids.shape != values.shape:
+        raise ValueError(
+            "Final household weight evidence ids must align one-for-one with "
+            "the weight vector."
+        )
+
+    evidence_dir = Path(release_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    values_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
+    metadata_path = evidence_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    temporary_values = values_path.with_name(f".{values_path.name}.tmp")
+    temporary_ids = ids_path.with_name(f".{ids_path.name}.tmp")
+    temporary_metadata = metadata_path.with_name(f".{metadata_path.name}.tmp")
+    temporary_values.unlink(missing_ok=True)
+    temporary_ids.unlink(missing_ok=True)
+    temporary_metadata.unlink(missing_ok=True)
+    try:
+        with temporary_values.open("wb") as stream:
+            np.save(stream, values, allow_pickle=False)
+        with temporary_ids.open("wb") as stream:
+            np.save(stream, household_ids, allow_pickle=False)
+        metadata: dict[str, object] = {
+            "artifact_kind": "populace_final_household_weight_evidence",
+            "schema_version": FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION,
+            "measurement_phase": "release_final",
+            "entity": "household",
+            "weight_kind": weights.kind.value,
+            "identity": dict(identity),
+            "values": {
+                "file": values_path.name,
+                "dtype": "float64",
+                "shape": [int(len(values))],
+                "sha256": _sha256(temporary_values),
+            },
+            "household_ids": {
+                "file": ids_path.name,
+                "dtype": "int64",
+                "shape": [int(len(household_ids))],
+                "sha256": _sha256(temporary_ids),
+                "ordering_sha256": hashlib.sha256(household_ids.tobytes()).hexdigest(),
+            },
+            "summary": {
+                "n_households": int(len(values)),
+                "household_weight_sum": float(values.sum()),
+                "minimum": float(values.min()),
+                "maximum": float(values.max()),
+                "nonzero_count": int(np.count_nonzero(values)),
+                "zero_count": int((values == 0.0).sum()),
+            },
+        }
+        temporary_metadata.write_text(
+            _strict_json_text(metadata, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_values, values_path)
+        os.replace(temporary_ids, ids_path)
+        os.replace(temporary_metadata, metadata_path)
+    finally:
+        temporary_values.unlink(missing_ok=True)
+        temporary_ids.unlink(missing_ok=True)
+        temporary_metadata.unlink(missing_ok=True)
+    return metadata
+
+
 def _selection_mass_protection_specs(
     base_frame: Frame,
     columns: Sequence[str],
@@ -1648,6 +1832,7 @@ def _target_frame_checkpoint_identity(
     weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
     ssi_take_up_assignment_sha256: str,
+    selection_identities_sha256: str | None,
     selection_mass_protections: tuple[str, ...] = (),
     ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
@@ -1668,6 +1853,15 @@ def _target_frame_checkpoint_identity(
         # (populace#507/#508). Always present, so every pre-#507 checkpoint
         # — built on the collapsed Build-N-class flags — also misses once.
         "ssi_take_up_assignment_sha256": str(ssi_take_up_assignment_sha256),
+        # The frozen-support selection prunes the base pool before assignment
+        # and materialization. Its identity-set digest is independent of the
+        # positional SSI assignment digest: different same-length supports can
+        # carry identical flag bytes (populace#507).
+        "selection_identities_sha256": (
+            None
+            if selection_identities_sha256 is None
+            else str(selection_identities_sha256)
+        ),
         "congressional_district_vintage_crosswalk_sha256": (
             None
             if congressional_district_vintage_crosswalk_sha256 is None
@@ -1677,7 +1871,7 @@ def _target_frame_checkpoint_identity(
         # materialized target frame is built on, but arrives via a flag the
         # base hash cannot see: O attempt 3 warm-hit attempt 2's checkpoint
         # and solved on the other basis's rows (populace#543, instance 2).
-        # Unconditional None-able key — v10 starts a fresh checkpoint world,
+        # Unconditional None-able key — v8 starts a fresh checkpoint world,
         # so no legacy-identity preservation applies.
         "ssi_take_up_prior_weight_basis_sha256": (
             None
@@ -4747,6 +4941,25 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "(populace#393 final determination); this exclusion lifts with "
         "that rebuild."
     ),
+    "short_term_capital_gains": (
+        "Untargeted signed dimension measured against an incidental reference "
+        "(the populace#432/#433 rental_income class, called in advance by the "
+        "release-gate preflight: 'confirm the calibration surface targets this "
+        "column — an untargeted one fails the export-mass parity gate'). The "
+        "compiled register carries NO short-term-specific target (verified on "
+        "Build P3 dense diagnostics: zero short_term rows among 5,695 compiled "
+        "targets), so nothing pins the signed ST dimension; the combined ST+LT "
+        "surface is pinned instead and lands (net_capital_gains_amount -2.85% on "
+        "the same run). The reference h5 carries $118.072B of signed ST mass — "
+        "an artifact of the incumbent solve, not an identified level — while the "
+        "Build P3 dense export delivers $58.465B, 0.97% past the +/-50% band "
+        "floor ($59.036B). This exclusion RE-ADJUDICATES when SOI Publication "
+        "1304 Table 1.4A (the Schedule-D sales-of-capital-assets table) short- "
+        "term gain/loss legs land as Ledger targets — a new target pins the "
+        "dimension but does not itself validate the incumbent parity reference, "
+        "so the entry is re-decided on that build's receipts, the farm-entry "
+        "pattern."
+    ),
     "estate_income": (
         "Identified by SOI Table 1.4 estate/trust net income (income leg "
         "$47.892B + loss leg $4.899B, TY2023; CBO-aged net ~$46.74B@2024). "
@@ -5378,11 +5591,12 @@ def _load_ssi_take_up_prior_weight_basis(
     prior attempt's final ``us_ssi_take_up.json``; its per-band
     ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
     the weights that attempt delivered, and the module-side validator
-    enforces the release-final phase, full diagnostics-gate pass (schema 3),
-    same-target-contract, and enforced-band-feasibility rules
-    (populace#507/#508). The caller must pin the artifact's sha256 in the
-    launch command so the basis is an auditable receipt, never whatever
-    bytes happen to sit at the path.
+    enforces the release-final phase and full diagnostics-gate pass for the
+    current schema, while schemas 2/3 contribute legacy capacity/floor seeds
+    only; same-target-contract and enforced-band-feasibility rules apply to
+    every accepted version (populace#507/#508). The caller must pin the
+    artifact's sha256 in the launch command so the basis is an auditable
+    receipt, never whatever bytes happen to sit at the path.
     """
 
     if path is None:
@@ -5508,11 +5722,18 @@ def _enforce_ssi_take_up_delivery(
     targets: Mapping[str, float],
     release_dir: Path,
     telemetry: StagingTelemetry | None,
-) -> list[str]:
+    enforcement_fences: Mapping[str, str] | None = None,
+) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
 
     populace#507/#508: a miss beyond tolerance on release weights fails the
-    build instead of shipping in the scorecard. The delivered-weight
+    build instead of shipping in the scorecard. ``enforcement_fences``
+    (populace#566/#567) fences normally-enforced bands for the dense
+    diagnostic arm, where delivered-weight recomputes have not landed
+    the adult pair in band on either observed frame (P2's clean
+    one-retry record; P3's refused delivered-basis chain) — fenced
+    misses ship in the scorecard with their adjudication text instead
+    of failing the release. The delivered-weight
     diagnostics are written before returning failures — that artifact IS the
     remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
     the thresholds are recomputed exactly once from measured delivery, never
@@ -5526,9 +5747,11 @@ def _enforce_ssi_take_up_delivery(
     written.
     """
 
-    delivery_gate = us_ssi_take_up_delivery_gate(diagnostics, targets=targets)
+    delivery_gate = us_ssi_take_up_delivery_gate(
+        diagnostics, targets=targets, enforcement_fences=enforcement_fences
+    )
     if delivery_gate.passed:
-        return []
+        return [], delivery_gate
     # The gate failures are secured FIRST: the retry-artifact write and the
     # telemetry are reporting conveniences for an already-failed gate, and
     # neither may destroy the evidence chain by raising. Concretely: a
@@ -5549,9 +5772,7 @@ def _enforce_ssi_take_up_delivery(
         # failure itself hands the operator both halves of the remedy (a
         # failed attempt never reaches the release manifest that would
         # otherwise carry the hash).
-        failed_basis_sha256 = hashlib.sha256(
-            failed_basis_path.read_bytes()
-        ).hexdigest()
+        failed_basis_sha256 = hashlib.sha256(failed_basis_path.read_bytes()).hexdigest()
         failures.append(
             "SSI take-up delivered-weight prior basis written to "
             f"{failed_basis_path} (sha256 {failed_basis_sha256}) for the "
@@ -5576,7 +5797,7 @@ def _enforce_ssi_take_up_delivery(
             "SSI delivery-gate failure telemetry crashed; recorded instead "
             f"of masking the failure: {error}"
         )
-    return failures
+    return failures, delivery_gate
 
 
 def _ssi_assignment_priors_from_diagnostics(
@@ -6560,6 +6781,7 @@ def _build_manifests(
     registry: TargetRegistry,
     dropped: Mapping[str, object],
     target_profile_gate: GateResult,
+    ssi_take_up_delivery_gate_result: GateResult | None = None,
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
@@ -6682,6 +6904,23 @@ def _build_manifests(
                 "failures": list(target_profile_gate.failures),
                 "details": dict(target_profile_gate.details),
             },
+            **(
+                {
+                    # The delivery gate result is the release's enforcement
+                    # receipt: under the populace#566/#567 dense-arm fences a
+                    # green release no longer implies every adult band was
+                    # ENFORCED, so the manifest must say which bands were
+                    # (enforced_band_keys) and which were fenced with their
+                    # adjudication text (fenced_bands).
+                    "ssi_take_up_delivery": {
+                        "passed": ssi_take_up_delivery_gate_result.passed,
+                        "failures": list(ssi_take_up_delivery_gate_result.failures),
+                        "details": dict(ssi_take_up_delivery_gate_result.details),
+                    }
+                }
+                if ssi_take_up_delivery_gate_result is not None
+                else {}
+            ),
             **(
                 {
                     "base_population_scale": {
@@ -6844,6 +7083,21 @@ def _build_manifests(
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
+            **(
+                {
+                    # populace#566/#567: release_manifest.json alone must
+                    # distinguish fenced from enforced SSI delivery — the
+                    # effective enforced set and the fenced rows (with
+                    # their adjudication text) ride here as well as in
+                    # build_manifest.json's gates block.
+                    "ssi_take_up_delivery": {
+                        "passed": ssi_take_up_delivery_gate_result.passed,
+                        "details": dict(ssi_take_up_delivery_gate_result.details),
+                    }
+                }
+                if ssi_take_up_delivery_gate_result is not None
+                else {}
+            ),
             **(
                 {
                     "base_population_scale": {
@@ -7231,6 +7485,16 @@ def main() -> None:
     build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
+    if args.release_id:
+        # populace#568 round 4: when the id is known up front (every launcher
+        # passes one), refuse certified-dir reuse before ANY side effect —
+        # including the base download and cache writes below. The
+        # auto-generated-id path derives its id from the base digest, so its
+        # refusal necessarily runs later, but still before any output-dir
+        # creation.
+        _refuse_certified_release_dir_reuse(
+            args.out.resolve() / "releases" / args.release_id
+        )
     base_h5 = args.base_h5 or _download_base_h5()
     base_dataset_sha256 = _sha256(base_h5)
     digest = base_dataset_sha256[:7]
@@ -7403,6 +7667,10 @@ def main() -> None:
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
+    # Unconditional refusal BEFORE any output-directory creation: a hostile
+    # --checkpoint-root beneath releases/<id> must not mutate a certified
+    # directory before the raise (populace#568 round 4).
+    _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
@@ -7427,6 +7695,17 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+    capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
+        base_frame,
+        base_frame,
+        require_present=True,
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "capital_gains_tail_presence",
+            message="Verified the materialized PUF capital-gains own-tail.",
+            **capital_gains_tail_presence,
+        )
     weeks_unemployed_source_path = (
         args.asec_2023_weeks_unemployed_source
         if args.asec_2023_weeks_unemployed_source is not None
@@ -7495,10 +7774,19 @@ def main() -> None:
                 n_source=selection_source.n_identities,
                 join_key=list(selection_source.join_key),
             )
+        selection_candidate_frame = base_frame
         base_frame, selection_report = select_frozen_support(
-            base_frame, selection_source
+            selection_candidate_frame,
+            selection_source,
         )
         selection_source_payload = selection_report.as_manifest()
+        selection_source_payload["puf_capital_gains_tail_retention"] = (
+            assert_puf_capital_gains_tail_survives_selection(
+                selection_candidate_frame,
+                base_frame,
+                require_present=True,
+            )
+        )
         if telemetry is not None:
             telemetry.stage(
                 "frozen_support_selection_done",
@@ -8100,22 +8388,29 @@ def main() -> None:
         time_period=PERIOD,
     )
     retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
+    early_terminal_gate_failures: list[str] = []
     if not retirement_distributions_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "retirement_distribution_inputs_gate",
-                status="failed",
-                message="Retirement-distribution signal gate failed.",
-                failures=list(retirement_distributions_gate.failures),
-                force_upload=True,
-            )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                "Retirement-distribution signal failed: " + failure
-                for failure in retirement_distributions_gate.failures
-            )
+        # A selected support is consume-only at this boundary. Preserve the
+        # gate's batched missing/degenerate leaf evidence and carry it to the
+        # #548 terminal accumulator instead of refitting or raising early.
+        early_terminal_gate_failures.extend(
+            "Retirement-distribution signal failed: " + failure
+            for failure in retirement_distributions_gate.failures
         )
+        try:
+            if telemetry is not None:
+                telemetry.stage(
+                    "retirement_distribution_inputs_gate",
+                    status="failed",
+                    message="Retirement-distribution signal gate failed.",
+                    failures=list(retirement_distributions_gate.failures),
+                    force_upload=True,
+                )
+        except Exception as error:
+            early_terminal_gate_failures.append(
+                "Retirement-distribution gate failure telemetry crashed; "
+                f"recorded instead of masking the failure: {error}"
+            )
     if telemetry is not None:
         telemetry.stage(
             "eligibility_inputs",
@@ -8839,40 +9134,89 @@ def main() -> None:
         and not input_mass_reference_gate.passed
         and not args.allow_input_mass_drift
     ):
-        if telemetry is not None:
-            telemetry.stage(
-                "input_mass_reference_gate",
-                status="failed",
-                message="Base-frame input mass parity gate failed.",
-                failures=list(input_mass_reference_gate.failures),
-                force_upload=True,
+        # Degraded pre-solve (PR #557 rounds 2-3): when the retirement
+        # boundary already failed, this raise would supersede the specific
+        # missing-leaf diagnosis. The gate object already rides
+        # _release_gate_failures into the single terminal batch, so the
+        # degraded branch simply does NOT raise — no duplicate append — and
+        # its telemetry is guarded so a reporting crash cannot mask the
+        # pending diagnosis (the #547 secure-before-report pattern). A green
+        # run keeps today's fail-fast raise.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "input_mass_reference_gate",
+                        status="failed",
+                        message="Base-frame input mass parity gate failed.",
+                        failures=list(input_mass_reference_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "Input-mass gate failure telemetry crashed in degraded "
+                    f"mode; recorded instead of masking the diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "input_mass_reference_gate",
+                    status="failed",
+                    message="Base-frame input mass parity gate failed.",
+                    failures=list(input_mass_reference_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Input mass parity failed: {failure}"
+                    for failure in input_mass_reference_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Input mass parity failed: {failure}"
-                for failure in input_mass_reference_gate.failures
-            )
-        )
     degenerate_input_gate = _degenerate_input_signal_gate(
         base_frame, PolicyEngineUSEngine()
     )
     if not degenerate_input_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "degenerate_input_gate",
-                status="failed",
-                message="Degenerate input signal gate failed.",
-                failures=list(degenerate_input_gate.failures),
-                force_upload=True,
+        # Same degraded contract as the input-mass gate above: the gate
+        # object rides _release_gate_failures to the batch; no raise, no
+        # duplicate append, guarded telemetry.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "degenerate_input_gate",
+                        status="failed",
+                        message="Degenerate input signal gate failed.",
+                        failures=list(degenerate_input_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "Degenerate-input gate failure telemetry crashed in "
+                    f"degraded mode; recorded instead of masking the "
+                    f"diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "degenerate_input_gate",
+                    status="failed",
+                    message="Degenerate input signal gate failed.",
+                    failures=list(degenerate_input_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_input_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Degenerate input signal failed: {failure}"
-                for failure in degenerate_input_gate.failures
-            )
-        )
+    # No combined pre-solve raise: a degraded run continues through the
+    # solve so calibration_diagnostics.json and the single terminal batch
+    # exist (the #547/#548 evidence contract — compute is cheaper than a
+    # destroyed failure record). The two gates above keep fail-fast raises
+    # on otherwise-green runs only.
     if telemetry is not None:
         telemetry.stage(
             "ecps_parity_gate",
@@ -8880,21 +9224,44 @@ def main() -> None:
         )
     ecps_parity_gate = _ecps_parity_gate(base_frame)
     if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
-        if telemetry is not None:
-            telemetry.stage(
-                "ecps_parity_gate",
-                status="failed",
-                message="eCPS parity gate failed.",
-                failures=list(ecps_parity_gate.failures),
-                force_upload=True,
+        # Same degraded contract as the input-mass/degenerate gates above
+        # (PR #557 round 3 finding 1): the pinned parity reference requires
+        # the retirement leaves, so a missing-leaf frame fails HERE too and
+        # an unconditional raise would supersede the retirement diagnosis
+        # before the solve. The gate object rides _release_gate_failures
+        # (as enforced_ecps_parity_gate) into the terminal batch; degraded
+        # runs continue, green runs keep the fail-fast raise.
+        if early_terminal_gate_failures:
+            try:
+                if telemetry is not None:
+                    telemetry.stage(
+                        "ecps_parity_gate",
+                        status="failed",
+                        message="eCPS parity gate failed.",
+                        failures=list(ecps_parity_gate.failures),
+                        force_upload=True,
+                    )
+            except Exception as error:
+                early_terminal_gate_failures.append(
+                    "eCPS parity gate failure telemetry crashed in degraded "
+                    f"mode; recorded instead of masking the diagnosis: {error}"
+                )
+        else:
+            if telemetry is not None:
+                telemetry.stage(
+                    "ecps_parity_gate",
+                    status="failed",
+                    message="eCPS parity gate failed.",
+                    failures=list(ecps_parity_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"eCPS parity failed: {failure}"
+                    for failure in ecps_parity_gate.failures
+                )
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"eCPS parity failed: {failure}"
-                for failure in ecps_parity_gate.failures
-            )
-        )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
@@ -8924,12 +9291,18 @@ def main() -> None:
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
         ssi_take_up_assignment_sha256=ssi_take_up_assignment_sha256,
+        selection_identities_sha256=(
+            None if selection_source is None else selection_source.identities_sha256
+        ),
         selection_mass_protections=selection_mass_protections,
         ssi_take_up_prior_weight_basis_sha256=(
             None
             if ssi_take_up_prior_basis is None
             else ssi_take_up_prior_basis.source_sha256
         ),
+    )
+    target_frame_materializer_identity_sha256 = _target_frame_checkpoint_digest(
+        target_frame_checkpoint_identity
     )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
@@ -8955,6 +9328,18 @@ def main() -> None:
             # every cached materialized column, not only the SSI-dependent
             # ones — correctness over cache warmth (populace#507/#508).
             "ssi_take_up_assignment_sha256": ssi_take_up_assignment_sha256,
+            # Reform vectors are computed over the selected support. Thread
+            # the source identity-set digest directly; the report manifest
+            # intentionally does not carry this cache identity.
+            "selection_identities_sha256": (
+                None if selection_source is None else selection_source.identities_sha256
+            ),
+            # Reform caches store absolute income-tax vectors, which are
+            # subtracted from a freshly materialized baseline. Bind both sides
+            # to one complete materializer identity (populace#557).
+            "target_frame_materializer_identity_sha256": (
+                target_frame_materializer_identity_sha256
+            ),
         },
         gate_congressional_district_targets=args.gate_congressional_district_targets,
     )
@@ -9153,7 +9538,6 @@ def main() -> None:
     # diagnostics and skipped every other gate group (populace#547). A law
     # violation additionally quarantines SSI-dependent evaluations below.
     ssi_law_degraded = not final_ssi_take_up_gate.passed
-    early_terminal_gate_failures: list[str] = []
     if not final_ssi_take_up_gate.passed:
         # Failures enter the list BEFORE any reporting: the telemetry stage
         # performs local writes and must not be able to mask the gate
@@ -9176,14 +9560,23 @@ def main() -> None:
                 "SSI final-gate failure telemetry crashed; recorded instead "
                 f"of masking the failure: {error}"
             )
-    early_terminal_gate_failures.extend(
+    ssi_delivery_failures, ssi_take_up_delivery_gate_result = (
         _enforce_ssi_take_up_delivery(
             ssi_take_up_diagnostics,
             targets=ssi_band_targets,
             release_dir=release_dir,
             telemetry=telemetry,
+            # The dense diagnostic arm fences its adult bands per the
+            # populace#566/#567 fence adjudication; the sparse certified
+            # arm passes no fences and keeps hard enforcement.
+            enforcement_fences=(
+                US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
+                if args.dense_default_dataset
+                else None
+            ),
         )
     )
+    early_terminal_gate_failures.extend(ssi_delivery_failures)
     medicaid_take_up_diagnostics, medicaid_guard_failures = (
         _final_medicaid_diagnostics_or_quarantine(
             ssi_law_degraded=ssi_law_degraded,
@@ -9691,6 +10084,19 @@ def main() -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
+        # Gate-failure path ONLY (populace#568 review): a batched pre-export
+        # failure mints no H5, so the exact calibrated weight vector — with
+        # the ordered household ids it aligns to, bound to the target-frame
+        # identity — is persisted here as the run's only record-level weight
+        # evidence. Green runs never write these files (the certified H5
+        # carries the weights); late gates (reform smoke, take-up contract)
+        # raise after the H5 write, so their failed runs retain weights in
+        # the written dataset itself.
+        _write_final_household_weight_evidence(
+            release_dir,
+            export_frame,
+            identity=target_frame_checkpoint_identity,
+        )
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",
@@ -9699,6 +10105,18 @@ def main() -> None:
             force_upload=True,
         )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
+    # A green run must not inherit a prior failed attempt's weight evidence
+    # (populace#568 round 2): with --out/--release-id reuse, stale evidence
+    # files would coexist with a certified release whose manifest knows
+    # nothing about them. The batched gates have passed, so any evidence
+    # present here belongs to a superseded attempt — remove it before the
+    # certified artifacts are written.
+    for stale_evidence in (
+        release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+        release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+        release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+    ):
+        stale_evidence.unlink(missing_ok=True)
     dataset_path = artifact_root / DATASET_FILENAME
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
@@ -9931,6 +10349,7 @@ def main() -> None:
         registry=registry,
         dropped=compilation,
         target_profile_gate=target_profile_gate,
+        ssi_take_up_delivery_gate_result=ssi_take_up_delivery_gate_result,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,

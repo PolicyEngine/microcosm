@@ -17,10 +17,31 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.puf_e01000_reconciliation import (
+    PUF_SCHEDULE_D_JOINT_COLUMNS,
+    puf_capital_gains_joint_metrics,
+    puf_processed_capital_gains_stage,
+)
+from populace.build.us_runtime.puf_interest_components import (
+    split_us_puf_e19200_by_agi_band,
+)
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_CLONE_INDEX,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    puf_tax_detail_clone_mask,
+    spine_source_id_column,
+    support_channel_column,
+    support_clone_index_column,
+    support_role_series,
+    support_source_id_column,
+    validate_assembly_provenance,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from populace.frame.schema import EntitySchema
@@ -30,59 +51,59 @@ QRF: Any | None = None
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PufTaxDetailChainInputs",
+    "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
+    "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
-    "US_PUF_E19200_HOME_MORTGAGE_SHARE",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
     "clone_us_frame_for_puf_support",
     "finalize_us_puf_tax_detail_predictions",
+    "has_support_role_metadata",
     "impute_us_puf_tax_detail_support",
+    "puf_tax_detail_clone_mask",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
+    "spine_source_id_column",
     "support_channel_column",
     "support_clone_index_column",
+    "support_role_series",
     "support_source_id_column",
 ]
 
-BASE_ASEC_SUPPORT_CHANNEL = "asec"
-PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 
 #: The name the PUF tax-detail support fit records in the build weights audit
 #: (populace #300). Stable so a release manifest and its allowlist can refer to
 #: this fit by name.
 US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
+PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN = "puf_source_adjusted_gross_income"
 
-# Interim populace#515 carve: SOI Pub 1304 TY2015 Table 2.1 reports
-# $283,004,465 thousand of home-mortgage interest within $304,461,163 thousand
-# of total interest paid. Apply that concept share per donor record before the
-# QRF learns levels and realized support. The #486 ``support_value_repairs``
-# surface is instead a release-time total pin, so it cannot express this
-# donor-column concept correction (#492). A uniform carve cannot identify the
-# records carrying the removed points, qualified mortgage-insurance premiums,
-# or investment interest, so ``investment_interest_expense`` remains all-zero.
-US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163
-
-# populace#516 donor outlier screen: $10M of annual home-mortgage interest
-# implies roughly a $250M mortgage at 4%, not a genuine Schedule A return; the
-# pinned artifact's maximum REAL-scale unit values are only low single-digit
-# millions. Its grouped-raw >=$10M intersection contains 3,066 tax units (max
-# $235.97B; weight 3,684 of 161M) and $2.947T of phantom mortgage-interest mass,
-# versus $418B retained; 1,823 have synthetic IDs >= 1,000,000 and 1,243 have
-# ordinary IDs.
-# The cohort uniquely sets 20 upper and 3 lower realized-range endpoints across
-# the 64 donor targets, so every column of each row must be removed. This is an
-# outlier screen, NOT aggregate-lineage removal: an ID-range union would delete
-# 2,162 healthy synthetic donors to remove only about $0.7B more.
+# populace#516 donor mortgage quarantine: $10M of annual home-mortgage
+# interest implies roughly a $250M mortgage at 4%, not a genuine Schedule A
+# return; the pinned artifact's maximum REAL-scale unit values are only low
+# single-digit millions. Its grouped-raw >=$10M intersection contains 3,066
+# tax units (max $235.97B; weight 3,684 of 161M) and $2.947T of phantom
+# mortgage-interest mass, versus $418B retained; 1,823 have synthetic IDs
+# >= 1,000,000 and 1,243 have ordinary IDs.
+#
+# populace#567 measured that whole-row removal also deleted $98.176B of
+# positive capital gains that are unrelated to E19200. The quarantine is
+# therefore field-local: only the raw E19200 lineage and its conserving
+# non-mortgage residual are zeroed. Mortgage balances and origination years
+# are independently sourced and remain intact, as do every non-mortgage field.
+# This is an outlier screen, NOT aggregate-lineage removal: an ID-range union
+# would also delete 2,162 healthy synthetic donors.
 US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0
 
 # Reserved internal column used to thread the grouped RAW mortgage value to
 # the outlier screen; never a legal requested output (populace#516).
 _MORTGAGE_OUTLIER_SCREEN_COLUMN = "_raw_home_mortgage_interest_for_outlier_screen"
+_E19200_AGI_BAND_COLUMN = "_adjusted_gross_income_for_e19200_band"
 
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -91,6 +112,13 @@ _DEFAULT_SUPPORT_CHANNELS = (
 
 _US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
     "home_mortgage_interest",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "interest_deduction",
+)
+US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS = (
+    "home_mortgage_interest",
+    "investment_interest_expense",
     "first_home_mortgage_interest",
     "second_home_mortgage_interest",
     "interest_deduction",
@@ -151,6 +179,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "charitable_non_cash_donations",
     "real_estate_taxes",
     "home_mortgage_interest",
+    "investment_interest_expense",
     "investment_income_elected_form_4952",
     "student_loan_interest",
     "educator_expense",
@@ -305,6 +334,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
         "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
@@ -443,43 +473,66 @@ def clone_us_frame_for_puf_support(
     """Clone a US frame into support channels for PUF detail imputation.
 
     Args:
-        frame: A US-schema frame after unit assignment and CPS-carried
-            derivations.
-        channels: Ordered support-channel names. The first channel keeps the
-            original IDs; later channels receive remapped IDs. Weights are
-            split evenly across channels.
+        frame: A US-schema frame. A frame without support metadata follows the
+            legacy ASEC expansion. A frame whose entity tables all carry
+            native (clone-index zero) support provenance keeps its source
+            channels unchanged while receiving one PUF-detail clone.
+        channels: The canonical ``("asec", "puf_tax_detail")`` operator-role
+            pair. Custom roles are rejected at this boundary because downstream
+            operators accept only these two roles.
 
     Returns:
-        A new frame with every entity table cloned once per support channel,
-        channel/source metadata added with entity-prefixed column names, all
+        A new frame with every entity table cloned once per support role, all
         structural IDs remapped consistently, and typed weights mass-conserved.
+        Preassembled source-channel provenance is preserved.
 
     Raises:
         ValueError: If the frame is not US-schema, channel names are invalid,
-            metadata columns already exist, or an ID remapping would collide.
+            metadata is partial or already operated, or an ID remapping would
+            collide.
     """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("PUF support expansion currently requires the US schema.")
     support_channels = _validate_channels(channels)
-    _reject_metadata_collisions(frame, support_channels)
+    has_assembly_provenance = _has_native_assembly_provenance(frame)
+    if has_assembly_provenance:
+        validate_assembly_provenance(
+            frame,
+            boundary="PUF support clone entry",
+        )
+        if support_channels != _DEFAULT_SUPPORT_CHANNELS:
+            raise ValueError(
+                "Preassembled spine frames use the canonical native/PUF clone "
+                "roles; custom support channels are not accepted."
+            )
+    else:
+        _reject_metadata_collisions(frame, support_channels)
     id_multiplier = _id_multiplier_for_frame(frame)
 
     tables: dict[str, pd.DataFrame] = {}
     for entity in frame.entities:
-        tables[entity] = _clone_entity_table(
-            frame.table(entity),
-            entity=entity,
-            schema=frame.schema,
-            channels=support_channels,
-            id_multiplier=id_multiplier,
-        )
+        if has_assembly_provenance:
+            tables[entity] = _clone_preassembled_entity_table(
+                frame.table(entity),
+                entity=entity,
+                schema=frame.schema,
+                id_multiplier=id_multiplier,
+            )
+        else:
+            tables[entity] = _clone_entity_table(
+                frame.table(entity),
+                entity=entity,
+                schema=frame.schema,
+                channels=support_channels,
+                id_multiplier=id_multiplier,
+            )
     for link_name in frame.links:
         tables[link_name] = _clone_link_table(
             frame.link(link_name),
             link_name=link_name,
             schema=frame.schema,
-            channels=support_channels,
+            clone_count=len(support_channels),
             id_multiplier=id_multiplier,
         )
 
@@ -497,20 +550,29 @@ def clone_us_frame_for_puf_support(
         [frame.strata.copy() for _channel in support_channels],
         ignore_index=True,
     )
-    return Frame(
+    result = Frame(
         tables,
         frame.schema,
         weights,
         strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
+    if has_assembly_provenance:
+        validate_assembly_provenance(
+            result,
+            boundary="PUF support clone output",
+        )
+    return result
 
 
 def puf_tax_unit_donor_from_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
+    adjusted_gross_income: Sequence[Any] | None = None,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    donor_build_summary: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Build a tax-unit donor table from processed PUF array columns.
 
@@ -521,9 +583,15 @@ def puf_tax_unit_donor_from_arrays(
 
     Args:
         arrays: Mapping from column name to array-like values.
+        adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
+            published TY2015 SOI Table 2.1 component share for each record.
+            Required whenever the processed PUF carries nonzero E19200.
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
+        donor_build_summary: Optional mutable sink for donor-construction
+            provenance. When supplied, receives the field-local mortgage
+            quarantine cohort and per-field removed masses.
 
     Returns:
         A tax-unit donor DataFrame with numeric predictors, requested outputs,
@@ -545,11 +613,67 @@ def puf_tax_unit_donor_from_arrays(
             "filing_status_code": _filing_status_codes(arrays["filing_status"]),
         }
     )
+    if adjusted_gross_income is not None:
+        # Strict conversion (PR #561 review findings, rounds 1-2):
+        # _numeric_array coerces nonnumeric/NaN to 0.0, and errors="raise"
+        # alone is parse-strict but not real-number-strict — datetime and
+        # timedelta arrays (including NaT) convert to finite epoch/sentinel
+        # integers, complex drops its imaginary part, and booleans pass.
+        # Any of those would route records to the wrong AGI band with the
+        # finiteness check below none the wiser, so non-real dtypes are
+        # rejected up front. NaN/inf survive strict conversion and fail the
+        # explicit check.
+        agi_series = pd.Series(adjusted_gross_income)
+        if agi_series.dtype.kind not in "iufO":
+            raise TypeError(
+                "adjusted_gross_income must be real-valued; got dtype "
+                f"{agi_series.dtype}."
+            )
+        if agi_series.dtype.kind == "O":
+            # Element screen (PR #561 review, round 3): object and
+            # categorical arrays reach the strict parse below with kind
+            # "O", where object-wrapped booleans become 1.0/0.0 and
+            # object-wrapped complex keeps its real part with only a
+            # warning. Allow only element types whose float conversion is
+            # faithful: real numbers, Decimal, strings (strict-parsed),
+            # and missing values (which fail the finiteness check).
+            inferred = pd.api.types.infer_dtype(agi_series, skipna=True)
+            if inferred not in {
+                "integer",
+                "floating",
+                "mixed-integer-float",
+                "decimal",
+                "string",
+                "empty",
+            }:
+                raise TypeError(
+                    f"adjusted_gross_income must be real-valued; got {inferred} values."
+                )
+        agi = pd.to_numeric(agi_series, errors="raise").to_numpy(dtype=np.float64)
+        if len(agi) != len(tax_unit_id):
+            raise ValueError(
+                "adjusted_gross_income must align one-for-one with tax_unit_id."
+            )
+        if not np.isfinite(agi).all():
+            raise ValueError("adjusted_gross_income must contain only finite values.")
+        tax_unit[_E19200_AGI_BAND_COLUMN] = agi
+        # Preserve the source-year value solely as donor provenance for the
+        # post-QRF capital-gains tail transfer. QRF preparation selects an
+        # explicit predictor/output surface, so this never becomes a modeled
+        # carrier or a shipped PolicyEngine input.
+        tax_unit[PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN] = agi
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
-    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in (*person_outputs, *tax_unit_outputs):
+    reserved_outputs = {
+        _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+        _E19200_AGI_BAND_COLUMN,
+    }
+    requested_reserved = reserved_outputs.intersection(
+        (*person_outputs, *tax_unit_outputs)
+    )
+    if requested_reserved:
         raise ValueError(
-            f"{_MORTGAGE_OUTLIER_SCREEN_COLUMN!r} is reserved for the donor "
-            "mortgage outlier screen and cannot be a requested output."
+            f"{sorted(requested_reserved)!r} are reserved for donor E19200 "
+            "processing and cannot be requested outputs."
         )
     raw_home_mortgage_interest = _person_source_values(
         arrays,
@@ -598,42 +722,181 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    mortgage_quarantine_mask = np.zeros(len(tax_unit), dtype=bool)
     if _MORTGAGE_OUTLIER_SCREEN_COLUMN in tax_unit:
-        # The screen thresholds the grouped RAW person value: screening the
-        # CARVED value at the same literal would miss 49 corrupt rows in the
-        # $10M-to-$10.75M raw band (the semantic contract, pinned by the
-        # 10.5M-raw regression). Because the raw value rides its own reserved
-        # helper column -- outside the carve lineage tuple -- the returned
-        # frame is identical whether the screen runs before or after the
-        # carve; it runs first so the carve never touches rows the screen
-        # discards.
-        retained = (
-            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN]
-            < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+        # Threshold the grouped RAW person value: thresholding the carved
+        # mortgage value at the same literal would miss corrupt rows in the
+        # $10M-to-$10.75M raw band. Keep the mask while the E19200 split
+        # materializes both conserving components, then quarantine only those
+        # implicated fields so unrelated donor values remain available.
+        mortgage_quarantine_mask = (
+            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
+                dtype=np.float64,
+                copy=False,
+            )
+            >= US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
         )
-        tax_unit = (
-            tax_unit.loc[retained]
-            .drop(columns=[_MORTGAGE_OUTLIER_SCREEN_COLUMN])
-            .reset_index(drop=True)
+    # Keep the split BEFORE _add_predictor_aliases: no mortgage predictor alias
+    # exists today, but if one is ever added it must derive from the decomposed
+    # column (aliases skip already-present columns, so a post-alias split would
+    # leave a stale total-interest predictor copy).
+    _split_us_puf_e19200_components(tax_unit)
+    if donor_build_summary is not None and set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(
+        tax_unit.columns
+    ):
+        donor_build_summary["capital_gains_before_mortgage_screen"] = (
+            puf_processed_capital_gains_stage(tax_unit)
         )
-    # Keep the carve BEFORE _add_predictor_aliases: no mortgage predictor
-    # alias exists today, but if one is ever added it must derive from the
-    # carved column (aliases skip already-present columns, so a post-alias
-    # carve would leave a stale uncarved predictor copy).
-    _carve_us_puf_e19200_home_mortgage_share(tax_unit)
+    _quarantine_us_puf_mortgage_fields(
+        tax_unit,
+        mortgage_quarantine_mask,
+        donor_build_summary=donor_build_summary,
+    )
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
 
 
-def _carve_us_puf_e19200_home_mortgage_share(donor: pd.DataFrame) -> None:
-    """Carve E19200-lineage donor columns to the mortgage-only concept."""
+def _quarantine_us_puf_mortgage_fields(
+    donor: pd.DataFrame,
+    quarantine_mask: np.ndarray,
+    *,
+    donor_build_summary: dict[str, object] | None,
+) -> None:
+    """Zero only E19200-derived fields and record removed donor mass."""
 
+    mask = np.asarray(quarantine_mask, dtype=bool)
+    if mask.ndim != 1 or len(mask) != len(donor):
+        raise ValueError(
+            "PUF mortgage quarantine mask must align one-for-one with donor rows."
+        )
+    weights = donor["weight"].to_numpy(dtype=np.float64, copy=False)
+    has_capital_gains = set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(donor.columns)
+    capital_gains_before = (
+        puf_capital_gains_joint_metrics(donor, mask=mask) if has_capital_gains else None
+    )
+    fields: dict[str, dict[str, float | int]] = {}
+    for column in US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS:
+        if column not in donor:
+            continue
+        values = donor[column].to_numpy(dtype=np.float64, copy=False)
+        screened_values = values[mask]
+        screened_weights = weights[mask]
+        nonzero = screened_values != 0.0
+        positive = screened_values > 0.0
+        negative = screened_values < 0.0
+        fields[column] = {
+            "screened_record_count": int(mask.sum()),
+            "screened_nonzero_record_count": int(nonzero.sum()),
+            "screened_weight": float(screened_weights.sum()),
+            "screened_unweighted_signed_mass": float(screened_values.sum()),
+            "screened_weighted_signed_mass": float(
+                np.dot(screened_values, screened_weights)
+            ),
+            "screened_weighted_absolute_mass": float(
+                np.dot(np.abs(screened_values), screened_weights)
+            ),
+            "screened_weighted_positive_mass": float(
+                np.dot(screened_values[positive], screened_weights[positive])
+            ),
+            "screened_weighted_negative_mass": float(
+                np.dot(screened_values[negative], screened_weights[negative])
+            ),
+        }
+        donor.loc[mask, column] = 0.0
+
+    if donor_build_summary is not None:
+        quarantine: dict[str, object] = {
+            "method": "field_local_zero",
+            "source_field": "grouped_raw_home_mortgage_interest",
+            "comparison": "greater_than_or_equal",
+            "ceiling": US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
+            "screened_record_count": int(mask.sum()),
+            "screened_weight": float(weights[mask].sum()),
+            "fields": fields,
+        }
+        if capital_gains_before is not None:
+            capital_gains_after = puf_capital_gains_joint_metrics(donor, mask=mask)
+            capital_gains_difference = {
+                key: capital_gains_after[key] - value
+                for key, value in capital_gains_before.items()
+            }
+            if any(value != 0 for value in capital_gains_difference.values()):
+                raise AssertionError(
+                    "Field-local PUF mortgage quarantine changed capital gains."
+                )
+            quarantine["capital_gains_preserved"] = {
+                "columns": list(PUF_SCHEDULE_D_JOINT_COLUMNS),
+                "before": capital_gains_before,
+                "after": capital_gains_after,
+                "difference": capital_gains_difference,
+            }
+        donor_build_summary["mortgage_field_quarantine"] = quarantine
+
+
+def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
+    """Split raw E19200 into mortgage and modeled non-mortgage components."""
+
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor:
+        donor.drop(columns=[_E19200_AGI_BAND_COLUMN], errors="ignore", inplace=True)
+        return
+    raw_total = donor[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
+        dtype=np.float64,
+        copy=False,
+    )
+    has_nonzero_e19200 = bool((raw_total != 0).any())
+    if has_nonzero_e19200 and _E19200_AGI_BAND_COLUMN not in donor:
+        raise ValueError(
+            "adjusted_gross_income is required to split nonzero PUF E19200 "
+            "records by the published SOI AGI bands."
+        )
+    if "investment_interest_expense" in donor:
+        existing = donor["investment_interest_expense"].to_numpy(
+            dtype=np.float64,
+            copy=False,
+        )
+        if (existing != 0).any():
+            raise ValueError(
+                "Processed PUF already carries nonzero investment_interest_expense; "
+                "refusing to overwrite independently sourced values with the "
+                "E19200 residual."
+            )
+    if not has_nonzero_e19200:
+        if "investment_interest_expense" in donor:
+            donor["investment_interest_expense"] = np.zeros_like(raw_total)
+        donor.drop(
+            columns=[
+                _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+                _E19200_AGI_BAND_COLUMN,
+            ],
+            errors="ignore",
+            inplace=True,
+        )
+        return
+
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
+        raw_total,
+        donor[_E19200_AGI_BAND_COLUMN].to_numpy(dtype=np.float64, copy=False),
+    )
+    band_share = np.divide(
+        mortgage,
+        raw_total,
+        out=np.ones_like(mortgage),
+        where=raw_total != 0,
+    )
     for column in _US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
         if column in donor:
             donor[column] = (
-                donor[column].to_numpy(dtype=np.float64, copy=False)
-                * US_PUF_E19200_HOME_MORTGAGE_SHARE
+                donor[column].to_numpy(dtype=np.float64, copy=False) * band_share
             )
+    if "investment_interest_expense" in donor:
+        donor["investment_interest_expense"] = non_mortgage
+    donor.drop(
+        columns=[
+            _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+            _E19200_AGI_BAND_COLUMN,
+        ],
+        inplace=True,
+    )
 
 
 def impute_us_puf_tax_detail_support(
@@ -680,12 +943,12 @@ def impute_us_puf_tax_detail_support(
 
     if frame.schema != US_SCHEMA:
         raise ValueError("PUF tax-detail support imputation requires the US schema.")
-    tax_unit_channel = support_channel_column("tax_unit")
-    person_channel = support_channel_column("person")
-    if tax_unit_channel not in frame.table("tax_unit").columns:
-        raise ValueError("PUF support metadata is missing from the tax_unit table.")
-    if person_channel not in frame.table("person").columns:
-        raise ValueError("PUF support metadata is missing from the person table.")
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    if tax_unit_clone_index not in frame.table("tax_unit").columns:
+        raise ValueError("PUF clone metadata is missing from the tax_unit table.")
+    if person_clone_index not in frame.table("person").columns:
+        raise ValueError("PUF clone metadata is missing from the person table.")
 
     engine = _formula_owned_engine()
     assert_formula_owned_blocklist_current(engine)
@@ -729,12 +992,12 @@ def impute_us_puf_tax_detail_support(
         fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind))
 
     features = _tax_unit_feature_frame(frame, predictors)
-    puf_mask = (
-        frame.table("tax_unit")[tax_unit_channel].to_numpy()
-        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
     )
     if not puf_mask.any():
-        raise ValueError("PUF support channel has no tax-unit rows.")
+        raise ValueError("PUF detail clone has no tax-unit rows.")
     predictions = fitted.predict(
         features.loc[puf_mask, list(predictors)], release_models=True
     )
@@ -762,12 +1025,12 @@ def prepare_us_puf_tax_detail_chain_inputs(
 
     if frame.schema != US_SCHEMA:
         raise ValueError("PUF tax-detail support imputation requires the US schema.")
-    tax_unit_channel = support_channel_column("tax_unit")
-    person_channel = support_channel_column("person")
-    if tax_unit_channel not in frame.table("tax_unit").columns:
-        raise ValueError("PUF support metadata is missing from the tax_unit table.")
-    if person_channel not in frame.table("person").columns:
-        raise ValueError("PUF support metadata is missing from the person table.")
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    if tax_unit_clone_index not in frame.table("tax_unit").columns:
+        raise ValueError("PUF clone metadata is missing from the tax_unit table.")
+    if person_clone_index not in frame.table("person").columns:
+        raise ValueError("PUF clone metadata is missing from the person table.")
 
     engine = _formula_owned_engine()
     assert_formula_owned_blocklist_current(engine)
@@ -793,12 +1056,12 @@ def prepare_us_puf_tax_detail_chain_inputs(
         donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
     donor_frame = _tax_unit_model_frame(donor)
     features = _tax_unit_feature_frame(frame, predictors)
-    puf_mask = (
-        frame.table("tax_unit")[tax_unit_channel].to_numpy()
-        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
     )
     if not puf_mask.any():
-        raise ValueError("PUF support channel has no tax-unit rows.")
+        raise ValueError("PUF detail clone has no tax-unit rows.")
     recipient_features = features.loc[puf_mask, list(predictors)].copy()
     recipient_tax_unit_ids = (
         frame.table("tax_unit").loc[puf_mask, "tax_unit_id"].to_numpy(copy=True)
@@ -892,11 +1155,11 @@ def finalize_us_puf_tax_detail_predictions(
             "tail bounds must not be silent."
         )
 
-    tax_unit_channel = support_channel_column("tax_unit")
-    person_channel = support_channel_column("person")
-    puf_mask = (
-        frame.table("tax_unit")[tax_unit_channel].to_numpy()
-        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
     )
     expected_index = frame.table("tax_unit").index[puf_mask]
     if not predictions.index.equals(expected_index):
@@ -964,7 +1227,7 @@ def finalize_us_puf_tax_detail_predictions(
     _reconcile_puf_social_security_components(
         predictions,
         tables["person"],
-        person_channel=person_channel,
+        person_clone_index=person_clone_index,
         tax_unit_ids=tax_unit_ids,
         requested_components=person_outputs,
     )
@@ -981,10 +1244,13 @@ def finalize_us_puf_tax_detail_predictions(
                     donor["weight"],
                 ),
                 household_weights=frame.weights_for("household").values,
-                tax_unit_channel=tax_unit_channel,
+                tax_unit_clone_index=tax_unit_clone_index,
             )
 
-    person_puf_mask = tables["person"][person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    person_puf_mask = puf_tax_detail_clone_mask(
+        tables["person"],
+        entity="person",
+    )
     for column in person_outputs:
         _ensure_float_output_column(tables["person"], column)
         totals = pd.Series(predictions[column].to_numpy(), index=tax_unit_ids)
@@ -1019,8 +1285,8 @@ def finalize_us_puf_tax_detail_predictions(
                     donor["weight"],
                 ),
                 household_weights=frame.weights_for("household").values,
-                person_channel=person_channel,
-                tax_unit_channel=tax_unit_channel,
+                person_clone_index=person_clone_index,
+                tax_unit_clone_index=tax_unit_clone_index,
             )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS:
@@ -1030,8 +1296,8 @@ def finalize_us_puf_tax_detail_predictions(
                 donor_values=donor[column],
                 donor_weights=donor["weight"],
                 household_weights=frame.weights_for("household").values,
-                person_channel=person_channel,
-                tax_unit_channel=tax_unit_channel,
+                person_clone_index=person_clone_index,
+                tax_unit_clone_index=tax_unit_clone_index,
             )
     return Frame(
         tables,
@@ -1039,28 +1305,8 @@ def finalize_us_puf_tax_detail_predictions(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
-
-
-def support_channel_column(entity: str) -> str:
-    """Return the entity-prefixed support-channel metadata column."""
-
-    _require_entity_name(entity)
-    return f"{entity}_support_channel"
-
-
-def support_clone_index_column(entity: str) -> str:
-    """Return the entity-prefixed clone-index metadata column."""
-
-    _require_entity_name(entity)
-    return f"{entity}_support_clone_index"
-
-
-def support_source_id_column(entity: str) -> str:
-    """Return the entity-prefixed original-ID provenance column."""
-
-    _require_entity_name(entity)
-    return f"{entity}_source_id"
 
 
 def _clone_entity_table(
@@ -1101,12 +1347,45 @@ def _clone_entity_table(
     return result
 
 
+def _clone_preassembled_entity_table(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+    schema: EntitySchema,
+    id_multiplier: int,
+) -> pd.DataFrame:
+    """Clone one preassembled entity table while preserving source provenance."""
+
+    id_columns = _entity_id_columns(schema, entity)
+    clone_index_column = support_clone_index_column(entity)
+    primary_id = schema.entity_id_column(entity)
+
+    native = table.copy(deep=True)
+    detail = table.copy(deep=True)
+    detail[clone_index_column] = PUF_TAX_DETAIL_CLONE_INDEX
+    for column in id_columns:
+        detail[column] = _remap_ids(
+            detail[column].to_numpy(),
+            clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+            id_multiplier=id_multiplier,
+        )
+    result = pd.concat([native, detail], ignore_index=True)
+    if result[primary_id].duplicated().any():
+        duplicates = result.loc[result[primary_id].duplicated(), primary_id].unique()
+        raise ValueError(
+            f"remapped {primary_id!r} values are not unique; id multiplier "
+            "is too small. Duplicate value(s): "
+            f"{list(map(str, duplicates[:5]))}."
+        )
+    return result
+
+
 def _clone_link_table(
     table: pd.DataFrame,
     *,
     link_name: str,
     schema: EntitySchema,
-    channels: tuple[str, ...],
+    clone_count: int,
     id_multiplier: int,
 ) -> pd.DataFrame:
     links = {link.name: link for link in schema.links}
@@ -1122,7 +1401,7 @@ def _clone_link_table(
         )
 
     clones: list[pd.DataFrame] = []
-    for clone_index, _channel in enumerate(channels):
+    for clone_index in range(clone_count):
         clone = table.copy(deep=True)
         for column in id_columns:
             clone[column] = _remap_ids(
@@ -1157,6 +1436,112 @@ def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:
     return values
 
 
+def _validated_integral_ids(
+    values: Sequence[Any],
+    *,
+    label: str,
+) -> np.ndarray:
+    """Return int64 IDs only when every input value is exactly integral."""
+
+    try:
+        numeric = pd.to_numeric(pd.Series(values), errors="raise")
+        as_float = numeric.to_numpy(dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be integral.") from exc
+    if (
+        not np.isfinite(as_float).all()
+        or not np.equal(as_float, np.floor(as_float)).all()
+    ):
+        raise ValueError(f"{label} must be integral.")
+    try:
+        integral = numeric.astype("int64").to_numpy()
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be integral.") from exc
+    if not np.equal(as_float, integral.astype(np.float64)).all():
+        raise ValueError(f"{label} must be integral.")
+    return integral
+
+
+def _has_native_assembly_provenance(frame: Frame) -> bool:
+    """Validate support metadata and identify a preassembled native frame."""
+
+    expected_by_entity = {
+        entity: {
+            support_source_id_column(entity),
+            support_channel_column(entity),
+            support_clone_index_column(entity),
+        }
+        for entity in frame.entities
+    }
+    present_by_entity = {
+        entity: expected & set(frame.table(entity).columns)
+        for entity, expected in expected_by_entity.items()
+    }
+    present = {column for columns in present_by_entity.values() for column in columns}
+    if not present:
+        return False
+    missing = sorted(
+        column
+        for entity, expected in expected_by_entity.items()
+        for column in expected - present_by_entity[entity]
+    )
+    if missing:
+        raise ValueError(
+            f"PUF support expansion metadata is partial; missing column(s): {missing}."
+        )
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        clone_index_column = support_clone_index_column(entity)
+        clone_indices = pd.to_numeric(
+            table[clone_index_column],
+            errors="coerce",
+        )
+        if (
+            clone_indices.isna().any()
+            or not (clone_indices.to_numpy(dtype=np.float64) == 0.0).all()
+        ):
+            raise ValueError(
+                "PUF support expansion metadata column(s) already exist. "
+                "The stage should run exactly once."
+            )
+
+    missing_spine_source = sorted(
+        spine_source_id_column(entity)
+        for entity in frame.entities
+        if spine_source_id_column(entity) not in frame.table(entity)
+    )
+    if missing_spine_source:
+        raise ValueError(
+            "Preassembled support provenance is incomplete; missing raw spine "
+            f"source ID column(s): {missing_spine_source}."
+        )
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        channel_column = support_channel_column(entity)
+        channels = table[channel_column]
+        if (
+            channels.isna().any()
+            or not channels.map(
+                lambda value: isinstance(value, str) and bool(value)
+            ).all()
+        ):
+            raise ValueError(
+                f"Preassembled support channel {channel_column!r} must contain "
+                "non-empty strings."
+            )
+        for source_id_column in (
+            support_source_id_column(entity),
+            spine_source_id_column(entity),
+        ):
+            _validated_integral_ids(
+                table[source_id_column],
+                label=f"Preassembled source IDs in {source_id_column!r}",
+            )
+    return True
+
+
 def _reject_metadata_collisions(
     frame: Frame,
     channels: tuple[str, ...],
@@ -1166,6 +1551,7 @@ def _reject_metadata_collisions(
         for entity in frame.entities
         for column in (
             support_source_id_column(entity),
+            spine_source_id_column(entity),
             support_channel_column(entity),
             support_clone_index_column(entity),
         )
@@ -1188,6 +1574,11 @@ def _reject_metadata_collisions(
         raise ValueError(
             f"support channels must include {PUF_TAX_DETAIL_SUPPORT_CHANNEL!r}."
         )
+    if channels != _DEFAULT_SUPPORT_CHANNELS:
+        raise ValueError(
+            "PUF support expansion accepts only the canonical ASEC/PUF roles "
+            f"{_DEFAULT_SUPPORT_CHANNELS!r}; got {channels!r}."
+        )
 
 
 def _id_multiplier_for_frame(frame: Frame) -> int:
@@ -1198,14 +1589,28 @@ def _id_multiplier_for_frame(frame: Frame) -> int:
     return _id_multiplier_for_values(*values)
 
 
+# The decimal remap (id + clone_index * 10**digits(max_id)) must stay inside
+# int64 for every clone index the builder can produce. Capping assembled
+# source IDs at 10**15 - 1 bounds the multiplier at 10**16, leaving clone
+# indices up to 921 before int64 overflow — orders beyond any configured
+# clone count. Assembly enforces this bound; _remap_ids re-checks it so a
+# violation is a governed ValueError, never an OverflowError.
+PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID = 10**15 - 1
+
+_INT64_MAX = 2**63 - 1
+
+
 def _id_multiplier_for_values(*values: Sequence[Any]) -> int:
     if not values:
         raise ValueError("at least one ID value sequence is required.")
     max_id = 0
     for sequence in values:
-        numeric = pd.to_numeric(pd.Series(sequence), errors="raise").astype("int64")
+        numeric = _validated_integral_ids(
+            sequence,
+            label="PUF support structural IDs",
+        )
         if len(numeric):
-            max_id = max(max_id, int(numeric.abs().max()))
+            max_id = max(max_id, int(np.abs(numeric).max()))
     return 10 ** max(1, len(str(max_id)))
 
 
@@ -1215,15 +1620,22 @@ def _remap_ids(
     clone_index: int,
     id_multiplier: int,
 ) -> np.ndarray:
-    values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
+    values = _validated_integral_ids(
+        ids,
+        label="PUF support structural IDs",
+    )
     if clone_index == 0:
         return values.copy()
-    return values + clone_index * id_multiplier
-
-
-def _require_entity_name(entity: str) -> None:
-    if not isinstance(entity, str) or not entity:
-        raise ValueError("entity must be a non-empty string.")
+    shift = int(clone_index) * int(id_multiplier)
+    if len(values) and shift + int(values.max()) > _INT64_MAX:
+        raise ValueError(
+            "PUF support ID remap would overflow int64: max source ID "
+            f"{int(values.max())} with clone index {clone_index} and "
+            f"multiplier {id_multiplier} exceeds {_INT64_MAX}. Assembled "
+            "source IDs must not exceed "
+            f"{PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID}."
+        )
+    return values + shift
 
 
 def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
@@ -1742,10 +2154,17 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
     column: str,
     donor_positive_rate: float,
     household_weights: np.ndarray,
-    tax_unit_channel: str,
+    tax_unit_clone_index: str | None = None,
+    tax_unit_channel: str | None = None,
 ) -> None:
     """Prune a sparse tax-unit amount to the donor's weighted positive rate."""
 
+    if (tax_unit_clone_index is None) == (tax_unit_channel is None):
+        raise ValueError("Provide exactly one tax-unit support role column.")
+    tax_unit_role_column = (
+        tax_unit_clone_index if tax_unit_clone_index is not None else tax_unit_channel
+    )
+    assert tax_unit_role_column is not None
     positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
     person = tables["person"]
     household = tables["household"]
@@ -1766,9 +2185,9 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
     )
     tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
 
-    for channel in tax_unit[tax_unit_channel].dropna().unique():
-        channel_mask = tax_unit[tax_unit_channel] == channel
-        channel_rows = tax_unit.loc[channel_mask]
+    for clone_index in tax_unit[tax_unit_role_column].dropna().unique():
+        clone_mask = tax_unit[tax_unit_role_column] == clone_index
+        channel_rows = tax_unit.loc[clone_mask]
         amounts = pd.Series(
             pd.to_numeric(channel_rows[column], errors="coerce")
             .fillna(0.0)
@@ -1799,7 +2218,7 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
         sparse_total = float((sparse_amounts * weights).sum())
         if original_total != 0.0 and sparse_total != 0.0:
             sparse_amounts *= original_total / sparse_total
-        tax_unit.loc[channel_mask, column] = sparse_amounts.to_numpy()
+        tax_unit.loc[clone_mask, column] = sparse_amounts.to_numpy()
 
 
 def _sparsify_tax_unit_person_output_to_donor_positive_rate(
@@ -1808,9 +2227,28 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
     column: str,
     donor_positive_rate: float,
     household_weights: np.ndarray,
-    person_channel: str,
-    tax_unit_channel: str,
+    person_clone_index: str | None = None,
+    tax_unit_clone_index: str | None = None,
+    person_channel: str | None = None,
+    tax_unit_channel: str | None = None,
 ) -> None:
+    if (person_clone_index is None) == (person_channel is None) or (
+        (tax_unit_clone_index is None) == (tax_unit_channel is None)
+    ):
+        raise ValueError("Provide exactly one person and tax-unit support role column.")
+    person_role_column = (
+        person_clone_index if person_clone_index is not None else person_channel
+    )
+    tax_unit_role_column = (
+        tax_unit_clone_index if tax_unit_clone_index is not None else tax_unit_channel
+    )
+    assert person_role_column is not None
+    assert tax_unit_role_column is not None
+    puf_role: int | str = (
+        PUF_TAX_DETAIL_CLONE_INDEX
+        if tax_unit_clone_index is not None
+        else PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
     positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
     person = tables["person"]
     household = tables["household"]
@@ -1837,18 +2275,14 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         .sum()
     )
 
-    channels = tax_unit[tax_unit_channel].dropna().unique()
+    clone_indices = tax_unit[tax_unit_role_column].dropna().unique()
     if column in _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS:
-        channels = np.asarray(
-            [
-                channel
-                for channel in channels
-                if channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL
-            ]
+        clone_indices = np.asarray(
+            [clone_index for clone_index in clone_indices if clone_index == puf_role]
         )
-    for channel in channels:
+    for clone_index in clone_indices:
         channel_tax_unit_ids = tax_unit.loc[
-            tax_unit[tax_unit_channel] == channel,
+            tax_unit[tax_unit_role_column] == clone_index,
             "tax_unit_id",
         ]
         amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
@@ -1877,7 +2311,7 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         if original_total != 0.0 and sparse_total != 0.0:
             sparse_totals *= original_total / sparse_total
 
-        mask = person[person_channel] == channel
+        mask = person[person_role_column] == clone_index
         _write_person_tax_unit_totals(
             person,
             mask=mask,
@@ -1918,8 +2352,8 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
     donor_values: pd.Series,
     donor_weights: pd.Series,
     household_weights: np.ndarray,
-    person_channel: str,
-    tax_unit_channel: str,
+    person_clone_index: str,
+    tax_unit_clone_index: str,
 ) -> None:
     """Pin a signed person output's per-leg mass to the donor instrument.
 
@@ -1972,7 +2406,7 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
     )
 
     channel_tax_unit_ids = tax_unit.loc[
-        tax_unit[tax_unit_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        tax_unit[tax_unit_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX,
         "tax_unit_id",
     ]
     amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
@@ -2005,7 +2439,7 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
         calibrated[negative] *= donor_negative_per_weight / imputed_negative_per_weight
 
     calibrated_totals = pd.Series(calibrated, index=amounts.index)
-    mask = person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    mask = person[person_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX
     _write_person_tax_unit_totals(
         person,
         mask=mask,
@@ -2019,7 +2453,7 @@ def _reconcile_puf_social_security_components(
     predictions: pd.DataFrame,
     person: pd.DataFrame,
     *,
-    person_channel: str,
+    person_clone_index: str,
     tax_unit_ids: np.ndarray,
     requested_components: Sequence[str],
 ) -> None:
@@ -2043,7 +2477,7 @@ def _reconcile_puf_social_security_components(
         )
 
     puf_person = person.loc[
-        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        person[person_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX,
         ["person_tax_unit_id"],
     ].copy()
     for component in components:
@@ -2051,7 +2485,7 @@ def _reconcile_puf_social_security_components(
             puf_person[component] = (
                 pd.to_numeric(
                     person.loc[
-                        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                        person[person_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX,
                         component,
                     ],
                     errors="coerce",

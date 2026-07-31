@@ -72,6 +72,13 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_clone_index_column,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -139,9 +146,9 @@ US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
 _SOURCE_ID = "person_source_id"
-_SUPPORT_CHANNEL = "person_support_channel"
-_ASEC_CHANNEL = "asec"
-_PUF_CHANNEL = "puf_tax_detail"
+_SUPPORT_CLONE_INDEX = support_clone_index_column("person")
+_ASEC_CHANNEL = BASE_ASEC_SUPPORT_CHANNEL
+_PUF_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
 _KNOWN_CHANNELS = frozenset((_ASEC_CHANNEL, _PUF_CHANNEL))
 _TARGET_PERIOD = "2024-12"
 _TARGET_MEASURE = "Total with—Federal payment"
@@ -153,14 +160,17 @@ _WEIGHTS_BASIS = "current_frame_resolved_person_weights"
 # the top level carries bernoulli_law_violation_count.
 # Version 3 (populace#507/#508): the top level documents the prior weight
 # basis (current frame vs a prior attempt's delivered-weight artifact) and
-# band rows carry the basis capacity/floor that generated assignment_prior,
-# making the prior arithmetic weight-free auditable at final measurement.
-_DIAGNOSTICS_SCHEMA_VERSION = 3
+# band rows carry the basis capacity/floor that generated assignment_prior.
+# Main later changed assignment_prior from floor-blind target/capacity to the
+# floor-aware arithmetic while retaining the schema-3 stamp, so a schema-3
+# artifact is ambiguous about which arithmetic produced its frozen priors.
+# Version 4: assignment_prior unambiguously uses the floor-aware arithmetic.
+_DIAGNOSTICS_SCHEMA_VERSION = 4
 #: Artifact schema versions a delivered-weight prior basis may be read from.
-#: Schema 2 is accepted so the chain can start from Build N's certified
-#: ``us_ssi_take_up.json`` (its band rows already carry release-weight
-#: ``candidate_capacity`` / ``reporter_candidate_floor``).
-_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3)
+#: Schemas 2 and 3 are legacy seeds only: the loader consumes their target,
+#: candidate capacity, and reporter floor, never their old assignment prior.
+#: Schema 4 is the current, fully gated release-final artifact.
+_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3, 4)
 
 US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME = "current_frame"
 US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT = "release_artifact"
@@ -169,12 +179,12 @@ _PRIOR_BASIS_KINDS = (
     US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT,
 )
 
-#: Schema-3 diagnostics say which lifecycle point measured them, so a
+#: Current diagnostics say which lifecycle point measured them, so a
 #: stage-time payload can never masquerade as a delivered-weight basis and
-#: the delivery gate can refuse to judge anything but the final measurement
-#: (populace#507 sol review finding 1). Schema-2 artifacts predate the
-#: marker; only the shipped final measurement was ever written to
-#: ``us_ssi_take_up.json``, which is why the loader may accept them.
+#: the delivery gate can refuse to judge anything but the final measurement.
+#: Legacy artifacts may predate the marker; an explicit assignment-stage
+#: marker is still proof that the artifact is not a delivered-weight basis
+#: (populace#507 sol review finding 1).
 US_SSI_TAKE_UP_PHASE_ASSIGNMENT = "assignment_stage"
 US_SSI_TAKE_UP_PHASE_RELEASE_FINAL = "release_final"
 _MEASUREMENT_PHASES = (
@@ -509,16 +519,20 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
     if frame.schema != US_SCHEMA:
         raise ValueError("US SSI take-up requires the US schema.")
     person = frame.table("person")
-    required = {_SOURCE_ID, _SUPPORT_CHANNEL, US_SSI_TAKE_UP_ANCHOR}
+    required = {_SOURCE_ID, US_SSI_TAKE_UP_ANCHOR}
     missing = sorted(required - set(person.columns))
     if missing:
         raise ValueError(
             f"US SSI take-up reporter lineage missing person column(s): {missing}."
         )
-    if person[_SOURCE_ID].isna().any() or person[_SUPPORT_CHANNEL].isna().any():
+    if not has_support_role_metadata(person, entity="person"):
+        raise ValueError(
+            "US SSI take-up reporter lineage is missing support-role provenance."
+        )
+    if person[_SOURCE_ID].isna().any():
         raise ValueError("US SSI take-up reporter lineage requires provenance.")
     source_ids = _decoded_strings(person[_SOURCE_ID])
-    channels = _decoded_strings(person[_SUPPORT_CHANNEL])
+    roles = support_role_series(person, entity="person")
     reported = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -528,7 +542,7 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
             "finite SSI_VAL values."
         )
     reporter_ids = frozenset(
-        source_ids[(channels == _ASEC_CHANNEL).to_numpy() & (reported > 0.0)]
+        source_ids[roles.eq(_ASEC_CHANNEL).to_numpy() & (reported > 0.0)]
     )
     if not reporter_ids:
         raise ValueError("US SSI take-up found no direct ASEC SSI reporters.")
@@ -573,11 +587,13 @@ def _source_table(
             "US SSI take-up requires finite nonnegative person weights with "
             "positive total."
         )
-    if person[_SOURCE_ID].isna().any() or person[_SUPPORT_CHANNEL].isna().any():
+    if person[_SOURCE_ID].isna().any():
+        raise ValueError("US SSI take-up requires complete support provenance.")
+    if not has_support_role_metadata(person, entity="person"):
         raise ValueError("US SSI take-up requires complete support provenance.")
 
     source_ids = _decoded_strings(person[_SOURCE_ID])
-    channels = _decoded_strings(person[_SUPPORT_CHANNEL])
+    channels = support_role_series(person, entity="person")
     if source_ids.str.strip().eq("").any():
         raise ValueError("US SSI take-up source identities must be nonblank.")
     observed_channels = set(channels.unique())
@@ -620,17 +636,35 @@ def _source_table(
         },
         index=person.index,
     )
-    duplicated_channel = rows.duplicated(["source_id", "channel"], keep=False)
+    lineage_key = ["source_id", "channel"]
+    if _SUPPORT_CLONE_INDEX in person:
+        clone_index = pd.to_numeric(
+            person[_SUPPORT_CLONE_INDEX],
+            errors="raise",
+        ).to_numpy(dtype=np.float64)
+        if (
+            not np.isfinite(clone_index).all()
+            or (clone_index < 0.0).any()
+            or not np.equal(clone_index, np.floor(clone_index)).all()
+        ):
+            raise ValueError(
+                "US SSI take-up support clone indices must be finite "
+                "nonnegative integers."
+            )
+        clone_index = clone_index.astype(np.int64)
+        rows["clone_index"] = clone_index
+        lineage_key.append("clone_index")
+    duplicated_channel = rows.duplicated(lineage_key, keep=False)
     if duplicated_channel.any():
         examples = (
-            rows.loc[duplicated_channel, ["source_id", "channel"]]
+            rows.loc[duplicated_channel, lineage_key]
             .drop_duplicates()
             .head(5)
             .to_dict("records")
         )
         raise ValueError(
-            "US SSI take-up requires at most one row per source identity and "
-            f"support channel; duplicate examples {examples}."
+            "US SSI take-up requires at most one row per clone-aware support "
+            f"identity {lineage_key}; duplicate examples {examples}."
         )
     rows["candidate_weight"] = rows["weight"].where(rows["candidate"], 0.0)
 
@@ -878,12 +912,12 @@ def ssi_take_up_prior_basis_from_artifact(
     This is the populace#507/#508 remedy path: the payload is a prior
     attempt's final release-weight diagnostics, whose per-band
     ``candidate_capacity`` / ``reporter_candidate_floor`` were measured on
-    the weights that attempt actually delivered. Schema 2 artifacts are
-    accepted so the chain can start from Build N's certified release; the
-    artifact must have been measured against the same target contract this
-    build compiles (same SSA table, period, measure, and band values —
-    populace#508's "one coherent system"), and every enforced band needs
-    positive delivered capacity for a truthful threshold to exist.
+    the weights that attempt actually delivered. Schemas 2 and 3 are accepted
+    only as legacy capacity/floor seeds; their stored assignment priors are
+    never consumed. The artifact must have been measured against the same
+    target contract this build compiles (same SSA table, period, measure, and
+    band values — populace#508's "one coherent system"), and every enforced
+    band needs positive delivered capacity for a truthful threshold to exist.
     """
 
     if not isinstance(source_sha256, str) or not source_sha256.strip():
@@ -896,19 +930,46 @@ def ssi_take_up_prior_basis_from_artifact(
             f"in {list(_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS)}; got "
             f"{schema_version!r}."
         )
-    if (
-        schema_version == _DIAGNOSTICS_SCHEMA_VERSION
-        and payload.get("measurement_phase") != US_SSI_TAKE_UP_PHASE_RELEASE_FINAL
+    measurement_phase = payload.get("measurement_phase")
+    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION and (
+        measurement_phase != US_SSI_TAKE_UP_PHASE_RELEASE_FINAL
     ):
         # Current-schema artifacts must be the final release-weight
-        # measurement — a stage-time payload is not a delivered-weight
-        # basis (sol review finding 1). Schema-2 artifacts predate the
-        # phase marker; only their shipped final measurement was ever
-        # written to ``us_ssi_take_up.json``.
+        # measurement — a stage-time payload is not a delivered-weight basis
+        # (sol review finding 1).
         raise ValueError(
             "US SSI take-up prior basis artifact must be the release-"
             "final measurement; got measurement phase "
-            f"{payload.get('measurement_phase')!r}."
+            f"{measurement_phase!r}."
+        )
+    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION:
+        artifact_prior = payload.get("prior_weight_basis")
+        artifact_prior_kind = (
+            artifact_prior.get("kind") if isinstance(artifact_prior, Mapping) else None
+        )
+        if artifact_prior_kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT:
+            # Chain-depth guard: populace#508 permits exactly ONE
+            # delivered-weight recompute. An artifact that was itself
+            # measured on a retry basis would seed retry-of-retry — the
+            # deleted populace#463-class loop reassembled by hand.
+            raise ValueError(
+                "US SSI take-up prior basis artifact was itself measured "
+                "on a delivered-weight retry (prior basis kind "
+                "'release_artifact'); chaining a second recompute is the "
+                "deleted populace#463-class loop — populace#508 permits "
+                "exactly one. Investigate the frame instead of retrying "
+                "again."
+            )
+    if schema_version == 3 and measurement_phase not in (
+        None,
+        US_SSI_TAKE_UP_PHASE_RELEASE_FINAL,
+    ):
+        # Some schema-3 artifacts predate the phase marker, but an explicit
+        # assignment-stage marker cannot masquerade as delivered weights.
+        raise ValueError(
+            "US SSI take-up prior basis artifact must be the release-"
+            "final measurement; got measurement phase "
+            f"{measurement_phase!r}."
         )
     contract: tuple[tuple[str, object, str], ...] = (
         ("classification", "release_diagnostics", "classification"),
@@ -949,8 +1010,9 @@ def ssi_take_up_prior_basis_from_artifact(
             # would only take the reporter-rate fallback and miss again.
             # Fail at load (before the expensive solve) so the capacity
             # defect gets investigated instead of iterated (sol review
-            # finding 5). Fenced bands keep the fallback: under-18 is
-            # EXPECTED to saturate until populace#453/#509 lands.
+            # finding 5). A band can use the fallback only when it is outside
+            # the normal enforcement roster; all three current bands are
+            # enforced, including under-18 after populace#453/#509.
             raise ValueError(
                 "US SSI take-up prior basis artifact delivered candidate "
                 f"capacity {capacity!r} at or below the {target!r} target "
@@ -992,7 +1054,7 @@ def ssi_take_up_prior_basis_from_artifact(
 def ssi_take_up_prior_basis_from_diagnostics(
     diagnostics: Mapping[str, object],
 ) -> SSITakeUpPriorBasis:
-    """Reconstruct the documented prior basis from schema-3 diagnostics.
+    """Reconstruct the documented prior basis from current diagnostics.
 
     The builder hands the assignment stage's basis to the final
     release-weight measurement through this helper, so the published
@@ -1221,6 +1283,7 @@ def with_us_ssi_take_up(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     return result, diagnostics
 
@@ -1573,6 +1636,7 @@ def us_ssi_take_up_delivery_gate(
     diagnostics: Mapping[str, object],
     *,
     targets: Mapping[str, float],
+    enforcement_fences: Mapping[str, str] | None = None,
 ) -> GateResult:
     """Hard-fail enforced band misses measured on the release weights.
 
@@ -1586,11 +1650,44 @@ def us_ssi_take_up_delivery_gate(
     the delivered weights. There is no in-build reconcile loop and no
     per-target knob (populace#492). All three SSA age bands are enforced now
     that populace#453/#509 supplies child qualifying-disability support.
+
+    ``enforcement_fences`` can fence normally-enforced bands for a specific
+    ARM with a documented adjudication (the under-18 pattern extended):
+    on the dense full-pool arm, populace#508 delivered-weight recomputes
+    have not landed the adult pair in band on either observed frame —
+    P2's clean one-retry record, and P3's delivered-basis chain that
+    ``ssi_take_up_prior_basis_from_artifact`` now refuses outright
+    (populace#566/#567) — so its adult bands ship in the scorecard as
+    known boundaries rather than enforced contracts. The fence text
+    rides each fenced row; the sparse certified default passes no
+    fences and keeps hard enforcement.
     """
 
     expected_targets = _normalize_targets(targets)
     tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
     failures: list[str] = []
+    fences = dict(enforcement_fences or {})
+    non_string_keys = [repr(key) for key in fences if not isinstance(key, str)]
+    if non_string_keys:
+        raise ValueError(
+            "SSI take-up delivery fence keys must be band-name strings; got "
+            f"{sorted(non_string_keys)}."
+        )
+    unknown_fences = sorted(set(fences) - set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS))
+    if unknown_fences:
+        raise ValueError(
+            "SSI take-up delivery fences may only name normally-enforced "
+            f"bands {sorted(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)}; got "
+            f"{unknown_fences}. A fence on a never-enforced band is a "
+            "configuration error, not a no-op."
+        )
+    for key, fence_text in sorted(fences.items()):
+        if not isinstance(fence_text, str) or not fence_text.strip():
+            raise ValueError(
+                f"SSI take-up delivery fence for band {key!r} carries no "
+                "adjudication text (fence values must be nonblank strings); "
+                "a fence without its documented reason is forbidden."
+            )
     enforced_rows: list[dict[str, object]] = []
     fenced_rows: list[dict[str, object]] = []
     rows: Mapping[str, Mapping[str, object]] = {}
@@ -1634,7 +1731,8 @@ def us_ssi_take_up_delivery_gate(
             "selected_recipient_weight": selected,
             "signed_relative_error": signed_relative,
         }
-        if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS:
+        fence_text = fences.get(key)
+        if key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS and fence_text is None:
             enforced_rows.append(summary)
             if abs(selected - target) > tolerance * target + 1e-6:
                 failures.append(
@@ -1653,8 +1751,12 @@ def us_ssi_take_up_delivery_gate(
                 {
                     **summary,
                     "fence": (
-                        "This age band is outside the explicit release-"
-                        "enforcement roster and remains scorecard-only."
+                        fence_text
+                        if fence_text is not None
+                        else (
+                            "This age band is outside the explicit release-"
+                            "enforcement roster and remains scorecard-only."
+                        )
                     ),
                 }
             )
@@ -1664,7 +1766,13 @@ def us_ssi_take_up_delivery_gate(
         failures=tuple(failures),
         details={
             "relative_tolerance": tolerance,
-            "enforced_band_keys": list(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS),
+            # Effective enforcement for THIS run: the constant minus any
+            # adjudication-fenced bands — reporting the constant here would
+            # misdocument a fenced band as an enforced contract.
+            "enforced_band_keys": [
+                key for key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS if key not in fences
+            ],
+            "adjudication_fenced_band_keys": sorted(fences),
             "enforced_bands": enforced_rows,
             "fenced_bands": fenced_rows,
         },

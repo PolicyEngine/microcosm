@@ -26,6 +26,12 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -81,9 +87,6 @@ US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS = (
 
 _OPERATIONS_OUTPUT, _RENT_OUTPUT = US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS
 _SOURCE_COLUMNS = ("E02100", "E27200")
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
-_PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _NONZERO_SHARE_BANDS: dict[str, tuple[float, float]] = {
     _OPERATIONS_OUTPUT: (0.0001, 0.20),
     _RENT_OUTPUT: (0.00001, 0.20),
@@ -154,8 +157,8 @@ def us_farm_business_income_summary(frame: Frame) -> dict[str, object]:
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
     channel = (
-        person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
-        if _PERSON_SUPPORT_CHANNEL_COLUMN in person
+        support_role_series(person, entity="person").to_numpy()
+        if has_support_role_metadata(person, entity="person")
         else None
     )
     columns: dict[str, dict[str, object]] = {}
@@ -193,8 +196,8 @@ def us_farm_business_income_summary(frame: Frame) -> dict[str, object]:
         if channel is not None:
             channels: dict[str, dict[str, float | int]] = {}
             for name in (
-                _BASE_ASEC_SUPPORT_CHANNEL,
-                _PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
             ):
                 mask = channel == name
                 channel_weight = float(weights[mask].sum())
@@ -254,8 +257,8 @@ def us_farm_business_income_signal_gate(frame: Frame) -> GateResult:
             failures.append(f"{output}: weighted absolute total is zero.")
         channels = detail.get("channels")
         if isinstance(channels, dict):
-            asec = channels.get(_BASE_ASEC_SUPPORT_CHANNEL)
-            puf = channels.get(_PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+            asec = channels.get(BASE_ASEC_SUPPORT_CHANNEL)
+            puf = channels.get(PUF_TAX_DETAIL_SUPPORT_CHANNEL)
             asec_nonzero = (
                 int(asec.get("nonzero_rows", 0)) if isinstance(asec, dict) else 0
             )

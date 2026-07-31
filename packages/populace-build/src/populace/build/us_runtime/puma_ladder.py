@@ -412,6 +412,7 @@ def with_household_us_puma_ladder(
         weights,
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

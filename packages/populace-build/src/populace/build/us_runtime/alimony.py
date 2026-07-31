@@ -21,6 +21,11 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -257,9 +262,11 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
         )
     elif raw_sources.issubset(person.columns):
         source_mask = np.ones(len(person), dtype=bool)
-        if "person_support_channel" in person:
+        if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                person["person_support_channel"].to_numpy(dtype=object) == "asec"
+                support_role_series(person, entity="person")
+                .eq(BASE_ASEC_SUPPORT_CHANNEL)
+                .to_numpy()
             )
         amounts = pd.to_numeric(person["OI_VAL"], errors="coerce").to_numpy(
             dtype=np.float64

@@ -928,6 +928,7 @@ def with_us_sipp_vehicle_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

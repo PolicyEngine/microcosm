@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from importlib import metadata as importlib_metadata
 from pathlib import Path
@@ -44,6 +44,7 @@ from populace.build.us_runtime import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR,
     GEOGRAPHY_LADDER_VINTAGES_ATTR,
+    PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -52,11 +53,13 @@ from populace.build.us_runtime import (
     US_SUPPORT_SPINE_SPEC,
     AsecSource,
     build_pooled_asec_unit_frame,
+    build_puf_e01000_reconciliation_basis,
     clone_us_frame_for_puf_support,
     congressional_district_assignment_summary,
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
     fetch_asec_2023_weeks_unemployed_source,
+    finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
     load_acs_2022_rent_donor,
@@ -65,7 +68,9 @@ from populace.build.us_runtime import (
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
+    source_year_puf_adjusted_gross_income,
     support_channel_column,
+    transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
     us_adult_care_signal_gate,
     us_alimony_signal_gate,
@@ -99,6 +104,7 @@ from populace.build.us_runtime import (
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
+    validate_puf_capital_gains_tail_manifest,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_adult_care_inputs,
@@ -120,6 +126,7 @@ from populace.build.us_runtime import (
     with_us_weeks_unemployed,
     with_us_wic_claim_input,
     with_us_workers_compensation,
+    write_puf_capital_gains_tail_manifest,
 )
 from populace.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
@@ -143,6 +150,7 @@ PIPELINE_STEPS = (
     "clone_feature_extraction",
     "primary_qrf_chain",
     "qrf_finalization",
+    PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
     CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
     "qbi_reconciliation",
     "wic_post_clone",
@@ -199,6 +207,10 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("primary_qrf_chain", ("run_primary_puf_qrf_chain[target_subprocesses]",)),
     ("qrf_finalization", ("finalize_primary_puf_qrf_chain",)),
+    (
+        PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
+        ("transfer_puf_capital_gains_tail",),
+    ),
     (
         CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
         ("run_source_stage[capital_gain_distributions]",),
@@ -266,6 +278,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--puf-h5", required=True, type=Path)
+    parser.add_argument(
+        "--puf-source-year-csv",
+        type=Path,
+        help=(
+            "Restricted raw TY2015 IRS PUF CSV carrying RECID, E00100, S006, "
+            "and the archived aggregate-record donor fields. Required when "
+            "building the E19200 decomposition from a nonzero processed PUF."
+        ),
+    )
     parser.add_argument(
         "--asec-2023-weeks-unemployed-source",
         type=Path,
@@ -520,6 +541,11 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     command.extend(("--puf-h5", str(args.puf_h5)))
     _append_path_argument(
         command,
+        "--puf-source-year-csv",
+        args.puf_source_year_csv,
+    )
+    _append_path_argument(
+        command,
         "--asec-2023-weeks-unemployed-source",
         args.asec_2023_weeks_unemployed_source,
     )
@@ -664,6 +690,17 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "n_estimators": args.n_estimators,
         "out": path(args.out),
         "puf_h5": path(args.puf_h5),
+        "puf_h5_sha256": (
+            _sha256(args.puf_h5)
+            if args.puf_h5 is not None and Path(args.puf_h5).is_file()
+            else None
+        ),
+        "puf_source_year_csv": path(args.puf_source_year_csv),
+        "puf_source_year_csv_sha256": (
+            _sha256(args.puf_source_year_csv)
+            if args.puf_source_year_csv is not None
+            else None
+        ),
         "seed": args.seed,
         "support_spine_spec": path(args.support_spine_spec),
         "target_year": args.target_year,
@@ -992,8 +1029,17 @@ def _run_all(
     )
     _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
-    arrays = _read_h5_arrays(args.puf_h5)
-    donor = puf_tax_unit_donor_from_arrays(arrays)
+    donor_build_summary: dict[str, object] = {}
+    donor = _puf_tax_unit_donor_from_h5(
+        args.puf_h5,
+        source_puf_csv=getattr(args, "puf_source_year_csv", None),
+        donor_build_summary=donor_build_summary,
+    )
+    e01000_reconciliation_basis = _puf_e01000_reconciliation_basis(
+        args,
+        donor,
+        donor_build_summary,
+    )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
     if boundary_observer is None:
@@ -1016,6 +1062,16 @@ def _run_all(
             tail_bound_diagnostics=tail_bound_diagnostics,
         )
     _observe_frame_boundary(boundary_observer, "qrf_finalization", imputed)
+    imputed, capital_gains_tail_transfer = _capital_gains_tail_transfer_stage(
+        args,
+        imputed,
+        donor=donor,
+    )
+    _observe_frame_boundary(
+        boundary_observer,
+        PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
+        imputed,
+    )
     imputed, _ = _capital_gain_distributions_stage(args, imputed)
     _observe_frame_boundary(
         boundary_observer,
@@ -1238,6 +1294,10 @@ def _run_all(
         imputed,
         seed=args.seed,
         time_period=args.target_year,
+        # This is the one ownership boundary where the copied ASEC leaves must
+        # be replaced on the newly created PUF support. Downstream consumers
+        # preserve this completed draw even after selecting a narrower support.
+        force_puf_imputation=True,
     )
     retirement_distributions_gate = us_retirement_distributions_signal_gate(imputed)
     if not retirement_distributions_gate.passed:
@@ -1366,12 +1426,27 @@ def _run_all(
                     sort_keys=True,
                 )
 
+    e01000_reconciliation = finalize_puf_e01000_reconciliation(
+        e01000_reconciliation_basis,
+        capital_gains_tail_transfer,
+        frame_columns=_frame_column_inventory(imputed),
+    )
     summary = {
         "base_source": base_source,
         "base_h5": (str(args.base_h5.resolve()) if args.base_h5 is not None else None),
         "base_sha256": _sha256(args.base_h5) if args.base_h5 is not None else None,
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
+        "puf_source_year_csv": (
+            str(args.puf_source_year_csv.resolve())
+            if args.puf_source_year_csv is not None
+            else None
+        ),
+        "puf_source_year_csv_sha256": (
+            _sha256(args.puf_source_year_csv)
+            if args.puf_source_year_csv is not None
+            else None
+        ),
         "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
         "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
         "acs_rent_donor_rows": (
@@ -1401,8 +1476,11 @@ def _run_all(
         "channel_weight_totals": _channel_weight_totals(imputed),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "puf_donor_build_summary": donor_build_summary,
+        "puf_e01000_reconciliation": e01000_reconciliation,
         "weights_audit": weights_audit,
         "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
+        "puf_capital_gains_tail_transfer": capital_gains_tail_transfer,
         "qbi_inputs_signal": {
             "passed": qbi_inputs_gate.passed,
             "failures": list(qbi_inputs_gate.failures),
@@ -1576,6 +1654,10 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
     if args.stage in runtime.context.completed:
         if args.stage == "final_export":
             _repair_completed_final_stage(args, runtime)
+        elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
+            _ensure_capital_gains_tail_manifest(
+                runtime.metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+            )
         return
 
     with profile_stage(args.stage, args.checkpoint_dir):
@@ -1627,6 +1709,8 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         elif args.stage == "qrf_finalization":
             after, metadata = _qrf_finalization_stage(args, before)
             assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
+            after, metadata = _capital_gains_tail_transfer_stage(args, before)
         elif args.stage == CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME:
             after, metadata = _capital_gain_distributions_stage(args, before)
             assert_unchanged_identity(before, after, stage=args.stage)
@@ -1660,6 +1744,9 @@ def _repair_completed_final_stage(
     args: argparse.Namespace,
     runtime: StageRuntime,
 ) -> None:
+    _ensure_capital_gains_tail_manifest(
+        runtime.metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+    )
     loaded = runtime.load("final_export")
     metadata = runtime.metadata["final_export"]
     output_h5 = Path(str(metadata["output_h5"]))
@@ -1856,7 +1943,17 @@ def _clone_feature_extraction_stage(
     base: Frame,
 ) -> tuple[Frame, dict[str, object]]:
     expanded = clone_us_frame_for_puf_support(base)
-    donor = puf_tax_unit_donor_from_arrays(_read_h5_arrays(args.puf_h5))
+    donor_build_summary: dict[str, object] = {}
+    donor = _puf_tax_unit_donor_from_h5(
+        args.puf_h5,
+        source_puf_csv=args.puf_source_year_csv,
+        donor_build_summary=donor_build_summary,
+    )
+    e01000_reconciliation_basis = _puf_e01000_reconciliation_basis(
+        args,
+        donor,
+        donor_build_summary,
+    )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
         # The outer context marks clone_feature_extraction only after both its
@@ -1874,8 +1971,14 @@ def _clone_feature_extraction_stage(
     return expanded, {
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
+        "puf_source_year_csv": str(args.puf_source_year_csv.resolve()),
+        "puf_source_year_csv_sha256": _sha256(args.puf_source_year_csv),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "puf_donor_build_summary": donor_build_summary,
+        "puf_e01000_reconciliation_basis": e01000_reconciliation_basis,
+        "puf_e19200_agi_variable": "E00100",
+        "puf_e19200_agi_period": 2015,
         "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
     }
 
@@ -1901,6 +2004,140 @@ def _qrf_finalization_stage(
         },
         "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
     }
+
+
+def _capital_gains_tail_transfer_stage(
+    args: argparse.Namespace,
+    frame: Frame,
+    *,
+    donor: pd.DataFrame | None = None,
+) -> tuple[Frame, dict[str, object]]:
+    """Transfer the declared PUF CG tail and bind its standalone manifest."""
+
+    tail_donor = donor
+    if tail_donor is None:
+        tail_donor = _puf_tax_unit_donor_from_h5(
+            args.puf_h5,
+            source_puf_csv=args.puf_source_year_csv,
+        )
+    transferred, manifest = transfer_puf_capital_gains_tail(
+        frame,
+        tail_donor,
+        seed=args.seed,
+    )
+    ceiling = manifest["tail_distribution_receipts"]["frame_after_stage"]
+    if not ceiling["positive_mass_five_x_target_exceeded"]:
+        raise ValueError(
+            "PUF capital-gains tail transfer did not clear its declared "
+            "five-times positive-mass target: "
+            f"{ceiling['positive_mass_five_x_ceiling']} <= "
+            f"{ceiling['positive_mass_five_x_target']}."
+        )
+    manifest_filename = _capital_gains_tail_manifest_filename(args.target_year)
+    manifest_path = args.out.resolve() / manifest_filename
+    checkpoint_dir = getattr(args, "checkpoint_dir", None)
+    checkpoint_manifest_path = (
+        manifest_path
+        if checkpoint_dir is None
+        else checkpoint_dir.resolve() / "artifacts" / manifest_filename
+    )
+    manifest_file_sha256 = write_puf_capital_gains_tail_manifest(
+        manifest_path,
+        manifest,
+    )
+    checkpoint_manifest_file_sha256 = (
+        manifest_file_sha256
+        if checkpoint_manifest_path == manifest_path
+        else write_puf_capital_gains_tail_manifest(
+            checkpoint_manifest_path,
+            manifest,
+        )
+    )
+    if checkpoint_manifest_file_sha256 != manifest_file_sha256:
+        raise AssertionError(
+            "PUF capital-gains tail output and checkpoint manifests differ."
+        )
+    return transferred, {
+        "manifest_path": str(manifest_path),
+        "checkpoint_manifest_path": str(checkpoint_manifest_path),
+        "manifest_file_sha256": manifest_file_sha256,
+        "manifest_sha256": manifest["manifest_sha256"],
+        "donor_records_sha256": manifest["donor_records_sha256"],
+        "assignment_sha256": manifest["assignment_sha256"],
+        "record_count": manifest["record_count"],
+        "boundary": manifest["boundary"],
+        "weight_domain": manifest["weight_domain"],
+        "joint_vector_columns": manifest["joint_vector_columns"],
+        "joint_vector_policy": manifest["joint_vector_policy"],
+        "clone": manifest["clone"],
+        "carrier_reconciliation": manifest["carrier_reconciliation"],
+        "tail_distribution_receipts": manifest["tail_distribution_receipts"],
+        "signed_leg_reconciliation": manifest["signed_leg_reconciliation"],
+        "tail_concentration_gate": manifest["tail_concentration_gate"],
+        "frame_after_stage_concentration_gate": manifest[
+            "frame_after_stage_concentration_gate"
+        ],
+    }
+
+
+def _ensure_capital_gains_tail_manifest(
+    metadata: Mapping[str, object],
+) -> dict[str, object]:
+    """Validate both tail-manifest copies and repair either from the other."""
+
+    expected_file_sha256 = str(metadata["manifest_file_sha256"])
+    paths = tuple(
+        dict.fromkeys(
+            Path(str(metadata[key]))
+            for key in ("manifest_path", "checkpoint_manifest_path")
+        )
+    )
+    valid_manifest: dict[str, object] | None = None
+    failures: list[str] = []
+    for path in paths:
+        try:
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            file_sha256 = _sha256(path)
+            if file_sha256 != expected_file_sha256:
+                raise ValueError(f"file SHA {file_sha256} != {expected_file_sha256}")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("payload is not a JSON object")
+            validate_puf_capital_gains_tail_manifest(payload)
+            for key in (
+                "manifest_sha256",
+                "donor_records_sha256",
+                "assignment_sha256",
+                "record_count",
+            ):
+                if payload.get(key) != metadata.get(key):
+                    raise ValueError(
+                        f"{key} {payload.get(key)!r} != {metadata.get(key)!r}"
+                    )
+            valid_manifest = payload
+            break
+        except (FileNotFoundError, OSError, TypeError, ValueError) as exc:
+            failures.append(f"{path}: {exc}")
+    if valid_manifest is None:
+        raise RuntimeError(
+            "No valid PUF capital-gains tail manifest copy remains:\n  "
+            + "\n  ".join(failures)
+        )
+
+    for path in paths:
+        if path.is_file() and _sha256(path) == expected_file_sha256:
+            continue
+        repaired_sha256 = write_puf_capital_gains_tail_manifest(
+            path,
+            valid_manifest,
+        )
+        if repaired_sha256 != expected_file_sha256:
+            raise RuntimeError(
+                "Repaired PUF capital-gains tail manifest differs from committed "
+                f"metadata at {path}: {repaired_sha256} != {expected_file_sha256}."
+            )
+    return valid_manifest
 
 
 def _capital_gain_distributions_stage(
@@ -2193,6 +2430,9 @@ def _post_qrf_frame_stage(
             frame,
             seed=args.seed,
             time_period=args.target_year,
+            # Resuming this named base-builder stage is equivalent to crossing
+            # the live post-clone ownership boundary above.
+            force_puf_imputation=True,
         )
         signals["retirement_distributions_signal"] = _checked_gate_payload(
             us_retirement_distributions_signal_gate(frame),
@@ -2305,6 +2545,9 @@ def _export_staged_result(
     frame: Frame,
     stage_metadata: dict[str, dict[str, object]],
 ) -> dict[str, object]:
+    _ensure_capital_gains_tail_manifest(
+        stage_metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+    )
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     output_h5 = out_dir / _dataset_filename(args.target_year)
@@ -2340,6 +2583,12 @@ def _export_staged_result(
     pre_clone = stage_metadata["pre_clone_enrichment"]
     clone = stage_metadata["clone_feature_extraction"]
     qrf = stage_metadata["qrf_finalization"]
+    capital_gains_tail = stage_metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
+    e01000_reconciliation = finalize_puf_e01000_reconciliation(
+        clone["puf_e01000_reconciliation_basis"],
+        capital_gains_tail,
+        frame_columns=_frame_column_inventory(frame),
+    )
     signals = _merged_stage_signals(stage_metadata)
     required_signals = (
         "qbi_inputs_signal",
@@ -2391,6 +2640,8 @@ def _export_staged_result(
         ),
         "puf_h5": clone["puf_h5"],
         "puf_sha256": clone["puf_sha256"],
+        "puf_source_year_csv": clone["puf_source_year_csv"],
+        "puf_source_year_csv_sha256": clone["puf_source_year_csv_sha256"],
         "acs_h5": pre_clone["acs_h5"],
         "acs_sha256": pre_clone["acs_sha256"],
         "acs_rent_donor_rows": pre_clone["acs_rent_donor_rows"],
@@ -2406,8 +2657,11 @@ def _export_staged_result(
         "channel_weight_totals": _channel_weight_totals(frame),
         "puf_donor_rows": clone["puf_donor_rows"],
         "puf_donor_columns": clone["puf_donor_columns"],
+        "puf_donor_build_summary": clone["puf_donor_build_summary"],
+        "puf_e01000_reconciliation": e01000_reconciliation,
         "weights_audit": qrf["weights_audit"],
         "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
+        "puf_capital_gains_tail_transfer": capital_gains_tail,
         **{name: signals[name] for name in required_signals},
         "congressional_district_assignment": stage_metadata[
             "congressional_district_assignment"
@@ -2525,6 +2779,10 @@ def _summary_filename(period: int) -> str:
     if period == PERIOD:
         return SUMMARY_FILENAME
     return f"base_populace_us_{period}_puf_support.summary.json"
+
+
+def _capital_gains_tail_manifest_filename(period: int) -> str:
+    return f"base_populace_us_{period}_puf_capital_gains_tail.manifest.json"
 
 
 def _load_base_frame_from_args(args: argparse.Namespace) -> tuple[Frame, dict]:
@@ -2701,8 +2959,92 @@ def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:
         return {name: np.asarray(dataset) for name, dataset in h5.items()}
 
 
+def _puf_tax_unit_donor_from_h5(
+    path: Path,
+    *,
+    source_puf_csv: Path | None,
+    donor_build_summary: dict[str, object] | None = None,
+) -> pd.DataFrame:
+    """Build the PUF donor with source-year E00100-aligned banding values."""
+
+    arrays = _read_h5_arrays(path)
+    if source_puf_csv is None:
+        raise ValueError(
+            "--puf-source-year-csv is required to align nonzero E19200 records "
+            "to the published TY2015 SOI AGI bands."
+        )
+    adjusted_gross_income = _source_year_puf_adjusted_gross_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+    )
+    return puf_tax_unit_donor_from_arrays(
+        arrays,
+        adjusted_gross_income=adjusted_gross_income,
+        donor_build_summary=donor_build_summary,
+    )
+
+
+def _puf_e01000_reconciliation_basis(
+    args: argparse.Namespace,
+    donor: pd.DataFrame,
+    donor_build_summary: Mapping[str, object],
+) -> dict[str, object]:
+    """Build the audit-only source-through-donor reconciliation payload."""
+
+    source_puf_csv = getattr(args, "puf_source_year_csv", None)
+    if source_puf_csv is None:
+        raise ValueError(
+            "--puf-source-year-csv is required for the E01000 reconciliation."
+        )
+    processed_before_screen = donor_build_summary.get(
+        "capital_gains_before_mortgage_screen"
+    )
+    mortgage_quarantine = donor_build_summary.get("mortgage_field_quarantine")
+    if not isinstance(processed_before_screen, Mapping):
+        raise ValueError(
+            "PUF donor build summary is missing pre-screen capital-gains metrics."
+        )
+    if not isinstance(mortgage_quarantine, Mapping):
+        raise ValueError(
+            "PUF donor build summary is missing mortgage quarantine metrics."
+        )
+    return build_puf_e01000_reconciliation_basis(
+        source_puf_csv,
+        donor,
+        processed_before_screen=processed_before_screen,
+        mortgage_screen=mortgage_quarantine,
+        target_year=args.target_year,
+        source_sha256=_sha256(source_puf_csv),
+    )
+
+
+def _source_year_puf_adjusted_gross_income(
+    source_puf_csv: Path,
+    *,
+    processed_tax_unit_ids: Sequence[object],
+    processed_tax_unit_weights: Sequence[object],
+) -> np.ndarray:
+    """Load the restricted source only through its narrow alignment seam."""
+
+    return source_year_puf_adjusted_gross_income(
+        source_puf_csv,
+        processed_tax_unit_ids=processed_tax_unit_ids,
+        processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+
+
 def _row_counts(frame: Frame) -> dict[str, int]:
     return {entity: frame.n(entity) for entity in frame.entities}
+
+
+def _frame_column_inventory(frame: Frame) -> dict[str, tuple[str, ...]]:
+    """Return the final schema surface used to verify E01000 is audit-only."""
+
+    return {
+        entity: tuple(str(column) for column in frame.table(entity).columns)
+        for entity in frame.entities
+    }
 
 
 def _channel_weight_totals(frame: Frame) -> dict[str, float]:

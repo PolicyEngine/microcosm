@@ -35,6 +35,7 @@ required = {
         "pre_subsidy_rent",
         "self_employment_income_last_year",
         "previous_year_income_available",
+        "investment_interest_expense",
         "salt_refund_income",
         "takes_up_medicare_if_eligible",
         "workers_compensation",
@@ -71,18 +72,19 @@ source .venv/bin/activate 2>/dev/null
 
 # ---- integrity preflight on inputs (reproduce Build F's exact base) ----
 chk() { local got exp; got=$(shasum -a 256 "$1" | cut -c1-16); [ "$got" = "$2" ] || { say "FATAL sha mismatch $1: $got != $2"; echo 2 > "$LOGDIR/base.rc"; exit 2; }; }
-for f in "$USD/census_cps_2024.h5" "$USD/census_cps_2023.h5" "$USD/census_cps_2022.h5" "$USD/puf_2024.h5" "$USD/acs_2022.h5" "$AGING_FACTS" "$CDX" "$BLADDER"; do
+for f in "$USD/census_cps_2024.h5" "$USD/census_cps_2023.h5" "$USD/census_cps_2022.h5" "$USD/puf_2024.h5" "$USD/puf_2015.csv" "$USD/acs_2022.h5" "$AGING_FACTS" "$CDX" "$BLADDER"; do
   [ -f "$f" ] || { say "FATAL missing input $f"; echo 2 > "$LOGDIR/base.rc"; exit 2; }
 done
 chk "$AGING_FACTS" a5d34d4aad325d8c
 chk "$CDX" 383a666631aafd4f
 chk "$BLADDER" 7ba39b959068181b
 chk "$USD/acs_2022.h5" 0b319b496f19a691
+chk "$USD/puf_2015.csv" 0a7fd643edb1acc5
 
 SHORT=$(git rev-parse --short HEAD)
 PEUS=$(.venv/bin/python -c "from importlib.metadata import version; print(version('policyengine-us'))" 2>/dev/null)
 say "BUILD J BASE START commit=$SHORT pe-us=$PEUS pid=$$ pressure_log=$PLOG"
-say "  inputs: asec 2024/2023/2022 + puf_2024 + acs_2022; aging-facts a5d34d4a; cdx 383a6666; bladder 7ba39b95; seed 0 n-est 32"
+say "  inputs: asec 2024/2023/2022 + puf_2024 + TY2015 E00100 source + acs_2022; aging-facts a5d34d4a; cdx 383a6666; bladder 7ba39b95; seed 0 n-est 32"
 
 if [ -f "$BASE" ] && base_has_restored_signal "$BASE"; then
   say "BASE: already present with nondefault restored input surface at $BASE — reusing"
@@ -109,6 +111,7 @@ else
     --asec-h5 2023="$USD/census_cps_2023.h5" \
     --asec-h5 2022="$USD/census_cps_2022.h5" \
     --puf-h5 "$USD/puf_2024.h5" \
+    --puf-source-year-csv "$USD/puf_2015.csv" \
     --acs-h5 "$USD/acs_2022.h5" \
     --target-year 2024 \
     --seed 0 --n-estimators 32 \

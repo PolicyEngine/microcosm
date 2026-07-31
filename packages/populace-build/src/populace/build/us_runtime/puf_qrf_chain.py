@@ -24,10 +24,12 @@ from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
-    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     PufTaxDetailChainInputs,
     finalize_us_puf_tax_detail_predictions,
     prepare_us_puf_tax_detail_chain_inputs,
+)
+from populace.build.us_runtime.support_provenance import (
+    puf_tax_detail_clone_mask,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -35,17 +37,24 @@ from populace.build.us_runtime.puf_support import (
 from populace.fit import QRF, QRFChainState
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
-# v2 (populace#515): the checkpointed donor frame now carries the E19200 ->
-# mortgage-only concept carve (US_PUF_E19200_HOME_MORTGAGE_SHARE). Loading
-# validates only schema/digest/kind/role -- not donor construction identity --
-# so a v1 checkpoint initialized pre-carve would keep fitting and drawing the
-# uncarved levels under carved code. The bump rejects every pre-carve
-# checkpoint and forces re-initialization through the carved constructor.
+# v2 (populace#515): the checkpointed donor frame gained the interim national
+# E19200 -> mortgage-only concept carve. Loading validates only
+# schema/digest/kind/role -- not donor construction identity -- so a v1
+# checkpoint initialized pre-carve would keep fitting and drawing the uncarved
+# levels under carved code.
 # v3 (populace#516): donor construction now whole-row-screens grouped raw
 # mortgage-interest outliers before that carve. A v2 post-carve, pre-screen
 # checkpoint would otherwise still fit and draw the corrupt rows under screened
 # code, so it too must be rejected and rebuilt.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 3
+# v4 (populace#515 completion): donor construction replaces the national carve
+# with published per-AGI-band shares and adds investment_interest_expense as a
+# learned person input. The production target-order digest also changes, but a
+# schema bump is still required for standalone custom-order checkpoints whose
+# manifests do not fingerprint donor-construction semantics.
+# v5 (populace#567): the grouped-raw mortgage screen is field-local instead of
+# dropping whole donor rows. A v4 checkpoint would silently retain the
+# whole-row quarantine semantics and its missing capital-gains support.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 5
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
@@ -55,7 +64,7 @@ PRIMARY_QRF_TARGET_ORDER = (
     *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 PRIMARY_QRF_TARGET_ORDER_SHA256 = (
-    "556d713d029840848aba548d9c991842a54ea3cdbdea650c0be57d5ec5782661"
+    "795519d161e6b8425fc3b64de7eb435d52d25e7c8250b5861f3bb21ab48266a3"
 )
 
 _ARTIFACT_KIND = "populace_primary_puf_qrf_chain"
@@ -628,16 +637,16 @@ def _assert_live_recipient_identity(
 ) -> None:
     identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
     tax_unit = frame.table("tax_unit")
-    channel = support_channel_column("tax_unit")
-    if channel not in tax_unit:
-        raise ValueError("Live finalization frame lacks PUF support-channel identity.")
+    clone_index = support_clone_index_column("tax_unit")
+    if clone_index not in tax_unit:
+        raise ValueError("Live finalization frame lacks PUF clone identity.")
     missing_identity = [column for column in identity_columns if column not in tax_unit]
     if missing_identity:
         raise ValueError(
             f"Live finalization frame lacks identity columns: {missing_identity}."
         )
     live = tax_unit.loc[
-        tax_unit[channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        puf_tax_detail_clone_mask(tax_unit, entity="tax_unit"),
         list(identity_columns),
     ]
     expected_rows = _manifest_integer(manifest, "recipient_rows")

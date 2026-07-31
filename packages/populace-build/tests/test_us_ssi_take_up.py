@@ -224,6 +224,71 @@ def test_assignment_preserves_asec_reporters_and_fans_source_decisions() -> None
     assert person.groupby("person_source_id")[_OUTPUT].nunique().max() == 1
 
 
+def test_assignment_accepts_weight_split_puf_clone_indices() -> None:
+    """A clone-2 record must arrive the way the tail-transfer stage mints
+    it (populace#568 review): a NEW household row carrying part of the
+    source household's weight — weight actually split, total mass
+    conserved — not a relabeled full-weight row."""
+    frame, potential = _frame()
+    person = frame.table("person").copy()
+    household = frame.table("household").copy()
+    weights = frame.weights_for("household").values.copy()
+    person["person_support_clone_index"] = np.where(
+        person["person_support_channel"].eq("asec"),
+        0,
+        1,
+    )
+
+    original_source = "under_18:0"
+    source_row = person.index[
+        person["person_source_id"].eq(original_source)
+        & person["person_support_channel"].eq("puf_tax_detail")
+    ][0]
+    source_household_id = int(person.loc[source_row, "person_household_id"])
+    source_position = int(
+        household.index[household["household_id"].eq(source_household_id)][0]
+    )
+
+    clone_household_id = int(household["household_id"].max()) + 1
+    clone_weight = 4.0
+    clone_person = person.loc[[source_row]].copy()
+    clone_person["person_id"] = int(person["person_id"].max()) + 1
+    clone_person["person_household_id"] = clone_household_id
+    clone_person["person_support_clone_index"] = 2
+    person = pd.concat([person, clone_person], ignore_index=True)
+    potential = np.concatenate([potential, potential[[source_row]]])
+
+    household = pd.concat(
+        [household, pd.DataFrame({"household_id": [clone_household_id]})],
+        ignore_index=True,
+    )
+    total_before = weights.sum()
+    weights[source_position] -= clone_weight
+    weights = np.concatenate([weights, [clone_weight]])
+    assert weights.sum() == total_before
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    tables["household"] = household
+    split_frame = Frame(
+        tables,
+        frame.schema,
+        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+    )
+
+    result, diagnostics = with_us_ssi_take_up(
+        split_frame,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+    )
+
+    split = result.table("person")["person_source_id"].eq(original_source)
+    assert split.sum() == 3
+    assert result.table("person").loc[split, _OUTPUT].nunique() == 1
+    assert diagnostics["source_identity_mismatch_count"] == 0
+
+
 def test_puf_only_ssi_value_is_not_promoted_to_reporter_anchor() -> None:
     frame, potential = _frame()
     baseline, baseline_diagnostics = with_us_ssi_take_up(
@@ -300,10 +365,10 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
     assert diagnostics["measurement_phase"] == "assignment_stage"
-    # Schema 3 = the populace#507/#508 shape (schema 2's assignment/recomputed
-    # prior split and law count, plus the explicit prior weight basis); pin
-    # the literal so reverting the constant alone cannot pass.
-    assert diagnostics["schema_version"] == 3
+    # Schema 4 disambiguates the floor-aware assignment-prior arithmetic from
+    # schema 3 artifacts that may carry the old floor-blind arithmetic; pin the
+    # literal so reverting the constant alone cannot pass.
+    assert diagnostics["schema_version"] == 4
     assert diagnostics["prior_weight_basis"] == {
         "kind": US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
         "source_sha256": None,
@@ -720,6 +785,50 @@ def test_saturated_artifact_basis_falls_back_to_the_basis_reporter_rate() -> Non
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
 
+def test_build_o_attempt_3_receipts_pin_the_floor_aware_stabilizer() -> None:
+    """Regression fixture: Build O attempts 2/3 (populace#507, 2026-07-24).
+
+    Attempt 3 recomputed thresholds from attempt 2's delivered-weight
+    artifact — the intended basis — and still failed the delivery gate
+    because the schema-3 prior was target/capacity while the selection law
+    delivers floor + p × (capacity − floor). These are the artifacts' own
+    numbers: the old arithmetic prices both enforced bands outside the ±5%
+    envelope before any draw noise; the floor-aware prior prices both at
+    their targets exactly.
+    """
+
+    receipts = {
+        # band: (delivered candidate_capacity, reporter_candidate_floor,
+        #        ledger target, shipped schema-3 assignment_prior)
+        "18_64": (
+            5_692_738.613266995,
+            2_751_093.418495384,
+            3_905_779.0,
+            0.6860984256149643,
+        ),
+        "65_plus": (
+            3_978_003.639668682,
+            467_367.6056558765,
+            2_382_142.0,
+            0.5988285119312768,
+        ),
+    }
+    tolerance = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
+    for key, (capacity, floor, target, shipped_prior) in receipts.items():
+        # The shipped prior was the floor-blind ratio.
+        assert shipped_prior == pytest.approx(target / capacity)
+        # Its expected delivery on the very weights it was computed from
+        # misses the gate before any draw realization is added: +22.1% for
+        # 18–64, +7.9% for 65+.
+        shipped_expected = floor + shipped_prior * (capacity - floor)
+        assert shipped_expected - target > tolerance * target, key
+        # The floor-aware prior prices expected delivery at the target.
+        prior = _band_prior(target, capacity, floor)
+        assert prior == pytest.approx((target - floor) / (capacity - floor))
+        assert floor + prior * (capacity - floor) == pytest.approx(target)
+        assert abs(floor + prior * (capacity - floor) - target) <= 1e-6 * target
+
+
 def test_prior_basis_round_trips_through_diagnostics() -> None:
     _, result, potential, stage_diagnostics = _assigned()
     recovered = ssi_take_up_prior_basis_from_diagnostics(stage_diagnostics)
@@ -778,18 +887,42 @@ def _release_final_diagnostics() -> dict[str, object]:
     )
 
 
-def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
+def test_prior_basis_loader_accepts_current_and_legacy_artifacts() -> None:
     diagnostics = _release_final_diagnostics()
+    assert diagnostics["schema_version"] == 4
+    payload4 = copy.deepcopy(diagnostics)
+    basis4 = ssi_take_up_prior_basis_from_artifact(
+        payload4, targets=_TARGETS, source_sha256=_BASIS_SHA
+    )
+    assert basis4.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
+    assert basis4.source_sha256 == _BASIS_SHA
+    assert basis4.source_schema_version == 4
+    for band in basis4.bands:
+        assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
+        assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
+
+    # Build O attempts 2/3 published schema-3 artifacts; their capacity/floor
+    # measurements stay valid seeds — only the prior arithmetic derived from
+    # them changed. A faithful legacy payload has no lifecycle marker and
+    # carries the floor-blind target/capacity priors those builds shipped.
     payload3 = copy.deepcopy(diagnostics)
+    payload3["schema_version"] = 3
+    payload3.pop("measurement_phase")
+    for band in payload3["age_bands"]:
+        floor_blind = float(band["target"]) / float(band["candidate_capacity"])
+        band["assignment_prior"] = floor_blind
+        band["prior_recomputed_from_current_weights"] = floor_blind
     basis3 = ssi_take_up_prior_basis_from_artifact(
         payload3, targets=_TARGETS, source_sha256=_BASIS_SHA
     )
-    assert basis3.kind == US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT
-    assert basis3.source_sha256 == _BASIS_SHA
     assert basis3.source_schema_version == 3
-    for band in basis3.bands:
-        assert band.candidate_capacity == pytest.approx(_BAND_CAPACITY)
-        assert band.reporter_candidate_floor == pytest.approx(_REPORTER_FLOOR)
+    assert [
+        (band.key, band.candidate_capacity, band.reporter_candidate_floor)
+        for band in basis3.bands
+    ] == [
+        (band.key, band.candidate_capacity, band.reporter_candidate_floor)
+        for band in basis4.bands
+    ]
 
     # Build N's certified artifact predates the basis fields and the phase
     # marker (schema 2); the chain must be able to start from it
@@ -810,15 +943,18 @@ def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
         for band in basis2.bands
     ] == [
         (band.key, band.candidate_capacity, band.reporter_candidate_floor)
-        for band in basis3.bands
+        for band in basis4.bands
     ]
 
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
+        ("schema_1", "schema version"),
         ("unknown_schema", "schema version"),
-        ("stage_phase", "measurement phase"),
+        ("current_missing_phase", "measurement phase"),
+        ("current_stage_phase", "measurement phase"),
+        ("legacy_stage_phase", "measurement phase"),
         ("wrong_table", "target table"),
         ("wrong_period", "target period"),
         ("target_contract_drift", "target contract"),
@@ -829,6 +965,7 @@ def test_prior_basis_loader_accepts_schema_3_and_schema_2_artifacts() -> None:
         ("floor_above_capacity", "reporter floor"),
         ("nonfinite_capacity", "candidate capacity"),
         ("integrity_failed_attempt", "diagnostics gate"),
+        ("chained_retry_artifact", "exactly one"),
         ("blank_sha", "sha256"),
     ],
 )
@@ -837,10 +974,19 @@ def test_prior_basis_loader_rejects_invalid_artifacts(
 ) -> None:
     payload = copy.deepcopy(_release_final_diagnostics())
     sha = _BASIS_SHA
-    if mutation == "unknown_schema":
+    if mutation == "schema_1":
         payload["schema_version"] = 1
-    elif mutation == "stage_phase":
+    elif mutation == "unknown_schema":
+        payload["schema_version"] = 999
+    elif mutation == "current_missing_phase":
+        payload.pop("measurement_phase")
+    elif mutation == "current_stage_phase":
         # A stage-time payload must never masquerade as delivered weights.
+        payload["measurement_phase"] = "assignment_stage"
+    elif mutation == "legacy_stage_phase":
+        # Schema 3 may omit the marker, but an explicit assignment-stage
+        # marker proves the artifact is not a delivered-weight measurement.
+        payload["schema_version"] = 3
         payload["measurement_phase"] = "assignment_stage"
     elif mutation == "wrong_table":
         payload["target_table"] = "another_table"
@@ -868,6 +1014,15 @@ def test_prior_basis_loader_rejects_invalid_artifacts(
         # A Bernoulli-law-violating attempt's measurements are grounds for
         # investigation, never a basis to chain from.
         payload["bernoulli_law_violation_count"] = 1
+    elif mutation == "chained_retry_artifact":
+        # The artifact was itself measured on a delivered-weight retry:
+        # seeding another recompute from it is retry-of-retry — the deleted
+        # populace#463-class loop (populace#508 permits exactly one).
+        payload["prior_weight_basis"] = {
+            "kind": "release_artifact",
+            "source_sha256": "f" * 64,
+            "source_schema_version": 4,
+        }
     else:
         sha = "   "
     with pytest.raises(ValueError, match=message):
@@ -960,6 +1115,139 @@ def test_delivery_gate_rejects_malformed_diagnostics() -> None:
     corrupt_gate = us_ssi_take_up_delivery_gate(non_numeric, targets=_TARGETS)
     assert not corrupt_gate.passed
     assert any("non-numeric" in failure for failure in corrupt_gate.failures)
+
+
+def test_delivery_gate_fences_override_enforcement_with_their_adjudication() -> None:
+    """populace#566/#567: the dense arm fences its adult bands.
+
+    A fenced band's miss must ship in the fenced rows with the supplied
+    adjudication text — never fail the release — and the details must
+    report the run's effective enforcement.  Child delivery remains hard
+    gated on the dense arm.
+    """
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(
+        diagnostics,
+        **{
+            "under_18": 52.4,
+            "18_64": 80.0,
+            "65_plus": 90.0,
+        },
+    )
+    fences = {
+        "18_64": "Fenced for the dense diagnostic arm (populace#566/#567).",
+        "65_plus": "Fenced for the dense diagnostic arm (populace#566/#567).",
+    }
+    gate = us_ssi_take_up_delivery_gate(
+        delivered, targets=_TARGETS, enforcement_fences=fences
+    )
+    assert gate.passed
+    assert gate.details["enforced_band_keys"] == ["under_18"]
+    assert gate.details["adjudication_fenced_band_keys"] == ["18_64", "65_plus"]
+    assert [
+        row["age_band"] for row in gate.details["enforced_bands"]
+    ] == ["under_18"]
+    fenced = {row["age_band"]: row for row in gate.details["fenced_bands"]}
+    assert set(fenced) == {"18_64", "65_plus"}
+    assert fenced["18_64"]["fence"] == fences["18_64"]
+    assert fenced["65_plus"]["fence"] == fences["65_plus"]
+    # The measurement still ships: the fenced rows carry the miss.
+    assert fenced["18_64"]["selected_recipient_weight"] == pytest.approx(80.0)
+    assert fenced["65_plus"]["selected_recipient_weight"] == pytest.approx(90.0)
+
+
+def test_delivery_gate_partial_fence_keeps_the_other_band_enforced() -> None:
+    _, _, _, diagnostics = _assigned()
+    fences = {"65_plus": "Fenced for the dense diagnostic arm (populace#566)."}
+    # The un-fenced band still hard-fails on a miss...
+    missed = _delivered(
+        diagnostics,
+        **{"under_18": 52.4, "18_64": 80.0, "65_plus": 90.0},
+    )
+    gate = us_ssi_take_up_delivery_gate(
+        missed, targets=_TARGETS, enforcement_fences=fences
+    )
+    assert not gate.passed
+    assert any("18_64" in failure for failure in gate.failures)
+    assert not any("65_plus" in failure for failure in gate.failures)
+    assert gate.details["enforced_band_keys"] == ["under_18", "18_64"]
+    assert gate.details["adjudication_fenced_band_keys"] == ["65_plus"]
+    # ...and passes in-band, with the fenced band's miss shipping as a row.
+    inside = _delivered(
+        diagnostics,
+        **{"under_18": 52.4, "18_64": 52.0, "65_plus": 90.0},
+    )
+    gate = us_ssi_take_up_delivery_gate(
+        inside, targets=_TARGETS, enforcement_fences=fences
+    )
+    assert gate.passed
+    fenced_keys = [row["age_band"] for row in gate.details["fenced_bands"]]
+    assert fenced_keys == ["65_plus"]
+
+
+def test_delivery_gate_refuses_fences_on_unknown_bands() -> None:
+    """A fence must name one of the three normally enforced bands."""
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(diagnostics, **{"18_64": 52.4, "65_plus": 47.6})
+    with pytest.raises(ValueError, match="normally-enforced"):
+        us_ssi_take_up_delivery_gate(
+            delivered,
+            targets=_TARGETS,
+            enforcement_fences={"not_a_band": "text"},
+        )
+
+
+def test_delivery_gate_can_explicitly_fence_the_child_band() -> None:
+    """Per-run fences can suspend any normally enforced band when adjudicated."""
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(
+        diagnostics,
+        **{"under_18": 10.0, "18_64": 52.4, "65_plus": 47.6},
+    )
+    fence = "Documented child-band adjudication."
+    gate = us_ssi_take_up_delivery_gate(
+        delivered,
+        targets=_TARGETS,
+        enforcement_fences={"under_18": fence},
+    )
+    assert gate.passed
+    assert gate.details["enforced_band_keys"] == ["18_64", "65_plus"]
+    assert gate.details["fenced_bands"] == [
+        {
+            "age_band": "under_18",
+            "target": 50.0,
+            "selected_recipient_weight": 10.0,
+            "signed_relative_error": -0.8,
+            "fence": fence,
+        }
+    ]
+
+
+def test_delivery_gate_refuses_a_fence_without_adjudication_text() -> None:
+    """Fail-closed: only nonblank STRING adjudications are fences — a
+    None/zero/list value must never half-fence a band (suppressing
+    enforcement in the details while the row stays enforced, or vice
+    versa), and non-string keys must raise ValueError, not TypeError."""
+
+    _, _, _, diagnostics = _assigned()
+    delivered = _delivered(diagnostics, **{"18_64": 52.4, "65_plus": 47.6})
+    for bad_value in ("   ", "", None, 0, False, [], {"text": "x"}):
+        with pytest.raises(ValueError, match="carries no"):
+            us_ssi_take_up_delivery_gate(
+                delivered,
+                targets=_TARGETS,
+                enforcement_fences={"65_plus": bad_value},
+            )
+    for bad_key in (0, None, ("65_plus",)):
+        with pytest.raises(ValueError, match="band-name strings"):
+            us_ssi_take_up_delivery_gate(
+                delivered,
+                targets=_TARGETS,
+                enforcement_fences={bad_key: "documented adjudication"},
+            )
 
 
 def test_gate_rejects_basis_arithmetic_drift() -> None:

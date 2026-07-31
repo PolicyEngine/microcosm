@@ -316,7 +316,12 @@ def test_puf_half_uses_qrf_and_asec_half_remains_exact(
             return FakeFitted()
 
     monkeypatch.setattr(module, "QRF", FakeQRF)
-    result = with_us_retirement_distribution_inputs(expanded, seed=7, time_period=2024)
+    result = with_us_retirement_distribution_inputs(
+        expanded,
+        seed=7,
+        time_period=2024,
+        force_puf_imputation=True,
+    )
 
     assert calls["init"] == {"n_estimators": 100, "seed": 7}
     assert len(calls["training"]) == len(direct.table("person"))
@@ -340,6 +345,126 @@ def test_puf_half_uses_qrf_and_asec_half_remains_exact(
     )
     gate = us_retirement_distributions_signal_gate(result)
     assert gate.passed, gate.failures
+
+
+def test_completed_puf_surface_survives_narrowed_support_without_refit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    direct = with_us_retirement_distribution_inputs(_frame(), seed=0, time_period=2024)
+    expanded = clone_us_frame_for_puf_support(direct)
+
+    class ZeroFitted:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
+            return pd.DataFrame(
+                0.0,
+                index=test.index,
+                columns=list(_PUF_QRF_OUTPUTS),
+            )
+
+    class ZeroQRF:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def fit(self, *args: object, **kwargs: object) -> ZeroFitted:
+            return ZeroFitted()
+
+    monkeypatch.setattr(module, "QRF", ZeroQRF)
+    completed = with_us_retirement_distribution_inputs(
+        expanded,
+        seed=7,
+        time_period=2024,
+        force_puf_imputation=True,
+    )
+
+    # Model frozen-support recovery by removing one all-zero PUF household.
+    # Frame.select deliberately preserves the surviving person index, so the
+    # selected frame also covers the non-RangeIndex path that changed the
+    # historical 5,000-row donor sample.
+    person = completed.table("person")
+    puf_zero = person["person_support_channel"].eq("puf_tax_detail") & ~person[
+        list(_PUF_QRF_OUTPUTS)
+    ].any(axis=1)
+    drop_index = person.index[puf_zero][0]
+    selected = completed.select(person.index != drop_index)
+    before = us_retirement_distributions_signal_gate(selected)
+    assert before.passed, before.failures
+    before_share = before.details["nonzero_shares"]["keogh_distributions"]
+    assert 0.0000001 <= before_share <= 0.005
+    before_values = selected.table("person")[list(_OUTPUTS)].copy()
+    before_keogh_carriers = int((before_values["keogh_distributions"] > 0).sum())
+
+    class UnexpectedQRF:
+        def __init__(self, **kwargs: object) -> None:
+            raise AssertionError("a completed retirement surface must not be refit")
+
+    monkeypatch.setattr(module, "QRF", UnexpectedQRF)
+    result = with_us_retirement_distribution_inputs(
+        selected,
+        seed=7,
+        time_period=2024,
+    )
+
+    assert result is selected
+    after = us_retirement_distributions_signal_gate(result)
+    assert after.passed, after.failures
+    assert after.details["nonzero_shares"]["keogh_distributions"] == before_share
+    pd.testing.assert_frame_equal(
+        result.table("person")[list(_OUTPUTS)],
+        before_values,
+    )
+    assert (
+        result.table("person")["keogh_distributions"].gt(0).sum()
+        == before_keogh_carriers
+    )
+
+    # If support selection removes every rare carrier from one leaf, preserve
+    # the completed surface and fail closed at the gate instead of refitting.
+    # Removing the measured carrier rows keeps source reconciliation valid and
+    # isolates the degeneration/prevalence checks this regression owns.
+    keogh_carriers = result.table("person")["keogh_distributions"].gt(0)
+    assert keogh_carriers.any()
+    selected_away = result.select(~keogh_carriers)
+    degenerate = with_us_retirement_distribution_inputs(
+        selected_away,
+        seed=7,
+        time_period=2024,
+    )
+    assert degenerate is selected_away
+    degenerate_gate = us_retirement_distributions_signal_gate(degenerate)
+    assert not degenerate_gate.passed
+    assert degenerate_gate.failures == (
+        "keogh_distributions: degenerate with 1 distinct value(s).",
+        "keogh_distributions: weighted nonzero share 0.00000000 outside "
+        "[0.00000010, 0.00500000].",
+    )
+    assert degenerate_gate.details["source_mismatches"]["keogh_distributions"] == 0
+
+
+@pytest.mark.parametrize("missing", _OUTPUTS)
+def test_incomplete_puf_surface_is_consume_only_and_fails_at_the_signal_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    direct = with_us_retirement_distribution_inputs(_frame(), seed=0, time_period=2024)
+    incomplete = clone_us_frame_for_puf_support(direct)
+    incomplete.table("person").drop(columns=[missing], inplace=True)
+
+    class UnexpectedQRF:
+        def __init__(self, **kwargs: object) -> None:
+            raise AssertionError("an incomplete support surface must not be refit")
+
+    monkeypatch.setattr(module, "QRF", UnexpectedQRF)
+    result = with_us_retirement_distribution_inputs(
+        incomplete,
+        seed=7,
+        time_period=2024,
+    )
+
+    assert result is incomplete
+    gate = us_retirement_distributions_signal_gate(result)
+    assert not gate.passed
+    assert gate.failures == (f"person columns missing: {[missing]}.",)
+    assert gate.details == {"missing": [missing]}
 
 
 def test_gate_rejects_a_default_or_source_divergent_leaf() -> None:
