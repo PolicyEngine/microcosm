@@ -22,13 +22,38 @@ import math
 import torch
 from torch import nn
 
-__all__ = ["HardConcrete"]
+__all__ = ["HardConcrete", "hard_concrete_open_probability_threshold"]
 
 #: Stretch bounds for the hard-concrete distribution (Louizos et al., 2018).
 #: ``gamma < 0 < 1 < zeta`` lets the stretched-then-clamped variable reach exact
 #: 0 and 1, which is what makes the gate able to prune hard.
 _GAMMA = -0.1
 _ZETA = 1.1
+
+
+def hard_concrete_open_probability_threshold(temperature: float) -> float:
+    """Return the open-probability cutoff for a positive deterministic gate.
+
+    The evaluation-time hard-concrete gate is positive exactly when its logit
+    exceeds ``log(-gamma / zeta)``. Expressed on the per-record open
+    probability returned by :meth:`HardConcrete.get_active_prob`, that same
+    boundary is
+
+    ``sigmoid((1 - temperature) * log(-gamma / zeta))``.
+
+    This helper describes the gate threshold itself. A calibration result's
+    legacy support additionally applies its weight-scale pruning tolerance, so
+    callers should not assume equivalence for arbitrarily tiny latent weights.
+    """
+    if not math.isfinite(temperature) or temperature <= 0.0:
+        raise ValueError(
+            f"temperature must be positive and finite, got {temperature!r}."
+        )
+    value = (1.0 - float(temperature)) * math.log(-_GAMMA / _ZETA)
+    if value >= 0.0:
+        return 1.0 / (1.0 + math.exp(-value))
+    exp_value = math.exp(value)
+    return exp_value / (1.0 + exp_value)
 
 
 class HardConcrete(nn.Module):

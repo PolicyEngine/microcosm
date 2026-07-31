@@ -51,6 +51,18 @@ Six declared options, each a real feature (and each its own test):
   This penalty is only implemented by ``method="adam"``. In the two-stage
   :func:`calibrate_l0_refit` path it applies to both stages unless
   ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
+
+An explicit exact-k frozen refit requires the selected records' aligned marginal
+inclusion probabilities ``q_i`` and benchmarks them with Horvitz--Thompson
+weights ``w_i / q_i``. For selection indicator ``I_i``,
+``E[I_i * w_i / q_i] = w_i``, so their sum is design-unbiased for full-pool
+mass. Because that mass is known, the realized weights are subsequently
+projected to the exact control total while preserving the relative allocation
+defined by ``w_i / q_i``. This normalized benchmark is the optimizer's initial
+weight, so ``max_weight_ratio`` scales its inclusion-aware allocation. Constant
+``q`` reduces algebraically to the previous known-total ratio rescale. The
+legacy thresholded L0 refit does not perform this normalization and remains
+unchanged.
 """
 
 from __future__ import annotations
@@ -63,6 +75,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
+from populace.calibrate.exact_k import assert_exact_k_support
 from populace.calibrate.gates import HardConcrete
 from populace.calibrate.matrix import (
     CalibrationProblem,
@@ -178,6 +191,10 @@ class CalibrationResult:
             (``"dense"`` or ``"sparse_csr"``). This is what a build records in its release
             manifest — the max_weight_ratio bound is part of the dataset's
             provenance, not a local solver detail.
+        gate_open_probabilities: Per-record hard-concrete open probabilities
+            ``pi_i``, aligned to :attr:`weights`, for an L0 solve. ``None`` for
+            ordinary Adam, proximal, and score-only results, which have no
+            learned gate state.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -195,6 +212,7 @@ class CalibrationResult:
     n_nonzero: int
     closing_loss: float
     options: Mapping[str, object] = field(default_factory=dict)
+    gate_open_probabilities: np.ndarray | None = None
 
     @property
     def initial_loss(self) -> float:
@@ -274,13 +292,14 @@ class CalibrationResult:
 
 @dataclass(frozen=True)
 class L0RefitResult:
-    """Two-stage sparse calibration: L0 support selection, then ordinary refit.
+    """L0 probability/support selection followed by an ordinary frozen refit.
 
     The :attr:`selection` stage is a normal :func:`calibrate` call with
-    hard-concrete L0 gates. The :attr:`refit` stage keeps exactly the selected
-    support, removes the gates and L0 penalty, and runs ordinary calibration on
-    the pruned frame. Convenience properties delegate to :attr:`refit`, because
-    the refit frame and weights are the production artifact.
+    hard-concrete L0 gates. The :attr:`refit` stage keeps either the legacy
+    weight-threshold support or a caller-supplied exact-k support, removes the
+    gates and L0 penalty, and runs ordinary calibration on the resulting frame.
+    Convenience properties delegate to :attr:`refit`, because the refit frame
+    and weights are the production artifact.
     """
 
     selection: CalibrationResult
@@ -305,7 +324,14 @@ class L0RefitResult:
 
     @property
     def initial_weights(self) -> np.ndarray:
-        """The refit's starting weights, inherited from the L0 selected support."""
+        """The refit's starting weights on its frozen support.
+
+        The legacy path inherits surviving L0 weights. The explicit exact-k
+        path starts from original-frame ``w_i / q_i`` design weights and
+        projects them to the known full-pool total, so a positive-probability
+        record whose deterministic gate closed remains refittable without
+        losing population mass.
+        """
         return self.refit.initial_weights
 
     @property
@@ -717,14 +743,20 @@ def _optimize(
     temperature: float,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     progress_context: Mapping[str, object] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Run the torch optimization and return ``(final_weights, loss_trajectory)``.
+    return_gate_open_probabilities: bool = False,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Run the torch optimization and return weights plus its trajectory.
 
     Optimizes the log-weights with Adam against capped weighted MAPE.
     Positivity is by construction (``w = exp(log_w)`` times optional gates). The
     hard constraints — mass conservation and ``max_weight_ratio`` — are applied
     by projecting the realized weights after each step, so they hold on the
     returned vector exactly, not merely in expectation.
+
+    The private opt-in ``return_gate_open_probabilities`` adds a third return
+    value without changing the two-item tuple used by existing workspace
+    callers. The third value is aligned per-record ``pi_i`` for an L0 run and
+    ``None`` when no gates were active.
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
@@ -834,11 +866,20 @@ def _optimize(
                         # hard so it can never be violated mid-run.
                         log_w.clamp_(max=torch.log(upper))
 
+    gate_open_probabilities: np.ndarray | None = None
     with torch.no_grad():
         weights = torch.exp(log_w)
         if gates is not None:
             gates.eval()
             weights = weights * gates()
+            if return_gate_open_probabilities:
+                gate_open_probabilities = (
+                    gates.get_active_prob()
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .astype(np.float64, copy=True)
+                )
         final = weights.detach().numpy().astype(np.float64)
 
     # Make the hard ratio bound exact on the returned vector. The per-step
@@ -859,6 +900,8 @@ def _optimize(
             final <= prune_atol if (gates is not None and l0_lambda > 0.0) else None
         )
         final = _project_to_total(final, total0, max_weight_ratio, w0, pruned=pruned)
+    if return_gate_open_probabilities:
+        return final, trajectory, gate_open_probabilities
     return final, trajectory
 
 
@@ -1000,7 +1043,11 @@ def _search_l0_lambda_for_budget(
     initial_lambda: float | None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
-) -> tuple[np.ndarray, np.ndarray, float, int]:
+    return_gate_open_probabilities: bool = False,
+) -> (
+    tuple[np.ndarray, np.ndarray, float, int]
+    | tuple[np.ndarray, np.ndarray, float, int, np.ndarray]
+):
     """Search ``l0_lambda`` so the achieved non-zero count tracks the budget.
 
     The realized non-zero count is monotone *decreasing* in ``l0_lambda`` (a
@@ -1037,46 +1084,73 @@ def _search_l0_lambda_for_budget(
 
     Returns:
         ``(weights, trajectory, l0_lambda, n_nonzero)`` of the best run found.
+        When ``return_gate_open_probabilities`` is true, the aligned ``pi_i``
+        vector is appended. The default four-item tuple is retained for
+        existing workspace callers.
     """
     lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
     tol = max(1, round(0.05 * target_records))
 
     evaluation = 0
 
-    def evaluate(lam: float) -> tuple[np.ndarray, np.ndarray, int]:
+    def evaluate(
+        lam: float,
+    ) -> tuple[np.ndarray, np.ndarray, int, np.ndarray | None]:
         nonlocal evaluation
         evaluation += 1
         torch.manual_seed(seed)
-        weights, trajectory = _optimize(
-            matrix,
-            targets,
-            target_loss_weights,
-            target_loss_scales,
-            target_loss_cap,
-            initial_weights,
-            epochs=epochs,
-            learning_rate=learning_rate,
-            conserve_mass=conserve_mass,
-            max_weight_ratio=max_weight_ratio,
-            l0_lambda=lam,
-            l2_lambda=l2_lambda,
-            l2_anchor=l2_anchor,
-            l2_anchor_weights=l2_anchor_weights,
-            target_records=target_records,
-            init_mean=init_mean,
-            temperature=temperature,
-            progress_callback=progress_callback,
-            progress_context={
+        optimize_kwargs = {
+            "epochs": epochs,
+            "learning_rate": learning_rate,
+            "conserve_mass": conserve_mass,
+            "max_weight_ratio": max_weight_ratio,
+            "l0_lambda": lam,
+            "l2_lambda": l2_lambda,
+            "l2_anchor": l2_anchor,
+            "l2_anchor_weights": l2_anchor_weights,
+            "target_records": target_records,
+            "init_mean": init_mean,
+            "temperature": temperature,
+            "progress_callback": progress_callback,
+            "progress_context": {
                 "budget_search": True,
                 "budget_iteration": evaluation,
                 "budget_iters": budget_iters,
                 "l0_lambda": lam,
             },
-        )
+        }
+        if return_gate_open_probabilities:
+            weights, trajectory, gate_open_probabilities = _optimize(
+                matrix,
+                targets,
+                target_loss_weights,
+                target_loss_scales,
+                target_loss_cap,
+                initial_weights,
+                **optimize_kwargs,
+                return_gate_open_probabilities=True,
+            )
+            if gate_open_probabilities is None:  # pragma: no cover - L0 invariant
+                raise RuntimeError(
+                    "L0 budget search did not produce gate probabilities."
+                )
+        else:
+            # Preserve the historical call and two-item tuple for private
+            # workspace consumers that do not opt into the probability seam.
+            weights, trajectory = _optimize(
+                matrix,
+                targets,
+                target_loss_weights,
+                target_loss_scales,
+                target_loss_cap,
+                initial_weights,
+                **optimize_kwargs,
+            )
+            gate_open_probabilities = None
         n_nonzero = int((weights > prune_atol).sum())
-        return weights, trajectory, n_nonzero
+        return weights, trajectory, n_nonzero, gate_open_probabilities
 
-    best: tuple[np.ndarray, np.ndarray, float, int] | None = None
+    best: tuple[np.ndarray, np.ndarray, float, int, np.ndarray | None] | None = None
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
     # so it steers the search the same way "too few survivors" does — toward a
@@ -1086,7 +1160,7 @@ def _search_l0_lambda_for_budget(
     def consider(lam: float) -> int:
         nonlocal best
         try:
-            weights, trajectory, n_nonzero = evaluate(lam)
+            weights, trajectory, n_nonzero, gate_open_probabilities = evaluate(lam)
         except ValueError as exc:
             if "Infeasible combination" in str(exc):
                 return _over_pruned
@@ -1094,7 +1168,13 @@ def _search_l0_lambda_for_budget(
         if best is None or abs(n_nonzero - target_records) < abs(
             best[3] - target_records
         ):
-            best = (weights, trajectory, lam, n_nonzero)
+            best = (
+                weights,
+                trajectory,
+                lam,
+                n_nonzero,
+                gate_open_probabilities,
+            )
         return n_nonzero
 
     # Warm start: evaluate the user's lambda (or the bracket mid-point) first.
@@ -1135,7 +1215,11 @@ def _search_l0_lambda_for_budget(
             "cap. Loosen max_weight_ratio, relax mass conservation, or raise the "
             "record budget."
         )
-    return best
+    if return_gate_open_probabilities:
+        if best[4] is None:  # pragma: no cover - opt-in invariant
+            raise RuntimeError("L0 budget search lost its gate probabilities.")
+        return best
+    return best[:4]
 
 
 def _project_to_total(
@@ -1521,6 +1605,7 @@ def calibrate(
         # drives unneeded records to exact zero, so L1 selects a sparse weighted
         # subset jointly with calibrating it (the convex analog of the L0 gates).
         effective_l0 = 0.0
+        gate_open_probabilities = None
         final_weights, trajectory = _optimize_proximal(
             matrix_t,
             targets_t,
@@ -1554,34 +1639,39 @@ def calibrate(
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
         # count tracks target_records. The supplied l0_lambda (if any) is the
         # warm start; the search reports the penalty it settled on.
-        final_weights, trajectory, effective_l0, n_nonzero = (
-            _search_l0_lambda_for_budget(
-                matrix_t,
-                targets_t,
-                target_loss_weights_t,
-                target_loss_scales_t,
-                target_loss_cap,
-                w0,
-                target_records=target_records,
-                epochs=epochs,
-                learning_rate=learning_rate,
-                conserve_mass=(mass == CONSERVE_MASS),
-                max_weight_ratio=max_weight_ratio,
-                l2_lambda=l2_lambda,
-                l2_anchor=l2_anchor,
-                l2_anchor_weights=l2_anchor_weights,
-                init_mean=init_mean,
-                temperature=temperature,
-                seed=seed,
-                prune_atol=prune_atol,
-                initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
-                progress_callback=progress_callback,
-                budget_iters=budget_iters,
-            )
+        (
+            final_weights,
+            trajectory,
+            effective_l0,
+            n_nonzero,
+            gate_open_probabilities,
+        ) = _search_l0_lambda_for_budget(
+            matrix_t,
+            targets_t,
+            target_loss_weights_t,
+            target_loss_scales_t,
+            target_loss_cap,
+            w0,
+            target_records=target_records,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            conserve_mass=(mass == CONSERVE_MASS),
+            max_weight_ratio=max_weight_ratio,
+            l2_lambda=l2_lambda,
+            l2_anchor=l2_anchor,
+            l2_anchor_weights=l2_anchor_weights,
+            init_mean=init_mean,
+            temperature=temperature,
+            seed=seed,
+            prune_atol=prune_atol,
+            initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
+            progress_callback=progress_callback,
+            budget_iters=budget_iters,
+            return_gate_open_probabilities=True,
         )
     else:
         effective_l0 = l0_lambda
-        final_weights, trajectory = _optimize(
+        final_weights, trajectory, gate_open_probabilities = _optimize(
             matrix_t,
             targets_t,
             target_loss_weights_t,
@@ -1601,6 +1691,7 @@ def calibrate(
             init_mean=init_mean,
             temperature=temperature,
             progress_callback=progress_callback,
+            return_gate_open_probabilities=True,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if effective_l0 > 0.0 and n_nonzero == 0:
@@ -1678,6 +1769,7 @@ def calibrate(
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),
         },
+        gate_open_probabilities=gate_open_probabilities,
     )
 
 
@@ -1753,12 +1845,52 @@ def _selected_person_mask(
     return person_mask, selected_ids.copy()
 
 
+def _with_exact_k_full_pool_weights(
+    subset: Frame,
+    pool: Frame,
+    weight_entity: str,
+    support_inclusion_probabilities: np.ndarray,
+) -> Frame:
+    """Set the selected support's normalized Horvitz--Thompson baseline.
+
+    For selection indicator ``I_i`` with marginal inclusion probability
+    ``q_i``, ``E[I_i * w_i / q_i] = w_i``. Thus the sum of ``I_i * w_i / q_i``
+    is an unbiased estimator of full-pool mass. The pool total is known here,
+    so the realized Horvitz--Thompson weights are subsequently projected to
+    that exact total while preserving their relative ``w_i / q_i`` allocation.
+    """
+    selected = subset.resolve_weights(weight_entity)
+    pool_total = pool.resolve_weights(weight_entity).total
+    inverse_probability_values = selected.values / support_inclusion_probabilities
+    expanded_values = _project_to_total(
+        inverse_probability_values,
+        pool_total,
+        max_weight_ratio=None,
+        initial_weights=inverse_probability_values,
+    )
+    expanded = selected.with_values(expanded_values, kind=selected.kind)
+    return subset.with_weights(
+        weight_entity,
+        expanded,
+        mass=MassChange(
+            factor=pool_total / selected.total,
+            reason=(
+                "exact-k selected-support Horvitz-Thompson weights normalized "
+                "to the known full-pool mass"
+            ),
+        ),
+    )
+
+
 def refit_l0_selection(
     frame: Frame,
     targets: TargetSet,
     selection: CalibrationResult,
     *,
     weight_entity: str | None = None,
+    support: np.ndarray | None = None,
+    k: int | None = None,
+    support_inclusion_probabilities: np.ndarray | None = None,
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
@@ -1774,24 +1906,41 @@ def refit_l0_selection(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> L0RefitResult:
-    """Refit ordinary calibration on an existing L0-selected support.
+    """Refit ordinary calibration on a frozen support from an L0 solve.
 
     Use this when the caller has already run :func:`calibrate` with L0 pruning
-    and wants to reuse that exact selection. The refit subsets to records whose
-    L0 weights survived, removes the L0 gates and penalty, and calls
-    :func:`calibrate` again with ``l0_lambda=0`` on that selected support.
+    and wants to reuse a frozen selection. By default the refit preserves the
+    existing path: it subsets to records whose L0 weights survived. A caller may
+    instead pass the stage-2 exact-k ``support`` index array together with ``k``;
+    :func:`~populace.calibrate.exact_k.assert_exact_k_support` then applies the
+    named, fail-closed cardinality gate before any refit work. In either case the
+    gates and L0 penalty are removed and :func:`calibrate` runs again with
+    ``l0_lambda=0`` on only the selected records.
+
+    The explicit exact-k path subsets the original ``frame`` rather than
+    ``selection.frame``. A record may have positive open probability while its
+    deterministic L0 gate is closed; starting from the original frame keeps
+    such a valid stage-2 draw available to ordinary log-weight calibration.
+    Its selected design weights become ``w_i / q_i`` using the required,
+    support-aligned ``support_inclusion_probabilities``, then are normalized to
+    the original frame's known full-pool mass as described in this module's
+    estimator note. Omitting ``support``, ``k``, and the inclusion probabilities
+    explicitly selects the existing thresholded path and leaves its starting
+    weights unchanged.
     ``l2_lambda`` applies the soft concentration penalty to the refit itself —
     the stage that produces the shipped weights; the default ``0.0`` keeps the
     refit unpenalized.
 
-    The refit's starting weights are the *selection stage's calibrated
-    weights*, which are already concentrated — so with ``l2_anchor="initial"``
-    a strong penalty pulls toward their square (more concentration, lower
-    ESS). Pass ``l2_anchor="uniform"`` when the penalty's job is to spread
-    the shipped weights, or ``l2_anchor="design"`` to anchor at the
-    *pre-selection* initial weights of the surviving records — "stay near the
-    survey design", the natural choice when the candidate frame carries real
-    design weights rather than a uniform reset.
+    On the legacy path, the refit's starting weights are the *selection stage's
+    calibrated weights*, which are already concentrated — so with
+    ``l2_anchor="initial"`` a strong penalty pulls toward their square (more
+    concentration, lower ESS). Pass ``l2_anchor="uniform"`` when the penalty's
+    job is to spread the shipped weights, or ``l2_anchor="design"`` to anchor at
+    the *pre-selection* initial weights of the surviving records — "stay near
+    the survey design", the natural choice when the candidate frame carries
+    real design weights rather than a uniform reset. On the explicit exact-k
+    path, the starting weights and design anchor instead use the original-frame
+    design weights after the same normalized Horvitz--Thompson projection.
     """
     if l2_anchor not in ("initial", "uniform", "design"):
         raise ValueError(
@@ -1810,24 +1959,104 @@ def refit_l0_selection(
             "positive L0 pruning."
         )
 
-    selected_mask = selection.weights > (
-        _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
-    )
+    if (support is None) != (k is None):
+        raise ValueError(
+            "support and k must be provided together for an exact-k frozen-support "
+            "refit."
+        )
+    if support is None:
+        if support_inclusion_probabilities is not None:
+            raise ValueError(
+                "support_inclusion_probabilities may only be provided with "
+                "support and k for an exact-k frozen-support refit."
+            )
+        selected_mask = selection.weights > (
+            _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
+        )
+        subset_source = selection.frame
+        selected_inclusion_probabilities = None
+    else:
+        selected_indices = assert_exact_k_support(
+            support,
+            k,
+            pool_size=len(selection.weights),
+        )
+        if support_inclusion_probabilities is None:
+            raise ValueError(
+                "support_inclusion_probabilities are required for an exact-k "
+                "frozen-support refit."
+            )
+        try:
+            supplied_probabilities = np.asarray(support_inclusion_probabilities)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "support_inclusion_probabilities must be a one-dimensional "
+                "numeric vector aligned with support."
+            ) from None
+        if supplied_probabilities.dtype.kind == "c":
+            raise ValueError(
+                "support_inclusion_probabilities must be a one-dimensional "
+                "numeric vector aligned with support."
+            )
+        try:
+            supplied_probabilities = np.asarray(
+                supplied_probabilities,
+                dtype=np.float64,
+            )
+        except (TypeError, ValueError):
+            raise ValueError(
+                "support_inclusion_probabilities must be a one-dimensional "
+                "numeric vector aligned with support."
+            ) from None
+        if supplied_probabilities.shape != selected_indices.shape:
+            raise ValueError(
+                "support_inclusion_probabilities must be one-dimensional and "
+                "aligned with support: "
+                f"got shape {supplied_probabilities.shape}, expected "
+                f"{selected_indices.shape}."
+            )
+        if not np.isfinite(supplied_probabilities).all():
+            raise ValueError("support_inclusion_probabilities must be finite.")
+        if ((supplied_probabilities <= 0.0) | (supplied_probabilities > 1.0)).any():
+            raise ValueError("support_inclusion_probabilities must lie in (0, 1].")
+        support_order = np.argsort(np.asarray(support), kind="stable")
+        selected_inclusion_probabilities = supplied_probabilities[support_order]
+        selected_mask = np.zeros(len(selection.weights), dtype=bool)
+        selected_mask[selected_indices] = True
+        subset_source = frame
     if not selected_mask.any():
         raise ValueError("Cannot refit an L0 selection with no retained records.")
     person_mask, selected_ids = _selected_person_mask(
         frame, refit_entity, selected_mask
     )
-    subset = selection.frame.select(person_mask)
+    subset = subset_source.select(person_mask)
+    if k is not None:
+        realized_count = subset.n(refit_entity)
+        assert_exact_k_support(
+            np.arange(realized_count, dtype=np.int64),
+            k,
+            pool_size=realized_count,
+        )
+        if selected_inclusion_probabilities is None:  # pragma: no cover
+            raise RuntimeError("exact-k refit lost its inclusion probabilities.")
+        subset = _with_exact_k_full_pool_weights(
+            subset,
+            frame,
+            refit_entity,
+            selected_inclusion_probabilities,
+        )
 
     refit_l2_anchor_weights = None
     if l2_anchor == "design":
-        # The selection stage's INITIAL weights are the design prior the
-        # candidate frame entered calibration with; subset to survivors so
-        # the anchor aligns with the refit's weight vector.
-        refit_l2_anchor_weights = np.asarray(
-            selection.initial_weights, dtype=np.float64
-        )[selected_mask]
+        # The legacy branch uses the pre-selection design prior on survivors.
+        # The exact-k branch uses that same prior after its full-pool ratio
+        # normalization, keeping the anchor on the refit's expanded mass scale.
+        if k is None:
+            refit_l2_anchor_weights = np.asarray(
+                selection.initial_weights, dtype=np.float64
+            )[selected_mask]
+        else:
+            refit_l2_anchor_weights = subset.resolve_weights(refit_entity).values
 
     refit = calibrate(
         subset,
