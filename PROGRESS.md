@@ -2,11 +2,12 @@
 
 ## State
 
-PR #583 round-10 fix lane is in progress on
-`multispine-pool-build-578` from `9e9acf5`. The review HOLD identifies four
-mechanical closure gaps in the spine-blindness structural guard: nested-star
+PR #583 round-10 fixes are implemented and validated locally on
+`multispine-pool-build-578` from `9e9acf5`. The review HOLD's four mechanical
+closure gaps in the spine-blindness structural guard are closed: nested-star
 payload poisoning, non-name loop targets, static-dict `.values()` iteration,
-and partial structures propagated through bindings.
+and partial structures propagated through bindings. The branch has not been
+pushed.
 
 ## Done
 
@@ -78,9 +79,19 @@ and partial structures propagated through bindings.
   conservative duplicate-key over-catch applies only to unresolved keys.
 - The expanded controls, 121-case guard, 22-case graph battery, and direct
   production-file scans pass with both named files still at zero findings.
+- Re-ran the complete validation matrix at `0d0d39a`: the guard passes 121,
+  the focused graph battery passes 22, and the full `populace-build` suite
+  passes 3,343 with 85 skipped and five existing warnings. Repository-wide
+  ruff, file formatting, and `git diff --check` pass.
+- Authenticated the six reviewer repros directly at the same HEAD: the nested
+  star, attribute target, and subscript target fail closed at iteration; the
+  literal `.values()`, constructor `.values()`, and bound mixed-row forms
+  resolve the exact `person_support_channel` column. Direct scans of
+  `acs_transfer.py` and `congressional_district_vintage.py` remain empty.
+- Confirmed `origin/multispine-pool-build-578` still points to the requested
+  starting commit `9e9acf5`; all work remains local.
 
 ## Next
 
-- Re-run the full validation matrix after those corrections.
-- Restore `PROGRESS.md` exactly to `origin/main`, commit all coherent steps
+- Restore `PROGRESS.md` exactly to `origin/main`, commit the restoration
   locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.
