@@ -704,6 +704,63 @@ def test_refit_l0_selection_reuses_existing_selection(feasible_frame) -> None:
     assert len(result.selected_entity_ids) == selection.n_nonzero
 
 
+def test_refit_l0_selection_accepts_gate_asserted_exact_k_support(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame(n=120)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=250,
+        seed=0,
+        target_records=30,
+        mass="conserve",
+    )
+    threshold = 1e-6 * float(np.mean(selection.initial_weights))
+    closed = np.flatnonzero(selection.weights <= threshold)
+    assert closed.size > 0
+    other = np.flatnonzero(np.arange(120) != closed[0])[:11]
+    support = np.sort(np.concatenate(([closed[0]], other)))
+
+    with pytest.raises(ValueError, match="exact-k cardinality gate failed"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support=support[:-1],
+            k=12,
+            epochs=10,
+        )
+
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support,
+        k=12,
+        epochs=80,
+        seed=1,
+        mass="conserve",
+    )
+
+    expected_mask = np.zeros(120, dtype=bool)
+    expected_mask[support] = True
+    np.testing.assert_array_equal(result.selected_mask, expected_mask)
+    np.testing.assert_array_equal(result.selected_entity_ids, support)
+    assert result.frame.n("household") == 12
+    assert len(result.weights) == 12
+    # The sampled closed gate proves the explicit path initialized from the
+    # original frame's positive design weights, not selection.frame's zeros.
+    assert closed[0] in support
+    np.testing.assert_array_equal(result.initial_weights, np.full(12, 1000.0))
+
+
 def test_l0_refit_requires_l0_pruning_control(feasible_frame) -> None:
     frame, truths = feasible_frame(n=40)
     targets = TargetSet((_population_target(truths["population"], 1.0),))

@@ -63,6 +63,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
+from populace.calibrate.exact_k import assert_exact_k_support
 from populace.calibrate.gates import HardConcrete
 from populace.calibrate.matrix import (
     CalibrationProblem,
@@ -1807,6 +1808,8 @@ def refit_l0_selection(
     selection: CalibrationResult,
     *,
     weight_entity: str | None = None,
+    support: np.ndarray | None = None,
+    k: int | None = None,
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
@@ -1822,12 +1825,23 @@ def refit_l0_selection(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> L0RefitResult:
-    """Refit ordinary calibration on an existing L0-selected support.
+    """Refit ordinary calibration on a frozen support from an L0 solve.
 
     Use this when the caller has already run :func:`calibrate` with L0 pruning
-    and wants to reuse that exact selection. The refit subsets to records whose
-    L0 weights survived, removes the L0 gates and penalty, and calls
-    :func:`calibrate` again with ``l0_lambda=0`` on that selected support.
+    and wants to reuse a frozen selection. By default the refit preserves the
+    existing path: it subsets to records whose L0 weights survived. A caller may
+    instead pass the stage-2 exact-k ``support`` index array together with ``k``;
+    :func:`~populace.calibrate.exact_k.assert_exact_k_support` then applies the
+    named, fail-closed cardinality gate before any refit work. In either case the
+    gates and L0 penalty are removed and :func:`calibrate` runs again with
+    ``l0_lambda=0`` on only the selected records.
+
+    The explicit exact-k path subsets the original ``frame`` rather than
+    ``selection.frame``. A record may have positive open probability while its
+    deterministic L0 gate is closed; starting from the original frame keeps
+    such a valid stage-2 draw available to ordinary log-weight calibration.
+    Omitting ``support`` and ``k`` leaves the existing thresholded path and its
+    starting weights unchanged.
     ``l2_lambda`` applies the soft concentration penalty to the refit itself —
     the stage that produces the shipped weights; the default ``0.0`` keeps the
     refit unpenalized.
@@ -1858,15 +1872,36 @@ def refit_l0_selection(
             "positive L0 pruning."
         )
 
-    selected_mask = selection.weights > (
-        _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
-    )
+    if (support is None) != (k is None):
+        raise ValueError(
+            "support and k must be provided together for an exact-k frozen-support "
+            "refit."
+        )
+    if support is None:
+        selected_mask = selection.weights > (
+            _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
+        )
+        subset_source = selection.frame
+    else:
+        selected_indices = assert_exact_k_support(
+            support,
+            k,
+            pool_size=len(selection.weights),
+        )
+        selected_mask = np.zeros(len(selection.weights), dtype=bool)
+        selected_mask[selected_indices] = True
+        subset_source = frame
     if not selected_mask.any():
         raise ValueError("Cannot refit an L0 selection with no retained records.")
     person_mask, selected_ids = _selected_person_mask(
         frame, refit_entity, selected_mask
     )
-    subset = selection.frame.select(person_mask)
+    subset = subset_source.select(person_mask)
+    if k is not None and subset.n(refit_entity) != k:
+        raise ValueError(
+            "exact-k cardinality gate failed after frame subsetting: "
+            f"realized {subset.n(refit_entity)} records != k={k}."
+        )
 
     refit_l2_anchor_weights = None
     if l2_anchor == "design":
