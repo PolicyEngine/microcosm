@@ -10,6 +10,7 @@ import pandas as pd
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "PERSON_SUPPORT_CHANNEL_COLUMN",
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "SPINE_ASSEMBLY_MANIFEST_KEY",
@@ -28,6 +29,7 @@ __all__ = [
 ]
 
 BASE_ASEC_SUPPORT_CHANNEL = "asec"
+PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 PUF_TAX_DETAIL_CLONE_INDEX = 1
 SPINE_ASSEMBLY_MANIFEST_KEY = "us_spine_assembly_manifest"

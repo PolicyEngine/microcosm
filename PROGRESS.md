@@ -6,10 +6,11 @@ Fix-3 completion is in progress on `multispine-pool-build-578`, from clean
 starting commit `b219b21`. The populace owner resolved the typed-DataFrame
 decision: parameterized `df[column]` is a permitted boundary, while every
 statically resolvable guarded column name is contraband in every expression
-position in a non-owner operator module. The completed contract must document
-that composition argument and the sole accepted residual of names materialized
-purely from runtime file/config/environment data. Guard implementation, binding
-tests, a clean 54-module scan, full validation, and the fix-3 handoff remain.
+position in a non-owner operator module. The three-layer contract, composition
+argument, sole runtime-data residual, and annotation/docstring exemptions are
+now documented and executable. All requested binding tests pass, and both the
+all-runtime scan and pinned 54-module graph are clean after three narrow
+adjudications. Full package validation and the fix-3 handoff remain.
 
 No push or external mutation is authorized.
 
@@ -18,6 +19,22 @@ No push or external mutation is authorized.
 - Read `CLAUDE.md` and `/private/tmp/583_fix2_handoff.md`.
 - Confirmed the required branch, clean worktree, and starting HEAD `b219b21`.
 - Recorded the owner's explicit typed-parameter and contraband-literal decision.
+- Added the all-expression contraband rule on top of the existing flow-sensitive
+  string resolver, including static f-string alternatives from enumerated
+  comprehension choices.
+- Exempted only true module/class/function docstrings and annotation syntax;
+  executable defaults, including lambda defaults, remain checked.
+- Added binding tests for the typed parameter boundary, guarded and benign
+  helper calls, list/tuple/set/dict positions, comparisons, returns,
+  assignments, defaults, every requested composition form, static f-string
+  enumeration, owners, annotations, and docstrings.
+- Classified `operator_boundary.py` as a reviewed provenance owner because it
+  enumerates provenance columns only to reject preassembled source frames.
+- Moved the shared `person_support_channel` spelling into the existing
+  `support_provenance.py` owner and imported it into `adult_care.py` and
+  `ssi_take_up.py`, leaving both treatment modules fully guarded.
+- Ran the guard file: 94 passed, with the all-runtime and exact 54-module graph
+  scans clean. Focused Ruff and `git diff --check` pass.
 - Read `CLAUDE.md` and the round-4 review log.
 - Confirmed the required clean starting HEAD and branch.
 - Confirmed the local GitNexus index is absent; direct AST/source tracing will
@@ -126,10 +143,6 @@ No push or external mutation is authorized.
 
 ## Next
 
-- Implement the all-expression contraband-literal rule and completed-contract
-  docstring, keeping annotations and docstrings exempt.
-- Add the requested violation/pass/owner tests and adjudicate any findings in
-  the pinned 54-module graph with the smallest owner-side change.
-- Run the guard file, full `populace-build` suite, and repository-wide Ruff.
+- Run the full `populace-build` suite and repository-wide Ruff.
 - Write `/private/tmp/583_fix3_handoff.md`, then restore `PROGRESS.md` to
   `origin/main` and commit that restoration so root journals stay out of the PR.

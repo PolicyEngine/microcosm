@@ -1,12 +1,26 @@
-"""Fail-closed guard for source-spine-blind US population operators.
+"""Completed fail-closed guard for source-spine-blind US operators.
 
-In every non-owner operator module, each column-access surface must either
-resolve to static string choices that are checked by name or be recorded as a
-fail-closed violation; there is no silent third state. Covered surfaces are
-subscript and ``.loc`` reads/writes, attributes and dynamic ``getattr``,
-canonical column factories, and direct or aliased pandas ``get``, ``filter``,
-``query``, and ``eval`` calls. Loop/comprehension choices and closure free
-variables obey the same contract.
+The contract has three layers in every non-owner operator module:
+
+1. Every column-access surface resolves to static choices that are checked by
+   name or fails closed: subscripts and ``.loc`` reads/writes, attributes,
+   ``getattr``, canonical column factories, and direct or aliased pandas
+   ``get``, ``filter``, ``query``, and ``eval`` calls.
+2. Opacity is a violation at every strict surface; unresolved selectors,
+   expressions, aliases, and expanded arguments never create a silent state.
+3. Guarded column names are contraband anywhere statically visible in an
+   executable expression in a non-owner module, including calls, containers,
+   comparisons, returns, defaults, and assignments.
+
+A dynamic ``helper(df, column)`` can reach a guarded column only through its
+name, and that name must be written somewhere. Wherever it is statically
+written, layer 3 catches it using the same constant and string-composition
+resolution as the access checks. Therefore a typed parameter-to-parameter
+``df[column]`` subscript is deliberately permitted: its producing site bears
+the name check. The single accepted residual is a guarded name materialized
+purely from runtime file, configuration, or environment content, where no
+static spelling exists to inspect. Annotations and docstrings are exempt
+because they are not dataflow.
 """
 
 from __future__ import annotations
@@ -46,6 +60,8 @@ _RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
 _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         "base_pool.py",  # Legacy late-spine assembly.
+        # Enumerates provenance columns only to reject preassembled source frames.
+        "operator_boundary.py",
         "puf_qrf_chain.py",  # Carries provenance into resumable checkpoints.
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
@@ -699,10 +715,92 @@ def _static_string_values(
     node: ast.AST,
     constants: list[dict[str, object]],
 ) -> tuple[str, ...] | None:
+    if isinstance(node, ast.JoinedStr):
+        alternatives = _static_joined_string_values(node, constants)
+        if alternatives is not None:
+            return alternatives
     shape = _static_string_shape(node, constants)
     if shape is not None:
         return (shape,)
     return _static_string_list(node, constants)
+
+
+def _static_joined_string_values(
+    node: ast.JoinedStr,
+    constants: list[dict[str, object]],
+) -> tuple[str, ...] | None:
+    """Expand every statically enumerable f-string field choice."""
+
+    assembled = ("",)
+    for part in node.values:
+        if isinstance(part, ast.Constant) and isinstance(part.value, str):
+            choices = (part.value,)
+        elif isinstance(part, ast.FormattedValue):
+            choices = _static_string_values(part.value, constants)
+            if choices is None:
+                return None
+            format_spec = (
+                ""
+                if part.format_spec is None
+                else _static_string_shape(part.format_spec, constants)
+            )
+            if format_spec is None or _OPAQUE_STRING_PART in format_spec:
+                return None
+            formatted: list[str] = []
+            for choice in choices:
+                if part.conversion == ord("s"):
+                    converted = str(choice)
+                elif part.conversion == ord("r"):
+                    converted = repr(choice)
+                elif part.conversion == ord("a"):
+                    converted = ascii(choice)
+                else:
+                    converted = choice
+                try:
+                    formatted.append(format(converted, format_spec))
+                except (TypeError, ValueError):
+                    return None
+            choices = tuple(formatted)
+        else:
+            choices = _static_string_values(part, constants)
+            if choices is None:
+                return None
+        assembled = tuple(prefix + choice for prefix in assembled for choice in choices)
+    return assembled
+
+
+def _statically_visible_source_columns(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> tuple[str, ...]:
+    """Return guarded names present in a statically resolvable expression."""
+
+    values = _static_string_values(node, constants)
+    if values is None:
+        return ()
+    return tuple(
+        column
+        for column in sorted(_OPERATOR_SOURCE_COLUMNS)
+        if any(column in value for value in values)
+    )
+
+
+def _docstring_value_ids(tree: ast.AST) -> set[int]:
+    """Identify only true scope docstrings, not arbitrary string expressions."""
+
+    scope_nodes = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    docstrings: set[int] = set()
+    for scope in ast.walk(tree):
+        if not isinstance(scope, scope_nodes) or not scope.body:
+            continue
+        statement = scope.body[0]
+        if (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        ):
+            docstrings.add(id(statement.value))
+    return docstrings
 
 
 def _pandas_expression_source(node: ast.AST) -> str | None:
@@ -889,8 +987,14 @@ def _scope_assignment_counts(
 
 
 class _SourceReadVisitor(ast.NodeVisitor):
-    def __init__(self, factory_aliases: set[str]) -> None:
+    def __init__(
+        self,
+        factory_aliases: set[str],
+        *,
+        docstring_value_ids: set[int],
+    ) -> None:
         self.factory_aliases = factory_aliases
+        self.docstring_value_ids = docstring_value_ids
         self.bindings: list[dict[str, str | None]] = [{}]
         self.constants: list[dict[str, object]] = [{}]
         self.column_containers: list[dict[str, bool]] = [{}]
@@ -900,6 +1004,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.assignment_counts: list[dict[str, int]] = [{}]
         self.scope_kinds = ["module"]
         self.accesses: set[tuple[int, int, str]] = set()
+
+    def visit(self, node: ast.AST) -> object:
+        if isinstance(node, ast.expr) and id(node) not in self.docstring_value_ids:
+            for column in _statically_visible_source_columns(node, self.constants):
+                self._record(
+                    node,
+                    f"contraband source column {column!r}",
+                )
+        return super().visit(node)
 
     def _expression(self, node: ast.AST) -> str | None:
         return _source_expression(
@@ -1451,6 +1564,9 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self._visit_function(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
         arguments = (
             *node.args.posonlyargs,
             *node.args.args,
@@ -1773,16 +1889,30 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
 
 def _source_spine_accesses(source: str) -> tuple[str, ...]:
-    """Describe named or fail-closed violations on every column surface."""
+    """Describe strict-surface and static-name contraband violations."""
 
     tree = ast.parse(source)
     aliases = _factory_aliases(tree)
-    visitor = _SourceReadVisitor(aliases)
+    visitor = _SourceReadVisitor(
+        aliases,
+        docstring_value_ids=_docstring_value_ids(tree),
+    )
     visitor.visit(tree)
     return tuple(
         f"line {line}:{column + 1}: {description}"
         for line, column, description in sorted(visitor.accesses)
     )
+
+
+def _non_owner_source_spine_accesses(
+    module_name: str,
+    source: str,
+) -> tuple[str, ...]:
+    """Apply the guard unless the module is a reviewed provenance owner."""
+
+    if module_name in _SOURCE_SPINE_PROVENANCE_OWNERS:
+        return ()
+    return _source_spine_accesses(source)
 
 
 def _called_function_names(source: str) -> set[str]:
@@ -1932,13 +2062,14 @@ def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
 
 
 def test_runtime_population_operators_are_source_spine_blind() -> None:
-    """Every operator column surface resolves-and-checks or fails closed.
+    """Every operator obeys the strict-surface and contraband-name contract.
 
     The guard parses executable syntax rather than searching raw text, so
-    comments, docstrings, and source-manifest declarations may explain the
-    invariant without creating an exception. It covers subscript/``.loc``
-    reads and writes, attributes/``getattr``, canonical factories, and direct
-    or aliased ``get``, ``filter``, ``query``, and ``eval`` calls.
+    comments, annotations, and docstrings may explain the invariant. Executable
+    declarations are checked like every other expression. Strict surfaces
+    include subscript/``.loc`` reads and writes, attributes/``getattr``,
+    canonical factories, and direct or aliased ``get``, ``filter``, ``query``,
+    and ``eval`` calls.
     """
 
     missing_owners = sorted(
@@ -1953,9 +2084,7 @@ def test_runtime_population_operators_are_source_spine_blind() -> None:
 
     offenders: dict[str, tuple[str, ...]] = {}
     for path in sorted(_US_RUNTIME.glob("*.py")):
-        if path.name in _SOURCE_SPINE_PROVENANCE_OWNERS:
-            continue
-        accesses = _source_spine_accesses(path.read_text())
+        accesses = _non_owner_source_spine_accesses(path.name, path.read_text())
         if accesses:
             offenders[path.name] = accesses
 
@@ -2020,9 +2149,7 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
         offenders: dict[str, tuple[str, ...]] = {}
         for path in (tool, *runtime_graph):
-            if path.name in _SOURCE_SPINE_PROVENANCE_OWNERS:
-                continue
-            reads = _source_spine_accesses(path.read_text())
+            reads = _non_owner_source_spine_accesses(path.name, path.read_text())
             if reads:
                 offenders[str(path.relative_to(_REPOSITORY_ROOT))] = reads
         assert not offenders, (
@@ -2152,6 +2279,215 @@ def op(df):
     assert _source_spine_accesses(pandas_filter)
     assert _source_spine_accesses(pandas_loc)
     assert _source_spine_accesses(benign_reads) == ()
+
+
+def test_typed_parameter_subscript_is_closed_at_static_call_sites() -> None:
+    """Typed helper subscripts are permitted; their static producers are not."""
+
+    guarded = """
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def caller(df: pd.DataFrame):
+    return select(df, "person_support_channel")
+"""
+    benign = guarded.replace('"person_support_channel"', '"age"')
+    typed_boundary = """
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+"""
+
+    accesses = _source_spine_accesses(guarded)
+    assert len(accesses) == 1
+    assert accesses[0].startswith("line 5:")
+    assert "contraband source column 'person_support_channel'" in accesses[0]
+    assert "fail-closed" not in accesses[0]
+    assert _source_spine_accesses(benign) == ()
+    assert _source_spine_accesses(typed_boundary) == ()
+
+
+@pytest.mark.parametrize(
+    ("position", "source"),
+    (
+        (
+            "call argument",
+            """
+def f(df):
+    return helper(df, "person_support_channel")
+""",
+        ),
+        (
+            "list element",
+            """
+VALUE = ["person_support_channel"]
+""",
+        ),
+        (
+            "tuple element",
+            """
+VALUE = ("person_support_channel",)
+""",
+        ),
+        (
+            "set element",
+            """
+VALUE = {"person_support_channel"}
+""",
+        ),
+        (
+            "dict key",
+            """
+VALUE = {"person_support_channel": "source"}
+""",
+        ),
+        (
+            "dict value",
+            """
+VALUE = {"column": "person_support_channel"}
+""",
+        ),
+        (
+            "comparison",
+            """
+def f(value):
+    return value == "person_support_channel"
+""",
+        ),
+        (
+            "return value",
+            """
+def f():
+    return "person_support_channel"
+""",
+        ),
+        (
+            "assignment",
+            """
+VALUE = "person_support_channel"
+""",
+        ),
+        (
+            "function default",
+            """
+def f(column="person_support_channel"):
+    return column
+""",
+        ),
+        (
+            "lambda default",
+            """
+f = lambda column="person_support_channel": column
+""",
+        ),
+    ),
+)
+def test_contraband_names_are_rejected_in_every_expression_position(
+    position: str,
+    source: str,
+) -> None:
+    """Every executable static spelling is a named, non-opaque violation."""
+
+    accesses = _source_spine_accesses(source)
+    assert accesses, position
+    assert all("person_support_channel" in access for access in accesses)
+    assert all("fail-closed" not in access for access in accesses)
+
+
+@pytest.mark.parametrize(
+    ("composition", "expression"),
+    (
+        ("concatenation", '"person_support" + "_channel"'),
+        ("format", '"{}_support_channel".format("person")'),
+        ("percent", '"%s_support_channel" % "person"'),
+        ("replace", '"person_x".replace("x", "support_channel")'),
+        ("multiplication", '"person_support_channel" * 1'),
+    ),
+)
+def test_contraband_names_reuse_static_expression_resolution(
+    composition: str,
+    expression: str,
+) -> None:
+    """Composition is resolved outside known pandas access surfaces too."""
+
+    source = f"def f():\n    return sink({expression})\n"
+    accesses = _source_spine_accesses(source)
+    assert accesses, composition
+    assert all("person_support_channel" in access for access in accesses)
+    assert all("fail-closed" not in access for access in accesses)
+
+
+def test_contraband_names_resolve_bound_and_enumerated_fragments() -> None:
+    """Bound concatenation and static f-string choices expose exact names."""
+
+    bound = """
+PREFIX = "person_support"
+def f():
+    return sink(PREFIX + "_channel")
+"""
+    enumerated = """
+ENTITIES = ("person", "household")
+VALUES = {
+    f"{entity}_support_channel"
+    for entity in ENTITIES
+}
+"""
+
+    bound_accesses = _source_spine_accesses(bound)
+    assert any("person_support_channel" in access for access in bound_accesses)
+    enumerated_accesses = _source_spine_accesses(enumerated)
+    assert any("person_support_channel" in access for access in enumerated_accesses)
+    assert any("household_support_channel" in access for access in enumerated_accesses)
+
+
+def test_benign_helpers_and_containers_remain_clean() -> None:
+    """Ordinary dynamic helpers and statically benign payloads are permitted."""
+
+    source = """
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def f(df: pd.DataFrame, column="age"):
+    payload = [
+        "age",
+        ("income",),
+        {"tenure"},
+        {"column": "wages"},
+    ]
+    return select(df, column), payload
+"""
+    assert _source_spine_accesses(source) == ()
+
+
+def test_annotations_and_true_docstrings_are_not_dataflow() -> None:
+    """Every annotation form and each scope's real docstring are exempt."""
+
+    source = '''"""person_support_channel"""
+class Spec:
+    """person_support_channel"""
+    field: Literal["person_support_channel"]
+def f(
+    df: pd.DataFrame,
+    column: Literal["person_support_channel"],
+) -> Literal["person_support_channel"]:
+    """person_support_channel"""
+    local: Literal["person_support_channel"]
+    return df[column]
+'''
+    later_expression = """
+def f():
+    pass
+    "person_support_channel"
+"""
+
+    assert _source_spine_accesses(source) == ()
+    assert _source_spine_accesses(later_expression)
+
+
+def test_reviewed_provenance_owners_are_unaffected_by_contraband_rule() -> None:
+    """The same executable spelling is exempt only in a reviewed owner."""
+
+    source = 'COLUMN = "person_support_channel"\n'
+    assert _source_spine_accesses(source)
+    assert _non_owner_source_spine_accesses("support_provenance.py", source) == ()
+    assert _non_owner_source_spine_accesses("future_operator.py", source)
 
 
 def test_guard_sees_through_static_indirection_and_fails_closed_on_opacity():
@@ -2292,13 +2628,13 @@ def f(df):
         column = "age"
     return df[column]
 """
-    empty_loop_benign = empty_loop_guarded.replace(
-        '"person_support_channel"',
-        '"age"',
-    ).replace(
-        'column = "age"\n    return',
-        'column = "person_support_channel"\n    return',
-    )
+    empty_loop_benign = """
+def f(df):
+    column = "age"
+    for column in ():
+        column = "income"
+    return df[column]
+"""
 
     for source in conditional_sources:
         accesses = _source_spine_accesses(source)
@@ -2353,8 +2689,11 @@ def f(df):
 """
 
     walrus_accesses = _source_spine_accesses(walrus)
-    assert len(walrus_accesses) == 2
-    assert all("person_support_channel" in access for access in walrus_accesses)
+    walrus_subscripts = [
+        access for access in walrus_accesses if "subscript using" in access
+    ]
+    assert len(walrus_subscripts) == 2
+    assert all("person_support_channel" in access for access in walrus_subscripts)
     comprehension_accesses = _source_spine_accesses(comprehension_walrus)
     assert comprehension_accesses
     assert all("person_support_channel" in access for access in comprehension_accesses)
@@ -2429,7 +2768,6 @@ def f(df, columns):
 
     assert _source_spine_accesses(benign) == ()
     guarded_accesses = _source_spine_accesses(guarded)
-    assert len(guarded_accesses) == 2
     assert any("person_support_channel" in item for item in guarded_accesses)
     assert any("household_spine" in item for item in guarded_accesses)
     dynamic_accesses = _source_spine_accesses(dynamic)
@@ -2929,7 +3267,7 @@ def outer(df):
     return inner()
 """
     later_local_shadow = """
-expr = "person_support_channel == 1"
+expr = "income >= 0"
 def outer(df):
     def inner():
         return df.query(expr)
