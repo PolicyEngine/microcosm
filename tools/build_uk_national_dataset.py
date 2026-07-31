@@ -40,6 +40,19 @@ def _parse_args() -> argparse.Namespace:
         help="Caller-owned path for the gated national staging H5.",
     )
     parser.add_argument(
+        "--release-id",
+        required=True,
+        help="Canonical release id to bind into the signed terminal report.",
+    )
+    parser.add_argument(
+        "--calibration-diagnostics-sha256",
+        required=True,
+        help=(
+            "Lowercase SHA-256 of the exact calibration_diagnostics.json bytes "
+            "that will ship with this release."
+        ),
+    )
+    parser.add_argument(
         "--frs-raw-dir",
         type=Path,
         required=True,
@@ -167,6 +180,8 @@ def main() -> int:
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
+            release_id=args.release_id,
+            calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
             stages=(
                 UKNationalStage(
                     name="frs_hmrc_retained_leaves",

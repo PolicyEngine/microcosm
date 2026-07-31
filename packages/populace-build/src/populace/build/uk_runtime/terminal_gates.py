@@ -72,7 +72,7 @@ __all__ = [
 ]
 
 UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 3
+UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 4
 UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
@@ -152,6 +152,28 @@ def _terminal_gate_signing_key() -> bytes:
 
 def _terminal_gate_signature(key: bytes, payload: object) -> str:
     return hmac.new(key, _canonical_json_bytes(payload), hashlib.sha256).hexdigest()
+
+
+def _validate_attested_release_identity(
+    release_id: object,
+    calibration_diagnostics_sha256: object,
+) -> tuple[str, str]:
+    """Validate the external release coordinates covered by the signature."""
+
+    if not isinstance(release_id, str) or not release_id.strip():
+        raise ValueError("UK terminal release_id must be a non-empty string.")
+    if (
+        not isinstance(calibration_diagnostics_sha256, str)
+        or len(calibration_diagnostics_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in calibration_diagnostics_sha256
+        )
+    ):
+        raise ValueError(
+            "UK terminal calibration_diagnostics_sha256 must be a lowercase sha256."
+        )
+    return release_id, calibration_diagnostics_sha256
 
 
 _SPI_FLAG = "household_is_spi_synthetic"
@@ -432,6 +454,8 @@ def _gate_results_payload(results: Sequence[GateResult]) -> dict[str, object]:
 def _unsigned_terminal_gate_attestation(
     results: Sequence[GateResult],
     *,
+    release_id: str,
+    calibration_diagnostics_sha256: str,
     policy_sha256: str,
     evidence_sha256: Mapping[str, str],
 ) -> dict[str, object]:
@@ -441,6 +465,8 @@ def _unsigned_terminal_gate_attestation(
     return {
         "schema_version": UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION,
         "producer": UK_TERMINAL_GATE_PRODUCER,
+        "release_id": release_id,
+        "calibration_diagnostics_sha256": calibration_diagnostics_sha256,
         "policy_sha256": policy_sha256,
         "evaluated_gates": [result.name for result in results],
         "evidence_sha256": dict(evidence_sha256),
@@ -489,6 +515,8 @@ def _release_dataset_evidence_payload(
 class _AttestedUKTerminalGateReport(GateReport):
     """Aggregator-signed report sealed against post-evaluation mutation."""
 
+    release_id: str
+    calibration_diagnostics_sha256: str
     policy_sha256: str
     evidence_sha256: Mapping[str, str]
     attestation: Mapping[str, object]
@@ -496,6 +524,12 @@ class _AttestedUKTerminalGateReport(GateReport):
     _sealed_sha256: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        release_id, calibration_diagnostics_sha256 = (
+            _validate_attested_release_identity(
+                self.release_id,
+                self.calibration_diagnostics_sha256,
+            )
+        )
         names = tuple(result.name for result in self.results)
         if len(names) != len(set(names)):
             raise ValueError("Attested UK terminal gate names must be unique.")
@@ -537,6 +571,8 @@ class _AttestedUKTerminalGateReport(GateReport):
         object.__setattr__(self, "evidence_sha256", MappingProxyType(evidence))
         expected_unsigned = _unsigned_terminal_gate_attestation(
             self.results,
+            release_id=release_id,
+            calibration_diagnostics_sha256=calibration_diagnostics_sha256,
             policy_sha256=self.policy_sha256,
             evidence_sha256=evidence,
         )
@@ -946,8 +982,8 @@ def uk_weight_ratio_gate(
         ratio = float(raw_ratio)
         failures = (
             (
-                f"Max/positive-median weight ratio {ratio:.6g} exceeds the "
-                f"reviewed maximum {maximum:.6g}.",
+                f"Max/positive-median weight ratio {ratio!r} exceeds the "
+                f"reviewed maximum {maximum!r}.",
             )
             if ratio > maximum
             else ()
@@ -1141,6 +1177,8 @@ def uk_terminal_gate_report(
     dataset: Any,
     coverage_engine: Any,
     *,
+    release_id: str,
+    calibration_diagnostics_sha256: str,
     input_coverage_evaluator: Callable[[], GateResult] | None = None,
     reviewed_degenerate_exclusions: Mapping[str, str] | None = None,
     zero_weight_declarations: Sequence[UKZeroWeightStratumDeclaration] = (
@@ -1154,6 +1192,10 @@ def uk_terminal_gate_report(
 ) -> GateReport:
     """Evaluate every evidenced UK terminal gate and seal its provenance."""
 
+    release_id, calibration_diagnostics_sha256 = _validate_attested_release_identity(
+        release_id,
+        calibration_diagnostics_sha256,
+    )
     builtin_coverage_evaluator = input_coverage_evaluator is None
     coverage = input_coverage_evaluator or (
         lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
@@ -1280,6 +1322,8 @@ def uk_terminal_gate_report(
     )
     unsigned_attestation = _unsigned_terminal_gate_attestation(
         results,
+        release_id=release_id,
+        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
         policy_sha256=policy_sha256,
         evidence_sha256=evidence_sha256,
     )
@@ -1310,6 +1354,8 @@ def uk_terminal_gate_report(
         )
     return _AttestedUKTerminalGateReport(
         results,
+        release_id=release_id,
+        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
         policy_sha256=policy_sha256,
         evidence_sha256=evidence_sha256,
         attestation=attestation,

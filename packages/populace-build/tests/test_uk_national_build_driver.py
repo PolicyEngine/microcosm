@@ -21,6 +21,12 @@ _PATH_ARGUMENTS = (
     "benefits_tab",
     "build_record_path",
 )
+_IDENTITY_CLI_ARGUMENTS = (
+    "--release-id",
+    "populace-uk-2023-frs-k535080",
+    "--calibration-diagnostics-sha256",
+    "c" * 64,
+)
 
 
 def _gate_result(*, passed: bool) -> SimpleNamespace:
@@ -149,6 +155,7 @@ def test_national_build_driver_uses_standalone_national_seam(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             str(input_h5),
             "--staging-h5",
@@ -169,6 +176,8 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert len(calls) == 1
     assert calls[0]["input_h5"] == input_h5
     assert calls[0]["staging_h5"] == staging_h5
+    assert calls[0]["release_id"] == "populace-uk-2023-frs-k535080"
+    assert calls[0]["calibration_diagnostics_sha256"] == "c" * 64
     assert len(calls[0]["stages"]) == 2
     assert calls[0]["stages"][0].name == "frs_hmrc_retained_leaves"
     retained_transform = calls[0]["stages"][0].transform
@@ -292,6 +301,7 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             str(input_h5),
             "--staging-h5",
@@ -370,6 +380,7 @@ def test_national_driver_does_not_write_reports_for_stage_failure(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             str(input_h5),
             "--staging-h5",
@@ -476,6 +487,7 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             str(input_h5),
             "--staging-h5",
@@ -514,6 +526,7 @@ def test_national_driver_accepts_legacy_input_coverage_path_alias(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             "base.h5",
             "--staging-h5",
@@ -533,6 +546,8 @@ def test_national_driver_accepts_legacy_input_coverage_path_alias(
 
     assert args.input_coverage_json == legacy_path
     assert args.terminal_gates_json is None
+    assert args.release_id == "populace-uk-2023-frs-k535080"
+    assert args.calibration_diagnostics_sha256 == "c" * 64
 
 
 def test_national_driver_forwards_legacy_output_to_compatibility_serializer(
@@ -561,6 +576,7 @@ def test_national_driver_forwards_legacy_output_to_compatibility_serializer(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             str(tmp_path / "base.h5"),
             "--staging-h5",
@@ -594,6 +610,7 @@ def test_national_driver_rejects_both_terminal_gate_cli_names(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             "base.h5",
             "--staging-h5",
@@ -635,6 +652,7 @@ def test_national_driver_rejects_unreviewed_release_overrides(
         "argv",
         [
             "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
             "--input-h5",
             "base.h5",
             "--staging-h5",

@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 from types import SimpleNamespace
 
 import numpy as np
@@ -32,6 +33,8 @@ from populace.build.uk_runtime.terminal_gates import (
 )
 
 TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
+TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
 
 
 @pytest.fixture(autouse=True)
@@ -88,6 +91,8 @@ def _report(dataset=None, **kwargs):
     return uk_terminal_gate_report(
         _dataset() if dataset is None else dataset,
         object(),
+        release_id=TEST_UK_RELEASE_ID,
+        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
         input_coverage_evaluator=lambda: _coverage(),
         **kwargs,
     )
@@ -259,10 +264,24 @@ def test_certified_june_weight_ratio_passes_at_the_inclusive_boundary() -> None:
     assert gate.passed
 
 
+def test_immediate_nextafter_weight_ratio_fails_with_distinct_full_precision() -> None:
+    just_above = math.nextafter(UK_MAX_TO_MEDIAN_WEIGHT_RATIO, math.inf)
+
+    gate = uk_weight_ratio_gate([0.0, 1.0, 1.0, just_above])
+
+    assert just_above == 1_151.2542195939375
+    assert gate.details["max_to_median_positive_weight"] == just_above
+    assert not gate.passed
+    assert repr(just_above) in gate.failures[0]
+    assert repr(UK_MAX_TO_MEDIAN_WEIGHT_RATIO) in gate.failures[0]
+
+
 def test_gate_evaluation_error_does_not_mask_later_findings() -> None:
     report = uk_terminal_gate_report(
         _dataset(signal=0.0),
         object(),
+        release_id=TEST_UK_RELEASE_ID,
+        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
         input_coverage_evaluator=lambda: (_ for _ in ()).throw(
             RuntimeError("seeded coverage crash")
         ),
@@ -288,6 +307,8 @@ def test_malformed_release_surface_still_returns_the_complete_named_batch() -> N
     report = uk_terminal_gate_report(
         dataset,
         object(),
+        release_id=TEST_UK_RELEASE_ID,
+        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
         input_coverage_evaluator=lambda: _coverage(passed=False),
     )
     gates = _gates(report)
@@ -426,8 +447,13 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
     assert payload["passed"] is True
     assert payload["gates"] == _gates(report)
     attestation = payload["attestation"]
-    assert attestation["schema_version"] == 3
+    assert attestation["schema_version"] == 4
     assert attestation["producer"] == UK_TERMINAL_GATE_PRODUCER
+    assert attestation["release_id"] == TEST_UK_RELEASE_ID
+    assert (
+        attestation["calibration_diagnostics_sha256"]
+        == TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256
+    )
     assert attestation["policy_sha256"] != UK_TERMINAL_GATE_POLICY_SHA256
     assert attestation["evaluated_gates"] == [
         "uk_release_input_coverage",
@@ -478,6 +504,47 @@ def test_terminal_report_writer_persists_before_missing_signing_key_raise(
     assert payload["attestation"]["signing_key_sha256"] is None
 
 
+@pytest.mark.parametrize(
+    ("encoded_key", "match"),
+    [
+        ("not-base64!", "must be valid base64"),
+        (base64.b64encode(b"x" * 31).decode(), "exactly 32 bytes"),
+    ],
+)
+def test_terminal_report_signer_rejects_malformed_or_wrong_length_key(
+    monkeypatch,
+    tmp_path,
+    encoded_key: str,
+    match: str,
+) -> None:
+    monkeypatch.setenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV, encoded_key)
+    report = _report()
+    output = tmp_path / "terminal_gates.json"
+
+    with pytest.raises(RuntimeError, match=match):
+        write_uk_terminal_gate_report(report, output)
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["attestation"]["signature"] is None
+    assert payload["attestation"]["signing_key_sha256"] is None
+
+
+def test_terminal_signature_canonicalizes_dict_order_and_float_formatting() -> None:
+    from populace.build.uk_runtime import terminal_gates
+
+    left = json.loads('{"z":1e0,"nested":{"beta":2.50,"alpha":3.0}}')
+    right = json.loads('{"nested":{"alpha":3e0,"beta":25e-1},"z":1.0}')
+    key = base64.b64decode(TEST_UK_TERMINAL_GATE_SIGNING_KEY)
+
+    assert terminal_gates._canonical_json_bytes(left) == (
+        terminal_gates._canonical_json_bytes(right)
+    )
+    assert bytes.fromhex(terminal_gates._terminal_gate_signature(key, left)) == (
+        bytes.fromhex(terminal_gates._terminal_gate_signature(key, right))
+    )
+
+
 def test_terminal_report_writer_rejects_sol_composed_raw_parity_trio(
     tmp_path,
 ) -> None:
@@ -511,6 +578,8 @@ def test_private_constructor_cannot_mint_sol_raw_parity_trio() -> None:
     with pytest.raises(ValueError, match="membership must follow"):
         terminal_gates._AttestedUKTerminalGateReport(
             results,
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
             policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
             evidence_sha256={
                 "release_dataset": "a" * 64,
@@ -566,6 +635,8 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     report = uk_terminal_gate_report(
         _dataset(),
         object(),
+        release_id=TEST_UK_RELEASE_ID,
+        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
         fit_weight_records=(FitWeightRecord("spi_qrf", "importance"),),
         parity_evidence=evidence,
     )

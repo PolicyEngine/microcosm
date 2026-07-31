@@ -113,7 +113,7 @@ _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 _UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 3
+_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 4
 _UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
@@ -1336,6 +1336,8 @@ def _check_uk_terminal_gate_observables(
 def _check_uk_terminal_gate_report(
     report: Mapping,
     *,
+    release_id: str,
+    calibration_diagnostics_sha256: str | None,
     build_manifest: Mapping | None,
     calibration_diagnostics: Mapping | None,
     failures: list[str],
@@ -1427,6 +1429,8 @@ def _check_uk_terminal_gate_report(
     unsigned_fields = {
         "schema_version",
         "producer",
+        "release_id",
+        "calibration_diagnostics_sha256",
         "policy_sha256",
         "evaluated_gates",
         "evidence_sha256",
@@ -1452,6 +1456,28 @@ def _check_uk_terminal_gate_report(
         failures.append(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.producer must name the "
             "honest UK terminal gate aggregator."
+        )
+    if attestation.get("release_id") != release_id:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.release_id must match "
+            f"the release being validated; expected {release_id!r}, got "
+            f"{attestation.get('release_id')!r}."
+        )
+    _check_sha256_field(
+        filename=_UK_TERMINAL_GATE_REPORT_FILE,
+        owner="attestation.calibration_diagnostics_sha256",
+        value=attestation.get("calibration_diagnostics_sha256"),
+        failures=failures,
+    )
+    if (
+        calibration_diagnostics_sha256 is not None
+        and attestation.get("calibration_diagnostics_sha256")
+        != calibration_diagnostics_sha256
+    ):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation."
+            "calibration_diagnostics_sha256 must match the local "
+            "calibration_diagnostics.json bytes."
         )
     if attestation.get("policy_sha256") != _UK_TERMINAL_GATE_POLICY_SHA256:
         failures.append(
@@ -2867,6 +2893,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None
     calibration_diagnostics: Mapping | None = None
+    calibration_diagnostics_sha256: str | None = None
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
@@ -2889,6 +2916,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        calibration_diagnostics_sha256 = _sha256(calibration_diagnostics_path)
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
@@ -2918,6 +2946,8 @@ def validate_release_dir(release_dir: Path | str) -> None:
         if terminal_gate_report is not None:
             _check_uk_terminal_gate_report(
                 terminal_gate_report,
+                release_id=release_id,
+                calibration_diagnostics_sha256=calibration_diagnostics_sha256,
                 build_manifest=build_manifest,
                 calibration_diagnostics=calibration_diagnostics,
                 failures=failures,

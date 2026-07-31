@@ -357,6 +357,8 @@ def build_uk_national_dataset(
     *,
     input_h5: str | Path,
     staging_h5: str | Path,
+    release_id: str,
+    calibration_diagnostics_sha256: str,
     stages: Sequence[UKNationalStage] = (),
     coverage_engine: Any | None = None,
     parity_evidence: UKReleaseParityEvidence | None = None,
@@ -423,6 +425,8 @@ def build_uk_national_dataset(
     terminal_gates = uk_terminal_gate_report(
         dataset,
         engine,
+        release_id=release_id,
+        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
         fit_weight_records=fit_weight_records,
         require_fit_weight_records=require_fit_weight_records,
         parity_evidence=parity_evidence,

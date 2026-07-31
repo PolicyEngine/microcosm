@@ -21,6 +21,17 @@ from populace.build.uk_runtime.terminal_gates import (
 )
 from populace.frame import MassChangeRecord, WeightKind
 
+TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
+TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
+
+
+def _run_national_build(**kwargs):
+    return build_uk_national_dataset(
+        release_id=TEST_UK_RELEASE_ID,
+        calibration_diagnostics_sha256=TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
+        **kwargs,
+    )
+
 
 @pytest.fixture(autouse=True)
 def _isolate_generic_seam_from_shipped_family_contract(monkeypatch) -> None:
@@ -227,7 +238,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
         recording_writer,
     )
 
-    result = build_uk_national_dataset(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         stages=(UKNationalStage("income", stage_transform),),
@@ -278,7 +289,7 @@ def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _passing_gate(),
     )
-    build_uk_national_dataset(
+    _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
@@ -316,7 +327,7 @@ def test_national_build_gate_failure_writes_diagnostic_not_h5(
         lambda _dataset, _engine: _failing_gate(),
     )
     with pytest.raises(RuntimeError, match="Release gates failed"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             coverage_engine=object(),
@@ -383,7 +394,7 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
     )
 
     with pytest.raises(RuntimeError, match="Release gates failed"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             coverage_engine=object(),
@@ -436,7 +447,7 @@ def test_national_build_real_terminal_batch_passes_before_staging(
         real_uk_terminal_gate_report,
     )
 
-    result = build_uk_national_dataset(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
@@ -502,7 +513,7 @@ def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
     )
 
     with pytest.raises(RuntimeError, match="Release gates failed") as error:
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             stages=(UKNationalStage("hmrc_spi_income", lambda dataset: dataset),),
@@ -568,7 +579,7 @@ def test_national_build_includes_parity_trio_only_with_real_evidence(
         target_relative_errors={"population": 0.0},
     )
 
-    result = build_uk_national_dataset(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
@@ -599,7 +610,7 @@ def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
     _write_toy_h5(input_h5)
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             coverage_engine=object(),
@@ -608,7 +619,7 @@ def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
         )
 
     with pytest.raises(ValueError, match="must differ"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             coverage_engine=object(),
@@ -638,7 +649,7 @@ def test_national_build_rejects_duplicate_stage_names_before_running(
     )
 
     with pytest.raises(ValueError, match="Duplicate UK national stage"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(
@@ -680,7 +691,7 @@ def test_national_build_manifest_failure_removes_stale_outputs_before_stages(
     )
 
     with pytest.raises(ValueError, match="manifest drift"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             stages=(UKNationalStage("should_not_run", stage_transform),),
@@ -713,7 +724,7 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
         return dataset.with_tables(person=person)
 
     with pytest.raises(ValueError, match="absent from household"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(UKNationalStage("bad", break_links),),
@@ -758,7 +769,7 @@ def test_national_build_rejects_invalid_stage_population_metadata(
     )
 
     with pytest.raises(ValueError, match=message):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(UKNationalStage(stage_name, transform),),
@@ -779,7 +790,7 @@ def test_national_build_refuses_to_overwrite_its_input(monkeypatch, tmp_path) ->
     )
 
     with pytest.raises(ValueError, match="must differ"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=input_h5,
             coverage_engine=object(),
@@ -808,7 +819,7 @@ def test_national_build_accepts_hugging_face_style_h5_symlink(
         lambda _dataset, _engine: _passing_gate(),
     )
 
-    result = build_uk_national_dataset(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
