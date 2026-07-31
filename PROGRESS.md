@@ -25,11 +25,24 @@ and partial structures propagated through bindings.
   unpropagatable geometry and exact-column assertions for successful
   per-column propagation. The focused red run fails all three test groups as
   expected before the implementation.
+- Reworked static-row binding to report recognized and fully propagated
+  status separately. Nested star payload names are all poisoned, partial and
+  refused targets now enter the loop fallback regardless of flattened-string
+  resolution, and fragment state is captured before target bindings mutate
+  the scope.
+- Added static `.items()`/`.values()` iteration resolution for literal,
+  bound, and supported `dict(...)` mappings, with value-only syntactic
+  fragment probing so guarded-looking mapping keys do not taint benign
+  `.values()` loops.
+- Preserved partial list/tuple structures at assignment bind time, allowing
+  bound mixed rows to propagate their static columns exactly.
+- The 121-case guard and focused 22-case benign/runtime/graph battery pass.
+  Direct scans report zero findings for both `acs_transfer.py` and
+  `congressional_district_vintage.py`; file-scoped ruff and formatting pass.
 
 ## Next
 
-- Implement the four structural fixes and make the guard docstrings match the
-  final mechanics.
+- Make the guard docstrings match the final mechanics exactly.
 - Run the guard file, full `populace-build` suite, repository ruff, and the
   requested `acs_transfer` plus `congressional_district_vintage` cleanliness
   checks.
