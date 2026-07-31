@@ -72,7 +72,7 @@ from populace.build.us_runtime.multispine_pool import (
     derive_multispine_pool_inputs,
     materialize_multispine_agreement_outputs,
     pool_transfer_target_families,
-    prepare_multispine_puf_predictors,
+    prepare_multispine_source_inputs_for_clone,
     run_multispine_pool_path,
     seed_multispine_pool_inputs,
 )
@@ -476,13 +476,11 @@ def _impute_pool(
     frame: Frame,
     *,
     puf_donor: pd.DataFrame,
-    acs_rent_donor: pd.DataFrame,
     checkpoint_dir: Path,
     checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
-    predictor_preparation = prepare_multispine_puf_predictors(frame)
     _initialize_or_resume_primary_qrf(
-        predictor_preparation.frame,
+        frame,
         puf_donor,
         checkpoint_dir,
         input_binding=checkpoint_input_binding,
@@ -491,7 +489,7 @@ def _impute_pool(
 
     tail_bound_diagnostics: list[dict[str, object]] = []
     with_primary_detail, primary_weight_kind = finalize_primary_puf_qrf_chain(
-        predictor_preparation.frame,
+        frame,
         checkpoint_dir,
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
@@ -509,10 +507,7 @@ def _impute_pool(
             f"{tail_ceiling['positive_mass_five_x_ceiling']} <= "
             f"{tail_ceiling['positive_mass_five_x_target']}."
         )
-    source_completion = complete_multispine_source_inputs(
-        with_tail,
-        acs_rent_donor=acs_rent_donor,
-    )
+    source_completion = complete_multispine_source_inputs(with_tail)
     transfer_families = pool_transfer_target_families()
     transferred = transfer_acs_inputs(
         source_completion.frame,
@@ -541,7 +536,6 @@ def _impute_pool(
         transferred.frame,
         {
             "source_operator_chain": {
-                "predictor_preparation": dict(predictor_preparation.receipt),
                 "post_primary_completion": dict(source_completion.receipt),
             },
             "primary_puf_qrf": {
@@ -580,6 +574,7 @@ def build_multispine_pool(
         Mapping[str, Mapping[str, Any]],
     ]
     | None = None,
+    prepare_clone: PoolOperator | None = None,
     impute: PoolOperator | None = None,
     derive: PoolOperator = derive_multispine_pool_inputs,
     seed: PoolOperator = seed_multispine_pool_inputs,
@@ -618,16 +613,24 @@ def build_multispine_pool(
             return _impute_pool(
                 frame,
                 puf_donor=puf_donor,
-                acs_rent_donor=acs_rent_donor,
                 checkpoint_dir=primary_qrf_checkpoint_dir,
                 checkpoint_input_binding=checkpoint_input_binding,
             )
 
+        prepare_clone_operator = prepare_clone or (
+            lambda frame: prepare_multispine_source_inputs_for_clone(
+                frame,
+                acs_rent_donor=acs_rent_donor,
+            )
+        )
+
     else:
         impute_operator = impute
+        prepare_clone_operator = prepare_clone
     return run_multispine_pool_path(
         asec,
         acs,
+        prepare_clone=prepare_clone_operator,
         impute=impute_operator,
         derive=derive,
         seed=seed,
@@ -742,9 +745,7 @@ def _new_publication_run_id() -> str:
 
 def _publication_temporary_path(path: Path, *, publication_run_id: str) -> Path:
     output = Path(path)
-    return output.with_name(
-        f".{output.name}.{publication_run_id}.publication.tmp"
-    )
+    return output.with_name(f".{output.name}.{publication_run_id}.publication.tmp")
 
 
 def _write_outputs(
