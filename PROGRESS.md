@@ -84,10 +84,12 @@
   refuse-before-load SHA checks, the complete ordered two-spine seam and red
   terminal gate, failure H5/diagnostic/manifest receipts, unchanged #581
   clone-bound and receipt-loss errors, and stale QRF checkpoint refusal.
+- Added a wired two-spine fixture that invokes the real missing-cell ACS
+  transfer entrypoint after assembly and cloning, proves existing values remain
+  untouched while missing peer-spine cells are imputed, and then reaches the
+  unchanged terminal agreement gate.
 
 ## Next
 
-1. Add one wired small-fixture test using the real raw-preserving ACS transfer
-   entrypoint between clone and terminal gate.
-2. Run focused verification, update this committed ledger, and write
+1. Run focused verification, update this committed ledger, and write
    the external review worklog.

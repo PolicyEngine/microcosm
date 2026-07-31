@@ -14,7 +14,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.us_runtime.acs_transfer as acs_transfer_module
 from populace.build.gates import GateReport
+from populace.build.us_runtime.acs_transfer import transfer_acs_inputs
 from populace.build.us_runtime.multispine_pool import PoolStageOutput
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
@@ -90,6 +92,58 @@ def _replace_person(
         frame.strata,
         mass_log=frame.mass_log,
         metadata=frame.metadata if preserve_metadata else None,
+    )
+
+
+class _MeanQRF:
+    def __init__(self, *, n_estimators: int, seed: int) -> None:
+        self.n_estimators = n_estimators
+        self.seed = seed
+
+    def fit(
+        self,
+        frame: Frame,
+        predictors: list[str],
+        targets: list[str],
+        *,
+        weights: str,
+    ) -> _MeanFitted:
+        assert (
+            weights == frame.resolve_weights(frame.column_entity(targets[0])).kind.value
+        )
+        table = frame.table(frame.column_entity(targets[0]))
+        return _MeanFitted(
+            {target: float(table[target].mean()) for target in targets},
+            weights,
+        )
+
+
+class _MeanFitted:
+    def __init__(self, means: dict[str, float], weight_kind: str) -> None:
+        self.means = means
+        self.weight_kind = weight_kind
+
+    def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                target: np.full(len(frame), mean, dtype=np.float64)
+                for target, mean in self.means.items()
+            },
+            index=frame.index,
+        )
+
+
+def _transfer_source_frame(targets: list[float]) -> Frame:
+    frame = _source_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"]["is_female"] = np.asarray([False, True], dtype=bool)
+    tables["person"]["fixture_transfer"] = np.asarray(targets, dtype=np.float64)
+    tables["household"]["state_fips"] = np.asarray([6, 36], dtype=np.int64)
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
     )
 
 
@@ -296,6 +350,67 @@ def test_synthetic_two_spine_path_reaches_fixed_red_terminal_gate(
         "person/simulated_output/ssi/acs_vs_asec" in failure
         for failure in result.agreement_gate.failures
     )
+
+
+def test_wired_path_uses_real_raw_preserving_transfer_before_gate(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    transfer_receipts = []
+
+    def impute(frame: Frame) -> PoolStageOutput:
+        transferred = transfer_acs_inputs(
+            frame,
+            frame,
+            target_families={"person": {"fixture": ("fixture_transfer",)}},
+            seed=0,
+            n_estimators=3,
+        )
+        transfer_receipts.extend(transferred.imputed_inputs)
+        return PoolStageOutput(
+            transferred.frame,
+            {"fit_records": list(transferred.fit_records)},
+        )
+
+    def no_op(frame: Frame) -> PoolStageOutput:
+        return PoolStageOutput(frame)
+
+    def simulate(frame: Frame) -> PoolStageOutput:
+        person = frame.table("person").copy()
+        person["ssi"] = person["fixture_transfer"]
+        return PoolStageOutput(_replace_person(frame, person))
+
+    result = pool_tool.build_multispine_pool(
+        _transfer_source_frame([10.0, 20.0]),
+        _transfer_source_frame([np.nan, np.nan]),
+        puf_donor=pd.DataFrame(),
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+        impute=impute,
+        derive=no_op,
+        seed=no_op,
+        simulate=simulate,
+    )
+
+    person = result.frame.table("person")
+    channels = person[support_channel_column("person")]
+    assert sorted(person.loc[channels.eq("asec"), "fixture_transfer"]) == [
+        10.0,
+        10.0,
+        20.0,
+        20.0,
+    ]
+    assert person.loc[channels.eq("acs"), "fixture_transfer"].tolist() == [
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+    ]
+    assert sum(item.imputed_recipient_rows for item in transfer_receipts) == 4
+    assert not result.agreement_gate.passed
+    assert result.agreement_gate.name == "us_spine_agreement"
+    assert "ssi" not in person
 
 
 def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
