@@ -22,6 +22,7 @@ conservatively instead of retaining the last syntactically visited value.
 All explicit rounds 2-4 reviewer repros and the expanded adversarial
 composition battery are green. Full package validation and repository-wide
 Ruff pass.
+The requested handoff is written at `/private/tmp/583_fix2_handoff.md`.
 
 One literal-contract blocker remains: the receiver inference deliberately does
 not classify annotated `pd.DataFrame` parameters or `Frame.table(...)` results
@@ -139,6 +140,9 @@ No push or external mutation is authorized.
 - Ran repository-wide `ruff check .`: passed.
 - Ran repository-wide `ruff format --check .`: found the existing 44-file
   formatting baseline; formatted only this guard file and replayed its 73 tests.
+- Wrote `/private/tmp/583_fix2_handoff.md` with per-subsystem rules and binding
+  tests, the no-rewrite rationale, exact validation receipts, commit inventory,
+  and the remaining typed-container blocker.
 
 ## Next
 
@@ -147,6 +151,3 @@ No push or external mutation is authorized.
   suppressing those findings would violate the “never allowlisted” order.
 - After that resolution, rerun the guard, full `populace-build` suite, and
   repository-wide Ruff before declaring the lane complete.
-- Write `/private/tmp/583_fix2_handoff.md` with per-subsystem rules, binding
-  tests, any operator rewrite rationale, exact validation results, and commit
-  inventory.
