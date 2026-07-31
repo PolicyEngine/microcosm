@@ -991,6 +991,21 @@ class TestUsSources:
             # strings only — nothing is imported or fetched from it.
             "packages/populace-build/src/populace/build/uk_runtime/hmrc_source_contract.py",
             "packages/populace-build/tests/test_uk_parity_reference.py",
+            # The publication contract's June-grandfather test keeps the
+            # three semantic-real JSON artifacts from the frozen df82567
+            # release. These exact test-only paths preserve historical
+            # repository/version provenance; they import or execute nothing.
+            "packages/populace-data/tests/test_contract.py",
+            (
+                "packages/populace-data/tests/fixtures/uk_june_2023/"
+                "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z/"
+                "build_manifest.json"
+            ),
+            (
+                "packages/populace-data/tests/fixtures/uk_june_2023/"
+                "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z/"
+                "calibration_diagnostics.json"
+            ),
             "tools/build_uk_efrs_parity_reference.py",
             "UK_COVERAGE_PROGRESS.md",
         }
