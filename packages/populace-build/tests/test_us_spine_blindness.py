@@ -341,6 +341,8 @@ def _static_string_shape(
                 value = scope[node.id]
                 return value if isinstance(value, str) else None
         return None
+    if isinstance(node, ast.NamedExpr):
+        return _static_string_shape(node.value, constants)
     if isinstance(node, ast.IfExp):
         return None
     if isinstance(node, ast.FormattedValue):
@@ -351,12 +353,53 @@ def _static_string_shape(
         if any(piece is None for piece in pieces):
             return None
         return "".join(piece for piece in pieces if piece is not None)
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _static_string_shape(node.left, constants)
-        right = _static_string_shape(node.right, constants)
-        if left is not None and right is not None:
-            return left + right
-        return None
+    if isinstance(node, ast.BinOp):
+        if isinstance(node.op, ast.Add):
+            left = _static_string_shape(node.left, constants)
+            right = _static_string_shape(node.right, constants)
+            if left is not None and right is not None:
+                return left + right
+            return None
+        if isinstance(node.op, ast.Mult):
+            left_string = _static_string_shape(node.left, constants)
+            right_string = _static_string_shape(node.right, constants)
+            left_integer = _static_integer(node.left, constants)
+            right_integer = _static_integer(node.right, constants)
+            if left_string is not None and right_integer is not None:
+                return left_string * right_integer
+            if left_integer is not None and right_string is not None:
+                return left_integer * right_string
+            return None
+        if isinstance(node.op, ast.Mod):
+            template = _static_string_shape(node.left, constants)
+            operand = _static_percent_operand(node.right, constants)
+            if template is None or operand is _OPAQUE_STATIC_VALUE:
+                return None
+            try:
+                result = template % operand
+            except (TypeError, ValueError):
+                return None
+            return result if isinstance(result, str) else None
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "replace"
+        and not node.keywords
+        and len(node.args) in {2, 3}
+    ):
+        value = _static_string_shape(node.func.value, constants)
+        old = _static_string_shape(node.args[0], constants)
+        new = _static_string_shape(node.args[1], constants)
+        count = (
+            _static_integer(node.args[2], constants) if len(node.args) == 3 else None
+        )
+        if value is None or old is None or new is None:
+            return None
+        if len(node.args) == 3 and count is None:
+            return None
+        return (
+            value.replace(old, new) if count is None else value.replace(old, new, count)
+        )
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -373,16 +416,64 @@ def _static_string_shape(
     return _string_shape(node)
 
 
+_OPAQUE_STATIC_VALUE = object()
+
+
+def _static_integer(node: ast.AST, constants: list[dict[str, object]]) -> int | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                return value if isinstance(value, int) else None
+    if isinstance(node, ast.NamedExpr):
+        return _static_integer(node.value, constants)
+    return None
+
+
+def _static_percent_operand(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> object:
+    if isinstance(node, ast.Constant) and isinstance(
+        node.value, (str, int, float, bytes)
+    ):
+        return node.value
+    if isinstance(node, ast.Name):
+        for scope in reversed(constants):
+            if node.id in scope:
+                value = scope[node.id]
+                if isinstance(value, (str, int, float, bytes, tuple)):
+                    return value
+                return _OPAQUE_STATIC_VALUE
+        return _OPAQUE_STATIC_VALUE
+    if isinstance(node, ast.NamedExpr):
+        return _static_percent_operand(node.value, constants)
+    if isinstance(node, ast.Tuple):
+        values = tuple(
+            _static_percent_operand(element, constants) for element in node.elts
+        )
+        if any(value is _OPAQUE_STATIC_VALUE for value in values):
+            return _OPAQUE_STATIC_VALUE
+        return values
+    return _OPAQUE_STATIC_VALUE
+
+
 def _static_string_list(
     node: ast.AST, constants: list[dict[str, object]]
-) -> list[str] | None:
+) -> tuple[str, ...] | None:
     """Resolve a static list/tuple of strings, through one Name binding."""
 
     if isinstance(node, ast.Name):
         for scope in reversed(constants):
             if node.id in scope:
                 value = scope[node.id]
-                return value if isinstance(value, list) else None
+                if isinstance(value, tuple) and all(
+                    isinstance(item, str) for item in value
+                ):
+                    return value
+                return None
         return None
     if isinstance(node, (ast.List, ast.Tuple)):
         items: list[str] = []
@@ -391,8 +482,18 @@ def _static_string_list(
             if shape is None:
                 return None
             items.append(shape)
-        return items
+        return tuple(items)
     return None
+
+
+def _static_string_values(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> tuple[str, ...] | None:
+    shape = _static_string_shape(node, constants)
+    if shape is not None:
+        return (shape,)
+    return _static_string_list(node, constants)
 
 
 def _pandas_expression_source(node: ast.AST) -> str | None:
@@ -436,6 +537,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.factory_aliases = factory_aliases
         self.bindings: list[dict[str, str | None]] = [{}]
         self.constants: list[dict[str, object]] = [{}]
+        self.column_containers: list[dict[str, bool]] = [{}]
         self.accesses: set[tuple[int, int, str]] = set()
 
     def _expression(self, node: ast.AST) -> str | None:
@@ -448,11 +550,28 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def _record(self, node: ast.AST, description: str) -> None:
         self.accesses.add((node.lineno, node.col_offset, description))
 
+    def _column_container(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            for scope in reversed(self.column_containers):
+                if node.id in scope:
+                    return scope[node.id]
+            return False
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "copy"
+        ):
+            return self._column_container(node.func.value)
+        return False
+
     def _bind(self, targets: list[ast.AST], value: ast.AST) -> None:
         description = self._expression(value)
         constant: object = _static_string_shape(value, self.constants)
         if constant is None:
             constant = _static_string_list(value, self.constants)
+        if constant is None:
+            constant = _static_integer(value, self.constants)
+        container = self._column_container(value)
         for target in targets:
             for name in _assigned_names(target):
                 self.bindings[-1][name] = description
@@ -460,16 +579,20 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 # never fall through to a stale outer binding (shadowed
                 # parameters and conditional reassignments — sol round 3).
                 self.constants[-1][name] = constant
+                self.column_containers[-1][name] = container
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
         for target in node.targets:
-            if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
-                self._poison(target.value.id)
+            if isinstance(target, ast.Subscript):
+                self.visit(target)
+                if isinstance(target.value, ast.Name):
+                    self._poison(target.value.id)
         self._bind(list(node.targets), node.value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         self.visit(node.value)
+        self.visit(node.target)
         for name in _assigned_names(node.target):
             self._poison(name)
 
@@ -477,8 +600,12 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if node.value is None:
             for name in _assigned_names(node.target):
                 self.bindings[-1][name] = None
+                self.constants[-1][name] = None
+                self.column_containers[-1][name] = False
             return
         self.visit(node.value)
+        if isinstance(node.target, ast.Subscript):
+            self.visit(node.target)
         self._bind([node.target], node.value)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
@@ -506,10 +633,26 @@ class _SourceReadVisitor(ast.NodeVisitor):
             local[node.args.vararg.arg] = None
         if node.args.kwarg is not None:
             local[node.args.kwarg.arg] = None
+        arguments = (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        )
+        containers = {
+            argument.arg: argument.annotation is None
+            and argument.arg not in {"self", "cls"}
+            for argument in arguments
+        }
+        if node.args.vararg is not None:
+            containers[node.args.vararg.arg] = False
+        if node.args.kwarg is not None:
+            containers[node.args.kwarg.arg] = False
         self.bindings.append(local)
         self.constants.append({name: None for name in local})
+        self.column_containers.append(containers)
         for statement in node.body:
             self.visit(statement)
+        self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
 
@@ -528,9 +671,20 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 *node.args.kwonlyargs,
             )
         }
+        containers = {
+            argument.arg: argument.annotation is None
+            and argument.arg not in {"self", "cls"}
+            for argument in (
+                *node.args.posonlyargs,
+                *node.args.args,
+                *node.args.kwonlyargs,
+            )
+        }
         self.bindings.append(local)
         self.constants.append({name: None for name in local})
+        self.column_containers.append(containers)
         self.visit(node.body)
+        self.column_containers.pop()
         self.constants.pop()
         self.bindings.pop()
 
@@ -647,13 +801,46 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
+        selector = node.slice
+        column_container = self._column_container(node.value)
+        if (
+            isinstance(node.value, ast.Attribute)
+            and node.value.attr == "loc"
+            and isinstance(node.slice, ast.Tuple)
+            and node.slice.elts
+        ):
+            selector = node.slice.elts[-1]
+            column_container = self._column_container(node.value.value)
+
+        resolved = _static_string_values(selector, self.constants)
         column = _subscript_source_expression(
-            node.slice,
+            selector,
             bindings=self.bindings,
             factory_aliases=self.factory_aliases,
         )
-        if column is not None:
-            self._record(node, f"subscript using {column}")
+        if resolved is None:
+            if column is not None:
+                self._record(node, f"subscript using {column}")
+            elif column_container:
+                self._record(
+                    node,
+                    "subscript with an unresolvable dynamic selector (fail-closed)",
+                )
+        elif any("*" in item for item in resolved):
+            if column_container or any(
+                _is_source_column_shape(item) for item in resolved
+            ):
+                self._record(
+                    node,
+                    "subscript with an unresolvable dynamic selector (fail-closed)",
+                )
+        else:
+            for item in resolved:
+                if _is_source_column_shape(item):
+                    self._record(
+                        node,
+                        f"subscript using source column {item!r}",
+                    )
         self.generic_visit(node)
 
 
@@ -1129,6 +1316,93 @@ def f(df, col):
         "person_support_channel" in access
         for access in _source_spine_accesses(format_bound)
     )
+
+
+def test_subscript_selectors_resolve_or_fail_closed() -> None:
+    """Every round-4 subscript evasion is named or explicitly opaque."""
+
+    walrus = """
+def f(df):
+    df[(col := "person_support_channel")]
+    return df[col]
+"""
+    nested_call = """
+def f(df):
+    def source_column():
+        return "person_support_channel"
+    return df[source_column()]
+"""
+    dict_indirection = """
+COLS = {"unsafe": "person_support_channel"}
+def f(df):
+    return df[COLS["unsafe"]]
+"""
+    multiplication = """
+def f(df):
+    return df["person_support_channel" * 1]
+"""
+    percent_format = """
+def f(df):
+    return df["%s_support_channel" % "person"]
+"""
+    replace_chain = """
+def f(df):
+    return df[
+        "person-SOURCE-channel"
+        .replace("-", "_")
+        .replace("SOURCE", "support")
+    ]
+"""
+
+    walrus_accesses = _source_spine_accesses(walrus)
+    assert len(walrus_accesses) == 2
+    assert all("person_support_channel" in access for access in walrus_accesses)
+
+    for source in (multiplication, percent_format, replace_chain):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert all("person_support_channel" in access for access in accesses)
+        assert all("fail-closed" not in access for access in accesses)
+
+    for source in (nested_call, dict_indirection):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("fail-closed" in access for access in accesses)
+
+
+def test_static_selector_extensions_are_shared_by_strict_pandas_calls() -> None:
+    """Mult, percent formatting, and replace resolve at every strict surface."""
+
+    sources = (
+        """
+def f(df):
+    return df.query("person_support_channel == 1" * 1)
+""",
+        """
+def f(df):
+    return df.eval("%s_support_channel == 1" % "person")
+""",
+        """
+def f(df):
+    return df.query(
+        "person_x == 1"
+        .replace("x", "support")
+        .replace("support", "support_channel")
+    )
+""",
+        """
+def f(df):
+    return df.query(
+        (expr := "person_support_channel == 1")
+    )
+""",
+    )
+
+    for source in sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert all("person_support_channel" in access for access in accesses)
+        assert all("fail-closed" not in access for access in accesses)
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:

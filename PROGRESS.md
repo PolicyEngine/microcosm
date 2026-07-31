@@ -3,11 +3,10 @@
 ## State
 
 Round-4 hold remediation is in progress on `multispine-pool-build-578`, from
-clean starting commit `19a7a1d`. The operator graph is clean at 54 modules, but
-the guard in
-`packages/populace-build/tests/test_us_spine_blindness.py` is still fail-open
-for unresolved subscripts, incomplete `str.format` fields, method aliases, and
-late-bound closure values.
+clean starting commit `19a7a1d`. Subscript resolution now catches all six
+round-4 evasions, and the 54-module operator graph remains clean. Loop and
+comprehension binding, complete `str.format` fields, method aliases, and
+late-bound closure values remain in progress.
 
 No push or external mutation is authorized.
 
@@ -17,15 +16,24 @@ No push or external mutation is authorized.
 - Confirmed the required clean starting HEAD and branch.
 - Confirmed the local GitNexus index is absent; direct AST/source tracing will
   be used unless a safe local index becomes available.
-- Started parallel read-only audits of reviewer repros, resolver/loop behavior,
-  and strict call-site/closure behavior.
+- Completed parallel read-only audits of reviewer repros, resolver/loop
+  behavior, and strict call-site/closure behavior.
+- Extended the static resolver for walrus expressions, string multiplication,
+  percent formatting, and all-static chained `str.replace`.
+- Made inferred column-container subscripts resolve every static string member
+  or record explicit opacity; subscript assignment targets are visited too.
+- Added exact round-4 binding tests: walrus binds and reports both reads;
+  multiplication, percent formatting, and replace report the guarded name;
+  nested calls and dict indirection report fail-closed.
+- Replayed the guard file (15 passed), focused Ruff, and the exact 54-module
+  graph (no missing modules or offenders).
 
 ## Next
 
-- Commit this baseline journal.
+- Commit the subscript/resolver completion.
 - Add committed self-tests and implementation commits for, in order:
-  subscripts/resolver completion; loop/comprehension propagation; complete
-  format fields; method aliasing; closure late binding.
+  loop/comprehension propagation; complete format fields; method aliasing;
+  closure late binding.
 - Add the cross-round completeness invariant and benign battery.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.
