@@ -12,6 +12,7 @@ import pytest
 from populace.build.gates import FitWeightRecord, GateResult
 from populace.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
+    UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
     UKReleaseParityEvidence,
     UKZeroWeightStratumDeclaration,
     uk_degenerate_release_surface_gate,
@@ -19,6 +20,7 @@ from populace.build.uk_runtime.terminal_gates import (
     uk_target_fit_gate,
     uk_target_surface_gate,
     uk_terminal_gate_report,
+    uk_weight_ratio_gate,
     write_uk_terminal_gate_report,
 )
 
@@ -216,6 +218,28 @@ def test_ratio_blowout_produces_named_finding() -> None:
     assert gate["passed"] is False
     assert gate["details"]["max_to_median_positive_weight"] == 20.0
     assert "Max/positive-median" in gate["failures"][0]
+
+
+def test_ratio_boundary_is_pinned_to_the_certified_june_measurement() -> None:
+    assert UK_MAX_TO_MEDIAN_WEIGHT_RATIO == 1_151.2542195939373
+
+
+def test_certified_june_weight_ratio_passes_at_the_inclusive_boundary() -> None:
+    # Ratio-preserving replay of the certified June H5 (sha256 f17306ccb2aad7ff
+    # 0130be3589b560afb2e2a12a943570911cd0c77f07934833).  The gate observes
+    # only the positive median and maximum, so the full 535,080-row vector is
+    # trimmed to those real values plus a representative shipped zero.
+    positive_median = 16.202157974243164
+    maximum = 18_652.802734375
+    gate = uk_weight_ratio_gate([0.0, positive_median, positive_median, maximum])
+
+    assert gate.details["max_to_median_positive_weight"] == (
+        UK_MAX_TO_MEDIAN_WEIGHT_RATIO
+    )
+    assert gate.details["maximum_max_to_median_ratio"] == (
+        UK_MAX_TO_MEDIAN_WEIGHT_RATIO
+    )
+    assert gate.passed
 
 
 def test_gate_evaluation_error_does_not_mask_later_findings() -> None:

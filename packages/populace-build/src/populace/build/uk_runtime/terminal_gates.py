@@ -65,12 +65,15 @@ UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
 UK_REFERENCE_DATASET_NAME = "enhanced_frs_2023_24_recalibrated"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 
-# The June artifact is at 0.039953 ESS fraction and 1,151.254 max/positive-
-# median ratio.  These reviewed backstops admit that artifact while rejecting
-# the #578 effective-support collapse (0.003) and a further material ratio
-# blowout.  They are acceptance fences, not solver knobs.
+# The certified June artifact is at 0.039953 ESS fraction.  Its measured
+# max/positive-median ratio is exactly 1,151.2542195939373 (maximum weight
+# 18,652.802734375 / positive median 16.202157974243164).  Under the #578
+# acceptance rule, a candidate must not regress the incumbent on battery
+# observables: this boundary has no discretionary headroom.  Raising it
+# requires an explicit future adjudication.  These are acceptance fences, not
+# solver knobs.
 UK_MIN_ESS_FRACTION = 0.01
-UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 2_000.0
+UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 
 _SPI_FLAG = "household_is_spi_synthetic"
 _CAPITAL_GAINS_FLAG = "household_is_capital_gains_clone"
