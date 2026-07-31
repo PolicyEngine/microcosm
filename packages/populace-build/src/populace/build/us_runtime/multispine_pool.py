@@ -97,6 +97,8 @@ from populace.frame import Frame
 
 __all__ = [
     "POOL_HOUSEHOLD_MASS_SHARES",
+    "POOL_DERIVE_OPERATOR_ORDER",
+    "POOL_OPERATOR_CONTRACTS",
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
@@ -164,6 +166,12 @@ Executable placement is declared separately because prior-year income has a
 pre-clone derivation and a post-clone PUF-imputation pass.
 """
 
+POOL_DERIVE_OPERATOR_ORDER = (
+    "_complete_schedule_d_input",
+    "with_us_qbi_input_reconciliation",
+)
+"""Whole-pool deterministic operators owned by the derive stage."""
+
 POOL_RANDOM_SEED = 0
 """Fixed seed shared by pool imputations and seeded input stages."""
 
@@ -225,7 +233,7 @@ class MultispinePoolResult:
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 type AgreementGate = Callable[[Frame], GateResult]
-type SourceFrameOperator = Callable[[Frame], Frame]
+type SourceFrameOperator = Callable[[Frame], Frame | PoolStageOutput]
 
 
 @dataclass(frozen=True)
@@ -235,12 +243,15 @@ class SourceOperatorContract:
     family: str
     phases: tuple[str, ...]
     mechanism: str
+    execution_scope: str = "cps_source"
 
 
 _PRE_CLONE_PHASE = "pre_clone"
 _POST_CLONE_PHASE = "post_clone"
+_CPS_SOURCE_EXECUTION_SCOPE = "cps_source"
+_WHOLE_POOL_EXECUTION_SCOPE = "whole_pool"
 
-POOL_SOURCE_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
+POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
     "derive_us_cps_carried_inputs": SourceOperatorContract(
         "cps_carried",
         (_PRE_CLONE_PHASE,),
@@ -341,26 +352,42 @@ POOL_SOURCE_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         (_POST_CLONE_PHASE,),
         "deterministic rowwise derivation follows PUF tuition imputation",
     ),
+    "_complete_schedule_d_input": SourceOperatorContract(
+        "capital_gain_distributions",
+        (_POST_CLONE_PHASE,),
+        "transferred tax-unit parents exist only on the physically cloned pool",
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
+    ),
+    "with_us_qbi_input_reconciliation": SourceOperatorContract(
+        "qbi_reconciliation",
+        (_POST_CLONE_PHASE,),
+        "all-or-nothing identities reconcile the post-transfer PUF detail surface",
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
+    ),
 }
+"""Total clone-phase registry for all 22 pool-path operator kernels."""
+
+POOL_SOURCE_OPERATOR_CONTRACTS = POOL_OPERATOR_CONTRACTS
+"""Backward-compatible name for the now-total pool operator registry."""
 
 POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER = tuple(
     name
     for name in POOL_SOURCE_OPERATOR_ORDER
-    if _PRE_CLONE_PHASE in POOL_SOURCE_OPERATOR_CONTRACTS[name].phases
+    if _PRE_CLONE_PHASE in POOL_OPERATOR_CONTRACTS[name].phases
 )
 """Source operations owned by the clone stage before physical expansion."""
 
 POOL_POST_CLONE_SOURCE_OPERATOR_ORDER = tuple(
     name
     for name in POOL_SOURCE_OPERATOR_ORDER
-    if _POST_CLONE_PHASE in POOL_SOURCE_OPERATOR_CONTRACTS[name].phases
+    if _POST_CLONE_PHASE in POOL_OPERATOR_CONTRACTS[name].phases
 )
 """Source operations safe or required after physical support expansion."""
 
 _CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
 _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
     name: contract.family
-    for name, contract in POOL_SOURCE_OPERATOR_CONTRACTS.items()
+    for name, contract in POOL_OPERATOR_CONTRACTS.items()
 }
 _FORMULA_OWNED_SOURCE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset({"employment_income_last_year"}),
@@ -645,8 +672,8 @@ def _run_source_operator_chain(
     misplaced = [
         name
         for name in operator_names
-        if name not in POOL_SOURCE_OPERATOR_CONTRACTS
-        or phase not in POOL_SOURCE_OPERATOR_CONTRACTS[name].phases
+        if name not in POOL_OPERATOR_CONTRACTS
+        or phase not in POOL_OPERATOR_CONTRACTS[name].phases
     ]
     if misplaced:
         raise ValueError(
@@ -658,30 +685,46 @@ def _run_source_operator_chain(
     current = frame
     receipts: list[dict[str, object]] = []
     for order_index, operator_name in enumerate(operator_names):
+        contract = POOL_OPERATOR_CONTRACTS[operator_name]
         family = _SOURCE_OPERATOR_FAMILIES.get(operator_name, operator_name)
         if family not in output_families:
             raise ValueError(
                 f"Multispine source operator {operator_name!r} has no declared "
                 f"output family {family!r}."
             )
-        declared_outputs = (
-            dict(output_families[family])
-            if phase == _PRE_CLONE_PHASE
-            else _persisted_source_outputs(output_families[family])
-        )
-        available_mask = _cps_source_evidence_mask(current, phase=phase)
-        available = _source_available_projection(
-            current,
-            available_mask,
-            phase=phase,
-        )
-        available = _without_unavailable_output_columns(
-            available,
-            declared_outputs,
-        )
+        declared_outputs = dict(output_families[family])
+        if (
+            phase == _POST_CLONE_PHASE
+            and contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
+        ):
+            declared_outputs = _persisted_source_outputs(declared_outputs)
+        if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE:
+            available_mask = _cps_source_evidence_mask(current, phase=phase)
+            available = _source_available_projection(
+                current,
+                available_mask,
+                phase=phase,
+            )
+            available = _without_unavailable_output_columns(
+                available,
+                declared_outputs,
+            )
+        elif contract.execution_scope == _WHOLE_POOL_EXECUTION_SCOPE:
+            available = current
+        else:
+            raise ValueError(
+                f"Multispine operator {operator_name!r} has unknown execution "
+                f"scope {contract.execution_scope!r}."
+            )
         before_rows = _frame_row_counts(current)
         available_rows = _frame_row_counts(available)
-        outcome = operators[operator_name](available)
+        kernel_outcome = operators[operator_name](available)
+        kernel_receipt: Mapping[str, object] = {}
+        if isinstance(kernel_outcome, PoolStageOutput):
+            outcome = kernel_outcome.frame
+            kernel_receipt = kernel_outcome.receipt
+        else:
+            outcome = kernel_outcome
         if not isinstance(outcome, Frame):
             raise TypeError(
                 f"Multispine source operator {operator_name!r} must return Frame, "
@@ -698,14 +741,21 @@ def _run_source_operator_chain(
             outcome,
             operator_name=operator_name,
         )
-        current, merged_rows = _merge_source_operator_outputs(
-            current,
-            outcome,
-            declared_outputs,
-            operator_name=operator_name,
-        )
+        if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE:
+            current, merged_rows = _merge_source_operator_outputs(
+                current,
+                outcome,
+                declared_outputs,
+                operator_name=operator_name,
+            )
+        else:
+            current = outcome
+            merged_rows = output_rows
         formula_owned_removed: dict[str, list[str]] = {}
-        if phase == _POST_CLONE_PHASE:
+        if (
+            phase == _POST_CLONE_PHASE
+            and contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
+        ):
             formula_owned = {
                 entity: frozenset(
                     set(columns)
@@ -729,13 +779,25 @@ def _run_source_operator_chain(
                 "operator": operator_name,
                 "family": family,
                 "phase": phase,
+                "execution_scope": contract.execution_scope,
                 "pool_input_rows": before_rows,
-                "cps_available_rows": available_rows,
+                "operator_input_rows": available_rows,
+                "cps_available_rows": (
+                    available_rows
+                    if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
+                    else None
+                ),
                 "operator_output_rows": output_rows,
                 "merged_rows": merged_rows,
                 "operator_projection": {
-                    "selection": _CPS_SOURCE_EVIDENCE_COLUMN,
-                    "lineage_state_persisted": False,
+                    "selection": (
+                        _CPS_SOURCE_EVIDENCE_COLUMN
+                        if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
+                        else _WHOLE_POOL_EXECUTION_SCOPE
+                    ),
+                    "lineage_state_persisted": (
+                        contract.execution_scope == _WHOLE_POOL_EXECUTION_SCOPE
+                    ),
                     "support_role_metadata_exposed": phase == _POST_CLONE_PHASE,
                 },
                 "output_columns": {
@@ -744,19 +806,29 @@ def _run_source_operator_chain(
                     if columns
                 },
                 "formula_owned_outputs_removed": formula_owned_removed,
+                "kernel_receipt": dict(kernel_receipt),
             }
         )
+    uses_cps_source = any(
+        POOL_OPERATOR_CONTRACTS[name].execution_scope
+        == _CPS_SOURCE_EXECUTION_SCOPE
+        for name in operator_names
+    )
     return PoolStageOutput(
         current,
         {
             "phase": phase,
             "operator_order": list(operator_names),
-            "cps_source_evidence": {
-                "column": _CPS_SOURCE_EVIDENCE_COLUMN,
-                "person_rows": int(
-                    _cps_source_evidence_mask(frame, phase=phase).sum()
-                ),
-            },
+            "cps_source_evidence": (
+                {
+                    "column": _CPS_SOURCE_EVIDENCE_COLUMN,
+                    "person_rows": int(
+                        _cps_source_evidence_mask(frame, phase=phase).sum()
+                    ),
+                }
+                if uses_cps_source
+                else None
+            ),
             "transient_outputs_carried_through_clone": (
                 _transient_source_outputs(operator_names, output_families)
                 if phase == _PRE_CLONE_PHASE
@@ -802,7 +874,6 @@ def _assert_source_operator_boundary(frame: Frame, *, phase: str) -> None:
             "provenance; pre-clone requires only index 0, while post-clone "
             "requires both native and positive clone indices."
         )
-    _cps_source_evidence_mask(frame, phase=phase)
 
 
 def _cps_source_evidence_mask(frame: Frame, *, phase: str) -> pd.Series:
@@ -1085,11 +1156,21 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
-    with_schedule_d, schedule_d_receipt = _complete_schedule_d_input(frame)
-    reconciled = with_us_qbi_input_reconciliation(with_schedule_d)
+    completed = _run_source_operator_chain(
+        frame,
+        phase=_POST_CLONE_PHASE,
+        operator_names=POOL_DERIVE_OPERATOR_ORDER,
+        operators={
+            "_complete_schedule_d_input": _complete_schedule_d_input,
+            "with_us_qbi_input_reconciliation": with_us_qbi_input_reconciliation,
+        },
+    )
+    schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
     return PoolStageOutput(
-        reconciled,
+        completed.frame,
         {
+            "phase": _POST_CLONE_PHASE,
+            "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": {
                 "columns": list(US_QBI_OUTPUT_COLUMNS),
@@ -1099,7 +1180,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     )
 
 
-def _complete_schedule_d_input(frame: Frame) -> tuple[Frame, dict[str, object]]:
+def _complete_schedule_d_input(frame: Frame) -> PoolStageOutput:
     person = frame.table("person")
     membership_column = frame.schema.membership_column("tax_unit")
     tax_unit_id_column = frame.schema.entity_id_column("tax_unit")
@@ -1186,16 +1267,21 @@ def _complete_schedule_d_input(frame: Frame) -> tuple[Frame, dict[str, object]]:
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
-    return completed, {
-        "entity": "person",
-        "source_grain": "tax_unit",
-        "source_columns": list(source_columns),
-        "preserved_nonnull_rows": int(observed.sum()),
-        "filled_rows": filled_rows,
-        "derived_tax_units": derived_units,
-        "partially_observed_tax_units_filled_with_zero": partially_observed_units,
-        "derivation": derivation_receipt,
-    }
+    return PoolStageOutput(
+        completed,
+        {
+            "entity": "person",
+            "source_grain": "tax_unit",
+            "source_columns": list(source_columns),
+            "preserved_nonnull_rows": int(observed.sum()),
+            "filled_rows": filled_rows,
+            "derived_tax_units": derived_units,
+            "partially_observed_tax_units_filled_with_zero": (
+                partially_observed_units
+            ),
+            "derivation": derivation_receipt,
+        },
+    )
 
 
 def seed_multispine_pool_inputs(

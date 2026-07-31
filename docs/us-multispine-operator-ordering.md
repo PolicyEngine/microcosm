@@ -149,7 +149,7 @@ fixed sequence:
    The gate batches all failures and controls the manifest's simulation-ready
    status.
 
-The source-operator contract registry makes clone placement total and
+The 22-operator pool contract registry makes clone placement total and
 executable. Adding an operator without a phase declaration, or calling one in
 an undeclared phase, fails before the kernel runs:
 
@@ -175,6 +175,8 @@ an undeclared phase, fails before the kernel runs:
 | Retirement distributions | post | Forced PUF imputation requires support roles. |
 | Immigration | post | Source-keyed draws preserve equality across clones. |
 | Education | post | Deterministic rowwise derivation follows PUF tuition imputation. |
+| Schedule-D completion | post | Transferred tax-unit parents exist only on the physically cloned pool. |
+| QBI reconciliation | post | All-or-nothing identities reconcile the post-transfer PUF detail surface. |
 
 The ASEC checkpoint remains the operator-untouched `raw_source_mapping`
 artifact. Clone-stage preparation deliberately happens after loading,

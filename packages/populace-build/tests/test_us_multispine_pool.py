@@ -15,6 +15,8 @@ from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_DERIVE_OPERATOR_ORDER,
+    POOL_OPERATOR_CONTRACTS,
     POOL_OPERATOR_ORDER,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
@@ -514,7 +516,11 @@ def test_pool_source_operator_order_is_the_full_legacy_chain() -> None:
 
 
 def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
-    assert tuple(POOL_SOURCE_OPERATOR_CONTRACTS) == POOL_SOURCE_OPERATOR_ORDER
+    assert POOL_SOURCE_OPERATOR_CONTRACTS is POOL_OPERATOR_CONTRACTS
+    assert tuple(POOL_OPERATOR_CONTRACTS) == (
+        *POOL_SOURCE_OPERATOR_ORDER,
+        *POOL_DERIVE_OPERATOR_ORDER,
+    )
     assert POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER == (
         _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER
     )
@@ -523,12 +529,140 @@ def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
     )
     assert {
         name
-        for name, contract in POOL_SOURCE_OPERATOR_CONTRACTS.items()
+        for name, contract in POOL_OPERATOR_CONTRACTS.items()
         if len(contract.phases) == 2
     } == {"with_us_prior_year_income_inputs"}
     assert all(
-        contract.mechanism for contract in POOL_SOURCE_OPERATOR_CONTRACTS.values()
+        contract.mechanism for contract in POOL_OPERATOR_CONTRACTS.values()
     )
+    assert {
+        name
+        for name, contract in POOL_OPERATOR_CONTRACTS.items()
+        if contract.execution_scope == "whole_pool"
+    } == set(POOL_DERIVE_OPERATOR_ORDER)
+
+
+def test_production_operator_invocations_are_total_and_guarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, tuple[str, ...]]] = []
+
+    def fail_direct_call(_frame: Frame, **_kwargs: object) -> Frame:
+        raise AssertionError("operator kernel bypassed the phase-checked runner")
+
+    for operator_name in POOL_OPERATOR_CONTRACTS:
+        monkeypatch.setattr(
+            multispine_pool_module,
+            operator_name,
+            fail_direct_call,
+        )
+
+    def observe_guarded_chain(
+        frame: Frame,
+        *,
+        phase: str,
+        operator_names: tuple[str, ...],
+        operators: dict[str, Callable[[Frame], Frame]],
+        **_kwargs: object,
+    ) -> PoolStageOutput:
+        assert tuple(operators) == operator_names
+        observed.append((phase, operator_names))
+        return PoolStageOutput(
+            frame,
+            {
+                "phase": phase,
+                "operator_order": list(operator_names),
+                "suboperators": [
+                    {"operator": name, "kernel_receipt": {}}
+                    for name in operator_names
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        observe_guarded_chain,
+    )
+    frame = _source_frame()
+    multispine_pool_module.prepare_multispine_source_inputs_for_clone(
+        frame,
+        acs_rent_donor=pd.DataFrame(),
+    )
+    multispine_pool_module.complete_multispine_source_inputs(frame)
+    multispine_pool_module.derive_multispine_pool_inputs(frame)
+
+    assert observed == [
+        ("pre_clone", POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER),
+        ("post_clone", POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
+        ("post_clone", POOL_DERIVE_OPERATOR_ORDER),
+    ]
+    observed_placements = {
+        (name, phase)
+        for phase, operator_names in observed
+        for name in operator_names
+    }
+    registered_placements = {
+        (name, phase)
+        for name, contract in POOL_OPERATOR_CONTRACTS.items()
+        for phase in contract.phases
+    }
+    assert observed_placements == registered_placements
+    assert len({name for name, _phase in observed_placements}) == 22
+    assert len(observed_placements) == 23
+
+
+def test_derive_stage_rejects_preclone_pool_before_kernels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assembled = assemble_spines(
+        {"asec": _source_frame(), "acs": _source_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    calls: list[str] = []
+
+    def unexpected_kernel(frame: Frame) -> Frame:
+        calls.append("called")
+        return frame
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_complete_schedule_d_input",
+        unexpected_kernel,
+    )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "with_us_qbi_input_reconciliation",
+        unexpected_kernel,
+    )
+
+    with pytest.raises(ValueError, match="post_clone.*incompatible clone provenance"):
+        multispine_pool_module.derive_multispine_pool_inputs(assembled)
+    assert not calls
+
+
+def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
+    assembled = assemble_spines(
+        {"asec": _source_frame(), "acs": _source_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    frame = clone_us_frame_for_puf_support(assembled)
+    person = frame.table("person").copy()
+    person["long_term_capital_gains_before_response"] = 100.0
+    person["non_sch_d_capital_gains"] = 0.0
+    for column in multispine_pool_module.US_QBI_OUTPUT_COLUMNS:
+        person[column] = 0.0
+    person["self_employment_income_before_lsr"] = 10.0
+    person["sstb_self_employment_income_before_lsr"] = 5.0
+    frame = _replace_person(frame, person)
+
+    result = multispine_pool_module.derive_multispine_pool_inputs(frame)
+    derived = result.frame.table("person")
+
+    assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
+    assert derived["schedule_d_capital_gain_distributions"].notna().all()
+    assert derived["self_employment_income_before_lsr"].eq(15.0).all()
+    assert derived["sstb_self_employment_income_before_lsr"].eq(0.0).all()
 
 
 def test_prior_year_contract_fails_on_raw_clone_and_succeeds_in_clone_stage(
@@ -846,7 +980,9 @@ def test_schedule_d_derivation_preserves_existing_values_and_receipt() -> None:
     person.loc[person.index[0], "schedule_d_capital_gain_distributions"] = 7.0
     frame = _replace_person(frame, person)
 
-    completed, receipt = _complete_schedule_d_input(frame)
+    result = _complete_schedule_d_input(frame)
+    completed = result.frame
+    receipt = result.receipt
 
     output = completed.table("person")["schedule_d_capital_gain_distributions"]
     assert output.loc[person.index[0]] == 7.0
