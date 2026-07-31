@@ -1934,7 +1934,7 @@ def _complete_target_mask(
 
 
 def _is_supported_target(series: pd.Series) -> bool:
-    if _is_numeric_or_bool(series):
+    if _is_numeric_or_bool(series) or _is_semantic_boolean(series):
         return True
     if pd.api.types.is_categorical_dtype(series.dtype):
         return True
@@ -2051,7 +2051,7 @@ def _target_encoding(series: pd.Series, *, target: str) -> _TargetEncoding:
     metadata = _engine_variable_metadata(target)
     target_dtype = metadata.dtype if metadata is not None else None
 
-    if target_dtype == "bool" or pd.api.types.is_bool_dtype(series.dtype):
+    if target_dtype == "bool" or _is_semantic_boolean(series):
         values = pd.Series(
             _as_float_array(series),
             index=series.index,
@@ -2132,6 +2132,17 @@ def _is_numeric_or_bool(series: pd.Series) -> bool:
             pd.api.types.is_numeric_dtype(series.dtype)
             and not pd.api.types.is_complex_dtype(series.dtype)
         )
+    )
+
+
+def _is_semantic_boolean(series: pd.Series) -> bool:
+    """Recognize nullable object columns whose observed values are booleans."""
+
+    if pd.api.types.is_bool_dtype(series.dtype):
+        return True
+    return bool(
+        pd.api.types.is_object_dtype(series.dtype)
+        and pd.api.types.infer_dtype(series, skipna=True) == "boolean"
     )
 
 

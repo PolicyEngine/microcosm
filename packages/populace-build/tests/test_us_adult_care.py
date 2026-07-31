@@ -10,6 +10,8 @@ import pandas as pd
 import pytest
 
 from populace.build.source_runtime import SourceRuntimeError
+from populace.build.us_runtime import acs_transfer as acs_transfer_module
+from populace.build.us_runtime import multispine_pool as multispine_pool_module
 from populace.build.us_runtime.adult_care import (
     US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT,
     US_ADULT_CARE_EARNED_INCOME_SOURCES,
@@ -20,7 +22,9 @@ from populace.build.us_runtime.adult_care import (
     us_adult_care_stage_spec,
     with_us_adult_care_inputs,
 )
+from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.source_runtime import us_source_operation_handlers
+from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
@@ -193,6 +197,98 @@ def test_flag_is_measured_and_expenses_bind_the_statute_structure() -> None:
 
     gate = us_adult_care_signal_gate(result)
     assert gate.passed, gate.failures
+
+
+def test_real_pool_chain_exposes_nullable_boolean_to_auto_transfer_donor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def source_peer(*, spine: str) -> Frame:
+        base = _frame()
+        tables = {entity: base.table(entity).copy() for entity in base.entities}
+        person = tables["person"]
+        person.drop(columns=["person_support_channel"], inplace=True)
+        person["is_female"] = False
+        if spine == "asec":
+            person["PERIDNUM"] = [f"asec-{index}" for index in person.index]
+        else:
+            person.drop(
+                columns=[
+                    "PEDISDRS",
+                    "is_full_time_college_student",
+                    "sstb_self_employment_income_before_lsr",
+                    "tax_unit_role_input",
+                ],
+                inplace=True,
+            )
+            tables["spm_unit"].drop(
+                columns=["spm_unit_pre_subsidy_childcare_expenses"],
+                inplace=True,
+            )
+        return Frame(
+            tables,
+            base.schema,
+            {"household": base.weights_for("household")},
+            base.strata,
+        )
+
+    assembled = assemble_spines(
+        {"asec": source_peer(spine="asec"), "acs": source_peer(spine="acs")},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned = clone_us_frame_for_puf_support(assembled)
+    completed = multispine_pool_module._run_source_operator_chain(
+        cloned,
+        phase="post_clone",
+        operator_names=("with_us_adult_care_inputs",),
+        operators={
+            "with_us_adult_care_inputs": lambda frame: with_us_adult_care_inputs(
+                frame,
+                seed=0,
+                time_period=2024,
+            )
+        },
+    )
+    assert completed.receipt["operator_order"] == ["with_us_adult_care_inputs"]
+
+    fit_donor, role = acs_transfer_module.resolve_acs_donor_channel(
+        completed.frame,
+        acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
+    )
+    assert role == "puf_tax_detail"
+    fit_person = fit_donor.table("person")
+    assert set(fit_person["person_support_clone_index"]) == {1}
+
+    flag = fit_person[_FLAG]
+    assert flag.dtype == object
+    assert pd.api.types.infer_dtype(flag, skipna=True) == "boolean"
+    source_channel = fit_person["person_support_channel"]
+    assert flag.loc[source_channel.eq("asec")].notna().all()
+    assert flag.loc[source_channel.eq("acs")].isna().all()
+
+    monkeypatch.setattr(
+        acs_transfer_module,
+        "_engine_variable_metadata",
+        lambda _target: None,
+    )
+    acs_transfer_module._validate_donor_targets(
+        fit_donor,
+        entity="person",
+        targets=US_ADULT_CARE_OUTPUT_COLUMNS,
+    )
+    complete = acs_transfer_module._complete_target_mask(
+        fit_person,
+        targets=US_ADULT_CARE_OUTPUT_COLUMNS,
+    )
+    assert int(complete.sum()) == int(source_channel.eq("asec").sum())
+    encodings = acs_transfer_module._complete_case_target_encodings(
+        fit_person,
+        targets=US_ADULT_CARE_OUTPUT_COLUMNS,
+        complete=complete,
+    )
+    assert encodings[_FLAG].kind == "boolean"
+    np.testing.assert_array_equal(encodings[_FLAG].support, np.array([0.0, 1.0]))
+    assert encodings[_EXPENSE].kind == "continuous"
+    assert encodings[_EXPENSE].support is None
 
 
 def test_derivation_is_deterministic_per_seed() -> None:
