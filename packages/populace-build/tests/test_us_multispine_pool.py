@@ -9,6 +9,7 @@ import pytest
 
 from populace.build.gates import GateResult
 from populace.build.source_runtime import SourceRuntimeError
+from populace.build.us_runtime import housing_inputs as housing_inputs_module
 from populace.build.us_runtime import multispine_pool as multispine_pool_module
 from populace.build.us_runtime import prior_year_income as prior_year_income_module
 from populace.build.us_runtime.acs_transfer import (
@@ -29,6 +30,7 @@ from populace.build.us_runtime.multispine_pool import (
     materialize_multispine_agreement_outputs,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
+    prepare_multispine_source_inputs_for_clone,
     run_multispine_pool_path,
     seed_multispine_pool_inputs,
 )
@@ -209,6 +211,122 @@ class _PriorYearQRF:
 
     def fit(self, *_args: object, **_kwargs: object) -> _PriorYearFitted:
         return _PriorYearFitted()
+
+
+def _real_pre_clone_source_frame() -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_household_id": [1, 1, 2, 2],
+            "person_tax_unit_id": [101, 101, 102, 102],
+            "person_spm_unit_id": [201, 201, 202, 202],
+            "person_family_id": [301, 301, 302, 302],
+            "person_marital_unit_id": [401, 402, 403, 404],
+            "source_year": [2023, 2023, 2024, 2024],
+            "PERIDNUM": ["parent", "child", "parent", "child"],
+            "WSAL_VAL": [40_000.0, 0.0, 50_000.0, 0.0],
+            "SEMP_VAL": [100.0, 0.0, 200.0, 0.0],
+            "I_ERNVAL": [0, 0, 0, 0],
+            "I_SEVAL": [0, 0, 0, 0],
+            "A_AGE": [40, 10, 41, 11],
+            "A_SEX": [1, 2, 1, 2],
+            "OI_VAL": [0.0, 0.0, 0.0, 0.0],
+            "OI_OFF": [0, 0, 0, 0],
+            "PH_SEQ": [10, 10, 20, 20],
+            "P_SEQ": [1, 2, 1, 2],
+            "A_MARITL": [7, 7, 7, 7],
+            "A_LINENO": [1, 2, 1, 2],
+            "PEPAR1": [-1, 1, -1, 1],
+            "PEPAR2": [-1, -1, -1, -1],
+            "PEDISDRS": [2, 2, 2, 2],
+            "PEDISEAR": [2, 2, 2, 2],
+            "PEDISEYE": [2, 2, 2, 2],
+            "PEDISOUT": [2, 2, 2, 2],
+            "PEDISPHY": [2, 2, 2, 2],
+            "PEDISREM": [2, 2, 2, 2],
+            "A_HSCOL": [0, 0, 0, 0],
+            "A_FTPT": [0, 0, 0, 0],
+            "VET_VAL": [0.0, 0.0, 0.0, 0.0],
+            "SSI_VAL": [0.0, 0.0, 0.0, 0.0],
+            "SPM_CAPHOUSESUB": [0.0, 0.0, 0.0, 0.0],
+            "SPM_TENMORTSTATUS": [3, 3, 3, 3],
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "state_fips": [6, 36],
+                "H_TENURE": [2, 2],
+            }
+        ),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": [101, 102],
+                "filing_status_input": ["SINGLE", "SINGLE"],
+            }
+        ),
+        "spm_unit": pd.DataFrame({"spm_unit_id": [201, 202]}),
+        "family": pd.DataFrame({"family_id": [301, 302]}),
+        "marital_unit": pd.DataFrame(
+            {"marital_unit_id": [401, 402, 403, 404]}
+        ),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.ones(2, dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+def _rent_donor() -> pd.DataFrame:
+    rows = np.arange(60, dtype=np.float64)
+    donor = pd.DataFrame(
+        {
+            predictor: rows + position
+            for position, predictor in enumerate(
+                housing_inputs_module.ACS_RENT_PREDICTORS
+            )
+        }
+    )
+    donor["is_household_head"] = 1.0
+    donor["tenure_type"] = np.resize(
+        np.array(["NONE", "OWNED_WITH_MORTGAGE", "RENTED"]),
+        len(donor),
+    )
+    donor["state_code_str"] = np.resize(
+        np.array(["06", "36", "48"]),
+        len(donor),
+    )
+    rented = donor["tenure_type"].eq("RENTED")
+    donor["rent"] = np.where(rented, 12_000.0, 0.0)
+    donor["rent_is_allocated"] = False
+    donor["real_estate_taxes"] = np.where(rented, 0.0, 4_000.0)
+    donor["real_estate_taxes_is_allocated"] = False
+    donor["household_weight"] = np.linspace(1.0, 2.0, len(donor))
+    return donor
+
+
+class _RowSensitiveRentFitted:
+    def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
+        return pd.DataFrame(
+            {"rent": 1_000.0 + np.arange(len(test), dtype=np.float64)},
+            index=test.index,
+        )
+
+
+class _RowSensitiveRentQRF:
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
+    def fit(self, *_args: object, **_kwargs: object) -> _RowSensitiveRentFitted:
+        return _RowSensitiveRentFitted()
 
 
 def _replace_person(
@@ -750,6 +868,105 @@ def test_prior_year_contract_fails_on_raw_clone_and_succeeds_in_clone_stage(
     assert first.stage_receipts["impute"]["suboperators"][0][
         "formula_owned_outputs_removed"
     ] == {"person": ["employment_income_last_year"]}
+
+
+def test_real_preclone_prefix_runs_before_physical_clone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(housing_inputs_module, "QRF", _RowSensitiveRentQRF)
+    assembled = assemble_spines(
+        {
+            "asec": _real_pre_clone_source_frame(),
+            "acs": _source_frame(offset=100.0),
+        },
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    prepared = prepare_multispine_source_inputs_for_clone(
+        assembled,
+        acs_rent_donor=_rent_donor(),
+    )
+
+    assert prepared.receipt["operator_order"] == list(
+        _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER
+    )
+    suboperators = prepared.receipt["suboperators"]
+    assert [receipt["operator"] for receipt in suboperators] == list(
+        _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER
+    )
+    assert [receipt["family"] for receipt in suboperators] == [
+        "cps_carried",
+        "prior_year_income",
+        "relationship_inputs",
+        "housing_inputs",
+        "eligibility_inputs",
+    ]
+    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 5
+    assert [receipt["order_index"] for receipt in suboperators] == list(range(5))
+    assert prepared.receipt["transient_outputs_carried_through_clone"] == {
+        "person": ["employment_income_last_year"]
+    }
+
+    prepared_person = prepared.frame.table("person")
+    prepared_cps = prepared_person["PERIDNUM"].notna()
+    assert prepared_person.loc[prepared_cps, "age"].tolist() == [40, 10, 41, 11]
+    assert prepared_person.loc[
+        prepared_cps, "previous_year_income_available"
+    ].tolist() == [False, False, True, True]
+
+    cloned = clone_us_frame_for_puf_support(prepared.frame)
+    person = cloned.table("person")
+    cps = person["PERIDNUM"].notna()
+    heads = cps & person["is_household_head"].eq(True)
+    source_id = support_source_id_column("person")
+    rent_variants = person.loc[heads].groupby(source_id)["pre_subsidy_rent"].nunique()
+    assert rent_variants.eq(1).all()
+    assert set(person.loc[heads, "pre_subsidy_rent"]) == {1_000.0, 1_001.0}
+
+    parents = cps & person["A_LINENO"].eq(1)
+    assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
+    assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+
+
+def test_row_sensitive_prefix_exposes_clone_first_defects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(housing_inputs_module, "QRF", _RowSensitiveRentQRF)
+    donor = _rent_donor()
+
+    old_order = multispine_pool_module.derive_us_cps_carried_inputs(
+        _real_pre_clone_source_frame()
+    )
+    old_order = multispine_pool_module.with_us_prior_year_income_inputs(
+        old_order,
+        seed=0,
+        time_period=2024,
+    )
+    old_order = multispine_pool_module.with_us_relationship_inputs(
+        old_order,
+        seed=0,
+        time_period=2024,
+    )
+    old_order = clone_us_frame_for_puf_support(old_order)
+    old_order = multispine_pool_module.with_us_housing_inputs(
+        old_order,
+        seed=0,
+        time_period=2024,
+        acs_rent_donor=donor,
+    )
+    old_order = multispine_pool_module.with_us_eligibility_inputs(
+        old_order,
+        seed=0,
+        time_period=2024,
+    )
+
+    person = old_order.table("person")
+    source_id = support_source_id_column("person")
+    heads = person["is_household_head"].eq(True)
+    rent_variants = person.loc[heads].groupby(source_id)["pre_subsidy_rent"].nunique()
+    assert rent_variants.eq(2).all()
+    parents = person["A_LINENO"].eq(1)
+    assert person.loc[parents, "own_children_in_household"].eq(2.0).all()
 
 
 def test_every_source_operator_output_has_a_pool_owner() -> None:
