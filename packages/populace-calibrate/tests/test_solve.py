@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from populace.calibrate import (
+    CalibrationResult,
     L0RefitResult,
     Target,
     TargetSet,
@@ -23,6 +24,7 @@ from populace.calibrate import (
     effective_sample_size,
     refit_l0_selection,
     relative_error_loss,
+    select_exact_k,
 )
 from populace.calibrate import solve as solve_module
 from populace.calibrate.gates import hard_concrete_open_probability_threshold
@@ -90,6 +92,51 @@ def _l2_concentration_fixture() -> tuple[Frame, TargetSet, np.ndarray]:
         )
     )
     return frame, targets, initial_weights
+
+
+def _exact_k_design_fixture(
+    initial_weights: np.ndarray,
+    measure_values: np.ndarray,
+) -> tuple[Frame, TargetSet, CalibrationResult]:
+    """Build a tiny design-weighted frame and a valid L0 selection receipt."""
+    weights = np.asarray(initial_weights, dtype=np.float64)
+    measure = np.asarray(measure_values, dtype=np.float64)
+    n = len(weights)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": range(n),
+                    "adjudicated_measure": measure,
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="adjudicated",
+                entity="household",
+                value=float(weights @ measure),
+                measure="adjudicated_measure",
+                tolerance=0.01,
+            ),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        l0_lambda=1e-8,
+    )
+    return frame, targets, selection
 
 
 def test_method_prox_l1_selects_sparse_subset() -> None:
@@ -790,6 +837,15 @@ def test_refit_l0_selection_reuses_existing_selection(feasible_frame) -> None:
     assert result.frame.n("household") == selection.n_nonzero
     assert len(result.selected_entity_ids) == selection.n_nonzero
 
+    with pytest.raises(ValueError, match="only be provided with support and k"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support_inclusion_probabilities=np.ones(selection.n_nonzero),
+            epochs=1,
+        )
+
 
 def test_refit_l0_selection_accepts_gate_asserted_exact_k_support(
     feasible_frame,
@@ -825,12 +881,23 @@ def test_refit_l0_selection_accepts_gate_asserted_exact_k_support(
             epochs=10,
         )
 
+    with pytest.raises(ValueError, match="inclusion_probabilities are required"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support=support,
+            k=12,
+            epochs=10,
+        )
+
     result = refit_l0_selection(
         frame,
         targets,
         selection,
         support=support,
         k=12,
+        support_inclusion_probabilities=np.full(12, 0.1),
         epochs=80,
         seed=1,
         mass="conserve",
@@ -867,6 +934,7 @@ def test_exact_k_refit_conserves_full_pool_mass(feasible_frame) -> None:
         selection,
         support=np.array([0, 4, 8], dtype=np.int64),
         k=3,
+        support_inclusion_probabilities=np.full(3, 0.25),
         epochs=1,
         seed=0,
         mass="conserve",
@@ -897,6 +965,7 @@ def test_exact_k_refit_cap_uses_full_pool_expansion_weights(feasible_frame) -> N
         selection,
         support=np.array([1, 9], dtype=np.int64),
         k=2,
+        support_inclusion_probabilities=np.full(2, 1.0 / 6.0),
         epochs=10,
         learning_rate=0.001,
         seed=0,
@@ -909,6 +978,122 @@ def test_exact_k_refit_cap_uses_full_pool_expansion_weights(feasible_frame) -> N
         truths["population"], rel=1e-5
     )
     assert (result.weights <= 5.0 * result.initial_weights).all()
+
+
+def test_exact_k_refit_reaches_sols_inclusion_aware_cap_case() -> None:
+    """Sol's seed-113 case reaches [2, 1] only with the selected w/q baseline."""
+    weights = np.asarray([0.125, 1.0, 0.9375, 0.9375])
+    inclusion_probabilities = np.asarray([0.125, 0.5, 0.6875, 0.6875])
+    low_q_group = np.asarray([1.0, 0.0, 1.0, 1.0])
+    frame, targets, selection = _exact_k_design_fixture(weights, low_q_group)
+    support, _, selected_q = select_exact_k(
+        inclusion_probabilities,
+        k=2,
+        pi_hi=1.0,
+        seed=113,
+    )
+
+    np.testing.assert_array_equal(support, [0, 1])
+    np.testing.assert_array_equal(selected_q, [0.125, 0.5])
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support,
+        k=2,
+        support_inclusion_probabilities=selected_q,
+        epochs=100,
+        learning_rate=0.02,
+        seed=0,
+        mass="conserve",
+        max_weight_ratio=5.0,
+    )
+
+    np.testing.assert_array_equal(result.initial_weights, [1.0, 2.0])
+    np.testing.assert_array_equal(5.0 * result.initial_weights, [5.0, 10.0])
+    np.testing.assert_allclose(result.weights, [2.0, 1.0], rtol=0.0, atol=0.01)
+    assert abs(result.diagnostics[0].relative_error) < 0.005
+    assert result.diagnostics[0].within_tolerance is True
+
+    ratio_baseline = weights[support] * weights.sum() / weights[support].sum()
+    assert 5.0 * ratio_baseline[0] == pytest.approx(5.0 / 3.0)
+    assert (5.0 * ratio_baseline[0] - 2.0) / 2.0 == pytest.approx(-1.0 / 6.0)
+
+
+def test_exact_k_refit_unequal_q_allocates_baseline_and_cap_by_w_over_q() -> None:
+    weights = np.asarray([2.0, 3.0, 5.0, 10.0, 20.0])
+    inclusion_probabilities = np.asarray([0.2, 0.6, 0.8, 0.7, 0.7])
+    frame, targets, selection = _exact_k_design_fixture(
+        weights,
+        np.ones(len(weights)),
+    )
+    support, _, selected_q = select_exact_k(
+        inclusion_probabilities,
+        k=3,
+        pi_hi=1.0,
+        seed=13,
+    )
+
+    np.testing.assert_array_equal(support, [0, 1, 2])
+    # Reverse both arrays to prove the refit seam preserves their alignment
+    # while sorting the realized frame support back into pool order.
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support[::-1],
+        k=3,
+        support_inclusion_probabilities=selected_q[::-1],
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        max_weight_ratio=5.0,
+    )
+
+    expected = np.asarray([320.0 / 17.0, 160.0 / 17.0, 200.0 / 17.0])
+    ratio_baseline = weights[support] * weights.sum() / weights[support].sum()
+    np.testing.assert_allclose(result.initial_weights, expected, rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(
+        5.0 * result.initial_weights,
+        5.0 * expected,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    assert not np.allclose(result.initial_weights, ratio_baseline)
+
+
+def test_exact_k_refit_uniform_q_matches_ratio_rescale() -> None:
+    weights = np.asarray([2.0, 3.0, 5.0, 10.0, 20.0])
+    inclusion_probabilities = np.full(len(weights), 0.6)
+    frame, targets, selection = _exact_k_design_fixture(
+        weights,
+        np.ones(len(weights)),
+    )
+    support, _, selected_q = select_exact_k(
+        inclusion_probabilities,
+        k=3,
+        pi_hi=1.0,
+        seed=13,
+    )
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support,
+        k=3,
+        support_inclusion_probabilities=selected_q,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+    )
+
+    ratio_baseline = weights[support] * weights.sum() / weights[support].sum()
+    np.testing.assert_allclose(
+        result.initial_weights,
+        ratio_baseline,
+        rtol=1e-15,
+        atol=0.0,
+    )
 
 
 def test_exact_k_refit_calls_named_gate_after_subsetting(
@@ -945,6 +1130,7 @@ def test_exact_k_refit_calls_named_gate_after_subsetting(
             selection,
             support=np.array([0, 4, 8], dtype=np.int64),
             k=3,
+            support_inclusion_probabilities=np.full(3, 0.25),
             epochs=1,
         )
 

@@ -52,17 +52,17 @@ Six declared options, each a real feature (and each its own test):
   :func:`calibrate_l0_refit` path it applies to both stages unless
   ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
 
-An explicit exact-k frozen refit first benchmarks its selected records to the
-known full-pool weight total. The seam receives the realized support but not its
-marginal inclusion probabilities, so it uses the known-total ratio benchmark
-``w_i * sum_pool(w) / sum_support(w)`` rather than an unavailable
-Horvitz--Thompson ``w_i / q_i`` estimator. Interpreted as an estimator, this
-plain subset rescale is not design-unbiased when inclusion probabilities differ;
-it is the available ratio construction with the pool's known design mass as its
-control total. It preserves relative design weights within the realized support,
-makes ``mass="conserve"`` mean full-pool mass exactly, and gives
-``max_weight_ratio`` useful expansion headroom. The legacy thresholded L0 refit
-does not perform this normalization and remains unchanged.
+An explicit exact-k frozen refit requires the selected records' aligned marginal
+inclusion probabilities ``q_i`` and benchmarks them with Horvitz--Thompson
+weights ``w_i / q_i``. For selection indicator ``I_i``,
+``E[I_i * w_i / q_i] = w_i``, so their sum is design-unbiased for full-pool
+mass. Because that mass is known, the realized weights are subsequently
+projected to the exact control total while preserving the relative allocation
+defined by ``w_i / q_i``. This normalized benchmark is the optimizer's initial
+weight, so ``max_weight_ratio`` scales its inclusion-aware allocation. Constant
+``q`` reduces algebraically to the previous known-total ratio rescale. The
+legacy thresholded L0 refit does not perform this normalization and remains
+unchanged.
 """
 
 from __future__ import annotations
@@ -1848,15 +1848,24 @@ def _with_exact_k_full_pool_weights(
     subset: Frame,
     pool: Frame,
     weight_entity: str,
+    support_inclusion_probabilities: np.ndarray,
 ) -> Frame:
-    """Benchmark selected design weights to the known full-pool mass."""
+    """Set the selected support's normalized Horvitz--Thompson baseline.
+
+    For selection indicator ``I_i`` with marginal inclusion probability
+    ``q_i``, ``E[I_i * w_i / q_i] = w_i``. Thus the sum of ``I_i * w_i / q_i``
+    is an unbiased estimator of full-pool mass. The pool total is known here,
+    so the realized Horvitz--Thompson weights are subsequently projected to
+    that exact total while preserving their relative ``w_i / q_i`` allocation.
+    """
     selected = subset.resolve_weights(weight_entity)
     pool_total = pool.resolve_weights(weight_entity).total
+    inverse_probability_values = selected.values / support_inclusion_probabilities
     expanded_values = _project_to_total(
-        selected.values,
+        inverse_probability_values,
         pool_total,
         max_weight_ratio=None,
-        initial_weights=selected.values,
+        initial_weights=inverse_probability_values,
     )
     expanded = selected.with_values(expanded_values, kind=selected.kind)
     return subset.with_weights(
@@ -1865,8 +1874,8 @@ def _with_exact_k_full_pool_weights(
         mass=MassChange(
             factor=pool_total / selected.total,
             reason=(
-                "exact-k selected-support design weights ratio-normalized to "
-                "the known full-pool mass"
+                "exact-k selected-support Horvitz-Thompson weights normalized "
+                "to the known full-pool mass"
             ),
         ),
     )
@@ -1880,6 +1889,7 @@ def refit_l0_selection(
     weight_entity: str | None = None,
     support: np.ndarray | None = None,
     k: int | None = None,
+    support_inclusion_probabilities: np.ndarray | None = None,
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
@@ -1910,10 +1920,12 @@ def refit_l0_selection(
     ``selection.frame``. A record may have positive open probability while its
     deterministic L0 gate is closed; starting from the original frame keeps
     such a valid stage-2 draw available to ordinary log-weight calibration.
-    Its selected design weights are then ratio-normalized to the original
-    frame's full-pool mass, as described in this module's estimator note.
-    Omitting ``support`` and ``k`` leaves the existing thresholded path and its
-    starting weights unchanged.
+    Its selected design weights become ``w_i / q_i`` using the required,
+    support-aligned ``support_inclusion_probabilities``, then are normalized to
+    the original frame's known full-pool mass as described in this module's
+    estimator note. Omitting ``support``, ``k``, and the inclusion probabilities
+    explicitly selects the existing thresholded path and leaves its starting
+    weights unchanged.
     ``l2_lambda`` applies the soft concentration penalty to the refit itself —
     the stage that produces the shipped weights; the default ``0.0`` keeps the
     refit unpenalized.
@@ -1927,7 +1939,7 @@ def refit_l0_selection(
     the survey design", the natural choice when the candidate frame carries
     real design weights rather than a uniform reset. On the explicit exact-k
     path, the starting weights and design anchor instead use the original-frame
-    design weights after the same full-pool ratio normalization.
+    design weights after the same normalized Horvitz--Thompson projection.
     """
     if l2_anchor not in ("initial", "uniform", "design"):
         raise ValueError(
@@ -1952,16 +1964,50 @@ def refit_l0_selection(
             "refit."
         )
     if support is None:
+        if support_inclusion_probabilities is not None:
+            raise ValueError(
+                "support_inclusion_probabilities may only be provided with "
+                "support and k for an exact-k frozen-support refit."
+            )
         selected_mask = selection.weights > (
             _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
         )
         subset_source = selection.frame
+        selected_inclusion_probabilities = None
     else:
         selected_indices = assert_exact_k_support(
             support,
             k,
             pool_size=len(selection.weights),
         )
+        if support_inclusion_probabilities is None:
+            raise ValueError(
+                "support_inclusion_probabilities are required for an exact-k "
+                "frozen-support refit."
+            )
+        try:
+            supplied_probabilities = np.asarray(
+                support_inclusion_probabilities,
+                dtype=np.float64,
+            )
+        except (TypeError, ValueError):
+            raise ValueError(
+                "support_inclusion_probabilities must be a one-dimensional "
+                "numeric vector aligned with support."
+            ) from None
+        if supplied_probabilities.shape != selected_indices.shape:
+            raise ValueError(
+                "support_inclusion_probabilities must be one-dimensional and "
+                "aligned with support: "
+                f"got shape {supplied_probabilities.shape}, expected "
+                f"{selected_indices.shape}."
+            )
+        if not np.isfinite(supplied_probabilities).all():
+            raise ValueError("support_inclusion_probabilities must be finite.")
+        if ((supplied_probabilities <= 0.0) | (supplied_probabilities > 1.0)).any():
+            raise ValueError("support_inclusion_probabilities must lie in (0, 1].")
+        support_order = np.argsort(np.asarray(support), kind="stable")
+        selected_inclusion_probabilities = supplied_probabilities[support_order]
         selected_mask = np.zeros(len(selection.weights), dtype=bool)
         selected_mask[selected_indices] = True
         subset_source = frame
@@ -1978,7 +2024,14 @@ def refit_l0_selection(
             k,
             pool_size=realized_count,
         )
-        subset = _with_exact_k_full_pool_weights(subset, frame, refit_entity)
+        if selected_inclusion_probabilities is None:  # pragma: no cover
+            raise RuntimeError("exact-k refit lost its inclusion probabilities.")
+        subset = _with_exact_k_full_pool_weights(
+            subset,
+            frame,
+            refit_entity,
+            selected_inclusion_probabilities,
+        )
 
     refit_l2_anchor_weights = None
     if l2_anchor == "design":
