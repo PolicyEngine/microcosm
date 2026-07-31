@@ -1,29 +1,29 @@
-"""Completed fail-closed guard for source-spine-blind US operators.
+"""Tripwire against accidental spine-awareness, not an adversarial sandbox.
 
-The contract has three layers in every non-owner operator module:
+This guard enforces, and its tests certify, exactly these surfaces:
 
-1. Every column-access surface kind is visited, and every locally strict
-   occurrence resolves to static choices that are checked by name or fails
-   closed: subscripts and ``.loc`` reads/writes, attributes, ``getattr``,
-   canonical column factories, and direct or aliased pandas ``get``,
-   ``filter``, ``query``, and ``eval`` calls.
-2. Opacity is a violation at every strict surface; unresolved selectors,
-   expressions, aliases, and expanded arguments never create a silent state.
-3. Guarded column names are contraband anywhere statically visible in an
-   executable expression in a non-owner module, including calls, containers,
-   comparisons, returns, defaults, and assignments.
+- direct attribute, subscript, ``.loc``, and ``__getitem__`` reads;
+- canonical guarded-column factory calls, including aliases bound by simple
+  assignment or named expression;
+- ``query``, ``eval``, ``filter``, and ``get`` expression surfaces, failing
+  closed on opacity including hidden arguments and method aliases bound by
+  simple assignment or named expression;
+- one-level static indirection through constants, concatenation, f-strings,
+  ``str.format`` with full field syntax, ``%`` formatting, ``str * int``,
+  static ``.replace`` chains, and the static-receiver case methods ``lower``,
+  ``upper``, ``casefold``, ``title``, and ``capitalize``;
+- loop and comprehension propagation over static iterables; and
+- contraband guarded-name literals anywhere statically visible in non-owner
+  modules.
 
-A dynamic ``helper(df, column)`` can reach a guarded column only through its
-name, and that name must be written somewhere. Wherever it is statically
-written, layer 3 catches it using the same constant and string-composition
-resolution as the access checks. Therefore a typed parameter-to-parameter
-``df[column]`` subscript is deliberately permitted: its producing site bears
-the name check. Constructed-DataFrame and ``Frame.table(...)`` result
-subscripts outside local strict-receiver inference use the same composition
-boundary. No interprocedural proof is attempted. The single accepted residual
-is a guarded name materialized purely from runtime file, configuration, or
-environment content, where no static spelling exists to inspect. Annotations
-and docstrings are exempt because they are not dataflow.
+Two classes are out of scope by design, and naming them is the honest
+boundary. First, deliberately obfuscated construction -- reverse slicing,
+``format_map`` over dynamic maps, ``__doc__`` or ``__annotations__`` mining,
+container-indexed method aliases, and kin -- is controlled by code review and
+the adversarial merge-review process. A scanner that claimed to catch code
+written to deceive would be lying. Second, column names materialized purely
+from runtime data are controlled by the assembly receipt and runtime
+validation.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from __future__ import annotations
 import ast
 import fnmatch
 import re
+from itertools import product
 from pathlib import Path
 from string import Formatter
 
@@ -219,10 +220,13 @@ _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
 
 
 def _call_name(node: ast.Call) -> str | None:
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    if isinstance(node.func, ast.Attribute):
-        return node.func.attr
+    function = node.func
+    if isinstance(function, ast.NamedExpr):
+        return function.target.id
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
     return None
 
 
@@ -300,12 +304,18 @@ def _factory_aliases(tree: ast.AST) -> set[str]:
     while changed:
         changed = False
         for node in ast.walk(tree):
-            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            if isinstance(node, ast.NamedExpr):
+                value = node.value
+                targets = [node.target]
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                value = node.value
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+            else:
                 continue
-            value = node.value
             if not isinstance(value, ast.Name) or value.id not in aliases:
                 continue
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
                 if isinstance(target, ast.Name) and target.id not in aliases:
                     aliases.add(target.id)
@@ -412,6 +422,24 @@ def _static_string_shape(
             except (TypeError, ValueError):
                 return None
             return result if isinstance(result, str) else None
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"lower", "upper", "casefold", "title", "capitalize"}
+        and not node.args
+        and not node.keywords
+    ):
+        value = _static_string_shape(node.func.value, constants)
+        if value is None:
+            return None
+        case_method = {
+            "lower": str.lower,
+            "upper": str.upper,
+            "casefold": str.casefold,
+            "title": str.title,
+            "capitalize": str.capitalize,
+        }[node.func.attr]
+        return case_method(value)
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -713,15 +741,52 @@ def _static_string_list(
             if values is None:
                 return None
             for name in _assigned_names(generator.target):
-                local[name] = values
+                local[name] = _StaticStringChoices(values)
         return _static_string_values(node.elt, nested_constants)
     return None
+
+
+def _active_static_string_choices(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> tuple[tuple[str, _StaticStringChoices], ...]:
+    """Find loaded loop/comprehension choices used by one expression."""
+
+    choices: list[tuple[str, _StaticStringChoices]] = []
+    names = {
+        child.id
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
+    }
+    for name in sorted(names):
+        for scope in reversed(constants):
+            if name not in scope:
+                continue
+            value = scope[name]
+            if isinstance(value, _StaticStringChoices):
+                choices.append((name, value))
+            break
+    return tuple(choices)
 
 
 def _static_string_values(
     node: ast.AST,
     constants: list[dict[str, object]],
 ) -> tuple[str, ...] | None:
+    active_choices = _active_static_string_choices(node, constants)
+    if active_choices:
+        resolved: list[str] = []
+        names = tuple(name for name, _ in active_choices)
+        alternatives = tuple(tuple(values) for _, values in active_choices)
+        for selected in product(*alternatives):
+            values = _static_string_values(
+                node,
+                [*constants, dict(zip(names, selected, strict=True))],
+            )
+            if values is None:
+                return None
+            resolved.extend(values)
+        return tuple(dict.fromkeys(resolved))
     if isinstance(node, ast.JoinedStr):
         alternatives = _static_joined_string_values(node, constants)
         if alternatives is not None:
@@ -1976,50 +2041,16 @@ class _SourceReadVisitor(ast.NodeVisitor):
         else:
             self._visit_filter_call(node)
 
-    def visit_Call(self, node: ast.Call) -> None:
-        if (
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.attr in self._MUTATORS
-        ):
-            self._poison(node.func.value.id)
-        name = _call_name(node)
-        if name in self.factory_aliases:
-            self._record(node, f"call to {name}")
-        elif name == "getattr":
-            self._visit_getattr(node)
-        elif (method_alias := self._method_alias(node.func)) is not None:
-            if method_alias == _OPAQUE_METHOD_ALIAS:
-                self._record(
-                    node,
-                    "call through an opaque late-bound method alias (fail-closed)",
-                )
-            else:
-                method, strict_opacity = method_alias
-                self._visit_strict_method_call(
-                    node,
-                    method=method,
-                    strict_opacity=strict_opacity,
-                )
-        self.generic_visit(node)
+    def _visit_column_selector(
+        self,
+        node: ast.AST,
+        *,
+        receiver: ast.AST,
+        selector: ast.AST,
+    ) -> None:
+        """Apply identical selector checks to [] and direct __getitem__."""
 
-    def visit_Attribute(self, node: ast.Attribute) -> None:
-        if node.attr in _OPERATOR_SOURCE_COLUMNS:
-            self._record(node, f"attribute {node.attr!r}")
-        self.generic_visit(node)
-
-    def visit_Subscript(self, node: ast.Subscript) -> None:
-        selector = node.slice
-        column_container = self._column_container(node.value)
-        if (
-            isinstance(node.value, ast.Attribute)
-            and node.value.attr == "loc"
-            and isinstance(node.slice, ast.Tuple)
-            and node.slice.elts
-        ):
-            selector = node.slice.elts[-1]
-            column_container = self._column_container(node.value.value)
-
+        column_container = self._column_container(receiver)
         resolved = _static_string_values(selector, self.constants)
         column = _subscript_source_expression(
             selector,
@@ -2051,6 +2082,78 @@ class _SourceReadVisitor(ast.NodeVisitor):
                         node,
                         f"subscript using source column {item!r}",
                     )
+
+    def _visit_getitem_call(self, node: ast.Call) -> None:
+        """Treat a direct receiver.__getitem__(key) exactly like receiver[key]."""
+
+        receiver = node.func.value
+        if (
+            node.keywords
+            or len(node.args) != 1
+            or isinstance(node.args[0], ast.Starred)
+        ):
+            if self._column_container(receiver):
+                self._record(
+                    node,
+                    "__getitem__() with hidden or expanded arguments (fail-closed)",
+                )
+            return
+        self._visit_column_selector(
+            node,
+            receiver=receiver,
+            selector=node.args[0],
+        )
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.attr in self._MUTATORS
+        ):
+            self._poison(node.func.value.id)
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "__getitem__":
+            self._visit_getitem_call(node)
+        name = _call_name(node)
+        if name in self.factory_aliases:
+            self._record(node, f"call to {name}")
+        elif name == "getattr":
+            self._visit_getattr(node)
+        elif (method_alias := self._method_alias(node.func)) is not None:
+            if method_alias == _OPAQUE_METHOD_ALIAS:
+                self._record(
+                    node,
+                    "call through an opaque late-bound method alias (fail-closed)",
+                )
+            else:
+                method, strict_opacity = method_alias
+                self._visit_strict_method_call(
+                    node,
+                    method=method,
+                    strict_opacity=strict_opacity,
+                )
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr in _OPERATOR_SOURCE_COLUMNS:
+            self._record(node, f"attribute {node.attr!r}")
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        selector = node.slice
+        receiver = node.value
+        if (
+            isinstance(node.value, ast.Attribute)
+            and node.value.attr == "loc"
+            and isinstance(node.slice, ast.Tuple)
+            and node.slice.elts
+        ):
+            selector = node.slice.elts[-1]
+            receiver = node.value.value
+        self._visit_column_selector(
+            node,
+            receiver=receiver,
+            selector=selector,
+        )
         self.generic_visit(node)
 
 
@@ -2407,6 +2510,26 @@ def op(df):
     assert _source_spine_accesses(raw_spine_source_id)
 
 
+def test_named_expression_factory_alias_is_caught() -> None:
+    """A walrus-bound canonical factory remains a named factory call."""
+
+    immediate = """
+def f():
+    return (factory := support_channel_column)("person")
+"""
+    later = """
+def f():
+    (factory := support_channel_column)
+    return factory("person")
+"""
+
+    for source in (immediate, later):
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("call to factory" in access for access in accesses)
+        assert all("fail-closed" not in access for access in accesses)
+
+
 def test_source_spine_ast_guard_detects_pandas_string_reads() -> None:
     """Pandas string-based column APIs cannot bypass the structural guard."""
 
@@ -2688,6 +2811,32 @@ def test_contraband_names_reuse_static_expression_resolution(
     assert all("fail-closed" not in access for access in accesses)
 
 
+@pytest.mark.parametrize(
+    ("case_method", "expression"),
+    (
+        ("lower", '"PERSON_SUPPORT_CHANNEL".lower()'),
+        ("upper", '"pErSoN_sUpPoRt_cHaNnEl".upper().lower()'),
+        ("casefold", '"PERSON_SUPPORT_CHANNEL".casefold()'),
+        (
+            "title",
+            '"PERSON SUPPORT CHANNEL".title().replace(" ", "_").lower()',
+        ),
+        ("capitalize", '"PERSON_SUPPORT_CHANNEL".capitalize().lower()'),
+    ),
+)
+def test_static_case_methods_fold_guarded_names(
+    case_method: str,
+    expression: str,
+) -> None:
+    """Every documented zero-argument case method resolves static receivers."""
+
+    source = f"def f():\n    return sink({expression})\n"
+    accesses = _source_spine_accesses(source)
+    assert accesses, case_method
+    assert any("person_support_channel" in access for access in accesses)
+    assert all("fail-closed" not in access for access in accesses)
+
+
 def test_contraband_names_resolve_bound_and_enumerated_fragments() -> None:
     """Bound concatenation and static f-string choices expose exact names."""
 
@@ -2761,6 +2910,55 @@ def f():
 
     assert _source_spine_accesses(source) == ()
     assert _source_spine_accesses(later_expression)
+
+
+def test_documented_out_of_scope_evasions_are_not_caught() -> None:
+    """Pin deliberate obfuscation outside this accidental-awareness tripwire.
+
+    Code review and adversarial merge review, rather than this scanner, control
+    code written to deceive. Preserving these known misses keeps that boundary
+    visible and prevents claims that the scanner is an adversarial sandbox.
+    """
+
+    sources = {
+        "reverse slicing": """import pandas as pd
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def op(df):
+    column = "nosrep"[::-1] + "_" + "troppus"[::-1] + "_" + "lennahc"[::-1]
+    return select(df, column)
+""",
+        "format_map": """import pandas as pd
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def op(df):
+    column = "{a}_{b}".format_map({"a": "person", "b": "support_channel"})
+    return select(df, column)
+""",
+        "__doc__ mining": '''import pandas as pd
+def marker():
+    """person_support_channel"""
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def op(df):
+    return select(df, marker.__doc__)
+''',
+        "__annotations__ mining": """import pandas as pd
+class Marker:
+    person_support_channel: str
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def op(df):
+    return select(df, next(iter(Marker.__annotations__)))
+""",
+        "container-indexed strict alias": """def f(df, expr):
+    query = (df.query,)[0]
+    return query(expr)
+""",
+    }
+
+    for evasion, source in sources.items():
+        assert _source_spine_accesses(source) == (), evasion
 
 
 def test_attribute_store_surfaces_are_always_visited() -> None:
@@ -3014,6 +3212,61 @@ def f(df):
         assert any("fail-closed" in access for access in accesses)
 
 
+def test_dunder_getitem_matches_subscript_selector_checks() -> None:
+    """Direct __getitem__ calls have the same static and opacity boundary."""
+
+    equivalent_sources = (
+        (
+            """
+def f(df):
+    return df["person_support_channel"]
+""",
+            """
+def f(df):
+    return df.__getitem__("person_support_channel")
+""",
+            "person_support_channel",
+        ),
+        (
+            """
+def f(df, column):
+    return df[column]
+""",
+            """
+def f(df, column):
+    return df.__getitem__(column)
+""",
+            "fail-closed",
+        ),
+    )
+    benign_sources = (
+        """
+def f(df):
+    return df["age"]
+""",
+        """
+def f(df):
+    return df.__getitem__("age")
+""",
+        """
+def f(df: pd.DataFrame, column: str):
+    return df[column]
+""",
+        """
+def f(df: pd.DataFrame, column: str):
+    return df.__getitem__(column)
+""",
+    )
+
+    for subscript, dunder, expected in equivalent_sources:
+        for source in (subscript, dunder):
+            accesses = _source_spine_accesses(source)
+            assert accesses, source
+            assert any(expected in access for access in accesses)
+    for source in benign_sources:
+        assert _source_spine_accesses(source) == (), source
+
+
 def test_static_selector_extensions_are_shared_by_strict_pandas_calls() -> None:
     """Mult, percent formatting, and replace resolve at every strict surface."""
 
@@ -3190,6 +3443,46 @@ def f(df):
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("fail-closed" in item for item in accesses)
+
+
+def test_for_entity_format_repro_is_caught_by_name() -> None:
+    """Loop/comprehension format and f-string interpolation expand all choices."""
+
+    sources = {
+        "for-entity-format": """
+def f():
+    for entity in ("person", "household"):
+        sink("{}_support_channel".format(entity))
+""",
+        "for-entity-fstring": """
+def f():
+    for entity in ("person", "household"):
+        sink(f"{entity}_support_channel")
+""",
+        "comprehension-entity-format": """
+def f():
+    return [
+        "{}_support_channel".format(entity)
+        for entity in ("person", "household")
+    ]
+""",
+        "comprehension-entity-fstring": """
+def f():
+    return [
+        f"{entity}_support_channel"
+        for entity in ("person", "household")
+    ]
+""",
+    }
+
+    for construction, source in sources.items():
+        accesses = _source_spine_accesses(source)
+        for column in (
+            "person_support_channel",
+            "household_support_channel",
+        ):
+            assert any(column in access for access in accesses), construction
+        assert all("fail-closed" not in access for access in accesses)
 
 
 def test_format_fields_resolve_all_static_forms_by_name() -> None:
@@ -3448,7 +3741,7 @@ def test_strict_method_aliases_cover_expression_and_structural_bindings() -> Non
     guarded_sources = (
         """
 def f(df):
-    return (query := df.query)("person_support_channel == 1")
+    return (q := df.query)("person_support_channel == 1")
 """,
         """
 def f(df):
@@ -3459,7 +3752,7 @@ def f(df):
     benign_sources = (
         """
 def f(df):
-    return (query := df.query)("age >= 18")
+    return (q := df.query)("age >= 18")
 """,
         """
 def f(df):
@@ -3474,6 +3767,14 @@ def f(df):
         assert any("person_support_channel" in item for item in accesses)
     for source in benign_sources:
         assert _source_spine_accesses(source) == (), source
+
+    opaque = """
+def f(df, expr):
+    return (q := df.query)(expr)
+"""
+    opaque_accesses = _source_spine_accesses(opaque)
+    assert opaque_accesses
+    assert any("fail-closed" in access for access in opaque_accesses)
 
 
 def test_getattr_column_access_resolves_or_fails_closed() -> None:
@@ -3873,10 +4174,50 @@ def outer(df):
     return inner()
 """,
         ),
+        (
+            "round5-static-lower",
+            """
+import pandas as pd
+def select(df: pd.DataFrame, column: str):
+    return df[column]
+def op(df):
+    column = "PERSON_SUPPORT_CHANNEL".lower()
+    return select(df, column)
+""",
+        ),
+        (
+            "round5-for-entity-format",
+            """
+def f():
+    for entity in ("person", "household"):
+        sink("{}_support_channel".format(entity))
+""",
+        ),
+        (
+            "round5-dunder-getitem",
+            """
+def f(df, column):
+    return df.__getitem__(column)
+""",
+        ),
+        (
+            "round5-factory-walrus",
+            """
+def f():
+    return (factory := support_channel_column)("person")
+""",
+        ),
+        (
+            "round5-query-walrus",
+            """
+def f(df, expr):
+    return (q := df.query)(expr)
+""",
+        ),
     ),
 )
 def test_every_review_evasion_is_caught(evasion: str, source: str) -> None:
-    """Rounds 2-4 are one permanent resolve-or-fail-closed invariant."""
+    """Enumerated in-scope rounds 2-5 cases resolve or fail closed."""
 
     assert _source_spine_accesses(source), evasion
 
