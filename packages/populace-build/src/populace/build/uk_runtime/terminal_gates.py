@@ -113,7 +113,6 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
     "max_to_median_positive_weight",
     "top_1pct_weight_share",
 )
-_UK_AGGREGATOR_TOKEN = object()
 
 
 def _canonical_sha256(value: object) -> str:
@@ -430,6 +429,40 @@ def _gate_results_payload(results: Sequence[GateResult]) -> dict[str, object]:
     }
 
 
+def _unsigned_terminal_gate_attestation(
+    results: Sequence[GateResult],
+    *,
+    policy_sha256: str,
+    evidence_sha256: Mapping[str, str],
+) -> dict[str, object]:
+    """Return the provenance fields covered by the release signature."""
+
+    gates = _gate_results_payload(results)
+    return {
+        "schema_version": UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION,
+        "producer": UK_TERMINAL_GATE_PRODUCER,
+        "policy_sha256": policy_sha256,
+        "evaluated_gates": [result.name for result in results],
+        "evidence_sha256": dict(evidence_sha256),
+        "gate_results_sha256": _canonical_sha256(gates),
+    }
+
+
+def _terminal_gate_report_payload(
+    results: Sequence[GateResult],
+    attestation: Mapping[str, object],
+    *,
+    signature_available: bool,
+) -> dict[str, object]:
+    return {
+        "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
+        "enforced": True,
+        "passed": all(result.passed for result in results) and signature_available,
+        "gates": _gate_results_payload(results),
+        "attestation": dict(attestation),
+    }
+
+
 def _release_dataset_evidence_payload(
     results: Sequence[GateResult],
 ) -> dict[str, object]:
@@ -454,18 +487,15 @@ def _release_dataset_evidence_payload(
 
 @dataclass(frozen=True)
 class _AttestedUKTerminalGateReport(GateReport):
-    """Aggregator-minted report sealed against post-evaluation mutation."""
+    """Aggregator-signed report sealed against post-evaluation mutation."""
 
     policy_sha256: str
     evidence_sha256: Mapping[str, str]
-    _token: object = field(repr=False, compare=False)
+    attestation: Mapping[str, object]
+    _signing_error: RuntimeError | None = field(repr=False, compare=False)
     _sealed_sha256: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        if self._token is not _UK_AGGREGATOR_TOKEN:
-            raise TypeError(
-                "UK terminal reports can only be minted by uk_terminal_gate_report()."
-            )
         names = tuple(result.name for result in self.results)
         if len(names) != len(set(names)):
             raise ValueError("Attested UK terminal gate names must be unique.")
@@ -505,60 +535,77 @@ class _AttestedUKTerminalGateReport(GateReport):
                 f"stages; expected {expected_names}, got {list(names)}."
             )
         object.__setattr__(self, "evidence_sha256", MappingProxyType(evidence))
+        expected_unsigned = _unsigned_terminal_gate_attestation(
+            self.results,
+            policy_sha256=self.policy_sha256,
+            evidence_sha256=evidence,
+        )
+        attestation = dict(self.attestation)
+        expected_fields = {
+            *expected_unsigned,
+            "signature_algorithm",
+            "signing_key_sha256",
+            "signature",
+        }
+        if set(attestation) != expected_fields:
+            raise ValueError(
+                "UK terminal attestation must contain the complete signed schema."
+            )
+        if any(
+            attestation.get(name) != value for name, value in expected_unsigned.items()
+        ):
+            raise ValueError(
+                "UK terminal attestation must bind the evaluated gates and evidence."
+            )
+        if (
+            attestation.get("signature_algorithm")
+            != UK_TERMINAL_GATE_SIGNATURE_ALGORITHM
+        ):
+            raise ValueError("UK terminal attestation signature algorithm is invalid.")
+        signature_values = (
+            attestation.get("signing_key_sha256"),
+            attestation.get("signature"),
+        )
+        if self._signing_error is None:
+            if any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(character not in "0123456789abcdef" for character in value)
+                for value in signature_values
+            ):
+                raise ValueError(
+                    "Signed UK terminal attestations require lowercase sha256 values."
+                )
+        elif signature_values != (None, None):
+            raise ValueError(
+                "A failed UK terminal signature must not claim signature values."
+            )
+        object.__setattr__(self, "attestation", MappingProxyType(attestation))
         object.__setattr__(self, "_sealed_sha256", self._current_attestation_sha256())
 
     @property
     def evaluated_gates(self) -> tuple[str, ...]:
         return tuple(result.name for result in self.results)
 
-    def _unsigned_attestation(self) -> dict[str, object]:
-        gates = _gate_results_payload(self.results)
-        return {
-            "schema_version": UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION,
-            "producer": UK_TERMINAL_GATE_PRODUCER,
-            "policy_sha256": self.policy_sha256,
-            "evaluated_gates": list(self.evaluated_gates),
-            "evidence_sha256": dict(self.evidence_sha256),
-            "gate_results_sha256": _canonical_sha256(gates),
-        }
-
     def _current_attestation_sha256(self) -> str:
-        gates = _gate_results_payload(self.results)
         return _canonical_sha256(
-            {
-                "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
-                "enforced": True,
-                "passed": self.passed,
-                "gates": gates,
-                "attestation": self._unsigned_attestation(),
-            }
+            _terminal_gate_report_payload(
+                self.results,
+                self.attestation,
+                signature_available=self._signing_error is None,
+            )
         )
 
-    def attestation_payload(self, signing_key: bytes) -> dict[str, object]:
-        """Sign the sealed report or reject mutation/invalid key material."""
+    def report_payload(self) -> dict[str, object]:
+        """Return the sealed aggregator output without granting signing power."""
 
-        if self._token is not _UK_AGGREGATOR_TOKEN or (
-            self._current_attestation_sha256() != self._sealed_sha256
-        ):
+        if self._current_attestation_sha256() != self._sealed_sha256:
             raise ValueError("UK terminal gate attestation changed after evaluation.")
-        if len(signing_key) != 32:
-            raise ValueError("UK terminal gate signing keys must contain 32 bytes.")
-        unsigned_attestation = {
-            **self._unsigned_attestation(),
-            "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
-            "signing_key_sha256": hashlib.sha256(signing_key).hexdigest(),
-        }
-        unsigned_report = {
-            "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
-            "enforced": True,
-            "passed": self.passed,
-            "gates": _gate_results_payload(self.results),
-            "attestation": unsigned_attestation,
-        }
-        return {
-            **unsigned_attestation,
-            "signature": _terminal_gate_signature(signing_key, unsigned_report),
-        }
+        return _terminal_gate_report_payload(
+            self.results,
+            self.attestation,
+            signature_available=self._signing_error is None,
+        )
 
 
 def _fit_evidence_payload(
@@ -1231,11 +1278,42 @@ def uk_terminal_gate_report(
             maximum_max_to_median_ratio=maximum_max_to_median_ratio,
         )
     )
+    unsigned_attestation = _unsigned_terminal_gate_attestation(
+        results,
+        policy_sha256=policy_sha256,
+        evidence_sha256=evidence_sha256,
+    )
+    signing_error: RuntimeError | None = None
+    try:
+        signing_key = _terminal_gate_signing_key()
+    except RuntimeError as exc:
+        signing_key = None
+        signing_error = exc
+    attestation = {
+        **unsigned_attestation,
+        "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+        "signing_key_sha256": (
+            hashlib.sha256(signing_key).hexdigest() if signing_key is not None else None
+        ),
+    }
+    if signing_key is None:
+        attestation["signature"] = None
+    else:
+        unsigned_report = _terminal_gate_report_payload(
+            results,
+            attestation,
+            signature_available=True,
+        )
+        attestation["signature"] = _terminal_gate_signature(
+            signing_key,
+            unsigned_report,
+        )
     return _AttestedUKTerminalGateReport(
         results,
         policy_sha256=policy_sha256,
         evidence_sha256=evidence_sha256,
-        _token=_UK_AGGREGATOR_TOKEN,
+        attestation=attestation,
+        _signing_error=signing_error,
     )
 
 
@@ -1243,39 +1321,15 @@ def write_uk_terminal_gate_report(
     report: GateReport,
     path: str | Path,
 ) -> Path:
-    """Atomically write one signed report, persisting key failures first."""
+    """Atomically persist an aggregator-signed report without signing input."""
 
-    if type(report) is not _AttestedUKTerminalGateReport or (
-        report._token is not _UK_AGGREGATOR_TOKEN
-    ):
+    if type(report) is not _AttestedUKTerminalGateReport:
         raise TypeError(
             "UK terminal gate report writer requires the attested report "
             "returned by uk_terminal_gate_report()."
         )
-    signing_error: RuntimeError | None = None
-    try:
-        signing_key = _terminal_gate_signing_key()
-    except RuntimeError as exc:
-        signing_key = None
-        signing_error = exc
-    if signing_key is None:
-        attestation = {
-            **report._unsigned_attestation(),
-            "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
-            "signing_key_sha256": None,
-            "signature": None,
-        }
-    else:
-        attestation = report.attestation_payload(signing_key)
-
     output = Path(path)
-    payload = {
-        "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
-        "enforced": True,
-        "passed": report.passed and signing_error is None,
-        "gates": _gate_results_payload(report.results),
-        "attestation": attestation,
-    }
+    payload = report.report_payload()
     encoded = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
@@ -1284,8 +1338,8 @@ def write_uk_terminal_gate_report(
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
-    if signing_error is not None:
+    if report._signing_error is not None:
         raise RuntimeError(
-            f"{signing_error} Unsigned failed report was written to {output}."
-        ) from signing_error
+            f"{report._signing_error} Unsigned failed report was written to {output}."
+        ) from report._signing_error
     return output

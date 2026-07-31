@@ -465,9 +465,9 @@ def test_terminal_report_writer_persists_before_missing_signing_key_raise(
     monkeypatch,
     tmp_path,
 ) -> None:
+    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
     report = _report()
     output = tmp_path / "terminal_gates.json"
-    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
 
     with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
         write_uk_terminal_gate_report(report, output)
@@ -497,7 +497,7 @@ def test_terminal_report_writer_rejects_sol_composed_raw_parity_trio(
     assert not output.exists()
 
 
-def test_private_constructor_token_cannot_mint_sol_raw_parity_trio() -> None:
+def test_private_constructor_cannot_mint_sol_raw_parity_trio() -> None:
     """Even importing underscored internals cannot omit mandatory gates."""
 
     from populace.build.uk_runtime import terminal_gates
@@ -516,8 +516,33 @@ def test_private_constructor_token_cannot_mint_sol_raw_parity_trio() -> None:
                 "release_dataset": "a" * 64,
                 "release_parity": "b" * 64,
             },
-            _token=terminal_gates._UK_AGGREGATOR_TOKEN,
+            attestation={},
+            _signing_error=None,
         )
+
+
+def test_terminal_report_writer_cannot_resign_aggregator_output(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The public persistence seam is not a signing oracle for caller input."""
+
+    report = _report()
+    original_key_id = report.attestation["signing_key_sha256"]
+    original_signature = report.attestation["signature"]
+    monkeypatch.setenv(
+        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        base64.b64encode(b"x" * 32).decode(),
+    )
+
+    output = write_uk_terminal_gate_report(
+        report,
+        tmp_path / "terminal_gates.json",
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert payload["attestation"]["signing_key_sha256"] == original_key_id
+    assert payload["attestation"]["signature"] == original_signature
 
 
 def test_production_terminal_report_pins_policy_and_evidence_membership(
