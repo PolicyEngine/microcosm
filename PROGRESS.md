@@ -51,11 +51,19 @@ and partial structures propagated through bindings.
 - Added red controls for both audit findings plus an every-name nested-star
   opacity check. The two precision controls fail on the current implementation
   as expected; the nested-star check already passes.
+- Corrected partial-row handling so direct-name positions still receive their
+  exact column choices while unsupported subtargets are poisoned and keep the
+  overall binding partial. This removes stale outer constants without
+  weakening the fragment-bearing loop fallback, including star-only payloads.
+- Narrowed `dict(iterable)` resolution to fully resolved entries; any opaque
+  key/value now refuses construction instead of collapsing distinct runtime
+  keys through the shared sentinel, leaving the syntactic value-only fragment
+  fallback to catch guarded content.
+- The guard (121), focused graph battery (22), explicit `acs_transfer.py` and
+  `congressional_district_vintage.py` scans, and file-scoped ruff pass again.
 
 ## Next
 
-- Propagate direct-name columns while poisoning unsupported partial targets,
-  and reject opaque dict-constructor entries before materializing a mapping.
 - Re-run the full validation matrix after those corrections.
 - Restore `PROGRESS.md` exactly to `origin/main`, commit all coherent steps
   locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.

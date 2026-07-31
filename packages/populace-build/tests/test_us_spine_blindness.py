@@ -1182,15 +1182,28 @@ def _static_dict_value(
     ):
         return None
     entries = _static_literal_value(node.args[0], constants)
-    if entries is _OPAQUE_STATIC_VALUE:
-        structure = _static_structure(node.args[0], constants)
-        if structure is None:
-            return None
-        entries = structure
+    if _contains_opaque_static_value(entries):
+        return None
     try:
         return dict(entries)
     except (TypeError, ValueError):
         return None
+
+
+def _contains_opaque_static_value(value: object) -> bool:
+    """Whether a partially resolved structure contains the opaque sentinel."""
+
+    if value is _OPAQUE_STATIC_VALUE:
+        return True
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_contains_opaque_static_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(
+            _contains_opaque_static_value(item)
+            for pair in value.items()
+            for item in pair
+        )
+    return False
 
 
 def _static_dict_values_expression(node: ast.AST) -> ast.AST | None:
@@ -1562,6 +1575,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
         )
         self._bind([node.target], node.value, scope_index=scope_index)
 
+    def _poison_iteration_target_names(self, target: ast.AST) -> None:
+        """Bind every stored name below an unsupported target as opaque."""
+
+        for descendant in ast.walk(target):
+            if isinstance(descendant, ast.Name) and isinstance(
+                descendant.ctx, ast.Store
+            ):
+                self._bind_iteration_target(descendant, None)
+
     def _bind_iteration_rows(
         self,
         target: ast.AST,
@@ -1591,14 +1613,18 @@ class _SourceReadVisitor(ast.NodeVisitor):
         if not rows or not all(isinstance(row, (list, tuple)) for row in rows):
             return False, False
         if not isinstance(target, (ast.Tuple, ast.List)):
+            self._poison_iteration_target_names(target)
             return True, False
         elements = list(target.elts)
+        if not elements:
+            return True, False
         star_positions = [
             index
             for index, element in enumerate(elements)
             if isinstance(element, ast.Starred)
         ]
         if len(star_positions) > 1:
+            self._poison_iteration_target_names(target)
             return True, False
         if star_positions:
             # A star ANYWHERE absorbs mixed widths; names before it bind
@@ -1611,39 +1637,42 @@ class _SourceReadVisitor(ast.NodeVisitor):
         else:
             leading = elements
             trailing = []
-        if not (leading or trailing) or not all(
-            isinstance(element, ast.Name) for element in (*leading, *trailing)
-        ):
-            return True, False
         needed = len(leading) + len(trailing)
         if star_positions:
             if any(len(row) < needed for row in rows):
+                self._poison_iteration_target_names(target)
                 return True, False
         elif any(len(row) != len(leading) for row in rows):
+            self._poison_iteration_target_names(target)
             return True, False
 
         def _column_choices(values: tuple) -> tuple[str, ...] | None:
             return values if all(isinstance(value, str) for value in values) else None
 
+        fully_propagated = True
         for position, element in enumerate(leading):
-            self._bind_iteration_target(
-                element,
-                _column_choices(tuple(row[position] for row in rows)),
-            )
+            if isinstance(element, ast.Name):
+                self._bind_iteration_target(
+                    element,
+                    _column_choices(tuple(row[position] for row in rows)),
+                )
+            else:
+                self._poison_iteration_target_names(element)
+                fully_propagated = False
         for back, element in enumerate(reversed(trailing), start=1):
-            self._bind_iteration_target(
-                element,
-                _column_choices(tuple(row[-back] for row in rows)),
-            )
+            if isinstance(element, ast.Name):
+                self._bind_iteration_target(
+                    element,
+                    _column_choices(tuple(row[-back] for row in rows)),
+                )
+            else:
+                self._poison_iteration_target_names(element)
+                fully_propagated = False
         if not star_positions:
-            return True, True
+            return True, fully_propagated
         star_payload = elements[star_positions[0]].value
-        for descendant in ast.walk(star_payload):
-            if isinstance(descendant, ast.Name) and isinstance(
-                descendant.ctx, ast.Store
-            ):
-                self._bind_iteration_target(descendant, None)
-        return True, isinstance(star_payload, ast.Name)
+        self._poison_iteration_target_names(star_payload)
+        return True, fully_propagated and isinstance(star_payload, ast.Name)
 
     def _bind_iteration_target(
         self,
@@ -3504,6 +3533,29 @@ def f(df):
         sum(
             ".filter(items=...)" in access and "unresolvable" in access
             for access in nested_star_name_accesses
+        )
+        == 2
+    )
+    star_only_nested_payload = """
+entity = "age"
+middle = "income"
+ROWS = (("person", "support"),)
+
+
+def f(df):
+    return [
+        (
+            df.filter(items=[f"{entity}_support_channel"]),
+            df.filter(items=[f"person_{middle}_channel"]),
+        )
+        for *(entity, middle), in ROWS
+    ]
+"""
+    star_only_accesses = _source_spine_accesses(star_only_nested_payload)
+    assert (
+        sum(
+            ".filter(items=...)" in access and "unresolvable" in access
+            for access in star_only_accesses
         )
         == 2
     )
