@@ -21,6 +21,10 @@ the deprecated-but-supported local ACS release producer.
   the exact reviewer `.get()` and `.query()` mutations plus `.eval()`,
   `.filter(items=...)`, and `.loc[...]` regressions in `884c255`. The focused
   guard suite passes (11 tests) and Ruff is clean.
+- Reworked pool publication to invalidate first, stage H5 and diagnostics
+  under one run ID, publish them atomically, and write the readiness manifest
+  last in `b75f352`. The three reviewer interruption points now retain a
+  non-ready tombstone; focused H5/pool coverage passes (17 tests).
 - Established the required final constraint: this live checkpoint will be
   restored byte-for-byte to `origin/main` before handoff so no root journal
   ships in the PR diff.
@@ -30,6 +34,6 @@ the deprecated-but-supported local ACS release producer.
 - Finish tracing the producer/pool and legacy-release artifact contracts.
 - Add each reviewer repro as a failing regression before its implementation
   fix.
-- Fix and commit the remaining three blockers in coherent steps.
+- Fix and commit the raw-boundary and legacy-shim blockers.
 - Run the full `populace-build` suite and Ruff, write the external handoff, and
   restore `PROGRESS.md` to `origin/main`.
