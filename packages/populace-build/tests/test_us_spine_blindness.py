@@ -3786,6 +3786,92 @@ def f(dynamic):
         ), name
 
 
+def test_starred_iterable_wrappers_fail_closed_for_star_targets():
+    """Sol #583 round 13: iterable stars use the binder's fragment view."""
+
+    loop = """
+ROWS = (("person", "support", "channel"),)
+
+
+def f():
+    for entity, *parts in [*ROWS]:
+        sink(entity + "_" + "_".join(parts))
+"""
+    comprehension = """
+ROWS = (("person", "support", "channel"),)
+
+
+def f():
+    return [
+        entity + "_" + "_".join(parts)
+        for entity, *parts in [*ROWS]
+    ]
+"""
+    for source in (loop, comprehension):
+        accesses = _source_spine_accesses(source)
+        assert any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
+
+
+def test_partial_static_dict_merges_retain_entries_and_incompleteness():
+    """Sol #583 round 13: known merge entries survive dynamic siblings."""
+
+    loop = """
+BASE = {"person": "support_channel"}
+
+
+def f(dynamic):
+    for entity, suffix in {**BASE, "state": dynamic}.items():
+        sink(f"{entity}_{suffix}")
+"""
+    comprehension = """
+BASE = {"person": "support_channel"}
+
+
+def f(dynamic):
+    return [
+        f"{entity}_{suffix}"
+        for entity, suffix in {**BASE, "state": dynamic}.items()
+    ]
+"""
+    for source in (loop, comprehension):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
+
+
+def test_starred_static_rows_with_dynamic_tail_dual_report():
+    """Sol #583 round 13: starred rows retain the required dual report."""
+
+    loop = """
+ROWS = (("person", "support_channel"),)
+
+
+def f(dynamic):
+    for entity, suffix in [*ROWS, ("state", dynamic)]:
+        sink(f"{entity}_{suffix}")
+"""
+    comprehension = """
+ROWS = (("person", "support_channel"),)
+
+
+def f(dynamic):
+    return [
+        f"{entity}_{suffix}"
+        for entity, suffix in [*ROWS, ("state", dynamic)]
+    ]
+"""
+    for source in (loop, comprehension):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert any(
+            "unpropagatable target geometry" in access for access in accesses
+        ), source
+
+
 def test_dict_items_and_starred_row_iteration_are_in_scope():
     """Sol #583 round-7 module-local edges: static dict.items() and
     starred/mixed-width row unpacking are ordinary declarative code."""

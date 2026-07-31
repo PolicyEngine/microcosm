@@ -20,10 +20,12 @@ loop records.
 - Recovered the exact nine previously silent round-12 nested-structure mirrors
   from the authenticated reviewer transcript and committed them as explicit
   fail-closed regression fixtures.
+- Added the three exact round-13 loop repros and their comprehension mirrors,
+  pinning loop-only classification for the starred target and dual reports for
+  the partial dict merge and dynamic-tail starred rows.
 
 ## Next
 
-- Commit all three round-13 repros and their comprehension mirrors.
 - Route every probe through shared structure-based resolution, retaining
   resolvable dict-merge entries alongside opaque sentinels.
 - Run the guard file, precision and benign batteries, full `populace-build`
