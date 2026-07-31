@@ -6,27 +6,33 @@ fixed-size boundary draw. Records with hard-concrete open probability
 scores are converted to target first-order inclusion probabilities
 ``q_i = m * pi_i / sum(pi_boundary)``. A boundary vector that would require
 any ``q_i > 1`` fails as degenerate rather than silently clamping. A ``q_i``
-that is exactly one is a deterministic take-all implied by the proportional
-design, distinct from the caller's declared ``pi_hi`` certainty split. The
+within a few float64 ulps of one is normalized to a deterministic take-all
+implied by the proportional design, distinct from the caller's declared
+``pi_hi`` certainty split. The normalization keeps ``sum(q) = m`` to an
+ulp-scale bound; it does not promise a bit-exact floating-point identity. The
 full-pool census is also a deterministic special case.
 
 The boundary design is Sampford probability-proportional-to-size sampling
 without replacement. Sampford is used instead of naively conditioning
-Bernoulli draws because it preserves the feasible target first-order inclusion
-probabilities ``q`` exactly while fixing the draw size. The implementation uses
-the equivalent Sampford subset law
+Bernoulli draws because the mathematical design preserves the feasible target
+first-order inclusion probabilities ``q`` while fixing the draw size. The
+implementation uses the equivalent Sampford subset law
 
 ``P(S) proportional to sum(1 - q_i, i in S) * product(q_i / (1 - q_i), i in S)``.
 
 For bounded problems an exact suffix dynamic program draws directly from that
-subset law, including numerically near-deterministic designs. Larger problems
-use its equivalent accept/reject construction: generate Bernoulli ``q``
-subsets, condition on the requested count, and accept a candidate with
-probability ``sum(1 - q_i, i in S) / m``. That path has a deterministic attempt
-limit and fails closed rather than hanging. For a majority draw the algorithm
-samples the complementary Sampford design with targets ``1 - q``. See M. R.
-Sampford, "On sampling without replacement with unequal probabilities of
-selection", *Biometrika* 54 (1967), 499--513,
+subset law, including numerically near-deterministic designs. Its two float64
+tables cost ``16 * (N + 1) * (m + 1)`` bytes; the hard 256 MiB bound includes
+at most that many table cells. Larger problems use the equivalent accept/reject
+construction: generate Bernoulli ``q`` subsets, condition on the requested
+count, and accept a candidate with probability
+``sum(1 - q_i, i in S) / m``. Dispatch estimates both the Poisson-binomial
+count probability and this Sampford acceptance tilt, using the dynamic program
+for ill-conditioned designs when its memory bound permits. Rejection has a
+deterministic attempt limit and fails closed rather than hanging. For a
+majority draw the algorithm samples the complementary Sampford design with
+targets ``1 - q``. See M. R. Sampford, "On sampling without replacement with
+unequal probabilities of selection", *Biometrika* 54 (1967), 499--513,
 doi:10.1093/biomet/54.3-4.499.
 
 ``group_ids`` is deliberately only a seam in this PR. When supplied it must be
@@ -49,10 +55,16 @@ SelectionReceipt = dict[str, int | float | str]
 _INDEX_DTYPE = np.dtype("<i8")
 
 # Exact dynamic programming is robust for numerically concentrated designs but
-# costs O(pool_size * sample_size) time and memory. Larger designs use the
-# vectorized accept/reject law with a finite, fail-closed attempt budget.
-_SAMPFORD_DP_MAX_CELLS = 2_000_000
+# costs O(pool_size * sample_size) time and memory. Use it unconditionally for
+# small tables. For a poorly conditioned rejection design it may grow to the
+# hard memory ceiling: two float64 tables cost 16 bytes per suffix/sample-size
+# cell, so 256 MiB permits 16,777,216 cells (including the extra suffix row).
+_SAMPFORD_DP_ALWAYS_MAX_CELLS = 2_000_000
+_SAMPFORD_DP_MAX_BYTES = 256 * 1024 * 1024
+_SAMPFORD_DP_MAX_CELLS = _SAMPFORD_DP_MAX_BYTES // (2 * np.dtype(np.float64).itemsize)
 _SAMPFORD_MAX_REJECTION_ATTEMPTS = 8_192
+_SAMPFORD_REJECTION_SAFETY_FACTOR = 32.0
+_PROBABILITY_ONE_TOLERANCE = 8.0 * np.finfo(np.float64).eps
 
 
 def _integer(value: object, *, name: str, minimum: int = 0) -> int:
@@ -124,6 +136,10 @@ def _validate_group_ids(group_ids: np.ndarray | None, shape: tuple[int, ...]) ->
             "group_ids must be one-dimensional and aligned with pi: "
             f"got shape {groups.shape}, expected {shape}."
         )
+    if groups.dtype.kind in "fc" and np.isnan(groups).any():
+        raise ValueError("group_ids cannot contain missing identifiers.")
+    if groups.dtype.kind in "Mm" and np.isnat(groups).any():
+        raise ValueError("group_ids cannot contain missing identifiers.")
     if groups.dtype.kind == "O":
         for group_id in groups:
             if group_id is None:
@@ -180,14 +196,46 @@ def _sampford_core(
         included[excluded] = False
         return np.flatnonzero(included).astype(np.int64, copy=False)
 
-    if pool_size * (sample_size + 1) <= _SAMPFORD_DP_MAX_CELLS:
+    dp_cells = (pool_size + 1) * (sample_size + 1)
+    if dp_cells <= min(_SAMPFORD_DP_ALWAYS_MAX_CELLS, _SAMPFORD_DP_MAX_CELLS):
         return _sampford_dynamic_programming(probabilities, sample_size, rng)
 
     variance = float(np.sum(probabilities * (1.0 - probabilities), dtype=np.float64))
-    expected_count_scale = math.sqrt(2.0 * math.pi * max(variance, 1.0))
+    # The local central-limit estimate for P(sum(Bernoulli(q)) == m) is
+    # 1 / sqrt(2*pi*variance), capped at one for concentrated designs. The
+    # unconditional expected numerator of Sampford's acceptance tilt is the
+    # same variance, so variance / m is a useful conditioning estimate for the
+    # second factor. It deliberately recognizes the case where the requested
+    # count is likely but every likely subset has a vanishing acceptance tilt.
+    if variance > 0.0:
+        estimated_count_probability = min(
+            1.0,
+            1.0 / math.sqrt(2.0 * math.pi * variance),
+        )
+        estimated_tilt = min(1.0, variance / sample_size)
+        estimated_acceptance = estimated_count_probability * estimated_tilt
+    else:  # pragma: no cover - feasible interior probabilities have variance
+        estimated_acceptance = 0.0
+    expected_attempts = (
+        math.inf if estimated_acceptance <= 0.0 else 1.0 / estimated_acceptance
+    )
+
+    if expected_attempts > _SAMPFORD_MAX_REJECTION_ATTEMPTS:
+        if dp_cells <= _SAMPFORD_DP_MAX_CELLS:
+            return _sampford_dynamic_programming(probabilities, sample_size, rng)
+        dp_bytes = 2 * np.dtype(np.float64).itemsize * dp_cells
+        raise RuntimeError(
+            "Sampford sampling has no viable execution path: estimated "
+            f"rejection work ({expected_attempts:.6g} attempts) exceeds the "
+            f"{_SAMPFORD_MAX_REJECTION_ATTEMPTS}-attempt budget, and dynamic "
+            f"programming requires {dp_cells} cells ({dp_bytes} bytes), "
+            f"exceeding the {_SAMPFORD_DP_MAX_CELLS}-cell "
+            f"({_SAMPFORD_DP_MAX_BYTES}-byte) memory bound."
+        )
+
     max_attempts = min(
         _SAMPFORD_MAX_REJECTION_ATTEMPTS,
-        max(256, math.ceil(32.0 * expected_count_scale)),
+        max(256, math.ceil(_SAMPFORD_REJECTION_SAFETY_FACTOR * expected_attempts)),
     )
     for _ in range(max_attempts):
         selected = rng.random(pool_size) < probabilities
@@ -199,10 +247,16 @@ def _sampford_core(
         )
         if float(rng.random()) < acceptance_probability:
             return np.flatnonzero(selected).astype(np.int64, copy=False)
+    if dp_cells <= _SAMPFORD_DP_MAX_CELLS:
+        return _sampford_dynamic_programming(probabilities, sample_size, rng)
+    dp_bytes = 2 * np.dtype(np.float64).itemsize * dp_cells
     raise RuntimeError(
-        "Sampford sampling failed closed after "
-        f"{max_attempts} attempts for a numerically ill-conditioned boundary "
-        "design; revise pi_hi or k."
+        "Sampford rejection sampling exhausted its "
+        f"{max_attempts}-attempt budget (estimated acceptance probability "
+        f"{estimated_acceptance:.6g}); dynamic programming cannot recover "
+        f"because its {dp_cells} cells ({dp_bytes} bytes) exceed the "
+        f"{_SAMPFORD_DP_MAX_CELLS}-cell ({_SAMPFORD_DP_MAX_BYTES}-byte) "
+        "memory bound."
     )
 
 
@@ -311,19 +365,31 @@ def _draw_boundary(
             "positive boundary pi mass."
         )
     target_probabilities = positive_probabilities * (sample_size / total)
-    if (target_probabilities > 1.0).any():
+    if (target_probabilities > 1.0 + _PROBABILITY_ONE_TOLERANCE).any():
         raise ValueError(
             "degenerate boundary mass: proportional normalization would require "
             "a boundary inclusion probability greater than one; "
             "adjust pi_hi or k."
         )
 
-    # Close the float64 summation residual at a deterministic pivot. This is a
-    # one-ulp normalization correction, not probability clipping.
-    pivot = int(np.argmax(target_probabilities))
-    target_probabilities[pivot] += sample_size - float(
-        np.sum(target_probabilities, dtype=np.float64)
-    )
+    # Extract mathematical exact-one entries before correcting the float64 sum.
+    # Otherwise a positive summation residual can push the largest q just over
+    # one and falsely reject a feasible design. This tolerance only resolves
+    # ulp-scale representations of one; materially infeasible q values failed
+    # above. Apply the residual to an interior entry with room in its direction.
+    take_all = target_probabilities >= 1.0 - _PROBABILITY_ONE_TOLERANCE
+    target_probabilities[take_all] = 1.0
+    fractional_indices = np.flatnonzero(~take_all)
+    remaining_draw = sample_size - int(np.count_nonzero(take_all))
+    if remaining_draw and fractional_indices.size:
+        fractional = target_probabilities[fractional_indices]
+        residual = remaining_draw - math.fsum(float(value) for value in fractional)
+        if residual >= 0.0:
+            pivot_offset = int(np.argmin(fractional))
+        else:
+            pivot_offset = int(np.argmax(fractional))
+        pivot = int(fractional_indices[pivot_offset])
+        target_probabilities[pivot] += residual
     if (
         not np.isfinite(target_probabilities).all()
         or (target_probabilities <= 0.0).any()
@@ -334,10 +400,7 @@ def _draw_boundary(
             "probabilities exist."
         )
 
-    take_all = target_probabilities == 1.0
     take_all_indices = np.flatnonzero(take_all)
-    fractional_indices = np.flatnonzero(~take_all)
-    remaining_draw = sample_size - len(take_all_indices)
     if remaining_draw == 0:
         selected_positive = take_all_indices
     else:
