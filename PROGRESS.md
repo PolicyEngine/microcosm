@@ -6,6 +6,7 @@
 - Worktree: `/Users/maxghenis/PolicyEngine/_worktrees/populace-578-inc2`
 - Scope: code and small synthetic-fixture tests only; no dataset downloads or
   full-data builds.
+- Implementation status: complete and locally committed; no push performed.
 - Remote `main` was verified through GitHub at merge commit
   `6c14a0a8590402d1805a24e55ca5f017f39dc281`.
 - The sandbox blocked `git fetch` at DNS resolution. The local worktree is
@@ -13,6 +14,8 @@
   `956dc0a3dd5ceaffae0e2007d98dc951e773d389`, whose tree is the merge result.
   Rebase onto fetched `origin/main` remains a handoff prerequisite if network
   access is not restored in this lane.
+- A final fetch retry after implementation failed with the same
+  `Could not resolve host: github.com` error.
 
 ## Done
 
@@ -88,8 +91,17 @@
   transfer entrypoint after assembly and cloning, proves existing values remain
   untouched while missing peer-spine cells are imputed, and then reaches the
   unchanged terminal agreement gate.
+- Ruff passed across all 19 changed Python files, all changed files passed
+  formatting and whitespace checks, and 250 focused small-fixture tests passed
+  across the new pool path plus adjacent assembly, agreement, ACS, PUF QRF/tail,
+  take-up, QBI, H5-shim, and checkpoint contracts.
+- Confirmed the worktree is clean and every coherent implementation step is a
+  local commit.
 
 ## Next
 
-1. Run focused verification, update this committed ledger, and write
-   the external review worklog.
+1. From a network-enabled main session, fetch `origin/main` and rebase this
+   branch onto a tip at or past `6c14a0a`, then rerun the focused checks.
+2. Push/open the PR from the main session.
+3. Run the separately sized full-data build and calibration/k-ladder lane;
+   neither was executed here.
