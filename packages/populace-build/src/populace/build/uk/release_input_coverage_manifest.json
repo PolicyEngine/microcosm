@@ -4,7 +4,8 @@
   "filename": "populace_uk_2023.h5",
   "period": "2023",
   "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
-  "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
+  "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+  "tier": "frs"
  },
  "columns": {
   "a_and_e_visits": {
@@ -460,6 +461,7 @@
   "hmrc_spi_income": {
    "band_measure": "hmrc_spi_assessable_income",
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
    "calibration_permitted": false,
    "effective_mass_requirements": {
     "charitable_investment_gifts": {
@@ -530,7 +532,7 @@
     "full_frs_tei_band_unavailable"
    ],
    "source_manifest": "hmrc_income_source_stages.json",
-   "source_manifest_sha256": "1eff03a9aacf438331397a7c6d60e36271a21bf477c3269b208c241ac7d6c26f",
+   "source_manifest_sha256": "186fa5f974fe53f572c02b1c7e4a0f37edea7383841b2b29543f7e1b4b86a640",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023",

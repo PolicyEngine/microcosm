@@ -364,6 +364,7 @@ def restore_uk_hmrc_income_family(
     source_evidence = {
         "certified_candidate": {
             "filename": certified_candidate.filename,
+            "tier": certified_candidate.tier,
             "revision": certified_candidate.revision,
             "sha256": certified_candidate.sha256,
             "size_bytes": certified_candidate.size_bytes,

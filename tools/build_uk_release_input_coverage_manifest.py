@@ -31,6 +31,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.uk_runtime.release_identity import (
+    UK_RELEASE_TIER_FRS,
+    validate_uk_release_tier,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE_DIR = (
     REPO_ROOT / "packages" / "populace-build" / "src" / "populace" / "build" / "uk"
@@ -48,6 +53,7 @@ CANDIDATE_HF_COMMIT = "a75a9a831d6b07aaffbd09713f2a1124f5c0f08f"
 CANDIDATE_SHA256 = "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
 CANDIDATE_SIZE_BYTES = 1_315_880_118
 CANDIDATE_PERIOD = "2023"
+CANDIDATE_TIER = UK_RELEASE_TIER_FRS
 CANDIDATE_URL = (
     f"https://huggingface.co/datasets/{CANDIDATE_REPO_ID}/resolve/"
     f"{CANDIDATE_REVISION}/{CANDIDATE_FILENAME}"
@@ -525,6 +531,7 @@ def build_candidate_evidence(
             "size_bytes": CANDIDATE_SIZE_BYTES,
             "url": CANDIDATE_URL,
             "period": CANDIDATE_PERIOD,
+            "tier": CANDIDATE_TIER,
         },
         "engine": {
             "package": "policyengine-uk",
@@ -569,9 +576,7 @@ def build_known_gaps(
             f"surface: {missing_restored}."
         )
     gaps = sorted(
-        name
-        for name in surface - restored
-        if float(shares.get(name, 0.0)) < floor
+        name for name in surface - restored if float(shares.get(name, 0.0)) < floor
     )
     return {
         "schema_version": 1,
@@ -610,6 +615,15 @@ def _validate_known_gaps(
     if not isinstance(evidence, dict):
         raise ValueError(
             "efrs_parity_known_gaps.json: 'candidate_evidence' must be an object."
+        )
+    candidate_source = evidence.get("source")
+    if not isinstance(candidate_source, dict):
+        raise ValueError("candidate_evidence.source must be an object.")
+    candidate_tier = validate_uk_release_tier(candidate_source.get("tier"))
+    if candidate_tier != CANDIDATE_TIER:
+        raise ValueError(
+            "Candidate source tier disagrees with the bundled UKDS-licensed "
+            f"FRS lineage: {candidate_tier!r}."
         )
     if raw_restored != RESTORED_REQUIRED_COLUMN_EVIDENCE:
         raise ValueError(
@@ -678,9 +692,7 @@ def _validate_known_gaps(
             f"mass floor: {insufficient_restorations}."
         )
     expected = {
-        name
-        for name in surface - restored
-        if float(effective_nondefault[name]) < floor
+        name for name in surface - restored if float(effective_nondefault[name]) < floor
     }
     actual = set(raw_gaps)
     if actual != expected:
@@ -768,6 +780,7 @@ def build_manifest(
             "revision": str(candidate_source["revision"]),
             "sha256": str(candidate_source["sha256"]),
             "period": str(candidate_source["period"]),
+            "tier": validate_uk_release_tier(candidate_source["tier"]),
         },
         "restoration_evidence": {
             "derived_from": KNOWN_GAPS_PATH.name,
@@ -775,7 +788,9 @@ def build_manifest(
         },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "family_coverage": {
-            "hmrc_spi_income": _hmrc_family_coverage_contract(),
+            "hmrc_spi_income": _hmrc_family_coverage_contract(
+                candidate_source=candidate_source
+            ),
         },
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "
@@ -798,7 +813,10 @@ def build_manifest(
     }
 
 
-def _hmrc_family_coverage_contract() -> dict[str, Any]:
+def _hmrc_family_coverage_contract(
+    *,
+    candidate_source: dict[str, Any],
+) -> dict[str, Any]:
     payload = _load(HMRC_SOURCE_STAGES_PATH)
     stages = payload.get("stages")
     if not isinstance(stages, list) or len(stages) != 1:
@@ -808,6 +826,18 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
     stage = stages[0]
     if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
         raise ValueError(f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage.")
+    base_candidate = stage.get("base_candidate")
+    if not isinstance(base_candidate, dict):
+        raise ValueError(
+            f"{HMRC_SOURCE_STAGES_PATH}: base_candidate must be an object."
+        )
+    source_tier = validate_uk_release_tier(candidate_source.get("tier"))
+    base_candidate_tier = validate_uk_release_tier(base_candidate.get("tier"))
+    if base_candidate_tier != source_tier:
+        raise ValueError(
+            "HMRC source-stage base candidate tier disagrees with the certified "
+            f"candidate evidence: {base_candidate_tier!r} != {source_tier!r}."
+        )
     artifacts = {
         artifact["role"]: artifact
         for artifact in stage.get("artifacts", [])
@@ -878,7 +908,8 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
         "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
-        "base_candidate_sha256": str(stage["base_candidate"]["sha256"]),
+        "base_candidate_sha256": str(base_candidate["sha256"]),
+        "base_candidate_tier": base_candidate_tier,
         "source_vintages": {
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
             "hmrc_surface": str(artifacts["published_fact_surface"]["vintage"]),

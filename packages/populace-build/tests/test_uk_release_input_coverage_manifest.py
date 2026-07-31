@@ -44,6 +44,7 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
     assert evidence["source"]["revision"] == (
         "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
     )
+    assert evidence["source"]["tier"] == "frs"
     assert set(evidence["nondefault_shares"]) == set(reference["nonzero_shares"])
     assert set(evidence["effective_nondefault_mass_shares"]) == set(
         reference["nonzero_shares"]
@@ -92,8 +93,9 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     for name, evidence in gaps["restored_required_columns"].items():
         assert evidence["stage"] == "hmrc_spi_income"
         assert evidence["support_channel"] == "spi"
-        assert evidence["effective_signal_mass_share"] >= (
-            evidence["minimum_nondefault_mass_share"]
+        assert (
+            evidence["effective_signal_mass_share"]
+            >= (evidence["minimum_nondefault_mass_share"])
         ), name
 
 
@@ -134,13 +136,13 @@ def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
     assert all(
-        entry == {"status": "required"}
-        for entry in manifest["columns"].values()
+        entry == {"status": "required"} for entry in manifest["columns"].values()
     )
     assert manifest["restoration_evidence"] == {
         "derived_from": "efrs_parity_known_gaps.json",
         "required_columns": ["charitable_investment_gifts", "gift_aid"],
     }
+    assert manifest["candidate_evidence"]["tier"] == "frs"
     assert manifest["schema_version"] == 3
     assert manifest["effective_mass_coverage"] == {
         "weight_source": "household_weight",
@@ -162,6 +164,7 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
     assert family["restoration_status"] == "adjudicated_partial_replay"
     assert family["source_manifest"] == "hmrc_income_source_stages.json"
     assert len(family["source_manifest_sha256"]) == 64
+    assert family["base_candidate_tier"] == "frs"
     assert family["source_vintages"] == {
         "spi_donor": "2022-23",
         "hmrc_surface": "2023-24",
@@ -252,6 +255,31 @@ def test_manifest_generation_rejects_candidate_entity_mismatch() -> None:
 
     with pytest.raises(ValueError, match="owning-entity evidence disagrees"):
         generator.build_manifest(reference=reference, known_gaps_payload=gaps)
+
+
+def test_manifest_generation_rejects_candidate_tier_drift() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    gaps = _resource("efrs_parity_known_gaps.json")
+    gaps["candidate_evidence"]["source"]["tier"] = "cps-transfer"
+
+    with pytest.raises(ValueError, match="bundled UKDS-licensed FRS lineage"):
+        generator.build_manifest(reference=reference, known_gaps_payload=gaps)
+
+
+def test_hmrc_family_rejects_source_stage_tier_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    generator = _load_generator()
+    source_stages = _resource("hmrc_income_source_stages.json")
+    source_stages["stages"][0]["base_candidate"]["tier"] = "cps-transfer"
+    drifted = tmp_path / "hmrc_income_source_stages.json"
+    drifted.write_text(json.dumps(source_stages), encoding="utf-8")
+    monkeypatch.setattr(generator, "HMRC_SOURCE_STAGES_PATH", drifted)
+
+    with pytest.raises(ValueError, match="disagrees with the certified candidate"):
+        generator._hmrc_family_coverage_contract(candidate_source={"tier": "frs"})
 
 
 def test_candidate_signal_helpers_reject_null_and_blank_only_columns() -> None:

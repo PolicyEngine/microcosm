@@ -587,6 +587,9 @@ def test_restoration_runs_replay_without_calibration_and_emits_208_facts(
     assert len(restored.replay_report.facts) == HMRC_SPI_TARGET_RECORD_COUNT == 208
     assert restored.replay_report.summary["excluded_with_fence"] == 208
     assert restored.replay_report.summary["exact_pass"] == 0
+    assert restored.replay_report.source_evidence["certified_candidate"]["tier"] == (
+        "frs"
+    )
     evidence = restored.evidence()
     assert evidence["calibration"] == {
         "performed": False,

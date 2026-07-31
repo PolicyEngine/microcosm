@@ -291,6 +291,7 @@ from populace.build.uk_runtime.release_identity import (
     UK_RELEASE_TIER_FRS,
     UK_RELEASE_TIERS,
     UKReleaseIdentity,
+    apply_uk_release_identity,
     format_uk_release_id,
     validate_uk_release_tier,
 )
@@ -557,6 +558,7 @@ __all__ = [
     "VINTAGES",
     "align_area_targets",
     "area_support_summary",
+    "apply_uk_release_identity",
     "apply_uk_source_lineage_modulus",
     "area_groups_from_codes",
     "assemble_uk_oa_ladder",

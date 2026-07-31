@@ -23,6 +23,7 @@ from populace.data import (
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
+UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -493,6 +494,30 @@ def _write_json_and_refresh_manifest_hash(
     manifest = json.loads(manifest_path.read_text())
     manifest["artifacts"][artifact_key]["sha256"] = _sha256(release_dir / filename)
     manifest_path.write_text(json.dumps(manifest))
+
+
+def _write_uk_release_dir(
+    tmp_path: Path,
+    release_id: str,
+    *,
+    tier: str | None = None,
+) -> Path:
+    directory = tmp_path / "releases" / release_id
+    directory.mkdir(parents=True)
+    (directory / "build_manifest.json").write_text(
+        json.dumps(_build_manifest(release_id))
+    )
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
+    )
+    manifest = _release_manifest(
+        release_id,
+        diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
+    )
+    if tier is not None:
+        manifest["tier"] = tier
+    (directory / "release_manifest.json").write_text(json.dumps(manifest))
+    return directory
 
 
 def _split_microdata_artifact_entry(release_id: str, key: str) -> dict:
@@ -1059,27 +1084,52 @@ def test_each_required_file_is_named_when_missing(
 
 
 def test_non_us_release_does_not_require_us_source_coverage(tmp_path: Path) -> None:
-    directory = tmp_path / "releases" / UK_RELEASE_ID
-    directory.mkdir(parents=True)
-    (directory / "build_manifest.json").write_text(
-        json.dumps(_build_manifest(UK_RELEASE_ID))
-    )
-    (directory / "calibration_diagnostics.json").write_text(
-        json.dumps(_calibration_diagnostics())
-    )
-    (directory / "release_manifest.json").write_text(
-        json.dumps(
-            _release_manifest(
-                UK_RELEASE_ID,
-                diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
-            )
-        )
-    )
+    directory = _write_uk_release_dir(tmp_path, UK_RELEASE_ID)
 
     validate_release_dir(directory)
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+def test_exact_k_uk_release_requires_and_accepts_ratified_tier(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+
+    validate_release_dir(directory)
+
+
+@pytest.mark.parametrize("tier", ["public", "true", "full"])
+def test_exact_k_uk_release_rejects_unratified_tier(
+    tmp_path: Path,
+    tier: str,
+) -> None:
+    release_id = f"populace-uk-2023-{tier}-k535080"
+    directory = _write_uk_release_dir(tmp_path, release_id, tier=tier)
+
+    with pytest.raises(ReleaseContractError, match="unratified tier"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_missing_manifest_tier(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID)
+
+    with pytest.raises(ReleaseContractError, match="top-level 'tier'"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_tier_mismatch(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="cps-transfer",
+    )
+
+    with pytest.raises(ReleaseContractError, match="release id names tier 'frs'"):
+        validate_release_dir(directory)
 
 
 def test_the_1abddeb_shape_is_rejected(release_dir: Path) -> None:

@@ -100,6 +100,10 @@ US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_UK_EXACT_K_RELEASE_ID_RE = re.compile(
+    r"^populace-uk-(?P<year>[1-9][0-9]*)-(?P<tier>.+)-k(?P<record_count>[1-9][0-9]*)$"
+)
+_UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
@@ -328,6 +332,7 @@ def _check_release_manifest(
             f"{build['build_id']!r} but the release directory is named "
             f"{release_id!r}."
         )
+    _check_uk_exact_k_release_identity(manifest, release_id, failures)
     if isinstance(build, Mapping):
         built_with_core_package = build.get("built_with_core_package")
         built_with_model_package = build.get("built_with_model_package")
@@ -445,6 +450,44 @@ def _check_release_manifest(
                         f"points to artifact {national!r}, whose kind is "
                         f"{default_artifact.get('kind')!r}, not 'microdata'."
                     )
+
+
+def _check_uk_exact_k_release_identity(
+    manifest: Mapping,
+    release_id: str,
+    failures: list[str],
+) -> None:
+    """Enforce source-tier identity only for the canonical UK exact-k shape."""
+
+    match = _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id)
+    if match is None:
+        # Timestamped/hash-based UK ids predate the tier contract. They retain
+        # the historical validation path and do not need to be re-cut.
+        return
+
+    release_id_tier = match.group("tier")
+    if release_id_tier not in _UK_RELEASE_TIERS:
+        failures.append(
+            "release_manifest.json exact-k UK release id has unratified tier "
+            f"{release_id_tier!r}; expected one of {sorted(_UK_RELEASE_TIERS)}."
+        )
+
+    manifest_tier = manifest.get("tier")
+    if manifest_tier is None:
+        failures.append(
+            "release_manifest.json exact-k UK releases require top-level 'tier'."
+        )
+        return
+    if not isinstance(manifest_tier, str) or manifest_tier not in _UK_RELEASE_TIERS:
+        failures.append(
+            "release_manifest.json exact-k UK 'tier' must be one of "
+            f"{sorted(_UK_RELEASE_TIERS)}, got {manifest_tier!r}."
+        )
+    if isinstance(manifest_tier, str) and manifest_tier != release_id_tier:
+        failures.append(
+            f"release_manifest.json top-level 'tier' is {manifest_tier!r} but "
+            f"the release id names tier {release_id_tier!r}."
+        )
 
 
 def _check_us_release_has_no_split_microdata_artifacts(

@@ -33,6 +33,10 @@ from populace.build.uk_runtime.parity_reference import (
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
 )
+from populace.build.uk_runtime.release_identity import (
+    UK_RELEASE_TIER_FRS,
+    validate_uk_release_tier,
+)
 
 __all__ = [
     "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
@@ -204,6 +208,32 @@ def _resource_payload(resource: str) -> Mapping[str, Any]:
     return payload
 
 
+def _source_stage_base_candidate_tier(
+    source_manifest: str,
+    *,
+    stage_name: str,
+) -> str:
+    payload = _resource_payload(source_manifest)
+    stages = payload.get("stages")
+    if not isinstance(stages, list):
+        raise ValueError(f"{source_manifest}: 'stages' must be a JSON list.")
+    matching = [
+        stage
+        for stage in stages
+        if isinstance(stage, Mapping) and stage.get("stage") == stage_name
+    ]
+    if len(matching) != 1:
+        raise ValueError(
+            f"{source_manifest}: expected exactly one {stage_name!r} stage."
+        )
+    base_candidate = matching[0].get("base_candidate")
+    if not isinstance(base_candidate, Mapping):
+        raise ValueError(
+            f"{source_manifest}: stage {stage_name!r} needs base_candidate."
+        )
+    return validate_uk_release_tier(base_candidate.get("tier"))
+
+
 def _parse_family_coverage(
     raw: object,
     *,
@@ -257,6 +287,14 @@ def _parse_family_coverage(
                 f"{resource}: family {name!r} needs a lowercase SHA-256 "
                 "for source_manifest_sha256."
             )
+        try:
+            base_candidate_tier = validate_uk_release_tier(
+                raw_family.get("base_candidate_tier")
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"{resource}: family {name!r} has invalid base_candidate_tier: {exc}"
+            ) from exc
         output_weight_kind = str(raw_family.get("output_weight_kind", "")).strip()
         if not output_weight_kind:
             raise ValueError(
@@ -330,6 +368,7 @@ def _parse_family_coverage(
             "stage": stage,
             "source_manifest": source_manifest,
             "source_manifest_sha256": source_manifest_sha256,
+            "base_candidate_tier": base_candidate_tier,
             "output_weight_kind": output_weight_kind,
             "required_mass_change_reason": required_mass_change_reason,
             "effective_mass_requirements": requirements,
@@ -348,6 +387,12 @@ def load_uk_release_input_coverage_manifest(
         raise ValueError(f"{resource}: 'reference' must be a JSON object.")
     if not isinstance(raw_candidate, Mapping):
         raise ValueError(f"{resource}: 'candidate_evidence' must be a JSON object.")
+    try:
+        candidate_tier = validate_uk_release_tier(raw_candidate.get("tier"))
+    except ValueError as exc:
+        raise ValueError(
+            f"{resource}: candidate_evidence.tier is invalid: {exc}"
+        ) from exc
 
     raw_effective_mass = payload.get("effective_mass_coverage")
     if not isinstance(raw_effective_mass, Mapping):
@@ -389,7 +434,8 @@ def load_uk_release_input_coverage_manifest(
         reference={str(key): str(value) for key, value in raw_reference.items()},
         candidate_evidence={
             str(key): str(value) for key, value in raw_candidate.items()
-        },
+        }
+        | {"tier": candidate_tier},
         columns=tuple(columns),
         family_coverage=_parse_family_coverage(
             payload.get("family_coverage"),
@@ -1095,6 +1141,18 @@ def assert_uk_release_input_coverage_manifest_current(
             "policy; regenerate the manifest or review the code and manifest "
             "together."
         )
+    try:
+        candidate_tier = validate_uk_release_tier(
+            manifest.candidate_evidence.get("tier")
+        )
+    except ValueError as exc:
+        candidate_tier = None
+        failures.append(f"candidate_evidence.tier is invalid: {exc}")
+    if candidate_tier is not None and candidate_tier != UK_RELEASE_TIER_FRS:
+        failures.append(
+            "candidate_evidence.tier must be 'frs' for the bundled "
+            f"UKDS-licensed candidate, got {candidate_tier!r}."
+        )
     declared = set(manifest.declared_columns)
     surface = set(_efrs_populated_layers())
     reference_entities = _efrs_input_entities()
@@ -1120,8 +1178,7 @@ def assert_uk_release_input_coverage_manifest_current(
             )
         elif name not in manifest.required_columns:
             failures.append(
-                f"{name}: restored enhanced-FRS reference input must remain "
-                "required."
+                f"{name}: restored enhanced-FRS reference input must remain required."
             )
 
     for family_name, family in sorted(manifest.family_coverage.items()):
@@ -1133,6 +1190,39 @@ def assert_uk_release_input_coverage_manifest_current(
             failures.append(
                 f"{family_name}: {source_manifest} changed without regenerating "
                 "release_input_coverage_manifest.json."
+            )
+        try:
+            family_tier = validate_uk_release_tier(family.get("base_candidate_tier"))
+        except ValueError as exc:
+            family_tier = None
+            failures.append(f"{family_name}: base_candidate_tier is invalid: {exc}")
+        try:
+            source_stage_tier = _source_stage_base_candidate_tier(
+                source_manifest,
+                stage_name=str(family["stage"]),
+            )
+        except (OSError, ValueError) as exc:
+            source_stage_tier = None
+            failures.append(
+                f"{family_name}: cannot validate source-stage candidate tier: {exc}"
+            )
+        if (
+            candidate_tier is not None
+            and family_tier is not None
+            and candidate_tier != family_tier
+        ):
+            failures.append(
+                f"{family_name}: base_candidate_tier {family_tier!r} disagrees "
+                f"with candidate_evidence.tier {candidate_tier!r}."
+            )
+        if (
+            family_tier is not None
+            and source_stage_tier is not None
+            and family_tier != source_stage_tier
+        ):
+            failures.append(
+                f"{family_name}: base_candidate_tier {family_tier!r} disagrees "
+                f"with {source_manifest} tier {source_stage_tier!r}."
             )
         requirements = family.get("effective_mass_requirements", {})
         family_status = str(family["status"])
