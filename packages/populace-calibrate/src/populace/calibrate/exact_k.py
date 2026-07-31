@@ -18,11 +18,15 @@ the equivalent Sampford subset law
 
 ``P(S) proportional to sum(1 - q_i, i in S) * product(q_i / (1 - q_i), i in S)``.
 
-It generates Bernoulli ``q`` subsets, conditions on the requested count, and
-accepts a candidate with probability ``sum(1 - q_i, i in S) / m``. For a
-majority draw it samples the complementary Sampford design with targets
-``1 - q``. See M. R. Sampford, "On sampling without replacement with unequal
-probabilities of selection", *Biometrika* 54 (1967), 499--513,
+For bounded problems an exact suffix dynamic program draws directly from that
+subset law, including numerically near-deterministic designs. Larger problems
+use its equivalent accept/reject construction: generate Bernoulli ``q``
+subsets, condition on the requested count, and accept a candidate with
+probability ``sum(1 - q_i, i in S) / m``. That path has a deterministic attempt
+limit and fails closed rather than hanging. For a majority draw the algorithm
+samples the complementary Sampford design with targets ``1 - q``. See M. R.
+Sampford, "On sampling without replacement with unequal probabilities of
+selection", *Biometrika* 54 (1967), 499--513,
 doi:10.1093/biomet/54.3-4.499.
 
 ``group_ids`` is deliberately only a seam in this PR. When supplied it must be
