@@ -514,6 +514,12 @@ _OPAQUE_STRING_PART = "\N{OBJECT REPLACEMENT CHARACTER}"
 _OPAQUE_METHOD_ALIAS = ("", True)
 
 
+class _PartialStringChoices(tuple):
+    """Known string members of a PARTIALLY static enumeration — opaque
+    siblings were dropped, so consumers bind the choices but must not
+    classify the binding complete (sol #583 round 15)."""
+
+
 class _StaticStringChoices(tuple):
     """Abstract alternatives bound by one static loop/comprehension target."""
 
@@ -1243,6 +1249,14 @@ def _static_dict_entries(
         and not node.keywords
     ):
         raw_entries = _static_value_or_structure(node.args[0], constants)
+        if not isinstance(
+            raw_entries, (_StaticDictEntries, dict, list, tuple, set, frozenset)
+        ):
+            # dict(view) nestings resolve through the SAME iteration
+            # resolver as bare views (sol #583 round 15).
+            iterated = _static_iteration_value(node.args[0], constants)
+            if isinstance(iterated, (list, tuple)):
+                raw_entries = iterated
         if isinstance(raw_entries, _StaticDictEntries):
             entries = raw_entries
         elif isinstance(raw_entries, dict):
@@ -1377,6 +1391,10 @@ def _static_iteration_string_choices(
     if not value:
         return ()
     choices = tuple(item for item in value if isinstance(item, str))
+    if choices and len(choices) != len(value):
+        # Opaque siblings were dropped: the enumeration is PARTIAL, and
+        # the caller must not treat it as complete (sol #583 round 15).
+        return _PartialStringChoices(choices)
     return choices or None
 
 
@@ -2058,7 +2076,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 node.target,
                 values,
             )
-            fully_propagated = values is not None and target_propagated
+            fully_propagated = (
+                values is not None
+                and not isinstance(values, _PartialStringChoices)
+                and target_propagated
+            )
         if not fully_propagated and carries_guarded_fragments:
             # Any refused or partial static binding over guarded fragments
             # fails closed at the loop, independently of scalar-string
@@ -3615,6 +3637,45 @@ def f(df):
     accesses = _source_spine_accesses(opaque_query)
     assert accesses and any("fail-closed" in access for access in accesses)
     assert not _source_spine_accesses(benign_bound)
+
+
+def test_dict_view_nestings_and_partial_scalar_values_dual_report():
+    """Sol #583 round 15: dict(view.items()).items() nestings resolve
+    through the shared iteration resolver, and partial scalar .values()
+    enumerations preserve their dropped-opacity so the loop dual-reports
+    beside the named catch; fragment-free partials stay clean."""
+
+    dict_view_nesting = """
+BASE = {"person": "support_channel"}
+
+
+def f(dynamic):
+    for entity, suffix in dict({**BASE, "state": dynamic}.items()).items():
+        sink(f"{entity}_{suffix}")
+"""
+    partial_scalar_values = """
+BASE = {"known": "person"}
+
+
+def f(dynamic):
+    for entity in {**BASE, "other": dynamic}.values():
+        sink(f"{entity}_support_channel")
+"""
+    benign_partial_values = """
+BASE = {"known": "state"}
+
+
+def f(dynamic):
+    for entity in {**BASE, "other": dynamic}.values():
+        sink(entity)
+"""
+    for source in (dict_view_nesting, partial_scalar_values):
+        accesses = _source_spine_accesses(source)
+        assert any("person_support_channel" in access for access in accesses), source
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            source
+        )
+    assert _source_spine_accesses(benign_partial_values) == ()
 
 
 def test_starred_dict_views_resolve_through_the_shared_iteration_path():
