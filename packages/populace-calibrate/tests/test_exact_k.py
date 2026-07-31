@@ -19,12 +19,31 @@ def _set_dp_cell_limits(monkeypatch: pytest.MonkeyPatch, cells: int) -> None:
 def test_certainty_units_are_force_included_before_boundary_draw() -> None:
     pi = np.asarray([0.99, 0.98, 0.60, 0.30, 0.10])
 
-    support, receipt = select_exact_k(pi, k=3, pi_hi=0.95, seed=17)
+    support, receipt, selected_q = select_exact_k(pi, k=3, pi_hi=0.95, seed=17)
 
     assert len(support) == 3
     assert {0, 1}.issubset(support.tolist())
+    np.testing.assert_allclose(
+        selected_q,
+        np.asarray([1.0, 1.0, 0.6, 0.3, 0.1])[support],
+        rtol=0.0,
+        atol=np.finfo(np.float64).eps,
+    )
     assert receipt["certainty_count"] == 2
     assert receipt["boundary_pool_size"] == 3
+
+
+def test_selected_q_is_aligned_after_support_sorting() -> None:
+    support, _, selected_q = select_exact_k(
+        [0.2, 0.99, 0.6, 0.98, 0.2],
+        k=3,
+        pi_hi=0.95,
+        seed=0,
+    )
+
+    np.testing.assert_array_equal(support, [1, 2, 3])
+    np.testing.assert_array_equal(selected_q, [1.0, 0.6, 1.0])
+    assert selected_q.dtype == np.dtype(np.float64)
 
 
 @pytest.mark.parametrize(
@@ -44,20 +63,24 @@ def test_exact_cardinality_for_threshold_and_budget_combinations(
 ) -> None:
     pi = np.asarray([0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95])
 
-    support, receipt = select_exact_k(pi, k=k, pi_hi=pi_hi, seed=42)
+    support, receipt, selected_q = select_exact_k(pi, k=k, pi_hi=pi_hi, seed=42)
 
     assert len(support) == k
     assert np.unique(support).size == k
     assert ((0 <= support) & (support < len(pi))).all()
+    assert selected_q.shape == (k,)
+    assert ((0.0 < selected_q) & (selected_q <= 1.0)).all()
     assert receipt["k"] == k
 
 
 def test_census_and_proportional_take_alls_are_deterministic() -> None:
-    census, _ = select_exact_k([0.0, 0.2, 0.8], k=3, pi_hi=1.0, seed=0)
-    take_all, _ = select_exact_k([0.0, 0.5, 0.5], k=2, pi_hi=1.0, seed=0)
+    census, _, census_q = select_exact_k([0.0, 0.2, 0.8], k=3, pi_hi=1.0, seed=0)
+    take_all, _, take_all_q = select_exact_k([0.0, 0.5, 0.5], k=2, pi_hi=1.0, seed=0)
 
     np.testing.assert_array_equal(census, [0, 1, 2])
     np.testing.assert_array_equal(take_all, [1, 2])
+    np.testing.assert_array_equal(census_q, np.ones(3))
+    np.testing.assert_array_equal(take_all_q, np.ones(2))
 
 
 def test_mixed_boundary_take_all_and_fractional_draw() -> None:
@@ -67,7 +90,7 @@ def test_mixed_boundary_take_all_and_fractional_draw() -> None:
     counts = np.zeros(len(pi), dtype=np.int64)
 
     for seed in range(draws):
-        support, receipt = select_exact_k(pi, k=2, pi_hi=0.95, seed=seed)
+        support, receipt, _ = select_exact_k(pi, k=2, pi_hi=0.95, seed=seed)
         counts[support] += 1
 
     frequencies = counts / draws
@@ -76,7 +99,7 @@ def test_mixed_boundary_take_all_and_fractional_draw() -> None:
 
 
 def test_ulp_scale_take_alls_are_extracted_before_residual_correction() -> None:
-    support, receipt = select_exact_k(
+    support, receipt, selected_q = select_exact_k(
         [0.2, 0.2, 0.4, 0.4],
         k=3,
         pi_hi=1.0,
@@ -85,6 +108,12 @@ def test_ulp_scale_take_alls_are_extracted_before_residual_correction() -> None:
 
     assert {2, 3}.issubset(support.tolist())
     assert len(set(support).intersection({0, 1})) == 1
+    np.testing.assert_allclose(
+        selected_q,
+        np.asarray([0.5, 0.5, 1.0, 1.0])[support],
+        rtol=0.0,
+        atol=np.finfo(np.float64).eps,
+    )
     assert receipt["certainty_count"] == 0
     assert receipt["boundary_pool_size"] == 4
 
@@ -111,7 +140,7 @@ def test_majority_draw_uses_nonuniform_nontrivial_complement_design(
     monkeypatch.setattr(exact_k_module, "_sampford_core", track_core)
 
     for seed in range(draws):
-        support, _ = select_exact_k(pi, k=28, pi_hi=1.0, seed=seed)
+        support, _, _ = select_exact_k(pi, k=28, pi_hi=1.0, seed=seed)
         counts[support] += 1
 
     frequencies = counts / draws
@@ -125,7 +154,7 @@ def test_majority_draw_uses_nonuniform_nontrivial_complement_design(
 def test_near_deterministic_feasible_design_does_not_stall() -> None:
     pi = np.asarray([0.4999999999995, 0.4999999999995, 5e-13, 5e-13])
 
-    support, _ = select_exact_k(pi, k=2, pi_hi=0.95, seed=0)
+    support, _, _ = select_exact_k(pi, k=2, pi_hi=0.95, seed=0)
 
     assert len(support) == 2
     assert np.unique(support).size == 2
@@ -163,13 +192,13 @@ def test_concentrated_design_just_above_old_dp_cutoff_succeeds(
         recording_dp,
     )
 
-    support, receipt = select_exact_k(
+    support, receipt, selected_q = select_exact_k(
         pi,
         k=sample_size,
         pi_hi=0.95,
         seed=0,
     )
-    replay, _ = select_exact_k(
+    replay, _, replay_q = select_exact_k(
         pi,
         k=sample_size,
         pi_hi=0.95,
@@ -181,6 +210,7 @@ def test_concentrated_design_just_above_old_dp_cutoff_succeeds(
         assert_exact_k_support(support, sample_size, pool_size=pool_size),
     )
     np.testing.assert_array_equal(replay, support)
+    np.testing.assert_array_equal(replay_q, selected_q)
     assert receipt["boundary_pool_size"] == pool_size
     assert dp_calls == [(pool_size, sample_size), (pool_size, sample_size)]
 
@@ -198,7 +228,7 @@ def test_realistic_ladder_shaped_large_design_completes() -> None:
         atol=1e-9,
     )
 
-    support, receipt = select_exact_k(pi, k=8_000, pi_hi=1.0, seed=0)
+    support, receipt, _ = select_exact_k(pi, k=8_000, pi_hi=1.0, seed=0)
 
     np.testing.assert_array_equal(
         support,
@@ -216,7 +246,7 @@ def test_forced_rejection_path_returns_exact_support(
     assert float(pi.sum()) == 4.0
     _set_dp_cell_limits(monkeypatch, 0)
 
-    support, _ = select_exact_k(pi, k=4, pi_hi=1.0, seed=73)
+    support, _, _ = select_exact_k(pi, k=4, pi_hi=1.0, seed=73)
 
     np.testing.assert_array_equal(
         support,
@@ -258,7 +288,7 @@ def test_dp_rejection_and_complement_paths_agree_on_inclusion_frequencies(
         for draw in range(draws):
             seed = seed_offset + draw
             if complement:
-                selected, _ = select_exact_k(
+                selected, _, _ = select_exact_k(
                     1.0 - probabilities,
                     k=len(probabilities) - sample_size,
                     pi_hi=1.0,
@@ -268,7 +298,7 @@ def test_dp_rejection_and_complement_paths_agree_on_inclusion_frequencies(
                 selected_mask[selected] = False
                 selected = np.flatnonzero(selected_mask)
             else:
-                selected, _ = select_exact_k(
+                selected, _, _ = select_exact_k(
                     probabilities,
                     k=sample_size,
                     pi_hi=1.0,
@@ -329,7 +359,7 @@ def test_enumerated_subsets_match_sampford_joint_law() -> None:
     observed = np.zeros(len(subsets), dtype=np.int64)
 
     for seed in range(draws):
-        support, _ = select_exact_k(
+        support, _, _ = select_exact_k(
             probabilities,
             k=sample_size,
             pi_hi=1.0,
@@ -423,21 +453,22 @@ def test_degenerate_boundary_mass_fails() -> None:
 def test_same_seed_is_identical_and_different_seeds_change_valid_support() -> None:
     pi = np.full(20, 0.35)
 
-    first, first_receipt = select_exact_k(pi, k=7, pi_hi=0.95, seed=123)
-    replay, replay_receipt = select_exact_k(pi, k=7, pi_hi=0.95, seed=123)
-    different, _ = select_exact_k(pi, k=7, pi_hi=0.95, seed=124)
+    first, first_receipt, first_q = select_exact_k(pi, k=7, pi_hi=0.95, seed=123)
+    replay, replay_receipt, replay_q = select_exact_k(pi, k=7, pi_hi=0.95, seed=123)
+    different, _, _ = select_exact_k(pi, k=7, pi_hi=0.95, seed=124)
 
     np.testing.assert_array_equal(first, replay)
     np.testing.assert_array_equal(first, [1, 2, 3, 4, 11, 13, 17])
     assert first.dtype.str == "<i8"
     assert first.tobytes() == replay.tobytes()
+    assert first_q.tobytes() == replay_q.tobytes()
     assert first_receipt == replay_receipt
     assert not np.array_equal(first, different)
     assert len(different) == 7
 
 
 def test_receipt_has_manifest_ready_shape() -> None:
-    _, receipt = select_exact_k([0.2, 0.4, 0.6, 0.8], k=2, pi_hi=0.95, seed=11)
+    _, receipt, _ = select_exact_k([0.2, 0.4, 0.6, 0.8], k=2, pi_hi=0.95, seed=11)
 
     assert receipt == {
         "k": 2,
@@ -448,6 +479,7 @@ def test_receipt_has_manifest_ready_shape() -> None:
         "design": "sampford",
     }
     assert all(isinstance(value, (int, float, str)) for value in receipt.values())
+    assert len(receipt) == 6
 
 
 def test_empirical_inclusion_frequencies_match_pi() -> None:
@@ -457,7 +489,7 @@ def test_empirical_inclusion_frequencies_match_pi() -> None:
     counts = np.zeros(len(pi), dtype=np.int64)
 
     for seed in range(draws):
-        support, _ = select_exact_k(pi, k=4, pi_hi=0.95, seed=seed)
+        support, _, _ = select_exact_k(pi, k=4, pi_hi=0.95, seed=seed)
         counts[support] += 1
 
     frequencies = counts / draws
@@ -502,8 +534,8 @@ def test_group_ids_reject_missing_values_for_nonobject_dtypes(
 
 def test_group_ids_unique_only_seam_is_explicit() -> None:
     pi = np.asarray([0.2, 0.4, 0.6, 0.8])
-    ungrouped, _ = select_exact_k(pi, k=2, pi_hi=0.95, seed=9)
-    grouped, _ = select_exact_k(
+    ungrouped, _, ungrouped_q = select_exact_k(pi, k=2, pi_hi=0.95, seed=9)
+    grouped, _, grouped_q = select_exact_k(
         pi,
         k=2,
         pi_hi=0.95,
@@ -512,6 +544,7 @@ def test_group_ids_unique_only_seam_is_explicit() -> None:
     )
 
     np.testing.assert_array_equal(grouped, ungrouped)
+    np.testing.assert_array_equal(grouped_q, ungrouped_q)
     with pytest.raises(ValueError, match="deferred to the increment-2 pool"):
         select_exact_k(
             pi,

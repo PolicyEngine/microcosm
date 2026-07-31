@@ -347,7 +347,7 @@ def _draw_boundary(
     boundary_probabilities: np.ndarray,
     sample_size: int,
     rng: np.random.Generator,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     positive = boundary_probabilities > 0.0
     positive_indices = np.flatnonzero(positive)
     if sample_size > len(positive_indices):
@@ -356,7 +356,10 @@ def _draw_boundary(
             f"remaining draw size ({len(positive_indices)} < {sample_size})."
         )
     if sample_size == len(boundary_probabilities):
-        return np.arange(len(boundary_probabilities), dtype=np.int64)
+        return (
+            np.arange(len(boundary_probabilities), dtype=np.int64),
+            np.ones(len(boundary_probabilities), dtype=np.float64),
+        )
     positive_probabilities = boundary_probabilities[positive]
     total = float(np.sum(positive_probabilities, dtype=np.float64))
     if total <= 0.0:
@@ -412,7 +415,10 @@ def _draw_boundary(
         selected_positive = np.concatenate(
             (take_all_indices, fractional_indices[selected_fractional])
         )
-    return positive_indices[selected_positive].astype(np.int64, copy=False)
+    return (
+        positive_indices[selected_positive].astype(np.int64, copy=False),
+        target_probabilities[selected_positive],
+    )
 
 
 def select_exact_k(
@@ -422,13 +428,16 @@ def select_exact_k(
     seed: int,
     *,
     group_ids: np.ndarray | None = None,
-) -> tuple[np.ndarray, SelectionReceipt]:
+) -> tuple[np.ndarray, SelectionReceipt, np.ndarray]:
     """Select exactly ``k`` records from hard-concrete open probabilities.
 
     The result is deterministic for identical ``(pi, k, pi_hi, seed,
     group_ids)`` inputs and uses a fresh NumPy ``Generator(PCG64(seed))``; global
-    random state is never read or changed. Returned indices are sorted and the
-    receipt contains JSON-safe scalar values suitable for a release manifest.
+    random state is never read or changed. Returned indices are sorted. The
+    third return value contains their aligned first-order inclusion
+    probabilities after the boundary's ulp correction; declared certainty
+    units and deterministic take-all units have probability one. The receipt
+    remains a separate six-scalar mapping suitable for a release manifest.
 
     See the module docstring for the Sampford design, boundary normalization,
     and the deliberately minimal ``group_ids`` contract.
@@ -478,11 +487,13 @@ def select_exact_k(
     boundary_draw_size = target - certainty_count
     if boundary_draw_size == 0:
         support = certainty_indices.copy()
+        selected_inclusion_probabilities = np.ones(target, dtype=np.float64)
     elif boundary_draw_size == len(boundary_indices):
         support = np.concatenate((certainty_indices, boundary_indices))
+        selected_inclusion_probabilities = np.ones(target, dtype=np.float64)
     else:
         rng = np.random.Generator(np.random.PCG64(random_seed))
-        selected_boundary = _draw_boundary(
+        selected_boundary, selected_boundary_probabilities = _draw_boundary(
             probabilities[boundary_indices],
             boundary_draw_size,
             rng,
@@ -490,8 +501,16 @@ def select_exact_k(
         support = np.concatenate(
             (certainty_indices, boundary_indices[selected_boundary])
         )
+        selected_inclusion_probabilities = np.concatenate(
+            (
+                np.ones(certainty_count, dtype=np.float64),
+                selected_boundary_probabilities,
+            )
+        )
 
+    support_order = np.argsort(support, kind="stable")
     support = assert_exact_k_support(support, target, pool_size=pool_size)
+    selected_inclusion_probabilities = selected_inclusion_probabilities[support_order]
     receipt: SelectionReceipt = {
         "k": target,
         "pi_hi": certainty_threshold,
@@ -500,4 +519,4 @@ def select_exact_k(
         "boundary_pool_size": len(boundary_indices),
         "design": "sampford",
     }
-    return support, receipt
+    return support, receipt, selected_inclusion_probabilities
