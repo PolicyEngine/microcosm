@@ -3484,6 +3484,29 @@ def f():
     assert any(
         "unpropagatable target geometry" in access for access in nested_star_accesses
     )
+    nested_star_name_uses = """
+entity = "age"
+middle = "income"
+ROWS = (("person", "support", "channel"),)
+
+
+def f(df):
+    return [
+        (
+            df.filter(items=[f"{entity}_support_channel"]),
+            df.filter(items=[f"person_{middle}_channel"]),
+        )
+        for *(entity, middle), suffix in ROWS
+    ]
+"""
+    nested_star_name_accesses = _source_spine_accesses(nested_star_name_uses)
+    assert (
+        sum(
+            ".filter(items=...)" in access and "unresolvable" in access
+            for access in nested_star_name_accesses
+        )
+        == 2
+    )
     for source in (rows_of_rows, dict_constructor):
         assert _source_spine_accesses(source), source
     assert _source_spine_accesses(dynamic_mentioning_strings) == ()
@@ -3513,6 +3536,20 @@ for row[0], row[1] in (("person", "support_channel"),):
         assert any("unpropagatable target geometry" in access for access in accesses), (
             source
         )
+
+    fragment_free_partial_target = """
+entity = "person"
+
+
+class Row:
+    pass
+
+
+row = Row()
+for entity, row.suffix in (("state", "fips"),):
+    sink(f"{entity}_support_channel")
+"""
+    assert _source_spine_accesses(fragment_free_partial_target) == ()
 
 
 def test_static_dict_values_and_bound_partial_rows_propagate_per_column():
@@ -3595,6 +3632,18 @@ def f(row):
     )
     for source in key_only_fragment_controls:
         assert _source_spine_accesses(source) == (), source
+
+    dynamic_constructor_keys = """
+def f(key1, key2):
+    for entity, suffix in dict(
+        [
+            (key1, ("person", "support_channel")),
+            (key2, ("state", "fips")),
+        ]
+    ).values():
+        sink(f"{entity}_{suffix}")
+"""
+    assert _source_spine_accesses(dynamic_constructor_keys)
 
 
 def test_mid_star_rows_and_concatenated_dict_entries_are_in_scope():

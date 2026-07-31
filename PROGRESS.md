@@ -43,11 +43,19 @@ and partial structures propagated through bindings.
   supported scalar, structural-row, and static dict-view forms; helper
   docstrings distinguish exact propagation, deliberate opacity, and partial
   geometry; the round-9 claim now states the actual iteration-site fallback.
+- Initial final validation passed (guard 121, focused graph 22, full
+  `populace-build` 3,343 passed/85 skipped, repository ruff), but the
+  independent net-diff audit found two precision defects before handoff:
+  partial Name/non-name targets retained stale outer constants, and opaque
+  constructor keys could collapse through the singleton sentinel.
+- Added red controls for both audit findings plus an every-name nested-star
+  opacity check. The two precision controls fail on the current implementation
+  as expected; the nested-star check already passes.
 
 ## Next
 
-- Run the guard file, full `populace-build` suite, repository ruff, and the
-  requested `acs_transfer` plus `congressional_district_vintage` cleanliness
-  checks.
+- Propagate direct-name columns while poisoning unsupported partial targets,
+  and reject opaque dict-constructor entries before materializing a mapping.
+- Re-run the full validation matrix after those corrections.
 - Restore `PROGRESS.md` exactly to `origin/main`, commit all coherent steps
   locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.
