@@ -1161,7 +1161,13 @@ def _static_structure(
     if isinstance(node, (ast.List, ast.Tuple)):
         resolved = []
         for element in node.elts:
-            if isinstance(element, (ast.List, ast.Tuple)):
+            if isinstance(element, ast.Starred):
+                inner_value = _static_literal_value(element.value, constants)
+                if isinstance(inner_value, (list, tuple)):
+                    resolved.extend(inner_value)
+                else:
+                    resolved.append(_OPAQUE_STATIC_VALUE)
+            elif isinstance(element, (ast.List, ast.Tuple)):
                 inner = _static_structure(element, constants)
                 resolved.append(inner if inner is not None else _OPAQUE_STATIC_VALUE)
             else:
@@ -1737,26 +1743,27 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self._poison_iteration_target_names(target)
             return True, False
 
-        def _column_choices(values: tuple) -> tuple[str, ...] | None:
-            choices = tuple(value for value in values if isinstance(value, str))
-            return choices or None
-
         fully_propagated = True
+
+        def _bind_column(element: ast.Name, values: tuple) -> None:
+            nonlocal fully_propagated
+            choices = tuple(value for value in values if isinstance(value, str))
+            self._bind_iteration_target(element, choices or None)
+            if choices and len(choices) != len(values):
+                # A string-bearing column with opaque members is
+                # incomplete propagation (sol #583 round 11); all-dynamic
+                # columns (no strings) stay complete-enough.
+                fully_propagated = False
+
         for position, element in enumerate(leading):
             if isinstance(element, ast.Name):
-                self._bind_iteration_target(
-                    element,
-                    _column_choices(tuple(row[position] for row in rows)),
-                )
+                _bind_column(element, tuple(row[position] for row in rows))
             else:
                 self._poison_iteration_target_names(element)
                 fully_propagated = False
         for back, element in enumerate(reversed(trailing), start=1):
             if isinstance(element, ast.Name):
-                self._bind_iteration_target(
-                    element,
-                    _column_choices(tuple(row[-back] for row in rows)),
-                )
+                _bind_column(element, tuple(row[-back] for row in rows))
             else:
                 self._poison_iteration_target_names(element)
                 fully_propagated = False
@@ -1764,7 +1771,27 @@ class _SourceReadVisitor(ast.NodeVisitor):
             return True, fully_propagated
         star_payload = elements[star_positions[0]].value
         self._poison_iteration_target_names(star_payload)
-        return True, fully_propagated and isinstance(star_payload, ast.Name)
+
+        def _bears_strings(value: object) -> bool:
+            if isinstance(value, str):
+                return True
+            if isinstance(value, (list, tuple, set, frozenset)):
+                return any(_bears_strings(item) for item in value)
+            if isinstance(value, dict):
+                return any(
+                    _bears_strings(part) for part in (*value.keys(), *value.values())
+                )
+            return False
+
+        swallowed_strings = any(
+            _bears_strings(value)
+            for row in rows
+            for value in row[len(leading) : len(row) - len(trailing)]
+        )
+        # A star swallowing string positions hides column material behind
+        # an opaque name — incomplete propagation whatever the payload
+        # shape (sol #583 round 11).
+        return True, fully_propagated and not swallowed_strings
 
     def _bind_iteration_target(
         self,
@@ -3557,8 +3584,12 @@ def f():
     for entity, suffix, *rest in ROWS:
         sink(f"{entity}_{suffix}")
 """
+    # Fragment-free rows: with guarded-name fragments present, a star
+    # swallowing any string now counts as incomplete propagation and
+    # fail-closes conservatively (round 11) — so the benign control uses
+    # data that carries no fragments at all.
     benign_starred = """
-ROWS = (("person", "age"), ("household", "weight", "x"))
+ROWS = (("state", "age"), ("county", "weight", "x"))
 
 
 def f():
@@ -3861,9 +3892,10 @@ def f(dynamic_object):
     for source in mixed_column_rows:
         accesses = _source_spine_accesses(source)
         assert any("person_support_channel" in access for access in accesses), source
-        assert not any(
-            "unpropagatable target geometry" in access for access in accesses
-        ), source
+        # Round 11: a string-bearing column with opaque members counts as
+        # incomplete propagation, so the loop may ALSO record fail-closed
+        # beside the named catch — dual reporting is the conservative
+        # direction, not a defect.
 
     bound_partial_dict_views = (
         """
