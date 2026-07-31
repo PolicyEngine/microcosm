@@ -103,7 +103,15 @@ _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _UK_EXACT_K_RELEASE_ID_RE = re.compile(
     r"^populace-uk-(?P<year>[1-9][0-9]*)-(?P<tier>.+)-k(?P<record_count>[1-9][0-9]*)$"
 )
+_UK_LEGACY_RELEASE_ID_RE = re.compile(
+    r"^populace-uk-[1-9][0-9]{3}-(?:[0-9a-f]{7,40}-){1,2}"
+    r"(?:[0-9]{8}|[0-9]{8}T[0-9]{6}Z)$"
+)
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
+_UK_DIAGNOSTICS_SCHEMA_VERSION = 1
+_UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
+    {"national", "region", "country", "local_authority", "constituency"}
+)
 
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
@@ -332,7 +340,7 @@ def _check_release_manifest(
             f"{build['build_id']!r} but the release directory is named "
             f"{release_id!r}."
         )
-    _check_uk_exact_k_release_identity(manifest, release_id, failures)
+    _check_uk_release_identity(manifest, release_id, failures)
     if isinstance(build, Mapping):
         built_with_core_package = build.get("built_with_core_package")
         built_with_model_package = build.get("built_with_model_package")
@@ -452,17 +460,35 @@ def _check_release_manifest(
                     )
 
 
-def _check_uk_exact_k_release_identity(
+def _check_uk_release_identity(
     manifest: Mapping,
     release_id: str,
     failures: list[str],
 ) -> None:
-    """Enforce source-tier identity only for the canonical UK exact-k shape."""
+    """Enforce canonical UK identity while narrowly grandfathering old ids."""
+
+    if not release_id.startswith("populace-uk-"):
+        return
 
     match = _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id)
     if match is None:
-        # Timestamped/hash-based UK ids predate the tier contract. They retain
-        # the historical validation path and do not need to be re-cut.
+        if _UK_LEGACY_RELEASE_ID_RE.fullmatch(release_id) is None:
+            failures.append(
+                "release_manifest.json UK release id is neither canonical "
+                "'populace-uk-<year>-<tier>-k<N>' nor a grandfathered "
+                f"hash/timestamp id: {release_id!r}."
+            )
+            return
+        # Hash/timestamp ids predate the tier contract and do not need a
+        # re-cut. If one already records a tier, it still cannot mint an
+        # unratified value.
+        legacy_tier = manifest.get("tier")
+        if legacy_tier is not None and legacy_tier not in _UK_RELEASE_TIERS:
+            failures.append(
+                "release_manifest.json grandfathered UK 'tier', when present, "
+                f"must be one of {sorted(_UK_RELEASE_TIERS)}, got "
+                f"{legacy_tier!r}."
+            )
         return
 
     release_id_tier = match.group("tier")
@@ -488,6 +514,10 @@ def _check_uk_exact_k_release_identity(
             f"release_manifest.json top-level 'tier' is {manifest_tier!r} but "
             f"the release id names tier {release_id_tier!r}."
         )
+
+
+def _is_uk_exact_k_release_id(release_id: str) -> bool:
+    return _UK_EXACT_K_RELEASE_ID_RE.fullmatch(release_id) is not None
 
 
 def _check_us_release_has_no_split_microdata_artifacts(
@@ -756,6 +786,327 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                     "calibration_diagnostics.json target row "
                     f"{index} is missing 'metadata' object."
                 )
+
+
+def _uk_non_negative_int(
+    value: object,
+    *,
+    field: str,
+    failures: list[str],
+) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        failures.append(
+            f"calibration_diagnostics.json {field} must be a non-negative integer, "
+            f"got {value!r}."
+        )
+        return None
+    return value
+
+
+def _uk_finite_number(
+    value: object,
+    *,
+    field: str,
+    failures: list[str],
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        failures.append(
+            f"calibration_diagnostics.json {field} must be a finite number, "
+            f"got {value!r}."
+        )
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        failures.append(
+            f"calibration_diagnostics.json {field} must be finite, got {value!r}."
+        )
+        return None
+    if minimum is not None and number < minimum:
+        failures.append(
+            f"calibration_diagnostics.json {field} must be at least {minimum}, "
+            f"got {number}."
+        )
+    if maximum is not None and number > maximum:
+        failures.append(
+            f"calibration_diagnostics.json {field} must be at most {maximum}, "
+            f"got {number}."
+        )
+    return number
+
+
+def _check_uk_calibration_diagnostics(
+    diagnostics: Mapping,
+    failures: list[str],
+) -> None:
+    """Require the versioned UK release diagnostics on canonical exact-k ids."""
+
+    uk = diagnostics.get("uk_diagnostics")
+    if not isinstance(uk, Mapping):
+        failures.append(
+            "calibration_diagnostics.json canonical UK releases require a "
+            "'uk_diagnostics' object."
+        )
+        return
+    if uk.get("schema_version") != _UK_DIAGNOSTICS_SCHEMA_VERSION:
+        failures.append(
+            "calibration_diagnostics.json 'uk_diagnostics.schema_version' is "
+            f"{uk.get('schema_version')!r}; expected "
+            f"{_UK_DIAGNOSTICS_SCHEMA_VERSION}."
+        )
+
+    weights = uk.get("weights")
+    if not isinstance(weights, Mapping):
+        failures.append(
+            "calibration_diagnostics.json 'uk_diagnostics.weights' must be an object."
+        )
+        weights = {}
+    n_records = _uk_non_negative_int(
+        weights.get("n_records"),
+        field="uk_diagnostics.weights.n_records",
+        failures=failures,
+    )
+    positive_records = _uk_non_negative_int(
+        weights.get("positive_weight_records"),
+        field="uk_diagnostics.weights.positive_weight_records",
+        failures=failures,
+    )
+    zero_records = _uk_non_negative_int(
+        weights.get("zero_weight_records"),
+        field="uk_diagnostics.weights.zero_weight_records",
+        failures=failures,
+    )
+    for field in (
+        "total_weight",
+        "effective_sample_size",
+        "max_weight",
+        "top_1pct_weight_share",
+    ):
+        _uk_finite_number(
+            weights.get(field),
+            field=f"uk_diagnostics.weights.{field}",
+            failures=failures,
+            minimum=0.0,
+            maximum=1.0 if field == "top_1pct_weight_share" else None,
+        )
+    _uk_finite_number(
+        weights.get("ess_fraction"),
+        field="uk_diagnostics.weights.ess_fraction",
+        failures=failures,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    for field in ("median_positive_weight", "max_to_median_positive_weight"):
+        value = weights.get(field)
+        if value is not None:
+            _uk_finite_number(
+                value,
+                field=f"uk_diagnostics.weights.{field}",
+                failures=failures,
+                minimum=0.0,
+            )
+    if (
+        n_records is not None
+        and positive_records is not None
+        and zero_records is not None
+        and positive_records + zero_records != n_records
+    ):
+        failures.append(
+            "calibration_diagnostics.json UK positive- and zero-weight record "
+            "counts must sum to weights.n_records."
+        )
+
+    strata = uk.get("zero_weight_rows_by_stratum")
+    if not isinstance(strata, list) or not strata:
+        failures.append(
+            "calibration_diagnostics.json "
+            "'uk_diagnostics.zero_weight_rows_by_stratum' must be a non-empty list."
+        )
+        strata = []
+    stratum_rows = 0
+    stratum_positive = 0
+    stratum_zero = 0
+    for index, row in enumerate(strata):
+        if not isinstance(row, Mapping):
+            failures.append(
+                "calibration_diagnostics.json UK zero-weight stratum row "
+                f"{index} must be an object."
+            )
+            continue
+        if not isinstance(row.get("stratum"), Mapping) or not row["stratum"]:
+            failures.append(
+                "calibration_diagnostics.json UK zero-weight stratum row "
+                f"{index} needs a non-empty 'stratum' object."
+            )
+        rows = _uk_non_negative_int(
+            row.get("rows"),
+            field=f"uk_diagnostics.zero_weight_rows_by_stratum[{index}].rows",
+            failures=failures,
+        )
+        positive = _uk_non_negative_int(
+            row.get("positive_weight_rows"),
+            field=(
+                "uk_diagnostics.zero_weight_rows_by_stratum"
+                f"[{index}].positive_weight_rows"
+            ),
+            failures=failures,
+        )
+        zero = _uk_non_negative_int(
+            row.get("zero_weight_rows"),
+            field=(
+                f"uk_diagnostics.zero_weight_rows_by_stratum[{index}].zero_weight_rows"
+            ),
+            failures=failures,
+        )
+        _uk_finite_number(
+            row.get("weight_sum"),
+            field=(f"uk_diagnostics.zero_weight_rows_by_stratum[{index}].weight_sum"),
+            failures=failures,
+            minimum=0.0,
+        )
+        if rows is None or positive is None or zero is None:
+            continue
+        if positive + zero != rows:
+            failures.append(
+                "calibration_diagnostics.json UK zero-weight stratum row "
+                f"{index} counts do not reconcile."
+            )
+        stratum_rows += rows
+        stratum_positive += positive
+        stratum_zero += zero
+    if n_records is not None and strata and stratum_rows != n_records:
+        failures.append(
+            "calibration_diagnostics.json UK stratum rows do not reconcile to "
+            "weights.n_records."
+        )
+    if positive_records is not None and strata and stratum_positive != positive_records:
+        failures.append(
+            "calibration_diagnostics.json UK positive stratum rows do not "
+            "reconcile to weights.positive_weight_records."
+        )
+    if zero_records is not None and strata and stratum_zero != zero_records:
+        failures.append(
+            "calibration_diagnostics.json UK zero-weight stratum rows do not "
+            "reconcile to weights.zero_weight_records."
+        )
+
+    rates = uk.get("target_pass_rates_by_geography_level")
+    if not isinstance(rates, list):
+        failures.append(
+            "calibration_diagnostics.json "
+            "'uk_diagnostics.target_pass_rates_by_geography_level' must be a list."
+        )
+        rates = []
+    seen_levels: set[str] = set()
+    total_targets = total_scored = total_skipped = 0
+    for index, row in enumerate(rates):
+        if not isinstance(row, Mapping):
+            failures.append(
+                "calibration_diagnostics.json UK geography pass-rate row "
+                f"{index} must be an object."
+            )
+            continue
+        level = row.get("geography_level")
+        if not isinstance(level, str) or level not in _UK_TARGET_GEOGRAPHY_LEVELS:
+            failures.append(
+                "calibration_diagnostics.json UK geography pass-rate row "
+                f"{index} has unknown level {level!r}."
+            )
+        elif level in seen_levels:
+            failures.append(
+                "calibration_diagnostics.json UK geography pass-rate level "
+                f"{level!r} appears more than once."
+            )
+        else:
+            seen_levels.add(level)
+        counts = [
+            _uk_non_negative_int(
+                row.get(field),
+                field=(
+                    "uk_diagnostics.target_pass_rates_by_geography_level"
+                    f"[{index}].{field}"
+                ),
+                failures=failures,
+            )
+            for field in ("n_targets", "n_scored", "n_skipped", "n_within_10pct")
+        ]
+        if any(value is None for value in counts):
+            continue
+        n_targets, n_scored, n_skipped, n_within = counts
+        assert n_targets is not None
+        assert n_scored is not None
+        assert n_skipped is not None
+        assert n_within is not None
+        if n_scored + n_skipped != n_targets or n_within > n_scored:
+            failures.append(
+                "calibration_diagnostics.json UK geography pass-rate row "
+                f"{index} counts do not reconcile."
+            )
+        pass_rate = row.get("pass_rate")
+        if n_targets == 0:
+            if pass_rate is not None:
+                failures.append(
+                    "calibration_diagnostics.json UK empty geography pass-rate "
+                    f"row {index} must use null pass_rate."
+                )
+        else:
+            observed_rate = _uk_finite_number(
+                pass_rate,
+                field=(
+                    "uk_diagnostics.target_pass_rates_by_geography_level"
+                    f"[{index}].pass_rate"
+                ),
+                failures=failures,
+                minimum=0.0,
+                maximum=1.0,
+            )
+            expected_rate = n_within / n_targets
+            if observed_rate is not None and not math.isclose(
+                observed_rate,
+                expected_rate,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            ):
+                failures.append(
+                    "calibration_diagnostics.json UK geography pass-rate row "
+                    f"{index} pass_rate does not match n_within_10pct/n_targets."
+                )
+        total_targets += n_targets
+        total_scored += n_scored
+        total_skipped += n_skipped
+    missing_levels = sorted(_UK_TARGET_GEOGRAPHY_LEVELS - seen_levels)
+    if missing_levels:
+        failures.append(
+            "calibration_diagnostics.json UK geography pass rates are missing "
+            f"level(s): {missing_levels}."
+        )
+    registry = diagnostics.get("target_registry")
+    if isinstance(registry, Mapping):
+        if registry.get("country") != "uk":
+            failures.append(
+                "calibration_diagnostics.json canonical UK releases require "
+                "target_registry.country == 'uk'."
+            )
+        if isinstance(registry.get("n_specs"), int) and (
+            total_targets != registry["n_specs"]
+        ):
+            failures.append(
+                "calibration_diagnostics.json UK geography target counts do not "
+                "reconcile to target_registry.n_specs."
+            )
+    targets = diagnostics.get("targets")
+    if isinstance(targets, list) and total_scored != len(targets):
+        failures.append(
+            "calibration_diagnostics.json UK geography scored counts do not "
+            "reconcile to len(targets)."
+        )
+    skipped = diagnostics.get("skipped")
+    if isinstance(skipped, list) and total_skipped != len(skipped):
+        failures.append(
+            "calibration_diagnostics.json UK geography skipped counts do not "
+            "reconcile to len(skipped)."
+        )
 
 
 def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> None:
@@ -1122,6 +1473,8 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
             _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if _is_uk_exact_k_release_id(release_id):
+                _check_uk_calibration_diagnostics(diagnostics, failures)
 
     coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if coverage_path.is_file():
@@ -1239,6 +1592,7 @@ def _check_local_area_release_manifest(
             f"{build['build_id']!r} but the release directory is named "
             f"{release_id!r}."
         )
+    _check_uk_release_identity(manifest, release_id, failures)
     _check_release_manifest_package(
         manifest.get("data_package"),
         field="data_package",
@@ -1520,6 +1874,8 @@ def validate_release_dir(release_dir: Path | str) -> None:
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
             _check_calibration_diagnostics(diagnostics, failures)
+            if _is_uk_exact_k_release_id(release_id):
+                _check_uk_calibration_diagnostics(diagnostics, failures)
             if release_id.startswith("populace-us-"):
                 _check_us_critical_target_fit(diagnostics, failures)
 

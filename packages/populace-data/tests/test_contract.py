@@ -507,9 +507,58 @@ def _write_uk_release_dir(
     (directory / "build_manifest.json").write_text(
         json.dumps(_build_manifest(release_id))
     )
-    (directory / "calibration_diagnostics.json").write_text(
-        json.dumps(_calibration_diagnostics())
-    )
+    diagnostics = _calibration_diagnostics()
+    if "-k" in release_id:
+        diagnostics["target_registry"]["country"] = "uk"
+        diagnostics["uk_diagnostics"] = {
+            "schema_version": 1,
+            "weights": {
+                "n_records": 2,
+                "positive_weight_records": 1,
+                "zero_weight_records": 1,
+                "total_weight": 1.0,
+                "effective_sample_size": 1.0,
+                "ess_fraction": 0.5,
+                "median_positive_weight": 1.0,
+                "max_weight": 1.0,
+                "max_to_median_positive_weight": 1.0,
+                "top_1pct_weight_share": 1.0,
+            },
+            "zero_weight_rows_by_stratum": [
+                {
+                    "stratum": {"household_is_spi_synthetic": False},
+                    "rows": 1,
+                    "positive_weight_rows": 1,
+                    "zero_weight_rows": 0,
+                    "weight_sum": 1.0,
+                },
+                {
+                    "stratum": {"household_is_spi_synthetic": True},
+                    "rows": 1,
+                    "positive_weight_rows": 0,
+                    "zero_weight_rows": 1,
+                    "weight_sum": 0.0,
+                },
+            ],
+            "target_pass_rates_by_geography_level": [
+                {
+                    "geography_level": level,
+                    "n_targets": TARGET_COUNT if level == "national" else 0,
+                    "n_scored": TARGET_COUNT if level == "national" else 0,
+                    "n_skipped": 0,
+                    "n_within_10pct": TARGET_COUNT if level == "national" else 0,
+                    "pass_rate": 1.0 if level == "national" else None,
+                }
+                for level in (
+                    "national",
+                    "region",
+                    "country",
+                    "local_authority",
+                    "constituency",
+                )
+            ],
+        }
+    (directory / "calibration_diagnostics.json").write_text(json.dumps(diagnostics))
     manifest = _release_manifest(
         release_id,
         diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
@@ -1129,6 +1178,78 @@ def test_exact_k_uk_release_rejects_tier_mismatch(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ReleaseContractError, match="release id names tier 'frs'"):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "release_id",
+    [
+        "populace-uk-2023-frs-k0",
+        "populace-uk-2023-public-k535080-extra",
+        "populace-uk-2023-frs",
+    ],
+)
+def test_malformed_uk_release_ids_are_not_grandfathered(
+    tmp_path: Path,
+    release_id: str,
+) -> None:
+    directory = _write_uk_release_dir(tmp_path, release_id, tier="frs")
+
+    with pytest.raises(ReleaseContractError, match="neither canonical"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_requires_standard_diagnostics(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    diagnostics = _calibration_diagnostics()
+    diagnostics["target_registry"]["country"] = "uk"
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match="require a 'uk_diagnostics'"):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("zero_reconciliation", "zero-weight stratum rows do not reconcile"),
+        ("missing_geography", "missing level"),
+    ],
+)
+def test_exact_k_uk_release_diagnostics_fail_closed(
+    tmp_path: Path,
+    mutation: str,
+    match: str,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    uk = diagnostics["uk_diagnostics"]
+    if mutation == "zero_reconciliation":
+        uk["weights"]["zero_weight_records"] = 0
+    else:
+        uk["target_pass_rates_by_geography_level"].pop()
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match=match):
         validate_release_dir(directory)
 
 
