@@ -280,13 +280,14 @@ class CalibrationResult:
 
 @dataclass(frozen=True)
 class L0RefitResult:
-    """Two-stage sparse calibration: L0 support selection, then ordinary refit.
+    """L0 probability/support selection followed by an ordinary frozen refit.
 
     The :attr:`selection` stage is a normal :func:`calibrate` call with
-    hard-concrete L0 gates. The :attr:`refit` stage keeps exactly the selected
-    support, removes the gates and L0 penalty, and runs ordinary calibration on
-    the pruned frame. Convenience properties delegate to :attr:`refit`, because
-    the refit frame and weights are the production artifact.
+    hard-concrete L0 gates. The :attr:`refit` stage keeps either the legacy
+    weight-threshold support or a caller-supplied exact-k support, removes the
+    gates and L0 penalty, and runs ordinary calibration on the resulting frame.
+    Convenience properties delegate to :attr:`refit`, because the refit frame
+    and weights are the production artifact.
     """
 
     selection: CalibrationResult
@@ -311,7 +312,12 @@ class L0RefitResult:
 
     @property
     def initial_weights(self) -> np.ndarray:
-        """The refit's starting weights, inherited from the L0 selected support."""
+        """The refit's starting weights on its frozen support.
+
+        The legacy path inherits surviving L0 weights. The explicit exact-k
+        path starts from the original frame weights so a positive-probability
+        record whose deterministic gate closed remains refittable.
+        """
         return self.refit.initial_weights
 
     @property
