@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 from types import SimpleNamespace
 
@@ -16,6 +18,8 @@ from populace.build.uk_runtime.terminal_gates import (
     UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
     UK_TERMINAL_GATE_POLICY_SHA256,
     UK_TERMINAL_GATE_PRODUCER,
+    UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+    UK_TERMINAL_GATE_SIGNING_KEY_ENV,
     UKReleaseParityEvidence,
     UKZeroWeightStratumDeclaration,
     uk_degenerate_release_surface_gate,
@@ -26,6 +30,16 @@ from populace.build.uk_runtime.terminal_gates import (
     uk_weight_ratio_gate,
     write_uk_terminal_gate_report,
 )
+
+TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+
+@pytest.fixture(autouse=True)
+def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
+    monkeypatch.setenv(
+        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY,
+    )
 
 
 def _dataset(
@@ -412,7 +426,7 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
     assert payload["passed"] is True
     assert payload["gates"] == _gates(report)
     attestation = payload["attestation"]
-    assert attestation["schema_version"] == 2
+    assert attestation["schema_version"] == 3
     assert attestation["producer"] == UK_TERMINAL_GATE_PRODUCER
     assert attestation["policy_sha256"] != UK_TERMINAL_GATE_POLICY_SHA256
     assert attestation["evaluated_gates"] == [
@@ -424,8 +438,44 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
     ]
     assert set(attestation["evidence_sha256"]) == {"release_dataset"}
     assert len(attestation["gate_results_sha256"]) == 64
-    assert len(attestation["sha256"]) == 64
+    assert attestation["signature_algorithm"] == UK_TERMINAL_GATE_SIGNATURE_ALGORITHM
+    assert len(attestation["signing_key_sha256"]) == 64
+    assert len(attestation["signature"]) == 64
+    unsigned_report = {
+        **payload,
+        "attestation": {
+            key: value for key, value in attestation.items() if key != "signature"
+        },
+    }
+    expected_signature = hmac.new(
+        base64.b64decode(TEST_UK_TERMINAL_GATE_SIGNING_KEY),
+        json.dumps(
+            unsigned_report,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    assert hmac.compare_digest(attestation["signature"], expected_signature)
     assert list(tmp_path.glob(".terminal_gates.json.*.tmp")) == []
+
+
+def test_terminal_report_writer_persists_before_missing_signing_key_raise(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    report = _report()
+    output = tmp_path / "terminal_gates.json"
+    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+
+    with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
+        write_uk_terminal_gate_report(report, output)
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["attestation"]["signature"] is None
+    assert payload["attestation"]["signing_key_sha256"] is None
 
 
 def test_terminal_report_writer_rejects_sol_composed_raw_parity_trio(

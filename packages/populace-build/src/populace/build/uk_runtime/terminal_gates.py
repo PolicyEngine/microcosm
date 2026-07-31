@@ -10,9 +10,13 @@ placeholder passes.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
+import hmac
 import json
 import math
+import os
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -49,6 +53,8 @@ __all__ = [
     "UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION",
     "UK_TERMINAL_GATE_POLICY_SHA256",
     "UK_TERMINAL_GATE_PRODUCER",
+    "UK_TERMINAL_GATE_SIGNATURE_ALGORITHM",
+    "UK_TERMINAL_GATE_SIGNING_KEY_ENV",
     "UK_REFERENCE_DATASET_NAME",
     "UK_REVIEWED_EXPORT_EXCLUSIONS",
     "UK_TERMINAL_GATE_SCHEMA_VERSION",
@@ -66,10 +72,12 @@ __all__ = [
 ]
 
 UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 2
+UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 3
 UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
+UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
+UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
 UK_REFERENCE_DATASET_NAME = "enhanced_frs_2023_24_recalibrated"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
@@ -109,13 +117,42 @@ _UK_AGGREGATOR_TOKEN = object()
 
 
 def _canonical_sha256(value: object) -> str:
-    encoded = json.dumps(
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
         value,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+
+
+def _terminal_gate_signing_key() -> bytes:
+    """Read the 256-bit release-attestation key from the build environment."""
+
+    encoded = os.environ.get(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+    if not encoded:
+        raise RuntimeError(
+            f"{UK_TERMINAL_GATE_SIGNING_KEY_ENV} must contain a base64-encoded "
+            "32-byte key before writing a UK terminal gate report."
+        )
+    try:
+        key = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise RuntimeError(
+            f"{UK_TERMINAL_GATE_SIGNING_KEY_ENV} must be valid base64."
+        ) from exc
+    if len(key) != 32:
+        raise RuntimeError(
+            f"{UK_TERMINAL_GATE_SIGNING_KEY_ENV} must decode to exactly 32 bytes."
+        )
+    return key
+
+
+def _terminal_gate_signature(key: bytes, payload: object) -> str:
+    return hmac.new(key, _canonical_json_bytes(payload), hashlib.sha256).hexdigest()
 
 
 _SPI_FLAG = "household_is_spi_synthetic"
@@ -475,14 +512,31 @@ class _AttestedUKTerminalGateReport(GateReport):
             }
         )
 
-    def attestation_payload(self) -> dict[str, object]:
-        """Return the sealed serialized attestation or reject later mutation."""
+    def attestation_payload(self, signing_key: bytes) -> dict[str, object]:
+        """Sign the sealed report or reject mutation/invalid key material."""
 
         if self._token is not _UK_AGGREGATOR_TOKEN or (
             self._current_attestation_sha256() != self._sealed_sha256
         ):
             raise ValueError("UK terminal gate attestation changed after evaluation.")
-        return {**self._unsigned_attestation(), "sha256": self._sealed_sha256}
+        if len(signing_key) != 32:
+            raise ValueError("UK terminal gate signing keys must contain 32 bytes.")
+        unsigned_attestation = {
+            **self._unsigned_attestation(),
+            "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+            "signing_key_sha256": hashlib.sha256(signing_key).hexdigest(),
+        }
+        unsigned_report = {
+            "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
+            "enforced": True,
+            "passed": self.passed,
+            "gates": _gate_results_payload(self.results),
+            "attestation": unsigned_attestation,
+        }
+        return {
+            **unsigned_attestation,
+            "signature": _terminal_gate_signature(signing_key, unsigned_report),
+        }
 
 
 def _fit_evidence_payload(
@@ -1167,7 +1221,7 @@ def write_uk_terminal_gate_report(
     report: GateReport,
     path: str | Path,
 ) -> Path:
-    """Atomically write one strict JSON terminal-gate report."""
+    """Atomically write one signed report, persisting key failures first."""
 
     if type(report) is not _AttestedUKTerminalGateReport or (
         report._token is not _UK_AGGREGATOR_TOKEN
@@ -1176,12 +1230,29 @@ def write_uk_terminal_gate_report(
             "UK terminal gate report writer requires the attested report "
             "returned by uk_terminal_gate_report()."
         )
+    signing_error: RuntimeError | None = None
+    try:
+        signing_key = _terminal_gate_signing_key()
+    except RuntimeError as exc:
+        signing_key = None
+        signing_error = exc
+    if signing_key is None:
+        attestation = {
+            **report._unsigned_attestation(),
+            "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+            "signing_key_sha256": None,
+            "signature": None,
+        }
+    else:
+        attestation = report.attestation_payload(signing_key)
+
     output = Path(path)
     payload = {
         "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
         "enforced": True,
-        **report.to_manifest(),
-        "attestation": report.attestation_payload(),
+        "passed": report.passed and signing_error is None,
+        "gates": _gate_results_payload(report.results),
+        "attestation": attestation,
     }
     encoded = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -1191,4 +1262,8 @@ def write_uk_terminal_gate_report(
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
+    if signing_error is not None:
+        raise RuntimeError(
+            f"{signing_error} Unsigned failed report was written to {output}."
+        ) from signing_error
     return output

@@ -18,9 +18,13 @@ before any byte reaches the Hub.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
+import hmac
 import json
 import math
+import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -109,10 +113,12 @@ _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 _UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 2
+_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 3
 _UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
+_UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
+_UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 # Lockstep with
 # populace.build.uk_runtime.terminal_gates.UK_TERMINAL_GATE_POLICY_SHA256.  The
 # data shard deliberately does not depend on the build shard: publication must
@@ -282,13 +288,43 @@ def _sha256(path: Path) -> str:
 def _canonical_sha256(value: object) -> str:
     """Hash JSON exactly as the UK gate aggregator's attestation does."""
 
-    encoded = json.dumps(
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
         value,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+
+
+def _uk_terminal_verification_key(failures: list[str]) -> bytes | None:
+    """Load the out-of-band trust root used to authenticate UK reports."""
+
+    encoded = os.environ.get(_UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+    if not encoded:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} verification requires "
+            f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV} to contain the release key."
+        )
+        return None
+    try:
+        key = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        failures.append(
+            f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV} must be valid base64 to verify "
+            f"{_UK_TERMINAL_GATE_REPORT_FILE}."
+        )
+        return None
+    if len(key) != 32:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV} must decode to exactly 32 bytes "
+            f"to verify {_UK_TERMINAL_GATE_REPORT_FILE}."
+        )
+        return None
+    return key
 
 
 def _reject_json_constant(token: str) -> None:
@@ -1308,8 +1344,9 @@ def _check_uk_terminal_gate_report(
 
     The gate producer is not imported into populace-data.  This verifier pins
     its producer and policy identities, derives the only permissible gate set
-    from build-manifest evidence stages, and recomputes the two attestation
-    digests.  A caller therefore cannot promote a hand-composed collection of
+    from build-manifest evidence stages, recomputes the evidence/result
+    bindings, and verifies the complete report with the out-of-band release
+    key. A caller therefore cannot promote a hand-composed collection of
     passing ``GateResult`` objects as the canonical terminal verdict.
     """
 
@@ -1394,8 +1431,10 @@ def _check_uk_terminal_gate_report(
         "evaluated_gates",
         "evidence_sha256",
         "gate_results_sha256",
+        "signature_algorithm",
+        "signing_key_sha256",
     }
-    required_attestation_fields = {*unsigned_fields, "sha256"}
+    required_attestation_fields = {*unsigned_fields, "signature"}
     if set(attestation) != required_attestation_fields:
         failures.append(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation must contain exactly "
@@ -1419,6 +1458,23 @@ def _check_uk_terminal_gate_report(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.policy_sha256 does "
             "not match the certified UK gate policy."
         )
+    if attestation.get("signature_algorithm") != _UK_TERMINAL_GATE_SIGNATURE_ALGORITHM:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.signature_algorithm "
+            f"must be {_UK_TERMINAL_GATE_SIGNATURE_ALGORITHM!r}."
+        )
+    _check_sha256_field(
+        filename=_UK_TERMINAL_GATE_REPORT_FILE,
+        owner="attestation.signing_key_sha256",
+        value=attestation.get("signing_key_sha256"),
+        failures=failures,
+    )
+    _check_sha256_field(
+        filename=_UK_TERMINAL_GATE_REPORT_FILE,
+        owner="attestation.signature",
+        value=attestation.get("signature"),
+        failures=failures,
+    )
 
     evaluated_gates = attestation.get("evaluated_gates")
     if evaluated_gates != expected_gate_names:
@@ -1475,31 +1531,37 @@ def _check_uk_terminal_gate_report(
             "does not match gates."
         )
 
-    unsigned_attestation = {
-        field: attestation.get(field)
-        for field in (
-            "schema_version",
-            "producer",
-            "policy_sha256",
-            "evaluated_gates",
-            "evidence_sha256",
-            "gate_results_sha256",
-        )
-    }
-    expected_attestation_sha = _canonical_sha256(
-        {
+    verification_key = _uk_terminal_verification_key(failures)
+    if verification_key is not None:
+        expected_key_sha256 = hashlib.sha256(verification_key).hexdigest()
+        if attestation.get("signing_key_sha256") != expected_key_sha256:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.signing_key_sha256 "
+                "does not identify the trusted release key."
+            )
+        unsigned_attestation = {
+            field: attestation.get(field) for field in unsigned_fields
+        }
+        unsigned_report = {
             "schema_version": report.get("schema_version"),
             "enforced": report.get("enforced"),
             "passed": report.get("passed"),
             "gates": valid_gates,
             "attestation": unsigned_attestation,
         }
-    )
-    if attestation.get("sha256") != expected_attestation_sha:
-        failures.append(
-            f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.sha256 does not bind "
-            "the complete terminal report."
-        )
+        expected_signature = hmac.new(
+            verification_key,
+            _canonical_json_bytes(unsigned_report),
+            hashlib.sha256,
+        ).hexdigest()
+        signature = attestation.get("signature")
+        if not isinstance(signature, str) or not hmac.compare_digest(
+            signature, expected_signature
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.signature does "
+                "not authenticate the complete report with the trusted release key."
+            )
 
 
 def _check_calibration_diagnostics(

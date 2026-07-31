@@ -7,7 +7,9 @@ release-manifest schemas (an unversioned early shape next to
 fails with each violation named.
 """
 
+import base64
 import hashlib
+import hmac
 import json
 import shutil
 from pathlib import Path
@@ -33,6 +35,15 @@ UK_TERMINAL_GATE_PRODUCER = (
 UK_TERMINAL_GATE_POLICY_SHA256 = (
     "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
 )
+UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
+UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
+TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES = base64.b64decode(
+    TEST_UK_TERMINAL_GATE_SIGNING_KEY
+)
+FORGED_UK_TERMINAL_GATE_SIGNING_KEY_BYTES = base64.b64decode(
+    "ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA="
+)
 UK_ALWAYS_APPLICABLE_GATE_NAMES = (
     "uk_release_input_coverage",
     "degenerate_release_surface",
@@ -55,6 +66,15 @@ TARGET_COUNT = 20
 UK_JUNE_FIXTURE_DIR = (
     Path(__file__).parent / "fixtures" / "uk_june_2023" / UK_RELEASE_ID
 )
+
+
+@pytest.fixture(autouse=True)
+def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
+    monkeypatch.setenv(
+        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY,
+    )
+
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -518,13 +538,20 @@ def _sha256(path: Path) -> str:
 
 
 def _canonical_sha256(value: object) -> str:
-    encoded = json.dumps(
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
         value,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     ).encode()
-    return hashlib.sha256(encoded).hexdigest()
+
+
+def _terminal_gate_signature(key: bytes, payload: object) -> str:
+    return hmac.new(key, _canonical_json_bytes(payload), hashlib.sha256).hexdigest()
 
 
 def _terminal_weight_summary() -> dict:
@@ -625,6 +652,7 @@ def _terminal_gate_details(name: str) -> dict:
 def _terminal_gate_payload(
     *,
     evidence_stages: tuple[str, ...] = ("hmrc_spi_income", "release_parity"),
+    signing_key: bytes = TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
 ) -> tuple[dict, dict[str, str]]:
     gate_names = list(UK_ALWAYS_APPLICABLE_GATE_NAMES)
     for stage, names in UK_EVIDENCE_GATE_NAMES.items():
@@ -646,12 +674,14 @@ def _terminal_gate_payload(
         },
     }
     unsigned_attestation = {
-        "schema_version": 2,
+        "schema_version": 3,
         "producer": UK_TERMINAL_GATE_PRODUCER,
         "policy_sha256": UK_TERMINAL_GATE_POLICY_SHA256,
         "evaluated_gates": gate_names,
         "evidence_sha256": evidence,
         "gate_results_sha256": _canonical_sha256(gates),
+        "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+        "signing_key_sha256": hashlib.sha256(signing_key).hexdigest(),
     }
     payload = {
         "schema_version": 2,
@@ -660,11 +690,15 @@ def _terminal_gate_payload(
         "gates": gates,
         "attestation": unsigned_attestation,
     }
-    payload["attestation"]["sha256"] = _canonical_sha256(payload)
+    payload["attestation"]["signature"] = _terminal_gate_signature(signing_key, payload)
     return payload, evidence
 
 
-def _refresh_terminal_gate_attestation(payload: dict) -> None:
+def _refresh_terminal_gate_attestation(
+    payload: dict,
+    *,
+    signing_key: bytes = TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+) -> None:
     attestation = payload["attestation"]
     ratio = payload["gates"].get("weight_ratio")
     if isinstance(ratio, dict) and isinstance(ratio.get("details"), dict):
@@ -675,17 +709,20 @@ def _refresh_terminal_gate_attestation(payload: dict) -> None:
                 {"weights": {field: details[field] for field in fields}}
             )
     attestation["gate_results_sha256"] = _canonical_sha256(payload["gates"])
+    attestation["signature_algorithm"] = UK_TERMINAL_GATE_SIGNATURE_ALGORITHM
+    attestation["signing_key_sha256"] = hashlib.sha256(signing_key).hexdigest()
     unsigned_attestation = {
-        key: value for key, value in attestation.items() if key != "sha256"
+        key: value for key, value in attestation.items() if key != "signature"
     }
-    attestation["sha256"] = _canonical_sha256(
+    attestation["signature"] = _terminal_gate_signature(
+        signing_key,
         {
             "schema_version": payload["schema_version"],
             "enforced": payload["enforced"],
             "passed": payload["passed"],
             "gates": payload["gates"],
             "attestation": unsigned_attestation,
-        }
+        },
     )
 
 
@@ -1618,6 +1655,46 @@ def test_exact_k_uk_release_rejects_complete_public_hash_forgery(
     assert "honest aggregator detail schema" in failures
 
 
+def test_exact_k_uk_release_rejects_complete_report_signed_by_untrusted_key(
+    tmp_path: Path,
+) -> None:
+    """Honest-shaped JSON and public digests cannot impersonate the signer."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        signing_key=FORGED_UK_TERMINAL_GATE_SIGNING_KEY_BYTES
+    )
+    build = json.loads((directory / "build_manifest.json").read_text())
+    assert build["terminal_gate_evidence"] == evidence
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "does not identify the trusted release key" in failures
+    assert "does not authenticate the complete report" in failures
+
+
+def test_exact_k_uk_release_requires_out_of_band_verification_key(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+
+    with pytest.raises(ReleaseContractError, match="verification requires"):
+        validate_release_dir(directory)
+
+
 def test_exact_k_uk_release_rejects_aggregator_report_transplant(
     tmp_path: Path,
 ) -> None:
@@ -1833,7 +1910,7 @@ def test_exact_k_uk_terminal_report_recomputes_attestation_digests(
 
     failures = "\n".join(excinfo.value.failures)
     assert "gate_results_sha256 does not match gates" in failures
-    assert "attestation.sha256 does not bind" in failures
+    assert "attestation.signature does not authenticate" in failures
 
 
 def test_exact_k_uk_terminal_report_hashes_cross_link_both_manifests(
