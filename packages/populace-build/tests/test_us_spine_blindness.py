@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+import re
 from pathlib import Path
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -321,6 +322,36 @@ def _subscript_source_expression(
     )
 
 
+def _pandas_expression_source(node: ast.AST) -> str | None:
+    """Resolve guarded column-shaped tokens in a static pandas expression."""
+
+    shape = _string_shape(node)
+    if shape is None:
+        return None
+    for token in re.findall(r"[\w*?\[\]-]+", shape):
+        if _is_source_column_shape(token):
+            return f"source column {token!r}"
+    return None
+
+
+def _call_argument(
+    node: ast.Call,
+    *,
+    position: int,
+    keyword: str,
+) -> ast.AST | None:
+    if len(node.args) > position:
+        return node.args[position]
+    return next(
+        (
+            candidate.value
+            for candidate in node.keywords
+            if candidate.arg == keyword
+        ),
+        None,
+    )
+
+
 def _assigned_names(target: ast.AST) -> tuple[str, ...]:
     if isinstance(target, ast.Name):
         return (target.id,)
@@ -422,6 +453,32 @@ class _SourceReadVisitor(ast.NodeVisitor):
             attribute = self._expression(node.args[1])
             if attribute is not None:
                 self._record(node, f"getattr using {attribute}")
+        elif isinstance(node.func, ast.Attribute) and name == "get":
+            key = _call_argument(node, position=0, keyword="key")
+            if key is not None:
+                column = _subscript_source_expression(
+                    key,
+                    bindings=self.bindings,
+                    factory_aliases=self.factory_aliases,
+                )
+                if column is not None:
+                    self._record(node, f".get() using {column}")
+        elif isinstance(node.func, ast.Attribute) and name in {"query", "eval"}:
+            expression = _call_argument(node, position=0, keyword="expr")
+            if expression is not None:
+                column = _pandas_expression_source(expression)
+                if column is not None:
+                    self._record(node, f".{name}() using {column}")
+        elif isinstance(node.func, ast.Attribute) and name == "filter":
+            items = _call_argument(node, position=0, keyword="items")
+            if items is not None:
+                column = _subscript_source_expression(
+                    items,
+                    bindings=self.bindings,
+                    factory_aliases=self.factory_aliases,
+                )
+                if column is not None:
+                    self._record(node, f".filter(items=...) using {column}")
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -775,6 +832,46 @@ def op(df):
     assert _source_spine_accesses(dynamic_subscript)
     assert _source_spine_accesses(dynamic_getattr)
     assert _source_spine_accesses(raw_spine_source_id)
+
+
+def test_source_spine_ast_guard_detects_pandas_string_reads() -> None:
+    """Pandas string-based column APIs cannot bypass the structural guard."""
+
+    reviewer_get = """
+def op(df):
+    return df.get("person_support_channel")
+"""
+    reviewer_query = """
+def op(df):
+    return df.query('person_support_channel == "acs"')
+"""
+    pandas_eval = """
+def op(df):
+    return df.eval("person_spine_source_id == 1")
+"""
+    pandas_filter = """
+def op(df):
+    return df.filter(items=["person_spine"])
+"""
+    pandas_loc = """
+def op(df):
+    return df.loc[..., "person_support_channel"]
+"""
+    benign_reads = """
+def op(df):
+    df.get("age")
+    df.query("age >= 18")
+    df.eval("age + 1")
+    df.filter(items=["age"])
+    return df.loc[..., "age"]
+"""
+
+    assert _source_spine_accesses(reviewer_get)
+    assert _source_spine_accesses(reviewer_query)
+    assert _source_spine_accesses(pandas_eval)
+    assert _source_spine_accesses(pandas_filter)
+    assert _source_spine_accesses(pandas_loc)
+    assert _source_spine_accesses(benign_reads) == ()
 
 
 def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
