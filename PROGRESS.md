@@ -6,8 +6,8 @@ Round-4 hold remediation is in progress on `multispine-pool-build-578`, from
 clean starting commit `19a7a1d`. Subscript resolution now catches all six
 round-4 evasions; loop and comprehension targets now propagate every static
 string choice or an opaque shadow; and the 54-module operator graph remains
-clean. Complete `str.format` fields, method aliases, and late-bound closure
-values remain in progress.
+clean. `str.format` now resolves all requested static field forms precisely.
+Method aliases and late-bound closure values remain in progress.
 
 No push or external mutation is authorized.
 
@@ -35,12 +35,20 @@ No push or external mutation is authorized.
   shadow stale outer bindings with opacity.
 - Added benign, mixed guarded, module-bound, dynamic, and comprehension-wrapped
   selector regressions. The guard file now passes 17 tests with the graph clean.
+- Replaced bare `{}` substitution with `string.Formatter` field parsing for
+  automatic, indexed, named, converted (`!s`/`!r`), and specified fields.
+- Kept unresolved fields structurally opaque while preserving literal `*` in a
+  fully static pandas expression as benign syntax.
+- Bound exact-name checks for every unsafe format variant and zero-finding
+  controls for named benign formatting, conversions/specs, escaped braces, and
+  multiplication syntax. The guard file now passes 19 tests with the graph
+  clean.
 
 ## Next
 
-- Commit loop/comprehension propagation.
-- Add committed self-tests and implementation commits for complete format
-  fields, method aliasing, and closure late binding.
+- Commit complete format-field resolution.
+- Add committed self-tests and implementation commits for method aliasing and
+  closure late binding.
 - Add the cross-round completeness invariant and benign battery.
 - Run the guard file, the full `populace-build` suite, Ruff, and the 54-module
   graph scan.

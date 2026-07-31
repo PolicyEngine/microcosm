@@ -6,6 +6,7 @@ import ast
 import fnmatch
 import re
 from pathlib import Path
+from string import Formatter
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _US_RUNTIME = (
@@ -347,7 +348,7 @@ def _static_string_shape(
         return None
     if isinstance(node, ast.FormattedValue):
         inner = _static_string_shape(node.value, constants)
-        return inner if inner is not None else "*"
+        return inner if inner is not None else _OPAQUE_STRING_PART
     if isinstance(node, ast.JoinedStr):
         pieces = [_static_string_shape(value, constants) for value in node.values]
         if any(piece is None for piece in pieces):
@@ -383,6 +384,18 @@ def _static_string_shape(
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "join"
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        separator = _static_string_shape(node.func.value, constants)
+        values = _static_string_list(node.args[0], constants)
+        if separator is None or values is None:
+            return None
+        return separator.join(values)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
         and node.func.attr == "replace"
         and not node.keywords
         and len(node.args) in {2, 3}
@@ -404,19 +417,92 @@ def _static_string_shape(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "format"
-        and not node.keywords
     ):
         template = _static_string_shape(node.func.value, constants)
         if template is None:
             return None
-        for argument in node.args:
-            value = _static_string_shape(argument, constants)
-            template = template.replace("{}", "*" if value is None else value, 1)
-        return template
+        return _resolve_static_format(template, node, constants)
     return _string_shape(node)
 
 
 _OPAQUE_STATIC_VALUE = object()
+_OPAQUE_STRING_PART = "\N{OBJECT REPLACEMENT CHARACTER}"
+
+
+def _static_format_value(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> object:
+    value = _static_string_shape(node, constants)
+    if value is not None:
+        return _OPAQUE_STATIC_VALUE if _OPAQUE_STRING_PART in value else value
+    integer = _static_integer(node, constants)
+    if integer is not None:
+        return integer
+    if isinstance(node, ast.Constant) and isinstance(
+        node.value,
+        (float, bool, bytes, type(None)),
+    ):
+        return node.value
+    return _OPAQUE_STATIC_VALUE
+
+
+def _resolve_static_format(
+    template: str,
+    node: ast.Call,
+    constants: list[dict[str, object]],
+) -> str:
+    """Substitute every statically known ``str.format`` field."""
+
+    formatter = Formatter()
+    positional = tuple(
+        _OPAQUE_STATIC_VALUE
+        if isinstance(argument, ast.Starred)
+        else _static_format_value(argument, constants)
+        for argument in node.args
+    )
+    keywords = {
+        keyword.arg: _static_format_value(keyword.value, constants)
+        for keyword in node.keywords
+        if keyword.arg is not None
+    }
+    expanded_keywords = any(keyword.arg is None for keyword in node.keywords)
+    auto_index = 0
+    pieces: list[str] = []
+    try:
+        parsed = tuple(formatter.parse(template))
+    except ValueError:
+        return _OPAQUE_STRING_PART
+    for literal, field_name, format_spec, conversion in parsed:
+        pieces.append(literal)
+        if field_name is None:
+            continue
+        lookup_name = field_name
+        if field_name == "":
+            lookup_name = str(auto_index)
+            auto_index += 1
+        try:
+            value, _ = formatter.get_field(
+                lookup_name,
+                positional,
+                keywords,
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            value = _OPAQUE_STATIC_VALUE
+        if value is _OPAQUE_STATIC_VALUE or (
+            expanded_keywords and not lookup_name.isdecimal()
+        ):
+            pieces.append(_OPAQUE_STRING_PART)
+            continue
+        if "{" in format_spec or "}" in format_spec:
+            pieces.append(_OPAQUE_STRING_PART)
+            continue
+        try:
+            converted = formatter.convert_field(value, conversion)
+            pieces.append(formatter.format_field(converted, format_spec))
+        except (TypeError, ValueError):
+            pieces.append(_OPAQUE_STRING_PART)
+    return "".join(pieces)
 
 
 def _static_integer(node: ast.AST, constants: list[dict[str, object]]) -> int | None:
@@ -809,7 +895,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 )
             elif expression is not None:
                 shape = _static_string_shape(expression, self.constants)
-                if shape is None or "*" in shape:
+                if shape is None or _OPAQUE_STRING_PART in shape:
                     # Fail closed: an expression the guard cannot resolve
                     # statically could name a guarded column — opacity is
                     # a violation, not a pass (sol #583 round 2).
@@ -849,7 +935,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
                             ".filter(items=...) with an unresolvable dynamic "
                             "list (fail-closed)",
                         )
-                elif any("*" in item for item in resolved):
+                elif any(_OPAQUE_STRING_PART in item for item in resolved):
                     self._record(
                         node,
                         ".filter(items=...) with an unresolvable dynamic "
@@ -896,9 +982,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
                     node,
                     "subscript with an unresolvable dynamic selector (fail-closed)",
                 )
-        elif any("*" in item for item in resolved):
-            if column_container or any(
-                _is_source_column_shape(item) for item in resolved
+        elif any(_OPAQUE_STRING_PART in item for item in resolved):
+            if (
+                column_container
+                or column is not None
+                or any(_is_source_column_shape(item) for item in resolved)
             ):
                 self._record(
                     node,
@@ -1556,6 +1644,104 @@ def f(df):
         assert accesses, source
         assert any("person_support_channel" in item for item in accesses)
     for source in dynamic_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("fail-closed" in item for item in accesses)
+
+
+def test_format_fields_resolve_all_static_forms_by_name() -> None:
+    """Automatic, indexed, named, converted, and specified fields are exact."""
+
+    unsafe_sources = (
+        """
+def f(df):
+    col = "person_support_channel"
+    return df.query("{} == 1".format(col))
+""",
+        """
+def f(df):
+    col = "person_support_channel"
+    return df.query("{0} == 1".format(col))
+""",
+        """
+def f(df):
+    col = "person_support_channel"
+    return df.query("{!s} == 1".format(col))
+""",
+        """
+def f(df):
+    col = "person_support_channel"
+    return df.query("{!r} == 1".format(col))
+""",
+        """
+def f(df):
+    col = "person_support_channel"
+    return df.query("{:s} == 1".format(col))
+""",
+        """
+def f(df):
+    return df.query(
+        "{col} == 1".format(col="person_support_channel")
+    )
+""",
+        """
+def f(df):
+    return df[
+        "{entity}_support_channel".format(entity="person")
+    ]
+""",
+    )
+
+    for source in unsafe_sources:
+        accesses = _source_spine_accesses(source)
+        assert accesses, source
+        assert any("person_support_channel" in item for item in accesses)
+        assert all("fail-closed" not in item for item in accesses)
+
+
+def test_format_fields_preserve_benign_precision_and_opaque_failures() -> None:
+    """Fully static benign fields pass; unresolved fields fail closed."""
+
+    benign_sources = (
+        """
+def f(df):
+    return df.query("{col} >= 18".format(col="age"))
+""",
+        """
+def f(df):
+    return df.query("{0!s:>3} >= 18".format("age"))
+""",
+        """
+def f(df):
+    return df.query("age * 2 >= 18")
+""",
+        """
+def f(df):
+    return df.query("{{age}} == {{age}}".format())
+""",
+    )
+    opaque_sources = (
+        """
+def f(df, col):
+    return df.query("{col} == 1".format(col=col))
+""",
+        """
+def f(df):
+    return df.eval("{missing} == 1".format())
+""",
+        """
+def f(df, values):
+    return df.query("{} == 1".format(*values))
+""",
+        """
+def f(df, values):
+    return df.query("{col} == 1".format(**values))
+""",
+    )
+
+    for source in benign_sources:
+        assert _source_spine_accesses(source) == (), source
+    for source in opaque_sources:
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("fail-closed" in item for item in accesses)
