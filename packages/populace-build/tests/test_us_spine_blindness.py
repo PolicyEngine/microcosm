@@ -111,6 +111,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "fiscal_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
+        "h5_io.py",  # US artifact I/O; no population treatment.
         "immigration.py",
         "input_mass.py",
         "l0_refit_export.py",
