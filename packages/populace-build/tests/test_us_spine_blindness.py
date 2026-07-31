@@ -2,7 +2,7 @@
 
 This guard enforces, and its tests certify, exactly these surfaces:
 
-- direct attribute, subscript, ``.loc``, and ``__getitem__`` reads;
+- direct attribute, subscript, ``.loc``, and ``__getitem__`` reads and store targets;
 - canonical guarded-column factory calls, including aliases bound by simple
   assignment or named expression;
 - ``query``, ``eval``, ``filter``, and ``get`` expression surfaces, failing
@@ -566,7 +566,26 @@ def _static_literal_value(
         return values
     if isinstance(node, ast.Dict):
         if any(key is None for key in node.keys):
-            return _OPAQUE_STATIC_VALUE
+            # {**BASE} expansion: merge statically resolvable mappings in
+            # order, like the runtime does (sol #583 round 12); any
+            # unresolvable expansion makes the whole dict opaque.
+            merged: dict = {}
+            for key, value in zip(node.keys, node.values, strict=True):
+                if key is None:
+                    inner = _static_literal_value(value, constants)
+                    if not isinstance(inner, dict):
+                        return _OPAQUE_STATIC_VALUE
+                    merged.update(inner)
+                else:
+                    resolved_key = _static_literal_value(key, constants)
+                    resolved_value = _static_literal_value(value, constants)
+                    if _OPAQUE_STATIC_VALUE in (resolved_key, resolved_value):
+                        return _OPAQUE_STATIC_VALUE
+                    try:
+                        merged[resolved_key] = resolved_value
+                    except TypeError:
+                        return _OPAQUE_STATIC_VALUE
+            return merged
         keys = tuple(
             _static_literal_value(key, constants)
             for key in node.keys
@@ -1307,6 +1326,20 @@ def _static_dict_values_expression(node: ast.AST) -> ast.AST | None:
     return None
 
 
+def _value_bears_strings(value: object) -> bool:
+    """True when a resolved value carries string material at any depth."""
+
+    if isinstance(value, str):
+        return True
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_value_bears_strings(item) for item in value)
+    if isinstance(value, dict):
+        return any(
+            _value_bears_strings(part) for part in (*value.keys(), *value.values())
+        )
+    return False
+
+
 def _static_container_expression(node: ast.AST) -> ast.AST | None:
     """The literal-container core of an iterable expression, if any.
 
@@ -1640,7 +1673,32 @@ class _SourceReadVisitor(ast.NodeVisitor):
             self._visit_access_target(target)
             if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
                 self._poison(target.value.id)
+        if self._bind_destructured(node.targets, node.value):
+            return
         self._bind(list(node.targets), node.value)
+
+    def _bind_destructured(self, targets: list[ast.AST], value: ast.AST) -> bool:
+        """Destructure ``a, b = payload`` when payload resolves to a static
+        string sequence — each name binds its exact position, so nested
+        structures propagated from row bindings resolve precisely
+        (sol #583 round 12)."""
+
+        if len(targets) != 1 or not isinstance(targets[0], (ast.Tuple, ast.List)):
+            return False
+        elements = targets[0].elts
+        if not all(isinstance(element, ast.Name) for element in elements):
+            return False
+        resolved = _static_literal_value(value, self.constants)
+        if (
+            resolved is _OPAQUE_STATIC_VALUE
+            or not isinstance(resolved, (list, tuple))
+            or len(resolved) != len(elements)
+            or not all(isinstance(item, str) for item in resolved)
+        ):
+            return False
+        for element, item in zip(elements, resolved, strict=True):
+            self._bind_iteration_target(element, (item,))
+        return True
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         self.visit(node.value)
@@ -1691,11 +1749,14 @@ class _SourceReadVisitor(ast.NodeVisitor):
         "support_channel"),)`` binds ``entity``/``suffix`` to their
         per-position choice sets — natural declarative loop code, in
         scope (sol #583 round 6). The result reports whether nonempty static
-        rows were recognized and whether the target geometry was completely
-        handled. Known string members of each column remain exact choices; a
-        column with no known strings binds opaque. A direct-name star is
-        completely handled as opaque; every name in a nested star payload is
-        poisoned, but that geometry remains partial and therefore enters the
+        rows were recognized and whether propagation was COMPLETE: every
+        string-bearing position bound to real choices. Known string members
+        of each column remain exact choices; a column whose values carry no
+        strings at any depth binds opaque and stays complete; a column with
+        nested or mixed string material, or a star swallowing string-bearing
+        values at any depth, is incomplete regardless of payload shape —
+        every name in any star payload is poisoned, and incomplete
+        propagation enters the
         fragment fallback.
         """
 
@@ -1747,9 +1808,52 @@ class _SourceReadVisitor(ast.NodeVisitor):
 
         def _bind_column(element: ast.Name, values: tuple) -> None:
             nonlocal fully_propagated
+            structured = [
+                value
+                for value in values
+                if not isinstance(value, str) and _value_bears_strings(value)
+            ]
+            if structured and len(structured) == len(values):
+                distinct = {repr(value) for value in structured}
+                if len(distinct) == 1:
+                    # A column of one repeated static structure propagates
+                    # AS that structure — downstream unpacking destructures
+                    # it precisely (sol #583 round 12).
+                    self._bind_iteration_target(element, None)
+                    self.constants[-1][element.id] = structured[0]
+                    return
+
+                def _leaves(value: object) -> tuple[str, ...]:
+                    if isinstance(value, str):
+                        return (value,)
+                    if isinstance(value, (list, tuple, set, frozenset)):
+                        return tuple(leaf for item in value for leaf in _leaves(item))
+                    if isinstance(value, dict):
+                        return tuple(
+                            leaf
+                            for part in (*value.keys(), *value.values())
+                            for leaf in _leaves(part)
+                        )
+                    return ()
+
+                # Divergent structures bind their flattened string leaves
+                # as choices: every string stays VISIBLE in the binding, so
+                # nothing is hidden behind opacity and registry tables
+                # (entity -> column tuples) remain complete
+                # (sol #583 round 12).
+                self._bind_iteration_target(
+                    element,
+                    tuple(leaf for value in structured for leaf in _leaves(value))
+                    or None,
+                )
+                return
             choices = tuple(value for value in values if isinstance(value, str))
             self._bind_iteration_target(element, choices or None)
-            if choices and len(choices) != len(values):
+            if structured:
+                # Mixed flat/nested string material — string content
+                # reaches an opaque binding (sol #583 round 12).
+                fully_propagated = False
+            elif choices and len(choices) != len(values):
                 # A string-bearing column with opaque members is
                 # incomplete propagation (sol #583 round 11); all-dynamic
                 # columns (no strings) stay complete-enough.
@@ -3557,6 +3661,72 @@ def f(df):
     assert not _source_spine_accesses(benign_bound)
 
 
+def test_round_11_and_12_string_material_never_reaches_opaque_bindings():
+    """Sol #583 rounds 11-12 closure fixtures, committed for provenance:
+    stars swallowing strings, value-side starred splices, nested
+    string-bearing columns, and {**BASE} dict expansion all classify —
+    caught by name or loop-fail-closed — never silent."""
+
+    star_swallows_strings = """
+import pandas as pd
+
+
+def f(df: pd.DataFrame):
+    for entity, *parts in [("person", "support", "channel")]:
+        return df[entity + "_" + "_".join(parts)]
+"""
+    value_side_star = """
+import pandas as pd
+
+
+def f(df: pd.DataFrame):
+    for entity, suffix in [("person", *("support_channel",))]:
+        return df[f"{entity}_{suffix}"]
+"""
+    nested_column = """
+ROWS = ((("person", "support_channel"), "meta"),)
+
+
+def f():
+    for payload, meta in ROWS:
+        entity, suffix = payload
+        sink(f"{entity}_{suffix}")
+"""
+    dict_expansion = """
+BASE = {"person": "support_channel"}
+ROWS = {**BASE}
+
+
+def f():
+    for entity, suffix in ROWS.items():
+        sink(f"{entity}_{suffix}")
+"""
+    for source in (
+        star_swallows_strings,
+        value_side_star,
+        nested_column,
+        dict_expansion,
+    ):
+        assert _source_spine_accesses(source), source
+    # The splice and the expansion resolve precisely — by name, not
+    # merely by opacity.
+    assert any(
+        "person_support_channel" in access
+        for access in _source_spine_accesses(value_side_star)
+    )
+    assert any(
+        "person_support_channel" in access
+        for access in _source_spine_accesses(dict_expansion)
+    )
+    # Dynamic-only star payloads and all-dynamic columns stay complete.
+    dynamic_star = """
+def f(a, b):
+    for label, *objs in (("state", a, b),):
+        sink(label)
+"""
+    assert _source_spine_accesses(dynamic_star) == ()
+
+
 def test_dict_items_and_starred_row_iteration_are_in_scope():
     """Sol #583 round-7 module-local edges: static dict.items() and
     starred/mixed-width row unpacking are ordinary declarative code."""
@@ -3893,9 +4063,12 @@ def f(dynamic_object):
         accesses = _source_spine_accesses(source)
         assert any("person_support_channel" in access for access in accesses), source
         # Round 11: a string-bearing column with opaque members counts as
-        # incomplete propagation, so the loop may ALSO record fail-closed
-        # beside the named catch — dual reporting is the conservative
-        # direction, not a defect.
+        # incomplete propagation, so the loop MUST also record fail-closed
+        # beside the named catch — dual reporting is the required
+        # conservative direction (sol round 12).
+        assert any("unpropagatable target geometry" in access for access in accesses), (
+            source
+        )
 
     bound_partial_dict_views = (
         """
