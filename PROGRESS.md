@@ -61,12 +61,24 @@
 - Added the bounded ASEC pre-clone checkpoint loader: it requires the exact
   `pre_clone_enrichment` stage binding, revalidates the stored frame identity,
   and rejects non-US or invalid household-weight artifacts.
+- Added an explicit spine-blind derivation stage that completes the Schedule D
+  memo input at tax-unit grain without rewriting existing values, then applies
+  the shared QBI identity reconciliation while preserving the assembly receipt.
+- Added `tools/build_us_multispine_pool.py`: its CLI requires five explicit
+  path/SHA pairs plus `--out`, rechecks packaged ACS byte pins without
+  downloading, runs the fixed pool order, retains the resumable fixed-parameter
+  QRF checkpoint, and writes an input-only nullable H5, terminal agreement
+  diagnostics, and an authoritative manifest. Red agreement returns nonzero
+  with `simulation_ready=false`; calibration remains downstream.
+- Extended the AST guard transitively from the new CLI through its US runtime
+  imports, with no new source-provenance owner exceptions, and rejected the
+  retired late-assembly graph.
 
 ## Next
 
-1. Add the sha-pinned CLI with deterministic
-   manifest/diagnostic paths and no tolerance knobs.
-2. Wire the raw-preserving transfer and receipt-safe production operators into
-   that CLI.
-3. Add synthetic full-path tests, changelog fragment, focused verification, and
+1. Add synthetic full-path CLI tests for red agreement receipts, manifest
+   contents, structural #581 errors, and pre-load SHA refusal.
+2. Verify and fix the ACS/ASEC source-lineage dtype boundary discovered during
+   the production input audit.
+3. Run focused verification, update the committed ledger, and write
    the external review worklog.
