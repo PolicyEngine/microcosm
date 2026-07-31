@@ -32,12 +32,14 @@ module and the pinned 54-module build graph.
   `test_documented_out_of_scope_evasions_are_not_caught`, asserting their
   intentional current misses.
 - Passed the complete guard file: 113 tests.
+- Reverified the value-preserving runtime constant plumbing with the full
+  adult-care and SSI files: 85 passed, 2 skipped. `support_provenance.py` owns
+  the unchanged `"person_support_channel"` value; guarded consumers
+  `adult_care.py` and `ssi_take_up.py` import it without behavior changes.
+- Passed repository-wide Ruff and `git diff --check`.
 
 ## Next
 
-- Commit the completed guard contract, implementation, regressions, and this
-  receipt.
-- Reverify adult-care and SSI constant-plumbing value preservation.
-- Run the full `populace-build` suite and Ruff; update the PR body and write
-  `/private/tmp/583_fix4_handoff.md`.
+- Run the full `populace-build` suite; update the PR body and write
+  `/private/tmp/583_fix4_handoff.md` with exact receipts.
 - Restore `PROGRESS.md` byte-for-byte to `origin/main` before final handoff.
