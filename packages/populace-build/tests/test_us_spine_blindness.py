@@ -36,7 +36,10 @@ by the assembly receipt and runtime validation.
 Where multi-value loop bindings combine in one template, the guard may
 over-report combinations that no single row produces (a Cartesian
 over-catch). Over-reporting is the safe failure direction for a
-tripwire; a module that trips it restructures its table.
+tripwire; a module that trips it restructures its table. Partial dict
+views likewise retain every entry with an opaque key because unknown
+runtime keys may be distinct; if they collide, a value overwritten at
+runtime can remain in the guard's conservative choice set.
 """
 
 from __future__ import annotations
@@ -513,6 +516,10 @@ _OPAQUE_METHOD_ALIAS = ("", True)
 
 class _StaticStringChoices(tuple):
     """Abstract alternatives bound by one static loop/comprehension target."""
+
+
+class _StaticDictEntries(tuple):
+    """Ordered abstract dict entries; opaque keys remain distinct rows."""
 
 
 def _static_format_value(
@@ -1164,25 +1171,86 @@ def _static_structure(
     return None
 
 
-def _static_dict_value(
+def _static_dict_entries(
     node: ast.AST,
     constants: list[dict[str, object]],
-) -> dict | None:
-    """Resolve a literal/bound dict or one supported ``dict(iterable)``."""
+) -> _StaticDictEntries | None:
+    """Resolve supported dict entries, conservatively preserving opaque keys."""
 
     mapping = _static_literal_value(node, constants)
-    if isinstance(mapping, dict):
+    if isinstance(mapping, _StaticDictEntries):
         return mapping
-    if not (
+    if isinstance(mapping, dict):
+        return _StaticDictEntries(mapping.items())
+    if isinstance(node, ast.Dict):
+        if any(key is None for key in node.keys):
+            return None
+        entries = _StaticDictEntries(
+            (
+                _static_value_or_structure(key, constants),
+                _static_value_or_structure(value, constants),
+            )
+            for key, value in zip(node.keys, node.values, strict=True)
+            if key is not None
+        )
+    elif (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "dict"
         and len(node.args) == 1
         and not node.keywords
     ):
+        raw_entries = _static_value_or_structure(node.args[0], constants)
+        if isinstance(raw_entries, _StaticDictEntries):
+            entries = raw_entries
+        elif isinstance(raw_entries, dict):
+            entries = _StaticDictEntries(raw_entries.items())
+        elif isinstance(raw_entries, (list, tuple, set, frozenset)):
+            pairs: list[tuple[object, object]] = []
+            for entry in raw_entries:
+                if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+                    return None
+                pairs.append((entry[0], entry[1]))
+            entries = _StaticDictEntries(pairs)
+        else:
+            return None
+    else:
         return None
-    entries = _static_literal_value(node.args[0], constants)
-    if _contains_opaque_static_value(entries):
+
+    if any(_contains_opaque_static_value(key) for key, _value in entries):
+        # Unknown keys may or may not collide at runtime. Retain every row
+        # rather than materializing them through one shared sentinel.
+        return entries
+    try:
+        return _StaticDictEntries(dict(entries).items())
+    except (TypeError, ValueError):
+        return None
+
+
+def _static_value_or_structure(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> object:
+    """Resolve a full literal or retain its supported partial structure."""
+
+    value = _static_literal_value(node, constants)
+    if value is not _OPAQUE_STATIC_VALUE:
+        return value
+    structure = _static_structure(node, constants)
+    if structure is not None:
+        return structure
+    entries = _static_dict_entries(node, constants)
+    return _OPAQUE_STATIC_VALUE if entries is None else entries
+
+
+def _static_dict_value(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> dict | None:
+    """Resolve a fully static dict or supported ``dict(iterable)``."""
+
+    entries = _static_dict_entries(node, constants)
+    if entries is None or _contains_opaque_static_value(entries):
         return None
     try:
         return dict(entries)
@@ -1279,15 +1347,33 @@ def _static_iteration_value(
         and not node.args
         and not node.keywords
     ):
-        mapping = _static_dict_value(node.func.value, constants)
-        if mapping is None:
+        entries = _static_dict_entries(node.func.value, constants)
+        if entries is None:
             return _OPAQUE_STATIC_VALUE
         return (
-            tuple(mapping.items())
+            tuple(entries)
             if node.func.attr == "items"
-            else tuple(mapping.values())
+            else tuple(value for _key, value in entries)
         )
-    return _static_literal_value(node, constants)
+    value = _static_literal_value(node, constants)
+    if isinstance(value, _StaticDictEntries):
+        return tuple(key for key, _value in value)
+    return value
+
+
+def _static_iteration_string_choices(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+) -> tuple[str, ...] | None:
+    """Known string members of a supported static iteration value."""
+
+    value = _static_iteration_value(node, constants)
+    if not isinstance(value, (list, tuple, set, frozenset)):
+        return None
+    if not value:
+        return ()
+    choices = tuple(item for item in value if isinstance(item, str))
+    return choices or None
 
 
 def _iterable_carries_guarded_fragments(node: ast.AST) -> bool:
@@ -1467,6 +1553,10 @@ class _SourceReadVisitor(ast.NodeVisitor):
             if literal is not _OPAQUE_STATIC_VALUE:
                 constant = literal
         if constant is None:
+            constant = _static_dict_value(value, self.constants)
+        if constant is None:
+            constant = _static_dict_entries(value, self.constants)
+        if constant is None:
             constant = _static_structure(value, self.constants)
         if constant is None:
             constant = _static_string_list(value, self.constants)
@@ -1596,10 +1686,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
         per-position choice sets — natural declarative loop code, in
         scope (sol #583 round 6). The result reports whether nonempty static
         rows were recognized and whether the target geometry was completely
-        handled. Resolvable string columns remain exact and dynamic columns
-        bind opaque. A direct-name star is completely handled as opaque;
-        every name in a nested star payload is poisoned, but that geometry
-        remains partial and therefore enters the fragment fallback.
+        handled. Known string members of each column remain exact choices; a
+        column with no known strings binds opaque. A direct-name star is
+        completely handled as opaque; every name in a nested star payload is
+        poisoned, but that geometry remains partial and therefore enters the
+        fragment fallback.
         """
 
         literal = _static_iteration_value(iterable, self.constants)
@@ -1647,7 +1738,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
             return True, False
 
         def _column_choices(values: tuple) -> tuple[str, ...] | None:
-            return values if all(isinstance(value, str) for value in values) else None
+            choices = tuple(value for value in values if isinstance(value, str))
+            return choices or None
 
         fully_propagated = True
         for position, element in enumerate(leading):
@@ -1864,6 +1956,8 @@ class _SourceReadVisitor(ast.NodeVisitor):
         self._visit_access_target(node.target)
         before = self._flow_state()
         values = _static_string_list(node.iter, self.constants)
+        if values is None:
+            values = _static_iteration_string_choices(node.iter, self.constants)
         carries_guarded_fragments = _iterable_carries_guarded_fragments(
             node.iter
         ) or _resolved_value_carries_guarded_fragments(node.iter, self.constants)
@@ -1909,6 +2003,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
         first_generator = node.generators[0]
         self.visit(first_generator.iter)
         first_values = _static_string_list(first_generator.iter, self.constants)
+        if first_values is None:
+            first_values = _static_iteration_string_choices(
+                first_generator.iter,
+                self.constants,
+            )
         direct_class_body = bool(
             self.class_lexical_scope_depths
             and len(self.scope_kinds) == self.class_lexical_scope_depths[-1]
@@ -1929,6 +2028,11 @@ class _SourceReadVisitor(ast.NodeVisitor):
             if index:
                 self.visit(generator.iter)
                 values = _static_string_list(generator.iter, self.constants)
+                if values is None:
+                    values = _static_iteration_string_choices(
+                        generator.iter,
+                        self.constants,
+                    )
             self._visit_access_target(generator.target)
             carries_guarded_fragments = _iterable_carries_guarded_fragments(
                 generator.iter

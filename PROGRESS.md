@@ -67,12 +67,20 @@ and partial structures propagated through bindings.
   and partial dict/constructor views were not retained through bindings.
 - Added red precision/composition controls for literal, bound, and constructor
   scalar views; inline/bound mixed columns; and bound partial dict views.
+- Added an abstract ordered dict-entry representation: fully known keys retain
+  normal dict overwrite semantics, while opaque keys remain distinct possible
+  rows instead of collapsing through the sentinel. Partial literal and
+  constructor mappings now survive assignment bindings and feed their actual
+  keys, items, or values to iteration.
+- Static iteration now retains known top-level string choices for scalar views
+  and known string members within mixed row columns. Empty views preserve
+  empty-loop flow, all-opaque columns remain opaque, and the documented
+  conservative duplicate-key over-catch applies only to unresolved keys.
+- The expanded controls, 121-case guard, 22-case graph battery, and direct
+  production-file scans pass with both named files still at zero findings.
 
 ## Next
 
-- Preserve partial dict entries without materializing opaque keys, feed scalar
-  dict views into exact string choices, and retain known strings in mixed
-  columns.
 - Re-run the full validation matrix after those corrections.
 - Restore `PROGRESS.md` exactly to `origin/main`, commit all coherent steps
   locally without pushing, and write `/private/tmp/583_fix5_handoff.md`.
