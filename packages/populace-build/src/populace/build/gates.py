@@ -43,6 +43,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 from populace.calibrate.registry import TargetSpec
 from populace.calibrate.solve import relative_error_loss
@@ -540,18 +541,24 @@ def exported_nonzero_gate(
 
 def _observed_column_values(values: Iterable[object]) -> np.ndarray:
     arr = np.asarray(values)
+    if isinstance(values, pd.Series):
+        missing = values.isna().to_numpy(dtype=bool)
+    else:
+        # Object arrays need pandas' elementwise scalar classification so
+        # pd.NA, pd.NaT, None, and NaN are all treated as unobserved.
+        missing = np.asarray(pd.isna(arr), dtype=bool)
     if arr.ndim == 0:
         arr = arr.reshape(1)
+        missing = missing.reshape(1)
     else:
         arr = arr.reshape(-1)
+        missing = missing.reshape(-1)
     if arr.dtype.kind == "f":
-        return arr[np.isfinite(arr)]
+        return arr[~missing & np.isfinite(arr)]
     if arr.dtype.kind in {"b", "i", "u", "S", "U"}:
-        return arr
+        return arr[~missing]
     observed = []
-    for value in arr.astype(object):
-        if value is None:
-            continue
+    for value in arr[~missing].astype(object):
         if isinstance(value, (float, np.floating)) and not np.isfinite(float(value)):
             continue
         observed.append(value)

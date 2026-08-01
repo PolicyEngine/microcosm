@@ -7,6 +7,7 @@ flip, investment-interest blow-up) as the cases the gate must catch.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from populace.build import (
@@ -416,6 +417,27 @@ class TestNonconstantColumnsGate:
 
 
 class TestDefaultValuedColumnsGate:
+    @pytest.mark.parametrize(
+        "values",
+        [
+            pd.Series([pd.NA, pd.NA], dtype="boolean"),
+            pd.Series([pd.NA, pd.NA], dtype="string"),
+            pd.Series([pd.NaT, pd.NaT], dtype="datetime64[ns]"),
+        ],
+        ids=["nullable_boolean", "nullable_string", "datetime_nat"],
+    )
+    def test_pandas_nullable_series_with_no_observations_fails(
+        self, values: pd.Series
+    ) -> None:
+        result = default_valued_columns_gate(
+            {"required_input": values},
+            {"required_input": 0.0},
+        )
+
+        assert not result.passed
+        assert result.details["default_valued_columns"] == {"required_input": None}
+        assert result.details["no_observed_value_columns"] == ["required_input"]
+
     def test_column_with_no_finite_or_nonnull_values_fails(self) -> None:
         result = default_valued_columns_gate(
             {"stock_assets": np.asarray([np.nan, np.inf, -np.inf])},

@@ -10,12 +10,13 @@ populace #368. The five acceptance cases the brief pins:
    and fails (#286 cannot-rot);
 5. a bound reform scoring ~$0 fails the reform-coverage smoke.
 
-The frame is a real :class:`~populace.frame.Frame`; the engine is a stub exposing
-only ``default_values`` (the surface the gate uses) and the simulation is injected
-(and ``_build_reform`` monkeypatched), so nothing here imports policyengine-us —
-the same isolation ``test_reform_validation`` relies on. Separate tests assert the
-shipped manifest keeps the #368 red-by-design guarantee: the SSI countable-resource
-assets stay hard requirements with no exclusion, and demoting one is rejected.
+The frame is a real :class:`~populace.frame.Frame`; most tests use an engine stub
+exposing only ``default_values`` (the surface the gate uses), and the simulation is
+injected (with ``_build_reform`` monkeypatched). One optional regression reproduces
+the nullable-boolean failure against the real PolicyEngine-US defaults and full US
+entity schema. Separate tests assert the shipped manifest keeps the #368
+red-by-design guarantee: the SSI countable-resource assets stay hard requirements
+with no exclusion, and demoting one is rejected.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ from populace.build.us_runtime import (
 from populace.build.us_runtime.release_input_coverage import (
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
 )
-from populace.frame import EntitySchema, Frame, WeightKind, Weights
+from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _MANIFEST_GENERATOR = (
@@ -55,14 +56,14 @@ _MANIFEST_GENERATOR = (
 )
 
 
-def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
+def _person_frame(columns: dict[str, np.ndarray | pd.Series]) -> Frame:
     """A real single-household Frame carrying ``columns`` on the person table."""
     n = len(next(iter(columns.values())))
     person = pd.DataFrame(
         {
             "person_id": np.arange(n, dtype="int64"),
             "person_household_id": np.ones(n, dtype="int64"),
-            **{name: np.asarray(values) for name, values in columns.items()},
+            **columns,
         }
     )
     household = pd.DataFrame({"household_id": np.asarray([1], dtype="int64")})
@@ -70,6 +71,36 @@ def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(values=np.asarray([1000.0]), kind=WeightKind.DESIGN)},
+    )
+
+
+def _us_person_frame(columns: dict[str, np.ndarray | pd.Series]) -> Frame:
+    """A full six-entity US Frame preserving pandas extension dtypes."""
+    n = len(next(iter(columns.values())))
+    person_columns: dict[str, object] = {
+        US_SCHEMA.person_id_column: np.arange(n, dtype="int64"),
+        **{
+            US_SCHEMA.membership_column(entity): np.ones(n, dtype="int64")
+            for entity in US_SCHEMA.group_entities
+        },
+        **columns,
+    }
+    tables = {
+        entity: pd.DataFrame(
+            {US_SCHEMA.id_column(entity): np.asarray([1], dtype="int64")}
+        )
+        for entity in US_SCHEMA.group_entities
+    }
+    tables["person"] = pd.DataFrame(person_columns)
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                values=np.asarray([1000.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
     )
 
 
@@ -216,6 +247,121 @@ class TestReleaseInputCoverageGate:
         for name, failure in zip(assets, result.failures, strict=True):
             assert name in failure
             assert "no finite/non-null observed values" in failure
+
+    @pytest.mark.parametrize(
+        ("name", "values", "default"),
+        [
+            (
+                "business_is_sstb",
+                pd.Series([pd.NA, pd.NA], dtype="boolean"),
+                False,
+            ),
+            (
+                "ssn_card_type",
+                pd.Series([pd.NA, pd.NA], dtype="string"),
+                "CITIZEN",
+            ),
+            (
+                "stock_assets",
+                np.asarray([pd.NA, pd.NA], dtype=object),
+                0.0,
+            ),
+            (
+                "event_date",
+                pd.Series([pd.NaT, pd.NaT], dtype="datetime64[ns]"),
+                pd.Timestamp("2000-01-01"),
+            ),
+        ],
+        ids=["nullable_boolean", "nullable_string", "object_pd_na", "datetime_nat"],
+    )
+    def test_required_all_pandas_missing_column_has_named_no_observed_finding(
+        self,
+        name: str,
+        values: np.ndarray | pd.Series,
+        default: object,
+    ) -> None:
+        frame = _person_frame({name: values})
+        manifest = _manifest((ReleaseInputColumn(name, "required"),))
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({name: default}),
+            manifest=manifest,
+        )
+
+        assert not result.passed
+        assert result.details["missing"] == []
+        assert result.details["degenerate_required"] == [name]
+        assert result.details["no_observed_required"] == [name]
+        assert len(result.failures) == 1
+        assert result.failures[0].startswith(f"{name}: required eCPS input column")
+        assert "no finite/non-null observed values" in result.failures[0]
+
+    @pytest.mark.parametrize(
+        ("name", "values", "default"),
+        [
+            (
+                "business_is_sstb",
+                pd.Series([pd.NA, True], dtype="boolean"),
+                False,
+            ),
+            (
+                "string_input",
+                pd.Series([pd.NA, "x"], dtype="string"),
+                "",
+            ),
+            (
+                "stock_assets",
+                np.asarray([np.nan, 125.0], dtype=np.float64),
+                0.0,
+            ),
+        ],
+        ids=["nullable_boolean", "nullable_string", "float_nan"],
+    )
+    def test_one_observed_nondefault_value_is_release_signal(
+        self,
+        name: str,
+        values: np.ndarray | pd.Series,
+        default: object,
+    ) -> None:
+        frame = _person_frame({name: values})
+        manifest = _manifest((ReleaseInputColumn(name, "required"),))
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({name: default}),
+            manifest=manifest,
+        )
+
+        assert result.passed
+        assert result.failures == ()
+        assert result.details["degenerate_required"] == []
+        assert result.details["no_observed_required"] == []
+
+    def test_real_us_nullable_boolean_is_no_observed_required(self) -> None:
+        pytest.importorskip("policyengine_us")
+        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        name = "business_is_sstb"
+        frame = _us_person_frame({name: pd.Series([pd.NA, pd.NA], dtype="boolean")})
+        manifest = load_release_input_coverage_manifest()
+        engine = PolicyEngineUSEngine()
+
+        assert frame.table("person")[name].dtype == pd.BooleanDtype()
+        assert name in manifest.required_columns
+        assert engine.default_values([name]) == {name: False}
+
+        result = us_release_input_coverage_gate(frame, engine, manifest=manifest)
+
+        assert not result.passed
+        assert name not in result.details["missing"]
+        assert name in result.details["degenerate_required"]
+        assert result.details["no_observed_required"] == [name]
+        assert any(
+            failure.startswith(f"{name}: required eCPS input column")
+            and "no finite/non-null observed values" in failure
+            for failure in result.failures
+        )
 
     def test_stale_reviewed_exclusion_fails(self) -> None:
         # Case 4: alimony_income is a reviewed exclusion, but the data caught up
