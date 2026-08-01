@@ -732,6 +732,15 @@ class TestShippedManifest:
         # SSI assets must stay hard requirements.
         assert_release_input_coverage_manifest_current()
 
+    def test_medicare_part_b_plural_names_are_deliberate_nonrequirements(
+        self,
+    ) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert {
+            "medicare_part_b_premiums",
+            "medicare_part_b_premiums_reported",
+        }.isdisjoint(manifest.declared_columns)
+
     def test_ssi_assets_are_required_without_exclusion(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for asset in SSI_COUNTABLE_RESOURCE_ASSETS:

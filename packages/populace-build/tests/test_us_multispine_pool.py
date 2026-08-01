@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib
 import inspect
 import textwrap
@@ -249,6 +250,7 @@ def _real_pre_clone_source_frame() -> Frame:
             "HRSWK": [40, 0, 35, 0],
             "A_HRS1": [42, 0, 30, 0],
             "WKSWORK": [52, 0, 48, 0],
+            "PEMCPREM": [100.0, 0.0, 25.0, 0.0],
             "OI_VAL": [0.0, 0.0, 0.0, 0.0],
             "OI_OFF": [0, 0, 0, 0],
             "PH_SEQ": [10, 10, 20, 20],
@@ -646,9 +648,13 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "source_operator_hours_worked",
     )
     assert "weeks_worked" not in owners
-    assert owners["medicare_part_b_premiums_reported"] == (
-        "person",
-        "source_operator_cps_carried",
+    assert "medicare_part_b_premiums_reported" not in owners
+
+    target_names = sorted(owners)
+    assert len(target_names) == 115
+    assert (
+        hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
+        == "cb695fe8b99baf5edaeed0e6e84df2eaaf99fa867df6008e1d9ff0a2edcbbc71"
     )
 
 
@@ -898,7 +904,7 @@ def test_every_pool_transfer_target_is_a_live_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 116
+    assert len(targets) == 115
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         engine=PolicyEngineUSEngine(),
@@ -914,9 +920,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
 
     audited = _assert_pool_transfer_produced_encodings(produced)
 
-    assert len(audited) == 116
+    assert len(audited) == 115
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 119
+    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 118
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1391,6 +1397,13 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert prepared_person.loc[~prepared_cps, "hours_worked_last_week"].isna().all()
     assert "weeks_worked" not in prepared_person
     assert prepared_person.loc[prepared_cps, "WKSWORK"].tolist() == [52, 0, 48, 0]
+    assert "medicare_part_b_premiums_reported" not in prepared_person
+    assert prepared_person.loc[prepared_cps, "PEMCPREM"].tolist() == [
+        100.0,
+        0.0,
+        25.0,
+        0.0,
+    ]
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")

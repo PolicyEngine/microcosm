@@ -86,3 +86,40 @@ producer/dtype sweep. The strict sweep also requires all 116 names to appear in
 the live classifier cannot silently degrade to its static fallback; the clean
 wheel suite may still skip the live-engine-only test because country engines
 are optional wheel dependencies.
+
+## 2026-08-01 follow-up: Medicare Part B reported leaf is source evidence only
+
+This follow-up supersedes the initial conclusion that
+`medicare_part_b_premiums_reported` should be transferred. An offline sweep of
+all 5,770 variables in PolicyEngine-US 1.764.6 (policyengine-core 3.26.11),
+including formula source plus `adds` and `subtracts` declarations, found zero
+consumers of that person/year input leaf. The unsuffixed plural
+`medicare_part_b_premiums` does not exist. The engine's medical out-of-pocket
+decomposition instead consumes the computed singular
+`medicare_part_b_premium` output.
+
+The pool therefore no longer translates ASEC `PEMCPREM` into a canonical leaf
+or QRF-imputes it onto ACS rows. Raw `PEMCPREM` remains on the ASEC source frame
+as lineage evidence, matching the raw-only treatment of `WKSWORK`. The PUF
+`E17500` carrier also no longer manufactures the reported leaf. Its remaining
+45.3%, 32.5%, and 8.5% category shares are deliberately not renormalized: the
+omitted 13.7% was the fossil Part B allocation, while the engine computes Part
+B separately.
+
+The checked-in coverage manifest and eCPS parity reference already declared
+neither plural name at base `8828dee` nor at the review head `c01740d`; there
+was no JSON requirement to remove. Their counts remain 164 required columns,
+7 reviewed exclusions, and 171 declared columns. A shipped-manifest regression
+now pins both names as deliberate non-requirements. This is the deviation from
+the round-1 description that the coverage-manifest entry itself was present.
+
+The corrected full-plan receipt is:
+
+```text
+policyengine-us 1.764.6
+targets 115
+sorted_names_sha256 cb695fe8b99baf5edaeed0e6e84df2eaaf99fa867df6008e1d9ff0a2edcbbc71
+formula_owned []
+unknown []
+non_leaves []
+```

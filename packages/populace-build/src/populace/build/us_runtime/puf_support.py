@@ -459,9 +459,10 @@ _FILING_STATUS_CODES = {
 _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "health_insurance_premiums_without_medicare_part_b": 0.453,
     "other_medical_expenses": 0.325,
-    "medicare_part_b_premiums_reported": 0.137,
     "over_the_counter_health_expenses": 0.085,
 }
+# The omitted 13.7% E17500 share represented reported Medicare Part B premiums.
+# Do not redistribute it: the engine computes its distinct singular Part B output.
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 

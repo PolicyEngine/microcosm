@@ -1,1 +1,1 @@
-Keep the US multispine ACS transfer plan input-leaf owned by dropping formula-owned `weeks_worked`, using the current reported Medicare Part B leaf, and sweeping every target against live PolicyEngine-US metadata in CI.
+Keep the US multispine ACS transfer plan input-leaf owned by dropping formula-owned `weeks_worked` and the unconsumed reported Medicare Part B leaf, while retaining their raw ASEC source evidence and sweeping every target against live PolicyEngine-US metadata in CI.
