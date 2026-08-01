@@ -32,6 +32,7 @@ from populace.build.uk_runtime.hmrc_restoration import (
     CERTIFIED_UK_CANDIDATE_REVISION,
     CERTIFIED_UK_CANDIDATE_SHA256,
     CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
+    CERTIFIED_UK_CANDIDATE_TIER,
     UKCertifiedCandidateIdentity,
     UKHMRCIncomeStageTransform,
     restore_uk_hmrc_income_family,
@@ -113,6 +114,7 @@ def _candidate_identity(
     identity = UKCertifiedCandidateIdentity(
         path=(tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME).resolve(),
         filename=CERTIFIED_UK_CANDIDATE_FILENAME,
+        tier=CERTIFIED_UK_CANDIDATE_TIER,
         revision=CERTIFIED_UK_CANDIDATE_REVISION,
         sha256=CERTIFIED_UK_CANDIDATE_SHA256,
         size_bytes=CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
@@ -404,6 +406,24 @@ def _restore(
     )
 
 
+def test_hmrc_stage_transform_exposes_last_fit_weight_records(tmp_path: Path) -> None:
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    records = (
+        FitWeightRecord("uk_spi_2022_23_income", "design"),
+        FitWeightRecord("uk_frs_only_spi_fill", "importance"),
+    )
+
+    assert transform.fit_weight_records == ()
+    transform.last_result = SimpleNamespace(
+        imputation=SimpleNamespace(fit_weight_records=records)
+    )
+    assert transform.fit_weight_records == records
+
+
 def test_certified_candidate_verification_binds_size_sha_and_stable_bytes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -425,6 +445,7 @@ def test_certified_candidate_verification_binds_size_sha_and_stable_bytes(
     identity = verify_certified_uk_candidate(candidate)
 
     assert identity.path == candidate.resolve()
+    assert identity.tier == "frs"
     assert identity.size_bytes == len(contents)
     assert identity.sha256 == hashlib.sha256(contents).hexdigest()
     assert identity._source_file_fingerprint is not None
@@ -490,6 +511,10 @@ def test_restoration_rejects_forged_or_unbound_candidate_identity(
     verified = _candidate_identity(tmp_path)
     with pytest.raises(ValueError, match="loaded from the verified"):
         _restore(_dataset(), verified, tmp_path)
+
+    object.__setattr__(verified, "tier", "public")
+    with pytest.raises(ValueError, match="base identity does not match"):
+        _restore(_dataset_from_source(verified.path), verified, tmp_path)
 
 
 def test_source_pair_is_verified_before_parse_or_support_rebuild(
@@ -580,6 +605,9 @@ def test_restoration_runs_replay_without_calibration_and_emits_208_facts(
     assert len(restored.replay_report.facts) == HMRC_SPI_TARGET_RECORD_COUNT == 208
     assert restored.replay_report.summary["excluded_with_fence"] == 208
     assert restored.replay_report.summary["exact_pass"] == 0
+    assert restored.replay_report.source_evidence["certified_candidate"]["tier"] == (
+        "frs"
+    )
     evidence = restored.evidence()
     assert evidence["calibration"] == {
         "performed": False,
