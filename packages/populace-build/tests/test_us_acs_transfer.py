@@ -1393,6 +1393,31 @@ def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> No
         )
 
 
+def test_strict_leaf_audit_reports_missing_us_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from populace.frame.adapters import policyengine_us as adapter_module
+
+    class _MissingMetadataIndex:
+        def __init__(self) -> None:
+            raise ImportError("policyengine-us is absent")
+
+    monkeypatch.setattr(
+        adapter_module,
+        "PolicyEngineUSVariableMetadataIndex",
+        _MissingMetadataIndex,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Strict ACS transfer leaf classification requires policyengine-us",
+    ):
+        acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
+            {"employment_income"},
+            require_known=True,
+        )
+
+
 def test_all_missing_donor_target_is_refused_without_zero_fill() -> None:
     donor = _replace_column(
         _donor_frame(),
