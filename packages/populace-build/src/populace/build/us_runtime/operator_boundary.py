@@ -41,7 +41,10 @@ from populace.build.us_runtime.energy_subsidy import (
     US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.geography_ladder import US_GEOGRAPHY_LADDER_COLUMNS
-from populace.build.us_runtime.hours_worked import US_HOURS_WORKED_OUTPUT_COLUMNS
+from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.housing_inputs import (
     US_HOUSING_HOUSEHOLD_OUTPUT_COLUMNS,
     US_HOUSING_PERSON_OUTPUT_COLUMNS,
@@ -53,6 +56,7 @@ from populace.build.us_runtime.medicare_take_up import (
 )
 from populace.build.us_runtime.pregnancy import US_PREGNANCY_OUTPUT_COLUMN
 from populace.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS,
     US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
@@ -93,6 +97,7 @@ from populace.build.us_runtime.workers_compensation import (
 from populace.frame import Frame
 
 __all__ = [
+    "FORMULA_OWNED_SOURCE_COLUMNS",
     "PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES",
     "assert_operator_free_source_frame",
 ]
@@ -221,6 +226,22 @@ _TAKE_UP_OPERATOR_OUTPUTS: Mapping[str, frozenset[str]] = {
     ),
 }
 
+# Shared static classification for the raw operator boundary and the terminal
+# pool invariant. Runtime engine classification would instantiate another full
+# PolicyEngine-US system before simulation; the live parity regression audits
+# this complete boundary set through the same metadata classifier used by the
+# ACS transfer ownership guard instead.
+FORMULA_OWNED_SOURCE_COLUMNS: Mapping[str, frozenset[str]] = {
+    "person": frozenset(
+        {
+            *CPS_CARRIED_FORMULA_OWNED_COLUMNS,
+            *US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
+            *US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS,
+            "ssi",
+        }
+    ),
+}
+
 
 PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     "cps_carried": {
@@ -228,7 +249,7 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
         "spm_unit": frozenset(CPS_CARRIED_SPM_UNIT_INPUTS),
     },
     "hours_worked": {
-        "person": frozenset(US_HOURS_WORKED_OUTPUT_COLUMNS),
+        "person": frozenset(US_HOURS_WORKED_POOL_OUTPUT_COLUMNS),
     },
     "prior_year_income": {
         "person": frozenset(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS),
@@ -326,12 +347,10 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
             }
         ),
     },
-    # These are not source inputs.  They are included so a preassembled frame
-    # cannot smuggle formula evaluation or clone/assembly routing across the
-    # boundary under a family name outside the historical enrichment chain.
-    "formula_owned_aggregates": {
-        "person": frozenset({*CPS_CARRIED_FORMULA_OWNED_COLUMNS, "ssi"}),
-    },
+    # These are not source inputs. They are included so a preassembled frame
+    # cannot smuggle formula evaluation across the boundary under a family
+    # name outside the historical enrichment chain.
+    "formula_owned_aggregates": FORMULA_OWNED_SOURCE_COLUMNS,
     "support_provenance": {
         entity: frozenset(
             {

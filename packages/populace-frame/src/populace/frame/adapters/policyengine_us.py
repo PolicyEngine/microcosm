@@ -17,8 +17,14 @@ already guarantees them. The one thing it adds is the ``household_weight``
 column, materialized from the frame's typed household weights.
 """
 
+import ast
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from functools import lru_cache
+from hashlib import sha256
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -29,7 +35,7 @@ from populace.frame.rules import ExportContract
 from populace.frame.schema import EntitySchema, VariableMetadata
 from populace.frame.units import US_SCHEMA
 
-__all__ = ["PolicyEngineUSEngine"]
+__all__ = ["PolicyEngineUSEngine", "PolicyEngineUSVariableMetadataIndex"]
 
 _PERSON_TABLE = "person"
 _GROUP_TABLES: tuple[str, ...] = (
@@ -68,6 +74,408 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
 # PolicyEngine ``definition_period`` → kernel period semantics. Anything else
 # (``"eternity"``, ``"day"``) is point-in-time state.
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
+
+_ENTITY_KEY_BY_SOURCE_NAME: dict[str, str] = {
+    "Person": "person",
+    "Household": "household",
+    "TaxUnit": "tax_unit",
+    "SPMUnit": "spm_unit",
+    "Family": "family",
+    "MaritalUnit": "marital_unit",
+}
+_DTYPE_KIND_BY_SOURCE_NAME: dict[str, str] = {
+    "float": "float",
+    "int": "int",
+    "bool": "bool",
+    "str": "str",
+}
+_PERIOD_BY_SOURCE_NAME: dict[str, str] = {
+    "YEAR": "year",
+    "MONTH": "month",
+    "ETERNITY": "point",
+    "DAY": "point",
+}
+
+# PolicyEngine-US 1.764.6 creates 110 default-system variables outside ordinary
+# top-level ``class ...(Variable)`` declarations. Keep the compact metadata
+# snapshot tied to every source/activation surface that produced it: a changed
+# wheel must fail closed until this audit is refreshed, never silently omit a
+# newly generated formula-owned output.
+_GENERATED_SOURCE_VERSION = "1.764.6"
+_GENERATED_SOURCE_SHA256: dict[str, str] = {
+    "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
+    "variables/household/demographic/geographic/state/in_state.py": (
+        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
+    ),
+    "variables/gov/puf.py": (
+        "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
+    ),
+    "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
+        "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
+    ),
+    "reforms/states/mi/surtax.py": (
+        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    ),
+    "reforms/reforms.py": (
+        "3e97e5100254ef2aaef81a8b6126674e9091b8da1951e0e5b0ddf6cf25805721"
+    ),
+    "system.py": "cd0a56ed5572da71923852e589eb90a38049723d6c9a7c15e49e774ac7fea42a",
+}
+_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
+    (
+        tuple(
+            "AL AK AZ AR CA CO CT DC DE FL GA HI ID IL IN IA KS KY LA ME MD MA "
+            "MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX "
+            "UT VT VA WA WV WI WY PR VI".split()
+        ),
+        "household",
+        "bool",
+        True,
+    ),
+    (
+        tuple(
+            "e02000 e26270 e19200 e18500 e19800 e20400 e20100 e00700 e03270 "
+            "e24515 e03300 e07300 e62900 e32800 e87530 e03240 e01100 e01200 "
+            "e24518 e09900 e27200 e03290 e58990 e03230 e11200 e07260 e07240 "
+            "e03220 p08000 e03400 e09800 e09700 e03500 e87521".split()
+        ),
+        "person",
+        "float",
+        False,
+    ),
+    (
+        tuple(
+            "ar_standard_deduction ar_itemized_deductions ar_taxable_income ar_agi "
+            "dc_taxable_income de_standard_deduction de_itemized_deductions "
+            "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
+            "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
+            "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
+            "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+            "mt_taxable_income".split()
+        ),
+        "tax_unit",
+        "float",
+        True,
+    ),
+    (("mi_surtax",), "tax_unit", "float", True),
+)
+
+
+@dataclass(frozen=True)
+class _SourceVariableDefinition:
+    metadata: VariableMetadata
+    always_computed: bool
+    formula_starts: tuple[tuple[int, int, int], ...]
+
+    @property
+    def formula_owned(self) -> bool:
+        return self.always_computed or bool(self.formula_starts)
+
+    def computed_at(self, period: int | str) -> bool:
+        if self.always_computed:
+            return True
+        at = _period_start(period)
+        return any(start <= at for start in self.formula_starts)
+
+
+def _source_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _assigned_name(statement: ast.stmt) -> tuple[str, ast.expr] | None:
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        target = statement.targets[0]
+        if isinstance(target, ast.Name):
+            return target.id, statement.value
+    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+        if statement.value is not None:
+            return statement.target.id, statement.value
+    return None
+
+
+def _is_nonempty_source_value(node: ast.expr) -> bool:
+    if isinstance(node, ast.Constant):
+        return node.value is not None
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return bool(node.elts)
+    if isinstance(node, ast.Dict):
+        return bool(node.keys)
+    return True
+
+
+def _formula_start(name: str) -> tuple[int, int, int] | None:
+    if not name.startswith("formula_"):
+        return None
+    parts = name.removeprefix("formula_").split("_")
+    if not 1 <= len(parts) <= 3 or not all(part.isdigit() for part in parts):
+        raise RuntimeError(f"Unsupported PolicyEngine formula name {name!r}.")
+    year, *rest = (int(part) for part in parts)
+    month = rest[0] if rest else 1
+    day = rest[1] if len(rest) == 2 else 1
+    if not (1 <= month <= 12 and 1 <= day <= 31):
+        raise RuntimeError(f"Unsupported PolicyEngine formula date {name!r}.")
+    return year, month, day
+
+
+def _period_start(period: int | str) -> tuple[int, int, int]:
+    parts = str(period).split("-", 2)
+    if not parts[0].isdigit():
+        raise ValueError(f"PolicyEngine period must begin with a year, got {period!r}.")
+    year = int(parts[0])
+    month = int(parts[1]) if len(parts) > 1 else 1
+    day = int(parts[2]) if len(parts) > 2 else 1
+    return year, month, day
+
+
+def _variable_definition(
+    node: ast.ClassDef,
+    *,
+    source_path: Path,
+) -> _SourceVariableDefinition:
+    assignments = dict(
+        assigned
+        for statement in node.body
+        if (assigned := _assigned_name(statement)) is not None
+    )
+    required = ("entity", "value_type", "definition_period")
+    missing = [name for name in required if name not in assignments]
+    if missing:
+        raise RuntimeError(
+            f"PolicyEngine variable {node.name!r} in {source_path} has no static "
+            f"assignment(s) for {missing}."
+        )
+    entity_name = _source_name(assignments["entity"])
+    value_type_name = _source_name(assignments["value_type"])
+    period_name = _source_name(assignments["definition_period"])
+    if entity_name not in _ENTITY_KEY_BY_SOURCE_NAME:
+        raise RuntimeError(
+            f"PolicyEngine variable {node.name!r} in {source_path} has unsupported "
+            f"entity metadata {entity_name!r}."
+        )
+    if value_type_name is None:
+        raise RuntimeError(
+            f"PolicyEngine variable {node.name!r} in {source_path} has dynamic "
+            "value_type metadata."
+        )
+    if period_name not in _PERIOD_BY_SOURCE_NAME:
+        raise RuntimeError(
+            f"PolicyEngine variable {node.name!r} in {source_path} has unsupported "
+            f"definition_period metadata {period_name!r}."
+        )
+
+    always_computed = False
+    formula_starts: list[tuple[int, int, int]] = []
+    for statement in node.body:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if statement.name == "formula":
+                always_computed = True
+            elif statement.name.startswith("formula_"):
+                start = _formula_start(statement.name)
+                if start is not None:
+                    formula_starts.append(start)
+            continue
+        assigned = _assigned_name(statement)
+        if assigned is None:
+            continue
+        name, value = assigned
+        if name in {"formula", "formulas", "adds", "subtracts"}:
+            always_computed |= _is_nonempty_source_value(value)
+
+    return _SourceVariableDefinition(
+        metadata=VariableMetadata(
+            name=node.name,
+            entity=_ENTITY_KEY_BY_SOURCE_NAME[entity_name],
+            dtype=_DTYPE_KIND_BY_SOURCE_NAME.get(value_type_name, "str"),
+            period=_PERIOD_BY_SOURCE_NAME[period_name],
+        ),
+        always_computed=always_computed,
+        formula_starts=tuple(sorted(formula_starts)),
+    )
+
+
+def _is_policyengine_variable(node: ast.ClassDef) -> bool:
+    return any(_source_name(base) == "Variable" for base in node.bases)
+
+
+def _index_policyengine_us_variable_sources(
+    variables_root: Path,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Build a fail-closed variable index without importing PolicyEngine-US."""
+
+    if not variables_root.is_dir():
+        raise RuntimeError(
+            f"The installed PolicyEngine-US variable source tree is unavailable "
+            f"at {variables_root}."
+        )
+    definitions: dict[str, _SourceVariableDefinition] = {}
+    for source_path in sorted(variables_root.rglob("*.py")):
+        try:
+            tree = ast.parse(source_path.read_text(), filename=str(source_path))
+        except (OSError, SyntaxError) as exc:
+            raise RuntimeError(
+                f"Could not index PolicyEngine variable source {source_path}."
+            ) from exc
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef) or not _is_policyengine_variable(
+                node
+            ):
+                continue
+            if node.name in definitions:
+                raise RuntimeError(
+                    f"Duplicate PolicyEngine variable class {node.name!r} in "
+                    f"{source_path}."
+                )
+            definitions[node.name] = _variable_definition(
+                node,
+                source_path=source_path,
+            )
+    if not definitions:
+        raise RuntimeError(
+            f"No PolicyEngine variable classes found below {variables_root}."
+        )
+    return MappingProxyType(definitions)
+
+
+def _index_policyengine_us_generated_variable_sources(
+    package_root: Path,
+    *,
+    version: str,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Return the audited generated-variable snapshot or fail closed."""
+
+    if version != _GENERATED_SOURCE_VERSION:
+        raise RuntimeError(
+            "PolicyEngine-US generated-variable metadata has not been audited for "
+            f"installed version {version!r}; expected {_GENERATED_SOURCE_VERSION!r}."
+        )
+    for relative_path, expected_digest in _GENERATED_SOURCE_SHA256.items():
+        source_path = package_root / relative_path
+        try:
+            actual_digest = sha256(source_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise RuntimeError(
+                f"Required PolicyEngine-US generated-variable source is unavailable: "
+                f"{source_path}."
+            ) from exc
+        if actual_digest != expected_digest:
+            raise RuntimeError(
+                "PolicyEngine-US generated-variable source changed without a "
+                f"metadata audit: {source_path}."
+            )
+
+    definitions: dict[str, _SourceVariableDefinition] = {}
+    for names, entity, dtype, formula_owned in _GENERATED_VARIABLE_GROUPS:
+        for name in names:
+            if name in definitions:
+                raise RuntimeError(
+                    f"Duplicate audited PolicyEngine-US generated variable {name!r}."
+                )
+            definitions[name] = _SourceVariableDefinition(
+                metadata=VariableMetadata(
+                    name=name,
+                    entity=entity,
+                    dtype=dtype,
+                    period="year",
+                ),
+                always_computed=formula_owned,
+                formula_starts=(),
+            )
+    return MappingProxyType(definitions)
+
+
+@lru_cache(maxsize=1)
+def _installed_policyengine_us_variable_sources() -> Mapping[
+    str, _SourceVariableDefinition
+]:
+    try:
+        package = distribution("policyengine-us")
+    except PackageNotFoundError as exc:
+        raise ImportError(
+            "The PolicyEngine-US metadata index requires the 'policyengine-us' "
+            "package. Install it with 'populace-frame[policyengine]'."
+        ) from exc
+    package_root = Path(package.locate_file("policyengine_us"))
+    definitions = dict(
+        _index_policyengine_us_variable_sources(package_root / "variables")
+    )
+    generated = _index_policyengine_us_generated_variable_sources(
+        package_root,
+        version=package.version,
+    )
+    duplicates = sorted(set(definitions) & set(generated))
+    if duplicates:
+        raise RuntimeError(
+            "PolicyEngine-US generated-variable audit overlaps ordinary source "
+            f"classes: {duplicates}."
+        )
+    definitions.update(generated)
+    return MappingProxyType(definitions)
+
+
+class PolicyEngineUSVariableMetadataIndex:
+    """Import-free PolicyEngine-US variable metadata read from installed source.
+
+    Importing :mod:`policyengine_us` constructs a complete tax-benefit system,
+    and constructing an adapter system registers thousands more variable
+    modules. Ownership and physical-dtype guards need only the variable class
+    declarations, so this index parses those declarations once and retains only
+    compact metadata. The default system's generated variables come from a
+    compact audited snapshot whose source and activation files are fingerprinted;
+    an unreviewed wheel version or source change fails closed.
+    """
+
+    def __init__(self) -> None:
+        self._definitions = _installed_policyengine_us_variable_sources()
+
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        definition = self._definitions.get(name)
+        if definition is None:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+        return definition.metadata
+
+    def variables(self) -> list[str]:
+        return sorted(
+            name
+            for name, definition in self._definitions.items()
+            if name not in _FORMULA_OWNED_COMPAT_COLUMNS
+            and not definition.formula_owned
+        )
+
+    def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
+        requested = set(names)
+        return set(requested & _FORMULA_OWNED_COMPAT_COLUMNS) | {
+            name
+            for name in requested
+            if (definition := self._definitions.get(name)) is not None
+            and definition.formula_owned
+        }
+
+    def _engine_computed_columns(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+        *,
+        period: int | str,
+    ) -> set[str]:
+        present = {column for frame in tables.values() for column in frame.columns}
+        structural = {US_SCHEMA.person_id_column} | {
+            column
+            for group in US_SCHEMA.group_entities
+            for column in (
+                US_SCHEMA.id_column(group),
+                US_SCHEMA.membership_column(group),
+            )
+        }
+        return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
+            name
+            for name in present
+            if name not in structural
+            and (definition := self._definitions.get(name)) is not None
+            and definition.computed_at(period)
+        }
 
 
 def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:

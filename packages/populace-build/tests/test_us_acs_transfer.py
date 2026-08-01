@@ -23,6 +23,9 @@ from populace.build.us_runtime.acs_transfer import (
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
 
 SCHEMA = EntitySchema(group_entities=("household", "tax_unit"))
 
@@ -822,9 +825,12 @@ def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")  # pandas HDF backend
-    # The bool restore reads the engine's variable metadata; without the us
-    # extra the adapter's documented dtype fallback applies instead.
-    pytest.importorskip("policyengine_us")
+    # The bool restore reads the installed engine source metadata; without the
+    # us extra the adapter's documented dtype fallback applies instead.
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
     # Primary PUF finalization physically stores QBI boolean-count outputs as
     # floats; the supported legacy ACS builder can then load them from HDF as
     # its transfer donor. Pin that real producer/HDF representation rather
@@ -1361,6 +1367,54 @@ def test_formula_owned_target_is_refused_before_fit() -> None:
                 "tax_unit": {"bad": ("interest_deduction",)},
             },
             n_estimators=2,
+        )
+
+
+def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> None:
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"ACS transfer targets must be PolicyEngine input leaves, not "
+            r"formula-owned outputs: \['weeks_worked'\]\."
+        ),
+    ):
+        transfer_acs_inputs(
+            _recipient_frame(),
+            _donor_frame(),
+            target_families={
+                "person": {"source_operator_hours_worked": ("weeks_worked",)},
+            },
+            n_estimators=2,
+        )
+
+
+def test_strict_leaf_audit_reports_missing_us_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from populace.frame.adapters import policyengine_us as adapter_module
+
+    class _MissingMetadataIndex:
+        def __init__(self) -> None:
+            raise ImportError("policyengine-us is absent")
+
+    monkeypatch.setattr(
+        adapter_module,
+        "PolicyEngineUSVariableMetadataIndex",
+        _MissingMetadataIndex,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Strict ACS transfer leaf classification requires policyengine-us",
+    ):
+        acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
+            {"employment_income"},
+            require_known=True,
         )
 
 

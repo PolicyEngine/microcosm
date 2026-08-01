@@ -31,6 +31,16 @@ from populace.build.us_runtime.puf_support import (
     resolve_formula_owned_outputs,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
+
+
+def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
+    try:
+        return PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
 
 
 def _legacy_snap_to_observed_values(
@@ -979,12 +989,12 @@ def test_blocklist_current_check_noops_on_engine_import_error() -> None:
     assert_formula_owned_blocklist_current(_ImportErrorEngine())
 
 
-def test_resolve_formula_owned_outputs_catches_engine_output_off_static_list() -> None:
-    # #301, against the real engine: a genuinely formula-owned output that is NOT
-    # on the static seed set (income_tax) is still rejected, and every legitimate
-    # leaf input passes through. This is the failure a stale hand-written
-    # blocklist would silently allow.
-    pytest.importorskip("policyengine_us")
+def test_resolve_formula_owned_outputs_catches_index_output_off_static_list() -> None:
+    # #301, against the installed source index: a genuinely formula-owned output
+    # that is NOT on the static seed set (income_tax) is still rejected, and every
+    # legitimate leaf input passes through. This is the failure a stale
+    # hand-written blocklist would silently allow.
+    _installed_variable_metadata_index()
 
     requested = {
         "income_tax",  # formula-owned, deliberately not in the static seed
@@ -1000,16 +1010,12 @@ def test_resolve_formula_owned_outputs_catches_engine_output_off_static_list() -
     assert "qualified_dividend_income" not in rejected
 
 
-def test_static_seed_is_subset_of_engine_derived_formula_owned_set() -> None:
-    # #301, against the real engine: the static seed set is a SUBSET of the set
-    # the engine derives as formula-owned, so it never diverges into rejecting a
-    # name the engine treats as an input. Equivalently, the drift check passes
-    # against live metadata.
-    pytest.importorskip("policyengine_us")
-
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
-
-    engine = PolicyEngineUSEngine()
+def test_static_seed_is_subset_of_index_derived_formula_owned_set() -> None:
+    # #301: the static seed set is a SUBSET of the installed-source
+    # formula-owned set, so it never diverges into rejecting a name the engine
+    # declares as an input. Equivalently, the drift check passes against the
+    # pinned package metadata.
+    engine = _installed_variable_metadata_index()
     engine_derived = engine.formula_owned_outputs(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS)
 
     assert PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS <= set(engine_derived)
@@ -1059,7 +1065,8 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
         0.0,
         50.0,
     ]
-    assert person["medicare_part_b_premiums"].tolist() == [100.0, 0.0, 25.0]
+    assert person["PEMCPREM"].tolist() == [100.0, 0.0, 25.0]
+    assert "medicare_part_b_premiums_reported" not in person
     assert person["other_medical_expenses"].tolist() == [200.0, 0.0, 40.0]
     assert person["over_the_counter_health_expenses"].tolist() == [30.0, 0.0, 10.0]
     assert person["has_marketplace_health_coverage_at_interview"].tolist() == [
@@ -1383,7 +1390,6 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
             "s_corp_income",
             "partnership_self_employment_net_earnings",
             "health_insurance_premiums_without_medicare_part_b",
-            "medicare_part_b_premiums",
             "other_medical_expenses",
             "over_the_counter_health_expenses",
         ),
@@ -1397,7 +1403,11 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
         453.0,
         906.0,
     ]
-    assert donor["medicare_part_b_premiums"].tolist() == [137.0, 274.0]
+    assert "medicare_part_b_premiums_reported" not in donor
+    assert (
+        "medicare_part_b_premiums_reported"
+        not in puf_support_module._PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS
+    )
     assert donor["other_medical_expenses"].tolist() == [325.0, 650.0]
     assert donor["over_the_counter_health_expenses"].tolist() == [85.0, 170.0]
     assert "tax_unit_partnership_s_corp_income" not in donor
@@ -1844,16 +1854,16 @@ class TestPufSupportWeightsAuditWiring:
         )
         assert imputed.table("person") is not None
 
-    def test_production_fit_records_design_kind_under_the_real_engine(self) -> None:
+    def test_production_fit_records_design_kind_under_installed_metadata(self) -> None:
         # The engine-less tests above run the imputation with a trivial output
         # that never trips the formula-owned guard. This gated test runs the same
-        # audited seam with the LIVE PolicyEngine-US metadata guard active
+        # audited seam with the installed PolicyEngine-US source guard active
         # (assert_formula_owned_blocklist_current + resolve_formula_owned_outputs
-        # both call real engine metadata), over real leaf-input outputs, so the
+        # both read pinned engine metadata), over real leaf-input outputs, so the
         # seam is proven end to end on the production code path an actual build
         # takes: the guard passes on genuine leaves, the DESIGN-weighted fit
         # records "design", and the release-blocking gate passes carrying it.
-        pytest.importorskip("policyengine_us")
+        _installed_variable_metadata_index()
         from populace.build import FitWeightRecord, weights_audit_gate
         from populace.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
 

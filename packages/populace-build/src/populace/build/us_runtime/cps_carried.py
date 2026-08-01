@@ -60,7 +60,6 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "tax_exempt_private_pension_income",
         "taxable_ira_distributions",
         "health_insurance_premiums_without_medicare_part_b",
-        "medicare_part_b_premiums",
         "other_medical_expenses",
         "over_the_counter_health_expenses",
         "rental_income",
@@ -164,10 +163,12 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         "farm_operations_income": "FRSE_VAL",
         "unemployment_compensation": "UC_VAL",
         "health_insurance_premiums_without_medicare_part_b": "PHIP_VAL",
-        "medicare_part_b_premiums": "PEMCPREM",
         "other_medical_expenses": "PMED_VAL",
         "over_the_counter_health_expenses": "POTC_VAL",
     }
+    # PEMCPREM remains on the source frame as evidence only. The corresponding
+    # reported Part B leaf has no engine-formula consumers, so the pool must not
+    # promote or transfer it onto ACS rows.
     for output, source in direct_sources.items():
         _fill_missing(person, output, _source(person, source))
 

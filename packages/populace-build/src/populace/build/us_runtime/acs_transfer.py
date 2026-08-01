@@ -19,7 +19,7 @@ it is not an export column and cannot leak into a PolicyEngine dataset.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import import_module
@@ -57,6 +57,7 @@ __all__ = [
     "AcsTransferResult",
     "TargetFamilies",
     "acs_transfer_donor_requirements",
+    "assert_acs_transfer_targets_are_input_leaves",
     "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
     "ACS_DERIVED_TRANSFER_INPUTS",
@@ -663,6 +664,52 @@ def acs_transfer_donor_requirements(
     }
 
 
+def assert_acs_transfer_targets_are_input_leaves(
+    targets: Iterable[str],
+    *,
+    engine: Any | None = None,
+    require_known: bool = False,
+) -> None:
+    """Reject transfer targets the engine owns or, optionally, does not know.
+
+    The formula-owned branch is the production transfer check. Keeping it in
+    one helper lets the committed full-plan sweep exercise the exact same
+    classifier and error path before a Modal build starts. Generic library
+    callers may use non-engine fixture columns, so strict engine membership is
+    opt-in for the production-plan sweep.
+    """
+
+    target_names = set(targets)
+    formula_owned = sorted(resolve_formula_owned_outputs(target_names, engine=engine))
+    if formula_owned:
+        raise ValueError(
+            "ACS transfer targets must be PolicyEngine input leaves, not "
+            f"formula-owned outputs: {formula_owned}."
+        )
+    if not require_known:
+        return
+
+    try:
+        if engine is None:
+            from populace.frame.adapters.policyengine_us import (
+                PolicyEngineUSVariableMetadataIndex,
+            )
+
+            engine = PolicyEngineUSVariableMetadataIndex()
+        engine_leaves = set(engine.variables())
+    except ImportError as exc:
+        raise RuntimeError(
+            "Strict ACS transfer leaf classification requires policyengine-us; "
+            "install the populace-build US extra."
+        ) from exc
+    unknown = sorted(target_names - engine_leaves)
+    if unknown:
+        raise ValueError(
+            "ACS transfer targets must be known PolicyEngine input leaves; "
+            f"unknown or non-leaf targets: {unknown}."
+        )
+
+
 def transfer_acs_inputs(
     recipient: Frame,
     donor: Frame,
@@ -726,12 +773,7 @@ def transfer_acs_inputs(
     all_targets = [
         target for _entity, _family, targets in requested for target in targets
     ]
-    formula_owned = sorted(resolve_formula_owned_outputs(all_targets))
-    if formula_owned:
-        raise ValueError(
-            "ACS transfer targets must be PolicyEngine input leaves, not "
-            f"formula-owned outputs: {formula_owned}."
-        )
+    assert_acs_transfer_targets_are_input_leaves(all_targets)
 
     active = _missing_target_families(requested, recipient=recipient)
     if not active:
@@ -2152,9 +2194,9 @@ def _policyengine_us_adapter() -> Any | None:
     try:
         adapter = import_module(
             "populace.frame.adapters.policyengine_us"
-        ).PolicyEngineUSEngine()
-        # Force the optional country package to load once so an absent extra
-        # uses the documented dtype fallback rather than failing mid-family.
+        ).PolicyEngineUSVariableMetadataIndex()
+        # Force the optional source index to load once so an absent extra uses
+        # the documented dtype fallback rather than failing mid-family.
         adapter.variables()
     except ImportError:
         return None

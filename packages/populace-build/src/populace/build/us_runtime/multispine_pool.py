@@ -42,6 +42,7 @@ from populace.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
 from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
     us_hours_worked_signal_gate,
     with_us_hours_worked_inputs,
 )
@@ -54,6 +55,7 @@ from populace.build.us_runtime.medicare_take_up import (
     with_us_medicare_take_up_input,
 )
 from populace.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from populace.build.us_runtime.pregnancy import with_us_pregnancy_inputs
@@ -400,9 +402,7 @@ _CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
 _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
     name: contract.family for name, contract in POOL_OPERATOR_CONTRACTS.items()
 }
-_FORMULA_OWNED_SOURCE_OUTPUTS: Mapping[str, frozenset[str]] = {
-    "person": frozenset({"employment_income_last_year"}),
-}
+_FORMULA_OWNED_SOURCE_OUTPUTS = FORMULA_OWNED_SOURCE_COLUMNS
 _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset(
         {
@@ -616,7 +616,7 @@ def prepare_multispine_source_inputs_for_clone(
 
 
 def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
-    """Run the pre-clone hours producer and its legacy signal contract."""
+    """Run the shared hours kernel, then keep only pool-owned input leaves."""
 
     produced = with_us_hours_worked_inputs(
         frame,
@@ -629,15 +629,20 @@ def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
             "Pool pre-clone hours-worked signal gate failed:\n  "
             + "\n  ".join(gate.failures)
         )
-    return PoolStageOutput(
+    pool_surface, removed = _drop_source_output_columns(
         produced,
+        {"person": US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS},
+    )
+    return PoolStageOutput(
+        pool_surface,
         {
             "hours_worked_signal_gate": {
                 "name": gate.name,
                 "passed": True,
                 "failures": [],
                 "details": dict(gate.details),
-            }
+            },
+            "pool_excluded_outputs_removed": removed,
         },
     )
 
@@ -1112,6 +1117,8 @@ def _transient_source_outputs(
 
 
 def _assert_formula_owned_source_outputs_absent(frame: Frame) -> None:
+    """Fail closed on every formula-owned name classified at the boundary."""
+
     remaining = {
         entity: sorted(set(columns) & set(frame.table(entity).columns))
         for entity, columns in _FORMULA_OWNED_SOURCE_OUTPUTS.items()
@@ -1120,7 +1127,7 @@ def _assert_formula_owned_source_outputs_absent(frame: Frame) -> None:
     }
     if remaining:
         raise ValueError(
-            "Completed multispine source inputs retain formula-owned transient "
+            "Completed multispine source inputs retain formula-owned source "
             f"output(s): {remaining}."
         )
 

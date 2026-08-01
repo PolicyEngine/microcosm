@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib
 import inspect
 import textwrap
@@ -44,6 +45,7 @@ from populace.build.us_runtime.multispine_pool import (
     seed_multispine_pool_inputs,
 )
 from populace.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from populace.build.us_runtime.prior_year_income import (
@@ -66,6 +68,9 @@ from populace.build.us_runtime.support_provenance import (
 )
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
@@ -118,6 +123,14 @@ _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_immigration_inputs",
     "with_us_education_inputs",
 )
+
+
+def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
+    try:
+        return PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
@@ -248,6 +261,7 @@ def _real_pre_clone_source_frame() -> Frame:
             "HRSWK": [40, 0, 35, 0],
             "A_HRS1": [42, 0, 30, 0],
             "WKSWORK": [52, 0, 48, 0],
+            "PEMCPREM": [100.0, 0.0, 25.0, 0.0],
             "OI_VAL": [0.0, 0.0, 0.0, 0.0],
             "OI_OFF": [0, 0, 0, 0],
             "PH_SEQ": [10, 10, 20, 20],
@@ -644,9 +658,14 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "person",
         "source_operator_hours_worked",
     )
-    assert owners["weeks_worked"] == (
-        "person",
-        "source_operator_hours_worked",
+    assert "weeks_worked" not in owners
+    assert "medicare_part_b_premiums_reported" not in owners
+
+    target_names = sorted(owners)
+    assert len(target_names) == 115
+    assert (
+        hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
+        == "cb695fe8b99baf5edaeed0e6e84df2eaaf99fa867df6008e1d9ff0a2edcbbc71"
     )
 
 
@@ -849,6 +868,13 @@ def _run_pool_transfer_dtype_producers(
 
 def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str]]:
     plan = pool_transfer_target_families()
+    targets = {
+        target
+        for families in plan.values()
+        for columns in families.values()
+        for target in columns
+    }
+    acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(targets)
     donor, role = acs_transfer_module.resolve_acs_donor_channel(
         frame,
         acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
@@ -878,6 +904,21 @@ def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str
     return audited
 
 
+def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
+    _installed_variable_metadata_index()
+    targets = {
+        target
+        for families in pool_transfer_target_families().values()
+        for columns in families.values()
+        for target in columns
+    }
+    assert len(targets) == 115
+    acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
+        targets,
+        require_known=True,
+    )
+
+
 def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -886,9 +927,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
 
     audited = _assert_pool_transfer_produced_encodings(produced)
 
-    assert len(audited) == 117
+    assert len(audited) == 115
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
+    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 118
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1343,6 +1384,9 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert hours_gate["name"] == "hours_worked_signal"
     assert hours_gate["passed"] is True
     assert hours_gate["failures"] == []
+    assert suboperators[1]["kernel_receipt"]["pool_excluded_outputs_removed"] == {
+        "person": ["weeks_worked"]
+    }
 
     prepared_person = prepared.frame.table("person")
     prepared_cps = prepared_person["PERIDNUM"].notna()
@@ -1358,6 +1402,15 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     ]
     assert prepared_person["hours_worked_last_week"].dtype == np.dtype("float64")
     assert prepared_person.loc[~prepared_cps, "hours_worked_last_week"].isna().all()
+    assert "weeks_worked" not in prepared_person
+    assert prepared_person.loc[prepared_cps, "WKSWORK"].tolist() == [52, 0, 48, 0]
+    assert "medicare_part_b_premiums_reported" not in prepared_person
+    assert prepared_person.loc[prepared_cps, "PEMCPREM"].tolist() == [
+        100.0,
+        0.0,
+        25.0,
+        0.0,
+    ]
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")
@@ -1371,6 +1424,56 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     parents = cps & person["A_LINENO"].eq(1)
     assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
     assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+
+
+def test_terminal_guard_rejects_stale_weeks_after_real_hours_projection() -> None:
+    asec = _real_pre_clone_source_frame()
+    asec_person = asec.table("person")
+    asec_person["weeks_worked"] = asec_person["WKSWORK"].astype(np.float64)
+    assembled = assemble_spines(
+        {"asec": asec, "acs": _source_frame(offset=100.0)},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    projected = multispine_pool_module._run_source_operator_chain(
+        assembled,
+        phase="pre_clone",
+        operator_names=("with_us_hours_worked_inputs",),
+        operators={
+            "with_us_hours_worked_inputs": (
+                multispine_pool_module._with_gated_us_hours_worked_inputs
+            )
+        },
+    )
+
+    person = projected.frame.table("person")
+    cps = person["PERIDNUM"].notna()
+    assert person.loc[cps, "weeks_worked"].tolist() == [52.0, 0.0, 48.0, 0.0]
+    assert person.loc[cps, "WKSWORK"].tolist() == [52, 0, 48, 0]
+    with pytest.raises(ValueError, match=r"formula-owned source.*weeks_worked"):
+        multispine_pool_module._assert_formula_owned_source_outputs_absent(
+            projected.frame
+        )
+
+
+def test_formula_owned_source_boundary_matches_installed_source_index() -> None:
+    candidates = {
+        column
+        for by_entity in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES.values()
+        for columns in by_entity.values()
+        for column in columns
+    }
+    classified = puf_support_module.resolve_formula_owned_outputs(
+        candidates,
+        engine=_installed_variable_metadata_index(),
+    )
+    guarded = {
+        column
+        for columns in FORMULA_OWNED_SOURCE_COLUMNS.values()
+        for column in columns
+    }
+
+    assert classified == guarded
 
 
 def test_preclone_hours_signal_gate_rejects_implausible_producer_surface() -> None:
