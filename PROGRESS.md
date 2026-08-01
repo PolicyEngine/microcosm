@@ -61,6 +61,11 @@ sandbox-safe verification remains.
   `hours_worked_last_week`; assertions prove every source producer and the
   primary-PUF QRF fit/predict path ran. Both producer-guard tests pass (2 passed,
   27 deselected).
+- Expanded focused verification initially found one stale structural-test
+  assumption: it required each operator-map value to have the same symbol name
+  as its registry key. The audit now explicitly pins the hours key to its sole
+  allowed gated wrapper while retaining exact-name checks for every other
+  operator; the structural audit and implausible-hours regression both pass.
 
 ## Next
 

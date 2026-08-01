@@ -119,6 +119,10 @@ _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_education_inputs",
 )
 
+_EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
+    "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+}
+
 
 def _source_frame(*, offset: float = 0.0) -> Frame:
     ids = np.asarray([1, 2], dtype=np.int64)
@@ -424,7 +428,11 @@ def _operator_mapping_structure(
         operator_names.append(operator_name)
         calls = [node for node in ast.walk(value) if isinstance(node, ast.Call)]
         if isinstance(value, ast.Name):
-            assert value.id == operator_name
+            expected_kernel = _EXPECTED_SOURCE_OPERATOR_WRAPPERS.get(
+                operator_name,
+                operator_name,
+            )
+            assert value.id == expected_kernel
             assert not calls
         else:
             assert isinstance(value, ast.Lambda)
