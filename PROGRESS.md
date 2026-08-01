@@ -2,9 +2,9 @@
 
 ## State
 
-Remediation is in progress on `acs-transfer-dtypes-578` from clean starting
-commit `fcdd857`. All four findings are fixed with focused regressions; broad
-sandbox-safe verification remains.
+Remediation is complete on `acs-transfer-dtypes-578` from clean starting commit
+`fcdd857`. All four findings are fixed and the full sandbox-safe workspace test
+surface passes.
 
 ## Done
 
@@ -66,8 +66,16 @@ sandbox-safe verification remains.
   as its registry key. The audit now explicitly pins the hours key to its sole
   allowed gated wrapper while retaining exact-name checks for every other
   operator; the structural audit and implausible-hours regression both pass.
+- Expanded ACS/multispine/gates verification passes: 502 passed, 3 skipped.
+- The #583 source-blindness guard passes: 495 passed, with no skips or warnings.
+- The complete configured workspace suite passes: 4,558 passed, 59 skipped,
+  and 6 existing numerical/runtime warnings in 1,351.67 seconds.
+- Repository-wide Ruff check, Ruff format check for all eight changed Python
+  files, and `git diff --check` from `fcdd857` pass. No network or push action
+  was taken, and no root journal other than this explicitly requested progress
+  ledger was changed.
 
 ## Next
 
-- Run focused and broad sandbox-safe verification, record exact counts, update
-  this ledger, and write the final report to the requested output channel.
+- Human review of the per-finding receipts in the final report; push remains
+  outside this lane.
