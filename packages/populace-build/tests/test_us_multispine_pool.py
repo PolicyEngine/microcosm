@@ -68,6 +68,9 @@ from populace.build.us_runtime.support_provenance import (
 )
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
@@ -893,11 +896,7 @@ def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str
     return audited
 
 
-def test_every_pool_transfer_target_is_a_live_engine_input_leaf() -> None:
-    pytest.importorskip("policyengine_us")
-
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
-
+def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
     targets = {
         target
         for families in pool_transfer_target_families().values()
@@ -907,7 +906,7 @@ def test_every_pool_transfer_target_is_a_live_engine_input_leaf() -> None:
     assert len(targets) == 115
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
-        engine=PolicyEngineUSEngine(),
+        engine=PolicyEngineUSVariableMetadataIndex(),
         require_known=True,
     )
 
@@ -1449,11 +1448,7 @@ def test_terminal_guard_rejects_stale_weeks_after_real_hours_projection() -> Non
         )
 
 
-def test_formula_owned_source_boundary_matches_live_transfer_classifier() -> None:
-    pytest.importorskip("policyengine_us")
-
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
-
+def test_formula_owned_source_boundary_matches_installed_source_index() -> None:
     candidates = {
         column
         for by_entity in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES.values()
@@ -1462,7 +1457,7 @@ def test_formula_owned_source_boundary_matches_live_transfer_classifier() -> Non
     }
     classified = puf_support_module.resolve_formula_owned_outputs(
         candidates,
-        engine=PolicyEngineUSEngine(),
+        engine=PolicyEngineUSVariableMetadataIndex(),
     )
     guarded = {
         column

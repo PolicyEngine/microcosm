@@ -2192,9 +2192,9 @@ def _policyengine_us_adapter() -> Any | None:
     try:
         adapter = import_module(
             "populace.frame.adapters.policyengine_us"
-        ).PolicyEngineUSEngine()
-        # Force the optional country package to load once so an absent extra
-        # uses the documented dtype fallback rather than failing mid-family.
+        ).PolicyEngineUSVariableMetadataIndex()
+        # Force the optional source index to load once so an absent extra uses
+        # the documented dtype fallback rather than failing mid-family.
         adapter.variables()
     except ImportError:
         return None

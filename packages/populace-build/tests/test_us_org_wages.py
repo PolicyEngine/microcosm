@@ -119,11 +119,26 @@ def _donor(n: int = 200) -> pd.DataFrame:
     )
 
 
-def test_fiscal_2024_hours_then_org_preserves_weeks_through_export_guard() -> None:
+def test_fiscal_2024_hours_then_org_preserves_weeks_through_export_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Compose the real operators exactly as the legacy fiscal builder does."""
 
-    pytest.importorskip("policyengine_us")
     builder = _load_fiscal_builder_module()
+
+    # The live parameter metadata is pinned independently below. Reuse its
+    # exact 2024 tuple here so this composition regression exercises the real
+    # hours operator, ORG QRF, and export guard without building another full
+    # tax-benefit system in the middle of the suite.
+    def pinned_flsa_policy(year: int) -> tuple[float, float, float, float, float]:
+        assert year == builder.PERIOD == 2024
+        return 107_432.0, 35_568.0, 57_470.4, 40.0, 1.5
+
+    monkeypatch.setattr(
+        module,
+        "_flsa_policy",
+        pinned_flsa_policy,
+    )
     frame = _frame(_person(500))
     expected_weeks = frame.table("person")["weeks_worked"].copy()
 

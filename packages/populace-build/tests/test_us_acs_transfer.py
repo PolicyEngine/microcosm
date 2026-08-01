@@ -23,6 +23,9 @@ from populace.build.us_runtime.acs_transfer import (
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
 
 SCHEMA = EntitySchema(group_entities=("household", "tax_unit"))
 
@@ -1365,7 +1368,10 @@ def test_formula_owned_target_is_refused_before_fit() -> None:
 
 
 def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> None:
-    pytest.importorskip("policyengine_us")
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
 
     with pytest.raises(
         ValueError,

@@ -1776,25 +1776,23 @@ def _tax_unit_household_weights(
 
 
 def _formula_owned_engine() -> Any | None:
-    """A PolicyEngine-US adapter for formula metadata, or ``None`` if absent.
+    """An import-free PolicyEngine-US source index, or ``None`` if absent.
 
-    The adapter is the single reader of engine metadata. Its module ships with
-    populace-frame, so this import (and the trivial construction) succeeds even
-    when ``policyengine_us`` itself is not installed — the adapter imports the
-    engine lazily, so a missing ``[us]`` extra surfaces as an ``ImportError``
-    at *call* time, not here. Callers treat that call-time ``ImportError``
-    exactly like ``None``: the guard degrades to the static seed set (the
-    workspace test environment) rather than letting a missing optional extra
-    abort a build. At build time the extra is installed and the adapter serves
-    live metadata.
+    Importing ``policyengine_us`` constructs a full tax-benefit system, and a
+    second adapter system registers another complete set of variable modules.
+    The ownership guard needs only class metadata, so the source index parses
+    the installed variable declarations without importing the country package.
+    A missing ``[us]`` extra still degrades to the static seed set.
     """
     try:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from populace.frame.adapters.policyengine_us import (
+            PolicyEngineUSVariableMetadataIndex,
+        )
     except ImportError:
         return None
     try:
-        return PolicyEngineUSEngine()
-    except Exception:  # pragma: no cover - defensive; construction is trivial
+        return PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
         return None
 
 

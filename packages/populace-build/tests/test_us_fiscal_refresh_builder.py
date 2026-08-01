@@ -7872,13 +7872,17 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
 def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
-    class FakePolicyEngineUSEngine:
+    class FakeVariableMetadataIndex:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
             assert "income" in tables["person"]
             return {"income"}
 
-    monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
+    monkeypatch.setattr(
+        builder,
+        "PolicyEngineUSVariableMetadataIndex",
+        FakeVariableMetadataIndex,
+    )
 
     with pytest.raises(ValueError, match="Formula-owned.*income"):
         builder._with_calibrated_weights(
@@ -7910,13 +7914,17 @@ def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
 def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
-    class FakePolicyEngineUSEngine:
+    class FakeVariableMetadataIndex:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
             assert "income" in tables["person"]
             return set()
 
-    monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
+    monkeypatch.setattr(
+        builder,
+        "PolicyEngineUSVariableMetadataIndex",
+        FakeVariableMetadataIndex,
+    )
 
     exported = builder._with_calibrated_weights(
         small_frame,
