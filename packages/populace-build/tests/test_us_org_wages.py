@@ -25,6 +25,9 @@ from populace.build.us_runtime import (
 )
 from populace.build.us_runtime import org_wages as module
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
 
 
 def _load_fiscal_builder_module():
@@ -124,6 +127,10 @@ def test_fiscal_2024_hours_then_org_preserves_weeks_through_export_guard(
 ) -> None:
     """Compose the real operators exactly as the legacy fiscal builder does."""
 
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
     builder = _load_fiscal_builder_module()
 
     # The live parameter metadata is pinned independently below. Reuse its

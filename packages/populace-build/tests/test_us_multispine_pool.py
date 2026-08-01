@@ -124,6 +124,14 @@ _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_education_inputs",
 )
 
+
+def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
+    try:
+        return PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
 }
@@ -906,7 +914,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
     assert len(targets) == 115
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
-        engine=PolicyEngineUSVariableMetadataIndex(),
+        engine=_installed_variable_metadata_index(),
         require_known=True,
     )
 
@@ -1457,7 +1465,7 @@ def test_formula_owned_source_boundary_matches_installed_source_index() -> None:
     }
     classified = puf_support_module.resolve_formula_owned_outputs(
         candidates,
-        engine=PolicyEngineUSVariableMetadataIndex(),
+        engine=_installed_variable_metadata_index(),
     )
     guarded = {
         column
