@@ -289,8 +289,8 @@ _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS = frozenset(
 
 # Known formula-owned outputs the PUF tax-detail donor must never carry as
 # persistable leaves. This is a documented *seed* set, not the whole story:
-# :func:`resolve_formula_owned_outputs` unions it with the set derived live
-# from PolicyEngine-US variable metadata, so a new formula-owned aggregate
+# :func:`resolve_formula_owned_outputs` unions it with the set derived from the
+# installed PolicyEngine-US source metadata, so a new formula-owned aggregate
 # added upstream is rejected even before anyone adds it here (populace issue
 # #301). Every name here has a stated reason; a build-time consistency check
 # (:func:`assert_formula_owned_blocklist_current`) fails if the engine stops
@@ -1821,7 +1821,8 @@ def resolve_formula_owned_outputs(
     Args:
         requested: The output variable names a fit intends to impute/persist.
         engine: A metadata source exposing ``formula_owned_outputs(names) ->
-            set[str]`` (a :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSEngine`
+            set[str]`` (a
+            :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSVariableMetadataIndex`
             in production). ``None`` resolves one lazily, falling back to the
             static seed set when ``policyengine_us`` is not installed.
 
@@ -1836,9 +1837,8 @@ def resolve_formula_owned_outputs(
         try:
             rejected |= set(engine.formula_owned_outputs(requested_set))
         except ImportError:
-            # The adapter imports policyengine_us lazily, so a missing [us]
-            # extra surfaces here rather than at construction; degrade to the
-            # static seed set exactly as when no adapter is available.
+            # An injected metadata source may resolve the optional package
+            # lazily; degrade to the static seed exactly as when unavailable.
             pass
     return rejected
 
@@ -1854,10 +1854,9 @@ def assert_formula_owned_blocklist_current(engine: Any | None = None) -> None:
     catches formula-owned names *missing* from the static set, this catches
     static names the engine no longer *considers* formula-owned.
 
-    A no-op when no engine is available or the engine's lazy
-    ``policyengine_us`` import is missing at call time (the workspace test
-    environment), so the check runs only where the ``[us]`` extra is
-    installed — the build.
+    A no-op when no metadata index is available or an injected source reports
+    the optional package missing, so the check runs only where the ``[us]``
+    extra is installed — the build.
 
     Raises:
         ValueError: If a static-set entry is not reported formula-owned by the

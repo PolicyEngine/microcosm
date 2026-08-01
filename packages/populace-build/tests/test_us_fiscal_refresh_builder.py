@@ -7891,6 +7891,31 @@ def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) ->
         )
 
 
+def test_export_frame_rejects_generated_formula_owned_columns(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    try:
+        index = builder.PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+    generated = ("AK", "ar_agi", "mi_surtax")
+    for column in generated:
+        small_frame.table("person")[column] = 0.0
+    monkeypatch.setattr(builder, "_FORMULA_OWNED_GATE_ADAPTER", index)
+
+    with pytest.raises(
+        ValueError,
+        match=r"Formula-owned.*AK.*ar_agi.*mi_surtax",
+    ):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
+
+
 def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
     monkeypatch,
     small_frame,
