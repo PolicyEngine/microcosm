@@ -324,6 +324,71 @@ def test_module_qualified_helpers_keep_whole_call_contexts(tmp_path: Path) -> No
         assert index.consumers.get(invented, ()) == ()
 
 
+def test_ast_import_module_qualified_helper_records_receipt(tmp_path: Path) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "helpers.py": _clean(
+                """
+                def read(person, period, variable):
+                    return person(variable, period)
+                """
+            ),
+            "consumer.py": _clean(
+                """
+                import policyengine_us.variables.helpers as helpers
+
+                class caller(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        return helpers.read(person, period, "module_leaf")
+                """
+            ),
+        },
+    )
+
+    assert _receipt_targets(index) == {"module_leaf"}
+    assert _receipt_identities(index, "module_leaf") == {
+        ("read", "variables/helpers.py", "entity_call")
+    }
+
+
+def test_ast_import_module_qualified_helper_fails_closed_on_unknown_sink(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        RuntimeError,
+        match="Unresolved dynamic PolicyEngine consumer aggregation",
+    ):
+        _index(
+            tmp_path,
+            {
+                "helpers.py": _clean(
+                    """
+                    def read(person, period, variable):
+                        return person(variable, period)
+                    """
+                ),
+                "consumer.py": _clean(
+                    """
+                    import policyengine_us.variables.helpers as helpers
+
+                    class caller(Variable):
+                        value_type = float
+                        entity = Person
+                        definition_period = YEAR
+
+                        def formula(person, period, parameters):
+                            return helpers.read(person, period, choose_name())
+                    """
+                ),
+            },
+        )
+
+
 def test_known_helper_context_cannot_mask_unknown_context(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="Unresolved dynamic PolicyEngine consumer"):
         _index(

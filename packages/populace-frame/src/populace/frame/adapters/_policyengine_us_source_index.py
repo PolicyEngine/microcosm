@@ -181,6 +181,12 @@ class _ImportBinding:
 
 
 @dataclass(frozen=True)
+class _ModuleImportBinding:
+    source_module: str
+    bound_path: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class _ModuleIR:
     """One parsed source module and its module-scoped static surfaces."""
 
@@ -189,6 +195,7 @@ class _ModuleIR:
     module_name: str
     is_package: bool
     tree: ast.Module
+    module_imports: tuple[_ModuleImportBinding, ...]
     imports: tuple[_ImportBinding, ...]
     star_imports: tuple[str, ...]
     classes: tuple[ast.ClassDef, ...]
@@ -280,6 +287,16 @@ def _source_name(node: ast.expr) -> str | None:
         return node.id
     if isinstance(node, ast.Attribute):
         return node.attr
+    return None
+
+
+def _attribute_path(node: ast.expr) -> tuple[str, ...] | None:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        base = _attribute_path(node.value)
+        if base is not None:
+            return (*base, node.attr)
     return None
 
 
@@ -438,9 +455,24 @@ def _inventory_modules(variables_root: Path) -> dict[str, _ModuleIR]:
         module_name = "policyengine_us.variables"
         if relative_module:
             module_name += f".{relative_module}"
+        module_imports: list[_ModuleImportBinding] = []
         imports: list[_ImportBinding] = []
         star_imports: list[str] = []
         for statement in tree.body:
+            if isinstance(statement, ast.Import):
+                for alias in statement.names:
+                    bound_path = (
+                        (alias.asname,)
+                        if alias.asname is not None
+                        else tuple(alias.name.split("."))
+                    )
+                    module_imports.append(
+                        _ModuleImportBinding(
+                            source_module=alias.name,
+                            bound_path=bound_path,
+                        )
+                    )
+                continue
             if not isinstance(statement, ast.ImportFrom):
                 continue
             source_module = _resolve_import_module(
@@ -467,6 +499,7 @@ def _inventory_modules(variables_root: Path) -> dict[str, _ModuleIR]:
             module_name=module_name,
             is_package=is_package,
             tree=tree,
+            module_imports=tuple(module_imports),
             imports=tuple(imports),
             star_imports=tuple(star_imports),
             classes=tuple(node for node in tree.body if isinstance(node, ast.ClassDef)),
@@ -2067,9 +2100,7 @@ class _ConsumerInterpreter:
     ) -> None:
         if not frame.enqueue_helpers:
             return
-        if not isinstance(call.func, ast.Name):
-            return
-        identifier = self._bindings[frame.module.module_name].get(call.func.id)
+        identifier = self._helper_identifier(call, frame)
         if identifier is None:
             return
         context = _FunctionContext(
@@ -2091,6 +2122,31 @@ class _ConsumerInterpreter:
         if context not in self._seen_contexts:
             self._seen_contexts.add(context)
             self._queue.append(context)
+
+    def _helper_identifier(
+        self,
+        call: ast.Call,
+        frame: _EvaluationFrame,
+    ) -> _FunctionID | None:
+        if isinstance(call.func, ast.Name):
+            return self._bindings[frame.module.module_name].get(call.func.id)
+        if not isinstance(call.func, ast.Attribute):
+            return None
+        base_path = _attribute_path(call.func.value)
+        if base_path is None:
+            return None
+        for binding in reversed(frame.module.module_imports):
+            if base_path[: len(binding.bound_path)] != binding.bound_path:
+                continue
+            suffix = base_path[len(binding.bound_path) :]
+            source_module = ".".join((binding.source_module, *suffix))
+            if source_module not in self._modules:
+                return None
+            identifier = self._bindings[source_module].get(call.func.attr)
+            if identifier is None:
+                self._raise_unresolved(call, frame)
+            return identifier
+        return None
 
     def _record_expression(
         self,
