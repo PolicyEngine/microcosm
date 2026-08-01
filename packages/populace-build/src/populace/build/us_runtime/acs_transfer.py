@@ -690,9 +690,11 @@ def assert_acs_transfer_targets_are_input_leaves(
         return
 
     if engine is None:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from populace.frame.adapters.policyengine_us import (
+            PolicyEngineUSVariableMetadataIndex,
+        )
 
-        engine = PolicyEngineUSEngine()
+        engine = PolicyEngineUSVariableMetadataIndex()
     try:
         engine_leaves = set(engine.variables())
     except ImportError as exc:

@@ -905,6 +905,7 @@ def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str
 
 
 def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
+    _installed_variable_metadata_index()
     targets = {
         target
         for families in pool_transfer_target_families().values()
@@ -914,7 +915,6 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
     assert len(targets) == 115
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
-        engine=_installed_variable_metadata_index(),
         require_known=True,
     )
 
