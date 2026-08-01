@@ -55,6 +55,7 @@ from populace.build.us_runtime.medicare_take_up import (
     with_us_medicare_take_up_input,
 )
 from populace.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from populace.build.us_runtime.pregnancy import with_us_pregnancy_inputs
@@ -401,9 +402,7 @@ _CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
 _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
     name: contract.family for name, contract in POOL_OPERATOR_CONTRACTS.items()
 }
-_FORMULA_OWNED_SOURCE_OUTPUTS: Mapping[str, frozenset[str]] = {
-    "person": frozenset({"employment_income_last_year"}),
-}
+_FORMULA_OWNED_SOURCE_OUTPUTS = FORMULA_OWNED_SOURCE_COLUMNS
 _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset(
         {
@@ -1118,6 +1117,8 @@ def _transient_source_outputs(
 
 
 def _assert_formula_owned_source_outputs_absent(frame: Frame) -> None:
+    """Fail closed on every formula-owned name classified at the boundary."""
+
     remaining = {
         entity: sorted(set(columns) & set(frame.table(entity).columns))
         for entity, columns in _FORMULA_OWNED_SOURCE_OUTPUTS.items()
@@ -1126,7 +1127,7 @@ def _assert_formula_owned_source_outputs_absent(frame: Frame) -> None:
     }
     if remaining:
         raise ValueError(
-            "Completed multispine source inputs retain formula-owned transient "
+            "Completed multispine source inputs retain formula-owned source "
             f"output(s): {remaining}."
         )
 

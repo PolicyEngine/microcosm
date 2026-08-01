@@ -44,6 +44,7 @@ from populace.build.us_runtime.multispine_pool import (
     seed_multispine_pool_inputs,
 )
 from populace.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from populace.build.us_runtime.prior_year_income import (
@@ -1403,6 +1404,60 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     parents = cps & person["A_LINENO"].eq(1)
     assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
     assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+
+
+def test_terminal_guard_rejects_stale_weeks_after_real_hours_projection() -> None:
+    asec = _real_pre_clone_source_frame()
+    asec_person = asec.table("person")
+    asec_person["weeks_worked"] = asec_person["WKSWORK"].astype(np.float64)
+    assembled = assemble_spines(
+        {"asec": asec, "acs": _source_frame(offset=100.0)},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    projected = multispine_pool_module._run_source_operator_chain(
+        assembled,
+        phase="pre_clone",
+        operator_names=("with_us_hours_worked_inputs",),
+        operators={
+            "with_us_hours_worked_inputs": (
+                multispine_pool_module._with_gated_us_hours_worked_inputs
+            )
+        },
+    )
+
+    person = projected.frame.table("person")
+    cps = person["PERIDNUM"].notna()
+    assert person.loc[cps, "weeks_worked"].tolist() == [52.0, 0.0, 48.0, 0.0]
+    assert person.loc[cps, "WKSWORK"].tolist() == [52, 0, 48, 0]
+    with pytest.raises(ValueError, match=r"formula-owned source.*weeks_worked"):
+        multispine_pool_module._assert_formula_owned_source_outputs_absent(
+            projected.frame
+        )
+
+
+def test_formula_owned_source_boundary_matches_live_transfer_classifier() -> None:
+    pytest.importorskip("policyengine_us")
+
+    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    candidates = {
+        column
+        for by_entity in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES.values()
+        for columns in by_entity.values()
+        for column in columns
+    }
+    classified = puf_support_module.resolve_formula_owned_outputs(
+        candidates,
+        engine=PolicyEngineUSEngine(),
+    )
+    guarded = {
+        column
+        for columns in FORMULA_OWNED_SOURCE_COLUMNS.values()
+        for column in columns
+    }
+
+    assert classified == guarded
 
 
 def test_preclone_hours_signal_gate_rejects_implausible_producer_surface() -> None:
