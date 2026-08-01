@@ -12,6 +12,7 @@ import pytest
 
 from populace.build.gates import GateResult
 from populace.build.source_runtime import SourceRuntimeError
+from populace.build.us_runtime import acs_transfer as acs_transfer_module
 from populace.build.us_runtime import housing_inputs as housing_inputs_module
 from populace.build.us_runtime import multispine_pool as multispine_pool_module
 from populace.build.us_runtime import prior_year_income as prior_year_income_module
@@ -19,6 +20,7 @@ from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_OPERATOR_CONTRACTS,
     POOL_OPERATOR_ORDER,
@@ -31,6 +33,7 @@ from populace.build.us_runtime.multispine_pool import (
     PoolStageOutput,
     _complete_schedule_d_input,
     materialize_multispine_agreement_outputs,
+    materialize_pool_deferred_transfer_inputs,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
@@ -63,6 +66,7 @@ from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
     "with_us_prior_year_income_inputs",
     "with_us_relationship_inputs",
     "with_us_medicare_take_up_input",
@@ -86,6 +90,7 @@ _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
 
 _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
     "with_us_prior_year_income_inputs",
     "with_us_relationship_inputs",
     "with_us_housing_inputs",
@@ -233,6 +238,9 @@ def _real_pre_clone_source_frame() -> Frame:
             "I_SEVAL": [0, 0, 0, 0],
             "A_AGE": [40, 10, 41, 11],
             "A_SEX": [1, 2, 1, 2],
+            "HRSWK": [40, 0, 35, 0],
+            "A_HRS1": [42, 0, 30, 0],
+            "WKSWORK": [52, 0, 48, 0],
             "OI_VAL": [0.0, 0.0, 0.0, 0.0],
             "OI_OFF": [0, 0, 0, 0],
             "PH_SEQ": [10, 10, 20, 20],
@@ -579,13 +587,22 @@ def test_clone_safe_id_violation_surfaces_assembly_error() -> None:
         )
 
 
-def test_pool_transfer_plan_extends_legacy_without_duplicates() -> None:
+def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() -> None:
     legacy = declared_acs_transfer_target_families()
     pool = pool_transfer_target_families()
+    deferred = frozenset(POOL_DEFERRED_TRANSFER_INPUTS)
+
+    assert deferred == {
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    }
 
     for entity, families in legacy.items():
         for family, columns in families.items():
-            assert pool[entity][family] == columns
+            assert pool[entity][family] == tuple(
+                column for column in columns if column not in deferred
+            )
 
     owners: dict[str, tuple[str, str]] = {}
     for entity, families in pool.items():
@@ -608,6 +625,130 @@ def test_pool_transfer_plan_extends_legacy_without_duplicates() -> None:
         "person",
         "source_operator_immigration",
     )
+    assert owners["hours_worked_last_week"] == (
+        "person",
+        "model_required_numeric",
+    )
+    assert owners["weekly_hours_worked_before_lsr"] == (
+        "person",
+        "source_operator_hours_worked",
+    )
+    assert owners["weeks_worked"] == (
+        "person",
+        "source_operator_hours_worked",
+    )
+
+
+def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    object_boolean_targets = {
+        "attends_eligible_educational_institution_for_american_opportunity_credit",
+        "has_american_opportunity_credit_1098_t_or_exception",
+        "has_american_opportunity_credit_institution_ein",
+        "has_champva_health_coverage_at_interview",
+        "has_esi",
+        "has_indian_health_service_coverage_at_interview",
+        "has_marketplace_health_coverage",
+        "has_marketplace_health_coverage_at_interview",
+        "has_medicaid_health_coverage_at_interview",
+        "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+        "has_other_means_tested_health_coverage_at_interview",
+        "has_tricare_health_coverage_at_interview",
+        "has_va_health_coverage_at_interview",
+        "is_blind",
+        "is_disabled",
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+        "is_full_time_college_student",
+        "is_incapable_of_self_care",
+        "is_pregnant",
+        "is_pursuing_credential_for_american_opportunity_credit",
+        "is_separated",
+        "is_surviving_spouse",
+        "previous_year_income_available",
+        "receives_housing_assistance",
+        "takes_up_housing_assistance_if_eligible",
+        "takes_up_medicare_if_eligible",
+        "would_claim_wic",
+    }
+    object_string_targets = {"immigration_status_str", "ssn_card_type"}
+    plan = pool_transfer_target_families()
+    owners = {
+        target: entity
+        for entity, families in plan.items()
+        for targets in families.values()
+        for target in targets
+    }
+    float_targets = set(owners) - object_boolean_targets - object_string_targets
+
+    assert len(owners) == 117
+    assert len(float_targets) == 88
+    assert len(object_boolean_targets) == 27
+    assert len(object_string_targets) == 2
+    assert not (object_boolean_targets | object_string_targets) - set(owners)
+
+    base = _source_frame()
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    produced: dict[str, dict[str, np.ndarray]] = {
+        entity: {} for entity in base.entities
+    }
+    for target, entity in owners.items():
+        if target in object_boolean_targets:
+            values = np.asarray([True, None], dtype=object)
+        elif target in object_string_targets:
+            values = np.asarray(["observed", None], dtype=object)
+        else:
+            values = np.asarray([0.0, 1.0], dtype=np.float64)
+        produced[entity][target] = values
+    for entity, columns in produced.items():
+        if columns:
+            tables[entity] = pd.concat(
+                [tables[entity], pd.DataFrame(columns, index=tables[entity].index)],
+                axis=1,
+            )
+    donor = Frame(
+        tables,
+        base.schema,
+        {entity: base.weights_for(entity) for entity in base.weighted_entities},
+        base.strata,
+    )
+    monkeypatch.setattr(
+        acs_transfer_module,
+        "_engine_variable_metadata",
+        lambda _target: None,
+    )
+
+    for entity, families in plan.items():
+        for targets in families.values():
+            acs_transfer_module._validate_donor_targets(
+                donor,
+                entity=entity,
+                targets=targets,
+            )
+
+
+def test_every_pool_transfer_target_has_a_registered_pool_producer() -> None:
+    producer_families = {
+        "primary_puf_qrf",
+        *(
+            POOL_OPERATOR_CONTRACTS[operator_name].family
+            for operator_name in POOL_SOURCE_OPERATOR_ORDER
+        ),
+    }
+    produced = {
+        (entity, column)
+        for family in producer_families
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items()
+        for column in columns
+    }
+    transferred = {
+        (entity, column)
+        for entity, families in pool_transfer_target_families().items()
+        for columns in families.values()
+        for column in columns
+    }
+
+    assert not transferred - produced
 
 
 def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
@@ -734,6 +875,8 @@ def test_production_operator_invocations_are_total_and_guarded(
             {
                 "_assert_formula_owned_source_outputs_absent",
                 "_run_source_operator_chain",
+                "materialize_pool_deferred_transfer_inputs",
+                "PoolStageOutput",
             },
         ),
         (
@@ -794,8 +937,12 @@ def test_production_operator_invocations_are_total_and_guarded(
         frame,
         acs_rent_donor=pd.DataFrame(),
     )
-    multispine_pool_module.complete_multispine_source_inputs(frame)
+    completed = multispine_pool_module.complete_multispine_source_inputs(frame)
     multispine_pool_module.derive_multispine_pool_inputs(frame)
+
+    assert set(completed.receipt["deferred_transfer_inputs"]["inputs"]) == set(
+        POOL_DEFERRED_TRANSFER_INPUTS
+    )
 
     assert observed == [
         ("pre_clone", POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER),
@@ -811,8 +958,8 @@ def test_production_operator_invocations_are_total_and_guarded(
         for phase in contract.phases
     }
     assert observed_placements == registered_placements
-    assert len({name for name, _phase in observed_placements}) == 22
-    assert len(observed_placements) == 23
+    assert len({name for name, _phase in observed_placements}) == 23
+    assert len(observed_placements) == 24
 
 
 def test_derive_stage_rejects_preclone_pool_before_kernels(
@@ -981,13 +1128,14 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     )
     assert [receipt["family"] for receipt in suboperators] == [
         "cps_carried",
+        "hours_worked",
         "prior_year_income",
         "relationship_inputs",
         "housing_inputs",
         "eligibility_inputs",
     ]
-    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 5
-    assert [receipt["order_index"] for receipt in suboperators] == list(range(5))
+    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 6
+    assert [receipt["order_index"] for receipt in suboperators] == list(range(6))
     assert prepared.receipt["transient_outputs_carried_through_clone"] == {
         "person": ["employment_income_last_year"]
     }
@@ -998,6 +1146,14 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert prepared_person.loc[
         prepared_cps, "previous_year_income_available"
     ].tolist() == [False, False, True, True]
+    assert prepared_person.loc[prepared_cps, "hours_worked_last_week"].tolist() == [
+        42.0,
+        0.0,
+        30.0,
+        0.0,
+    ]
+    assert prepared_person["hours_worked_last_week"].dtype == np.dtype("float64")
+    assert prepared_person.loc[~prepared_cps, "hours_worked_last_week"].isna().all()
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")
@@ -1347,6 +1503,27 @@ def _assembled_cloned_with_partial_take_up() -> Frame:
     return clone_us_frame_for_puf_support(assembled)
 
 
+def test_pool_asset_deferrals_are_typed_null_receipted_and_fail_when_stale() -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+
+    result = materialize_pool_deferred_transfer_inputs(frame)
+
+    person = result.frame.table("person")
+    assert set(result.receipt["inputs"]) == set(POOL_DEFERRED_TRANSFER_INPUTS)
+    for column, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items():
+        assert person[column].dtype == np.dtype("float64")
+        assert person[column].isna().all()
+        assert result.receipt["inputs"][column] == {
+            **declaration,
+            "status": "deferred_pending_source_donor",
+            "rows": len(person),
+            "null_rows": len(person),
+        }
+
+    with pytest.raises(ValueError, match="already exists; retire the stale deferral"):
+        materialize_pool_deferred_transfer_inputs(result.frame)
+
+
 def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> None:
     frame = _assembled_cloned_with_partial_take_up()
     before_person = frame.table("person")
@@ -1444,4 +1621,57 @@ def test_simulation_defaults_are_disposable_and_receipted() -> None:
         "rows": 1,
         "value": 0.0,
         "persisted_to_pool": False,
+    }
+
+
+def test_deferred_asset_defaults_exist_only_on_disposable_simulation_view() -> None:
+    frame = materialize_pool_deferred_transfer_inputs(
+        seed_multispine_pool_inputs(
+            _assembled_cloned_with_partial_take_up(),
+            engine=_FakeEngine(),
+        ).frame
+    ).frame
+
+    class AssetProjectionEngine(_FakeEngine):
+        def variables(self) -> list[str]:
+            return list(POOL_DEFERRED_TRANSFER_INPUTS)
+
+        def variable_metadata(self, name: str) -> object:
+            assert name in POOL_DEFERRED_TRANSFER_INPUTS
+            return SimpleNamespace(entity="person")
+
+        def default_values(self, names: list[str]) -> dict[str, object]:
+            assert names == list(POOL_DEFERRED_TRANSFER_INPUTS)
+            return {name: 0.0 for name in names}
+
+        def materialize(
+            self,
+            bundle: Frame,
+            variables: list[str],
+            period: int,
+        ) -> dict[str, np.ndarray]:
+            person = bundle.table("person")
+            assert all(
+                person[column].eq(0.0).all() for column in POOL_DEFERRED_TRANSFER_INPUTS
+            )
+            return super().materialize(bundle, variables, period)
+
+    result = materialize_multispine_agreement_outputs(
+        frame,
+        engine=AssetProjectionEngine(),
+    )
+
+    assert all(
+        result.frame.table("person")[column].isna().all()
+        for column in POOL_DEFERRED_TRANSFER_INPUTS
+    )
+    expected_rows = frame.n("person")
+    assert result.receipt["simulation_projection_default_fills"] == {
+        column: {
+            "entity": "person",
+            "rows": expected_rows,
+            "value": 0.0,
+            "persisted_to_pool": False,
+        }
+        for column in POOL_DEFERRED_TRANSFER_INPUTS
     }

@@ -41,6 +41,7 @@ from populace.build.us_runtime.energy_subsidy import (
     US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.geography_ladder import US_GEOGRAPHY_LADDER_COLUMNS
+from populace.build.us_runtime.hours_worked import US_HOURS_WORKED_OUTPUT_COLUMNS
 from populace.build.us_runtime.housing_inputs import (
     US_HOUSING_HOUSEHOLD_OUTPUT_COLUMNS,
     US_HOUSING_PERSON_OUTPUT_COLUMNS,
@@ -77,6 +78,10 @@ from populace.build.us_runtime.retirement_contributions import (
 )
 from populace.build.us_runtime.retirement_distributions import (
     US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.scf_wealth import (
+    US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+    US_SCF_NET_WORTH_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.weeks_unemployed import (
     US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
@@ -222,6 +227,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
         "person": frozenset(CPS_CARRIED_PERSON_INPUTS),
         "spm_unit": frozenset(CPS_CARRIED_SPM_UNIT_INPUTS),
     },
+    "hours_worked": {
+        "person": frozenset(US_HOURS_WORKED_OUTPUT_COLUMNS),
+    },
     "prior_year_income": {
         "person": frozenset(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS),
     },
@@ -305,6 +313,10 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     "education_inputs": {
         "person": frozenset(US_EDUCATION_INPUTS_OUTPUT_COLUMNS),
     },
+    "scf_wealth": {
+        "person": frozenset(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS),
+        "household": frozenset(US_SCF_NET_WORTH_OUTPUT_COLUMNS),
+    },
     "take_up": _TAKE_UP_OPERATOR_OUTPUTS,
     "geography_assignment": {
         "household": frozenset(
@@ -386,9 +398,7 @@ def _validated_native_inputs(
         )
     allowed: set[tuple[str, str]] = set()
     all_columns = {
-        column
-        for entity in frame.entities
-        for column in frame.table(entity).columns
+        column for entity in frame.entities for column in frame.table(entity).columns
     }
     for output, raw_receipt in native_inputs.items():
         if not isinstance(output, str) or not output:

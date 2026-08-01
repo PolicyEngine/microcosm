@@ -1936,7 +1936,7 @@ def _complete_target_mask(
 def _is_supported_target(series: pd.Series) -> bool:
     if _is_numeric_or_bool(series) or _is_semantic_boolean(series):
         return True
-    if pd.api.types.is_categorical_dtype(series.dtype):
+    if isinstance(series.dtype, pd.CategoricalDtype):
         return True
     inferred = pd.api.types.infer_dtype(series, skipna=True)
     return inferred in {
