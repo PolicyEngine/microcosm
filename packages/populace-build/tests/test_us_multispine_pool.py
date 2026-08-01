@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
 import textwrap
+from collections import Counter
 from collections.abc import Callable
 from types import SimpleNamespace
 
@@ -12,13 +14,16 @@ import pytest
 
 from populace.build.gates import GateResult
 from populace.build.source_runtime import SourceRuntimeError
+from populace.build.us_runtime import acs_transfer as acs_transfer_module
 from populace.build.us_runtime import housing_inputs as housing_inputs_module
 from populace.build.us_runtime import multispine_pool as multispine_pool_module
 from populace.build.us_runtime import prior_year_income as prior_year_income_module
+from populace.build.us_runtime import puf_support as puf_support_module
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_OPERATOR_CONTRACTS,
     POOL_OPERATOR_ORDER,
@@ -31,6 +36,7 @@ from populace.build.us_runtime.multispine_pool import (
     PoolStageOutput,
     _complete_schedule_d_input,
     materialize_multispine_agreement_outputs,
+    materialize_pool_deferred_transfer_inputs,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
@@ -63,6 +69,7 @@ from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
     "with_us_prior_year_income_inputs",
     "with_us_relationship_inputs",
     "with_us_medicare_take_up_input",
@@ -86,6 +93,7 @@ _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
 
 _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
     "with_us_prior_year_income_inputs",
     "with_us_relationship_inputs",
     "with_us_housing_inputs",
@@ -110,6 +118,10 @@ _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_immigration_inputs",
     "with_us_education_inputs",
 )
+
+_EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
+    "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+}
 
 
 def _source_frame(*, offset: float = 0.0) -> Frame:
@@ -233,6 +245,9 @@ def _real_pre_clone_source_frame() -> Frame:
             "I_SEVAL": [0, 0, 0, 0],
             "A_AGE": [40, 10, 41, 11],
             "A_SEX": [1, 2, 1, 2],
+            "HRSWK": [40, 0, 35, 0],
+            "A_HRS1": [42, 0, 30, 0],
+            "WKSWORK": [52, 0, 48, 0],
             "OI_VAL": [0.0, 0.0, 0.0, 0.0],
             "OI_OFF": [0, 0, 0, 0],
             "PH_SEQ": [10, 10, 20, 20],
@@ -413,7 +428,11 @@ def _operator_mapping_structure(
         operator_names.append(operator_name)
         calls = [node for node in ast.walk(value) if isinstance(node, ast.Call)]
         if isinstance(value, ast.Name):
-            assert value.id == operator_name
+            expected_kernel = _EXPECTED_SOURCE_OPERATOR_WRAPPERS.get(
+                operator_name,
+                operator_name,
+            )
+            assert value.id == expected_kernel
             assert not calls
         else:
             assert isinstance(value, ast.Lambda)
@@ -579,13 +598,22 @@ def test_clone_safe_id_violation_surfaces_assembly_error() -> None:
         )
 
 
-def test_pool_transfer_plan_extends_legacy_without_duplicates() -> None:
+def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() -> None:
     legacy = declared_acs_transfer_target_families()
     pool = pool_transfer_target_families()
+    deferred = frozenset(POOL_DEFERRED_TRANSFER_INPUTS)
+
+    assert deferred == {
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    }
 
     for entity, families in legacy.items():
         for family, columns in families.items():
-            assert pool[entity][family] == columns
+            assert pool[entity][family] == tuple(
+                column for column in columns if column not in deferred
+            )
 
     owners: dict[str, tuple[str, str]] = {}
     for entity, families in pool.items():
@@ -608,6 +636,319 @@ def test_pool_transfer_plan_extends_legacy_without_duplicates() -> None:
         "person",
         "source_operator_immigration",
     )
+    assert owners["hours_worked_last_week"] == (
+        "person",
+        "model_required_numeric",
+    )
+    assert owners["weekly_hours_worked_before_lsr"] == (
+        "person",
+        "source_operator_hours_worked",
+    )
+    assert owners["weeks_worked"] == (
+        "person",
+        "source_operator_hours_worked",
+    )
+
+
+class _ProducerDtypeFittedQRF:
+    weight_kind = "design"
+
+    def __init__(
+        self,
+        outcomes: tuple[str, ...],
+        *,
+        calls: Counter[str],
+        owner: str,
+    ) -> None:
+        self.outcomes = outcomes
+        self.calls = calls
+        self.owner = owner
+
+    def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
+        self.calls[f"{self.owner}.predict"] += 1
+        rows = len(test)
+        return pd.DataFrame(
+            {
+                outcome: 1.0 + np.arange(rows, dtype=np.float64)
+                for outcome in self.outcomes
+            },
+            index=test.index,
+        )
+
+
+class _ProducerDtypeQRF:
+    """Tiny deterministic model beneath the real source-producer wrappers."""
+
+    def __init__(self, *, calls: Counter[str], owner: str) -> None:
+        self.calls = calls
+        self.owner = owner
+
+    def fit(
+        self,
+        _frame: object,
+        *args: object,
+        **_kwargs: object,
+    ) -> _ProducerDtypeFittedQRF:
+        self.calls[f"{self.owner}.fit"] += 1
+        selected = _kwargs.get("targets")
+        if selected is None and len(args) >= 2:
+            selected = args[1]
+        if selected is None:
+            raise AssertionError(
+                f"Could not resolve QRF outputs from args={args!r}, kwargs={_kwargs!r}."
+            )
+        return _ProducerDtypeFittedQRF(
+            tuple(str(value) for value in selected),
+            calls=self.calls,
+            owner=self.owner,
+        )
+
+
+def _producer_dtype_qrf_factory(
+    calls: Counter[str],
+    *,
+    owner: str,
+) -> Callable[..., _ProducerDtypeQRF]:
+    def build(**_kwargs: object) -> _ProducerDtypeQRF:
+        return _ProducerDtypeQRF(calls=calls, owner=owner)
+
+    return build
+
+
+_PRODUCER_DTYPE_QRF_MODULES = (
+    "prior_year_income",
+    "housing_inputs",
+    "child_support",
+    "disability_benefits",
+    "workers_compensation",
+    "weeks_unemployed",
+    "childcare",
+    "energy_subsidy",
+    "retirement_contributions",
+    "retirement_distributions",
+)
+
+
+def _producer_dtype_source_frame() -> Frame:
+    """Small ASEC fixture carrying every real pool producer's raw inputs."""
+
+    frame = _real_pre_clone_source_frame()
+    person = frame.table("person").copy()
+    person["tax_unit_role_input"] = ["HEAD", "DEPENDENT", "HEAD", "DEPENDENT"]
+    person["source_household_id"] = [10, 10, 20, 20]
+    person["source_person_id"] = [1, 2, 1, 2]
+    person["MCARE"] = [1, 2, 1, 2]
+    person["CSP_VAL"] = [0.0, 100.0, 0.0, 200.0]
+    person["CHSP_VAL"] = [50.0, 0.0, 75.0, 0.0]
+    person["DIS_VAL1"] = [3_600.0, 0.0, 0.0, 0.0]
+    person["DIS_SC1"] = [2, 0, 0, 0]
+    person["DIS_VAL2"] = 0.0
+    person["DIS_SC2"] = 0
+    person["WC_VAL"] = [1_200.0, 0.0, 0.0, 0.0]
+    person["LKWEEKS"] = [0, 2, 4, 6]
+    person["SPM_CHILDCAREXPNS"] = [1_000.0, 1_000.0, 0.0, 0.0]
+    person["SPM_ENGVAL"] = [600.0, 600.0, 0.0, 0.0]
+    person["RETCB_VAL"] = [2_000.0, 0.0, 1_000.0, 0.0]
+    for suffix in ("1", "2", "1_YNG", "2_YNG"):
+        person[f"DST_SC{suffix}"] = 0
+        person[f"DST_VAL{suffix}"] = 0.0
+    person["DST_SC1"] = [1, 2, 3, 0]
+    person["DST_VAL1"] = [100.0, 200.0, 300.0, 0.0]
+    person["PRCITSHP"] = [1, 5, 1, 5]
+    person["PEINUSYR"] = [0, 24, 0, 24]
+    person["PENATVTY"] = [57, 303, 57, 303]
+    person["A_SPOUSE"] = 0
+    person["CAID"] = 2
+    person["IHSFLG"] = 2
+    person["CHAMPVA"] = 2
+    person["MIL"] = 2
+    person["PEN_SC1"] = 0
+    person["PEN_SC2"] = 0
+    person["RESNSS1"] = 0
+    person["RESNSS2"] = 0
+    person["SS_YN"] = 2
+    person["SSI_YN"] = 2
+    person["PEIO1COW"] = 0
+    person["A_MJOCC"] = 0
+    person["PEAFEVER"] = 2
+    person["ED_VAL"] = [0.0, 500.0, 0.0, 1_000.0]
+    person["qualified_tuition_expenses"] = [0.0, 1_000.0, 0.0, 2_000.0]
+    return _replace_person(frame, person)
+
+
+def _primary_puf_dtype_donor() -> pd.DataFrame:
+    """Minimal donor accepted by the actual primary-PUF producer path."""
+
+    columns = {
+        *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+        *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+        *puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    }
+    donor = pd.DataFrame(
+        {column: np.arange(1.0, 5.0, dtype=np.float64) for column in sorted(columns)}
+    )
+    donor["weight"] = 1.0
+    return donor
+
+
+def _run_pool_transfer_dtype_producers(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    calls: Counter[str],
+) -> Frame:
+    """Execute the small production producer path used by the dtype guard."""
+
+    for module_name in _PRODUCER_DTYPE_QRF_MODULES:
+        module = importlib.import_module(f"populace.build.us_runtime.{module_name}")
+        monkeypatch.setattr(
+            module,
+            "QRF",
+            _producer_dtype_qrf_factory(calls, owner=module_name),
+        )
+    monkeypatch.setattr(
+        puf_support_module,
+        "QRF",
+        _producer_dtype_qrf_factory(calls, owner="primary_puf_qrf"),
+    )
+
+    for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        producer = getattr(multispine_pool_module, operator_name)
+
+        def observe(
+            *args: object,
+            _name: str = operator_name,
+            _producer: Callable[..., object] = producer,
+            **kwargs: object,
+        ) -> object:
+            calls[_name] += 1
+            return _producer(*args, **kwargs)
+
+        monkeypatch.setattr(multispine_pool_module, operator_name, observe)
+
+    assembled = assemble_spines(
+        {
+            "asec": _producer_dtype_source_frame(),
+            "acs": _source_frame(offset=100.0),
+        },
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    prepared = prepare_multispine_source_inputs_for_clone(
+        assembled,
+        acs_rent_donor=_rent_donor(),
+    )
+    cloned = clone_us_frame_for_puf_support(prepared.frame)
+    primary = puf_support_module.impute_us_puf_tax_detail_support(
+        cloned,
+        _primary_puf_dtype_donor(),
+        n_estimators=1,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+    return multispine_pool_module.complete_multispine_source_inputs(primary).frame
+
+
+def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str]]:
+    plan = pool_transfer_target_families()
+    donor, role = acs_transfer_module.resolve_acs_donor_channel(
+        frame,
+        acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
+    )
+    assert role == "puf_tax_detail"
+    audited: set[tuple[str, str]] = set()
+    for entity, families in plan.items():
+        table = donor.table(entity)
+        for targets in families.values():
+            acs_transfer_module._validate_donor_targets(
+                donor,
+                entity=entity,
+                targets=targets,
+            )
+            complete = acs_transfer_module._complete_target_mask(
+                table,
+                targets=targets,
+            )
+            assert complete.any(), (entity, targets)
+            encodings = acs_transfer_module._complete_case_target_encodings(
+                table,
+                targets=targets,
+                complete=complete,
+            )
+            assert set(encodings) == set(targets)
+            audited.update((entity, target) for target in targets)
+    return audited
+
+
+def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    produced = _run_pool_transfer_dtype_producers(monkeypatch, calls=calls)
+
+    audited = _assert_pool_transfer_produced_encodings(produced)
+
+    assert len(audited) == 117
+    assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
+    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
+    assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
+    assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
+    assert calls["with_us_prior_year_income_inputs"] == 2
+    assert calls["primary_puf_qrf.fit"] > 0
+    assert calls["primary_puf_qrf.predict"] > 0
+    assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
+
+
+def test_pool_transfer_dtype_guard_observes_hours_producer_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    producer = multispine_pool_module.with_us_hours_worked_inputs
+
+    def emit_object_strings(*args: object, **kwargs: object) -> Frame:
+        calls["mutated_hours_producer"] += 1
+        outcome = producer(*args, **kwargs)
+        person = outcome.table("person").copy()
+        person["hours_worked_last_week"] = person["hours_worked_last_week"].map(str)
+        return _replace_person(outcome, person)
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "with_us_hours_worked_inputs",
+        emit_object_strings,
+    )
+    produced = _run_pool_transfer_dtype_producers(monkeypatch, calls=calls)
+
+    with pytest.raises(TypeError, match="hours_worked_last_week"):
+        _assert_pool_transfer_produced_encodings(produced)
+
+    assert calls["with_us_hours_worked_inputs"] > 0
+    assert calls["mutated_hours_producer"] > 0
+    assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
+    assert calls["primary_puf_qrf.fit"] > 0
+    assert calls["primary_puf_qrf.predict"] > 0
+
+
+def test_every_pool_transfer_target_has_a_registered_pool_producer() -> None:
+    producer_families = {
+        "primary_puf_qrf",
+        *(
+            POOL_OPERATOR_CONTRACTS[operator_name].family
+            for operator_name in POOL_SOURCE_OPERATOR_ORDER
+        ),
+    }
+    produced = {
+        (entity, column)
+        for family in producer_families
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items()
+        for column in columns
+    }
+    transferred = {
+        (entity, column)
+        for entity, families in pool_transfer_target_families().items()
+        for columns in families.values()
+        for column in columns
+    }
+
+    assert not transferred - produced
 
 
 def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
@@ -734,6 +1075,8 @@ def test_production_operator_invocations_are_total_and_guarded(
             {
                 "_assert_formula_owned_source_outputs_absent",
                 "_run_source_operator_chain",
+                "materialize_pool_deferred_transfer_inputs",
+                "PoolStageOutput",
             },
         ),
         (
@@ -794,8 +1137,12 @@ def test_production_operator_invocations_are_total_and_guarded(
         frame,
         acs_rent_donor=pd.DataFrame(),
     )
-    multispine_pool_module.complete_multispine_source_inputs(frame)
+    completed = multispine_pool_module.complete_multispine_source_inputs(frame)
     multispine_pool_module.derive_multispine_pool_inputs(frame)
+
+    assert set(completed.receipt["deferred_transfer_inputs"]["inputs"]) == set(
+        POOL_DEFERRED_TRANSFER_INPUTS
+    )
 
     assert observed == [
         ("pre_clone", POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER),
@@ -811,8 +1158,8 @@ def test_production_operator_invocations_are_total_and_guarded(
         for phase in contract.phases
     }
     assert observed_placements == registered_placements
-    assert len({name for name, _phase in observed_placements}) == 22
-    assert len(observed_placements) == 23
+    assert len({name for name, _phase in observed_placements}) == 23
+    assert len(observed_placements) == 24
 
 
 def test_derive_stage_rejects_preclone_pool_before_kernels(
@@ -981,16 +1328,21 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     )
     assert [receipt["family"] for receipt in suboperators] == [
         "cps_carried",
+        "hours_worked",
         "prior_year_income",
         "relationship_inputs",
         "housing_inputs",
         "eligibility_inputs",
     ]
-    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 5
-    assert [receipt["order_index"] for receipt in suboperators] == list(range(5))
+    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 6
+    assert [receipt["order_index"] for receipt in suboperators] == list(range(6))
     assert prepared.receipt["transient_outputs_carried_through_clone"] == {
         "person": ["employment_income_last_year"]
     }
+    hours_gate = suboperators[1]["kernel_receipt"]["hours_worked_signal_gate"]
+    assert hours_gate["name"] == "hours_worked_signal"
+    assert hours_gate["passed"] is True
+    assert hours_gate["failures"] == []
 
     prepared_person = prepared.frame.table("person")
     prepared_cps = prepared_person["PERIDNUM"].notna()
@@ -998,6 +1350,14 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert prepared_person.loc[
         prepared_cps, "previous_year_income_available"
     ].tolist() == [False, False, True, True]
+    assert prepared_person.loc[prepared_cps, "hours_worked_last_week"].tolist() == [
+        42.0,
+        0.0,
+        30.0,
+        0.0,
+    ]
+    assert prepared_person["hours_worked_last_week"].dtype == np.dtype("float64")
+    assert prepared_person.loc[~prepared_cps, "hours_worked_last_week"].isna().all()
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")
@@ -1011,6 +1371,30 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     parents = cps & person["A_LINENO"].eq(1)
     assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
     assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+
+
+def test_preclone_hours_signal_gate_rejects_implausible_producer_surface() -> None:
+    asec = _real_pre_clone_source_frame()
+    person = asec.table("person")
+    person["weekly_hours_worked_before_lsr"] = [60.0, 65.0, 70.0, 75.0]
+    person["hours_worked_last_week"] = [55.0, 60.0, 65.0, 70.0]
+    person["weeks_worked"] = [40.0, 44.0, 48.0, 52.0]
+    assembled = assemble_spines(
+        {"asec": asec, "acs": _source_frame(offset=100.0)},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Pool pre-clone hours-worked signal gate failed",
+    ) as exc_info:
+        prepare_multispine_source_inputs_for_clone(
+            assembled,
+            acs_rent_donor=_rent_donor(),
+        )
+
+    assert "worked share 1.000 outside plausibility band" in str(exc_info.value)
+    assert "mean weekly hours among workers 67.5 outside" in str(exc_info.value)
 
 
 def test_row_sensitive_prefix_exposes_clone_first_defects(
@@ -1347,6 +1731,27 @@ def _assembled_cloned_with_partial_take_up() -> Frame:
     return clone_us_frame_for_puf_support(assembled)
 
 
+def test_pool_asset_deferrals_are_typed_null_receipted_and_fail_when_stale() -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+
+    result = materialize_pool_deferred_transfer_inputs(frame)
+
+    person = result.frame.table("person")
+    assert set(result.receipt["inputs"]) == set(POOL_DEFERRED_TRANSFER_INPUTS)
+    for column, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items():
+        assert person[column].dtype == np.dtype("float64")
+        assert person[column].isna().all()
+        assert result.receipt["inputs"][column] == {
+            **declaration,
+            "status": "deferred_pending_source_donor",
+            "rows": len(person),
+            "null_rows": len(person),
+        }
+
+    with pytest.raises(ValueError, match="already exists; retire the stale deferral"):
+        materialize_pool_deferred_transfer_inputs(result.frame)
+
+
 def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> None:
     frame = _assembled_cloned_with_partial_take_up()
     before_person = frame.table("person")
@@ -1444,4 +1849,57 @@ def test_simulation_defaults_are_disposable_and_receipted() -> None:
         "rows": 1,
         "value": 0.0,
         "persisted_to_pool": False,
+    }
+
+
+def test_deferred_asset_defaults_exist_only_on_disposable_simulation_view() -> None:
+    frame = materialize_pool_deferred_transfer_inputs(
+        seed_multispine_pool_inputs(
+            _assembled_cloned_with_partial_take_up(),
+            engine=_FakeEngine(),
+        ).frame
+    ).frame
+
+    class AssetProjectionEngine(_FakeEngine):
+        def variables(self) -> list[str]:
+            return list(POOL_DEFERRED_TRANSFER_INPUTS)
+
+        def variable_metadata(self, name: str) -> object:
+            assert name in POOL_DEFERRED_TRANSFER_INPUTS
+            return SimpleNamespace(entity="person")
+
+        def default_values(self, names: list[str]) -> dict[str, object]:
+            assert names == list(POOL_DEFERRED_TRANSFER_INPUTS)
+            return {name: 0.0 for name in names}
+
+        def materialize(
+            self,
+            bundle: Frame,
+            variables: list[str],
+            period: int,
+        ) -> dict[str, np.ndarray]:
+            person = bundle.table("person")
+            assert all(
+                person[column].eq(0.0).all() for column in POOL_DEFERRED_TRANSFER_INPUTS
+            )
+            return super().materialize(bundle, variables, period)
+
+    result = materialize_multispine_agreement_outputs(
+        frame,
+        engine=AssetProjectionEngine(),
+    )
+
+    assert all(
+        result.frame.table("person")[column].isna().all()
+        for column in POOL_DEFERRED_TRANSFER_INPUTS
+    )
+    expected_rows = frame.n("person")
+    assert result.receipt["simulation_projection_default_fills"] == {
+        column: {
+            "entity": "person",
+            "rows": expected_rows,
+            "value": 0.0,
+            "persisted_to_pool": False,
+        }
+        for column in POOL_DEFERRED_TRANSFER_INPUTS
     }

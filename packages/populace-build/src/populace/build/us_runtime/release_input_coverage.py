@@ -527,18 +527,21 @@ def us_release_reform_coverage_probes() -> tuple[ReformCoverageProbe, ...]:
 def _degenerate_columns(
     column_values: Mapping[str, Any],
     engine: Any,
-) -> set[str]:
-    """Columns whose every observed value equals the engine default.
+) -> tuple[set[str], set[str]]:
+    """Degenerate columns and the subset with no finite/non-null observations.
 
     Reuses :func:`populace.build.gates.default_valued_columns_gate`'s exact
     degeneracy classification (same scalar/enum comparison the degenerate-input
-    gate uses) so "present but default" is judged identically everywhere.
+    gate uses) so "present but no signal" is judged identically everywhere.
     """
     from populace.build.gates import default_valued_columns_gate
 
     defaults = engine.default_values(sorted(column_values))
     classification = default_valued_columns_gate(column_values, defaults)
-    return set(classification.details["default_valued_columns"])
+    return (
+        set(classification.details["default_valued_columns"]),
+        set(classification.details["no_observed_value_columns"]),
+    )
 
 
 def us_release_input_coverage_gate(
@@ -550,11 +553,12 @@ def us_release_input_coverage_gate(
     """Build the named US release input-column coverage gate for an export frame.
 
     Every ``required`` manifest column must be persisted by ``frame`` as a key
-    with at least one non-default value; a required column that is absent or
-    degenerate (every value the engine default) fails the gate, and a reviewed
-    exclusion whose column now carries signal is stale and fails too (#286
-    cannot-rot). Run on the calibrated export frame just before
-    ``write_dataset``, it hard-fails the release like the export-mass parity gate.
+    with at least one finite/non-null, non-default value; a required column that
+    is absent or degenerate (no observations, or every value the engine default)
+    fails the gate, and a reviewed exclusion whose column now carries signal is
+    stale and fails too (#286 cannot-rot). Run on the calibrated export frame
+    just before ``write_dataset``, it hard-fails the release like the export-mass
+    parity gate.
 
     Args:
         frame: The export :class:`populace.frame.Frame`.
@@ -585,11 +589,12 @@ def us_release_input_coverage_gate(
         if "household" in frame.weighted_entities:
             present_values["household_weight"] = frame.weights_for("household").values
 
-    degenerate = _degenerate_columns(present_values, engine)
+    degenerate, no_observed = _degenerate_columns(present_values, engine)
     return input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
+        no_observed_columns=no_observed,
         reviewed_exclusions=reviewed,
         name="us_release_input_coverage",
     )

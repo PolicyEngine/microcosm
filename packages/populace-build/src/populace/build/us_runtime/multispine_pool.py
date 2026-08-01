@@ -41,6 +41,10 @@ from populace.build.us_runtime.eligibility_inputs import (
 from populace.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
+from populace.build.us_runtime.hours_worked import (
+    us_hours_worked_signal_gate,
+    with_us_hours_worked_inputs,
+)
 from populace.build.us_runtime.housing_inputs import (
     impute_us_housing_assistance_to_puf_support,
     with_us_housing_inputs,
@@ -98,6 +102,7 @@ from populace.frame import Frame
 __all__ = [
     "POOL_HOUSEHOLD_MASS_SHARES",
     "POOL_DERIVE_OPERATOR_ORDER",
+    "POOL_DEFERRED_TRANSFER_INPUTS",
     "POOL_OPERATOR_CONTRACTS",
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
@@ -114,6 +119,7 @@ __all__ = [
     "complete_multispine_source_inputs",
     "derive_multispine_pool_inputs",
     "materialize_multispine_agreement_outputs",
+    "materialize_pool_deferred_transfer_inputs",
     "pool_transfer_target_families",
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
@@ -140,6 +146,7 @@ POOL_OPERATOR_ORDER = (
 
 POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
     "with_us_prior_year_income_inputs",
     "with_us_relationship_inputs",
     "with_us_medicare_take_up_input",
@@ -257,6 +264,11 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         (_PRE_CLONE_PHASE,),
         "rowwise measured mappings needed by the pre-clone rent predictors",
     ),
+    "with_us_hours_worked_inputs": SourceOperatorContract(
+        "hours_worked",
+        (_PRE_CLONE_PHASE,),
+        "direct measured mappings should be cloned once per source person",
+    ),
     "with_us_prior_year_income_inputs": SourceOperatorContract(
         "prior_year_income",
         (_PRE_CLONE_PHASE, _POST_CLONE_PHASE),
@@ -365,7 +377,7 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
 }
-"""Total clone-phase registry for all 22 pool-path operator kernels."""
+"""Total clone-phase registry for all 23 pool-path operator kernels."""
 
 POOL_SOURCE_OPERATOR_CONTRACTS = POOL_OPERATOR_CONTRACTS
 """Backward-compatible name for the now-total pool operator registry."""
@@ -404,11 +416,41 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "spm_unit": frozenset({"spm_unit_tenure_type"}),
 }
 
+_SCF_WEALTH_DEFERRAL_REASON = (
+    "The increment-2 pool input contract contains no SCF 2022 or SIPP 2023 "
+    "financial-asset donor. The downstream fiscal-refresh SCF-wealth stage "
+    "owns this required release input; the pool preserves an explicit null "
+    "column until that donor-backed operator runs."
+)
+POOL_DEFERRED_TRANSFER_INPUTS: Mapping[str, Mapping[str, str]] = {
+    column: {
+        "entity": "person",
+        "legacy_family": "model_required_numeric",
+        "owner": "with_us_scf_wealth_inputs",
+        "physical_dtype": "float64",
+        "reason": _SCF_WEALTH_DEFERRAL_REASON,
+    }
+    for column in (
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    )
+}
+"""Pool-stage-only deferrals for source inputs whose donors are out of scope.
+
+These remain hard release requirements and remain in the legacy ACS transfer
+declaration. The raw-only increment-2 pool has only its six pinned inputs, so
+it cannot honestly manufacture the SCF/SIPP asset surface. It instead carries
+typed all-null columns and a receipt; engine defaults may be used only on the
+disposable SSI agreement view, whose default fills are separately receipted.
+"""
+
 
 def pool_transfer_target_families() -> TargetFamilies:
     """Return the fixed pool-only raw-preserving QRF transfer plan.
 
-    The legacy declaration remains unchanged. This pool-local copy adds every
+    The legacy declaration remains unchanged. This pool-local copy excludes
+    only the explicitly receipted SCF/SIPP asset deferrals, then adds every
     persisted historical source-operator output that ACS does not map natively
     and the legacy plan does not already own. A target appears in exactly one
     family, so transfer provenance stays unambiguous. Formula-owned outputs are
@@ -420,8 +462,12 @@ def pool_transfer_target_families() -> TargetFamilies:
     remain distinguishable in the receipt.
     """
 
+    deferred = frozenset(POOL_DEFERRED_TRANSFER_INPUTS)
     plan: dict[str, dict[str, tuple[str, ...]]] = {
-        entity: {family: tuple(columns) for family, columns in families.items()}
+        entity: {
+            family: tuple(column for column in columns if column not in deferred)
+            for family, columns in families.items()
+        }
         for entity, families in declared_acs_transfer_target_families().items()
     }
     declared = {
@@ -446,6 +492,53 @@ def pool_transfer_target_families() -> TargetFamilies:
         for entity, targets in additions.items():
             plan.setdefault(entity, {})[f"source_operator_{family}"] = targets
     return plan
+
+
+def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
+    """Represent pool-local source deferrals as typed, all-null input columns.
+
+    A pre-existing column means the deferred owner has gained a real producer;
+    fail closed rather than leaving a stale exclusion in the transfer plan.
+    """
+
+    if not isinstance(frame, Frame):
+        raise TypeError(
+            "Pool deferred-input materialization requires a Frame, got "
+            f"{type(frame).__name__}."
+        )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    receipts: dict[str, dict[str, object]] = {}
+    for column, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items():
+        entity = declaration["entity"]
+        if entity not in tables:
+            raise ValueError(
+                f"Pool deferred input {column!r} names missing entity {entity!r}."
+            )
+        if column in tables[entity]:
+            raise ValueError(
+                f"Pool deferred input {entity}.{column} already exists; retire "
+                "the stale deferral and register its real producer."
+            )
+        tables[entity][column] = pd.Series(
+            np.nan,
+            index=tables[entity].index,
+            dtype=np.float64,
+        )
+        receipts[column] = {
+            **declaration,
+            "status": "deferred_pending_source_donor",
+            "rows": int(len(tables[entity])),
+            "null_rows": int(len(tables[entity])),
+        }
+    result = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return PoolStageOutput(result, {"inputs": receipts})
 
 
 POOL_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry(
@@ -489,6 +582,7 @@ def prepare_multispine_source_inputs_for_clone(
 
     operators: Mapping[str, SourceFrameOperator] = {
         "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
+        "with_us_hours_worked_inputs": _with_gated_us_hours_worked_inputs,
         "with_us_prior_year_income_inputs": lambda current: (
             with_us_prior_year_income_inputs(
                 current,
@@ -521,6 +615,33 @@ def prepare_multispine_source_inputs_for_clone(
     )
 
 
+def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
+    """Run the pre-clone hours producer and its legacy signal contract."""
+
+    produced = with_us_hours_worked_inputs(
+        frame,
+        seed=POOL_RANDOM_SEED,
+        time_period=POOL_TIME_PERIOD,
+    )
+    gate = us_hours_worked_signal_gate(produced)
+    if not gate.passed:
+        raise ValueError(
+            "Pool pre-clone hours-worked signal gate failed:\n  "
+            + "\n  ".join(gate.failures)
+        )
+    return PoolStageOutput(
+        produced,
+        {
+            "hours_worked_signal_gate": {
+                "name": gate.name,
+                "passed": True,
+                "failures": [],
+                "details": dict(gate.details),
+            }
+        },
+    )
+
+
 def complete_multispine_source_inputs(
     frame: Frame,
 ) -> PoolStageOutput:
@@ -530,7 +651,9 @@ def complete_multispine_source_inputs(
     over the CPS-evidenced portion of the already assembled and cloned frame;
     its declared output family alone is merged into the whole pool. This
     retains ACS native measurements, leaves unavailable cells null for the
-    subsequent declared transfer, and keeps assembly metadata untouched.
+    subsequent declared transfer, and keeps assembly metadata untouched. The
+    source chain then materializes every pool-local donor deferral as a typed
+    all-null column with an explicit receipt.
     """
 
     operators: Mapping[str, SourceFrameOperator] = {
@@ -632,7 +755,14 @@ def complete_multispine_source_inputs(
         operators=operators,
     )
     _assert_formula_owned_source_outputs_absent(completed.frame)
-    return completed
+    deferred = materialize_pool_deferred_transfer_inputs(completed.frame)
+    return PoolStageOutput(
+        deferred.frame,
+        {
+            **completed.receipt,
+            "deferred_transfer_inputs": deferred.receipt,
+        },
+    )
 
 
 def _run_source_operator_chain(

@@ -112,11 +112,12 @@ fixed sequence:
    historical kernel's ephemeral projection. This matters because assembly
    assigns clone index zero: exposing that metadata would make the legacy
    prior-year wrapper treat an unexpanded frame as support-cloned. CPS-carried
-   inputs, the adjacent-year prior-income join, relationships, the household
-   rent draw, and parent-pointer eligibility inputs run in that order. Only
-   their declared outputs are merged into the still-receipted pool. Physical
-   cloning then copies those values and remaps structural IDs. Unavailable peer
-   rows remain nullable; no operator reads source-channel identity.
+   inputs, direct measured hours-worked mappings, the adjacent-year
+   prior-income join, relationships, the household rent draw, and parent-pointer
+   eligibility inputs run in that order. Only their declared outputs are merged
+   into the still-receipted pool. Physical cloning then copies those values and
+   remaps structural IDs. Unavailable peer rows remain nullable; no operator
+   reads source-channel identity.
 3. The primary PUF QRF chain and capital-gains tail transfer run over the
    combined, physically cloned frame. Clone-index provenance, not source-spine
    identity, controls PUF-detail routing.
@@ -130,7 +131,12 @@ fixed sequence:
 5. The pool-specific ACS transfer plan fills only still-null peer cells from
    those post-assembly results. Existing measured/native cells remain
    byte-for-byte unchanged, and transfer receipts record fitted and imputed
-   rows.
+   rows. The three SCF/SIPP financial-asset leaves are excluded only from this
+   pool-local transfer plan because none of the six pinned pool inputs is their
+   donor. They remain hard release requirements and legacy ACS-transfer
+   targets. The pool persists each as a typed all-null column with an explicit
+   `with_us_scf_wealth_inputs` deferral receipt; the disposable SSI agreement
+   view separately receipts the engine-default fills it needs for evaluation.
 6. Schedule-D and QBI deterministic reconciliation run over that same pool.
 7. The seed stage preserves existing take-up values, applies the sourced
    TANF and EITC mechanisms, and explicitly receipts live engine defaults
@@ -149,13 +155,14 @@ fixed sequence:
    The gate batches all failures and controls the manifest's simulation-ready
    status.
 
-The 22-operator pool contract registry makes clone placement total and
+The 23-operator pool contract registry makes clone placement total and
 executable. Adding an operator without a phase declaration, or calling one in
 an undeclared phase, fails before the kernel runs:
 
 | Operator | Clone phase | Mechanism receipt |
 |---|---|---|
 | CPS-carried inputs | pre | Deterministic measured mappings supply rent and primary-QRF predictors. |
+| Hours worked | pre | Direct ASEC mappings are computed once per source person and copied to support clones. |
 | Prior-year income | pre and post | The `(source_year, PERIDNUM)` join must be unique before cloning; the PUF-only QRF requires clone roles afterward. |
 | Relationships | pre | Household-head status is a rent-recipient predictor. |
 | Medicare take-up | post | Rowwise carry/completion is clone-safe. |
