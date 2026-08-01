@@ -687,21 +687,23 @@ class _ProducerDtypeFittedQRF:
 
     def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
         self.calls[f"{self.owner}.predict"] += 1
-        self.observations.append(
-            {
-                "owner": self.owner,
-                "phase": "predict",
-                "features": test.copy(),
-            }
-        )
         rows = len(test)
-        return pd.DataFrame(
+        predictions = pd.DataFrame(
             {
                 outcome: 1.0 + np.arange(rows, dtype=np.float64)
                 for outcome in self.outcomes
             },
             index=test.index,
         )
+        self.observations.append(
+            {
+                "owner": self.owner,
+                "phase": "predict",
+                "features": test.copy(),
+                "outputs": predictions.copy(),
+            }
+        )
+        return predictions
 
 
 class _ProducerDtypeQRF:
@@ -876,6 +878,11 @@ def _primary_puf_dtype_donor() -> pd.DataFrame:
     donor = pd.DataFrame(
         {column: np.arange(1.0, 5.0, dtype=np.float64) for column in sorted(columns)}
     )
+    donor["puf_predictor_tax_unit_person_count"] = np.arange(
+        1,
+        5,
+        dtype=np.int64,
+    )
     donor["weight"] = 1.0
     return donor
 
@@ -940,9 +947,21 @@ def _run_pool_transfer_dtype_producers(
     if stages is not None:
         stages["prepared"] = prepared.frame
     cloned = clone_us_frame_for_puf_support(prepared.frame)
+    primary_donor = _primary_puf_dtype_donor()
+    primary_chain_inputs = puf_support_module.prepare_us_puf_tax_detail_chain_inputs(
+        cloned,
+        primary_donor,
+    )
+    observations.append(
+        {
+            "owner": "primary_puf_chain",
+            "phase": "prepared",
+            "inputs": primary_chain_inputs,
+        }
+    )
     primary = puf_support_module.impute_us_puf_tax_detail_support(
         cloned,
-        _primary_puf_dtype_donor(),
+        primary_donor,
         n_estimators=1,
         seed=0,
         tail_bound_diagnostics=[],
@@ -957,7 +976,11 @@ def _assert_pool_transfer_produced_encodings(
     frame: Frame,
     *,
     observations: list[dict[str, object]],
-) -> tuple[set[tuple[str, str]], set[tuple[str, str]], set[str]]:
+) -> tuple[
+    set[tuple[str, str]],
+    set[tuple[str, str]],
+    tuple[tuple[str, tuple[str, ...]], ...],
+]:
     plan = pool_transfer_target_families()
     targets = {
         target
@@ -1013,24 +1036,74 @@ def _assert_pool_transfer_produced_encodings(
                 )
             audited_predictors.update((entity, name) for name in predictors)
 
-    primary_predictors = set(puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
-    primary_observations = [
+    prepared_primary = [
+        observation
+        for observation in observations
+        if observation["owner"] == "primary_puf_chain"
+        and observation["phase"] == "prepared"
+    ]
+    assert len(prepared_primary) == 1
+    chain_inputs = prepared_primary[0]["inputs"]
+    assert isinstance(chain_inputs, puf_support_module.PufTaxDetailChainInputs)
+    primary_predictors = tuple(chain_inputs.predictors)
+    primary_targets = tuple(chain_inputs.target_order)
+    assert len(primary_predictors) == 8
+    assert len(primary_targets) == 65
+
+    primary_qrf_observations = [
         observation
         for observation in observations
         if observation["owner"] == "primary_puf_qrf"
     ]
-    assert {observation["phase"] for observation in primary_observations} == {
+    assert {observation["phase"] for observation in primary_qrf_observations} == {
         "fit",
         "predict",
     }
-    for observation in primary_observations:
-        features = observation["features"]
-        assert isinstance(features, pd.DataFrame)
-        observed = primary_predictors.intersection(features.columns)
-        assert observed == primary_predictors
-        assert all(features[column].dtype == np.dtype("float64") for column in observed)
-        assert np.isfinite(features.loc[:, sorted(observed)].to_numpy()).all()
-    return audited_targets, audited_predictors, primary_predictors
+    primary_prediction = next(
+        observation
+        for observation in primary_qrf_observations
+        if observation["phase"] == "predict"
+    )
+    raw_draws = primary_prediction["outputs"]
+    assert isinstance(raw_draws, pd.DataFrame)
+    assert tuple(raw_draws.columns) == primary_targets
+    assert raw_draws.index.equals(chain_inputs.recipient_features.index)
+    assert all(dtype == np.dtype("float64") for dtype in raw_draws.dtypes)
+    assert np.isfinite(raw_draws.to_numpy()).all()
+
+    donor_base = chain_inputs.donor.loc[:, list(primary_predictors)]
+    recipient_base = chain_inputs.recipient_features.loc[:, list(primary_predictors)]
+    assert donor_base["puf_predictor_tax_unit_person_count"].dtype == np.dtype("int64")
+    assert all(
+        donor_base[column].dtype == np.dtype("float64")
+        for column in primary_predictors
+        if column != "puf_predictor_tax_unit_person_count"
+    )
+    assert all(dtype == np.dtype("float64") for dtype in recipient_base.dtypes)
+
+    primary_predictor_sets: list[tuple[str, tuple[str, ...]]] = []
+    for position, target in enumerate(primary_targets):
+        predictors = (*primary_predictors, *primary_targets[:position])
+        donor_features = chain_inputs.donor.loc[:, list(predictors)]
+        recipient_features = recipient_base.copy()
+        for prior in primary_targets[:position]:
+            recipient_features[prior] = raw_draws[prior].to_numpy(
+                dtype=np.float64,
+                copy=False,
+            )
+        for features in (donor_features, recipient_features):
+            assert all(
+                pd.api.types.is_numeric_dtype(dtype) for dtype in features.dtypes
+            )
+            qrf_matrix = features.to_numpy(dtype=np.float64)
+            assert qrf_matrix.dtype == np.dtype("float64")
+            assert np.isfinite(qrf_matrix).all()
+        assert all(
+            donor_features[prior].dtype == np.dtype("float64")
+            for prior in primary_targets[:position]
+        )
+        primary_predictor_sets.append((target, predictors))
+    return audited_targets, audited_predictors, tuple(primary_predictor_sets)
 
 
 def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
@@ -1059,14 +1132,29 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         observations=observations,
     )
 
-    targets, predictors, primary_predictors = _assert_pool_transfer_produced_encodings(
-        produced,
-        observations=observations,
+    targets, predictors, primary_predictor_sets = (
+        _assert_pool_transfer_produced_encodings(
+            produced,
+            observations=observations,
+        )
     )
 
     assert len(targets) == 115
     assert len(predictors) == 32
-    assert len(primary_predictors) == 8
+    assert len(primary_predictor_sets) == 65
+    primary_targets = tuple(
+        (
+            *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+            *puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        )
+    )
+    base_predictors = tuple(puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
+    assert primary_predictor_sets == tuple(
+        (target, (*base_predictors, *primary_targets[:position]))
+        for position, target in enumerate(primary_targets)
+    )
+    assert len(primary_predictor_sets[0][1]) == 8
+    assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
     assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 118
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
