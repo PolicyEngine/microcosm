@@ -1,6 +1,9 @@
 {
   "schema_version": 1,
-  "description": "Pinned per-variable nonzero record shares of the incumbent enhanced-CPS artifact, scoped to PolicyEngine-US engine input variables (formula-owned excluded) and with entity-id/membership structural columns removed. This is the frozen parity reference: every layer with share > 0 here, the Populace candidate must populate or exempt by name in ecps_parity_known_gaps.json. Computed ONCE; never recompute from a moving artifact.",
+  "description": "Pinned per-variable nonzero record shares of the incumbent enhanced-CPS artifact, scoped to PolicyEngine-US engine input variables (formula-owned and reviewed consumerless legacy inputs excluded) and with entity-id/membership structural columns removed. This is the frozen parity reference: every layer with share > 0 here, the Populace candidate must populate or exempt by name in ecps_parity_known_gaps.json. Computed ONCE; never recompute from a moving artifact.",
+  "reviewed_consumerless_inputs_excluded": [
+    "has_marketplace_health_coverage"
+  ],
   "source": {
     "repo_id": "policyengine/policyengine-us-data",
     "repo_type": "model",
@@ -68,7 +71,6 @@
     "has_champva_health_coverage_at_interview": 0.002426,
     "has_esi": 0.528407,
     "has_indian_health_service_coverage_at_interview": 0.003354,
-    "has_marketplace_health_coverage": 0.04188,
     "has_marketplace_health_coverage_at_interview": 0.04188,
     "has_medicaid_health_coverage_at_interview": 0.15971,
     "has_never_worked": 0.241478,

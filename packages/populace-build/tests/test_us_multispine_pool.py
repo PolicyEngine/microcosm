@@ -660,12 +660,13 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     )
     assert "weeks_worked" not in owners
     assert "medicare_part_b_premiums_reported" not in owners
+    assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 115
+    assert len(target_names) == 114
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "cb695fe8b99baf5edaeed0e6e84df2eaaf99fa867df6008e1d9ff0a2edcbbc71"
+        == "4c106c69c9791b4a323088cb7f4894578b60a713bec308e807a956001fc9b965"
     )
 
 
@@ -912,7 +913,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 115
+    assert len(targets) == 114
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -927,9 +928,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
 
     audited = _assert_pool_transfer_produced_encodings(produced)
 
-    assert len(audited) == 115
+    assert len(audited) == 114
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 118
+    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 117
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1021,6 +1022,11 @@ def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
         for program in load_take_up_contract().programs
     }
     assert transferred | take_up | {("person", "ssi")} <= registered
+    assert ("person", "has_marketplace_health_coverage") not in registered
+    assert (
+        "person",
+        "has_marketplace_health_coverage_at_interview",
+    ) in registered
 
     immigration_spec = next(
         spec

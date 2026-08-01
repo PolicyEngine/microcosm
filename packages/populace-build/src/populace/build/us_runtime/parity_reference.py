@@ -11,7 +11,9 @@ needs two checked-in facts, both owned here:
   release. It is never recomputed from a moving artifact; the release compares
   a live candidate against this file. The source artifact's sha256 and vintage
   travel with the shares so a release manifest can state exactly which
-  incumbent it measured parity against.
+  incumbent it measured parity against. Reviewed consumerless legacy inputs
+  may be retired from the frozen requirement surface only when named in the
+  reference's ``reviewed_consumerless_inputs_excluded`` receipt.
 - :func:`load_ecps_parity_known_gaps` — the exemption register
   (``ecps_parity_known_gaps.json``): every layer the incumbent populates that
   the current candidate does not, each carrying a reason and a tracking issue.
@@ -93,9 +95,7 @@ class EcpsParityReference:
     @property
     def populated_layers(self) -> tuple[str, ...]:
         """Every reference layer the candidate must populate or exempt."""
-        return tuple(
-            name for name, share in self.nonzero_shares.items() if share > 0.0
-        )
+        return tuple(name for name, share in self.nonzero_shares.items() if share > 0.0)
 
 
 @dataclass(frozen=True)

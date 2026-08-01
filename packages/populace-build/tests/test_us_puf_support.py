@@ -1074,11 +1074,7 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
         False,
         True,
     ]
-    assert person["has_marketplace_health_coverage"].tolist() == [
-        True,
-        False,
-        True,
-    ]
+    assert "has_marketplace_health_coverage" not in person
     assert person[
         "has_non_marketplace_direct_purchase_health_coverage_at_interview"
     ].tolist() == [

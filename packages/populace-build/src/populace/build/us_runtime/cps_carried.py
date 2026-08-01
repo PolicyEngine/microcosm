@@ -67,7 +67,6 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "has_champva_health_coverage_at_interview",
         "has_esi",
         "has_indian_health_service_coverage_at_interview",
-        "has_marketplace_health_coverage",
         "has_marketplace_health_coverage_at_interview",
         "has_medicaid_health_coverage_at_interview",
         "has_non_marketplace_direct_purchase_health_coverage_at_interview",
@@ -267,8 +266,6 @@ def _fill_health_coverage_inputs(person: pd.DataFrame) -> None:
         "has_marketplace_health_coverage_at_interview",
         marketplace,
     )
-    _fill_bool_missing(person, "has_marketplace_health_coverage", marketplace)
-
     source_columns: Mapping[str, str] = {
         "has_non_marketplace_direct_purchase_health_coverage_at_interview": "NOW_NONM",
         "has_medicaid_health_coverage_at_interview": "NOW_MCAID",
