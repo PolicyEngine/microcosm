@@ -606,6 +606,7 @@ def test_national_build_includes_parity_trio_only_with_real_evidence(
 def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
     tmp_path,
 ) -> None:
+    pytest.importorskip("tables")
     input_h5 = tmp_path / "base.h5"
     _write_toy_h5(input_h5)
 
