@@ -1,48 +1,30 @@
-# Progress
+# Progress: PR #589 round-1 remediation
 
 ## State
 
-Populace #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+Remediation is in progress on `acs-transfer-dtypes-578` from clean starting
+commit `fcdd857`. The supplied round-1 verdict identifies three major findings
+and one low finding: known-boolean object coercion, all-nonfinite required
+release inputs, a synthetic rather than producer-observing dtype guard, and a
+missing pool-path hours signal gate.
 
 ## Done
 
-- Confirmed a clean starting worktree at `aef1c56`.
-- Read the repository guidance and established the #515 donor carve as the
-  screen's required downstream boundary.
-- Started source-level audits of every donor-frame consumer, checkpoint
-  validation, row-count pins, and existing donor-fact summaries.
-- Attempted the requested GitNexus impact workflow; the managed filesystem
-  denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
-  call sites and tests.
-- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
-  structural rationale and pinned-artifact receipts.
-- Added a whole-row screen on grouped raw person `home_mortgage_interest`
-  after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
-- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
-  checkpoint regression track the live constant while retaining literal-v1
-  corruptions.
-- Added regression coverage for the exact grouped boundary, whole-row removal,
-  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
-- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
-  audit, expected 208,611-row real-artifact effect, verification results, count
-  sweep, and deliberately untouched surfaces.
+- Read `CLAUDE.md` and the supplied verdict
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/reviews/sol_589_r1.log`.
+- Confirmed the requested branch, clean starting state, and no-push boundary.
+- Attempted the GitNexus debugging workflow; its integration is unavailable in
+  this session, so source/call-site tracing and executable regressions are the
+  fallback.
+- Established this committed progress ledger before implementation.
 
 ## Next
 
-- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on populace#515.
+- Trace and fix the known-boolean encoding boundary, including adjudicating
+  whether any real caller requires object-backed uniform numeric 0/1.
+- Make required columns with no observed finite/non-null values fail release
+  input coverage without weakening receipted pool deferrals.
+- Replace the all-family synthetic dtype guard with actual producer execution.
+- Port the hours plausibility/nonconstant signal gate to the pool path.
+- Run focused and broad sandbox-safe verification, record exact counts, update
+  this ledger, and write the final report to the requested output channel.
