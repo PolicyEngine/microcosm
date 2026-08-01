@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import importlib.util
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -23,6 +25,18 @@ from populace.build.us_runtime import (
 )
 from populace.build.us_runtime import org_wages as module
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+
+def _load_fiscal_builder_module():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "build_us_fiscal_refresh_release.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_us_fiscal_refresh_release_hours_org", path
+    )
+    builder = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(builder)
+    return builder
 
 
 def _person(n: int = 1_000) -> pd.DataFrame:
@@ -102,6 +116,47 @@ def _donor(n: int = 200) -> pd.DataFrame:
             "is_paid_hourly": rng.integers(0, 2, n),
             "sample_weight": rng.uniform(1, 5, n),
         }
+    )
+
+
+def test_fiscal_2024_hours_then_org_preserves_weeks_through_export_guard() -> None:
+    """Compose the real operators exactly as the legacy fiscal builder does."""
+
+    pytest.importorskip("policyengine_us")
+    builder = _load_fiscal_builder_module()
+    frame = _frame(_person(500))
+    expected_weeks = frame.table("person")["weeks_worked"].copy()
+
+    after_hours = builder.with_us_hours_worked_inputs(
+        frame,
+        seed=0,
+        time_period=builder.PERIOD,
+    )
+    assert after_hours is frame
+    pd.testing.assert_series_equal(
+        after_hours.table("person")["weeks_worked"],
+        expected_weeks,
+    )
+
+    after_org = builder.with_us_org_wages_inputs(
+        after_hours,
+        seed=0,
+        time_period=builder.PERIOD,
+        org_donor=_donor(20),
+    )
+    assert set(module.US_ORG_WAGES_OUTPUT_COLUMNS) <= set(after_org.table("person"))
+    pd.testing.assert_series_equal(
+        after_org.table("person")["weeks_worked"],
+        expected_weeks,
+    )
+
+    export_frame = builder._with_calibrated_weights(
+        after_org,
+        after_org.weights_for("household").values.copy(),
+    )
+    pd.testing.assert_series_equal(
+        export_frame.table("person")["weeks_worked"],
+        expected_weeks,
     )
 
 

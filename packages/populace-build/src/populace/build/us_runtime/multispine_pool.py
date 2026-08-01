@@ -42,6 +42,7 @@ from populace.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
 from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
     us_hours_worked_signal_gate,
     with_us_hours_worked_inputs,
 )
@@ -616,7 +617,7 @@ def prepare_multispine_source_inputs_for_clone(
 
 
 def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
-    """Run the pre-clone hours producer and its legacy signal contract."""
+    """Run the shared hours kernel, then keep only pool-owned input leaves."""
 
     produced = with_us_hours_worked_inputs(
         frame,
@@ -629,15 +630,20 @@ def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
             "Pool pre-clone hours-worked signal gate failed:\n  "
             + "\n  ".join(gate.failures)
         )
-    return PoolStageOutput(
+    pool_surface, removed = _drop_source_output_columns(
         produced,
+        {"person": US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS},
+    )
+    return PoolStageOutput(
+        pool_surface,
         {
             "hours_worked_signal_gate": {
                 "name": gate.name,
                 "passed": True,
                 "failures": [],
                 "details": dict(gate.details),
-            }
+            },
+            "pool_excluded_outputs_removed": removed,
         },
     )
 

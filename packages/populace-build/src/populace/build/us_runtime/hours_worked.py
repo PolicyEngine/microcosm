@@ -1,4 +1,4 @@
-"""Hours-worked inputs from CPS ASEC reported hours.
+"""Hours-worked inputs from CPS ASEC reported hours and weeks.
 
 Without this stage the published dataset stores no
 ``weekly_hours_worked_before_lsr`` (or stores it constant at the engine's
@@ -8,7 +8,7 @@ failure mode of populace issues #242/#248 (SNAP's 30-hour general and
 20-hour ABAWD work requirements pass for everyone, erasing work-requirement
 reform exposure entirely).
 
-The stage writes two PolicyEngine-facing person input columns, each a
+The stage writes three PolicyEngine-facing person columns, each a
 direct mapping of a measured CPS ASEC person variable — the same mappings
 the retired enhanced-CPS pipeline used, so parity with the retired
 enhanced-CPS hours surface is by construction rather than by imputation:
@@ -17,11 +17,13 @@ enhanced-CPS hours surface is by construction rather than by imputation:
   week last year; zero for persons who did not work).
 - ``hours_worked_last_week`` ← ``A_HRS1`` (hours worked at all jobs in the
   reference week).
+- ``weeks_worked`` ← ``WKSWORK`` clipped to [0, 52].
 
-``WKSWORK`` remains raw ASEC source evidence, but this stage deliberately does
-not publish it as ``weeks_worked``. PolicyEngine-US 1.764.6 owns that canonical
-name through a formula beginning in 2025, so Populace's period-agnostic input
-leaf contract rejects it even for a 2024 pool.
+The legacy fiscal-refresh path still needs ``weeks_worked`` for its downstream
+ORG/FLSA operator and its period-scoped 2024 export contract permits the
+column. The multispine pool wrapper projects that canonical column away after
+this shared kernel runs because the pool's input-leaf contract classifies
+formula ownership across all periods; raw ``WKSWORK`` remains source evidence.
 
 Semantics note (documented, not hidden): SNAP's ABAWD standard is a monthly
 80-hour test. ``HRSWK`` is an annual usual-hours measure, so a person who
@@ -30,13 +32,12 @@ work-requirement variables read usual weekly hours, matching how the
 retired enhanced-CPS pipeline fed them. Week-by-week volatility is not in
 the CPS and is out of scope for this stage.
 
-Healing behavior: a frame that already carries both input leaves *with signal*
+Healing behavior: a frame that already carries all three columns *with signal*
 passes through untouched (idempotent). A frame carrying a constant
 ``weekly_hours_worked_before_lsr`` — the published constant-40 landmine —
 is recomputed from the raw columns rather than trusted, because a constant
 hours column is indistinguishable from the engine default and masks the
-missing derivation this stage exists to fix. A stale canonical
-``weeks_worked`` column is removed on every path.
+missing derivation this stage exists to fix.
 """
 
 from __future__ import annotations
@@ -64,6 +65,8 @@ from populace.frame.units import US_SCHEMA
 __all__ = [
     "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
     "US_HOURS_WORKED_OUTPUT_COLUMNS",
+    "US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS",
+    "US_HOURS_WORKED_POOL_OUTPUT_COLUMNS",
     "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
     "US_HOURS_WORKED_STAGE_NAME",
     "derive_us_hours_worked_from_manifest",
@@ -79,9 +82,19 @@ US_HOURS_WORKED_STAGE_NAME = "hours_worked"
 US_HOURS_WORKED_OUTPUT_COLUMNS: tuple[str, ...] = (
     "weekly_hours_worked_before_lsr",
     "hours_worked_last_week",
+    "weeks_worked",
 )
 
-_FORMULA_OWNED_HOURS_OUTPUTS = frozenset({"weeks_worked"})
+#: Formula-owned outputs retained only for the legacy fiscal path. The pool
+#: wrapper removes these after running the shared derivation kernel.
+US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS = frozenset({"weeks_worked"})
+
+#: The two input leaves the multispine pool persists and transfers.
+US_HOURS_WORKED_POOL_OUTPUT_COLUMNS: tuple[str, ...] = tuple(
+    column
+    for column in US_HOURS_WORKED_OUTPUT_COLUMNS
+    if column not in US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS
+)
 
 #: Release gates require these person columns to carry signal (≥2 values).
 US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS: tuple[str, ...] = (
@@ -92,7 +105,10 @@ US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS: tuple[str, ...] = (
 US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "HRSWK",
     "A_HRS1",
+    "WKSWORK",
 )
+
+_WEEKS_PER_YEAR = 52
 
 #: Weighted share of persons with positive usual weekly hours must land in
 #: this band. CPS ASEC 2024: ~50% of all persons (children included) worked
@@ -165,6 +181,7 @@ def derive_us_hours_worked_from_manifest(
     result = frame.copy(deep=True)
     result["weekly_hours_worked_before_lsr"] = _nonnegative("HRSWK")
     result["hours_worked_last_week"] = _nonnegative("A_HRS1")
+    result["weeks_worked"] = np.minimum(_nonnegative("WKSWORK"), _WEEKS_PER_YEAR)
     return result
 
 
@@ -181,33 +198,13 @@ def _weekly_hours_carry_signal(person: pd.DataFrame) -> bool:
     return values.nunique() > 1
 
 
-def _without_formula_owned_hours_outputs(frame: Frame) -> Frame:
-    """Remove stale engine-owned outputs while retaining raw ASEC evidence."""
-
-    person = frame.table("person")
-    stale = sorted(_FORMULA_OWNED_HOURS_OUTPUTS.intersection(person.columns))
-    if not stale:
-        return frame
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables["person"] = tables["person"].drop(columns=stale)
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=frame.metadata,
-    )
-
-
 def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
     """Run the ``hours_worked`` manifest stage over a US frame.
 
-    A frame already carrying both output columns with a non-constant
+    A frame already carrying all three output columns with a non-constant
     weekly-hours distribution passes through untouched (idempotent). Any
     other surface — columns missing, or weekly hours constant at the
-    engine default — is recomputed from the raw ASEC columns. A stale
-    formula-owned ``weeks_worked`` column is removed before either path.
+    engine default — is recomputed from the raw ASEC columns.
 
     Args:
         frame: A US-schema frame whose person table still carries the raw
@@ -218,8 +215,8 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
         time_period: The dataset's time period.
 
     Returns:
-        A new frame whose person table carries both hours input leaves and no
-        canonical ``weeks_worked`` output.
+        A new frame whose person table carries all three hours columns. Pool
+        callers project ``weeks_worked`` away after this shared kernel runs.
 
     Raises:
         ValueError: If the frame is not US-schema or the stage output does
@@ -229,7 +226,6 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US hours-worked inputs require the US schema.")
-    frame = _without_formula_owned_hours_outputs(frame)
     person = frame.table("person")
     have_all = all(
         column in person.columns for column in US_HOURS_WORKED_OUTPUT_COLUMNS

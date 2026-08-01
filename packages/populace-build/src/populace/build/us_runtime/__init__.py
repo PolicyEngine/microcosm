@@ -321,6 +321,8 @@ from populace.build.us_runtime.geography_ladder import (
 from populace.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
     US_HOURS_WORKED_OUTPUT_COLUMNS,
+    US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
     US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,
     US_HOURS_WORKED_STAGE_NAME,
     derive_us_hours_worked_from_manifest,
@@ -1122,6 +1124,8 @@ __all__ = [
     "UndocumentedControls",
     "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
     "US_HOURS_WORKED_OUTPUT_COLUMNS",
+    "US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS",
+    "US_HOURS_WORKED_POOL_OUTPUT_COLUMNS",
     "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
     "US_HOURS_WORKED_STAGE_NAME",
     "derive_us_hours_worked_from_manifest",

@@ -1370,6 +1370,9 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert hours_gate["name"] == "hours_worked_signal"
     assert hours_gate["passed"] is True
     assert hours_gate["failures"] == []
+    assert suboperators[1]["kernel_receipt"]["pool_excluded_outputs_removed"] == {
+        "person": ["weeks_worked"]
+    }
 
     prepared_person = prepared.frame.table("person")
     prepared_cps = prepared_person["PERIDNUM"].notna()
@@ -1386,6 +1389,7 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert prepared_person["hours_worked_last_week"].dtype == np.dtype("float64")
     assert prepared_person.loc[~prepared_cps, "hours_worked_last_week"].isna().all()
     assert "weeks_worked" not in prepared_person
+    assert prepared_person.loc[prepared_cps, "WKSWORK"].tolist() == [52, 0, 48, 0]
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")

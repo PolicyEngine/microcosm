@@ -41,7 +41,9 @@ from populace.build.us_runtime.energy_subsidy import (
     US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.geography_ladder import US_GEOGRAPHY_LADDER_COLUMNS
-from populace.build.us_runtime.hours_worked import US_HOURS_WORKED_OUTPUT_COLUMNS
+from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.housing_inputs import (
     US_HOUSING_HOUSEHOLD_OUTPUT_COLUMNS,
     US_HOUSING_PERSON_OUTPUT_COLUMNS,
@@ -228,7 +230,7 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
         "spm_unit": frozenset(CPS_CARRIED_SPM_UNIT_INPUTS),
     },
     "hours_worked": {
-        "person": frozenset(US_HOURS_WORKED_OUTPUT_COLUMNS),
+        "person": frozenset(US_HOURS_WORKED_POOL_OUTPUT_COLUMNS),
     },
     "prior_year_income": {
         "person": frozenset(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS),
