@@ -1951,11 +1951,7 @@ class _ConsumerInterpreter:
             function_name = _source_name(expression.func)
             callee = self._evaluator.evaluate(expression.func, env, frame)
             if (
-                function_name in _ENTITY_CALL_NAMES
-                or (
-                    isinstance(expression.func, ast.Name)
-                    and isinstance(callee, _EntityValue)
-                )
+                function_name in _ENTITY_CALL_NAMES or isinstance(callee, _EntityValue)
             ) and expression.args:
                 self._record_expression(
                     expression.args[0],

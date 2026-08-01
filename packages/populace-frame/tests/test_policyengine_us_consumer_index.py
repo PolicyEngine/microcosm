@@ -227,6 +227,26 @@ def test_package_init_reexport_and_relative_import_resolve_canonically(
     }
 
 
+def test_group_member_population_call_is_a_direct_consumer(tmp_path: Path) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "consumer.py": _variable(
+                "member_consumer",
+                """
+                def formula(spm_unit, period, parameters):
+                    return spm_unit.members("member_leaf", period)
+                """,
+            ),
+            "leaf.py": _variable("member_leaf"),
+        },
+    )
+
+    assert _receipt_identities(index, "member_leaf") == {
+        ("member_consumer", "variables/consumer.py", "entity_call")
+    }
+
+
 def test_module_qualified_helpers_keep_whole_call_contexts(tmp_path: Path) -> None:
     helper = """
         def read(entity, period, prefix, suffix):

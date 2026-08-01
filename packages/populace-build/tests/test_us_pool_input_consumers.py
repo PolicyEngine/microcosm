@@ -312,6 +312,36 @@ def test_colocated_mortgage_consumer_is_discoverable(variable: str) -> None:
     ("variable", "consumer", "filename"),
     (
         (
+            "is_disabled",
+            "il_pi_has_developmental_delay",
+            "il_pi_has_developmental_delay.py",
+        ),
+        (
+            "taxable_private_pension_income",
+            "ok_pension_subtraction",
+            "ok_pension_subtraction.py",
+        ),
+    ),
+    ids=("is_disabled", "taxable_private_pension_income"),
+)
+def test_group_member_consumer_is_discoverable(
+    variable: str,
+    consumer: str,
+    filename: str,
+) -> None:
+    assert any(
+        receipt.consumer == consumer
+        and receipt.path.endswith(f"/{filename}")
+        and receipt.line > 0
+        and receipt.kind == "entity_call"
+        for receipt in _ENGINE_INDEX.consumer_receipts(variable)
+    )
+
+
+@pytest.mark.parametrize(
+    ("variable", "consumer", "filename"),
+    (
+        (
             "has_champva_health_coverage_at_interview",
             "qualifying_non_marketplace_health_coverage_type_count_at_interview",
             "qualifying_non_marketplace_health_coverage_type_count_at_interview.py",
