@@ -94,7 +94,7 @@ _PLAUSIBLE_ROWS = [
 
 
 class TestManifestDeclaration:
-    def test_stage_is_declared_with_the_three_output_columns(self) -> None:
+    def test_stage_is_declared_with_the_two_leaf_output_columns(self) -> None:
         spec = us_hours_worked_stage_spec()
         assert spec.stage == US_HOURS_WORKED_STAGE_NAME
         assert tuple(spec.outputs) == US_HOURS_WORKED_OUTPUT_COLUMNS
@@ -122,14 +122,16 @@ class TestDerivation:
         result = self._derive(table)
         assert result["weekly_hours_worked_before_lsr"].tolist() == [38.0, 0.0]
         assert result["hours_worked_last_week"].tolist() == [40.0, 0.0]
-        assert result["weeks_worked"].tolist() == [50.0, 0.0]
+        assert "weeks_worked" not in result
+        assert result["WKSWORK"].tolist() == [50, 0]
 
-    def test_negative_sentinels_floor_at_zero_and_weeks_clip_at_52(self) -> None:
+    def test_negative_hour_sentinels_floor_at_zero(self) -> None:
         table = _person_table([_worker(-1, -4, 99)])
         result = self._derive(table)
         assert result["weekly_hours_worked_before_lsr"].tolist() == [0.0]
         assert result["hours_worked_last_week"].tolist() == [0.0]
-        assert result["weeks_worked"].tolist() == [52.0]
+        assert "weeks_worked" not in result
+        assert result["WKSWORK"].tolist() == [99]
 
     def test_nan_raw_values_become_zero(self) -> None:
         table = _person_table([_worker(np.nan, np.nan, np.nan)])
@@ -164,7 +166,7 @@ class TestDerivation:
 
 
 class TestFrameIntegration:
-    def test_with_us_hours_worked_inputs_writes_all_three_columns(self) -> None:
+    def test_with_us_hours_worked_inputs_writes_only_the_two_leaves(self) -> None:
         frame = with_us_hours_worked_inputs(
             _us_frame(_PLAUSIBLE_ROWS), seed=0, time_period=TIME_PERIOD
         )
@@ -176,7 +178,8 @@ class TestFrameIntegration:
             45.0,
         ]
         assert person["hours_worked_last_week"].iloc[7] == 5.0
-        assert person["weeks_worked"].max() == 52.0
+        assert "weeks_worked" not in person
+        assert person["WKSWORK"].max() == 52
 
     def test_frame_with_signal_passes_through_untouched(self) -> None:
         derived = with_us_hours_worked_inputs(
@@ -186,7 +189,7 @@ class TestFrameIntegration:
         assert again is derived
 
     def test_constant_forty_landmine_is_recomputed_from_raw(self) -> None:
-        # The published failure mode: all three columns present, but weekly
+        # The published failure mode: both leaves present, but weekly
         # hours broadcast at the engine's 40-hour default.
         rows = [
             _worker(
@@ -212,7 +215,7 @@ class TestFrameIntegration:
         person = frame.table("person")
         assert person["weekly_hours_worked_before_lsr"].tolist() == [38.0, 0.0]
         assert person["hours_worked_last_week"].tolist() == [40.0, 0.0]
-        assert person["weeks_worked"].tolist() == [50.0, 0.0]
+        assert "weeks_worked" not in person
 
     def test_partial_surface_is_recomputed(self) -> None:
         rows = [
@@ -224,6 +227,7 @@ class TestFrameIntegration:
         )
         person = frame.table("person")
         assert person["weekly_hours_worked_before_lsr"].tolist() == [38.0, 0.0]
+        assert "weeks_worked" not in person
 
     def test_missing_raw_columns_without_signal_raise(self) -> None:
         frame = _us_frame([{"person_id": 1}])

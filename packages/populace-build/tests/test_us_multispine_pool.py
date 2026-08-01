@@ -644,9 +644,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "person",
         "source_operator_hours_worked",
     )
-    assert owners["weeks_worked"] == (
+    assert "weeks_worked" not in owners
+    assert owners["medicare_part_b_premiums_reported"] == (
         "person",
-        "source_operator_hours_worked",
+        "source_operator_cps_carried",
     )
 
 
@@ -886,9 +887,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
 
     audited = _assert_pool_transfer_produced_encodings(produced)
 
-    assert len(audited) == 117
+    assert len(audited) == 116
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
+    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 119
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1358,6 +1359,7 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     ]
     assert prepared_person["hours_worked_last_week"].dtype == np.dtype("float64")
     assert prepared_person.loc[~prepared_cps, "hours_worked_last_week"].isna().all()
+    assert "weeks_worked" not in prepared_person
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")

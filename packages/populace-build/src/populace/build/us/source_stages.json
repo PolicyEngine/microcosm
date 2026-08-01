@@ -1922,7 +1922,7 @@
           "kind": "public_microdata",
           "format": "census_asec",
           "vintage": "build_year",
-          "locator": "Census CPS ASEC person file usual weekly hours (HRSWK), reference-week hours (A_HRS1), and weeks worked (WKSWORK)"
+          "locator": "Census CPS ASEC person file usual weekly hours (HRSWK) and reference-week hours (A_HRS1)"
         }
       ],
       "operations": [
@@ -1936,15 +1936,13 @@
       ],
       "outputs": [
         "weekly_hours_worked_before_lsr",
-        "hours_worked_last_week",
-        "weeks_worked"
+        "hours_worked_last_week"
       ],
       "nonnegative_outputs": [
         "weekly_hours_worked_before_lsr",
-        "hours_worked_last_week",
-        "weeks_worked"
+        "hours_worked_last_week"
       ],
-      "notes": "Direct mappings of measured ASEC hours variables, identical to the retired enhanced-CPS pipeline: weekly_hours_worked_before_lsr <- HRSWK (usual hours per week last year, 0 for non-workers), hours_worked_last_week <- A_HRS1, weeks_worked <- WKSWORK clipped to [0, 52]. Nothing is imputed. Without this stage PolicyEngine-US defaults every person to 40 weekly hours, so the SNAP 30-hour general and 20-hour ABAWD work requirements pass universally (populace #242/#248). HRSWK is an annual usual-hours measure while the ABAWD standard is a monthly 80-hour test; week-by-week volatility is not observable in the CPS and is deliberately out of scope."
+      "notes": "Direct mappings of measured ASEC hours variables, identical to the leaf-owned portion of the retired enhanced-CPS pipeline: weekly_hours_worked_before_lsr <- HRSWK (usual hours per week last year, 0 for non-workers) and hours_worked_last_week <- A_HRS1. Nothing is imputed. WKSWORK remains raw ASEC evidence but is not persisted under weeks_worked because PolicyEngine-US 1.764.6 owns that canonical name through a formula beginning in 2025 and the Populace transfer contract classifies ownership across all periods. Without this stage PolicyEngine-US defaults every person to 40 weekly hours, so the SNAP 30-hour general and 20-hour ABAWD work requirements pass universally (populace #242/#248). HRSWK is an annual usual-hours measure while the ABAWD standard is a monthly 80-hour test; week-by-week volatility is not observable in the CPS and is deliberately out of scope."
     },
     {
       "stage": "snap_take_up",

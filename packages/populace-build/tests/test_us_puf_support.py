@@ -1059,7 +1059,7 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
         0.0,
         50.0,
     ]
-    assert person["medicare_part_b_premiums"].tolist() == [100.0, 0.0, 25.0]
+    assert person["medicare_part_b_premiums_reported"].tolist() == [100.0, 0.0, 25.0]
     assert person["other_medical_expenses"].tolist() == [200.0, 0.0, 40.0]
     assert person["over_the_counter_health_expenses"].tolist() == [30.0, 0.0, 10.0]
     assert person["has_marketplace_health_coverage_at_interview"].tolist() == [
@@ -1383,7 +1383,7 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
             "s_corp_income",
             "partnership_self_employment_net_earnings",
             "health_insurance_premiums_without_medicare_part_b",
-            "medicare_part_b_premiums",
+            "medicare_part_b_premiums_reported",
             "other_medical_expenses",
             "over_the_counter_health_expenses",
         ),
@@ -1397,7 +1397,7 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
         453.0,
         906.0,
     ]
-    assert donor["medicare_part_b_premiums"].tolist() == [137.0, 274.0]
+    assert donor["medicare_part_b_premiums_reported"].tolist() == [137.0, 274.0]
     assert donor["other_medical_expenses"].tolist() == [325.0, 650.0]
     assert donor["over_the_counter_health_expenses"].tolist() == [85.0, 170.0]
     assert "tax_unit_partnership_s_corp_income" not in donor
