@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
 import textwrap
+from collections import Counter
 from collections.abc import Callable
 from types import SimpleNamespace
 
@@ -16,6 +18,7 @@ from populace.build.us_runtime import acs_transfer as acs_transfer_module
 from populace.build.us_runtime import housing_inputs as housing_inputs_module
 from populace.build.us_runtime import multispine_pool as multispine_pool_module
 from populace.build.us_runtime import prior_year_income as prior_year_income_module
+from populace.build.us_runtime import puf_support as puf_support_module
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -639,92 +642,281 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     )
 
 
-def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    object_boolean_targets = {
-        "attends_eligible_educational_institution_for_american_opportunity_credit",
-        "has_american_opportunity_credit_1098_t_or_exception",
-        "has_american_opportunity_credit_institution_ein",
-        "has_champva_health_coverage_at_interview",
-        "has_esi",
-        "has_indian_health_service_coverage_at_interview",
-        "has_marketplace_health_coverage",
-        "has_marketplace_health_coverage_at_interview",
-        "has_medicaid_health_coverage_at_interview",
-        "has_non_marketplace_direct_purchase_health_coverage_at_interview",
-        "has_other_means_tested_health_coverage_at_interview",
-        "has_tricare_health_coverage_at_interview",
-        "has_va_health_coverage_at_interview",
-        "is_blind",
-        "is_disabled",
-        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
-        "is_full_time_college_student",
-        "is_incapable_of_self_care",
-        "is_pregnant",
-        "is_pursuing_credential_for_american_opportunity_credit",
-        "is_separated",
-        "is_surviving_spouse",
-        "previous_year_income_available",
-        "receives_housing_assistance",
-        "takes_up_housing_assistance_if_eligible",
-        "takes_up_medicare_if_eligible",
-        "would_claim_wic",
-    }
-    object_string_targets = {"immigration_status_str", "ssn_card_type"}
-    plan = pool_transfer_target_families()
-    owners = {
-        target: entity
-        for entity, families in plan.items()
-        for targets in families.values()
-        for target in targets
-    }
-    float_targets = set(owners) - object_boolean_targets - object_string_targets
+class _ProducerDtypeFittedQRF:
+    weight_kind = "design"
 
-    assert len(owners) == 117
-    assert len(float_targets) == 88
-    assert len(object_boolean_targets) == 27
-    assert len(object_string_targets) == 2
-    assert not (object_boolean_targets | object_string_targets) - set(owners)
+    def __init__(
+        self,
+        outcomes: tuple[str, ...],
+        *,
+        calls: Counter[str],
+        owner: str,
+    ) -> None:
+        self.outcomes = outcomes
+        self.calls = calls
+        self.owner = owner
 
-    base = _source_frame()
-    tables = {entity: base.table(entity).copy() for entity in base.entities}
-    produced: dict[str, dict[str, np.ndarray]] = {
-        entity: {} for entity in base.entities
-    }
-    for target, entity in owners.items():
-        if target in object_boolean_targets:
-            values = np.asarray([True, None], dtype=object)
-        elif target in object_string_targets:
-            values = np.asarray(["observed", None], dtype=object)
-        else:
-            values = np.asarray([0.0, 1.0], dtype=np.float64)
-        produced[entity][target] = values
-    for entity, columns in produced.items():
-        if columns:
-            tables[entity] = pd.concat(
-                [tables[entity], pd.DataFrame(columns, index=tables[entity].index)],
-                axis=1,
+    def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
+        self.calls[f"{self.owner}.predict"] += 1
+        rows = len(test)
+        return pd.DataFrame(
+            {
+                outcome: 1.0 + np.arange(rows, dtype=np.float64)
+                for outcome in self.outcomes
+            },
+            index=test.index,
+        )
+
+
+class _ProducerDtypeQRF:
+    """Tiny deterministic model beneath the real source-producer wrappers."""
+
+    def __init__(self, *, calls: Counter[str], owner: str) -> None:
+        self.calls = calls
+        self.owner = owner
+
+    def fit(
+        self,
+        _frame: object,
+        *args: object,
+        **_kwargs: object,
+    ) -> _ProducerDtypeFittedQRF:
+        self.calls[f"{self.owner}.fit"] += 1
+        selected = _kwargs.get("targets")
+        if selected is None and len(args) >= 2:
+            selected = args[1]
+        if selected is None:
+            raise AssertionError(
+                f"Could not resolve QRF outputs from args={args!r}, kwargs={_kwargs!r}."
             )
-    donor = Frame(
-        tables,
-        base.schema,
-        {entity: base.weights_for(entity) for entity in base.weighted_entities},
-        base.strata,
+        return _ProducerDtypeFittedQRF(
+            tuple(str(value) for value in selected),
+            calls=self.calls,
+            owner=self.owner,
+        )
+
+
+def _producer_dtype_qrf_factory(
+    calls: Counter[str],
+    *,
+    owner: str,
+) -> Callable[..., _ProducerDtypeQRF]:
+    def build(**_kwargs: object) -> _ProducerDtypeQRF:
+        return _ProducerDtypeQRF(calls=calls, owner=owner)
+
+    return build
+
+
+_PRODUCER_DTYPE_QRF_MODULES = (
+    "prior_year_income",
+    "housing_inputs",
+    "child_support",
+    "disability_benefits",
+    "workers_compensation",
+    "weeks_unemployed",
+    "childcare",
+    "energy_subsidy",
+    "retirement_contributions",
+    "retirement_distributions",
+)
+
+
+def _producer_dtype_source_frame() -> Frame:
+    """Small ASEC fixture carrying every real pool producer's raw inputs."""
+
+    frame = _real_pre_clone_source_frame()
+    person = frame.table("person").copy()
+    person["tax_unit_role_input"] = ["HEAD", "DEPENDENT", "HEAD", "DEPENDENT"]
+    person["source_household_id"] = [10, 10, 20, 20]
+    person["source_person_id"] = [1, 2, 1, 2]
+    person["MCARE"] = [1, 2, 1, 2]
+    person["CSP_VAL"] = [0.0, 100.0, 0.0, 200.0]
+    person["CHSP_VAL"] = [50.0, 0.0, 75.0, 0.0]
+    person["DIS_VAL1"] = [3_600.0, 0.0, 0.0, 0.0]
+    person["DIS_SC1"] = [2, 0, 0, 0]
+    person["DIS_VAL2"] = 0.0
+    person["DIS_SC2"] = 0
+    person["WC_VAL"] = [1_200.0, 0.0, 0.0, 0.0]
+    person["LKWEEKS"] = [0, 2, 4, 6]
+    person["SPM_CHILDCAREXPNS"] = [1_000.0, 1_000.0, 0.0, 0.0]
+    person["SPM_ENGVAL"] = [600.0, 600.0, 0.0, 0.0]
+    person["RETCB_VAL"] = [2_000.0, 0.0, 1_000.0, 0.0]
+    for suffix in ("1", "2", "1_YNG", "2_YNG"):
+        person[f"DST_SC{suffix}"] = 0
+        person[f"DST_VAL{suffix}"] = 0.0
+    person["DST_SC1"] = [1, 2, 3, 0]
+    person["DST_VAL1"] = [100.0, 200.0, 300.0, 0.0]
+    person["PRCITSHP"] = [1, 5, 1, 5]
+    person["PEINUSYR"] = [0, 24, 0, 24]
+    person["PENATVTY"] = [57, 303, 57, 303]
+    person["A_SPOUSE"] = 0
+    person["CAID"] = 2
+    person["IHSFLG"] = 2
+    person["CHAMPVA"] = 2
+    person["MIL"] = 2
+    person["PEN_SC1"] = 0
+    person["PEN_SC2"] = 0
+    person["RESNSS1"] = 0
+    person["RESNSS2"] = 0
+    person["SS_YN"] = 2
+    person["SSI_YN"] = 2
+    person["PEIO1COW"] = 0
+    person["A_MJOCC"] = 0
+    person["PEAFEVER"] = 2
+    person["ED_VAL"] = [0.0, 500.0, 0.0, 1_000.0]
+    person["qualified_tuition_expenses"] = [0.0, 1_000.0, 0.0, 2_000.0]
+    return _replace_person(frame, person)
+
+
+def _primary_puf_dtype_donor() -> pd.DataFrame:
+    """Minimal donor accepted by the actual primary-PUF producer path."""
+
+    columns = {
+        *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+        *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+        *puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    }
+    donor = pd.DataFrame(
+        {column: np.arange(1.0, 5.0, dtype=np.float64) for column in sorted(columns)}
     )
+    donor["weight"] = 1.0
+    return donor
+
+
+def _run_pool_transfer_dtype_producers(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    calls: Counter[str],
+) -> Frame:
+    """Execute the small production producer path used by the dtype guard."""
+
+    for module_name in _PRODUCER_DTYPE_QRF_MODULES:
+        module = importlib.import_module(f"populace.build.us_runtime.{module_name}")
+        monkeypatch.setattr(
+            module,
+            "QRF",
+            _producer_dtype_qrf_factory(calls, owner=module_name),
+        )
     monkeypatch.setattr(
-        acs_transfer_module,
-        "_engine_variable_metadata",
-        lambda _target: None,
+        puf_support_module,
+        "QRF",
+        _producer_dtype_qrf_factory(calls, owner="primary_puf_qrf"),
     )
 
+    for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        producer = getattr(multispine_pool_module, operator_name)
+
+        def observe(
+            *args: object,
+            _name: str = operator_name,
+            _producer: Callable[..., object] = producer,
+            **kwargs: object,
+        ) -> object:
+            calls[_name] += 1
+            return _producer(*args, **kwargs)
+
+        monkeypatch.setattr(multispine_pool_module, operator_name, observe)
+
+    assembled = assemble_spines(
+        {
+            "asec": _producer_dtype_source_frame(),
+            "acs": _source_frame(offset=100.0),
+        },
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    prepared = prepare_multispine_source_inputs_for_clone(
+        assembled,
+        acs_rent_donor=_rent_donor(),
+    )
+    cloned = clone_us_frame_for_puf_support(prepared.frame)
+    primary = puf_support_module.impute_us_puf_tax_detail_support(
+        cloned,
+        _primary_puf_dtype_donor(),
+        n_estimators=1,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+    return multispine_pool_module.complete_multispine_source_inputs(primary).frame
+
+
+def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str]]:
+    plan = pool_transfer_target_families()
+    donor, role = acs_transfer_module.resolve_acs_donor_channel(
+        frame,
+        acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
+    )
+    assert role == "puf_tax_detail"
+    audited: set[tuple[str, str]] = set()
     for entity, families in plan.items():
+        table = donor.table(entity)
         for targets in families.values():
             acs_transfer_module._validate_donor_targets(
                 donor,
                 entity=entity,
                 targets=targets,
             )
+            complete = acs_transfer_module._complete_target_mask(
+                table,
+                targets=targets,
+            )
+            assert complete.any(), (entity, targets)
+            encodings = acs_transfer_module._complete_case_target_encodings(
+                table,
+                targets=targets,
+                complete=complete,
+            )
+            assert set(encodings) == set(targets)
+            audited.update((entity, target) for target in targets)
+    return audited
+
+
+def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    produced = _run_pool_transfer_dtype_producers(monkeypatch, calls=calls)
+
+    audited = _assert_pool_transfer_produced_encodings(produced)
+
+    assert len(audited) == 117
+    assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
+    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
+    assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
+    assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
+    assert calls["with_us_prior_year_income_inputs"] == 2
+    assert calls["primary_puf_qrf.fit"] > 0
+    assert calls["primary_puf_qrf.predict"] > 0
+    assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
+
+
+def test_pool_transfer_dtype_guard_observes_hours_producer_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    producer = multispine_pool_module.with_us_hours_worked_inputs
+
+    def emit_object_strings(*args: object, **kwargs: object) -> Frame:
+        calls["mutated_hours_producer"] += 1
+        outcome = producer(*args, **kwargs)
+        person = outcome.table("person").copy()
+        person["hours_worked_last_week"] = person["hours_worked_last_week"].map(str)
+        return _replace_person(outcome, person)
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "with_us_hours_worked_inputs",
+        emit_object_strings,
+    )
+    produced = _run_pool_transfer_dtype_producers(monkeypatch, calls=calls)
+
+    with pytest.raises(TypeError, match="hours_worked_last_week"):
+        _assert_pool_transfer_produced_encodings(produced)
+
+    assert calls["with_us_hours_worked_inputs"] > 0
+    assert calls["mutated_hours_producer"] > 0
+    assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
+    assert calls["primary_puf_qrf.fit"] > 0
+    assert calls["primary_puf_qrf.predict"] > 0
 
 
 def test_every_pool_transfer_target_has_a_registered_pool_producer() -> None:

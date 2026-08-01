@@ -3,8 +3,8 @@
 ## State
 
 Remediation is in progress on `acs-transfer-dtypes-578` from clean starting
-commit `fcdd857`. Majors 1 and 2 and the low hours-gate finding are fixed and
-verified; the producer-observing dtype guard remains.
+commit `fcdd857`. All four findings are fixed with focused regressions; broad
+sandbox-safe verification remains.
 
 ## Done
 
@@ -49,9 +49,20 @@ verified; the producer-observing dtype guard remains.
   nonconstant, and implausible. It fails on worked share 1.000 and worker mean
   67.5 rather than being trusted by the idempotent producer. The existing real
   pre-clone test now pins the passing receipt; both focused tests pass.
+- Replaced the hard-coded all-family dtype table with a small end-to-end
+  producer fixture. It executes all 21 real pool source operators (including
+  the twice-bound prior-year operator), physical PUF-support cloning, the real
+  primary-PUF imputer/finalizer, donor-channel resolution, donor validation,
+  complete-case masking, and the actual target encoder for all 117 active
+  targets; only the underlying QRF predictions are deterministic test doubles.
+- Added a Sol-style mutation that wraps the real hours producer and changes its
+  numeric output to object-backed strings. The real signal gate still observes
+  the numeric values, but the encoder rejects the physical dtype and names
+  `hours_worked_last_week`; assertions prove every source producer and the
+  primary-PUF QRF fit/predict path ran. Both producer-guard tests pass (2 passed,
+  27 deselected).
 
 ## Next
 
-- Replace the all-family synthetic dtype guard with actual producer execution.
 - Run focused and broad sandbox-safe verification, record exact counts, update
   this ledger, and write the final report to the requested output channel.
