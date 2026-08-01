@@ -1,7 +1,9 @@
 # US multispine hours transfer-leaf adjudication
 
-Date: 2026-08-01  
-Base: `8828dee`  
+Date: 2026-08-01
+
+Base: `8828dee`
+
 Engine: `policyengine-us==1.764.6`, `policyengine-core==3.26.11`
 
 This receipt adjudicates the pool-run-3 failure before changing the transfer
