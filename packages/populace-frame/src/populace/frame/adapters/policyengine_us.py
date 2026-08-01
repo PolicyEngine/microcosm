@@ -21,6 +21,7 @@ import ast
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
+from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from types import MappingProxyType
@@ -94,6 +95,70 @@ _PERIOD_BY_SOURCE_NAME: dict[str, str] = {
     "ETERNITY": "point",
     "DAY": "point",
 }
+
+# PolicyEngine-US 1.764.6 creates 110 default-system variables outside ordinary
+# top-level ``class ...(Variable)`` declarations. Keep the compact metadata
+# snapshot tied to every source/activation surface that produced it: a changed
+# wheel must fail closed until this audit is refreshed, never silently omit a
+# newly generated formula-owned output.
+_GENERATED_SOURCE_VERSION = "1.764.6"
+_GENERATED_SOURCE_SHA256: dict[str, str] = {
+    "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
+    "variables/household/demographic/geographic/state/in_state.py": (
+        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
+    ),
+    "variables/gov/puf.py": (
+        "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
+    ),
+    "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
+        "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
+    ),
+    "reforms/states/mi/surtax.py": (
+        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    ),
+    "reforms/reforms.py": (
+        "3e97e5100254ef2aaef81a8b6126674e9091b8da1951e0e5b0ddf6cf25805721"
+    ),
+    "system.py": "cd0a56ed5572da71923852e589eb90a38049723d6c9a7c15e49e774ac7fea42a",
+}
+_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
+    (
+        tuple(
+            "AL AK AZ AR CA CO CT DC DE FL GA HI ID IL IN IA KS KY LA ME MD MA "
+            "MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX "
+            "UT VT VA WA WV WI WY PR VI".split()
+        ),
+        "household",
+        "bool",
+        True,
+    ),
+    (
+        tuple(
+            "e02000 e26270 e19200 e18500 e19800 e20400 e20100 e00700 e03270 "
+            "e24515 e03300 e07300 e62900 e32800 e87530 e03240 e01100 e01200 "
+            "e24518 e09900 e27200 e03290 e58990 e03230 e11200 e07260 e07240 "
+            "e03220 p08000 e03400 e09800 e09700 e03500 e87521".split()
+        ),
+        "person",
+        "float",
+        False,
+    ),
+    (
+        tuple(
+            "ar_standard_deduction ar_itemized_deductions ar_taxable_income ar_agi "
+            "dc_taxable_income de_standard_deduction de_itemized_deductions "
+            "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
+            "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
+            "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
+            "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+            "mt_taxable_income".split()
+        ),
+        "tax_unit",
+        "float",
+        True,
+    ),
+    (("mi_surtax",), "tax_unit", "float", True),
+)
 
 
 @dataclass(frozen=True)
@@ -242,9 +307,9 @@ def _index_policyengine_us_variable_sources(
     """Build a fail-closed variable index without importing PolicyEngine-US."""
 
     if not variables_root.is_dir():
-        raise ImportError(
-            "The PolicyEngine-US variable source tree is unavailable; install "
-            "the 'populace-frame[policyengine]' extra."
+        raise RuntimeError(
+            f"The installed PolicyEngine-US variable source tree is unavailable "
+            f"at {variables_root}."
         )
     definitions: dict[str, _SourceVariableDefinition] = {}
     for source_path in sorted(variables_root.rglob("*.py")):
@@ -275,6 +340,53 @@ def _index_policyengine_us_variable_sources(
     return MappingProxyType(definitions)
 
 
+def _index_policyengine_us_generated_variable_sources(
+    package_root: Path,
+    *,
+    version: str,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Return the audited generated-variable snapshot or fail closed."""
+
+    if version != _GENERATED_SOURCE_VERSION:
+        raise RuntimeError(
+            "PolicyEngine-US generated-variable metadata has not been audited for "
+            f"installed version {version!r}; expected {_GENERATED_SOURCE_VERSION!r}."
+        )
+    for relative_path, expected_digest in _GENERATED_SOURCE_SHA256.items():
+        source_path = package_root / relative_path
+        try:
+            actual_digest = sha256(source_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise RuntimeError(
+                f"Required PolicyEngine-US generated-variable source is unavailable: "
+                f"{source_path}."
+            ) from exc
+        if actual_digest != expected_digest:
+            raise RuntimeError(
+                "PolicyEngine-US generated-variable source changed without a "
+                f"metadata audit: {source_path}."
+            )
+
+    definitions: dict[str, _SourceVariableDefinition] = {}
+    for names, entity, dtype, formula_owned in _GENERATED_VARIABLE_GROUPS:
+        for name in names:
+            if name in definitions:
+                raise RuntimeError(
+                    f"Duplicate audited PolicyEngine-US generated variable {name!r}."
+                )
+            definitions[name] = _SourceVariableDefinition(
+                metadata=VariableMetadata(
+                    name=name,
+                    entity=entity,
+                    dtype=dtype,
+                    period="year",
+                ),
+                always_computed=formula_owned,
+                formula_starts=(),
+            )
+    return MappingProxyType(definitions)
+
+
 @lru_cache(maxsize=1)
 def _installed_policyengine_us_variable_sources() -> Mapping[
     str, _SourceVariableDefinition
@@ -286,8 +398,22 @@ def _installed_policyengine_us_variable_sources() -> Mapping[
             "The PolicyEngine-US metadata index requires the 'policyengine-us' "
             "package. Install it with 'populace-frame[policyengine]'."
         ) from exc
-    root = Path(package.locate_file("policyengine_us/variables"))
-    return _index_policyengine_us_variable_sources(root)
+    package_root = Path(package.locate_file("policyengine_us"))
+    definitions = dict(
+        _index_policyengine_us_variable_sources(package_root / "variables")
+    )
+    generated = _index_policyengine_us_generated_variable_sources(
+        package_root,
+        version=package.version,
+    )
+    duplicates = sorted(set(definitions) & set(generated))
+    if duplicates:
+        raise RuntimeError(
+            "PolicyEngine-US generated-variable audit overlaps ordinary source "
+            f"classes: {duplicates}."
+        )
+    definitions.update(generated)
+    return MappingProxyType(definitions)
 
 
 class PolicyEngineUSVariableMetadataIndex:
@@ -297,8 +423,9 @@ class PolicyEngineUSVariableMetadataIndex:
     and constructing an adapter system registers thousands more variable
     modules. Ownership and physical-dtype guards need only the variable class
     declarations, so this index parses those declarations once and retains only
-    compact metadata. Dynamically generated variables are deliberately absent;
-    strict production-surface audits therefore fail closed if one is requested.
+    compact metadata. The default system's generated variables come from a
+    compact audited snapshot whose source and activation files are fingerprinted;
+    an unreviewed wheel version or source change fails closed.
     """
 
     def __init__(self) -> None:
