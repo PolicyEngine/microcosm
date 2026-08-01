@@ -825,9 +825,12 @@ def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")  # pandas HDF backend
-    # The bool restore reads the engine's variable metadata; without the us
-    # extra the adapter's documented dtype fallback applies instead.
-    pytest.importorskip("policyengine_us")
+    # The bool restore reads the installed engine source metadata; without the
+    # us extra the adapter's documented dtype fallback applies instead.
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
     # Primary PUF finalization physically stores QBI boolean-count outputs as
     # floats; the supported legacy ACS builder can then load them from HDF as
     # its transfer donor. Pin that real producer/HDF representation rather
