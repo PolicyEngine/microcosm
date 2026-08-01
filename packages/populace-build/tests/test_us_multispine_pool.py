@@ -850,6 +850,13 @@ def _run_pool_transfer_dtype_producers(
 
 def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str]]:
     plan = pool_transfer_target_families()
+    targets = {
+        target
+        for families in plan.values()
+        for columns in families.values()
+        for target in columns
+    }
+    acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(targets)
     donor, role = acs_transfer_module.resolve_acs_donor_channel(
         frame,
         acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
@@ -877,6 +884,25 @@ def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str
             assert set(encodings) == set(targets)
             audited.update((entity, target) for target in targets)
     return audited
+
+
+def test_every_pool_transfer_target_is_a_live_engine_input_leaf() -> None:
+    pytest.importorskip("policyengine_us")
+
+    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    targets = {
+        target
+        for families in pool_transfer_target_families().values()
+        for columns in families.values()
+        for target in columns
+    }
+    assert len(targets) == 116
+    acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
+        targets,
+        engine=PolicyEngineUSEngine(),
+        require_known=True,
+    )
 
 
 def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(

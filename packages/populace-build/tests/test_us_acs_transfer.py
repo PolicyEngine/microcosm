@@ -1364,6 +1364,26 @@ def test_formula_owned_target_is_refused_before_fit() -> None:
         )
 
 
+def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> None:
+    pytest.importorskip("policyengine_us")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"ACS transfer targets must be PolicyEngine input leaves, not "
+            r"formula-owned outputs: \['weeks_worked'\]\."
+        ),
+    ):
+        transfer_acs_inputs(
+            _recipient_frame(),
+            _donor_frame(),
+            target_families={
+                "person": {"source_operator_hours_worked": ("weeks_worked",)},
+            },
+            n_estimators=2,
+        )
+
+
 def test_all_missing_donor_target_is_refused_without_zero_fill() -> None:
     donor = _replace_column(
         _donor_frame(),

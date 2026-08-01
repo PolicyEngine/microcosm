@@ -61,5 +61,26 @@ The second result is an additional leaf-classification finding. In
 PolicyEngine-US 1.764.6, `medicare_part_b_premiums` is unknown, while
 `medicare_part_b_premiums_reported` is a person/float/year input leaf with
 default `0` and no formulas. The corrected producer and transfer inventory must
-use the reported leaf name. A post-fix sweep receipt will be added after the
-implementation is in place.
+use the reported leaf name.
+
+## Post-fix full-plan sweep
+
+After removing canonical `weeks_worked` and moving the Part B source carry to
+`medicare_part_b_premiums_reported`, the live engine sweep returned:
+
+```text
+policyengine-us 1.764.6
+targets 116
+sorted_names_sha256 b62b3038c7ddb83fd6b59bdf4a4549ce40ebb11a1b0d0ea040b656186e5efa2a
+formula_owned []
+unknown []
+non_leaves []
+```
+
+`assert_acs_transfer_targets_are_input_leaves` now owns the production
+formula-owned rejection used by `transfer_acs_inputs` and by the complete
+producer/dtype sweep. The strict sweep also requires all 116 names to appear in
+`PolicyEngineUSEngine.variables()`. PR CI installs the workspace US extra so
+the live classifier cannot silently degrade to its static fallback; the clean
+wheel suite may still skip the live-engine-only test because country engines
+are optional wheel dependencies.
