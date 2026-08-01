@@ -338,6 +338,16 @@ def test_group_member_consumer_is_discoverable(
     )
 
 
+def test_model_api_reference_helper_consumer_is_discoverable() -> None:
+    assert any(
+        receipt.consumer == "is_ssi_aged_blind_disabled"
+        and receipt.path.endswith("/is_ssi_aged_blind_disabled.py")
+        and receipt.line > 0
+        and receipt.kind == "helper_call"
+        for receipt in _ENGINE_INDEX.consumer_receipts("is_blind")
+    )
+
+
 @pytest.mark.parametrize(
     ("variable", "consumer", "filename"),
     (

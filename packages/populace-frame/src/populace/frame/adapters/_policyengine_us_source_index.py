@@ -1441,7 +1441,19 @@ def _bind_target(
 _ENTITY_CALL_NAMES = frozenset(
     {"person", "household", "tax_unit", "spm_unit", "family", "marital_unit"}
 )
-_REFERENCE_HELPER_ARGUMENTS: dict[str, int] = {"tax_unit_non_dep_sum": 0}
+_REFERENCE_HELPER_ARGUMENTS: dict[str, int] = {
+    # PolicyEngine-Core logical aggregators share ``add``'s
+    # ``(entity, period, variables)`` signature.
+    "and_": 2,
+    "any_": 2,
+    "for_each_variable": 2,
+    "multiply": 2,
+    "or_": 2,
+    # PolicyEngine-US helpers with a single variable-name argument.
+    "spouse": 2,
+    "sum_contained_tax_units": 0,
+    "tax_unit_non_dep_sum": 0,
+}
 _STATE_CAP = 20_000
 
 

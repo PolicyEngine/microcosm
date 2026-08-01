@@ -247,6 +247,31 @@ def test_group_member_population_call_is_a_direct_consumer(tmp_path: Path) -> No
     }
 
 
+def test_model_api_reference_helper_indexes_its_variable_list(tmp_path: Path) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "consumer.py": _variable(
+                "helper_consumer",
+                """
+                def formula(person, period, parameters):
+                    return any_(
+                        person,
+                        period,
+                        ["first_helper_leaf", "second_helper_leaf"],
+                    )
+                """,
+            ),
+            "leaves.py": _variables("first_helper_leaf", "second_helper_leaf"),
+        },
+    )
+
+    for target in ("first_helper_leaf", "second_helper_leaf"):
+        assert _receipt_identities(index, target) == {
+            ("helper_consumer", "variables/consumer.py", "helper_call")
+        }
+
+
 def test_module_qualified_helpers_keep_whole_call_contexts(tmp_path: Path) -> None:
     helper = """
         def read(entity, period, prefix, suffix):
