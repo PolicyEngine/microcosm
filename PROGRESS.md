@@ -3,10 +3,8 @@
 ## State
 
 Remediation is in progress on `acs-transfer-dtypes-578` from clean starting
-commit `fcdd857`. The supplied round-1 verdict identifies three major findings
-and one low finding: known-boolean object coercion, all-nonfinite required
-release inputs, a synthetic rather than producer-observing dtype guard, and a
-missing pool-path hours signal gate.
+commit `fcdd857`. Major 1 is fixed and verified; the all-nonfinite release
+coverage, producer-observing dtype guard, and pool-path hours signal gate remain.
 
 ## Done
 
@@ -17,11 +15,23 @@ missing pool-path hours signal gate.
   this session, so source/call-site tracing and executable regressions are the
   fallback.
 - Established this committed progress ledger before implementation.
+- Made the known-boolean encoder reject object-backed values unless their
+  observed semantics are strictly Python/NumPy boolean, with target-named and
+  offending-type diagnostics; generic donor validation now deliberately routes
+  observed known-boolean objects to that boundary.
+- Added Sol's exact `is_blind=object([True, 0.0])` regression, bool/int,
+  bool/string, NumPy-boolean near misses, uniform object 0/1 rejection, and
+  valid Python/NumPy boolean-object acceptance. All eight rejection/acceptance
+  cases pass, with no QRF invocation on failures.
+- Adjudicated and retained physical numeric 0/1 compatibility: the real
+  primary-PUF finalizer emits all eight QBI engine-boolean leaves as finite
+  `float64` `{0, 1}` before ACS transfer, confirmed in the persisted
+  `base-p1/004_qrf_finalization.frame.h5` checkpoint. The HDF round-trip
+  compatibility regression now uses the actual `business_is_sstb` producer
+  target. The focused Major-1 batch passes: 9 passed, 29 deselected.
 
 ## Next
 
-- Trace and fix the known-boolean encoding boundary, including adjudicating
-  whether any real caller requires object-backed uniform numeric 0/1.
 - Make required columns with no observed finite/non-null values fail release
   input coverage without weakening receipted pool deferrals.
 - Replace the all-family synthetic dtype guard with actual producer execution.

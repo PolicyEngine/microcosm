@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -814,17 +817,29 @@ def test_discrete_year_predictions_snap_to_observed_donor_support(
     assert pd.api.types.is_integer_dtype(values.dtype)
 
 
-def test_engine_boolean_metadata_restores_bool_from_float_h5_donor(
+def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")  # pandas HDF backend
     # The bool restore reads the engine's variable metadata; without the us
     # extra the adapter's documented dtype fallback applies instead.
     pytest.importorskip("policyengine_us")
+    # Primary PUF finalization physically stores QBI boolean-count outputs as
+    # floats; the supported legacy ACS builder can then load them from HDF as
+    # its transfer donor. Pin that real producer/HDF representation rather
+    # than using an unrelated model-required boolean.
+    source = tmp_path / "legacy-boolean-donor.h5"
+    pd.DataFrame({"business_is_sstb": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]}).to_hdf(
+        source, key="person", format="fixed"
+    )
+    round_tripped = pd.read_hdf(source, key="person")["business_is_sstb"]
+    assert round_tripped.dtype == np.dtype("float64")
+
     donor = _with_columns(
         _donor_frame(),
         "person",
-        {"has_esi": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]},
+        {"business_is_sstb": round_tripped.to_numpy()},
     )
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
     _MeanQRF.calls = []
@@ -832,14 +847,99 @@ def test_engine_boolean_metadata_restores_bool_from_float_h5_donor(
     result = transfer_acs_inputs(
         _recipient_frame(),
         donor,
-        target_families={"person": {"health": ("has_esi",)}},
+        target_families={"person": {"puf_tax_itemization": ("business_is_sstb",)}},
         seed=3,
         n_estimators=1,
     )
 
-    values = result.frame.person["has_esi"]
+    values = result.frame.person["business_is_sstb"]
     assert pd.api.types.is_bool_dtype(values.dtype)
     assert set(values) <= {False, True}
+
+
+@pytest.mark.parametrize(
+    ("values", "offending_type"),
+    [
+        pytest.param(
+            [True, 0.0] * 4,
+            "builtins.float",
+            id="sol-exact-bool-float",
+        ),
+        pytest.param(
+            [1.0, 0.0] * 4,
+            "builtins.float",
+            id="uniform-object-float-zero-one",
+        ),
+        pytest.param([True, 0] * 4, "builtins.int", id="bool-int"),
+        pytest.param([True, "false"] * 4, "builtins.str", id="bool-str"),
+        pytest.param(
+            [np.bool_(True), np.int64(0)] * 4,
+            "numpy.int64",
+            id="numpy-bool-int",
+        ),
+        pytest.param(
+            [np.bool_(True), np.float64(0.0)] * 4,
+            "numpy.float64",
+            id="numpy-bool-float",
+        ),
+        pytest.param(
+            [np.bool_(True), "false"] * 4,
+            "builtins.str",
+            id="numpy-bool-str",
+        ),
+    ],
+)
+def test_known_boolean_metadata_rejects_mixed_object_donor_values(
+    monkeypatch: pytest.MonkeyPatch,
+    values: list[object],
+    offending_type: str,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {"is_blind": np.asarray(values, dtype=object)},
+    )
+    real_metadata = acs_transfer_module._engine_variable_metadata
+
+    def metadata(target: str):
+        if target == "is_blind":
+            return SimpleNamespace(dtype="bool", entity="person")
+        return real_metadata(target)
+
+    monkeypatch.setattr(acs_transfer_module, "_engine_variable_metadata", metadata)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    with pytest.raises(TypeError) as exc_info:
+        transfer_acs_inputs(
+            _recipient_frame(),
+            donor,
+            target_families={"person": {"model_required_boolean": ("is_blind",)}},
+            seed=3,
+            n_estimators=1,
+        )
+
+    message = str(exc_info.value)
+    assert "boolean target 'is_blind'" in message
+    assert "offending value types" in message
+    assert offending_type in message
+    assert _MeanQRF.calls == []
+
+
+def test_known_boolean_metadata_accepts_python_and_numpy_boolean_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        acs_transfer_module,
+        "_engine_variable_metadata",
+        lambda _target: SimpleNamespace(dtype="bool"),
+    )
+    series = pd.Series([True, np.bool_(False)], dtype=object)
+
+    encoding = acs_transfer_module._target_encoding(series, target="is_blind")
+
+    assert encoding.kind == "boolean"
+    np.testing.assert_array_equal(encoding.model_values, np.asarray([1.0, 0.0]))
 
 
 def test_auto_channel_excludes_artificial_asec_zeros(

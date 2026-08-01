@@ -1895,8 +1895,21 @@ def _validate_donor_targets(
         raise ValueError(
             f"ACS transfer donor entity {entity!r} is missing target(s): {missing}."
         )
+    metadata_by_target = {
+        target: _engine_variable_metadata(target) for target in targets
+    }
     unsupported = [
-        target for target in targets if not _is_supported_target(table[target])
+        target
+        for target in targets
+        if not _is_supported_target(table[target])
+        # Known booleans with observed object values reach the encoder, which
+        # owns the semantic-boolean check and its value-type diagnostics.
+        and not (
+            (metadata := metadata_by_target[target]) is not None
+            and metadata.dtype == "bool"
+            and pd.api.types.is_object_dtype(table[target].dtype)
+            and table[target].notna().any()
+        )
     ]
     if unsupported:
         raise TypeError(
@@ -1906,7 +1919,7 @@ def _validate_donor_targets(
     wrong_engine_entity = {
         target: metadata.entity
         for target in targets
-        if (metadata := _engine_variable_metadata(target)) is not None
+        if (metadata := metadata_by_target[target]) is not None
         and metadata.entity != entity
     }
     if wrong_engine_entity:
@@ -2050,8 +2063,41 @@ def _target_encoding(series: pd.Series, *, target: str) -> _TargetEncoding:
 
     metadata = _engine_variable_metadata(target)
     target_dtype = metadata.dtype if metadata is not None else None
+    semantic_boolean = _is_semantic_boolean(series)
 
-    if target_dtype == "bool" or _is_semantic_boolean(series):
+    if (
+        target_dtype == "bool"
+        and pd.api.types.is_object_dtype(series.dtype)
+        and not semantic_boolean
+    ):
+        offending_types = sorted(
+            {
+                f"{type(value).__module__}.{type(value).__qualname__}"
+                for value in series.dropna()
+                if not isinstance(value, (bool, np.bool_))
+            }
+        )
+        if not offending_types:
+            offending_types = ["<no observed values>"]
+        raise TypeError(
+            f"ACS transfer boolean target {target!r} is object-backed but "
+            "contains non-boolean donor values; offending value types: "
+            f"{offending_types}."
+        )
+
+    if target_dtype == "bool" and not (_is_numeric_or_bool(series) or semantic_boolean):
+        raise TypeError(
+            f"ACS transfer boolean target {target!r} must be boolean or use "
+            "the supported physical numeric 0/1 primary-QRF/HDF representation; got "
+            f"dtype {series.dtype!s}."
+        )
+
+    if target_dtype == "bool" or semantic_boolean:
+        # Primary PUF finalization deliberately stores its QBI boolean-count
+        # outputs in physical float columns before they become ACS-transfer
+        # donors (including through the supported legacy HDF path). Keep that
+        # numeric-dtype 0/1 compatibility explicit; object-backed 0/1 values
+        # are rejected above rather than coerced through metadata.
         values = pd.Series(
             _as_float_array(series),
             index=series.index,
