@@ -3,8 +3,8 @@
 ## State
 
 Remediation is in progress on `acs-transfer-dtypes-578` from clean starting
-commit `fcdd857`. Majors 1 and 2 are fixed and verified; the producer-observing
-dtype guard and pool-path hours signal gate remain.
+commit `fcdd857`. Majors 1 and 2 and the low hours-gate finding are fixed and
+verified; the producer-observing dtype guard remains.
 
 ## Done
 
@@ -42,10 +42,16 @@ dtype guard and pool-path hours signal gate remain.
   after the unconditional SCF/SIPP restoration and its signal gate.
 - Major-2 verification passes: direct repro 2 passed; complete generic/US gate
   suites 235 passed; UK shared-gate regression suite 39 passed, 3 skipped.
+- Wired `us_hours_worked_signal_gate` immediately after the pool's pre-clone
+  hours producer. Failures now abort the pool source chain; passing gate name,
+  status, failures, and details are visible in the operator receipt.
+- Added a pool-path regression with all three hours outputs present,
+  nonconstant, and implausible. It fails on worked share 1.000 and worker mean
+  67.5 rather than being trusted by the idempotent producer. The existing real
+  pre-clone test now pins the passing receipt; both focused tests pass.
 
 ## Next
 
 - Replace the all-family synthetic dtype guard with actual producer execution.
-- Port the hours plausibility/nonconstant signal gate to the pool path.
 - Run focused and broad sandbox-safe verification, record exact counts, update
   this ledger, and write the final report to the requested output channel.

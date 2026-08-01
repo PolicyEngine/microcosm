@@ -1139,6 +1139,10 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert prepared.receipt["transient_outputs_carried_through_clone"] == {
         "person": ["employment_income_last_year"]
     }
+    hours_gate = suboperators[1]["kernel_receipt"]["hours_worked_signal_gate"]
+    assert hours_gate["name"] == "hours_worked_signal"
+    assert hours_gate["passed"] is True
+    assert hours_gate["failures"] == []
 
     prepared_person = prepared.frame.table("person")
     prepared_cps = prepared_person["PERIDNUM"].notna()
@@ -1167,6 +1171,30 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     parents = cps & person["A_LINENO"].eq(1)
     assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
     assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+
+
+def test_preclone_hours_signal_gate_rejects_implausible_producer_surface() -> None:
+    asec = _real_pre_clone_source_frame()
+    person = asec.table("person")
+    person["weekly_hours_worked_before_lsr"] = [60.0, 65.0, 70.0, 75.0]
+    person["hours_worked_last_week"] = [55.0, 60.0, 65.0, 70.0]
+    person["weeks_worked"] = [40.0, 44.0, 48.0, 52.0]
+    assembled = assemble_spines(
+        {"asec": asec, "acs": _source_frame(offset=100.0)},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Pool pre-clone hours-worked signal gate failed",
+    ) as exc_info:
+        prepare_multispine_source_inputs_for_clone(
+            assembled,
+            acs_rent_donor=_rent_donor(),
+        )
+
+    assert "worked share 1.000 outside plausibility band" in str(exc_info.value)
+    assert "mean weekly hours among workers 67.5 outside" in str(exc_info.value)
 
 
 def test_row_sensitive_prefix_exposes_clone_first_defects(

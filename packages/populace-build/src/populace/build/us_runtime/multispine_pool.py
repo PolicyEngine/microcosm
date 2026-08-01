@@ -41,7 +41,10 @@ from populace.build.us_runtime.eligibility_inputs import (
 from populace.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
-from populace.build.us_runtime.hours_worked import with_us_hours_worked_inputs
+from populace.build.us_runtime.hours_worked import (
+    us_hours_worked_signal_gate,
+    with_us_hours_worked_inputs,
+)
 from populace.build.us_runtime.housing_inputs import (
     impute_us_housing_assistance_to_puf_support,
     with_us_housing_inputs,
@@ -579,11 +582,7 @@ def prepare_multispine_source_inputs_for_clone(
 
     operators: Mapping[str, SourceFrameOperator] = {
         "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
-        "with_us_hours_worked_inputs": lambda current: with_us_hours_worked_inputs(
-            current,
-            seed=POOL_RANDOM_SEED,
-            time_period=POOL_TIME_PERIOD,
-        ),
+        "with_us_hours_worked_inputs": _with_gated_us_hours_worked_inputs,
         "with_us_prior_year_income_inputs": lambda current: (
             with_us_prior_year_income_inputs(
                 current,
@@ -613,6 +612,33 @@ def prepare_multispine_source_inputs_for_clone(
         phase=_PRE_CLONE_PHASE,
         operator_names=POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
         operators=operators,
+    )
+
+
+def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
+    """Run the pre-clone hours producer and its legacy signal contract."""
+
+    produced = with_us_hours_worked_inputs(
+        frame,
+        seed=POOL_RANDOM_SEED,
+        time_period=POOL_TIME_PERIOD,
+    )
+    gate = us_hours_worked_signal_gate(produced)
+    if not gate.passed:
+        raise ValueError(
+            "Pool pre-clone hours-worked signal gate failed:\n  "
+            + "\n  ".join(gate.failures)
+        )
+    return PoolStageOutput(
+        produced,
+        {
+            "hours_worked_signal_gate": {
+                "name": gate.name,
+                "passed": True,
+                "failures": [],
+                "details": dict(gate.details),
+            }
+        },
     )
 
 
