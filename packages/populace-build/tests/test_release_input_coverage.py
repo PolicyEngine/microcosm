@@ -192,6 +192,31 @@ class TestReleaseInputCoverageGate:
             for failure in result.failures
         )
 
+    def test_all_nonfinite_required_asset_columns_fail(self) -> None:
+        assets = tuple(sorted(SSI_COUNTABLE_RESOURCE_ASSETS))
+        assert assets == ("bank_account_assets", "bond_assets", "stock_assets")
+        manifest = _manifest(
+            tuple(ReleaseInputColumn(name, "required") for name in assets)
+        )
+        frame = _person_frame(
+            {name: np.asarray([np.nan, np.nan], dtype=np.float64) for name in assets}
+        )
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({name: 0.0 for name in assets}),
+            manifest=manifest,
+        )
+
+        assert not result.passed
+        assert result.details["missing"] == []
+        assert result.details["degenerate_required"] == list(assets)
+        assert result.details["no_observed_required"] == list(assets)
+        assert len(result.failures) == 3
+        for name, failure in zip(assets, result.failures, strict=True):
+            assert name in failure
+            assert "no finite/non-null observed values" in failure
+
     def test_stale_reviewed_exclusion_fails(self) -> None:
         # Case 4: alimony_income is a reviewed exclusion, but the data caught up
         # — it is now present with signal, so the exclusion is stale and must be

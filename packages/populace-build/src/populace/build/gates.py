@@ -653,15 +653,16 @@ def default_valued_columns_gate(
     *,
     reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult:
-    """Refuse persisted input columns that carry only the engine default.
+    """Refuse persisted input columns with no signal beyond the engine default.
 
-    A column whose every observed value equals the engine's default for that
-    variable adds zero information — the dataset would behave identically
-    without it — while looking populated to anyone inspecting the artifact.
-    That is how a failed or missing imputation ships silently: a weekly-hours
-    column constant at the 40-hour default, or a take-up flag constant at
-    ``True``. Unlike :func:`nonconstant_columns_gate`, which checks a named
-    allowlist, this gate sweeps every column it is handed. It also
+    A column with no finite/non-null observed values, or whose every observed
+    value equals the engine's default for that variable, adds zero information
+    — the dataset would behave identically without it — while looking populated
+    to anyone inspecting the artifact. That is how a failed or missing
+    imputation ships silently: an all-null asset column, a weekly-hours column
+    constant at the 40-hour default, or a take-up flag constant at ``True``.
+    Unlike :func:`nonconstant_columns_gate`, which checks a named allowlist,
+    this gate sweeps every column it is handed. It also
     complements :func:`input_mass_parity_gate`: a parity check against a
     parent artifact passes when the parent is equally degenerate (the
     constant-40 hours column had full mass in every ancestor), while this
@@ -686,6 +687,7 @@ def default_valued_columns_gate(
     degenerate: dict[str, object] = {}
     excluded: dict[str, str] = {}
     constant_nondefault: dict[str, object] = {}
+    no_observed: list[str] = []
 
     for name in sorted(column_values):
         if name not in default_values:
@@ -693,6 +695,16 @@ def default_valued_columns_gate(
         checked_names.add(name)
         observed = _observed_column_values(column_values[name])
         if observed.size == 0:
+            no_observed.append(name)
+            if name in exclusions:
+                excluded[name] = exclusions[name]
+                continue
+            degenerate[name] = None
+            failures.append(
+                f"{name}: no finite/non-null values were observed; the column "
+                "is degenerate and masks a missing or failed imputation — "
+                "impute it, drop it, or record a reviewed exclusion."
+            )
             continue
         unique = _unique_observed_values(observed)
         if unique.size != 1:
@@ -728,6 +740,7 @@ def default_valued_columns_gate(
         details={
             "columns_checked": len(checked_names),
             "default_valued_columns": degenerate,
+            "no_observed_value_columns": no_observed,
             "constant_nondefault_columns": constant_nondefault,
             "reviewed_exclusions": excluded,
             "stale_exclusions": stale,
@@ -1539,6 +1552,7 @@ def input_column_coverage_gate(
     *,
     required_columns: Iterable[str],
     degenerate_columns: Iterable[str] = (),
+    no_observed_columns: Iterable[str] = (),
     reviewed_exclusions: Mapping[str, str] | None = None,
     name: str = "input_column_coverage",
     reference_label: str = "eCPS",
@@ -1559,10 +1573,11 @@ def input_column_coverage_gate(
 
     A required column fails when it is absent from ``present_columns`` (the
     engine defaults it at simulation time) or listed in ``degenerate_columns``
-    (present as a key but every observed value equals the engine default, so
-    the export writer's default-broadcast makes it indistinguishable from
-    absence). Both are the same silent-zero failure and both are refused unless
-    the column carries a reviewed exclusion.
+    (present as a key but with no finite/non-null observations, or every
+    observed value equals the engine default, so the export writer's
+    default-broadcast makes it indistinguishable from absence). Both are the
+    same silent-zero failure and both are refused unless the column carries a
+    reviewed exclusion.
 
     Reviewed exclusions accept a known, tracked gap by name with a reason (and,
     by convention, the tracking issue in the reason). They carry the #286
@@ -1578,8 +1593,12 @@ def input_column_coverage_gate(
         present_columns: Every input column the export persists as a key.
         required_columns: Columns that must be present and non-degenerate.
         degenerate_columns: The subset of present columns whose every observed
-            value equals the engine default (computed by the caller against the
-            engine's declared defaults). Columns not present are never here.
+            value equals the engine default or which have no finite/non-null
+            observed values (computed by the caller against the engine's
+            declared defaults). Columns not present are never here.
+        no_observed_columns: The subset of ``degenerate_columns`` with no
+            finite/non-null observed values. This preserves the reason in the
+            named release-gate finding.
         reviewed_exclusions: Column -> reason for tracked gaps allowed to be
             absent or degenerate. Each needs a non-empty reason; a stale entry
             fails the gate, a dormant entry is only reported.
@@ -1606,6 +1625,7 @@ def input_column_coverage_gate(
     exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
     present = {str(column) for column in present_columns}
     degenerate = {str(column) for column in degenerate_columns} & present
+    no_observed = {str(column) for column in no_observed_columns} & degenerate & present
     required = {str(column) for column in required_columns}
 
     both = sorted(required & set(exclusions))
@@ -1631,14 +1651,22 @@ def input_column_coverage_gate(
             )
         elif column in degenerate:
             degenerate_required.append(column)
-            failures.append(
-                f"{column}: required {reference_label} input column is present "
-                "but every "
-                "value equals the engine default; the export writer's "
-                "default-broadcast makes it indistinguishable from absence. "
-                "Impute it or record a reviewed exclusion with the tracking "
-                "issue."
-            )
+            if column in no_observed:
+                failures.append(
+                    f"{column}: required {reference_label} input column is "
+                    "present but has no finite/non-null observed values; the "
+                    "column is degenerate and carries no release input signal. "
+                    "Impute it or record a reviewed exclusion with the tracking "
+                    "issue."
+                )
+            else:
+                failures.append(
+                    f"{column}: required {reference_label} input column is "
+                    "present but every value equals the engine default; the "
+                    "export writer's default-broadcast makes it "
+                    "indistinguishable from absence. Impute it or record a "
+                    "reviewed exclusion with the tracking issue."
+                )
 
     signal_present = present - degenerate
     stale = sorted(column for column in exclusions if column in signal_present)
@@ -1658,6 +1686,7 @@ def input_column_coverage_gate(
             "present_columns": len(present),
             "missing": missing,
             "degenerate_required": degenerate_required,
+            "no_observed_required": sorted(no_observed & required),
             "reviewed_exclusions": {
                 column: reason
                 for column, reason in sorted(exclusions.items())

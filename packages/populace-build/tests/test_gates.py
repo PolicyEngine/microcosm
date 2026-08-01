@@ -416,6 +416,21 @@ class TestNonconstantColumnsGate:
 
 
 class TestDefaultValuedColumnsGate:
+    def test_column_with_no_finite_or_nonnull_values_fails(self) -> None:
+        result = default_valued_columns_gate(
+            {"stock_assets": np.asarray([np.nan, np.inf, -np.inf])},
+            {"stock_assets": 0.0},
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "stock_assets: no finite/non-null values were observed; the column "
+            "is degenerate and masks a missing or failed imputation — impute it, "
+            "drop it, or record a reviewed exclusion.",
+        )
+        assert result.details["default_valued_columns"] == {"stock_assets": None}
+        assert result.details["no_observed_value_columns"] == ["stock_assets"]
+
     def test_column_stuck_at_engine_default_fails(self) -> None:
         # The constant-40 hours incident: populated, plausible-looking, and
         # identical to the engine default for every record.

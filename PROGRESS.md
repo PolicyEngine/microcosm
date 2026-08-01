@@ -3,8 +3,8 @@
 ## State
 
 Remediation is in progress on `acs-transfer-dtypes-578` from clean starting
-commit `fcdd857`. Major 1 is fixed and verified; the all-nonfinite release
-coverage, producer-observing dtype guard, and pool-path hours signal gate remain.
+commit `fcdd857`. Majors 1 and 2 are fixed and verified; the producer-observing
+dtype guard and pool-path hours signal gate remain.
 
 ## Done
 
@@ -29,11 +29,22 @@ coverage, producer-observing dtype guard, and pool-path hours signal gate remain
   `base-p1/004_qrf_finalization.frame.h5` checkpoint. The HDF round-trip
   compatibility regression now uses the actual `business_is_sstb` producer
   target. The focused Major-1 batch passes: 9 passed, 29 deselected.
+- Classified columns with zero finite/non-null observed values as degenerate in
+  the shared default-valued gate, including a named failure, report detail, and
+  reason-preserving release-coverage finding.
+- Added Sol's exact isolated coverage regression: required
+  `bank_account_assets`, `bond_assets`, and `stock_assets`, each
+  `float64 [NaN, NaN]`, now produce three named failures with no columns
+  misclassified as missing.
+- Confirmed no pool exclusion is needed or added. Pool readiness runs the
+  terminal agreement gate and publishes explicit typed-null asset-deferral
+  receipts; release input coverage binds later to the calibrated fiscal export
+  after the unconditional SCF/SIPP restoration and its signal gate.
+- Major-2 verification passes: direct repro 2 passed; complete generic/US gate
+  suites 235 passed; UK shared-gate regression suite 39 passed, 3 skipped.
 
 ## Next
 
-- Make required columns with no observed finite/non-null values fail release
-  input coverage without weakening receipted pool deferrals.
 - Replace the all-family synthetic dtype guard with actual producer execution.
 - Port the hours plausibility/nonconstant signal gate to the pool path.
 - Run focused and broad sandbox-safe verification, record exact counts, update
