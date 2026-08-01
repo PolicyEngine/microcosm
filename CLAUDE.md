@@ -16,16 +16,17 @@ the PEP 420 namespace `populace.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ```bash
 uv sync --all-packages   # set up the whole workspace
-uv sync --all-packages --extra us  # include live US-engine ownership guards
+uv sync --all-packages --extra us  # include live US ownership/consumer guards
 uv run pytest            # behavioral contract suite + unit tests (all shards)
 uv run ruff check .      # lint
 ```
 
-PR CI (`.github/workflows/test.yml`) uses the US-extra sync so transfer-leaf
-ownership is checked against the locked PolicyEngine-US, then runs the test and
-lint commands plus a wheel-packaging gate (build every shard's wheel, install
-into a clean venv, import and test). Editable installs hide packaging breaks —
-if you touch packaging, build wheels locally before pushing.
+PR CI (`.github/workflows/test.yml`) uses the US-extra sync so pool-input
+ownership and consumer existence are checked against the locked PolicyEngine-US,
+then runs the test and lint commands plus a wheel-packaging gate (build every
+shard's wheel, install into a clean venv, import and test). Editable installs
+hide packaging breaks — if you touch packaging, build wheels locally before
+pushing.
 
 ## The PR-CI / certification boundary
 
