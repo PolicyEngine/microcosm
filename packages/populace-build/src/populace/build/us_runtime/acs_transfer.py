@@ -80,10 +80,10 @@ ACS_DONOR_CHANNEL_AUTO = "auto"
 # budget while continuing to use populace-fit's canonical chained QRF API.
 DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT = 8
 
-# Required, always-observed ACS predictors. State is broadcast from the
-# household table so every imputation is conditioned on the ACS record's real
-# state rather than drawing from a national donor mixture. A missing/non-finite
-# value here is corrupt source data rather than an optional universe blank.
+# Required ACS predictor columns. State is broadcast from the household table
+# so every modeled imputation is conditioned on the ACS record's real state
+# rather than drawing from a national donor mixture. Cross-spine assembly may
+# leave peer rows null; row-level complete-case masks keep those rows out of QRF.
 _STATE_FEATURE = "__acs_transfer_state_fips"
 ACS_PERSON_TRANSFER_PREDICTORS: tuple[str, ...] = (
     "age",
@@ -1028,12 +1028,14 @@ def _fit_family_patterns(
             f"that are required predictors: {overlap}."
         )
 
-    recipient_required = surface.recipient.loc[:, list(surface.required)]
     needs_prediction = np.logical_or.reduce(
         [np.asarray(target_missing[target], dtype=bool) for target in targets]
     )
     eligible = (
-        np.isfinite(recipient_required.to_numpy(dtype=np.float64)).all(axis=1)
+        _complete_predictor_mask(
+            surface.recipient,
+            predictors=surface.required,
+        )
         & needs_prediction
     )
     if not eligible.any():
@@ -1054,8 +1056,10 @@ def _fit_family_patterns(
         _availability_patterns(surface, eligible=eligible)
     ):
         predictors = (*surface.required, *observed_optional)
-        donor_matrix = surface.donor.loc[:, list(predictors)].to_numpy(dtype=np.float64)
-        donor_mask = np.isfinite(donor_matrix).all(axis=1) & target_complete
+        donor_mask = (
+            _complete_predictor_mask(surface.donor, predictors=predictors)
+            & target_complete
+        )
         donor_rows = int(donor_mask.sum())
         if donor_rows == 0:
             raise ValueError(
@@ -1093,9 +1097,10 @@ def _fit_family_patterns(
                 f"Frame's {resolved_kind!r}."
             )
 
-        recipient_pattern = surface.recipient.iloc[recipient_positions].loc[
-            :, list(predictors)
-        ]
+        recipient_pattern = _encoded_predictor_frame(
+            surface.recipient.iloc[recipient_positions],
+            predictors=predictors,
+        )
         drawn = fitted.predict(recipient_pattern)
         _validate_prediction_values(
             drawn,
@@ -1315,7 +1320,14 @@ def _complete_component_sum(
     )
     # NumPy propagation is intentional: any missing component makes the
     # combined analog missing, so its row enters a pattern without this feature.
-    values = columns.to_numpy(dtype=np.float64).sum(axis=1)
+    values = (
+        _encoded_predictor_frame(
+            columns,
+            predictors=components,
+        )
+        .to_numpy(copy=False)
+        .sum(axis=1)
+    )
     return pd.Series(values, index=person.index, name=feature)
 
 
@@ -1468,20 +1480,30 @@ def _required_group_features(
     np.add.at(age_sum, positions, _as_float_array(person["age"]))
     np.add.at(female_count, positions, _as_float_array(person["is_female"]))
     person_state = _as_float_array(person[_STATE_FEATURE])
+    finite_state = np.isfinite(person_state)
+    finite_state_counts = np.bincount(
+        positions,
+        weights=finite_state.astype(np.int64),
+        minlength=n_groups,
+    )
     state_low = np.full(n_groups, np.inf, dtype=np.float64)
     state_high = np.full(n_groups, -np.inf, dtype=np.float64)
-    np.minimum.at(state_low, positions, person_state)
-    np.maximum.at(state_high, positions, person_state)
-    if not np.array_equal(state_low, state_high):
+    np.minimum.at(state_low, positions[finite_state], person_state[finite_state])
+    np.maximum.at(state_high, positions[finite_state], person_state[finite_state])
+    spans_states = (finite_state_counts > 0) & (state_low != state_high)
+    if spans_states.any():
         raise ValueError(
             f"ACS transfer {role} {entity!r} groups span multiple state_fips values."
         )
+    state = np.full(n_groups, np.nan, dtype=np.float64)
+    complete_state = (counts > 0) & (finite_state_counts == counts)
+    state[complete_state] = state_low[complete_state]
     result = pd.DataFrame(
         {
             _GROUP_PERSON_COUNT: counts,
             _GROUP_AGE_SUM: age_sum,
             _GROUP_FEMALE_COUNT: female_count,
-            _STATE_FEATURE: state_low,
+            _STATE_FEATURE: state,
         },
         index=frame.table(entity).index,
     )
@@ -1555,8 +1577,9 @@ def _model_frame(
     resolved = donor.resolve_weights(entity)
     weights = Weights(resolved.values[selected], resolved.kind)
     model_values = pd.DataFrame(index=np.arange(n))
+    encoded_features = _encoded_predictor_frame(features, predictors=predictors)
     for predictor in predictors:
-        model_values[predictor] = features[predictor].iloc[selected].to_numpy()
+        model_values[predictor] = encoded_features[predictor].iloc[selected].to_numpy()
     seen_model_targets: set[str] = set()
     for encoding in target_encodings.values():
         if encoding.model_target in seen_model_targets:
@@ -1885,14 +1908,9 @@ def _require_columns(
 
 
 def _validate_required_numeric_frame(frame: pd.DataFrame, *, context: str) -> None:
-    _validate_numeric_kinds(frame, context=context)
-    non_finite = [
-        column
-        for column in frame.columns
-        if not np.isfinite(_as_float_array(frame[column])).all()
-    ]
-    if non_finite:
-        raise ValueError(f"{context} contains non-finite values: {non_finite}.")
+    """Validate required predictor columns without rejecting peer-row nulls."""
+
+    _validate_optional_numeric_frame(frame, context=context)
 
 
 def _validate_optional_numeric_frame(frame: pd.DataFrame, *, context: str) -> None:
@@ -1987,8 +2005,26 @@ def _complete_target_mask(
     return complete
 
 
+def _complete_predictor_mask(
+    table: pd.DataFrame,
+    *,
+    predictors: Sequence[str],
+) -> np.ndarray:
+    """Rows whose encoded predictor values are all finite.
+
+    ACS transfer owns stricter missing-value semantics than the underlying QRF:
+    this mask selects rows complete for required predictors and for the optional
+    predictors in each recipient availability pattern. Encoding maps missing
+    values to ``NaN``; it never maps a nullable boolean's missing cells to
+    ``False``.
+    """
+
+    encoded = _encoded_predictor_frame(table, predictors=predictors)
+    return np.isfinite(encoded.to_numpy(copy=False)).all(axis=1)
+
+
 def _is_supported_target(series: pd.Series) -> bool:
-    if _is_numeric_or_bool(series) or _is_semantic_boolean(series):
+    if _is_numeric_or_bool(series):
         return True
     if isinstance(series.dtype, pd.CategoricalDtype):
         return True
@@ -2213,8 +2249,10 @@ def _engine_variable_metadata(target: str) -> Any | None:
 
 
 def _is_numeric_or_bool(series: pd.Series) -> bool:
+    """Recognize physical numeric dtypes and semantic boolean columns."""
+
     return bool(
-        pd.api.types.is_bool_dtype(series.dtype)
+        _is_semantic_boolean(series)
         or (
             pd.api.types.is_numeric_dtype(series.dtype)
             and not pd.api.types.is_complex_dtype(series.dtype)
@@ -2235,6 +2273,19 @@ def _is_semantic_boolean(series: pd.Series) -> bool:
 
 def _as_float_array(series: pd.Series) -> np.ndarray:
     return series.to_numpy(dtype=np.float64, na_value=np.nan)
+
+
+def _encoded_predictor_frame(
+    table: pd.DataFrame,
+    *,
+    predictors: Sequence[str],
+) -> pd.DataFrame:
+    """Encode validated numeric/semantic-boolean predictors as float64."""
+
+    return pd.DataFrame(
+        {predictor: _as_float_array(table[predictor]) for predictor in predictors},
+        index=table.index,
+    )
 
 
 def _family_seed(seed: int, *, entity: str, family: str) -> int:

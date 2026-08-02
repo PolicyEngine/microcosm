@@ -770,56 +770,97 @@ def test_pool_input_surface_rejects_primary_qrf_target_without_entity(
 
 
 class _ProducerDtypeFittedQRF:
-    weight_kind = "design"
-
     def __init__(
         self,
         outcomes: tuple[str, ...],
         *,
         calls: Counter[str],
         owner: str,
+        observations: list[dict[str, object]],
+        weight_kind: str,
     ) -> None:
         self.outcomes = outcomes
         self.calls = calls
         self.owner = owner
+        self.observations = observations
+        self.weight_kind = weight_kind
 
     def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
         self.calls[f"{self.owner}.predict"] += 1
         rows = len(test)
-        return pd.DataFrame(
+        predictions = pd.DataFrame(
             {
                 outcome: 1.0 + np.arange(rows, dtype=np.float64)
                 for outcome in self.outcomes
             },
             index=test.index,
         )
+        self.observations.append(
+            {
+                "owner": self.owner,
+                "phase": "predict",
+                "features": test.copy(),
+                "outputs": predictions.copy(),
+            }
+        )
+        return predictions
 
 
 class _ProducerDtypeQRF:
     """Tiny deterministic model beneath the real source-producer wrappers."""
 
-    def __init__(self, *, calls: Counter[str], owner: str) -> None:
+    def __init__(
+        self,
+        *,
+        calls: Counter[str],
+        owner: str,
+        observations: list[dict[str, object]],
+    ) -> None:
         self.calls = calls
         self.owner = owner
+        self.observations = observations
 
     def fit(
         self,
-        _frame: object,
+        frame: Frame | pd.DataFrame,
         *args: object,
         **_kwargs: object,
     ) -> _ProducerDtypeFittedQRF:
         self.calls[f"{self.owner}.fit"] += 1
+        predictors = _kwargs.get("predictors")
+        if predictors is None and args:
+            predictors = args[0]
         selected = _kwargs.get("targets")
         if selected is None and len(args) >= 2:
             selected = args[1]
-        if selected is None:
+        if predictors is None or selected is None:
             raise AssertionError(
-                f"Could not resolve QRF outputs from args={args!r}, kwargs={_kwargs!r}."
+                "Could not resolve QRF predictors/outputs from "
+                f"args={args!r}, kwargs={_kwargs!r}."
             )
+        predictor_names = tuple(str(value) for value in predictors)
+        outcomes = tuple(str(value) for value in selected)
+        if isinstance(frame, Frame):
+            entity = frame.column_entity(outcomes[0])
+            table = frame.table(entity)
+            weight_kind = frame.resolve_weights(entity).kind.value
+        else:
+            table = frame
+            weight_kind = "design"
+        self.observations.append(
+            {
+                "owner": self.owner,
+                "phase": "fit",
+                "predictors": predictor_names,
+                "features": table.loc[:, list(predictor_names)].copy(),
+            }
+        )
         return _ProducerDtypeFittedQRF(
-            tuple(str(value) for value in selected),
+            outcomes,
             calls=self.calls,
             owner=self.owner,
+            observations=self.observations,
+            weight_kind=weight_kind,
         )
 
 
@@ -827,9 +868,14 @@ def _producer_dtype_qrf_factory(
     calls: Counter[str],
     *,
     owner: str,
+    observations: list[dict[str, object]],
 ) -> Callable[..., _ProducerDtypeQRF]:
     def build(**_kwargs: object) -> _ProducerDtypeQRF:
-        return _ProducerDtypeQRF(calls=calls, owner=owner)
+        return _ProducerDtypeQRF(
+            calls=calls,
+            owner=owner,
+            observations=observations,
+        )
 
     return build
 
@@ -895,6 +941,32 @@ def _producer_dtype_source_frame() -> Frame:
     return _replace_person(frame, person)
 
 
+def _producer_dtype_acs_source_frame() -> Frame:
+    """Small ACS fixture with the native half of cross-spine predictors."""
+
+    frame = _source_frame(offset=100.0)
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    person["is_female"] = [True, False]
+    person["is_household_head"] = [True, True]
+    person["employment_income_before_lsr"] = [30_000.0, 45_000.0]
+    person["self_employment_income_before_lsr"] = [0.0, 5_000.0]
+    person["acs_social_security_income"] = [0.0, 12_000.0]
+    person["acs_retirement_income"] = [0.0, 8_000.0]
+    person["acs_interest_dividend_rental_income"] = [100.0, 2_000.0]
+    household = tables["household"]
+    household["state_fips"] = [6, 36]
+    household["tenure_type"] = ["RENTED", "OWNED_WITH_MORTGAGE"]
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
 def _primary_puf_dtype_donor() -> pd.DataFrame:
     """Minimal donor accepted by the actual primary-PUF producer path."""
 
@@ -906,6 +978,11 @@ def _primary_puf_dtype_donor() -> pd.DataFrame:
     donor = pd.DataFrame(
         {column: np.arange(1.0, 5.0, dtype=np.float64) for column in sorted(columns)}
     )
+    donor["puf_predictor_tax_unit_person_count"] = np.arange(
+        1,
+        5,
+        dtype=np.int64,
+    )
     donor["weight"] = 1.0
     return donor
 
@@ -914,6 +991,8 @@ def _run_pool_transfer_dtype_producers(
     monkeypatch: pytest.MonkeyPatch,
     *,
     calls: Counter[str],
+    observations: list[dict[str, object]],
+    stages: dict[str, Frame] | None = None,
 ) -> Frame:
     """Execute the small production producer path used by the dtype guard."""
 
@@ -922,12 +1001,20 @@ def _run_pool_transfer_dtype_producers(
         monkeypatch.setattr(
             module,
             "QRF",
-            _producer_dtype_qrf_factory(calls, owner=module_name),
+            _producer_dtype_qrf_factory(
+                calls,
+                owner=module_name,
+                observations=observations,
+            ),
         )
     monkeypatch.setattr(
         puf_support_module,
         "QRF",
-        _producer_dtype_qrf_factory(calls, owner="primary_puf_qrf"),
+        _producer_dtype_qrf_factory(
+            calls,
+            owner="primary_puf_qrf",
+            observations=observations,
+        ),
     )
 
     for operator_name in POOL_SOURCE_OPERATOR_ORDER:
@@ -947,26 +1034,53 @@ def _run_pool_transfer_dtype_producers(
     assembled = assemble_spines(
         {
             "asec": _producer_dtype_source_frame(),
-            "acs": _source_frame(offset=100.0),
+            "acs": _producer_dtype_acs_source_frame(),
         },
         household_mass_shares={"asec": 0.5, "acs": 0.5},
     )
+    if stages is not None:
+        stages["assembled"] = assembled
     prepared = prepare_multispine_source_inputs_for_clone(
         assembled,
         acs_rent_donor=_rent_donor(),
     )
+    if stages is not None:
+        stages["prepared"] = prepared.frame
     cloned = clone_us_frame_for_puf_support(prepared.frame)
+    primary_donor = _primary_puf_dtype_donor()
+    primary_chain_inputs = puf_support_module.prepare_us_puf_tax_detail_chain_inputs(
+        cloned,
+        primary_donor,
+    )
+    observations.append(
+        {
+            "owner": "primary_puf_chain",
+            "phase": "prepared",
+            "inputs": primary_chain_inputs,
+        }
+    )
     primary = puf_support_module.impute_us_puf_tax_detail_support(
         cloned,
-        _primary_puf_dtype_donor(),
+        primary_donor,
         n_estimators=1,
         seed=0,
         tail_bound_diagnostics=[],
     )
-    return multispine_pool_module.complete_multispine_source_inputs(primary).frame
+    produced = multispine_pool_module.complete_multispine_source_inputs(primary).frame
+    if stages is not None:
+        stages["produced"] = produced
+    return produced
 
 
-def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str]]:
+def _assert_pool_transfer_produced_encodings(
+    frame: Frame,
+    *,
+    observations: list[dict[str, object]],
+) -> tuple[
+    set[tuple[str, str]],
+    set[tuple[str, str]],
+    tuple[tuple[str, tuple[str, ...]], ...],
+]:
     plan = pool_transfer_target_families()
     targets = {
         target
@@ -980,7 +1094,8 @@ def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str
         acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
     )
     assert role == "puf_tax_detail"
-    audited: set[tuple[str, str]] = set()
+    audited_targets: set[tuple[str, str]] = set()
+    audited_predictors: set[tuple[str, str]] = set()
     for entity, families in plan.items():
         table = donor.table(entity)
         for targets in families.values():
@@ -1000,8 +1115,95 @@ def _assert_pool_transfer_produced_encodings(frame: Frame) -> set[tuple[str, str
                 complete=complete,
             )
             assert set(encodings) == set(targets)
-            audited.update((entity, target) for target in targets)
-    return audited
+            audited_targets.update((entity, target) for target in targets)
+
+            surface = acs_transfer_module._transfer_feature_surface(
+                donor,
+                frame,
+                entity=entity,
+                targets=targets,
+            )
+            predictors = (*surface.required, *surface.optional)
+            for feature_frame in (surface.donor, surface.recipient):
+                encoded = acs_transfer_module._encoded_predictor_frame(
+                    feature_frame,
+                    predictors=predictors,
+                )
+                assert all(dtype == np.dtype("float64") for dtype in encoded.dtypes)
+                acs_transfer_module._complete_predictor_mask(
+                    feature_frame,
+                    predictors=predictors,
+                )
+            audited_predictors.update((entity, name) for name in predictors)
+
+    prepared_primary = [
+        observation
+        for observation in observations
+        if observation["owner"] == "primary_puf_chain"
+        and observation["phase"] == "prepared"
+    ]
+    assert len(prepared_primary) == 1
+    chain_inputs = prepared_primary[0]["inputs"]
+    assert isinstance(chain_inputs, puf_support_module.PufTaxDetailChainInputs)
+    primary_predictors = tuple(chain_inputs.predictors)
+    primary_targets = tuple(chain_inputs.target_order)
+    assert len(primary_predictors) == 8
+    assert len(primary_targets) == 65
+
+    primary_qrf_observations = [
+        observation
+        for observation in observations
+        if observation["owner"] == "primary_puf_qrf"
+    ]
+    assert {observation["phase"] for observation in primary_qrf_observations} == {
+        "fit",
+        "predict",
+    }
+    primary_prediction = next(
+        observation
+        for observation in primary_qrf_observations
+        if observation["phase"] == "predict"
+    )
+    raw_draws = primary_prediction["outputs"]
+    assert isinstance(raw_draws, pd.DataFrame)
+    assert tuple(raw_draws.columns) == primary_targets
+    assert raw_draws.index.equals(chain_inputs.recipient_features.index)
+    assert all(dtype == np.dtype("float64") for dtype in raw_draws.dtypes)
+    assert np.isfinite(raw_draws.to_numpy()).all()
+
+    donor_base = chain_inputs.donor.loc[:, list(primary_predictors)]
+    recipient_base = chain_inputs.recipient_features.loc[:, list(primary_predictors)]
+    assert donor_base["puf_predictor_tax_unit_person_count"].dtype == np.dtype("int64")
+    assert all(
+        donor_base[column].dtype == np.dtype("float64")
+        for column in primary_predictors
+        if column != "puf_predictor_tax_unit_person_count"
+    )
+    assert all(dtype == np.dtype("float64") for dtype in recipient_base.dtypes)
+
+    primary_predictor_sets: list[tuple[str, tuple[str, ...]]] = []
+    for position, target in enumerate(primary_targets):
+        predictors = (*primary_predictors, *primary_targets[:position])
+        donor_features = chain_inputs.donor.loc[:, list(predictors)]
+        recipient_features = recipient_base.copy()
+        for prior in primary_targets[:position]:
+            recipient_features[prior] = raw_draws[prior].to_numpy(
+                dtype=np.float64,
+                copy=False,
+            )
+        for features in (donor_features, recipient_features):
+            assert all(
+                pd.api.types.is_numeric_dtype(dtype) for dtype in features.dtypes
+            )
+            qrf_matrix = features.to_numpy(dtype=np.float64)
+            assert qrf_matrix.dtype == np.dtype("float64")
+            assert np.isfinite(qrf_matrix).all()
+        assert all(
+            donor_features[prior].dtype == np.dtype("float64")
+            for prior in primary_targets[:position]
+        )
+        primary_predictor_sets.append((target, predictors))
+    return audited_targets, audited_predictors, tuple(primary_predictor_sets)
 
 
 def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
@@ -1023,13 +1225,38 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: Counter[str] = Counter()
-    produced = _run_pool_transfer_dtype_producers(monkeypatch, calls=calls)
+    observations: list[dict[str, object]] = []
+    produced = _run_pool_transfer_dtype_producers(
+        monkeypatch,
+        calls=calls,
+        observations=observations,
+    )
 
-    audited = _assert_pool_transfer_produced_encodings(produced)
+    targets, predictors, primary_predictor_sets = (
+        _assert_pool_transfer_produced_encodings(
+            produced,
+            observations=observations,
+        )
+    )
 
-    assert len(audited) == 114
+    assert len(targets) == 114
+    assert len(predictors) == 32
+    assert len(primary_predictor_sets) == 65
+    primary_targets = tuple(
+        (
+            *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+            *puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        )
+    )
+    base_predictors = tuple(puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
+    assert primary_predictor_sets == tuple(
+        (target, (*base_predictors, *primary_targets[:position]))
+        for position, target in enumerate(primary_targets)
+    )
+    assert len(primary_predictor_sets[0][1]) == 8
+    assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(audited) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 117
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 117
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1038,10 +1265,83 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
 
 
+def test_object_backed_is_female_reaches_production_transfer_fit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    observations: list[dict[str, object]] = []
+    stages: dict[str, Frame] = {}
+    produced = _run_pool_transfer_dtype_producers(
+        monkeypatch,
+        calls=calls,
+        observations=observations,
+        stages=stages,
+    )
+
+    assembled = stages["assembled"].person["is_female"]
+    assert pd.api.types.is_object_dtype(assembled.dtype)
+    assert assembled.isna().sum() == 4
+    assert all(isinstance(value, (bool, np.bool_)) for value in assembled.dropna())
+    for stage in (stages["prepared"], produced):
+        is_female = stage.person["is_female"]
+        assert pd.api.types.is_object_dtype(is_female.dtype)
+        assert not is_female.isna().any()
+        assert all(isinstance(value, (bool, np.bool_)) for value in is_female)
+
+    donor, role = acs_transfer_module.resolve_acs_donor_channel(
+        produced,
+        acs_transfer_module.ACS_DONOR_CHANNEL_AUTO,
+    )
+    assert role == "puf_tax_detail"
+    assert len(donor.person) == 6
+    assert pd.api.types.is_object_dtype(donor.person["is_female"].dtype)
+
+    monkeypatch.setattr(
+        acs_transfer_module,
+        "QRF",
+        _producer_dtype_qrf_factory(
+            calls,
+            owner="acs_transfer",
+            observations=observations,
+        ),
+    )
+    result = acs_transfer_module.transfer_acs_inputs(
+        produced,
+        produced,
+        target_families={
+            "person": {
+                "source_operator_hours_worked": ("hours_worked_last_week",),
+            },
+        },
+        n_estimators=1,
+    )
+
+    transfer_observations = [
+        observation
+        for observation in observations
+        if observation["owner"] == "acs_transfer"
+    ]
+    assert [observation["phase"] for observation in transfer_observations] == [
+        "fit",
+        "predict",
+    ]
+    for observation in transfer_observations:
+        features = observation["features"]
+        assert isinstance(features, pd.DataFrame)
+        assert all(dtype == np.dtype("float64") for dtype in features.dtypes)
+        assert np.isfinite(features.to_numpy()).all()
+        assert "is_female" in features
+    provenance = result.imputed_inputs[0]
+    assert provenance.imputed_recipient_rows == 4
+    assert provenance.unmodeled_recipient_rows == 0
+    assert provenance.weight_kind == "importance"
+
+
 def test_pool_transfer_dtype_guard_observes_hours_producer_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: Counter[str] = Counter()
+    observations: list[dict[str, object]] = []
     producer = multispine_pool_module.with_us_hours_worked_inputs
 
     def emit_object_strings(*args: object, **kwargs: object) -> Frame:
@@ -1056,13 +1356,60 @@ def test_pool_transfer_dtype_guard_observes_hours_producer_drift(
         "with_us_hours_worked_inputs",
         emit_object_strings,
     )
-    produced = _run_pool_transfer_dtype_producers(monkeypatch, calls=calls)
+    produced = _run_pool_transfer_dtype_producers(
+        monkeypatch,
+        calls=calls,
+        observations=observations,
+    )
 
     with pytest.raises(TypeError, match="hours_worked_last_week"):
-        _assert_pool_transfer_produced_encodings(produced)
+        _assert_pool_transfer_produced_encodings(
+            produced,
+            observations=observations,
+        )
 
     assert calls["with_us_hours_worked_inputs"] > 0
     assert calls["mutated_hours_producer"] > 0
+    assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
+    assert calls["primary_puf_qrf.fit"] > 0
+    assert calls["primary_puf_qrf.predict"] > 0
+
+
+def test_pool_transfer_dtype_guard_observes_predictor_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: Counter[str] = Counter()
+    observations: list[dict[str, object]] = []
+    producer = multispine_pool_module.derive_us_cps_carried_inputs
+
+    def emit_mixed_boolean_integer(*args: object, **kwargs: object) -> Frame:
+        calls["mutated_is_female_producer"] += 1
+        outcome = producer(*args, **kwargs)
+        person = outcome.table("person").copy()
+        drifted = person["is_female"].astype(object)
+        drifted.iloc[0] = int(bool(drifted.iloc[0]))
+        person["is_female"] = drifted
+        return _replace_person(outcome, person)
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "derive_us_cps_carried_inputs",
+        emit_mixed_boolean_integer,
+    )
+    produced = _run_pool_transfer_dtype_producers(
+        monkeypatch,
+        calls=calls,
+        observations=observations,
+    )
+
+    with pytest.raises(TypeError, match="is_female"):
+        _assert_pool_transfer_produced_encodings(
+            produced,
+            observations=observations,
+        )
+
+    assert calls["derive_us_cps_carried_inputs"] > 0
+    assert calls["mutated_is_female_producer"] > 0
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["primary_puf_qrf.fit"] > 0
     assert calls["primary_puf_qrf.predict"] > 0
