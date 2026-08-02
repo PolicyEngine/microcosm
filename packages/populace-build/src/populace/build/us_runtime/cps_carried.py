@@ -14,6 +14,10 @@ import numpy as np
 import pandas as pd
 
 from populace.build.us_runtime.alimony import derive_us_alimony_from_asec
+from populace.build.us_runtime.snap_take_up import (
+    US_SNAP_TAKE_UP_RAW_COLUMN,
+    reported_snap_receipt_by_spm_unit,
+)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -82,6 +86,8 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
 
 CPS_CARRIED_SPM_UNIT_INPUTS = frozenset(
     {
+        "is_tanf_enrolled",
+        "receives_snap",
         "spm_unit_pre_subsidy_childcare_expenses",
     }
 )
@@ -93,6 +99,13 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
     Existing leaf input columns are preserved, making the transform idempotent.
     The transform refuses to run on a non-US frame and never creates
     formula-owned aggregate variables.
+
+    ``PAW_VAL`` and ``SPM_SNAPSUB`` are annual reported amounts, while the
+    engine's ``is_tanf_enrolled`` and ``receives_snap`` leaves are monthly
+    booleans. A positive annual amount is therefore broadcast as ``True`` to
+    all 12 modeled months. The annual source cannot reveal entry or exit
+    timing, and ``PAW_VAL > 0`` misses enrolled TANF units receiving zero
+    dollars, including sanctioned cases.
     """
 
     if frame.schema != US_SCHEMA:
@@ -172,6 +185,7 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         _fill_missing(person, output, _source(person, source))
 
     _fill_health_coverage_inputs(person)
+    _fill_spm_unit_reported_enrollment_inputs(person, tables["spm_unit"])
     _fill_spm_unit_childcare_inputs(person, tables["spm_unit"])
 
     formula_owned = sorted(CPS_CARRIED_FORMULA_OWNED_COLUMNS.intersection(person))
@@ -306,6 +320,45 @@ def _fill_spm_unit_childcare_inputs(
         unit_values.reindex(spm_unit["spm_unit_id"])
         .fillna(0.0)
         .to_numpy(dtype=np.float64)
+    )
+
+
+def _fill_spm_unit_reported_enrollment_inputs(
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+) -> None:
+    """Carry annual reported TANF and SNAP receipt onto monthly leaves."""
+
+    if "is_tanf_enrolled" not in spm_unit.columns:
+        tanf = _positive_annual_amount_by_spm_unit(person, "PAW_VAL")
+        spm_unit["is_tanf_enrolled"] = (
+            tanf.reindex(spm_unit["spm_unit_id"]).fillna(False).to_numpy(dtype=bool)
+        )
+
+    if "receives_snap" not in spm_unit.columns:
+        snap_person = person
+        if US_SNAP_TAKE_UP_RAW_COLUMN not in snap_person.columns:
+            snap_person = person.assign(**{US_SNAP_TAKE_UP_RAW_COLUMN: 0.0})
+        reported = reported_snap_receipt_by_spm_unit(snap_person)
+        spm_unit["receives_snap"] = (
+            reported.reindex(spm_unit["spm_unit_id"]).fillna(False).to_numpy(dtype=bool)
+        )
+
+
+def _positive_annual_amount_by_spm_unit(
+    person: pd.DataFrame,
+    source_column: str,
+) -> pd.Series:
+    member_amounts = pd.DataFrame(
+        {
+            "person_spm_unit_id": person["person_spm_unit_id"],
+            "_annual_amount": _source(person, source_column),
+        }
+    )
+    return (
+        member_amounts.groupby("person_spm_unit_id", sort=True)["_annual_amount"]
+        .max()
+        .gt(0.0)
     )
 
 

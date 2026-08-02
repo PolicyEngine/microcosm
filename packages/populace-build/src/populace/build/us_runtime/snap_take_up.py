@@ -63,6 +63,7 @@ __all__ = [
     "US_SNAP_TAKE_UP_RAW_COLUMN",
     "US_SNAP_TAKE_UP_STAGE_NAME",
     "derive_us_snap_take_up_from_manifest",
+    "reported_snap_receipt_by_spm_unit",
     "us_snap_take_up_signal_gate",
     "us_snap_take_up_summary",
     "us_snap_take_up_stage_spec",
@@ -90,6 +91,32 @@ _DERIVE_SNAP_TAKE_UP_PARAMETER_KEYS = frozenset(
 #: rate directly. A share outside the band means the anchor or the draw
 #: collapsed — or a constant-True surface (the published landmine).
 _TAKE_UP_SHARE_BAND = (0.70, 0.95)
+
+
+def reported_snap_receipt_by_spm_unit(person: pd.DataFrame) -> pd.Series:
+    """Return the reported-receipt flag shared by SNAP source stages.
+
+    ``SPM_SNAPSUB`` is an annual SPM-unit amount replicated on person rows.
+    A unit reports SNAP receipt when the maximum member value is positive;
+    non-numeric and missing values are treated as zero.
+    """
+
+    required = [US_SNAP_TAKE_UP_RAW_COLUMN, _SPM_MEMBERSHIP_COLUMN]
+    missing = [column for column in required if column not in person.columns]
+    if missing:
+        raise SourceRuntimeError(
+            f"Reported SNAP receipt requires person column(s): {missing}."
+        )
+    subsidy = pd.to_numeric(person[US_SNAP_TAKE_UP_RAW_COLUMN], errors="coerce").fillna(
+        0.0
+    )
+    return (
+        person.assign(_reported_snap_subsidy=subsidy)
+        .groupby(_SPM_MEMBERSHIP_COLUMN, sort=True)["_reported_snap_subsidy"]
+        .max()
+        .gt(0.0)
+        .rename("reported_snap_receipt")
+    )
 
 
 def us_snap_take_up_stage_spec() -> SourceStageSpec:
@@ -195,13 +222,9 @@ def derive_us_snap_take_up_from_manifest(
         )
     rate = _take_up_rate(operation)
 
-    subsidy = pd.to_numeric(frame[US_SNAP_TAKE_UP_RAW_COLUMN], errors="coerce").fillna(
-        0.0
-    )
     weight = pd.to_numeric(frame[_PERSON_WEIGHT_COLUMN], errors="coerce").fillna(0.0)
-    person = frame.assign(_subsidy=subsidy, _weight=weight)
+    person = frame.assign(_weight=weight)
     aggregates = {
-        "_subsidy": ("_subsidy", "max"),
         "_weight": ("_weight", "first"),
     }
     for column in ("source_year", "source_household_id"):
@@ -215,7 +238,12 @@ def derive_us_snap_take_up_from_manifest(
         .reset_index()
     )
 
-    reported = units["_subsidy"].to_numpy(dtype=np.float64) > 0.0
+    reported = (
+        reported_snap_receipt_by_spm_unit(frame)
+        .reindex(units[_SPM_MEMBERSHIP_COLUMN])
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
     weights = units["_weight"].to_numpy(dtype=np.float64)
     total_weight = float(weights.sum())
     reporter_weight = float(weights[reported].sum())
@@ -317,15 +345,7 @@ def _reported_by_spm_unit(frame: Frame) -> pd.Series | None:
     person = frame.table("person")
     if US_SNAP_TAKE_UP_RAW_COLUMN not in person.columns:
         return None
-    subsidy = pd.to_numeric(person[US_SNAP_TAKE_UP_RAW_COLUMN], errors="coerce").fillna(
-        0.0
-    )
-    return (
-        person.assign(_subsidy=subsidy)
-        .groupby(_SPM_MEMBERSHIP_COLUMN)["_subsidy"]
-        .max()
-        .gt(0.0)
-    )
+    return reported_snap_receipt_by_spm_unit(person)
 
 
 def us_snap_take_up_summary(frame: Frame) -> dict[str, object]:
