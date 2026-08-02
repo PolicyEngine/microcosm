@@ -14,23 +14,22 @@ import numpy as np
 import pandas as pd
 
 from populace.build.us_runtime.alimony import derive_us_alimony_from_asec
-from populace.build.us_runtime.snap_take_up import (
-    US_SNAP_TAKE_UP_RAW_COLUMN,
-    reported_snap_receipt_by_spm_unit,
-)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
+    "CPS_REPORTED_SNAP_RAW_COLUMN",
     "derive_us_cps_carried_inputs",
+    "reported_snap_receipt_by_spm_unit",
 ]
 
 TAXABLE_INTEREST_FRACTION = 0.680
 QUALIFIED_DIVIDEND_FRACTION = 0.448
 TAXABLE_PENSION_FRACTION = 0.590
 LONG_TERM_CAPITAL_GAIN_FRACTION = 0.880
+CPS_REPORTED_SNAP_RAW_COLUMN = "SPM_SNAPSUB"
 
 CPS_CARRIED_FORMULA_OWNED_COLUMNS = frozenset(
     {
@@ -205,6 +204,30 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
     )
 
 
+def reported_snap_receipt_by_spm_unit(person: pd.DataFrame) -> pd.Series:
+    """Return the shared max-positive annual SNAP receipt interpretation.
+
+    ``SPM_SNAPSUB`` is an annual SPM-unit amount replicated on person rows.
+    A unit reports SNAP receipt when the maximum member value is positive;
+    non-numeric and missing values are treated as zero.
+    """
+
+    required = [CPS_REPORTED_SNAP_RAW_COLUMN, "person_spm_unit_id"]
+    missing = [column for column in required if column not in person.columns]
+    if missing:
+        raise ValueError(f"Reported SNAP receipt requires person column(s): {missing}.")
+    subsidy = pd.to_numeric(
+        person[CPS_REPORTED_SNAP_RAW_COLUMN], errors="coerce"
+    ).fillna(0.0)
+    return (
+        person.assign(_reported_snap_subsidy=subsidy)
+        .groupby("person_spm_unit_id", sort=True)["_reported_snap_subsidy"]
+        .max()
+        .gt(0.0)
+        .rename("reported_snap_receipt")
+    )
+
+
 def _fill_missing(table: pd.DataFrame, column: str, values: np.ndarray) -> None:
     if column not in table.columns:
         table[column] = values.astype("float64")
@@ -337,8 +360,8 @@ def _fill_spm_unit_reported_enrollment_inputs(
 
     if "receives_snap" not in spm_unit.columns:
         snap_person = person
-        if US_SNAP_TAKE_UP_RAW_COLUMN not in snap_person.columns:
-            snap_person = person.assign(**{US_SNAP_TAKE_UP_RAW_COLUMN: 0.0})
+        if CPS_REPORTED_SNAP_RAW_COLUMN not in snap_person.columns:
+            snap_person = person.assign(**{CPS_REPORTED_SNAP_RAW_COLUMN: 0.0})
         reported = reported_snap_receipt_by_spm_unit(snap_person)
         spm_unit["receives_snap"] = (
             reported.reindex(spm_unit["spm_unit_id"]).fillna(False).to_numpy(dtype=bool)

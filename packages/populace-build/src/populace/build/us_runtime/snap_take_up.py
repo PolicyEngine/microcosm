@@ -55,6 +55,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.cps_carried import (
+    CPS_REPORTED_SNAP_RAW_COLUMN,
+    reported_snap_receipt_by_spm_unit,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -76,7 +80,7 @@ US_SNAP_TAKE_UP_STAGE_NAME = "snap_take_up"
 US_SNAP_TAKE_UP_OUTPUT_COLUMN = "takes_up_snap_if_eligible"
 
 #: Raw CPS ASEC person column carrying the SPM unit's reported SNAP subsidy.
-US_SNAP_TAKE_UP_RAW_COLUMN = "SPM_SNAPSUB"
+US_SNAP_TAKE_UP_RAW_COLUMN = CPS_REPORTED_SNAP_RAW_COLUMN
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _SPM_MEMBERSHIP_COLUMN = "person_spm_unit_id"
@@ -91,32 +95,6 @@ _DERIVE_SNAP_TAKE_UP_PARAMETER_KEYS = frozenset(
 #: rate directly. A share outside the band means the anchor or the draw
 #: collapsed — or a constant-True surface (the published landmine).
 _TAKE_UP_SHARE_BAND = (0.70, 0.95)
-
-
-def reported_snap_receipt_by_spm_unit(person: pd.DataFrame) -> pd.Series:
-    """Return the reported-receipt flag shared by SNAP source stages.
-
-    ``SPM_SNAPSUB`` is an annual SPM-unit amount replicated on person rows.
-    A unit reports SNAP receipt when the maximum member value is positive;
-    non-numeric and missing values are treated as zero.
-    """
-
-    required = [US_SNAP_TAKE_UP_RAW_COLUMN, _SPM_MEMBERSHIP_COLUMN]
-    missing = [column for column in required if column not in person.columns]
-    if missing:
-        raise SourceRuntimeError(
-            f"Reported SNAP receipt requires person column(s): {missing}."
-        )
-    subsidy = pd.to_numeric(person[US_SNAP_TAKE_UP_RAW_COLUMN], errors="coerce").fillna(
-        0.0
-    )
-    return (
-        person.assign(_reported_snap_subsidy=subsidy)
-        .groupby(_SPM_MEMBERSHIP_COLUMN, sort=True)["_reported_snap_subsidy"]
-        .max()
-        .gt(0.0)
-        .rename("reported_snap_receipt")
-    )
 
 
 def us_snap_take_up_stage_spec() -> SourceStageSpec:
