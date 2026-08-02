@@ -10,27 +10,36 @@ for the US pipeline, in the order that avoids the known failure modes.
 ## What may never become a target
 
 Before minting anything, check the class of the number (doctrine, Max
-2026-08-02):
+2026-08-02; refined same day):
 
-- **Survey-derived statistics — poverty rates (SPM/OPM) above all — are
-  permanent calibration holdouts.** Populace exists to fix the survey's
-  issues through imputation, computed taxes and benefits, and calibration to
-  administrative systems. Calibrating to a survey-derived statistic launders
-  survey error back into the model and destroys the held-out validation
-  signal (the scorecard's win column is held-out-only for the same reason).
-  Release gates may *fail* a certification on a held-out poverty regression;
-  *fitting* the statistic is categorically different and prohibited. The
-  same applies to other models' outputs (TRIM3/ATTIS/DYNASIM estimates are
-  comparators or seeds, never targets).
-- **Corollary: deviations from official poverty metrics are never inherently
-  problematic.** A model that corrects benefit underreporting should, all
-  else equal, sit below survey-based poverty rates; divergence from Census
-  numbers is expected by construction. Treat official statistics as
-  comparators — direction and composition anomalies are investigation flags,
-  not "misses".
-
-Administrative systems (FNS, SSA, SOI, CMS, ACF, HUD counts and dollars)
-remain the target universe.
+- **Modeled-outcome statistics are permanent calibration holdouts.** The
+  test is not "does it come from a survey" — it is "is this an OUTPUT of
+  the simulated tax/benefit system whose survey measurement embeds the
+  defects populace exists to correct." Poverty rates (SPM/OPM) above all,
+  and survey-reported benefit receipt or amounts, may never become targets:
+  populace fixes those defects through imputation, computed taxes and
+  benefits, and calibration, so fitting the outcome launders the error back
+  in and destroys the held-out validation signal (the scorecard's win
+  column is held-out-only for the same reason). Release gates may *fail* a
+  certification on a held-out poverty regression; *fitting* the statistic
+  is categorically different and prohibited. Other models' outputs
+  (TRIM3/ATTIS/DYNASIM estimates) are likewise comparators or seeds, never
+  targets.
+- **Frame and structure margins are legitimate targets regardless of
+  source.** Population, demographics, geography, household composition,
+  and income-distribution margins may be targeted from the best available
+  measurement — often a survey. ACS aggregates (the `census_acs.acs` feed
+  family) are the canonical example: population and structure by
+  geography, where ACS is the authoritative source and the quantity is not
+  a modeled outcome. Prefer an administrative source when one covers the
+  same cell and concept — e.g. congressional-district income binds from
+  `irs_soi.congressional_district_2022`, not from ACS income.
+- **Corollary: deviations from official poverty metrics are never
+  inherently problematic.** A model that corrects benefit underreporting
+  should, all else equal, sit below survey-based poverty rates; divergence
+  from Census numbers is expected by construction. Treat official
+  statistics as comparators — direction and composition anomalies are
+  investigation flags, not "misses".
 
 ## 0. Mint the fact (ledger repo)
 

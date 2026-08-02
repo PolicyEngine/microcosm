@@ -234,19 +234,23 @@ risks, not footnotes:
   calibration objective, so validity must be scored on held-out targets and
   variables the objective never saw — otherwise "passes calibration" launders
   into "is correct."
-- **Survey-derived statistics are permanent holdouts.** Poverty rates and
-  other survey-derived metrics may never become calibration targets — the
-  rebuild exists to fix the survey's defects via imputation, computed taxes
-  and benefits, and calibration to administrative systems, so fitting a
-  survey statistic launders its error back in and destroys the held-out
-  signal the evaluation depends on. Corollary: deviations from official
-  poverty metrics are expected by construction (corrected underreporting
-  should sit below survey-based rates, all else equal) and are never
-  inherently problematic — official numbers are comparators, not truth.
-  Note for the steward: the protected-families list above says "plus SPM" —
-  if that denotes SPM poverty rates as a target family it conflicts with
-  this rule and needs a ruling; if it denotes SPM resource-component
-  families, no conflict.
+- **Modeled-outcome statistics are permanent holdouts.** Poverty rates and
+  other outputs of the simulated tax/benefit system may never become
+  calibration targets — the rebuild exists to fix the survey's measurement
+  of those outcomes via imputation, computed taxes and benefits, and
+  calibration, so fitting the outcome launders its error back in and
+  destroys the held-out signal the evaluation depends on. The test is
+  outcome-vs-frame, not survey-vs-admin: survey aggregates for population
+  and structure (the ACS feed family) are legitimate targets where the
+  survey is the best measurement, with administrative sources preferred
+  when they cover the same cell (CD income binds from SOI, not ACS).
+  Corollary: deviations from official poverty metrics are expected by
+  construction (corrected underreporting should sit below survey-based
+  rates, all else equal) and are never inherently problematic — official
+  numbers are comparators, not truth. Note for the steward: the
+  protected-families list above says "plus SPM" — if that denotes SPM
+  poverty rates as a target family it conflicts with this rule and needs a
+  ruling; if it denotes SPM resource-component families, no conflict.
 - **Correlated evidence.** Target standard errors from one survey are
   design-correlated across its published cells; treating them as diagonal
   overweights cell-rich surveys (the standard GREG caveat). Evidence
