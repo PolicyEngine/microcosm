@@ -307,6 +307,9 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
         # Housing-assistance receipt is source-observed in the raw pool. Other
         # takes_up_* leaves are runtime-owned draws and are not donor targets.
         "benefit_participation": ("takes_up_housing_assistance_if_eligible",),
+        # Reported TANF/SNAP receipt is produced from annual ASEC amounts before
+        # cloning and transferred like the person-level required booleans.
+        "model_required_boolean": ("is_tanf_enrolled", "receives_snap"),
         "model_required_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
     },
 }
