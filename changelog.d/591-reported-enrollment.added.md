@@ -1,0 +1,1 @@
+Populate monthly `is_tanf_enrolled` and `receives_snap` inputs from positive annual CPS ASEC reports at SPM-unit grain, preserve the flags across support clones, and transfer them to ACS units through the model-required boolean plan.
