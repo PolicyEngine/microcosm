@@ -348,6 +348,15 @@ def test_model_api_reference_helper_consumer_is_discoverable() -> None:
     )
 
 
+def test_strike_benefits_market_income_consumer_is_discoverable() -> None:
+    assert any(
+        receipt.consumer == "market_income"
+        and receipt.path.endswith("/market_income.py")
+        and receipt.line > 0
+        for receipt in _ENGINE_INDEX.consumer_receipts("strike_benefits")
+    )
+
+
 @pytest.mark.parametrize(
     ("variable", "consumer", "filename"),
     (

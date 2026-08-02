@@ -13,7 +13,10 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.alimony import derive_us_alimony_from_asec
+from populace.build.us_runtime.alimony import (
+    US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
+    derive_us_alimony_from_asec,
+)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -75,8 +78,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "has_va_health_coverage_at_interview",
         "is_female",
         "unemployment_compensation",
-        "alimony_income",
-        "miscellaneous_income",
+        *US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
     }
 )
 

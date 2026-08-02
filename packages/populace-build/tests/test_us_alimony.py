@@ -12,6 +12,7 @@ from populace.build.us_runtime import puf_support as puf_support_module
 from populace.build.us_runtime.alimony import (
     ALIMONY_ASEC_ARCHIVED_DERIVATION_URL,
     ALIMONY_PUF_ARCHIVED_DERIVATION_URL,
+    STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL,
     derive_us_alimony_from_asec,
     derive_us_alimony_from_puf,
     us_alimony_signal_gate,
@@ -50,6 +51,7 @@ def test_archived_coordinates_are_commit_and_line_pinned() -> None:
     for url in (
         ALIMONY_ASEC_ARCHIVED_DERIVATION_URL,
         ALIMONY_PUF_ARCHIVED_DERIVATION_URL,
+        STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL,
     ):
         assert "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe" in url
         assert "#L" in url
@@ -66,15 +68,56 @@ def test_asec_mapping_splits_alimony_and_miscellaneous_income_exactly() -> None:
     result = derive_us_alimony_from_asec(source)
 
     assert result["alimony_income"].tolist() == [5_000.0, 0.0, 0.0, 0.0]
+    assert result["strike_benefits"].tolist() == [0.0, 700.0, 0.0, 0.0]
     assert result["miscellaneous_income"].tolist() == [0.0, 0.0, 900.0, 0.0]
+    assert all(
+        result[column].dtype == np.dtype("float64")
+        for column in (
+            "alimony_income",
+            "strike_benefits",
+            "miscellaneous_income",
+        )
+    )
     assert "alimony_income" not in source
+    assert "strike_benefits" not in source
     assert "miscellaneous_income" not in source
 
 
-def test_asec_mapping_preserves_an_already_materialized_pair() -> None:
+def test_strike_benefits_matches_archived_ecps_mapping_semantics() -> None:
+    source = pd.DataFrame(
+        {
+            "OI_OFF": [12, 20, 19, 12, 0],
+            "OI_VAL": [700.0, 5_000.0, 900.0, 0.0, 0.0],
+        }
+    )
+
+    result = derive_us_alimony_from_asec(source)
+    archived_ecps = (source["OI_OFF"] == 12) * source["OI_VAL"]
+
+    np.testing.assert_array_equal(result["strike_benefits"], archived_ecps)
+
+
+def test_asec_other_income_split_conserves_oi_val_per_person() -> None:
+    source = pd.DataFrame(
+        {
+            "OI_OFF": [12, 20, 19, 0, 7],
+            "OI_VAL": [700.0, 5_000.0, 900.0, 0.0, 125.5],
+        }
+    )
+
+    result = derive_us_alimony_from_asec(source)
+    split_total = result.loc[
+        :, ["alimony_income", "strike_benefits", "miscellaneous_income"]
+    ].sum(axis="columns")
+
+    np.testing.assert_array_equal(split_total, source["OI_VAL"])
+
+
+def test_asec_mapping_preserves_an_already_materialized_split() -> None:
     source = pd.DataFrame(
         {
             "alimony_income": [10.0],
+            "strike_benefits": [30.0],
             "miscellaneous_income": [20.0],
         }
     )
@@ -282,6 +325,7 @@ def test_signal_gate_rejects_asec_alimony_left_in_miscellaneous_income() -> None
                 "OI_VAL": amounts,
                 "alimony_income": income,
                 "alimony_expense": expense,
+                "strike_benefits": np.zeros(n),
                 "miscellaneous_income": miscellaneous,
             }
         )
@@ -294,6 +338,40 @@ def test_signal_gate_rejects_asec_alimony_left_in_miscellaneous_income() -> None
         "miscellaneous_income does not exclude alimony/strike" in failure
         for failure in result.failures
     )
+
+
+def test_signal_gate_rejects_discarded_asec_strike_benefits() -> None:
+    n = 1_000
+    codes = np.zeros(n)
+    amounts = np.zeros(n)
+    income = np.zeros(n)
+    expense = np.zeros(n)
+    strike_benefits = np.zeros(n)
+    miscellaneous = np.zeros(n)
+    codes[10] = 12
+    amounts[10] = 2_000.0
+    expense[20] = 3_000.0
+    frame = _PersonFrame(
+        pd.DataFrame(
+            {
+                "OI_OFF": codes,
+                "OI_VAL": amounts,
+                "alimony_income": income,
+                "alimony_expense": expense,
+                "strike_benefits": strike_benefits,
+                "miscellaneous_income": miscellaneous,
+            }
+        )
+    )
+
+    result = us_alimony_signal_gate(frame)  # type: ignore[arg-type]
+
+    assert not result.passed
+    assert any(
+        "strike_benefits disagrees with OI_OFF == 12" in failure
+        for failure in result.failures
+    )
+    assert any("does not conserve OI_VAL" in failure for failure in result.failures)
 
 
 @pytest.mark.parametrize(
@@ -314,11 +392,11 @@ def test_signal_gate_rejects_missing_default_or_invalid_surface(
 
 
 @requires_us
-def test_policyengine_us_contract_is_two_person_year_input_leaves() -> None:
+def test_policyengine_us_contract_includes_strike_person_year_input_leaf() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
     variables = CountryTaxBenefitSystem().variables
-    for name in ("alimony_income", "alimony_expense"):
+    for name in ("alimony_income", "alimony_expense", "strike_benefits"):
         variable = variables[name]
         assert variable.is_input_variable()
         assert variable.entity.key == "person"

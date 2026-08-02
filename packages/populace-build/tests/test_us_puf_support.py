@@ -1059,6 +1059,7 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert "farm_income" not in person
     assert person["unemployment_compensation"].tolist() == [0.0, 70.0, 0.0]
     assert person["alimony_income"].tolist() == [0.0, 0.0, 0.0]
+    assert person["strike_benefits"].tolist() == [0.0, 0.0, 0.0]
     assert person["miscellaneous_income"].tolist() == [3.0, 0.0, 0.0]
     assert person["health_insurance_premiums_without_medicare_part_b"].tolist() == [
         400.0,
