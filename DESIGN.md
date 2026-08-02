@@ -234,6 +234,19 @@ risks, not footnotes:
   calibration objective, so validity must be scored on held-out targets and
   variables the objective never saw — otherwise "passes calibration" launders
   into "is correct."
+- **Survey-derived statistics are permanent holdouts.** Poverty rates and
+  other survey-derived metrics may never become calibration targets — the
+  rebuild exists to fix the survey's defects via imputation, computed taxes
+  and benefits, and calibration to administrative systems, so fitting a
+  survey statistic launders its error back in and destroys the held-out
+  signal the evaluation depends on. Corollary: deviations from official
+  poverty metrics are expected by construction (corrected underreporting
+  should sit below survey-based rates, all else equal) and are never
+  inherently problematic — official numbers are comparators, not truth.
+  Note for the steward: the protected-families list above says "plus SPM" —
+  if that denotes SPM poverty rates as a target family it conflicts with
+  this rule and needs a ruling; if it denotes SPM resource-component
+  families, no conflict.
 - **Correlated evidence.** Target standard errors from one survey are
   design-correlated across its published cells; treating them as diagonal
   overweights cell-rich surveys (the standard GREG caveat). Evidence

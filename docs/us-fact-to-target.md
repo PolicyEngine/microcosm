@@ -7,6 +7,31 @@ which variable a fact binds, in what mode, over which universe, whether it
 binds at all — is a consumer decision and lives here. This is the procedure
 for the US pipeline, in the order that avoids the known failure modes.
 
+## What may never become a target
+
+Before minting anything, check the class of the number (doctrine, Max
+2026-08-02):
+
+- **Survey-derived statistics — poverty rates (SPM/OPM) above all — are
+  permanent calibration holdouts.** Populace exists to fix the survey's
+  issues through imputation, computed taxes and benefits, and calibration to
+  administrative systems. Calibrating to a survey-derived statistic launders
+  survey error back into the model and destroys the held-out validation
+  signal (the scorecard's win column is held-out-only for the same reason).
+  Release gates may *fail* a certification on a held-out poverty regression;
+  *fitting* the statistic is categorically different and prohibited. The
+  same applies to other models' outputs (TRIM3/ATTIS/DYNASIM estimates are
+  comparators or seeds, never targets).
+- **Corollary: deviations from official poverty metrics are never inherently
+  problematic.** A model that corrects benefit underreporting should, all
+  else equal, sit below survey-based poverty rates; divergence from Census
+  numbers is expected by construction. Treat official statistics as
+  comparators — direction and composition anomalies are investigation flags,
+  not "misses".
+
+Administrative systems (FNS, SSA, SOI, CMS, ACF, HUD counts and dollars)
+remain the target universe.
+
 ## 0. Mint the fact (ledger repo)
 
 Author the measure in the owning source package
