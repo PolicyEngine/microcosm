@@ -427,6 +427,8 @@ class _MeanFitted:
         self.weight_kind = weight_kind
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        assert all(dtype == np.dtype("float64") for dtype in frame.dtypes)
+        assert np.isfinite(frame.to_numpy()).all()
         return pd.DataFrame(
             {
                 target: np.full(len(frame), value, dtype=np.float64)
@@ -946,6 +948,153 @@ def test_known_boolean_metadata_accepts_python_and_numpy_boolean_objects(
 
     assert encoding.kind == "boolean"
     np.testing.assert_array_equal(encoding.model_values, np.asarray([1.0, 0.0]))
+
+
+def test_semantic_boolean_predictor_encoding_preserves_missingness() -> None:
+    predictors = pd.DataFrame(
+        {
+            "is_female": pd.Series(
+                [True, None, np.bool_(False)],
+                dtype=object,
+            )
+        }
+    )
+
+    acs_transfer_module._validate_optional_numeric_frame(
+        predictors,
+        context="fixture predictors",
+    )
+    encoded = acs_transfer_module._encoded_predictor_frame(
+        predictors,
+        predictors=("is_female",),
+    )
+    complete = acs_transfer_module._complete_predictor_mask(
+        predictors,
+        predictors=("is_female",),
+    )
+
+    assert encoded["is_female"].dtype == np.dtype("float64")
+    np.testing.assert_allclose(
+        encoded["is_female"].to_numpy(),
+        np.asarray([1.0, np.nan, 0.0]),
+        equal_nan=True,
+    )
+    np.testing.assert_array_equal(complete, np.asarray([True, False, True]))
+    acs_transfer_module._validate_required_numeric_frame(
+        predictors,
+        context="fixture required predictors",
+    )
+
+
+def test_predictor_validation_rejects_infinity() -> None:
+    predictors = pd.DataFrame({"age": [40.0, np.inf]})
+
+    with pytest.raises(ValueError, match="infinite.*age"):
+        acs_transfer_module._validate_required_numeric_frame(
+            predictors,
+            context="fixture required predictors",
+        )
+
+
+def test_required_semantic_boolean_nulls_are_complete_case_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _replace_column(
+        _donor_frame(),
+        "person",
+        "is_female",
+        pd.Series(
+            [None, True, True, False, False, True, True, False],
+            index=_donor_frame().person.index,
+            dtype=object,
+        ),
+    )
+    recipient = _replace_column(
+        _recipient_frame(),
+        "person",
+        "is_female",
+        pd.Series(
+            [None, True, True, False, True, False],
+            index=_recipient_frame().person.index,
+            dtype=object,
+        ),
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {"tax_detail": ("qualified_dividend_income",)},
+        },
+        n_estimators=1,
+    )
+
+    assert result.frame.person["qualified_dividend_income"].isna().tolist() == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
+    provenance = result.imputed_inputs[0]
+    assert provenance.imputed_recipient_rows == 5
+    assert provenance.unmodeled_recipient_rows == 1
+    assert _MeanQRF.calls
+    assert all(
+        np.isfinite(call["features"].to_numpy()).all() for call in _MeanQRF.calls
+    )
+
+
+def test_group_required_predictors_preserve_missing_state_for_masking() -> None:
+    recipient = _replace_column(
+        _recipient_frame(),
+        "household",
+        "state_fips",
+        [6.0, np.nan, 36.0],
+    )
+
+    surface = acs_transfer_module._transfer_feature_surface(
+        recipient,
+        recipient,
+        entity="tax_unit",
+        targets=("first_home_mortgage_balance",),
+    )
+    complete = acs_transfer_module._complete_predictor_mask(
+        surface.recipient,
+        predictors=surface.required,
+    )
+
+    np.testing.assert_allclose(
+        surface.recipient["__acs_transfer_state_fips"].to_numpy(),
+        np.asarray([6.0, np.nan, 36.0]),
+        equal_nan=True,
+    )
+    np.testing.assert_array_equal(complete, np.asarray([True, False, True]))
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [True, 0.0],
+        [np.bool_(False), 1],
+        [True, "False"],
+    ],
+)
+def test_mixed_object_predictor_is_not_a_semantic_boolean(
+    values: list[object],
+) -> None:
+    predictors = pd.DataFrame(
+        {"is_female": pd.Series(values, dtype=object)},
+    )
+
+    with pytest.raises(TypeError, match="numeric/boolean.*is_female"):
+        acs_transfer_module._validate_optional_numeric_frame(
+            predictors,
+            context="fixture predictors",
+        )
 
 
 def test_auto_channel_excludes_artificial_asec_zeros(
@@ -1603,7 +1752,7 @@ def test_non_finite_recipient_predictor_is_refused_without_zero_fill() -> None:
 
     with pytest.raises(
         ValueError,
-        match="recipient person predictors.*non-finite.*age",
+        match="recipient person predictors.*infinite.*age",
     ):
         transfer_acs_inputs(
             recipient,

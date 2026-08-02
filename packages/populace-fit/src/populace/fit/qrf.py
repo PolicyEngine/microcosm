@@ -160,8 +160,9 @@ def _validate_targets_finite(table: pd.DataFrame, targets: list[str]) -> None:
     only sound contract is to require finite targets and refuse otherwise,
     naming the offending column and its NaN count so the caller can find it.
 
-    Predictors are not checked here: a forest can split around NaN features and
-    a missing predictor is not silently miscoded the way a missing target is.
+    Predictors are not checked by this target-specific helper. Missing-feature
+    semantics belong to the calling workflow, and the installed forest may
+    reject NaN predictors; complete-case callers must filter them before fit.
 
     Args:
         table: The entity table the fit reads targets from.
