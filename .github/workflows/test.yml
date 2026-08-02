@@ -18,9 +18,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Sync workspace with US engine metadata
-        # The pool transfer-leaf sweep is a live PolicyEngine-US ownership
-        # guard. Installing the US extra makes an upstream formula change fail
-        # here instead of being skipped until a remote build.
+        # The pool-input sweeps are live PolicyEngine-US ownership and consumer
+        # existence guards. Installing the US extra makes an upstream formula or
+        # consumer change fail here instead of being skipped until a remote build.
         run: uv sync --all-packages --extra us
       - name: Behavioral contract suite + unit tests
         run: uv run pytest

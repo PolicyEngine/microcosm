@@ -274,7 +274,6 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "has_champva_health_coverage_at_interview",
             "has_esi",
             "has_indian_health_service_coverage_at_interview",
-            "has_marketplace_health_coverage",
             "has_marketplace_health_coverage_at_interview",
             "has_medicaid_health_coverage_at_interview",
             "has_non_marketplace_direct_purchase_health_coverage_at_interview",

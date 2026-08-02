@@ -34,10 +34,12 @@ from populace.build.us_runtime.multispine_pool import (
     POOL_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
     MultispinePoolResult,
+    PoolInputSurfaceEntry,
     PoolStageOutput,
     _complete_schedule_d_input,
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
+    pool_input_surface,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
@@ -660,13 +662,111 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     )
     assert "weeks_worked" not in owners
     assert "medicare_part_b_premiums_reported" not in owners
+    assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 115
+    assert len(target_names) == 114
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "cb695fe8b99baf5edaeed0e6e84df2eaaf99fa867df6008e1d9ff0a2edcbbc71"
+        == "4c106c69c9791b4a323088cb7f4894578b60a713bec308e807a956001fc9b965"
     )
+
+
+def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
+    surface = pool_input_surface()
+    by_name = {entry.variable: entry for entry in surface}
+
+    assert len(surface) == len(by_name) == 135
+    assert [entry.variable for entry in surface] == sorted(by_name)
+    assert Counter(
+        provenance for entry in surface for provenance in entry.provenance
+    ) == Counter(
+        {
+            "pool_transfer_target_families": 114,
+            "POOL_DEFERRED_TRANSFER_INPUTS": 3,
+            "PRIMARY_QRF_TARGET_ORDER": 65,
+            "load_take_up_contract": 13,
+        }
+    )
+    assert by_name["bank_account_assets"] == PoolInputSurfaceEntry(
+        variable="bank_account_assets",
+        entity="person",
+        family="deferred_asset",
+        provenance=("POOL_DEFERRED_TRANSFER_INPUTS",),
+    )
+    assert by_name["real_estate_taxes"] == PoolInputSurfaceEntry(
+        variable="real_estate_taxes",
+        entity="person",
+        family="primary_puf_qrf_nontransfer",
+        provenance=("PRIMARY_QRF_TARGET_ORDER",),
+    )
+    assert by_name["first_home_mortgage_balance"] == PoolInputSurfaceEntry(
+        variable="first_home_mortgage_balance",
+        entity="tax_unit",
+        family="puf_tax_itemization",
+        provenance=(
+            "pool_transfer_target_families",
+            "PRIMARY_QRF_TARGET_ORDER",
+        ),
+    )
+    assert by_name["takes_up_housing_assistance_if_eligible"] == (
+        PoolInputSurfaceEntry(
+            variable="takes_up_housing_assistance_if_eligible",
+            entity="spm_unit",
+            family="benefit_participation",
+            provenance=(
+                "pool_transfer_target_families",
+                "load_take_up_contract",
+            ),
+        )
+    )
+    assert by_name["takes_up_aca_if_eligible"] == PoolInputSurfaceEntry(
+        variable="takes_up_aca_if_eligible",
+        entity="tax_unit",
+        family="take_up_out_of_scope",
+        provenance=("load_take_up_contract",),
+    )
+    assert {
+        "has_marketplace_health_coverage",
+        "medicare_part_b_premiums_reported",
+        "schedule_d_capital_gain_distributions",
+    }.isdisjoint(by_name)
+    assert "has_marketplace_health_coverage_at_interview" in by_name
+
+
+def test_pool_input_surface_rejects_conflicting_registry_entities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_DEFERRED_TRANSFER_INPUTS",
+        {
+            **POOL_DEFERRED_TRANSFER_INPUTS,
+            "takes_up_housing_assistance_if_eligible": {"entity": "person"},
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="takes_up_housing_assistance_if_eligible.*conflicting entities",
+    ):
+        pool_input_surface()
+
+
+def test_pool_input_surface_rejects_primary_qrf_target_without_entity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "PRIMARY_QRF_TARGET_ORDER",
+        (*multispine_pool_module.PRIMARY_QRF_TARGET_ORDER, "orphan_qrf_target"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="orphan_qrf_target.*no declared entity",
+    ):
+        pool_input_surface()
 
 
 class _ProducerDtypeFittedQRF:
@@ -1114,7 +1214,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 115
+    assert len(targets) == 114
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1139,7 +1239,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 115
+    assert len(targets) == 114
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
@@ -1156,7 +1256,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 118
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 117
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1368,6 +1468,11 @@ def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
         for program in load_take_up_contract().programs
     }
     assert transferred | take_up | {("person", "ssi")} <= registered
+    assert ("person", "has_marketplace_health_coverage") not in registered
+    assert (
+        "person",
+        "has_marketplace_health_coverage_at_interview",
+    ) in registered
 
     immigration_spec = next(
         spec

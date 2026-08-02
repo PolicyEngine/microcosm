@@ -741,6 +741,15 @@ class TestShippedManifest:
             "medicare_part_b_premiums_reported",
         }.isdisjoint(manifest.declared_columns)
 
+    def test_deprecated_marketplace_leaf_is_a_deliberate_nonrequirement(
+        self,
+    ) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "has_marketplace_health_coverage" not in manifest.declared_columns
+        assert (
+            "has_marketplace_health_coverage_at_interview" in manifest.required_columns
+        )
+
     def test_ssi_assets_are_required_without_exclusion(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for asset in SSI_COUNTABLE_RESOURCE_ASSETS:

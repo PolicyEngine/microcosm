@@ -62,6 +62,7 @@ from populace.build.us_runtime.pregnancy import with_us_pregnancy_inputs
 from populace.build.us_runtime.prior_year_income import (
     with_us_prior_year_income_inputs,
 )
+from populace.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_OUTPUT_COLUMNS,
@@ -116,6 +117,7 @@ __all__ = [
     "POOL_SPINE_AGREEMENT_REGISTRY",
     "POOL_TIME_PERIOD",
     "MultispinePoolResult",
+    "PoolInputSurfaceEntry",
     "PoolStageOutput",
     "SourceOperatorContract",
     "complete_multispine_source_inputs",
@@ -123,6 +125,7 @@ __all__ = [
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
     "pool_transfer_target_families",
+    "pool_input_surface",
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
     "run_multispine_pool_path",
@@ -204,6 +207,22 @@ class _PoolRulesEngine(Protocol):
         variables: list[str],
         period: int,
     ) -> Mapping[str, np.ndarray]: ...
+
+
+@dataclass(frozen=True)
+class PoolInputSurfaceEntry:
+    """One normalized member of the pre-simulation pool input surface.
+
+    ``provenance`` names every source registry that requires the same
+    variable/entity pair. Overlaps retain the family from the first registry
+    in production precedence order: transfer, deferred, primary QRF, then
+    take-up contract.
+    """
+
+    variable: str
+    entity: str
+    family: str
+    provenance: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -492,6 +511,104 @@ def pool_transfer_target_families() -> TargetFamilies:
         for entity, targets in additions.items():
             plan.setdefault(entity, {})[f"source_operator_{family}"] = targets
     return plan
+
+
+def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
+    """Return the complete registry-derived pool input/imputation surface.
+
+    The surface is deliberately limited to transfer targets, explicit deferred
+    inputs, the production primary-QRF target order, and every checked-in
+    take-up contract variable. Variables repeated across registries are merged
+    by variable/entity and carry every provenance receipt. A variable assigned
+    to conflicting entities fails closed.
+    """
+
+    entries: dict[tuple[str, str], PoolInputSurfaceEntry] = {}
+    entity_by_variable: dict[str, str] = {}
+
+    def register(
+        variable: str,
+        *,
+        entity: str,
+        family: str,
+        provenance: str,
+    ) -> None:
+        previous_entity = entity_by_variable.setdefault(variable, entity)
+        if previous_entity != entity:
+            raise ValueError(
+                f"Pool input {variable!r} has conflicting entities "
+                f"{previous_entity!r} and {entity!r}."
+            )
+        key = (variable, entity)
+        existing = entries.get(key)
+        if existing is None:
+            entries[key] = PoolInputSurfaceEntry(
+                variable=variable,
+                entity=entity,
+                family=family,
+                provenance=(provenance,),
+            )
+            return
+        if provenance not in existing.provenance:
+            entries[key] = PoolInputSurfaceEntry(
+                variable=existing.variable,
+                entity=existing.entity,
+                family=existing.family,
+                provenance=(*existing.provenance, provenance),
+            )
+
+    for entity, families in pool_transfer_target_families().items():
+        for family, variables in families.items():
+            for variable in variables:
+                register(
+                    variable,
+                    entity=entity,
+                    family=family,
+                    provenance="pool_transfer_target_families",
+                )
+
+    for variable, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items():
+        register(
+            variable,
+            entity=declaration["entity"],
+            family="deferred_asset",
+            provenance="POOL_DEFERRED_TRANSFER_INPUTS",
+        )
+
+    primary_qrf_outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["primary_puf_qrf"]
+    for variable in PRIMARY_QRF_TARGET_ORDER:
+        entities = sorted(
+            entity
+            for entity, variables in primary_qrf_outputs.items()
+            if variable in variables
+        )
+        if not entities:
+            raise ValueError(
+                f"Primary QRF pool input {variable!r} has no declared entity."
+            )
+        if len(entities) != 1:
+            raise ValueError(
+                f"Primary QRF pool input {variable!r} has conflicting entities "
+                f"{entities}."
+            )
+        register(
+            variable,
+            entity=entities[0],
+            family="primary_puf_qrf_nontransfer",
+            provenance="PRIMARY_QRF_TARGET_ORDER",
+        )
+
+    for program in load_take_up_contract().programs:
+        register(
+            program.variable,
+            entity=program.entity,
+            family=f"take_up_{program.populace_treatment}",
+            provenance="load_take_up_contract",
+        )
+
+    return tuple(
+        sorted(entries.values(), key=lambda entry: (entry.variable, entry.entity))
+    )
 
 
 def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:

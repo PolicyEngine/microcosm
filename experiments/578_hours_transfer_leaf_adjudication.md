@@ -123,3 +123,40 @@ formula_owned []
 unknown []
 non_leaves []
 ```
+
+## 2026-08-01 appendix: deprecated Marketplace carrier drop
+
+PolicyEngine-US 1.764.6 defines `has_marketplace_health_coverage` at
+`policyengine_us/variables/household/expense/health/has_marketplace_health_coverage.py:4-15`
+as a "Deprecated legacy modeled Marketplace health coverage input." Its own
+documentation directs survey data to
+`has_marketplace_health_coverage_at_interview` and modeled take-up to
+`takes_up_aca_if_eligible`, and states that ACA PTC eligibility does not depend
+on the legacy variable. The consumer audit's one-pass AST sweep of all 5,770
+installed variables found zero external engine receipts for the legacy leaf;
+its definition is its only engine occurrence.
+
+At base `f53032f`, `cps_carried.py:263-270` derived one `marketplace` boolean
+from the ASEC `NOW_MRK` bit and wrote that identical array to both the legacy leaf and
+`has_marketplace_health_coverage_at_interview`. That was a duplicated carrier,
+not a second source concept. The carrier now emits only `_at_interview`; its
+`NOW_MRK` mapping is unchanged. The legacy name is also removed from the
+transfer declaration, frozen eCPS parity surface, and generated release-input
+coverage manifest. The live `_at_interview` source-stage aggregation and
+`takes_up_aca_if_eligible` remain unchanged.
+
+The regenerated coverage contract contains 163 required columns and 7 reviewed
+exclusions (170 declared columns total). The separate legacy fiscal-refresh
+compatibility fallback remains in `tools/build_us_fiscal_refresh_release.py`:
+it copies the old leaf only when `_at_interview` is absent, while this pool
+always materializes `_at_interview`, so it is not an executed pool consumer or
+carrier.
+
+The resulting transfer surface is deliberately 114 names:
+
+```text
+targets 114
+sorted_names_sha256 4c106c69c9791b4a323088cb7f4894578b60a713bec308e807a956001fc9b965
+has_marketplace_health_coverage absent
+has_marketplace_health_coverage_at_interview present
+```
