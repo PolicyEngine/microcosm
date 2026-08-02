@@ -486,6 +486,12 @@ def _inventory_modules(variables_root: Path) -> dict[str, _ModuleIR]:
                 if alias.name == "*":
                     star_imports.append(source_module)
                 else:
+                    module_imports.append(
+                        _ModuleImportBinding(
+                            source_module=f"{source_module}.{alias.name}",
+                            bound_path=(alias.asname or alias.name,),
+                        )
+                    )
                     imports.append(
                         _ImportBinding(
                             source_module=source_module,

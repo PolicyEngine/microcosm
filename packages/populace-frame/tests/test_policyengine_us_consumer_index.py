@@ -389,6 +389,110 @@ def test_ast_import_module_qualified_helper_fails_closed_on_unknown_sink(
         )
 
 
+_IMPORT_FROM_MODULE_CASES = (
+    pytest.param(
+        "from policyengine_us.variables import helpers",
+        "helpers",
+        id="absolute",
+    ),
+    pytest.param(
+        "from policyengine_us.variables import helpers as imported_helpers",
+        "imported_helpers",
+        id="aliased-absolute",
+    ),
+    pytest.param(
+        "from . import helpers",
+        "helpers",
+        id="relative",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("import_statement", "helper_name"),
+    _IMPORT_FROM_MODULE_CASES,
+)
+def test_import_from_module_qualified_helper_records_receipt(
+    tmp_path: Path,
+    import_statement: str,
+    helper_name: str,
+) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "helpers.py": _clean(
+                """
+                def read(person, period, variable):
+                    return person(variable, period)
+                """
+            ),
+            "consumer.py": _clean(
+                f"""
+                {import_statement}
+
+                class caller(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        return {helper_name}.read(
+                            person, period, "module_leaf"
+                        )
+                """
+            ),
+        },
+    )
+
+    assert _receipt_targets(index) == {"module_leaf"}
+    assert _receipt_identities(index, "module_leaf") == {
+        ("read", "variables/helpers.py", "entity_call")
+    }
+
+
+@pytest.mark.parametrize(
+    ("import_statement", "helper_name"),
+    _IMPORT_FROM_MODULE_CASES,
+)
+def test_import_from_module_qualified_helper_fails_closed_on_unknown_sink(
+    tmp_path: Path,
+    import_statement: str,
+    helper_name: str,
+) -> None:
+    with pytest.raises(RuntimeError) as exc_info:
+        _index(
+            tmp_path,
+            {
+                "helpers.py": _clean(
+                    """
+                    def read(person, period, variable):
+                        return person(variable, period)
+                    """
+                ),
+                "consumer.py": _clean(
+                    f"""
+                    {import_statement}
+
+                    class caller(Variable):
+                        value_type = float
+                        entity = Person
+                        definition_period = YEAR
+
+                        def formula(person, period, parameters):
+                            return {helper_name}.read(
+                                person, period, choose_name()
+                            )
+                    """
+                ),
+            },
+        )
+
+    assert str(exc_info.value) == (
+        "Unresolved dynamic PolicyEngine consumer aggregation for 'read' at "
+        "variables/helpers.py:2: variable."
+    )
+
+
 def test_known_helper_context_cannot_mask_unknown_context(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="Unresolved dynamic PolicyEngine consumer"):
         _index(
