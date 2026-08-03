@@ -3,17 +3,20 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
-from typing import TypedDict
+from typing import Protocol, TypedDict
 
 import pytest
 
+from populace.build.us_runtime.cps_carried import WIC_CARRIER_ADJUDICATION_URL
 from populace.build.us_runtime.multispine_pool import (
     PoolInputSurfaceEntry,
     pool_input_surface,
 )
 from populace.frame.adapters.policyengine_us import (
+    ConsumerReceipt,
     PolicyEngineUSVariableMetadataIndex,
 )
+from populace.frame.schema import VariableMetadata
 
 
 class NonEngineConsumerClass(StrEnum):
@@ -52,6 +55,18 @@ NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
     },
 }
 
+_REQUIRED_ENGINE_CONSUMER_GRAINS = {
+    # WICYN is stored on its adult-female reporter only as a carrier for the
+    # SPM unit's receipt fact. Person-grain use requires re-adjudication.
+    "receives_wic": "spm_unit",
+}
+
+
+class _EngineConsumerIndex(Protocol):
+    def consumer_receipts(self, name: str) -> tuple[ConsumerReceipt, ...]: ...
+
+    def variable_metadata(self, name: str) -> VariableMetadata: ...
+
 
 try:
     _ENGINE_INDEX = PolicyEngineUSVariableMetadataIndex()
@@ -68,7 +83,7 @@ _POOL_INPUT_SURFACE = pool_input_surface()
 def _validate_allowlist(
     surface: Sequence[PoolInputSurfaceEntry],
     allowlist: Mapping[str, Mapping[str, object]],
-    engine_index: PolicyEngineUSVariableMetadataIndex,
+    engine_index: _EngineConsumerIndex,
 ) -> None:
     surface_names = {entry.variable for entry in surface}
     expected_fields = {"consumer_class", "consumer", "justification"}
@@ -100,10 +115,35 @@ def _validate_allowlist(
         )
 
 
+def _assert_required_engine_consumer_grain(
+    variable: str,
+    receipts: Sequence[ConsumerReceipt],
+    engine_index: _EngineConsumerIndex,
+) -> None:
+    required_grain = _REQUIRED_ENGINE_CONSUMER_GRAINS.get(variable)
+    if required_grain is None:
+        return
+
+    for receipt in receipts:
+        try:
+            actual_grain = engine_index.variable_metadata(receipt.consumer).entity
+        except ValueError:
+            actual_grain = "unresolved"
+        if actual_grain != required_grain:
+            raise AssertionError(
+                f"{variable}: PolicyEngine-US consumer {receipt.consumer} "
+                f"({receipt.kind} at {receipt.path}:{receipt.line}) has "
+                f"{actual_grain} grain; only {required_grain} aggregation is "
+                "supported for the reporter-carried SPM-unit receipt fact. "
+                "Re-adjudicate before person-level use: "
+                f"{WIC_CARRIER_ADJUDICATION_URL}"
+            )
+
+
 def _assert_surface_entry_has_consumer(
     entry: PoolInputSurfaceEntry,
     allowlist: Mapping[str, Mapping[str, object]],
-    engine_index: PolicyEngineUSVariableMetadataIndex,
+    engine_index: _EngineConsumerIndex,
 ) -> None:
     receipts = engine_index.consumer_receipts(entry.variable)
     reviewed = entry.variable in allowlist
@@ -111,6 +151,11 @@ def _assert_surface_entry_has_consumer(
         assert not reviewed, (
             f"{entry.variable}: redundant non-engine consumer allowlist entry; "
             "PolicyEngine-US now has an external consumer receipt"
+        )
+        _assert_required_engine_consumer_grain(
+            entry.variable,
+            receipts,
+            engine_index,
         )
         return
     assert reviewed, (
@@ -122,7 +167,7 @@ def _assert_surface_entry_has_consumer(
 def _assert_consumer_guard(
     surface: Sequence[PoolInputSurfaceEntry],
     allowlist: Mapping[str, Mapping[str, object]],
-    engine_index: PolicyEngineUSVariableMetadataIndex,
+    engine_index: _EngineConsumerIndex,
 ) -> None:
     _validate_allowlist(surface, allowlist, engine_index)
     for entry in surface:
@@ -154,6 +199,78 @@ def test_non_engine_consumer_allowlist_is_exact_and_current() -> None:
         NON_ENGINE_CONSUMER_ALLOWLIST,
         _ENGINE_INDEX,
     )
+
+
+def test_receives_wic_consumers_are_spm_unit_grain() -> None:
+    receipts = _ENGINE_INDEX.consumer_receipts("receives_wic")
+
+    assert {
+        (
+            receipt.consumer,
+            receipt.kind,
+            _ENGINE_INDEX.variable_metadata(receipt.consumer).entity,
+        )
+        for receipt in receipts
+    } == {
+        ("md_ccs_weekly_copay", "add", "spm_unit"),
+        ("va_ccsp_income_test_waived", "entity_call", "spm_unit"),
+    }
+    _assert_required_engine_consumer_grain(
+        "receives_wic",
+        receipts,
+        _ENGINE_INDEX,
+    )
+
+
+class _PersonGrainWICConsumerMutation:
+    """Inject one future person-level WIC consumer into the live AST index."""
+
+    _CONSUMER = "synthetic_person_wic_consumer"
+
+    def __init__(self, delegate: _EngineConsumerIndex) -> None:
+        self._delegate = delegate
+
+    def consumer_receipts(self, name: str) -> tuple[ConsumerReceipt, ...]:
+        receipts = self._delegate.consumer_receipts(name)
+        if name != "receives_wic":
+            return receipts
+        return (
+            *receipts,
+            ConsumerReceipt(
+                consumer=self._CONSUMER,
+                path="variables/synthetic_person_wic_consumer.py",
+                line=19,
+                kind="entity_call",
+            ),
+        )
+
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        if name == self._CONSUMER:
+            return VariableMetadata(
+                name=name,
+                entity="person",
+                dtype="bool",
+                period="month",
+            )
+        return self._delegate.variable_metadata(name)
+
+
+def test_receives_wic_guard_rejects_person_grain_consumer_mutation() -> None:
+    mutated_index = _PersonGrainWICConsumerMutation(_ENGINE_INDEX)
+
+    with pytest.raises(
+        AssertionError,
+        match=(
+            r"^receives_wic: PolicyEngine-US consumer "
+            r"synthetic_person_wic_consumer .* has person grain; only spm_unit "
+            r"aggregation is supported.*issues/591#issuecomment-5160668979$"
+        ),
+    ):
+        _assert_consumer_guard(
+            _POOL_INPUT_SURFACE,
+            NON_ENGINE_CONSUMER_ALLOWLIST,
+            mutated_index,
+        )
 
 
 @pytest.mark.parametrize(
