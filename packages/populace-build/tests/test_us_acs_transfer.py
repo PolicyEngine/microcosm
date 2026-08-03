@@ -626,6 +626,7 @@ def test_declared_families_are_independent_of_release_coverage_surface() -> None
         }
     )
     assert "has_esi" in production_declared["person"]["model_required_boolean"]
+    assert "receives_wic" in production_declared["person"]["model_required_boolean"]
 
 
 def test_declared_plan_carries_the_23_stage_base_surface() -> None:

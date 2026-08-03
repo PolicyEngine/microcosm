@@ -159,7 +159,10 @@ from populace.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
     CPS_CARRIED_SPM_UNIT_INPUTS,
+    CPS_REPORTED_WIC_RAW_COLUMN,
+    WIC_CARRIER_ADJUDICATION_URL,
     derive_us_cps_carried_inputs,
+    reported_wic_receipt_carrier,
 )
 from populace.build.us_runtime.demographics import (
     AGE_BANDS,
@@ -1073,6 +1076,8 @@ __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
+    "CPS_REPORTED_WIC_RAW_COLUMN",
+    "WIC_CARRIER_ADJUDICATION_URL",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -1819,6 +1824,7 @@ __all__ = [
     "congressional_district_assignment_summary",
     "congressional_district_distribution_from_ledger_facts",
     "derive_us_cps_carried_inputs",
+    "reported_wic_receipt_carrier",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "finalize_us_puf_tax_detail_predictions",
     "hard_target_package_aliases",

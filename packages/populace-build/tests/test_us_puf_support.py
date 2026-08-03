@@ -11,6 +11,7 @@ import populace.build.us_runtime.puf_support as puf_support_module
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
+    CPS_CARRIED_PERSON_INPUTS,
     CPS_CARRIED_SPM_UNIT_INPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
@@ -199,6 +200,7 @@ def _raw_asec_predictor_frame() -> Frame:
                 "POTC_VAL": [30.0, 0.0, 10.0],
                 "PAW_VAL": [0.0, 125.0, 0.0],
                 "SPM_SNAPSUB": [0.0, 0.0, 900.0],
+                "WICYN": [0, 1, 2],
             }
         ),
         "household": pd.DataFrame(
@@ -1117,6 +1119,9 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
         False,
         False,
     ]
+    assert "receives_wic" in CPS_CARRIED_PERSON_INPUTS
+    assert person["receives_wic"].tolist() == [False, True, False]
+    assert pd.api.types.is_bool_dtype(person["receives_wic"])
 
 
 def test_cps_carried_derives_reported_enrollment_by_spm_unit_max() -> None:
@@ -1149,6 +1154,12 @@ def test_cps_carried_reported_enrollment_is_shared_by_support_clones() -> None:
         assert by_source.nunique(dropna=False).eq(1).all()
         assert by_source.first().to_dict() == expected_by_source
 
+    person = expanded.table("person")
+    person_source_id = support_source_id_column("person")
+    by_source = person.groupby(person_source_id)["receives_wic"]
+    assert by_source.nunique(dropna=False).eq(1).all()
+    assert by_source.first().to_dict() == {1: False, 2: True, 3: False}
+
 
 @pytest.mark.parametrize("period", ["2024-01", "2024-12"])
 def test_policyengine_broadcasts_annual_reported_enrollment_to_each_month(
@@ -1160,35 +1171,50 @@ def test_policyengine_broadcasts_annual_reported_enrollment_to_each_month(
         pytest.skip("requires the policyengine-us [us] extra")
 
     derived = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
-    flags = derived.table("spm_unit").set_index("spm_unit_id")
+    spm_flags = derived.table("spm_unit").set_index("spm_unit_id")
+    person_flags = derived.table("person").set_index("person_id")
     variables = CountryTaxBenefitSystem().variables
-    for name in ("is_tanf_enrolled", "receives_snap"):
+    expected_entities = {
+        "is_tanf_enrolled": "spm_unit",
+        "receives_snap": "spm_unit",
+        "receives_wic": "person",
+    }
+    for name, entity in expected_entities.items():
         variable = variables[name]
         assert variable.is_input_variable()
-        assert variable.entity.key == "spm_unit"
+        assert variable.entity.key == entity
         assert variable.value_type is bool
         assert str(variable.definition_period).lower() == "month"
 
     situation = {
         "people": {
-            "adult_100": {"age": {"2024": 40}},
-            "adult_200": {"age": {"2024": 30}},
+            f"person_{person_id}": {
+                "age": {"2024": int(person_flags.loc[person_id, "age"])},
+                "receives_wic": {
+                    "2024": bool(person_flags.loc[person_id, "receives_wic"])
+                },
+            }
+            for person_id in person_flags.index
         },
         "spm_units": {
             "unit_100": {
-                "members": ["adult_100"],
-                "is_tanf_enrolled": {"2024": bool(flags.loc[100, "is_tanf_enrolled"])},
-                "receives_snap": {"2024": bool(flags.loc[100, "receives_snap"])},
+                "members": ["person_1", "person_2"],
+                "is_tanf_enrolled": {
+                    "2024": bool(spm_flags.loc[100, "is_tanf_enrolled"])
+                },
+                "receives_snap": {"2024": bool(spm_flags.loc[100, "receives_snap"])},
             },
             "unit_200": {
-                "members": ["adult_200"],
-                "is_tanf_enrolled": {"2024": bool(flags.loc[200, "is_tanf_enrolled"])},
-                "receives_snap": {"2024": bool(flags.loc[200, "receives_snap"])},
+                "members": ["person_3"],
+                "is_tanf_enrolled": {
+                    "2024": bool(spm_flags.loc[200, "is_tanf_enrolled"])
+                },
+                "receives_snap": {"2024": bool(spm_flags.loc[200, "receives_snap"])},
             },
         },
         "households": {
             "household": {
-                "members": ["adult_100", "adult_200"],
+                "members": ["person_1", "person_2", "person_3"],
                 "state_code": {"2024": "CA"},
             }
         },
@@ -1197,11 +1223,15 @@ def test_policyengine_broadcasts_annual_reported_enrollment_to_each_month(
 
     np.testing.assert_array_equal(
         simulation.calculate("is_tanf_enrolled", period),
-        flags["is_tanf_enrolled"].to_numpy(dtype=bool),
+        spm_flags["is_tanf_enrolled"].to_numpy(dtype=bool),
     )
     np.testing.assert_array_equal(
         simulation.calculate("receives_snap", period),
-        flags["receives_snap"].to_numpy(dtype=bool),
+        spm_flags["receives_snap"].to_numpy(dtype=bool),
+    )
+    np.testing.assert_array_equal(
+        simulation.calculate("receives_wic", period),
+        person_flags["receives_wic"].to_numpy(dtype=bool),
     )
 
 

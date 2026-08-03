@@ -284,6 +284,7 @@ def _real_pre_clone_source_frame() -> Frame:
             "SSI_VAL": [0.0, 0.0, 0.0, 0.0],
             "PAW_VAL": [0.0, 125.0, 0.0, 0.0],
             "SPM_SNAPSUB": [0.0, 0.0, 900.0, 900.0],
+            "WICYN": [0, 1, 2, 0],
             "SPM_CAPHOUSESUB": [0.0, 0.0, 0.0, 0.0],
             "SPM_TENMORTSTATUS": [3, 3, 3, 3],
         }
@@ -670,6 +671,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "spm_unit",
         "model_required_boolean",
     )
+    assert owners["receives_wic"] == (
+        "person",
+        "model_required_boolean",
+    )
     assert owners["strike_benefits"] == (
         "person",
         "source_operator_cps_carried",
@@ -682,10 +687,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 117
+    assert len(target_names) == 118
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "516ada3a74c1603e26a1e7861c63adb642689e74bbb730a23f7724c74aeafcf2"
+        == "74fd985208c62ee51a96c161ee2766118e4d92020ce2897bf2942e2625db9484"
     )
 
 
@@ -693,13 +698,13 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 138
+    assert len(surface) == len(by_name) == 139
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 117,
+            "pool_transfer_target_families": 118,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
             "load_take_up_contract": 13,
@@ -756,6 +761,12 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
             family="model_required_boolean",
             provenance=("pool_transfer_target_families",),
         )
+    assert by_name["receives_wic"] == PoolInputSurfaceEntry(
+        variable="receives_wic",
+        entity="person",
+        family="model_required_boolean",
+        provenance=("pool_transfer_target_families",),
+    )
     assert {
         "has_marketplace_health_coverage",
         "medicare_part_b_premiums_reported",
@@ -1244,7 +1255,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 117
+    assert len(targets) == 118
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1269,7 +1280,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 117
+    assert len(targets) == 118
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
@@ -1286,7 +1297,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1893,6 +1904,13 @@ def test_real_preclone_prefix_runs_before_physical_clone(
         25.0,
         0.0,
     ]
+    assert prepared_person.loc[prepared_cps, "receives_wic"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert prepared_person.loc[~prepared_cps, "receives_wic"].isna().all()
 
     prepared_spm_unit = prepared.frame.table("spm_unit")
     assert prepared_spm_unit["is_tanf_enrolled"].dropna().tolist() == [True, False]
@@ -1912,6 +1930,14 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     parents = cps & person["A_LINENO"].eq(1)
     assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
     assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+    wic_by_source = person.loc[cps].groupby(source_id)["receives_wic"]
+    assert wic_by_source.nunique(dropna=False).eq(1).all()
+    assert wic_by_source.first().to_dict() == {
+        1: False,
+        2: True,
+        3: False,
+        4: False,
+    }
 
     spm_unit = cloned.table("spm_unit")
     spm_source_id = support_source_id_column("spm_unit")

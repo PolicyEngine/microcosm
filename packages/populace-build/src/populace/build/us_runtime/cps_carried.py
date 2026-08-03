@@ -24,8 +24,11 @@ __all__ = [
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
     "CPS_REPORTED_SNAP_RAW_COLUMN",
+    "CPS_REPORTED_WIC_RAW_COLUMN",
+    "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
+    "reported_wic_receipt_carrier",
 ]
 
 TAXABLE_INTEREST_FRACTION = 0.680
@@ -33,6 +36,10 @@ QUALIFIED_DIVIDEND_FRACTION = 0.448
 TAXABLE_PENSION_FRACTION = 0.590
 LONG_TERM_CAPITAL_GAIN_FRACTION = 0.880
 CPS_REPORTED_SNAP_RAW_COLUMN = "SPM_SNAPSUB"
+CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
+WIC_CARRIER_ADJUDICATION_URL = (
+    "https://github.com/PolicyEngine/populace/issues/591#issuecomment-5160668979"
+)
 
 CPS_CARRIED_FORMULA_OWNED_COLUMNS = frozenset(
     {
@@ -68,6 +75,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "health_insurance_premiums_without_medicare_part_b",
         "other_medical_expenses",
         "over_the_counter_health_expenses",
+        "receives_wic",
         "rental_income",
         "farm_operations_income",
         "has_champva_health_coverage_at_interview",
@@ -101,12 +109,12 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
     The transform refuses to run on a non-US frame and never creates
     formula-owned aggregate variables.
 
-    ``PAW_VAL`` and ``SPM_SNAPSUB`` are annual reported amounts, while the
-    engine's ``is_tanf_enrolled`` and ``receives_snap`` leaves are monthly
-    booleans. A positive annual amount is therefore broadcast as ``True`` to
-    all 12 modeled months. The annual source cannot reveal entry or exit
-    timing, and ``PAW_VAL > 0`` misses enrolled TANF units receiving zero
-    dollars, including sanctioned cases.
+    ``PAW_VAL``, ``SPM_SNAPSUB``, and ``WICYN`` are annual reported facts,
+    while the engine's ``is_tanf_enrolled``, ``receives_snap``, and
+    ``receives_wic`` leaves are monthly booleans. An annual receipt report is
+    therefore broadcast to all 12 modeled months. The annual source cannot
+    reveal entry or exit timing, and ``PAW_VAL > 0`` misses enrolled TANF
+    units receiving zero dollars, including sanctioned cases.
     """
 
     if frame.schema != US_SCHEMA:
@@ -116,6 +124,7 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
 
     _fill_missing(person, "age", _source(person, "A_AGE"))
     _fill_bool_missing(person, "is_female", _integer_source(person, "A_SEX") == 2)
+    _fill_bool_missing(person, "receives_wic", reported_wic_receipt_carrier(person))
     _fill_missing(person, "employment_income_before_lsr", _source(person, "WSAL_VAL"))
     _fill_missing(
         person,
@@ -228,6 +237,21 @@ def reported_snap_receipt_by_spm_unit(person: pd.DataFrame) -> pd.Series:
         .gt(0.0)
         .rename("reported_snap_receipt")
     )
+
+
+def reported_wic_receipt_carrier(person: pd.DataFrame) -> np.ndarray:
+    """Carry the SPM unit's reported WIC receipt fact on its reporting adult.
+
+    Census asks ``WICYN`` only of adult women, and a woman may report receipt
+    for herself or for a child beneficiary. ``receives_wic`` therefore remains
+    stored on that reporting adult solely as the carrier for her SPM unit's
+    receipt fact; it does not identify the person who received WIC. Unit-level
+    aggregation is the ONLY supported consumption grain. Any person-grain use
+    requires re-adjudication under populace#591:
+    https://github.com/PolicyEngine/populace/issues/591#issuecomment-5160668979
+    """
+
+    return _integer_source(person, CPS_REPORTED_WIC_RAW_COLUMN) == 1
 
 
 def _fill_missing(table: pd.DataFrame, column: str, values: np.ndarray) -> None:

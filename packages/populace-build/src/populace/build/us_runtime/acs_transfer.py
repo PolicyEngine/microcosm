@@ -284,6 +284,10 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "is_disabled",
             "is_full_time_college_student",
             "is_pregnant",
+            # WICYN's adult-female reporter is only a physical carrier for an
+            # SPM-unit receipt fact. Engine consumers are separately guarded
+            # to aggregate receives_wic at SPM-unit grain (populace#591).
+            "receives_wic",
         ),
         "model_required_discrete": ("own_children_in_household",),
     },
