@@ -37,14 +37,14 @@ __all__ = [
 ]
 
 LEGACY_NULLABLE_STAGING_ARTIFACT_KIND = "nullable_precalibration_staging_h5"
-US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND = (
-    "populace_us_multispine_pool_manifest"
-)
+US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND = "populace_us_multispine_pool_manifest"
 US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 3
+# 4 adds identity-bound stage-checkpoint provenance and an explicit always-fresh
+# terminal agreement receipt to the companion pool manifest.
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -100,10 +100,8 @@ def load_simulation_ready_us_multispine_pool_manifest(
     manifest_path = Path(path)
     manifest = _read_json_object(manifest_path, label="pool manifest")
     if (
-        manifest.get("artifact_kind")
-        != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
-        or manifest.get("schema_version")
-        != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
+        or manifest.get("schema_version") != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
     ):
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
@@ -114,8 +112,26 @@ def load_simulation_ready_us_multispine_pool_manifest(
         or manifest.get("status") != "simulation_ready"
     ):
         raise ValueError(
-            f"US multispine pool manifest {manifest_path} is not "
-            "simulation-ready."
+            f"US multispine pool manifest {manifest_path} is not simulation-ready."
+        )
+    checkpoint_provenance = _mapping(
+        manifest.get("stage_checkpoints"),
+        label=f"US multispine pool manifest {manifest_path}.stage_checkpoints",
+    )
+    checkpoint_agreement = _mapping(
+        checkpoint_provenance.get("agreement"),
+        label=(
+            f"US multispine pool manifest {manifest_path}.stage_checkpoints.agreement"
+        ),
+    )
+    if (
+        checkpoint_agreement.get("source") != "always_fresh"
+        or checkpoint_agreement.get("cached") is not False
+        or checkpoint_agreement.get("terminal_verdict_persisted") is not False
+    ):
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} does not bind the "
+            "terminal agreement verdict as always-fresh."
         )
     publication_run_id = _publication_run_id(
         manifest.get("publication_run_id"),
@@ -158,29 +174,21 @@ def load_simulation_ready_us_multispine_pool_manifest(
 
     diagnostics_receipt = _mapping(
         manifest.get("agreement_diagnostics"),
-        label=(
-            f"US multispine pool manifest {manifest_path}.agreement_diagnostics"
-        ),
+        label=(f"US multispine pool manifest {manifest_path}.agreement_diagnostics"),
     )
     _require_matching_run_id(
         diagnostics_receipt,
         publication_run_id,
-        label=(
-            f"US multispine pool manifest {manifest_path}.agreement_diagnostics"
-        ),
+        label=(f"US multispine pool manifest {manifest_path}.agreement_diagnostics"),
     )
     diagnostics_path = _artifact_path(
         diagnostics_receipt,
-        label=(
-            f"US multispine pool manifest {manifest_path}.agreement_diagnostics"
-        ),
+        label=(f"US multispine pool manifest {manifest_path}.agreement_diagnostics"),
     )
     _require_matching_sha256(
         diagnostics_path,
         diagnostics_receipt,
-        label=(
-            f"US multispine pool manifest {manifest_path}.agreement_diagnostics"
-        ),
+        label=(f"US multispine pool manifest {manifest_path}.agreement_diagnostics"),
     )
     diagnostics = _read_json_object(
         diagnostics_path,
@@ -216,8 +224,7 @@ def read_nullable_us_h5_metadata(path: str | Path) -> dict[str, object]:
             ) from exc
     if len(raw_metadata) != 1:
         raise ValueError(
-            f"Nullable US H5 {h5_path} must carry exactly one artifact "
-            "metadata row."
+            f"Nullable US H5 {h5_path} must carry exactly one artifact metadata row."
         )
     try:
         metadata = json.loads(str(raw_metadata.iloc[0]))

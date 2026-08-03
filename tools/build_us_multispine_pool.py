@@ -20,16 +20,22 @@ import json
 import math
 import os
 import re
+import time
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from enum import Enum
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from populace.build.frame_checkpoint import (
+    load_frame_checkpoint,
+    write_frame_checkpoint,
+)
 from populace.build.gates import FitWeightRecord, GateReport, weights_audit_gate
 from populace.build.us_runtime.acs_inputs import map_acs_native_inputs
 from populace.build.us_runtime.acs_pums import (
@@ -62,10 +68,16 @@ from populace.build.us_runtime.housing_inputs import (
     load_acs_2022_rent_donor,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_CHECKPOINT_STAGE_ORDER,
+    POOL_DERIVE_OPERATOR_ORDER,
     POOL_HOUSEHOLD_MASS_SHARES,
     POOL_OPERATOR_ORDER,
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_RANDOM_SEED,
+    POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,
     POOL_TIME_PERIOD,
+    MultispinePoolCheckpoint,
     MultispinePoolResult,
     PoolStageOutput,
     complete_multispine_source_inputs,
@@ -86,6 +98,7 @@ from populace.build.us_runtime.puf_capital_gains_tail import (
 from populace.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
 from populace.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_MANIFEST_FILENAME,
+    PRIMARY_QRF_TARGET_ORDER,
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
     run_primary_puf_qrf_chain,
@@ -94,11 +107,18 @@ from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     US_PUF_SUPPORT_FIT_NAME,
 )
-from populace.frame import Frame
+from populace.build.us_runtime.support_provenance import (
+    SPINE_ASSEMBLY_MANIFEST_KEY,
+    validate_assembly_provenance,
+)
+from populace.build.us_runtime.take_up_contract import load_take_up_contract
+from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
     "POOL_H5_ARTIFACT_KIND",
     "POOL_MANIFEST_SCHEMA_VERSION",
+    "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
+    "POOL_STAGE_CHECKPOINT_SCHEMA_VERSION",
     "PoolBuildOutputs",
     "build_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
@@ -111,10 +131,36 @@ POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""
 
+POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
+"""Serialization contract for pool stage checkpoint metadata and sidecars."""
+
+# Pool stage checkpoint semantic-invalidation ledger.
+#
+# 1: Initial resumable pool path. It binds the assembled-source producer,
+#    pre/post-clone operator registries, physical PUF clone and QRF target
+#    order, tail and ACS transfer producers, derive registry, take-up seeding,
+#    SSI materialization, fixed seeds/period/fit sizes, and PolicyEngine-US.
+#
+# Bump this version whenever any producer above changes a stage output without
+# changing one of the explicit identity fields below. In particular, adding,
+# removing, reordering, or changing an operator kernel requires a bump even if
+# its public registry name stays constant. Correctness takes priority over
+# retaining warm checkpoints (the same rule as TARGET_FRAME_CHECKPOINT's
+# materializer-version ledger in build_us_fiscal_refresh_release.py).
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 1
+
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
 _PRIMARY_QRF_INPUT_BINDING_FILENAME = "pool-input-binding.json"
 _PRIMARY_QRF_INPUT_BINDING_SCHEMA_VERSION = 1
+_POOL_STAGE_CHECKPOINT_ARTIFACT_KIND = "populace_us_multispine_pool_stage_checkpoint"
+_POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND = (
+    "populace_us_multispine_pool_stage_checkpoint_manifest"
+)
+_POOL_STAGE_CHECKPOINT_FILENAMES: Mapping[str, str] = {
+    stage: f"{stage}.checkpoint.h5" for stage in POOL_CHECKPOINT_STAGE_ORDER
+}
+_POOL_SIMULATION_OUTPUT_COLUMN = "ssi"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
@@ -127,6 +173,7 @@ class PoolBuildOutputs:
     pool_h5: Path
     manifest: Path
     agreement_diagnostics: Path
+    checkpoint_root: Path
     primary_qrf_checkpoint_dir: Path
 
 
@@ -247,18 +294,52 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="Destination nullable input-pool H5; sidecars derive from this path.",
     )
+    parser.add_argument(
+        "--checkpoint-root",
+        type=Path,
+        help=(
+            "Durable root for stage and primary-QRF checkpoints. Defaults to "
+            "<out-stem>.checkpoints alongside --out; point it at a persistent "
+            "volume to resume across fresh workers and output directories."
+        ),
+    )
     return parser
 
 
-def _output_paths(path: Path) -> PoolBuildOutputs:
+def _output_paths(
+    path: Path,
+    *,
+    checkpoint_root: Path | None = None,
+) -> PoolBuildOutputs:
     pool_h5 = Path(path)
     if pool_h5.suffix.lower() not in {".h5", ".hdf5"}:
         raise ValueError("--out must name an .h5 or .hdf5 file.")
+    resolved_checkpoint_root = (
+        Path(checkpoint_root)
+        if checkpoint_root is not None
+        else pool_h5.with_suffix(".checkpoints")
+    )
     return PoolBuildOutputs(
         pool_h5=pool_h5,
         manifest=pool_h5.with_suffix(".manifest.json"),
         agreement_diagnostics=pool_h5.with_suffix(".agreement.json"),
-        primary_qrf_checkpoint_dir=pool_h5.with_suffix(".primary-qrf"),
+        checkpoint_root=resolved_checkpoint_root,
+        primary_qrf_checkpoint_dir=resolved_checkpoint_root / "primary-qrf",
+    )
+
+
+def _with_primary_qrf_identity(
+    outputs: PoolBuildOutputs,
+    *,
+    base_identity_sha256: str,
+) -> PoolBuildOutputs:
+    """Select a non-mixing QRF chain directory for one pool identity."""
+
+    return replace(
+        outputs,
+        primary_qrf_checkpoint_dir=(
+            outputs.checkpoint_root / "primary-qrf" / base_identity_sha256
+        ),
     )
 
 
@@ -313,13 +394,14 @@ def _verify_inputs(
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
+    _validate_checkpoint_path_layout(outputs, source_paths=source_paths)
+
     output_paths = {
         outputs.pool_h5.resolve(),
         outputs.manifest.resolve(),
         outputs.agreement_diagnostics.resolve(),
-        outputs.primary_qrf_checkpoint_dir.resolve(),
     }
-    collisions = sorted(str(path) for path in source_paths & output_paths)
+    collisions = sorted(str(path) for path in source_paths if path in output_paths)
     if collisions:
         raise ValueError(f"Pool outputs must not overwrite inputs: {collisions}.")
 
@@ -367,6 +449,54 @@ def _verify_inputs(
     return verified, acs_source_manifest
 
 
+def _validate_checkpoint_path_layout(
+    outputs: PoolBuildOutputs,
+    *,
+    source_paths: set[Path],
+) -> None:
+    """Reject only paths the checkpoint store can actually overwrite."""
+
+    checkpoint_root = outputs.checkpoint_root.resolve()
+    primary_qrf_root = (checkpoint_root / "primary-qrf").resolve()
+    stage_files = {
+        (checkpoint_root / filename).resolve()
+        for filename in _POOL_STAGE_CHECKPOINT_FILENAMES.values()
+    }
+    stage_files.update(
+        path.with_suffix(".manifest.json") for path in tuple(stage_files)
+    )
+    publication_paths = {
+        outputs.pool_h5.resolve(),
+        outputs.manifest.resolve(),
+        outputs.agreement_diagnostics.resolve(),
+    }
+
+    def conflicts_with_checkpoint_store(path: Path) -> bool:
+        if path == checkpoint_root or checkpoint_root.is_relative_to(path):
+            return True
+        if path == primary_qrf_root or path.is_relative_to(primary_qrf_root):
+            return True
+        return any(
+            path == target or path.is_relative_to(target) for target in stage_files
+        )
+
+    publication_collisions = sorted(
+        str(path) for path in publication_paths if conflicts_with_checkpoint_store(path)
+    )
+    if publication_collisions:
+        raise ValueError(
+            "Pool checkpoint paths collide with publication files: "
+            f"{publication_collisions}."
+        )
+    source_collisions = sorted(
+        str(path) for path in source_paths if conflicts_with_checkpoint_store(path)
+    )
+    if source_collisions:
+        raise ValueError(
+            f"Pool checkpoint paths must not overwrite inputs: {source_collisions}."
+        )
+
+
 def _load_inputs(
     args: argparse.Namespace,
     *,
@@ -383,12 +513,7 @@ def _load_inputs(
     acs_frame, acs_build = build_acs_pums_unit_frame(acs_source)
     mapped_acs = map_acs_native_inputs(acs_frame)
     acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
-    donor_build: dict[str, object] = {}
-    puf_donor = load_puf_tax_unit_donor(
-        args.puf_h5,
-        args.puf_source_year_csv,
-        donor_build_summary=donor_build,
-    )
+    puf_donor, donor_build = _load_puf_donor(args)
     return _LoadedInputs(
         asec=asec,
         acs=mapped_acs.frame,
@@ -399,6 +524,53 @@ def _load_inputs(
         acs_native_inputs=mapped_acs.native_inputs,
         puf_donor_build=donor_build,
     )
+
+
+def _load_puf_donor(
+    args: argparse.Namespace,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    donor_build: dict[str, object] = {}
+    donor = load_puf_tax_unit_donor(
+        args.puf_h5,
+        args.puf_source_year_csv,
+        donor_build_summary=donor_build,
+    )
+    return donor, donor_build
+
+
+def _loaded_input_receipts(loaded: _LoadedInputs) -> dict[str, object]:
+    return {
+        "asec_raw_stage_checkpoint": loaded.asec_raw_stage_checkpoint,
+        "acs_pums_build": loaded.acs_build,
+        "acs_native_inputs": loaded.acs_native_inputs,
+        "puf_donor": {
+            "rows": int(len(loaded.puf_donor)),
+            "columns": sorted(str(column) for column in loaded.puf_donor.columns),
+            "build_receipt": loaded.puf_donor_build,
+        },
+    }
+
+
+def _validate_resumed_puf_donor(
+    donor: pd.DataFrame,
+    input_receipts: Mapping[str, object],
+) -> None:
+    receipt = input_receipts.get("puf_donor")
+    if not isinstance(receipt, Mapping):
+        raise ValueError("Resumed pool checkpoint has no PUF donor receipt.")
+    observed = {
+        "rows": int(len(donor)),
+        "columns": sorted(str(column) for column in donor.columns),
+    }
+    expected = {
+        "rows": receipt.get("rows"),
+        "columns": receipt.get("columns"),
+    }
+    if observed != expected:
+        raise ValueError(
+            "Resumed pool PUF donor schema changed despite matching input pins: "
+            f"got {observed}, expected {expected}."
+        )
 
 
 def _primary_qrf_manifest_path(checkpoint_dir: Path) -> Path:
@@ -428,13 +600,717 @@ def _checkpoint_input_binding(
     }
 
 
+def _policyengine_us_version() -> str:
+    try:
+        return version("policyengine-us")
+    except PackageNotFoundError:
+        return "not-installed"
+
+
+def _pool_checkpoint_base_identity(
+    verified_inputs: Mapping[str, _VerifiedInput],
+    *,
+    policyengine_us_version: str | None = None,
+) -> dict[str, object]:
+    """Return every input and semantic surface that determines cached stages."""
+
+    take_up_contract = load_take_up_contract()
+    return {
+        "artifact_kind": "populace_us_multispine_pool_checkpoint_identity",
+        "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+        "period": POOL_TIME_PERIOD,
+        "seed": POOL_RANDOM_SEED,
+        "policyengine_us_version": (
+            policyengine_us_version
+            if policyengine_us_version is not None
+            else _policyengine_us_version()
+        ),
+        "inputs": {
+            role: {
+                "sha256": pin.actual_sha256,
+                "size_bytes": pin.size_bytes,
+            }
+            for role, pin in sorted(verified_inputs.items())
+        },
+        "pool_code": {
+            "operator_order": list(POOL_OPERATOR_ORDER),
+            "household_mass_shares": dict(POOL_HOUSEHOLD_MASS_SHARES),
+            "pre_clone_source_operator_order": list(
+                POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+            ),
+            "post_clone_source_operator_order": list(
+                POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+            ),
+            "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
+            "transfer_target_families": _json_ready(pool_transfer_target_families()),
+            "take_up_contract": {
+                "version": take_up_contract.version,
+                "country": take_up_contract.country,
+                "programs": [
+                    _json_ready(program.raw) for program in take_up_contract.programs
+                ],
+            },
+            "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
+            "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
+            "acs_transfer_max_targets_per_fit": (
+                DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+            ),
+            "simulation_household_batch_size": (POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE),
+        },
+    }
+
+
+def _pool_checkpoint_stage_identity(
+    base_identity: Mapping[str, object],
+    stage: str,
+) -> dict[str, object]:
+    if stage not in POOL_CHECKPOINT_STAGE_ORDER:
+        raise ValueError(f"Unknown pool checkpoint stage {stage!r}.")
+    return {
+        **dict(base_identity),
+        "stage": stage,
+        "stage_index": POOL_CHECKPOINT_STAGE_ORDER.index(stage),
+    }
+
+
+def _pool_checkpoint_identity_sha256(identity: Mapping[str, object]) -> str:
+    return hashlib.sha256(_canonical_json_bytes(identity)).hexdigest()
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
+        _json_ready(value),
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+class _PoolStageCheckpointStore:
+    """Identity-guarded durable storage for the three pool cut points."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        base_identity: Mapping[str, object],
+    ) -> None:
+        self.root = Path(root)
+        if self.root.exists() and not self.root.is_dir():
+            raise ValueError(
+                f"Pool checkpoint root exists but is not a directory: {self.root}."
+            )
+        normalized_identity = _json_ready(base_identity)
+        if not isinstance(normalized_identity, dict):  # pragma: no cover
+            raise TypeError("Pool checkpoint base identity must be an object.")
+        self._base_identity = normalized_identity
+        self._input_receipts: dict[str, object] | None = None
+        self._resumed_from: str | None = None
+        self._attempts: dict[str, dict[str, object]] = {
+            stage: {"load_status": "not_attempted"}
+            for stage in POOL_CHECKPOINT_STAGE_ORDER
+        }
+        self._writes: dict[str, dict[str, object]] = {}
+
+    @property
+    def base_identity_sha256(self) -> str:
+        return _pool_checkpoint_identity_sha256(self._base_identity)
+
+    @property
+    def input_receipts(self) -> dict[str, object]:
+        if self._input_receipts is None:
+            raise RuntimeError("Pool checkpoint input receipts are not bound.")
+        return dict(self._input_receipts)
+
+    def bind_input_receipts(self, receipts: Mapping[str, object]) -> None:
+        normalized = _json_ready(receipts)
+        if not isinstance(normalized, dict):  # pragma: no cover
+            raise TypeError("Pool input receipts must normalize to an object.")
+        if self._input_receipts is not None and self._input_receipts != normalized:
+            raise ValueError(
+                "Pool checkpoint input receipts disagree across stage artifacts."
+            )
+        self._input_receipts = normalized
+
+    def checkpoint_path(self, stage: str) -> Path:
+        try:
+            filename = _POOL_STAGE_CHECKPOINT_FILENAMES[stage]
+        except KeyError as exc:
+            raise ValueError(f"Unknown pool checkpoint stage {stage!r}.") from exc
+        return self.root / filename
+
+    def checkpoint_manifest_path(self, stage: str) -> Path:
+        path = self.checkpoint_path(stage)
+        return path.with_suffix(".manifest.json")
+
+    def load_deepest(self) -> MultispinePoolCheckpoint | None:
+        """Load the deepest valid checkpoint, ignoring stale or corrupt files."""
+
+        for stage in reversed(POOL_CHECKPOINT_STAGE_ORDER):
+            checkpoint = self._load(stage)
+            if checkpoint is None:
+                continue
+            self._resumed_from = stage
+            covered = POOL_CHECKPOINT_STAGE_ORDER[
+                : POOL_CHECKPOINT_STAGE_ORDER.index(stage) + 1
+            ]
+            print(
+                f"Resumed pool checkpoint {stage!r} from "
+                f"{self.checkpoint_path(stage)}; cached stages: "
+                f"{', '.join(covered)}."
+            )
+            return checkpoint
+        print(
+            "No valid pool stage checkpoint found; rebuilding assembly, "
+            "transfer, and simulation."
+        )
+        return None
+
+    def write(self, checkpoint: MultispinePoolCheckpoint) -> None:
+        """Atomically write one completed cut point and its content sidecar."""
+
+        stage = checkpoint.stage
+        if stage not in POOL_CHECKPOINT_STAGE_ORDER:
+            raise ValueError(f"Unknown pool checkpoint stage {stage!r}.")
+        if self._input_receipts is None:
+            raise RuntimeError(
+                "Pool checkpoint input receipts must be bound before writing."
+            )
+        stored_frame = checkpoint.frame
+        if stage == "simulated":
+            if checkpoint.simulation_frame is None:
+                raise ValueError(
+                    "The simulated pool checkpoint requires an evaluation frame."
+                )
+            _assert_simulation_checkpoint_pair(
+                checkpoint.frame,
+                checkpoint.simulation_frame,
+            )
+            stored_frame = checkpoint.simulation_frame
+        elif checkpoint.simulation_frame is not None:
+            raise ValueError(
+                f"Pool checkpoint stage {stage!r} cannot carry a simulation frame."
+            )
+
+        validate_assembly_provenance(
+            stored_frame,
+            boundary=f"pool {stage} checkpoint write",
+        )
+        identity = _pool_checkpoint_stage_identity(self._base_identity, stage)
+        identity_sha256 = _pool_checkpoint_identity_sha256(identity)
+        metadata = {
+            "artifact_kind": _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND,
+            "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+            "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+            "stage": stage,
+            "identity": identity,
+            "identity_sha256": identity_sha256,
+            "row_counts": _frame_row_counts(stored_frame),
+            "frame_schema": _frame_schema_payload(stored_frame),
+            "frame_metadata": _json_ready(stored_frame.metadata),
+            "assembly_receipt": _json_ready(checkpoint.assembly_receipt),
+            "stage_receipts": _json_ready(checkpoint.stage_receipts),
+            "input_receipts": self._input_receipts,
+            "simulation_output": (
+                {
+                    "column": _POOL_SIMULATION_OUTPUT_COLUMN,
+                    "entity": "person",
+                    "persisted_to_pool": False,
+                }
+                if stage == "simulated"
+                else None
+            ),
+        }
+        path = self.checkpoint_path(stage)
+        started_at = time.perf_counter()
+        write_frame_checkpoint(path, stored_frame, metadata=metadata)
+        checkpoint_sha256 = _file_sha256(path)
+        size_bytes = path.stat().st_size
+        manifest_path = self.checkpoint_manifest_path(stage)
+        _atomic_write_json(
+            manifest_path,
+            {
+                "artifact_kind": _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND,
+                "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+                "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+                "stage": stage,
+                "identity": identity,
+                "identity_sha256": identity_sha256,
+                "checkpoint": {
+                    "filename": path.name,
+                    "sha256": checkpoint_sha256,
+                    "size_bytes": size_bytes,
+                },
+                "row_counts": _frame_row_counts(stored_frame),
+                "frame_schema": _frame_schema_payload(stored_frame),
+                "frame_metadata": metadata["frame_metadata"],
+            },
+        )
+        write_seconds = time.perf_counter() - started_at
+        self._writes[stage] = {
+            "checkpoint_sha256": checkpoint_sha256,
+            "size_bytes": size_bytes,
+            "write_seconds": write_seconds,
+        }
+        print(
+            f"Rebuilt pool stage {stage!r}; wrote checkpoint {path} "
+            f"({size_bytes} bytes, identity {identity_sha256})."
+        )
+
+    def provenance(
+        self,
+        *,
+        primary_qrf_checkpoint_dir: Path,
+    ) -> dict[str, object]:
+        """Return final-manifest evidence for every cached or rebuilt stage."""
+
+        resumed_index = (
+            None
+            if self._resumed_from is None
+            else POOL_CHECKPOINT_STAGE_ORDER.index(self._resumed_from)
+        )
+        stages: dict[str, dict[str, object]] = {}
+        for stage_index, stage in enumerate(POOL_CHECKPOINT_STAGE_ORDER):
+            identity = _pool_checkpoint_stage_identity(self._base_identity, stage)
+            source = (
+                "checkpoint"
+                if resumed_index is not None and stage_index <= resumed_index
+                else "rebuilt"
+            )
+            covered_by_deeper = source == "checkpoint" and stage != self._resumed_from
+            artifact_stage = self._resumed_from if covered_by_deeper else stage
+            if artifact_stage is None:  # pragma: no cover - source proves non-null
+                raise AssertionError("Covered checkpoint stage has no source stage.")
+            record: dict[str, object] = {
+                "source": source,
+                "resume_kind": (
+                    "direct"
+                    if stage == self._resumed_from
+                    else (
+                        "covered_by_deeper_checkpoint"
+                        if source == "checkpoint"
+                        else None
+                    )
+                ),
+                "identity_sha256": _pool_checkpoint_identity_sha256(identity),
+                "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+                "materializer_version": (POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION),
+                "path": str(self.checkpoint_path(artifact_stage).resolve()),
+                "manifest_path": str(
+                    self.checkpoint_manifest_path(artifact_stage).resolve()
+                ),
+                **self._attempts[stage],
+            }
+            if stage in self._writes:
+                record.update(self._writes[stage])
+            elif stage == self._resumed_from:
+                record.update(
+                    {
+                        key: value
+                        for key, value in self._attempts[stage].items()
+                        if key in {"checkpoint_sha256", "size_bytes"}
+                    }
+                )
+            if covered_by_deeper:
+                record["source_checkpoint_stage"] = self._resumed_from
+                record["source_checkpoint_identity_sha256"] = (
+                    _pool_checkpoint_identity_sha256(
+                        _pool_checkpoint_stage_identity(
+                            self._base_identity,
+                            artifact_stage,
+                        )
+                    )
+                )
+                record["nominal_stage_path"] = str(
+                    self.checkpoint_path(stage).resolve()
+                )
+                record["nominal_stage_manifest_path"] = str(
+                    self.checkpoint_manifest_path(stage).resolve()
+                )
+            stages[stage] = record
+        return {
+            "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
+            "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+            "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+            "root": str(self.root.resolve()),
+            "base_identity_sha256": self.base_identity_sha256,
+            "deepest_resumed_stage": self._resumed_from,
+            "stages": stages,
+            "primary_qrf": {
+                "path": str(Path(primary_qrf_checkpoint_dir).resolve()),
+                "base_identity_sha256": self.base_identity_sha256,
+            },
+            "agreement": {
+                "source": "always_fresh",
+                "cached": False,
+                "terminal_verdict_persisted": False,
+            },
+        }
+
+    def _load(self, stage: str) -> MultispinePoolCheckpoint | None:
+        path = self.checkpoint_path(stage)
+        manifest_path = self.checkpoint_manifest_path(stage)
+        if not path.exists() and not manifest_path.exists():
+            self._attempts[stage] = {"load_status": "missing"}
+            return None
+        if not path.is_file() or not manifest_path.is_file():
+            return self._invalid(
+                stage,
+                reason="incomplete_checkpoint",
+                error=ValueError(
+                    "checkpoint H5 and manifest sidecar must both be regular files"
+                ),
+            )
+
+        expected_identity = _pool_checkpoint_stage_identity(
+            self._base_identity,
+            stage,
+        )
+        expected_identity_sha256 = _pool_checkpoint_identity_sha256(expected_identity)
+        try:
+            manifest = _read_json_object(manifest_path)
+            if (
+                manifest.get("artifact_kind")
+                != _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND
+                or manifest.get("schema_version")
+                != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
+                or manifest.get("materializer_version")
+                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or manifest.get("stage") != stage
+            ):
+                raise ValueError(
+                    f"{stage} checkpoint manifest has an unsupported binding"
+                )
+            observed_identity = manifest.get("identity")
+            if observed_identity != expected_identity:
+                observed_digest = (
+                    _pool_checkpoint_identity_sha256(observed_identity)
+                    if isinstance(observed_identity, Mapping)
+                    else None
+                )
+                self._attempts[stage] = {
+                    "load_status": "identity_mismatch",
+                    "ignored_checkpoint": {
+                        "expected_identity_sha256": expected_identity_sha256,
+                        "observed_identity_sha256": observed_digest,
+                    },
+                }
+                print(
+                    f"Ignored stale pool checkpoint {stage!r} at {path}: "
+                    f"identity {observed_digest!r} != "
+                    f"{expected_identity_sha256}."
+                )
+                return None
+            if manifest.get("identity_sha256") != expected_identity_sha256:
+                raise ValueError(f"{stage} checkpoint manifest identity digest changed")
+            checkpoint_receipt = manifest.get("checkpoint")
+            if not isinstance(checkpoint_receipt, Mapping):
+                raise ValueError(
+                    f"{stage} checkpoint manifest has no checkpoint receipt"
+                )
+            if checkpoint_receipt.get("filename") != path.name:
+                raise ValueError(
+                    f"{stage} checkpoint manifest names a different H5 file"
+                )
+            expected_file_sha256 = checkpoint_receipt.get("sha256")
+            if not isinstance(expected_file_sha256, str) or not (
+                _LOWERCASE_SHA256.fullmatch(expected_file_sha256)
+            ):
+                raise ValueError(
+                    f"{stage} checkpoint manifest has an invalid H5 digest"
+                )
+            actual_file_sha256 = _file_sha256(path)
+            if actual_file_sha256 != expected_file_sha256:
+                raise ValueError(
+                    f"{stage} checkpoint H5 SHA-256 mismatch: got "
+                    f"{actual_file_sha256}, expected {expected_file_sha256}"
+                )
+            expected_size = checkpoint_receipt.get("size_bytes")
+            if expected_size != path.stat().st_size:
+                raise ValueError(
+                    f"{stage} checkpoint H5 size changed: got "
+                    f"{path.stat().st_size}, expected {expected_size!r}"
+                )
+
+            sidecar_frame_metadata = manifest.get("frame_metadata")
+            if not isinstance(sidecar_frame_metadata, Mapping):
+                raise ValueError(
+                    f"{stage} checkpoint frame_metadata sidecar must be an object"
+                )
+            loaded = load_frame_checkpoint(
+                path,
+                frame_metadata=sidecar_frame_metadata,
+            )
+            metadata = loaded.metadata
+            _validate_checkpoint_metadata(
+                metadata,
+                stage=stage,
+                expected_identity=expected_identity,
+                expected_identity_sha256=expected_identity_sha256,
+            )
+            for key in ("row_counts", "frame_schema", "frame_metadata"):
+                if metadata.get(key) != manifest.get(key):
+                    raise ValueError(
+                        f"{stage} checkpoint {key} differs from its sidecar"
+                    )
+            frame_metadata = metadata.get("frame_metadata")
+            if not isinstance(frame_metadata, Mapping):
+                raise ValueError(f"{stage} checkpoint frame_metadata must be an object")
+            frame = loaded.frame
+            _validate_checkpoint_frame(
+                frame,
+                stage=stage,
+                row_counts=metadata.get("row_counts"),
+                frame_schema=metadata.get("frame_schema"),
+            )
+            assembly_receipt = metadata.get("assembly_receipt")
+            stage_receipts = metadata.get("stage_receipts")
+            input_receipts = metadata.get("input_receipts")
+            if not isinstance(assembly_receipt, Mapping):
+                raise ValueError(
+                    f"{stage} checkpoint assembly_receipt must be an object"
+                )
+            if _json_ready(
+                frame.metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
+            ) != _json_ready(assembly_receipt):
+                raise ValueError(
+                    f"{stage} checkpoint assembly receipt differs from Frame metadata"
+                )
+            if not isinstance(stage_receipts, Mapping):
+                raise ValueError(f"{stage} checkpoint stage_receipts must be an object")
+            if not isinstance(input_receipts, Mapping):
+                raise ValueError(f"{stage} checkpoint input_receipts must be an object")
+            _validate_checkpoint_receipt_prefix(stage, stage_receipts)
+            persistent_frame = frame
+            simulation_frame: Frame | None = None
+            if stage == "simulated":
+                simulation_output = metadata.get("simulation_output")
+                if simulation_output != {
+                    "column": _POOL_SIMULATION_OUTPUT_COLUMN,
+                    "entity": "person",
+                    "persisted_to_pool": False,
+                }:
+                    raise ValueError(
+                        "simulated checkpoint has an invalid SSI output binding"
+                    )
+                simulation_frame = frame
+                persistent_frame = _without_simulation_output(frame)
+
+            checkpoint = MultispinePoolCheckpoint(
+                stage=stage,
+                frame=persistent_frame,
+                assembly_receipt=dict(assembly_receipt),
+                stage_receipts=dict(stage_receipts),
+                simulation_frame=simulation_frame,
+            )
+            self.bind_input_receipts(input_receipts)
+            self._attempts[stage] = {
+                "load_status": "resumed",
+                "checkpoint_sha256": actual_file_sha256,
+                "size_bytes": path.stat().st_size,
+            }
+            return checkpoint
+        except Exception as error:  # corrupted local artifacts are rebuildable
+            return self._invalid(
+                stage,
+                reason="checkpoint_validation_failed",
+                error=error,
+            )
+
+    def _invalid(
+        self,
+        stage: str,
+        *,
+        reason: str,
+        error: Exception,
+    ) -> None:
+        failure = {
+            "reason": reason,
+            "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
+            "message": str(error),
+            "path": str(self.checkpoint_path(stage).resolve()),
+        }
+        self._attempts[stage] = {
+            "load_status": "invalid_rebuild",
+            "invalid_checkpoint": failure,
+        }
+        print(
+            f"Ignored corrupt pool checkpoint {stage!r} at "
+            f"{self.checkpoint_path(stage)}: {type(error).__name__}: {error}; "
+            "rebuilding."
+        )
+        return None
+
+
+def _validate_checkpoint_metadata(
+    metadata: Mapping[str, object],
+    *,
+    stage: str,
+    expected_identity: Mapping[str, object],
+    expected_identity_sha256: str,
+) -> None:
+    if (
+        metadata.get("artifact_kind") != _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND
+        or metadata.get("schema_version") != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
+        or metadata.get("materializer_version")
+        != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+        or metadata.get("stage") != stage
+    ):
+        raise ValueError(f"{stage} checkpoint metadata has an unsupported binding")
+    if metadata.get("identity") != expected_identity:
+        raise ValueError(f"{stage} checkpoint embedded identity changed")
+    if metadata.get("identity_sha256") != expected_identity_sha256:
+        raise ValueError(f"{stage} checkpoint embedded identity digest changed")
+
+
+def _validate_checkpoint_receipt_prefix(
+    stage: str,
+    stage_receipts: Mapping[str, object],
+) -> None:
+    expected = {
+        "assembled": frozenset(),
+        "transferred": frozenset({"impute"}),
+        "simulated": frozenset({"impute", "derive", "seed", "simulate"}),
+    }[stage]
+    observed = frozenset(stage_receipts)
+    allowed = expected | ({"clone"} if stage != "assembled" else set())
+    if not expected <= observed or not observed <= allowed:
+        raise ValueError(
+            f"{stage} checkpoint receipt stages are {sorted(observed)}, "
+            f"expected {sorted(expected)} with an optional clone receipt"
+        )
+
+
+def _frame_row_counts(frame: Frame) -> dict[str, int]:
+    return {entity: int(frame.n(entity)) for entity in frame.entities}
+
+
+def _frame_schema_payload(frame: Frame) -> dict[str, object]:
+    return {
+        "entities": {
+            entity: [
+                {"name": str(column), "dtype": str(frame.table(entity)[column].dtype)}
+                for column in frame.table(entity).columns
+            ]
+            for entity in frame.entities
+        },
+        "links": {
+            link: [
+                {"name": str(column), "dtype": str(frame.link(link)[column].dtype)}
+                for column in frame.link(link).columns
+            ]
+            for link in frame.links
+        },
+        "weighted_entities": {
+            entity: frame.weights_for(entity).kind.value
+            for entity in frame.weighted_entities
+        },
+    }
+
+
+def _validate_checkpoint_frame(
+    frame: Frame,
+    *,
+    stage: str,
+    row_counts: object,
+    frame_schema: object,
+) -> None:
+    if frame.schema != US_SCHEMA:
+        raise ValueError(f"{stage} checkpoint does not carry the US entity schema")
+    if row_counts != _frame_row_counts(frame):
+        raise ValueError(
+            f"{stage} checkpoint row counts changed: got {_frame_row_counts(frame)}, "
+            f"expected {row_counts!r}"
+        )
+    if frame_schema != _frame_schema_payload(frame):
+        raise ValueError(f"{stage} checkpoint table schema changed")
+    validate_assembly_provenance(
+        frame,
+        boundary=f"pool {stage} checkpoint load",
+    )
+
+
+def _without_simulation_output(frame: Frame) -> Frame:
+    person = frame.table("person")
+    if _POOL_SIMULATION_OUTPUT_COLUMN not in person:
+        raise ValueError("simulated checkpoint is missing ephemeral person.ssi output")
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person.drop(columns=[_POOL_SIMULATION_OUTPUT_COLUMN])
+    tables.update({link: frame.link(link) for link in frame.links})
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _assert_simulation_checkpoint_pair(
+    persistent: Frame,
+    evaluation: Frame,
+) -> None:
+    """Prove the evaluation checkpoint is exactly pool inputs plus SSI."""
+
+    if persistent.schema != evaluation.schema:
+        raise ValueError("Simulation checkpoint changed the pool entity schema.")
+    if (
+        persistent.entities != evaluation.entities
+        or persistent.links != evaluation.links
+    ):
+        raise ValueError("Simulation checkpoint changed pool table membership.")
+    for entity in persistent.entities:
+        expected = persistent.table(entity)
+        observed = evaluation.table(entity)
+        if entity == "person":
+            if _POOL_SIMULATION_OUTPUT_COLUMN not in observed:
+                raise ValueError(
+                    "Simulation checkpoint evaluation is missing person.ssi."
+                )
+            observed = observed.drop(columns=[_POOL_SIMULATION_OUTPUT_COLUMN])
+        pd.testing.assert_frame_equal(
+            observed,
+            expected,
+            check_dtype=True,
+            check_exact=True,
+        )
+    for link in persistent.links:
+        pd.testing.assert_frame_equal(
+            evaluation.link(link),
+            persistent.link(link),
+            check_dtype=True,
+            check_exact=True,
+        )
+    if persistent.weighted_entities != evaluation.weighted_entities:
+        raise ValueError("Simulation checkpoint changed weighted entities.")
+    for entity in persistent.weighted_entities:
+        before = persistent.weights_for(entity)
+        after = evaluation.weights_for(entity)
+        if before.kind != after.kind or not np.array_equal(before.values, after.values):
+            raise ValueError(f"Simulation checkpoint changed {entity!r} weights.")
+    pd.testing.assert_series_equal(
+        evaluation.strata,
+        persistent.strata,
+        check_dtype=True,
+        check_exact=True,
+    )
+    if evaluation.mass_log != persistent.mass_log:
+        raise ValueError("Simulation checkpoint changed the pool mass log.")
+    if _json_ready(evaluation.metadata) != _json_ready(persistent.metadata):
+        raise ValueError("Simulation checkpoint changed the assembly metadata.")
+
+
 def _initialize_or_resume_primary_qrf(
     frame: Frame,
     donor: pd.DataFrame,
     checkpoint_dir: Path,
     *,
     input_binding: Mapping[str, object],
-) -> None:
+) -> str:
     manifest_path = _primary_qrf_manifest_path(checkpoint_dir)
     binding_path = _primary_qrf_input_binding_path(checkpoint_dir)
     expected_binding = _json_ready(input_binding)
@@ -450,7 +1326,7 @@ def _initialize_or_resume_primary_qrf(
                 "Primary QRF checkpoint input binding differs from the verified "
                 "pool inputs; refusing to reuse stale predictions."
             )
-        return
+        return "resumed"
     if checkpoint_dir.exists():
         if not checkpoint_dir.is_dir():
             raise ValueError(
@@ -470,6 +1346,7 @@ def _initialize_or_resume_primary_qrf(
         n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
     )
     _atomic_write_json(binding_path, input_binding)
+    return "initialized"
 
 
 def _impute_pool(
@@ -479,7 +1356,7 @@ def _impute_pool(
     checkpoint_dir: Path,
     checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
-    _initialize_or_resume_primary_qrf(
+    qrf_resume_status = _initialize_or_resume_primary_qrf(
         frame,
         puf_donor,
         checkpoint_dir,
@@ -539,6 +1416,7 @@ def _impute_pool(
                 "post_primary_completion": dict(source_completion.receipt),
             },
             "primary_puf_qrf": {
+                "resume_status": qrf_resume_status,
                 "checkpoint_manifest": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
                 "input_binding": _read_json_object(qrf_binding_path),
@@ -562,10 +1440,10 @@ def _impute_pool(
 
 
 def build_multispine_pool(
-    asec: Frame,
-    acs: Frame,
+    asec: Frame | None,
+    acs: Frame | None,
     *,
-    puf_donor: pd.DataFrame,
+    puf_donor: pd.DataFrame | None,
     acs_rent_donor: pd.DataFrame | None = None,
     primary_qrf_checkpoint_dir: Path,
     checkpoint_input_binding: Mapping[str, object] | None = None,
@@ -579,6 +1457,8 @@ def build_multispine_pool(
     derive: PoolOperator = derive_multispine_pool_inputs,
     seed: PoolOperator = seed_multispine_pool_inputs,
     simulate: PoolOperator = materialize_multispine_agreement_outputs,
+    checkpoint: Callable[[MultispinePoolCheckpoint], None] | None = None,
+    resume: MultispinePoolCheckpoint | None = None,
 ) -> MultispinePoolResult:
     """Run the production pool path, with injectable operators for fixtures.
 
@@ -587,29 +1467,38 @@ def build_multispine_pool(
     its registry or fixed tolerances.
     """
 
-    native_inputs = source_native_inputs or {}
-    assert_operator_free_source_frame(
-        asec,
-        label="ASEC raw-stage pool input",
-        native_inputs=native_inputs.get("asec"),
-    )
-    assert_operator_free_source_frame(
-        acs,
-        label="ACS native-mapped pool input",
-        native_inputs=native_inputs.get("acs"),
-    )
+    if resume is None:
+        if not isinstance(asec, Frame) or not isinstance(acs, Frame):
+            raise TypeError("Fresh pool builds require ASEC and ACS Frames.")
+        native_inputs = source_native_inputs or {}
+        assert_operator_free_source_frame(
+            asec,
+            label="ASEC raw-stage pool input",
+            native_inputs=native_inputs.get("asec"),
+        )
+        assert_operator_free_source_frame(
+            acs,
+            label="ACS native-mapped pool input",
+            native_inputs=native_inputs.get("acs"),
+        )
     if impute is None:
-        if checkpoint_input_binding is None:
+        impute_will_run = resume is None or resume.stage == "assembled"
+        clone_preparation_will_run = impute_will_run
+        if impute_will_run and checkpoint_input_binding is None:
             raise ValueError(
                 "Production pool imputation requires a verified checkpoint "
                 "input binding."
             )
-        if acs_rent_donor is None:
+        if impute_will_run and puf_donor is None:
+            raise ValueError("Production pool imputation requires the PUF donor.")
+        if clone_preparation_will_run and acs_rent_donor is None:
             raise ValueError(
                 "Production pool imputation requires the canonical ACS rent donor."
             )
 
         def impute_operator(frame: Frame) -> PoolStageOutput:
+            if puf_donor is None or checkpoint_input_binding is None:
+                raise AssertionError("Pool imputation dependencies were not loaded.")
             return _impute_pool(
                 frame,
                 puf_donor=puf_donor,
@@ -617,12 +1506,20 @@ def build_multispine_pool(
                 checkpoint_input_binding=checkpoint_input_binding,
             )
 
-        prepare_clone_operator = prepare_clone or (
-            lambda frame: prepare_multispine_source_inputs_for_clone(
-                frame,
-                acs_rent_donor=acs_rent_donor,
-            )
-        )
+        if prepare_clone is not None:
+            prepare_clone_operator = prepare_clone
+        elif clone_preparation_will_run:
+            if acs_rent_donor is None:  # pragma: no cover - validated above
+                raise AssertionError("ACS rent donor was not loaded.")
+
+            def prepare_clone_operator(frame: Frame) -> PoolStageOutput:
+                return prepare_multispine_source_inputs_for_clone(
+                    frame,
+                    acs_rent_donor=acs_rent_donor,
+                )
+
+        else:
+            prepare_clone_operator = None
 
     else:
         impute_operator = impute
@@ -635,6 +1532,8 @@ def build_multispine_pool(
         derive=derive,
         seed=seed,
         simulate=simulate,
+        checkpoint=checkpoint,
+        resume=resume,
     )
 
 
@@ -648,10 +1547,14 @@ def _manifest_payload(
     outputs: PoolBuildOutputs,
     verified_inputs: Mapping[str, _VerifiedInput],
     acs_source_manifest: AcsSourceManifest,
-    loaded: _LoadedInputs,
+    input_receipts: Mapping[str, object],
+    checkpoint_provenance: Mapping[str, object],
     publication_run_id: str,
 ) -> dict[str, object]:
     status = "simulation_ready" if result.simulation_ready else "agreement_failed"
+    puf_donor_receipt = input_receipts.get("puf_donor")
+    if not isinstance(puf_donor_receipt, Mapping):
+        raise ValueError("Pool input receipts have no PUF donor object.")
     return {
         "artifact_kind": "populace_us_multispine_pool_manifest",
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
@@ -665,15 +1568,11 @@ def _manifest_payload(
         "provenance_pins": {
             role: pin.to_manifest() for role, pin in verified_inputs.items()
         },
-        "asec_raw_stage_checkpoint": loaded.asec_raw_stage_checkpoint,
+        "asec_raw_stage_checkpoint": input_receipts.get("asec_raw_stage_checkpoint"),
         "acs_source_manifest": asdict(acs_source_manifest),
-        "acs_pums_build": loaded.acs_build,
-        "acs_native_inputs": loaded.acs_native_inputs,
-        "puf_donor": {
-            "rows": int(len(loaded.puf_donor)),
-            "columns": sorted(str(column) for column in loaded.puf_donor.columns),
-            "build_receipt": loaded.puf_donor_build,
-        },
+        "acs_pums_build": input_receipts.get("acs_pums_build"),
+        "acs_native_inputs": input_receipts.get("acs_native_inputs"),
+        "puf_donor": dict(puf_donor_receipt),
         "assembly_receipt": result.assembly_receipt,
         "assembly_contract": {
             "household_mass_shares": dict(POOL_HOUSEHOLD_MASS_SHARES),
@@ -688,6 +1587,7 @@ def _manifest_payload(
         },
         "provenance_counts": result.provenance_counts,
         "stage_receipts": result.stage_receipts,
+        "stage_checkpoints": checkpoint_provenance,
         "agreement_gate": _agreement_payload(result),
         "pool_h5": {
             "path": str(outputs.pool_h5.resolve()),
@@ -754,8 +1654,28 @@ def _write_outputs(
     outputs: PoolBuildOutputs,
     verified_inputs: Mapping[str, _VerifiedInput],
     acs_source_manifest: AcsSourceManifest,
-    loaded: _LoadedInputs,
+    loaded: _LoadedInputs | None = None,
+    input_receipts: Mapping[str, object] | None = None,
+    checkpoint_provenance: Mapping[str, object] | None = None,
 ) -> None:
+    if input_receipts is None:
+        if loaded is None:
+            raise ValueError(
+                "Pool publication requires loaded inputs or checkpointed receipts."
+            )
+        input_receipts = _loaded_input_receipts(loaded)
+    if checkpoint_provenance is None:
+        checkpoint_provenance = {
+            "artifact_kind": ("populace_us_multispine_pool_checkpoint_provenance"),
+            "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+            "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+            "enabled": False,
+            "agreement": {
+                "source": "always_fresh",
+                "cached": False,
+                "terminal_verdict_persisted": False,
+            },
+        }
     publication_run_id = _new_publication_run_id()
     _atomic_write_json(
         outputs.manifest,
@@ -795,7 +1715,8 @@ def _write_outputs(
             outputs=outputs,
             verified_inputs=verified_inputs,
             acs_source_manifest=acs_source_manifest,
-            loaded=loaded,
+            input_receipts=input_receipts,
+            checkpoint_provenance=checkpoint_provenance,
             publication_run_id=publication_run_id,
         )
         _atomic_write_json(outputs.manifest, manifest)
@@ -820,14 +1741,26 @@ def _read_json_object(path: Path) -> dict[str, object]:
 
 
 def _json_ready(value: object) -> object:
-    if is_dataclass(value) and not isinstance(value, type):
-        return _json_ready(asdict(value))
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
             raise ValueError("Build receipt mappings must use string JSON keys.")
         return {key: _json_ready(item) for key, item in value.items()}
+    if is_dataclass(value) and not isinstance(value, type):
+        return _json_ready(asdict(value))
     if isinstance(value, (list, tuple)):
         return [_json_ready(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        normalized = [_json_ready(item) for item in value]
+        return sorted(
+            normalized,
+            key=lambda item: json.dumps(
+                item,
+                allow_nan=False,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
     if isinstance(value, np.ndarray):
         return [_json_ready(item) for item in value.tolist()]
     if isinstance(value, np.generic):
@@ -869,24 +1802,64 @@ def main(argv: list[str] | None = None) -> int:
     """Build the pool and return nonzero exactly when terminal agreement is red."""
 
     args = _parser().parse_args(argv)
-    outputs = _output_paths(args.out)
+    outputs = _output_paths(
+        args.out,
+        checkpoint_root=args.checkpoint_root,
+    )
     verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
-    loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
+    checkpoint_store = _PoolStageCheckpointStore(
+        outputs.checkpoint_root,
+        base_identity=_pool_checkpoint_base_identity(verified_inputs),
+    )
+    outputs = _with_primary_qrf_identity(
+        outputs,
+        base_identity_sha256=checkpoint_store.base_identity_sha256,
+    )
+    resume = checkpoint_store.load_deepest()
+
+    loaded: _LoadedInputs | None = None
+    asec: Frame | None = None
+    acs: Frame | None = None
+    acs_rent_donor: pd.DataFrame | None = None
+    puf_donor: pd.DataFrame | None = None
+    source_native_inputs: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None
+    if resume is None:
+        loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
+        checkpoint_store.bind_input_receipts(_loaded_input_receipts(loaded))
+        asec = loaded.asec
+        acs = loaded.acs
+        acs_rent_donor = loaded.acs_rent_donor
+        puf_donor = loaded.puf_donor
+        source_native_inputs = {"acs": loaded.acs_native_inputs}
+    elif resume.stage == "assembled":
+        acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
+        puf_donor, _puf_build = _load_puf_donor(args)
+        _validate_resumed_puf_donor(
+            puf_donor,
+            checkpoint_store.input_receipts,
+        )
+
     result = build_multispine_pool(
-        loaded.asec,
-        loaded.acs,
-        puf_donor=loaded.puf_donor,
-        acs_rent_donor=loaded.acs_rent_donor,
+        asec,
+        acs,
+        puf_donor=puf_donor,
+        acs_rent_donor=acs_rent_donor,
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
         checkpoint_input_binding=_checkpoint_input_binding(verified_inputs),
-        source_native_inputs={"acs": loaded.acs_native_inputs},
+        source_native_inputs=source_native_inputs,
+        checkpoint=checkpoint_store.write,
+        resume=resume,
+    )
+    checkpoint_provenance = checkpoint_store.provenance(
+        primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
     )
     _write_outputs(
         result,
         outputs=outputs,
         verified_inputs=verified_inputs,
         acs_source_manifest=acs_source_manifest,
-        loaded=loaded,
+        input_receipts=checkpoint_store.input_receipts,
+        checkpoint_provenance=checkpoint_provenance,
     )
     if not result.simulation_ready:
         print(
