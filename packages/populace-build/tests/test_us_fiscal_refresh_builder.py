@@ -3444,7 +3444,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
 
 @pytest.mark.parametrize(
     "terminal_mode",
-    ["merge", "integrity", "retirement", "crash", "telemetry"],
+    ["merge", "integrity", "retirement", "crash", "telemetry", "puf_tail"],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
@@ -3469,14 +3469,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``telemetry``: live telemetry raises while attaching the already-written
     calibration diagnostics; the exception becomes a batch line and every
     later terminal gate group still evaluates before the terminal raise.
+    ``puf_tail``: exact-k selection loses the original PUF capital-gains tail;
+    the failure is batched while diagnostics and final-weight evidence remain,
+    every later terminal group runs, and release artifacts stay suppressed.
     """
     builder = _load_builder_module()
-    release_id = "populace-us-2024-gate-failure-test"
+    release_id = (
+        "populace-us-2024-k2-gate-failure-test"
+        if terminal_mode == "puf_tail"
+        else "populace-us-2024-gate-failure-test"
+    )
     base_h5 = tmp_path / "base.h5"
+    pool_manifest = tmp_path / "pool.manifest.json"
     weeks_source = tmp_path / "asecpub23csv.zip"
     facts = tmp_path / "facts.jsonl"
     out = tmp_path / "out"
     base_h5.write_bytes(b"h5")
+    pool_manifest.write_text("fixture", encoding="utf-8")
     facts.write_text("{}\n")
     target_spec = TargetSpec(
         name="amount",
@@ -3495,6 +3504,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         l0_lambda=0.2,
         n_nonzero=2,
         frame=SimpleNamespace(n=lambda entity: 2),
+        weights=np.asarray([12.0, 35.0]),
+        initial_weights=np.asarray([1.0, 1.0]),
         weight_entity="household",
         selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
     )
@@ -3510,7 +3521,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     class FakeFrame:
         def n(self, entity):
             assert entity == "household"
-            return 4
+            return 2 if terminal_mode == "puf_tail" else 4
+
+        def table(self, entity):
+            assert entity == "household"
+            size = self.n("household")
+            return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.ones(self.n("household"), dtype=np.float64),
+                WeightKind.IMPORTANCE,
+            )
 
     class FakeExportFrame:
         def n(self, entity):
@@ -3528,21 +3551,71 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
 
-    argv = [
-        "build_us_fiscal_refresh_release.py",
-        "--base-h5",
-        str(base_h5),
-        "--ledger-facts",
-        str(facts),
-        "--out",
-        str(out),
-        "--release-id",
-        release_id,
-        "--asec-2023-weeks-unemployed-source",
-        str(weeks_source),
-        "--no-target-frame-checkpoint",
-    ]
-    if terminal_mode != "telemetry":
+    if terminal_mode == "puf_tail":
+        loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
+        incumbent = tmp_path / "incumbent.json"
+        incumbent.write_text(
+            json.dumps(
+                {
+                    "target_surface": {"sha256": "e" * 64, "n_targets": 0},
+                    "build": {"target_loss_basis": loss_basis},
+                    "targets": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        incumbent_sha256 = (
+            __import__("hashlib").sha256(incumbent.read_bytes()).hexdigest()
+        )
+        argv = [
+            "build_us_fiscal_refresh_release.py",
+            "--pool-manifest",
+            str(pool_manifest),
+            "--pool-manifest-sha256",
+            "a" * 64,
+            "--pool-release-id",
+            "fixture-publication",
+            "--exact-k",
+            "N",
+            "--exact-k-pi-hi",
+            "0.95",
+            "--seed",
+            "17",
+            "--ledger-facts",
+            str(facts),
+            "--ledger-facts-sha256",
+            "b" * 64,
+            "--ledger-manifest-sha256",
+            "c" * 64,
+            "--incumbent-diagnostics",
+            str(incumbent),
+            "--incumbent-diagnostics-sha256",
+            incumbent_sha256,
+            "--frozen-target-surface-sha256",
+            "e" * 64,
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--no-target-frame-checkpoint",
+            "--no-staging",
+        ]
+    else:
+        argv = [
+            "build_us_fiscal_refresh_release.py",
+            "--base-h5",
+            str(base_h5),
+            "--ledger-facts",
+            str(facts),
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--asec-2023-weeks-unemployed-source",
+            str(weeks_source),
+            "--no-target-frame-checkpoint",
+        ]
+    if terminal_mode not in {"telemetry", "puf_tail"}:
         argv.append("--no-staging")
     if terminal_mode == "crash":
         # Nonexistent incumbent: the degraded-mode guard must record the
@@ -3554,10 +3627,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+
+    def fake_sha256(path):
+        if terminal_mode == "puf_tail" and Path(path) == pool_manifest:
+            return "a" * 64
+        if Path(path) == weeks_source:
+            return "weeks-source-sha"
+        return "base-sha"
+
     monkeypatch.setattr(
         builder,
         "_sha256",
-        lambda path: "weeks-source-sha" if Path(path) == weeks_source else "base-sha",
+        fake_sha256,
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
     if terminal_mode == "telemetry":
@@ -3599,7 +3680,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
-    if terminal_mode in {"integrity", "retirement", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -3716,6 +3797,28 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return FakeFrame()
 
     monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+    if terminal_mode == "puf_tail":
+        monkeypatch.setattr(
+            builder,
+            "load_simulation_ready_us_multispine_pool",
+            lambda path: (
+                FakeFrame(),
+                {
+                    "publication_run_id": "fixture-publication",
+                    "agreement_gate": {"passed": True, "gates": {}},
+                    "pool_h5": {
+                        "path": str(base_h5),
+                        "sha256": "1" * 64,
+                    },
+                    "agreement_diagnostics": {"sha256": "2" * 64},
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            builder,
+            "_person_population",
+            lambda frame: builder.US_BASE_PERSON_POPULATION_BENCHMARK,
+        )
 
     def fake_load_weeks_unemployed_source(path, **kwargs):
         captured["source_stage_events"].append("load_weeks_source")
@@ -4854,6 +4957,43 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return path
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+    if terminal_mode == "puf_tail":
+        ladder_outcome = SimpleNamespace(
+            result=result,
+            support=np.asarray([0, 1], dtype=np.int64),
+            selected_inclusion_probabilities=np.ones(2),
+            selection_receipt={
+                "k": 2,
+                "pi_hi": 0.95,
+                "seed": 17,
+                "certainty_count": 2,
+                "boundary_pool_size": 0,
+                "design": "full-pool",
+            },
+            refit_baseline_diagnostics={"method": "fixture-full-pool"},
+        )
+        monkeypatch.setattr(
+            builder,
+            "calibrate_exact_k_ladder",
+            lambda *args, **kwargs: ladder_outcome,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_exact_k_puf_tail_support_gate",
+            lambda frame, support: builder.GateResult(
+                name="exact_k_puf_capital_gains_tail",
+                passed=False,
+                failures=("fixture PUF own-tail donor missing",),
+                details={"status": "failed"},
+            ),
+        )
+        monkeypatch.setattr(
+            builder,
+            "diagnostics_payload",
+            lambda result, *, target_registry: {
+                "target_surface": {"sha256": "e" * 64, "n_targets": 0}
+            },
+        )
 
     def fake_l0_refit_weights(frame, refit_result):
         captured["export_frame_from_l0_refit"] = True
@@ -4888,6 +5028,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return {}
 
     monkeypatch.setattr(builder, "_with_l0_refit_weights", fake_l0_refit_weights)
+    if terminal_mode == "puf_tail":
+        monkeypatch.setattr(
+            builder,
+            "_with_calibrated_weights",
+            lambda frame, weights: FakeExportFrame(),
+        )
     monkeypatch.setattr(
         builder,
         "us_ssi_take_up_diagnostics",
@@ -4903,7 +5049,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # own early failure. Other modes retain the populace#547 delivery
         # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode in {"integrity", "retirement"}
+        passes = terminal_mode in {"integrity", "retirement", "puf_tail"}
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -4984,7 +5130,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
-        if terminal_mode == "retirement":
+        if terminal_mode == "puf_tail":
+            assert message.startswith(
+                "Release gates failed: Exact-k PUF capital-gains tail failed: "
+                "fixture PUF own-tail donor missing"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "retirement":
             assert message.startswith(
                 "Release gates failed: Retirement-distribution signal failed: "
                 f"{retirement_missing_failure}"
@@ -5031,7 +5183,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
-    if terminal_mode == "retirement":
+    if terminal_mode == "puf_tail":
+        assert (
+            "Exact-k PUF capital-gains tail failed: "
+            "fixture PUF own-tail donor missing"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "retirement":
         assert (
             "Retirement-distribution signal failed: "
             f"{retirement_missing_failure}"
@@ -5128,14 +5286,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
             "source_rows": 2,
         }
-    if terminal_mode in {"integrity", "retirement", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
             "qrf_tail_concentration",
         ]
     if terminal_mode != "crash":
-        if terminal_mode == "retirement":
+        if terminal_mode == "puf_tail":
+            expected_gate_failures = [
+                "Exact-k PUF capital-gains tail failed: "
+                "fixture PUF own-tail donor missing",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "Exact-k frozen-register fit failed: Exact-k frozen-register "
+                "comparison has no complete candidate target rows.",
+                "ctc failed",
+            ]
+        elif terminal_mode == "retirement":
             expected_gate_failures = [
                 f"Retirement-distribution signal failed: {retirement_missing_failure}",
                 "Other health insurance signal failed on the export frame: "
@@ -5179,6 +5347,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "ctc failed",
             ]
         assert captured["diagnostics"]["gate_failures"] == expected_gate_failures
+        if terminal_mode == "puf_tail":
+            assert captured["diagnostics"]["exact_k_ladder"]["invariant_battery"][
+                "puf_capital_gains_tail"
+            ] == {
+                "passed": False,
+                "failures": ["fixture PUF own-tail donor missing"],
+                "details": {"status": "failed"},
+            }
+            return
     else:
         # Corridor order: SSI delivery + basis note, health-input crash
         # guard, other-health gate failure, incumbent guard, release-gate
