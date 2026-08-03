@@ -5510,17 +5510,22 @@ def test_exact_k_gate_requires_strict_weighted_loss_improvement() -> None:
         names[0]: {"target": 100.0, "final_estimate": 120.0},
         names[1]: {"target": 200.0, "final_estimate": 240.0},
     }
+    loss_basis = builder._fiscal_target_loss_basis(registry, loss_weights)
     passing = builder._exact_k_frozen_register_fit_gate(
         result((110.0, 220.0)),
         incumbent,
         target_registry=registry,
         target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
     )
     tied = builder._exact_k_frozen_register_fit_gate(
         result((120.0, 240.0)),
         incumbent,
         target_registry=registry,
         target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
     )
 
     assert passing.passed
@@ -5528,6 +5533,185 @@ def test_exact_k_gate_requires_strict_weighted_loss_improvement() -> None:
     assert passing.details["strict_improvement_required"] is True
     assert not tied.passed
     assert "did not beat the incumbent" in tied.failures[0]
+
+
+def test_exact_k_gate_rejects_incumbent_weight_swap_that_flips_verdict() -> None:
+    """The r1 [1, 10] versus [10, 1] loss-basis flip must fail closed."""
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="fixture/one",
+            entity="household",
+            value=100.0,
+            measure="one",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_a",
+        ),
+        TargetSpec(
+            name="fixture/two",
+            entity="household",
+            value=100.0,
+            measure="two",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_b",
+        ),
+    )
+    registry = TargetRegistry(specs, country="us")
+    names = tuple(builder._target_row_name(spec) for spec in specs)
+    configured_weights = np.asarray([1.0, 10.0])
+    incumbent_weights = np.asarray([10.0, 1.0])
+    targets = np.asarray([100.0, 100.0])
+    candidate_estimates = np.asarray([120.0, 100.0])
+    candidate = SimpleNamespace(
+        diagnostics=tuple(
+            SimpleNamespace(name=name, target=target, final_estimate=estimate)
+            for name, target, estimate in zip(
+                names,
+                targets,
+                candidate_estimates,
+                strict=True,
+            )
+        ),
+        final_loss=builder.relative_error_loss(
+            candidate_estimates,
+            targets,
+            target_loss_weights=configured_weights,
+            target_loss_cap=builder.US_FISCAL_TARGET_LOSS_CAP,
+        ),
+    )
+    incumbent = {
+        name: {"target": target, "final_estimate": 110.0}
+        for name, target in zip(names, targets, strict=True)
+    }
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=configured_weights,
+        configured_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            configured_weights,
+        ),
+        incumbent_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            incumbent_weights,
+        ),
+    )
+
+    assert candidate.final_loss == pytest.approx(0.01818181818181818)
+    assert not gate.passed
+    assert gate.details["candidate_loss"] is None
+    assert gate.details["incumbent_loss"] is None
+    assert gate.failures[0].startswith("IncumbentLossBasisMismatchError:")
+
+
+def test_exact_k_gate_rejects_different_recorded_loss_basis_metadata() -> None:
+    """A surface-identical incumbent cannot substitute weighting metadata."""
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture_a",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    candidate = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=100.0),),
+        final_loss=0.0,
+    )
+    configured_basis = builder._fiscal_target_loss_basis(
+        registry,
+        np.ones(1),
+    )
+    incumbent_basis = {
+        **configured_basis,
+        "target_loss_weighting": "different_weighting_version",
+        "target_loss_family_multipliers": {"fixture_a": 999.0},
+        "target_loss_cap": 0.01,
+    }
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        {name: {"target": 100.0, "final_estimate": 200.0}},
+        target_registry=registry,
+        target_loss_weights=np.ones(1),
+        configured_loss_basis=configured_basis,
+        incumbent_loss_basis=incumbent_basis,
+    )
+
+    assert not gate.passed
+    assert gate.failures[0].startswith("IncumbentLossBasisMismatchError:")
+
+
+def test_verified_incumbent_bytes_survive_post_verification_replacement(
+    tmp_path: Path,
+) -> None:
+    """The r1 strong-to-weak replacement cannot change the scored incumbent."""
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    loss_weights = np.ones(1)
+    loss_basis = builder._fiscal_target_loss_basis(registry, loss_weights)
+    incumbent_path = tmp_path / "incumbent.json"
+    strong_payload = {
+        "target_surface": {"sha256": "a" * 64},
+        "build": {"target_loss_basis": loss_basis},
+        "targets": [
+            {"name": name, "target": 100.0, "final_estimate": 105.0},
+        ],
+    }
+    incumbent_path.write_text(json.dumps(strong_payload), encoding="utf-8")
+    expected_sha256 = (
+        __import__("hashlib").sha256(incumbent_path.read_bytes()).hexdigest()
+    )
+
+    pinned_payload, observed_sha256 = (
+        builder._load_verified_incumbent_diagnostics_payload(
+            incumbent_path,
+            expected_sha256=expected_sha256,
+        )
+    )
+    weak_payload = {
+        **strong_payload,
+        "targets": [
+            {"name": name, "target": 100.0, "final_estimate": 200.0},
+        ],
+    }
+    incumbent_path.write_text(json.dumps(weak_payload), encoding="utf-8")
+    candidate = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=110.0),),
+        final_loss=0.1,
+    )
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        builder._diagnostics_by_target_name(pinned_payload, path=incumbent_path),
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=pinned_payload["build"]["target_loss_basis"],
+    )
+
+    assert observed_sha256 == expected_sha256
+    assert not gate.passed
+    assert gate.details["incumbent_loss"] == pytest.approx(0.05)
+    assert "did not beat the incumbent" in gate.failures[0]
 
 
 def test_exact_k_frozen_register_gate_fails_closed_on_row_mismatch() -> None:
@@ -5553,6 +5737,14 @@ def test_exact_k_frozen_register_gate_fails_closed_on_row_mismatch() -> None:
         {},
         target_registry=registry,
         target_loss_weights=np.ones(1),
+        configured_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            np.ones(1),
+        ),
+        incumbent_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            np.ones(1),
+        ),
     )
 
     assert not gate.passed

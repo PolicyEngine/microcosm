@@ -196,11 +196,14 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
             "final_estimate": diagnostic.target * 11.0,
         }
     }
+    loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
     incumbent_gate = builder._exact_k_frozen_register_fit_gate(
         outcome.result,
         incumbent_rows,
         target_registry=registry,
         target_loss_weights=np.ones(1),
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
     )
     assert incumbent_gate.passed
     target_surface = builder.diagnostics_payload(
@@ -223,6 +226,8 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
             "manifest_sha256": "b" * 64,
         },
         target_surface=target_surface,
+        target_loss_basis=loss_basis,
+        incumbent_diagnostics_sha256="f" * 64,
         incumbent_fit_gate=incumbent_gate,
         puf_tail_gate=builder.GateResult(
             name="exact_k_puf_capital_gains_tail",
@@ -310,6 +315,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         ladder_receipt["frozen_target_register"]["target_surface_sha256"]
         == target_surface["sha256"]
     )
+    assert ladder_receipt["frozen_target_register"]["target_loss_basis"] == loss_basis
     assert (
         ladder_receipt["frozen_target_register"]["incumbent_diagnostics_sha256"]
         == "f" * 64

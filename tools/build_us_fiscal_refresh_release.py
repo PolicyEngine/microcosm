@@ -343,6 +343,12 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+
+
+class IncumbentLossBasisMismatchError(RuntimeError):
+    """The pinned incumbent was scored on a different fiscal-loss basis."""
+
+
 # Bumped 1 -> 2 for #217: the per-reform income-tax cache key now depends only on
 # the inputs that actually determine per-household reform estimates and no longer
 # includes build_commit / seed / target_registry_version. Old (v1) coarse-key
@@ -2494,6 +2500,29 @@ def _load_incumbent_diagnostics_payload(path: Path | None) -> dict[str, object]:
             "expected a JSON object."
         )
     return payload
+
+
+def _load_verified_incumbent_diagnostics_payload(
+    path: Path,
+    *,
+    expected_sha256: str,
+) -> tuple[dict[str, object], str]:
+    """Load one incumbent from the exact bytes authenticated for scoring."""
+
+    raw = path.read_bytes()
+    observed_sha256 = hashlib.sha256(raw).hexdigest()
+    if observed_sha256 != expected_sha256:
+        raise ValueError(
+            "Incumbent diagnostics SHA-256 mismatch for "
+            f"{path}: got {observed_sha256}, expected {expected_sha256}."
+        )
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"{path} is not a Populace calibration_diagnostics.json file: "
+            "expected a JSON object."
+        )
+    return payload, observed_sha256
 
 
 def _diagnostics_by_target_name(
@@ -5637,6 +5666,77 @@ def _fiscal_target_loss_weights(
     return weights / weights.mean()
 
 
+def _fiscal_target_loss_basis(
+    registry: TargetRegistry,
+    target_loss_weights: np.ndarray,
+    family_multipliers: Mapping[str, float] | None = None,
+) -> dict[str, object]:
+    """Content-address the complete loss basis without changing target surface."""
+
+    weights = np.asarray(target_loss_weights, dtype=np.float64)
+    if weights.shape != (len(registry.specs),):
+        raise ValueError(
+            "Fiscal target loss basis vector shape does not match the compiled "
+            f"registry: got {weights.shape}, expected {(len(registry.specs),)}."
+        )
+    if not np.isfinite(weights).all() or (weights <= 0.0).any():
+        raise ValueError(
+            "Fiscal target loss basis weights must be finite and positive."
+        )
+    loss_vector = [
+        {
+            "row_name": _target_row_name(spec),
+            "weight_hex": float(weight).hex(),
+        }
+        for spec, weight in zip(registry.specs, weights, strict=True)
+    ]
+    loss_vector_sha256 = hashlib.sha256(
+        json.dumps(
+            loss_vector,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "schema_version": 1,
+        "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "target_loss_family_multipliers": {
+            family: float(multiplier)
+            for family, multiplier in sorted((family_multipliers or {}).items())
+        },
+        "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+        "n_targets": len(loss_vector),
+        "loss_vector_sha256": loss_vector_sha256,
+    }
+
+
+def _incumbent_target_loss_basis(
+    payload: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    build = payload.get("build")
+    if not isinstance(build, Mapping):
+        return None
+    basis = build.get("target_loss_basis")
+    return basis if isinstance(basis, Mapping) else None
+
+
+def _assert_incumbent_loss_basis_matches(
+    configured: Mapping[str, object],
+    incumbent: Mapping[str, object] | None,
+) -> None:
+    if incumbent is None:
+        raise IncumbentLossBasisMismatchError(
+            "pinned incumbent diagnostics have no build.target_loss_basis; "
+            "rescore the incumbent on the frozen register before release."
+        )
+    if dict(incumbent) != dict(configured):
+        raise IncumbentLossBasisMismatchError(
+            "pinned incumbent target-loss basis differs from the configured "
+            f"basis: configured={dict(configured)!r}, incumbent={dict(incumbent)!r}."
+        )
+
+
 def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, float]:
     """SSA age-band recipient counts as compiled into the calibration registry.
 
@@ -6421,6 +6521,8 @@ def _exact_k_frozen_register_fit_gate(
     *,
     target_registry: TargetRegistry,
     target_loss_weights: np.ndarray,
+    configured_loss_basis: Mapping[str, object],
+    incumbent_loss_basis: Mapping[str, object] | None,
 ) -> GateResult:
     """Require an exact-k candidate to beat the incumbent on one register.
 
@@ -6434,6 +6536,13 @@ def _exact_k_frozen_register_fit_gate(
     diagnostics = tuple(getattr(result, "diagnostics", ()) or ())
     names = [str(getattr(row, "name", "")) for row in diagnostics]
     failures: list[str] = []
+    try:
+        _assert_incumbent_loss_basis_matches(
+            configured_loss_basis,
+            incumbent_loss_basis,
+        )
+    except IncumbentLossBasisMismatchError as error:
+        failures.append(f"{type(error).__name__}: {error}")
     if not names or any(not name for name in names):
         failures.append(
             "Exact-k frozen-register comparison has no complete candidate target rows."
@@ -6552,6 +6661,10 @@ def _exact_k_frozen_register_fit_gate(
         details={
             "metric": "capped_concept_budget_weighted_mean_absolute_relative_error",
             "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            "configured_loss_basis": dict(configured_loss_basis),
+            "incumbent_loss_basis": (
+                dict(incumbent_loss_basis) if incumbent_loss_basis is not None else None
+            ),
             "n_targets": len(names),
             "candidate_loss": candidate_loss,
             "incumbent_loss": incumbent_loss,
@@ -6676,11 +6789,13 @@ def _write_release_calibration_diagnostics(
     selection_source: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
+    incumbent_diagnostics_sha256: str | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
+    target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
@@ -6689,7 +6804,11 @@ def _write_release_calibration_diagnostics(
     incumbent_payload = (
         {
             "path": str(incumbent_diagnostics_path),
-            "sha256": _sha256(incumbent_diagnostics_path),
+            "sha256": (
+                incumbent_diagnostics_sha256
+                if incumbent_diagnostics_sha256 is not None
+                else _sha256(incumbent_diagnostics_path)
+            ),
             "critical_targets": _incumbent_critical_target_payload(incumbent_rows),
         }
         if incumbent_diagnostics_path is not None
@@ -6709,6 +6828,11 @@ def _write_release_calibration_diagnostics(
                 else None
             ),
             "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            **(
+                {"target_loss_basis": dict(target_loss_basis)}
+                if target_loss_basis is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -7667,6 +7791,8 @@ def _exact_k_ladder_manifest_payload(
     pool_manifest: Mapping[str, object],
     ledger_artifact: Mapping[str, object],
     target_surface: Mapping[str, object],
+    target_loss_basis: Mapping[str, object],
+    incumbent_diagnostics_sha256: str,
     incumbent_fit_gate: GateResult,
     puf_tail_gate: GateResult,
 ) -> dict[str, object]:
@@ -7703,7 +7829,8 @@ def _exact_k_ladder_manifest_payload(
         frozen_target_register={
             "ledger_artifact": dict(ledger_artifact),
             "target_surface_sha256": target_surface.get("sha256"),
-            "incumbent_diagnostics_sha256": args.incumbent_diagnostics_sha256,
+            "target_loss_basis": dict(target_loss_basis),
+            "incumbent_diagnostics_sha256": incumbent_diagnostics_sha256,
             "incumbent_fit": {
                 "passed": incumbent_fit_gate.passed,
                 "failures": list(incumbent_fit_gate.failures),
@@ -7880,14 +8007,15 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
         _refuse_certified_release_dir_reuse(
             args.out.resolve() / "releases" / args.release_id
         )
+    pinned_incumbent_payload: dict[str, object] | None = None
+    pinned_incumbent_sha256: str | None = None
     if args.exact_k is not None:
-        observed_incumbent_sha256 = _sha256(args.incumbent_diagnostics)
-        if observed_incumbent_sha256 != args.incumbent_diagnostics_sha256:
-            raise ValueError(
-                "Incumbent diagnostics SHA-256 mismatch for "
-                f"{args.incumbent_diagnostics}: got {observed_incumbent_sha256}, "
-                f"expected {args.incumbent_diagnostics_sha256}."
+        pinned_incumbent_payload, pinned_incumbent_sha256 = (
+            _load_verified_incumbent_diagnostics_payload(
+                args.incumbent_diagnostics,
+                expected_sha256=args.incumbent_diagnostics_sha256,
             )
+        )
     pool_frame: Frame | None = None
     pool_original_household_ids: np.ndarray | None = None
     pool_original_household_weights: np.ndarray | None = None
@@ -9820,6 +9948,15 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
     target_loss_weights = _fiscal_target_loss_weights(
         registry, args.target_family_loss_multipliers
     )
+    target_loss_basis = (
+        _fiscal_target_loss_basis(
+            registry,
+            target_loss_weights,
+            args.target_family_loss_multipliers,
+        )
+        if args.exact_k is not None
+        else None
+    )
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
@@ -10227,9 +10364,12 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
     # confirm round 2 finding 2).
     current_target_surface: Mapping[str, object] | None = None
     incumbent_diagnostics_path: Path | None = args.incumbent_diagnostics
+    incumbent_loss_basis: Mapping[str, object] | None = None
     try:
-        incumbent_payload = _load_incumbent_diagnostics_payload(
-            args.incumbent_diagnostics
+        incumbent_payload = (
+            pinned_incumbent_payload
+            if pinned_incumbent_payload is not None
+            else _load_incumbent_diagnostics_payload(args.incumbent_diagnostics)
         )
         if args.incumbent_diagnostics is not None:
             current_target_surface = diagnostics_payload(
@@ -10259,6 +10399,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             if args.incumbent_diagnostics is not None
             else {}
         )
+        incumbent_loss_basis = _incumbent_target_loss_basis(incumbent_payload)
     except Exception as error:
         # Degraded-mode guard (populace#547): with earlier terminal failures
         # pending, an incumbent load/validation crash must record a line and
@@ -10268,6 +10409,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             raise
         incumbent_diagnostics = {}
         incumbent_diagnostics_path = None
+        incumbent_loss_basis = None
         early_terminal_gate_failures.append(
             "Incumbent diagnostics could not be loaded/validated in "
             f"degraded mode; recorded instead of masking earlier failures: "
@@ -10294,6 +10436,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             incumbent_diagnostics,
             target_registry=registry,
             target_loss_weights=target_loss_weights,
+            configured_loss_basis=target_loss_basis,
+            incumbent_loss_basis=incumbent_loss_basis,
         )
         exact_k_ladder_provenance = _exact_k_ladder_manifest_payload(
             args=args,
@@ -10301,6 +10445,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             pool_manifest=pool_manifest_payload,
             ledger_artifact=ledger_artifact.provenance(),
             target_surface=current_target_surface,
+            target_loss_basis=target_loss_basis,
+            incumbent_diagnostics_sha256=pinned_incumbent_sha256,
             incumbent_fit_gate=exact_k_incumbent_fit_gate,
             puf_tail_gate=exact_k_puf_tail_gate,
         )
@@ -10383,12 +10529,14 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
         gate_failures=gate_failures,
         timing=timing,
         incumbent_diagnostics_path=incumbent_diagnostics_path,
+        incumbent_diagnostics_sha256=pinned_incumbent_sha256,
         incumbent_diagnostics=incumbent_diagnostics,
         default_dataset=default_dataset,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
+        target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
     )
     # Terminal-gate batching: evaluate EVERY terminal gate
