@@ -1340,7 +1340,7 @@ def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
             "invented-release",
             {"publication_run_id": "fixture-publication"},
         )
-    assert "_assert_pool_release_identity" in builder.main.__code__.co_names
+    assert "_assert_pool_release_id_value" in builder.main.__code__.co_names
 
 
 def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
