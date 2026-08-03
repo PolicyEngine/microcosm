@@ -27,6 +27,13 @@ def _load_builder_module():
     return module
 
 
+def _installed_variable_metadata_index(builder):
+    try:
+        return builder.PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+
 def _load_scorer_module():
     root = Path(__file__).resolve().parents[3]
     tools_path = str(root / "tools")
@@ -6777,6 +6784,7 @@ def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
     from populace.build.us_runtime import split_us_puf_e19200_by_agi_band
 
     builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
     e19200_total = np.asarray([100.0, 200.0, 300.0, 400.0])
     source_year_agi = np.asarray([-5_000.0, 20_000.0, 100_000.0, 10_000_000.0])
     mortgage_interest, non_mortgage_interest = split_us_puf_e19200_by_agi_band(
@@ -7299,6 +7307,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
     monkeypatch,
 ) -> None:
     builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
     assert builder.SOI_VARIABLE_MAP["ctc"] == "ctc"
     assert builder.SOI_VARIABLE_MAP["refundable_ctc"] == "refundable_ctc"
     frame = Frame(
@@ -7458,6 +7467,7 @@ def test_population_age_targets_materialize_person_age_counts(
     monkeypatch,
 ) -> None:
     builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
     frame = Frame(
         {
             "person": pd.DataFrame(
@@ -8150,15 +8160,41 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
 def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
-    class FakePolicyEngineUSEngine:
+    class FakeVariableMetadataIndex:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
             assert "income" in tables["person"]
             return {"income"}
 
-    monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
+    monkeypatch.setattr(
+        builder,
+        "PolicyEngineUSVariableMetadataIndex",
+        FakeVariableMetadataIndex,
+    )
 
     with pytest.raises(ValueError, match="Formula-owned.*income"):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
+
+
+def test_export_frame_rejects_generated_formula_owned_columns(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    index = _installed_variable_metadata_index(builder)
+
+    generated = ("AK", "ar_agi", "mi_surtax")
+    for column in generated:
+        small_frame.table("person")[column] = 0.0
+    monkeypatch.setattr(builder, "_FORMULA_OWNED_GATE_ADAPTER", index)
+
+    with pytest.raises(
+        ValueError,
+        match=r"Formula-owned.*AK.*ar_agi.*mi_surtax",
+    ):
         builder._with_calibrated_weights(
             small_frame,
             np.array([1000.0, 2000.0]),
@@ -8188,13 +8224,17 @@ def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
 def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
-    class FakePolicyEngineUSEngine:
+    class FakeVariableMetadataIndex:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
             assert "income" in tables["person"]
             return set()
 
-    monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
+    monkeypatch.setattr(
+        builder,
+        "PolicyEngineUSVariableMetadataIndex",
+        FakeVariableMetadataIndex,
+    )
 
     exported = builder._with_calibrated_weights(
         small_frame,

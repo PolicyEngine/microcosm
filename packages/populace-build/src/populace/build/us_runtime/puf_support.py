@@ -289,8 +289,8 @@ _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS = frozenset(
 
 # Known formula-owned outputs the PUF tax-detail donor must never carry as
 # persistable leaves. This is a documented *seed* set, not the whole story:
-# :func:`resolve_formula_owned_outputs` unions it with the set derived live
-# from PolicyEngine-US variable metadata, so a new formula-owned aggregate
+# :func:`resolve_formula_owned_outputs` unions it with the set derived from the
+# installed PolicyEngine-US source metadata, so a new formula-owned aggregate
 # added upstream is rejected even before anyone adds it here (populace issue
 # #301). Every name here has a stated reason; a build-time consistency check
 # (:func:`assert_formula_owned_blocklist_current`) fails if the engine stops
@@ -459,9 +459,10 @@ _FILING_STATUS_CODES = {
 _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "health_insurance_premiums_without_medicare_part_b": 0.453,
     "other_medical_expenses": 0.325,
-    "medicare_part_b_premiums": 0.137,
     "over_the_counter_health_expenses": 0.085,
 }
+# The omitted 13.7% E17500 share represented reported Medicare Part B premiums.
+# Do not redistribute it: the engine computes its distinct singular Part B output.
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 
@@ -1775,25 +1776,23 @@ def _tax_unit_household_weights(
 
 
 def _formula_owned_engine() -> Any | None:
-    """A PolicyEngine-US adapter for formula metadata, or ``None`` if absent.
+    """An import-free PolicyEngine-US source index, or ``None`` if absent.
 
-    The adapter is the single reader of engine metadata. Its module ships with
-    populace-frame, so this import (and the trivial construction) succeeds even
-    when ``policyengine_us`` itself is not installed — the adapter imports the
-    engine lazily, so a missing ``[us]`` extra surfaces as an ``ImportError``
-    at *call* time, not here. Callers treat that call-time ``ImportError``
-    exactly like ``None``: the guard degrades to the static seed set (the
-    workspace test environment) rather than letting a missing optional extra
-    abort a build. At build time the extra is installed and the adapter serves
-    live metadata.
+    Importing ``policyengine_us`` constructs a full tax-benefit system, and a
+    second adapter system registers another complete set of variable modules.
+    The ownership guard needs only class metadata, so the source index parses
+    the installed variable declarations without importing the country package.
+    A missing ``[us]`` extra still degrades to the static seed set.
     """
     try:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from populace.frame.adapters.policyengine_us import (
+            PolicyEngineUSVariableMetadataIndex,
+        )
     except ImportError:
         return None
     try:
-        return PolicyEngineUSEngine()
-    except Exception:  # pragma: no cover - defensive; construction is trivial
+        return PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
         return None
 
 
@@ -1822,7 +1821,8 @@ def resolve_formula_owned_outputs(
     Args:
         requested: The output variable names a fit intends to impute/persist.
         engine: A metadata source exposing ``formula_owned_outputs(names) ->
-            set[str]`` (a :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSEngine`
+            set[str]`` (a
+            :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSVariableMetadataIndex`
             in production). ``None`` resolves one lazily, falling back to the
             static seed set when ``policyengine_us`` is not installed.
 
@@ -1837,9 +1837,8 @@ def resolve_formula_owned_outputs(
         try:
             rejected |= set(engine.formula_owned_outputs(requested_set))
         except ImportError:
-            # The adapter imports policyengine_us lazily, so a missing [us]
-            # extra surfaces here rather than at construction; degrade to the
-            # static seed set exactly as when no adapter is available.
+            # An injected metadata source may resolve the optional package
+            # lazily; degrade to the static seed exactly as when unavailable.
             pass
     return rejected
 
@@ -1855,10 +1854,9 @@ def assert_formula_owned_blocklist_current(engine: Any | None = None) -> None:
     catches formula-owned names *missing* from the static set, this catches
     static names the engine no longer *considers* formula-owned.
 
-    A no-op when no engine is available or the engine's lazy
-    ``policyengine_us`` import is missing at call time (the workspace test
-    environment), so the check runs only where the ``[us]`` extra is
-    installed — the build.
+    A no-op when no metadata index is available or an injected source reports
+    the optional package missing, so the check runs only where the ``[us]``
+    extra is installed — the build.
 
     Raises:
         ValueError: If a static-set entry is not reported formula-owned by the

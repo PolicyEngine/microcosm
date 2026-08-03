@@ -13,7 +13,10 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.alimony import derive_us_alimony_from_asec
+from populace.build.us_runtime.alimony import (
+    US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
+    derive_us_alimony_from_asec,
+)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -60,7 +63,6 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "tax_exempt_private_pension_income",
         "taxable_ira_distributions",
         "health_insurance_premiums_without_medicare_part_b",
-        "medicare_part_b_premiums",
         "other_medical_expenses",
         "over_the_counter_health_expenses",
         "rental_income",
@@ -68,7 +70,6 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "has_champva_health_coverage_at_interview",
         "has_esi",
         "has_indian_health_service_coverage_at_interview",
-        "has_marketplace_health_coverage",
         "has_marketplace_health_coverage_at_interview",
         "has_medicaid_health_coverage_at_interview",
         "has_non_marketplace_direct_purchase_health_coverage_at_interview",
@@ -77,8 +78,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "has_va_health_coverage_at_interview",
         "is_female",
         "unemployment_compensation",
-        "alimony_income",
-        "miscellaneous_income",
+        *US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
     }
 )
 
@@ -164,10 +164,12 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         "farm_operations_income": "FRSE_VAL",
         "unemployment_compensation": "UC_VAL",
         "health_insurance_premiums_without_medicare_part_b": "PHIP_VAL",
-        "medicare_part_b_premiums": "PEMCPREM",
         "other_medical_expenses": "PMED_VAL",
         "over_the_counter_health_expenses": "POTC_VAL",
     }
+    # PEMCPREM remains on the source frame as evidence only. The corresponding
+    # reported Part B leaf has no engine-formula consumers, so the pool must not
+    # promote or transfer it onto ACS rows.
     for output, source in direct_sources.items():
         _fill_missing(person, output, _source(person, source))
 
@@ -266,8 +268,6 @@ def _fill_health_coverage_inputs(person: pd.DataFrame) -> None:
         "has_marketplace_health_coverage_at_interview",
         marketplace,
     )
-    _fill_bool_missing(person, "has_marketplace_health_coverage", marketplace)
-
     source_columns: Mapping[str, str] = {
         "has_non_marketplace_direct_purchase_health_coverage_at_interview": "NOW_NONM",
         "has_medicaid_health_coverage_at_interview": "NOW_MCAID",

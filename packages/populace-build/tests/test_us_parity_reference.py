@@ -89,6 +89,16 @@ class TestReference:
         assert set(raw["nonzero_shares"]) == set(reference.nonzero_shares)
         assert raw["source"]["sha256"] == reference.source.sha256
 
+    def test_deprecated_marketplace_leaf_is_a_reviewed_reference_exclusion(
+        self,
+    ) -> None:
+        raw = json.loads(_resource(ECPS_PARITY_REFERENCE_RESOURCE).read_text())
+        assert raw["reviewed_consumerless_inputs_excluded"] == [
+            "has_marketplace_health_coverage"
+        ]
+        assert "has_marketplace_health_coverage" not in raw["nonzero_shares"]
+        assert "has_marketplace_health_coverage_at_interview" in raw["nonzero_shares"]
+
     def test_empty_reference_is_refused(self, tmp_path) -> None:
         bad = tmp_path / "bad_reference.json"
         bad.write_text(

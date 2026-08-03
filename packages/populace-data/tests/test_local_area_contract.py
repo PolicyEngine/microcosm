@@ -136,6 +136,16 @@ def test_valid_local_area_bundle_passes(tmp_path: Path) -> None:
     validate_release_dir(release_dir)
 
 
+def test_local_area_dispatch_does_not_bypass_uk_tier_identity(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(
+        tmp_path,
+        release_id="populace-uk-2023-public-k10",
+    )
+
+    with pytest.raises(ReleaseContractError, match="unratified tier"):
+        validate_release_dir(release_dir)
+
+
 def test_local_area_bundle_skips_national_critical_targets(tmp_path: Path) -> None:
     # The two-target local surface would fail every national critical-target
     # requirement; the role-keyed contract must not apply them.

@@ -50,14 +50,25 @@ from populace.build.us_runtime.adult_care import (
 from populace.build.us_runtime.alimony import (
     ALIMONY_ASEC_ARCHIVED_DERIVATION_URL,
     ALIMONY_PUF_ARCHIVED_DERIVATION_URL,
+    STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL,
     US_ALIMONY_NONCONSTANT_PERSON_COLUMNS,
     US_ALIMONY_OUTPUT_COLUMNS,
     US_ALIMONY_STAGE_NAME,
+    US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
     derive_us_alimony_from_asec,
     derive_us_alimony_from_puf,
     us_alimony_signal_gate,
     us_alimony_stage_spec,
     us_alimony_summary,
+)
+from populace.build.us_runtime.asec_checkpoint import (
+    ASEC_RAW_STAGE_ARTIFACT_KIND,
+    ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
+    ASEC_RAW_STAGE_OPERATOR_STATUS,
+    ASEC_RAW_STAGE_SCHEMA_VERSION,
+    ASEC_RAW_STAGE_STAGE,
+    load_asec_pre_clone_checkpoint,
+    load_asec_raw_stage_checkpoint,
 )
 from populace.build.us_runtime.asec_pool import (
     AsecSource,
@@ -346,6 +357,8 @@ from populace.build.us_runtime.geography_ladder import (
 from populace.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
     US_HOURS_WORKED_OUTPUT_COLUMNS,
+    US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
     US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,
     US_HOURS_WORKED_STAGE_NAME,
     derive_us_hours_worked_from_manifest,
@@ -443,6 +456,11 @@ from populace.build.us_runtime.nonzero_shares import (
     nonzero_share,
     us_nonzero_shares,
 )
+from populace.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    assert_operator_free_source_frame,
+)
 from populace.build.us_runtime.org_wages import (
     BLS_STATE_UNION_REPRESENTATION_RATE_2024,
     FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
@@ -516,6 +534,7 @@ from populace.build.us_runtime.prior_year_income import (
     PRIOR_YEAR_INCOME_ARCHIVED_PUF_IMPUTATION_URL,
     PRIOR_YEAR_INCOME_ARCHIVED_PUF_OUTPUTS_URL,
     PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL,
+    US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS,
     US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS,
     US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
@@ -550,6 +569,7 @@ from populace.build.us_runtime.puf_capital_gains_tail import (
     validate_puf_capital_gains_tail_manifest,
     write_puf_capital_gains_tail_manifest,
 )
+from populace.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
 from populace.build.us_runtime.puf_e01000_reconciliation import (
     PUF_E01000_RECONCILIATION_SCHEMA_VERSION,
     build_puf_e01000_reconciliation_basis,
@@ -891,6 +911,7 @@ from populace.build.us_runtime.source_runtime import (
     us_source_operation_handlers,
 )
 from populace.build.us_runtime.spine_agreement import (
+    DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE,
     DEFAULT_INCIDENCE_RATIO_BOUNDS,
     DEFAULT_QUANTILE_ENVELOPE_TOLERANCE,
     DEFAULT_SPINE_AGREEMENT_QUANTILES,
@@ -1075,6 +1096,11 @@ from populace.build.us_runtime.workers_compensation import (
 from populace.frame import Frame
 
 __all__ = [
+    "ASEC_RAW_STAGE_ARTIFACT_KIND",
+    "ASEC_RAW_STAGE_CHECKPOINT_FILENAME",
+    "ASEC_RAW_STAGE_OPERATOR_STATUS",
+    "ASEC_RAW_STAGE_SCHEMA_VERSION",
+    "ASEC_RAW_STAGE_STAGE",
     "BuildConfig",
     "AsecSource",
     "BASE_ASEC_SUPPORT_CHANNEL",
@@ -1136,6 +1162,8 @@ __all__ = [
     "UndocumentedControls",
     "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
     "US_HOURS_WORKED_OUTPUT_COLUMNS",
+    "US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS",
+    "US_HOURS_WORKED_POOL_OUTPUT_COLUMNS",
     "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
     "US_HOURS_WORKED_STAGE_NAME",
     "derive_us_hours_worked_from_manifest",
@@ -1255,6 +1283,8 @@ __all__ = [
     "with_us_relationship_inputs",
     "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
     "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
+    "STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL",
+    "US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS",
     "US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT",
     "US_ADULT_CARE_EARNED_INCOME_SOURCES",
     "US_ADULT_CARE_OUTPUT_COLUMNS",
@@ -1744,6 +1774,7 @@ __all__ = [
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_IMPUTATION_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_OUTPUTS_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL",
+    "US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS",
     "US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS",
@@ -1840,12 +1871,15 @@ __all__ = [
     "PUF_SOURCE_YEAR",
     "PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS",
     "PUF_SYNTHETIC_RECID_START",
+    "FORMULA_OWNED_SOURCE_COLUMNS",
+    "PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
     "assign_congressional_districts_to_households",
+    "assert_operator_free_source_frame",
     "build_pooled_asec_unit_frame",
     "clone_us_frame_for_puf_support",
     "congressional_district_assignment_summary",
@@ -1861,6 +1895,9 @@ __all__ = [
     "load_default_reform_specs",
     "load_congressional_district_vintage_crosswalk",
     "load_default_congressional_district_vintage_crosswalk",
+    "load_asec_pre_clone_checkpoint",
+    "load_asec_raw_stage_checkpoint",
+    "load_puf_tax_unit_donor",
     "normalize_district_code",
     "parse_baf_cd_layer",
     "parse_national_cd_bef_districts",
@@ -1927,6 +1964,7 @@ __all__ = [
     "us_register_consistency_gate",
     "us_register_contradictions",
     "write_us_source_coverage_diagnostics",
+    "DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE",
     "DEFAULT_INCIDENCE_RATIO_BOUNDS",
     "DEFAULT_QUANTILE_ENVELOPE_TOLERANCE",
     "DEFAULT_SPINE_AGREEMENT_QUANTILES",

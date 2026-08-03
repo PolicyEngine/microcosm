@@ -17,8 +17,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Sync workspace
-        run: uv sync --all-packages
+      - name: Sync workspace with US engine metadata
+        # The pool-input sweeps are live PolicyEngine-US ownership and consumer
+        # existence guards. Installing the US extra makes an upstream formula or
+        # consumer change fail here instead of being skipped until a remote build.
+        run: uv sync --all-packages --extra us
       - name: Behavioral contract suite + unit tests
         run: uv run pytest -m "not engine"
       - name: Lint
@@ -63,16 +66,41 @@ jobs:
         run: |
           uv venv /tmp/wheels-venv
           uv pip install --python /tmp/wheels-venv/bin/python dist/*.whl pytest
-      - name: Import every shard from the installed wheels
+      - name: Verify clean wheel boundary and import every shard
         run: |
-          /tmp/wheels-venv/bin/python -c "
-          import populace.frame, populace.fit, populace.calibrate, populace.build, populace.data
-          print('frame', populace.frame.__version__)
-          print('fit', populace.fit.__version__)
-          print('calibrate', populace.calibrate.__version__)
-          print('build', populace.build.__version__)
-          print('data', populace.data.__version__)
-          "
+          env -u PYTHONPATH /tmp/wheels-venv/bin/python -I - <<'PY'
+          from importlib import metadata, util
+          from pathlib import Path
+          import sys
+
+          import populace.build
+          import populace.calibrate
+          import populace.data
+          import populace.fit
+          import populace.frame
+
+          assert util.find_spec("policyengine_us") is None
+          try:
+              metadata.distribution("policyengine-us")
+          except metadata.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError("policyengine-us must be absent from the base wheel gate")
+
+          prefix = Path(sys.prefix).resolve()
+          modules = (
+              populace.frame,
+              populace.fit,
+              populace.calibrate,
+              populace.build,
+              populace.data,
+          )
+          for module in modules:
+              path = Path(module.__file__).resolve()
+              assert path.is_relative_to(prefix), f"source import escaped wheel venv: {path}"
+              print(module.__name__, module.__version__, path)
+          PY
       - name: Run the suite against the installed wheels
         run: |
-          /tmp/wheels-venv/bin/python -m pytest packages/*/tests -p no:cacheprovider -m "not engine"
+          env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
+            packages/*/tests -p no:cacheprovider -m "not engine"

@@ -182,6 +182,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "seed": 91,
                 "weight_kind": "design",
                 "patterns": [],
+                "imputed_recipient_rows": 0,
                 "unmodeled_recipient_rows": 0,
                 "derivation": None,
                 "reconciliation": None,

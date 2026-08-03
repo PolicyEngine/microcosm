@@ -7,8 +7,11 @@ release-manifest schemas (an unversioned early shape next to
 fails with each violation named.
 """
 
+import base64
 import hashlib
+import hmac
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -22,7 +25,36 @@ from populace.data import (
 )
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
-UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
+UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
+UK_RECORD_COUNT = 535_080
+UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
+UK_TERMINAL_GATE_PRODUCER = (
+    "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
+)
+UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
+)
+UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
+UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
+TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES = base64.b64decode(
+    TEST_UK_TERMINAL_GATE_SIGNING_KEY
+)
+FORGED_UK_TERMINAL_GATE_SIGNING_KEY_BYTES = base64.b64decode(
+    "ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA="
+)
+UK_ALWAYS_APPLICABLE_GATE_NAMES = (
+    "uk_release_input_coverage",
+    "degenerate_release_surface",
+    "zero_weight_strata",
+    "weight_ess",
+    "weight_ratio",
+)
+UK_EVIDENCE_GATE_NAMES = {
+    "hmrc_spi_income": ("weights_audit",),
+    "release_parity": ("export_surface", "target_surface", "target_fit"),
+}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -31,6 +63,18 @@ SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 TARGET_COUNT = 20
+UK_JUNE_FIXTURE_DIR = (
+    Path(__file__).parent / "fixtures" / "uk_june_2023" / UK_RELEASE_ID
+)
+
+
+@pytest.fixture(autouse=True)
+def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
+    monkeypatch.setenv(
+        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY,
+    )
+
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -76,7 +120,7 @@ def _model_package(release_id: str) -> tuple[str, str]:
 
 def _build_manifest(release_id: str = RELEASE_ID) -> dict:
     model_package, model_version = _model_package(release_id)
-    return {
+    manifest = {
         "build_id": release_id,
         "builder": "populace",
         "build_sha": GIT_COMMIT[:7],
@@ -99,6 +143,9 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
         },
         "gates": {"exported_nonzero": {"passed": True}},
     }
+    if "-k" in release_id and release_id.startswith("populace-uk-"):
+        manifest.update(country="uk", year=2023, n_records=UK_RECORD_COUNT)
+    return manifest
 
 
 def _release_manifest(
@@ -106,6 +153,7 @@ def _release_manifest(
     *,
     diagnostics_sha: str = DIAGNOSTICS_SHA,
     source_coverage_sha: str = SOURCE_COVERAGE_SHA,
+    terminal_gate_sha: str | None = None,
 ) -> dict:
     model_package, model_version = _model_package(release_id)
     manifest = {
@@ -160,6 +208,14 @@ def _release_manifest(
             "repo_id": "policyengine/populace-us",
             "revision": release_id,
             "sha256": source_coverage_sha,
+        }
+    if terminal_gate_sha is not None:
+        manifest["artifacts"]["terminal_gates"] = {
+            "kind": "diagnostics",
+            "path": UK_TERMINAL_GATE_REPORT_FILE,
+            "repo_id": "policyengine/populace-uk-private",
+            "revision": release_id,
+            "sha256": terminal_gate_sha,
         }
     return manifest
 
@@ -481,6 +537,199 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _canonical_sha256(value: object) -> str:
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode()
+
+
+def _terminal_gate_signature(key: bytes, payload: object) -> str:
+    return hmac.new(key, _canonical_json_bytes(payload), hashlib.sha256).hexdigest()
+
+
+def _terminal_weight_summary() -> dict:
+    return {
+        "n_records": UK_RECORD_COUNT,
+        "positive_weight_records": 335_080,
+        "zero_weight_records": 200_000,
+        "total_weight": 335_080.0,
+        "effective_sample_size": 335_080.0,
+        "ess_fraction": 335_080 / UK_RECORD_COUNT,
+        "median_positive_weight": 1.0,
+        "max_weight": 1.0,
+        "max_to_median_positive_weight": 1.0,
+        "top_1pct_weight_share": 0.01,
+    }
+
+
+def _terminal_gate_details(name: str) -> dict:
+    if name == "uk_release_input_coverage":
+        return {
+            "required_columns": 1,
+            "present_columns": 1,
+            "missing": [],
+            "degenerate_required": [],
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+        }
+    if name == "degenerate_release_surface":
+        return {
+            "columns_checked": 1,
+            "findings": {},
+            "all_null_columns": [],
+            "all_zero_columns": [],
+            "constant_columns": [],
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+        }
+    if name == "zero_weight_strata":
+        return {
+            "household_rows": UK_RECORD_COUNT,
+            "zero_weight_rows": 200_000,
+            "declared_strata": [
+                {
+                    "name": "june_spi_synthetic_base",
+                    "zero_weight_rows": 100_000,
+                },
+                {
+                    "name": "june_spi_synthetic_capital_gains",
+                    "zero_weight_rows": 100_000,
+                },
+            ],
+            "unmatched_zero_weight_rows": 0,
+            "unmatched_household_examples": [],
+            "ambiguous_zero_weight_rows": 0,
+            "ambiguous_household_examples": [],
+        }
+    if name == "weight_ess":
+        return {**_terminal_weight_summary(), "minimum_ess_fraction": 0.01}
+    if name == "weight_ratio":
+        return {
+            **_terminal_weight_summary(),
+            "maximum_max_to_median_ratio": 1_151.2542195939373,
+        }
+    if name == "weights_audit":
+        return {
+            "fits_checked": 1,
+            "resolved_weight_kinds": {"spi_qrf": "importance"},
+            "unweighted_fits": [],
+            "allowed_unweighted": {},
+            "unused_allowed_unweighted": [],
+        }
+    if name == "export_surface":
+        return {
+            "candidate_columns": 1,
+            "reference_columns": 1,
+            "missing_reference_columns": [],
+            "unexpected_candidate_columns": [],
+            "forbidden_candidate_columns": [],
+        }
+    if name == "target_surface":
+        return {
+            "candidate_targets": TARGET_COUNT,
+            "reference_targets": TARGET_COUNT,
+            "extra_candidate_targets": [],
+            "missing_reference_targets": [],
+        }
+    if name == "target_fit":
+        return {
+            "targets_checked": TARGET_COUNT,
+            "max_abs_relative_error": 0.25,
+            "failing_targets": {},
+        }
+    raise AssertionError(f"No terminal fixture details for {name!r}")
+
+
+def _terminal_gate_payload(
+    *,
+    release_id: str,
+    calibration_diagnostics_sha256: str,
+    evidence_stages: tuple[str, ...] = ("hmrc_spi_income", "release_parity"),
+    signing_key: bytes = TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+) -> tuple[dict, dict[str, str]]:
+    gate_names = list(UK_ALWAYS_APPLICABLE_GATE_NAMES)
+    for stage, names in UK_EVIDENCE_GATE_NAMES.items():
+        if stage in evidence_stages:
+            gate_names.extend(names)
+    gates = {
+        name: {
+            "passed": True,
+            "failures": [],
+            "details": _terminal_gate_details(name),
+        }
+        for name in gate_names
+    }
+    evidence = {
+        "release_dataset": _canonical_sha256({"weights": _terminal_weight_summary()}),
+        **{
+            stage: _canonical_sha256({"fixture_evidence_stage": stage})
+            for stage in evidence_stages
+        },
+    }
+    unsigned_attestation = {
+        "schema_version": 4,
+        "producer": UK_TERMINAL_GATE_PRODUCER,
+        "release_id": release_id,
+        "calibration_diagnostics_sha256": calibration_diagnostics_sha256,
+        "policy_sha256": UK_TERMINAL_GATE_POLICY_SHA256,
+        "evaluated_gates": gate_names,
+        "evidence_sha256": evidence,
+        "gate_results_sha256": _canonical_sha256(gates),
+        "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+        "signing_key_sha256": hashlib.sha256(signing_key).hexdigest(),
+    }
+    payload = {
+        "schema_version": 2,
+        "enforced": True,
+        "passed": True,
+        "gates": gates,
+        "attestation": unsigned_attestation,
+    }
+    payload["attestation"]["signature"] = _terminal_gate_signature(signing_key, payload)
+    return payload, evidence
+
+
+def _refresh_terminal_gate_attestation(
+    payload: dict,
+    *,
+    signing_key: bytes = TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+) -> None:
+    attestation = payload["attestation"]
+    ratio = payload["gates"].get("weight_ratio")
+    if isinstance(ratio, dict) and isinstance(ratio.get("details"), dict):
+        details = ratio["details"]
+        fields = tuple(_terminal_weight_summary())
+        if all(field in details for field in fields):
+            attestation["evidence_sha256"]["release_dataset"] = _canonical_sha256(
+                {"weights": {field: details[field] for field in fields}}
+            )
+    attestation["gate_results_sha256"] = _canonical_sha256(payload["gates"])
+    attestation["signature_algorithm"] = UK_TERMINAL_GATE_SIGNATURE_ALGORITHM
+    attestation["signing_key_sha256"] = hashlib.sha256(signing_key).hexdigest()
+    unsigned_attestation = {
+        key: value for key, value in attestation.items() if key != "signature"
+    }
+    attestation["signature"] = _terminal_gate_signature(
+        signing_key,
+        {
+            "schema_version": payload["schema_version"],
+            "enforced": payload["enforced"],
+            "passed": payload["passed"],
+            "gates": payload["gates"],
+            "attestation": unsigned_attestation,
+        },
+    )
+
+
 def _write_json_and_refresh_manifest_hash(
     release_dir: Path,
     *,
@@ -493,6 +742,188 @@ def _write_json_and_refresh_manifest_hash(
     manifest = json.loads(manifest_path.read_text())
     manifest["artifacts"][artifact_key]["sha256"] = _sha256(release_dir / filename)
     manifest_path.write_text(json.dumps(manifest))
+
+
+def _write_terminal_and_refresh_manifest_hashes(
+    release_dir: Path,
+    payload: dict,
+) -> None:
+    terminal_path = release_dir / UK_TERMINAL_GATE_REPORT_FILE
+    terminal_path.write_text(json.dumps(payload))
+    _refresh_terminal_manifest_hashes(release_dir)
+
+
+def _refresh_terminal_manifest_hashes(release_dir: Path) -> None:
+    terminal_path = release_dir / UK_TERMINAL_GATE_REPORT_FILE
+    digest = _sha256(terminal_path)
+
+    build_path = release_dir / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["gates"]["uk_terminal"]["sha256"] = digest
+    build_path.write_text(json.dumps(build))
+
+    release_path = release_dir / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["terminal_gates"]["sha256"] = digest
+    release_path.write_text(json.dumps(release))
+
+
+def _write_uk_release_dir(
+    tmp_path: Path,
+    release_id: str,
+    *,
+    tier: str | None = None,
+) -> Path:
+    directory = tmp_path / "releases" / release_id
+    directory.mkdir(parents=True)
+    build_manifest = _build_manifest(release_id)
+    diagnostics = _calibration_diagnostics()
+    if "-k" in release_id:
+        diagnostics["target_registry"]["country"] = "uk"
+        diagnostics["target_surface"]["n_records"] = UK_RECORD_COUNT
+        diagnostics["n_records"] = UK_RECORD_COUNT
+        diagnostics["effective_sample_size"] = 335_080.0
+        diagnostics["top_1pct_weight_share"] = 0.01
+        diagnostics["uk_diagnostics"] = {
+            "schema_version": 1,
+            "weights": {
+                "n_records": UK_RECORD_COUNT,
+                "positive_weight_records": 335_080,
+                "zero_weight_records": 200_000,
+                "total_weight": 335_080.0,
+                "effective_sample_size": 335_080.0,
+                "ess_fraction": 335_080 / UK_RECORD_COUNT,
+                "median_positive_weight": 1.0,
+                "max_weight": 1.0,
+                "max_to_median_positive_weight": 1.0,
+                "top_1pct_weight_share": 0.01,
+            },
+            "zero_weight_rows_by_stratum": [
+                {
+                    "stratum": {"household_is_spi_synthetic": False},
+                    "rows": 335_080,
+                    "positive_weight_rows": 335_080,
+                    "zero_weight_rows": 0,
+                    "weight_sum": 335_080.0,
+                },
+                {
+                    "stratum": {"household_is_spi_synthetic": True},
+                    "rows": 200_000,
+                    "positive_weight_rows": 0,
+                    "zero_weight_rows": 200_000,
+                    "weight_sum": 0.0,
+                },
+            ],
+            "target_pass_rates_by_geography_level": [
+                {
+                    "geography_level": level,
+                    "n_targets": TARGET_COUNT if level == "national" else 0,
+                    "n_scored": TARGET_COUNT if level == "national" else 0,
+                    "n_skipped": 0,
+                    "n_within_10pct": TARGET_COUNT if level == "national" else 0,
+                    "pass_rate": 1.0 if level == "national" else None,
+                }
+                for level in (
+                    "national",
+                    "region",
+                    "country",
+                    "local_authority",
+                    "constituency",
+                )
+            ],
+        }
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics_path.write_text(json.dumps(diagnostics))
+    terminal_gate_sha: str | None = None
+    if release_id.startswith("populace-uk-") and release_id.endswith(
+        f"-k{UK_RECORD_COUNT}"
+    ):
+        terminal_payload, terminal_evidence = _terminal_gate_payload(
+            release_id=release_id,
+            calibration_diagnostics_sha256=_sha256(diagnostics_path),
+        )
+        terminal_path = directory / UK_TERMINAL_GATE_REPORT_FILE
+        terminal_path.write_text(json.dumps(terminal_payload))
+        terminal_gate_sha = _sha256(terminal_path)
+        build_manifest["terminal_gate_evidence"] = terminal_evidence
+        build_manifest["gates"]["uk_terminal"] = {
+            "passed": True,
+            "path": UK_TERMINAL_GATE_REPORT_FILE,
+            "sha256": terminal_gate_sha,
+        }
+    (directory / "build_manifest.json").write_text(json.dumps(build_manifest))
+    manifest = _release_manifest(
+        release_id,
+        diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
+        terminal_gate_sha=terminal_gate_sha,
+    )
+    if "-k" in release_id:
+        manifest.update(
+            country="uk",
+            year=2023,
+            record_count=UK_RECORD_COUNT,
+            n_records=UK_RECORD_COUNT,
+        )
+    if tier is not None:
+        manifest["tier"] = tier
+    (directory / "release_manifest.json").write_text(json.dumps(manifest))
+    return directory
+
+
+def _copy_real_uk_june_release(tmp_path: Path) -> Path:
+    """Copy the semantic-real June JSONs sourced at df82567.
+
+    The committed fixtures retain all 149 targets from
+    ``policyengine-uk-data@df82567f598990b476cf0c26fe8f9bc7a06ddde1``.
+    Only JSON whitespace is trimmed; the release manifest diagnostics digest
+    is refreshed for those minified bytes. Original source hashes were
+    build ``630b05bc...``, diagnostics ``80b98127...``, and release
+    ``687c5c19...``.
+    """
+
+    directory = tmp_path / "releases" / UK_RELEASE_ID
+    shutil.copytree(UK_JUNE_FIXTURE_DIR, directory)
+    return directory
+
+
+def _rewrite_exact_k_fixture_to_two_records(directory: Path) -> None:
+    """Reproduce Sol's internally consistent k535080/n_records=2 probe."""
+
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["n_records"] = 2
+    build_path.write_text(json.dumps(build))
+
+    diagnostics = json.loads((directory / "calibration_diagnostics.json").read_text())
+    diagnostics["n_records"] = 2
+    diagnostics["target_surface"]["n_records"] = 2
+    diagnostics["effective_sample_size"] = 1.0
+    diagnostics["top_1pct_weight_share"] = 1.0
+    weights = diagnostics["uk_diagnostics"]["weights"]
+    weights.update(
+        n_records=2,
+        positive_weight_records=1,
+        zero_weight_records=1,
+        total_weight=1.0,
+        effective_sample_size=1.0,
+        ess_fraction=0.5,
+        top_1pct_weight_share=1.0,
+    )
+    positive, zero = diagnostics["uk_diagnostics"]["zero_weight_rows_by_stratum"]
+    positive.update(rows=1, positive_weight_rows=1, zero_weight_rows=0, weight_sum=1.0)
+    zero.update(rows=1, positive_weight_rows=0, zero_weight_rows=1, weight_sum=0.0)
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["record_count"] = 2
+    release["n_records"] = 2
+    release_path.write_text(json.dumps(release))
 
 
 def _split_microdata_artifact_entry(release_id: str, key: str) -> dict:
@@ -1058,28 +1489,927 @@ def test_each_required_file_is_named_when_missing(
         validate_release_dir(release_dir)
 
 
-def test_non_us_release_does_not_require_us_source_coverage(tmp_path: Path) -> None:
-    directory = tmp_path / "releases" / UK_RELEASE_ID
-    directory.mkdir(parents=True)
-    (directory / "build_manifest.json").write_text(
-        json.dumps(_build_manifest(UK_RELEASE_ID))
-    )
-    (directory / "calibration_diagnostics.json").write_text(
-        json.dumps(_calibration_diagnostics())
-    )
-    (directory / "release_manifest.json").write_text(
-        json.dumps(
-            _release_manifest(
-                UK_RELEASE_ID,
-                diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
-            )
-        )
-    )
+def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
+    tmp_path: Path,
+) -> None:
+    directory = _copy_real_uk_june_release(tmp_path)
+    diagnostics = json.loads((directory / "calibration_diagnostics.json").read_text())
 
     validate_release_dir(directory)
+    assert diagnostics["schema_version"] == 2
+    assert len(diagnostics["targets"]) == 149
+    assert all("aggregation" in row for row in diagnostics["targets"])
+    assert all("measure" not in row for row in diagnostics["targets"])
+    assert all("filter" not in row for row in diagnostics["targets"])
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+@pytest.mark.parametrize(
+    ("tier", "accepted"),
+    [(None, True), ("frs", True), ("cps-transfer", False)],
+)
+def test_grandfathered_june_release_is_bound_to_its_frs_lineage(
+    tmp_path: Path,
+    tier: str | None,
+    accepted: bool,
+) -> None:
+    directory = _copy_real_uk_june_release(tmp_path)
+    manifest_path = directory / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if tier is not None:
+        manifest["tier"] = tier
+        manifest_path.write_text(json.dumps(manifest))
+
+    if accepted:
+        validate_release_dir(directory)
+    else:
+        with pytest.raises(ReleaseContractError, match="known FRS lineage"):
+            validate_release_dir(directory)
+
+
+def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    diagnostics["schema_version"] = 2
+    for row in diagnostics["targets"]:
+        row["aggregation"] = "weighted_sum"
+        row.pop("measure")
+        row.pop("filter")
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match="publishes version 5"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_requires_and_accepts_ratified_tier(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+
+    validate_release_dir(directory)
+
+
+def test_exact_k_uk_required_files_include_terminal_report() -> None:
+    assert UK_TERMINAL_GATE_REPORT_FILE in required_release_files(UK_EXACT_K_RELEASE_ID)
+    assert UK_TERMINAL_GATE_REPORT_FILE not in required_release_files(UK_RELEASE_ID)
+
+
+def test_exact_k_uk_release_rejects_missing_terminal_report(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    (directory / UK_TERMINAL_GATE_REPORT_FILE).unlink()
+
+    with pytest.raises(
+        ReleaseContractError, match="required file 'terminal_gates.json'"
+    ):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_sol_exported_nonzero_only_gates(
+    tmp_path: Path,
+) -> None:
+    """Sol's ``gates={exported_nonzero}`` publication bypass must stay shut."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["gates"] = {"exported_nonzero": {"passed": True}}
+    build_path.write_text(json.dumps(build))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    assert "gates must include an 'uk_terminal' report pointer" in "\n".join(
+        excinfo.value.failures
+    )
+
+
+def test_exact_k_uk_release_rejects_sol_hand_composed_passing_parity_trio(
+    tmp_path: Path,
+) -> None:
+    """Even rehashed ``enforced:true`` raw parity gates are not an attestation."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    parity_names = ["export_surface", "target_surface", "target_fit"]
+    payload["gates"] = {
+        name: {"passed": True, "failures": [], "details": {}} for name in parity_names
+    }
+    payload["passed"] = True
+    payload["enforced"] = True
+    payload["attestation"]["evaluated_gates"] = parity_names
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "evaluated gate membership" in failures
+    assert "attestation.evaluated_gates" in failures
+
+
+def test_exact_k_uk_release_rejects_complete_public_hash_forgery(
+    tmp_path: Path,
+) -> None:
+    """All expected names plus reproducible public hashes are not evidence."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    assert set(payload["gates"]) == {
+        *UK_ALWAYS_APPLICABLE_GATE_NAMES,
+        "weights_audit",
+        "export_surface",
+        "target_surface",
+        "target_fit",
+    }
+    for gate in payload["gates"].values():
+        gate["details"] = {}
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "honest aggregator detail schema" in failures
+
+
+def test_exact_k_uk_release_rejects_complete_report_signed_by_untrusted_key(
+    tmp_path: Path,
+) -> None:
+    """Honest-shaped JSON and public digests cannot impersonate the signer."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        signing_key=FORGED_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+    )
+    build = json.loads((directory / "build_manifest.json").read_text())
+    assert build["terminal_gate_evidence"] == evidence
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "does not identify the trusted release key" in failures
+    assert "does not authenticate the complete report" in failures
+
+
+def test_exact_k_uk_release_requires_out_of_band_verification_key(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+
+    with pytest.raises(ReleaseContractError, match="verification requires"):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    ("encoded_key", "match"),
+    [
+        ("not-base64!", "must be valid base64"),
+        (base64.b64encode(b"x" * 31).decode(), "exactly 32 bytes"),
+    ],
+)
+def test_exact_k_uk_verifier_rejects_malformed_or_wrong_length_key(
+    tmp_path: Path,
+    monkeypatch,
+    encoded_key: str,
+    match: str,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    monkeypatch.setenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV, encoded_key)
+
+    with pytest.raises(ReleaseContractError, match=match):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_unchanged_cross_id_report_bytes(
+    tmp_path: Path,
+) -> None:
+    sibling_release_id = "populace-uk-2023-cps-transfer-k535080"
+    source = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    sibling = _write_uk_release_dir(
+        tmp_path,
+        sibling_release_id,
+        tier="cps-transfer",
+    )
+    validate_release_dir(source)
+    validate_release_dir(sibling)
+    source_report = source / UK_TERMINAL_GATE_REPORT_FILE
+    sibling_report = sibling / UK_TERMINAL_GATE_REPORT_FILE
+    authentic_bytes = source_report.read_bytes()
+    authentic_sha256 = hashlib.sha256(authentic_bytes).hexdigest()
+
+    sibling_report.write_bytes(authentic_bytes)
+    _refresh_terminal_manifest_hashes(sibling)
+
+    assert sibling_report.read_bytes() == authentic_bytes
+    assert _sha256(sibling_report) == authentic_sha256
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(sibling)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "attestation.release_id must match the release being validated" in failures
+    assert "attestation.signature does not authenticate" not in failures
+
+
+def test_exact_k_uk_attestation_binds_exact_calibration_diagnostics_bytes(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    diagnostics["options"]["epochs"] += 1
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="attestation.calibration_diagnostics_sha256",
+    ):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_aggregator_report_transplant(
+    tmp_path: Path,
+) -> None:
+    """A genuine four-row gate report cannot attest the k535080 fixture."""
+
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    four_row_summary = {
+        "n_records": 4,
+        "positive_weight_records": 4,
+        "zero_weight_records": 0,
+        "total_weight": 4.0,
+        "effective_sample_size": 4.0,
+        "ess_fraction": 1.0,
+        "median_positive_weight": 1.0,
+        "max_weight": 1.0,
+        "max_to_median_positive_weight": 1.0,
+        "top_1pct_weight_share": 0.25,
+    }
+    for name in ("weight_ess", "weight_ratio"):
+        payload["gates"][name]["details"].update(four_row_summary)
+    payload["gates"]["zero_weight_strata"]["details"].update(
+        household_rows=4,
+        zero_weight_rows=0,
+        declared_strata=[
+            {"name": "june_spi_synthetic_base", "zero_weight_rows": 0},
+            {
+                "name": "june_spi_synthetic_capital_gains",
+                "zero_weight_rows": 0,
+            },
+        ],
+    )
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "weight_ess'.details.n_records must match" in failures
+    assert "weight_ratio'.details.n_records must match" in failures
+    assert "zero_weight_strata.details.household_rows must match" in failures
+
+
+def test_exact_k_uk_release_rejects_rehashed_weight_observable_mutation(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    for name in ("weight_ess", "weight_ratio"):
+        payload["gates"][name]["details"]["total_weight"] = 1.0
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "weight_ess'.details.total_weight must match" in failures
+    assert "weight_ratio'.details.total_weight must match" in failures
+    assert "release_dataset evidence digest" in failures
+
+
+@pytest.mark.parametrize(
+    "evidence_stages",
+    [
+        (),
+        ("hmrc_spi_income",),
+        ("release_parity",),
+        ("hmrc_spi_income", "release_parity"),
+    ],
+)
+def test_exact_k_uk_terminal_membership_tracks_build_evidence_stages(
+    tmp_path: Path,
+    evidence_stages: tuple[str, ...],
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=evidence_stages,
+    )
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = evidence
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    validate_release_dir(directory)
+
+
+def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=(),
+    )
+    payload["gates"]["weights_audit"] = {
+        "passed": True,
+        "failures": [],
+        "details": _terminal_gate_details("weights_audit"),
+    }
+    payload["attestation"]["evaluated_gates"].append("weights_audit")
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = evidence
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "evaluated gate membership" in failures
+    assert "attestation.evaluated_gates" in failures
+    assert "attestation.signature does not authenticate" not in failures
+
+
+def test_exact_k_uk_terminal_report_rejects_non_aggregator_producer(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    payload["attestation"]["producer"] = "sol.hand_composed_gate_report"
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(
+        ReleaseContractError, match="honest UK terminal gate aggregator"
+    ):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_terminal_report_rejects_uncertified_policy(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    payload["attestation"]["policy_sha256"] = "0" * 64
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError, match="certified UK gate policy"):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    ("failed_field", "match"),
+    [
+        ("report", "terminal_gates.json passed must be true"),
+        ("gate", "gate 'weight_ratio'.passed must be true"),
+    ],
+)
+def test_exact_k_uk_terminal_report_requires_green_verdicts(
+    tmp_path: Path,
+    failed_field: str,
+    match: str,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    if failed_field == "report":
+        payload["passed"] = False
+    else:
+        payload["gates"]["weight_ratio"].update(
+            passed=False,
+            failures=["reviewed ratio exceeded"],
+        )
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError, match=match):
+        validate_release_dir(directory)
+
+
+def _assert_no_resign_terminal_mutation_rejected(
+    directory: Path,
+    payload: dict,
+    *,
+    named_failures: tuple[str, ...],
+) -> None:
+    original_signature = payload["attestation"]["signature"]
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+    persisted = json.loads(
+        (directory / UK_TERMINAL_GATE_REPORT_FILE).read_text(encoding="utf-8")
+    )
+    assert persisted["attestation"]["signature"] == original_signature
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "attestation.signature does not authenticate" in failures
+    for named_failure in named_failures:
+        assert named_failure in failures
+
+
+def test_exact_k_uk_terminal_no_resign_altered_gate_verdict_fails_authentication(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload = json.loads(
+        (directory / UK_TERMINAL_GATE_REPORT_FILE).read_text(encoding="utf-8")
+    )
+    payload["gates"]["weight_ratio"]["passed"] = False
+
+    _assert_no_resign_terminal_mutation_rejected(
+        directory,
+        payload,
+        named_failures=(
+            "gate 'weight_ratio'.passed must be true",
+            "gate_results_sha256 does not match gates",
+        ),
+    )
+
+
+def test_exact_k_uk_terminal_no_resign_removed_gate_fails_authentication(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload = json.loads(
+        (directory / UK_TERMINAL_GATE_REPORT_FILE).read_text(encoding="utf-8")
+    )
+    del payload["gates"]["weight_ratio"]
+
+    _assert_no_resign_terminal_mutation_rejected(
+        directory,
+        payload,
+        named_failures=(
+            "evaluated gate membership",
+            "gate_results_sha256 does not match gates",
+        ),
+    )
+
+
+def test_exact_k_uk_terminal_no_resign_altered_policy_fails_authentication(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload = json.loads(
+        (directory / UK_TERMINAL_GATE_REPORT_FILE).read_text(encoding="utf-8")
+    )
+    payload["attestation"]["policy_sha256"] = "0" * 64
+
+    _assert_no_resign_terminal_mutation_rejected(
+        directory,
+        payload,
+        named_failures=("does not match the certified UK gate policy",),
+    )
+
+
+def test_exact_k_uk_terminal_no_resign_substituted_evidence_fails_authentication(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload = json.loads(
+        (directory / UK_TERMINAL_GATE_REPORT_FILE).read_text(encoding="utf-8")
+    )
+    payload["attestation"]["evidence_sha256"]["hmrc_spi_income"] = "0" * 64
+
+    _assert_no_resign_terminal_mutation_rejected(
+        directory,
+        payload,
+        named_failures=("must exactly match build_manifest.json",),
+    )
+
+
+def test_exact_k_uk_terminal_evidence_digest_must_match_build_manifest(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"]["hmrc_spi_income"] = "0" * 64
+    build_path.write_text(json.dumps(build))
+
+    with pytest.raises(ReleaseContractError, match="must exactly match build_manifest"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_terminal_report_recomputes_attestation_digests(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    payload["gates"]["weight_ratio"]["details"] = {"tampered": True}
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "gate_results_sha256 does not match gates" in failures
+    assert "attestation.signature does not authenticate" in failures
+
+
+def test_exact_k_uk_terminal_report_hashes_cross_link_both_manifests(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["gates"]["uk_terminal"]["sha256"] = "0" * 64
+    build_path.write_text(json.dumps(build))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "gates.uk_terminal.sha256 must match the local" in failures
+    assert "terminal gate report sha256 values must match" in failures
+
+
+def test_exact_k_uk_release_rejects_sol_k535080_n_records_two_probe(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    _rewrite_exact_k_fixture_to_two_records(directory)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    for expected in (
+        "build_manifest.json canonical UK 'n_records'",
+        "release_manifest.json canonical UK 'record_count'",
+        "release_manifest.json canonical UK 'n_records'",
+        "canonical UK top-level n_records",
+        "canonical UK uk_diagnostics.weights.n_records",
+        "canonical UK target_surface.n_records",
+    ):
+        assert expected in failures
+    assert failures.count("release-id record count 535080") >= 6
+
+
+def test_exact_k_uk_release_rejects_sol_identity_field_probe(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    _rewrite_exact_k_fixture_to_two_records(directory)
+    manifest_path = directory / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(country="xx", year=1900)
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "canonical UK 'country' must be 'uk', got 'xx'" in failures
+    assert "release-id year 2023, got 1900" in failures
+    assert "release-id record count 535080" in failures
+
+
+@pytest.mark.parametrize("tier", ["public", "true", "full"])
+def test_exact_k_uk_release_rejects_unratified_tier(
+    tmp_path: Path,
+    tier: str,
+) -> None:
+    release_id = f"populace-uk-2023-{tier}-k535080"
+    directory = _write_uk_release_dir(tmp_path, release_id, tier=tier)
+
+    with pytest.raises(ReleaseContractError, match="unratified tier"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_missing_manifest_tier(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID)
+
+    with pytest.raises(ReleaseContractError, match="top-level 'tier'"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_tier_mismatch(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="cps-transfer",
+    )
+
+    with pytest.raises(ReleaseContractError, match="release id names tier 'frs'"):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "release_id",
+    [
+        "populace-uk-2023-frs-k0",
+        "populace-uk-2023-public-k535080-extra",
+        "populace-uk-2023-frs",
+        "populace-uk-2099-deadbee-20990101",
+    ],
+)
+def test_malformed_uk_release_ids_are_not_grandfathered(
+    tmp_path: Path,
+    release_id: str,
+) -> None:
+    directory = _write_uk_release_dir(tmp_path, release_id, tier="frs")
+
+    with pytest.raises(ReleaseContractError, match="neither canonical"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_requires_standard_diagnostics(tmp_path: Path) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    diagnostics = _calibration_diagnostics()
+    diagnostics["target_registry"]["country"] = "uk"
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match="require a 'uk_diagnostics'"):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("zero_reconciliation", "zero-weight stratum rows do not reconcile"),
+        ("missing_geography", "missing level"),
+    ],
+)
+def test_exact_k_uk_release_diagnostics_fail_closed(
+    tmp_path: Path,
+    mutation: str,
+    match: str,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    uk = diagnostics["uk_diagnostics"]
+    if mutation == "zero_reconciliation":
+        uk["weights"]["zero_weight_records"] = 0
+    else:
+        uk["target_pass_rates_by_geography_level"].pop()
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match=match):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["median_positive_weight", "max_to_median_positive_weight"],
+)
+def test_exact_k_uk_release_requires_weight_ratio_fields(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    diagnostics["uk_diagnostics"]["weights"].pop(field)
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match=field):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_rejects_impossible_or_inconsistent_ess(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    diagnostics["uk_diagnostics"]["weights"]["effective_sample_size"] = 999.0
+    diagnostics["uk_diagnostics"]["weights"]["ess_fraction"] = 0.25
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError, match="effective_sample_size"):
+        validate_release_dir(directory)
+
+
+def test_exact_k_uk_release_recomputes_max_to_positive_median_ratio(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(path.read_text())
+    weights = diagnostics["uk_diagnostics"]["weights"]
+    assert weights["max_weight"] == weights["median_positive_weight"] == 1.0
+    weights["max_to_median_positive_weight"] = 999.0
+    _write_json_and_refresh_manifest_hash(
+        directory,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="must equal max_weight/median_positive_weight",
+    ):
+        validate_release_dir(directory)
 
 
 def test_the_1abddeb_shape_is_rejected(release_dir: Path) -> None:

@@ -1,4 +1,4 @@
-"""National UK build orchestration with a hard final input-coverage gate.
+"""National UK build orchestration with batched terminal release gates.
 
 This module is deliberately table-oriented. UK source stages operate on the
 same person, benunit, and household tables persisted by a PolicyEngine-UK
@@ -18,14 +18,24 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.gates import GateResult
+import populace.build.uk_runtime.release_input_coverage as _release_input_coverage
+from populace.build.gates import GateReport, GateResult
 from populace.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
-    uk_release_input_coverage_gate,
+)
+from populace.build.uk_runtime.terminal_gates import (
+    UKReleaseParityEvidence,
+    uk_terminal_gate_report,
+    write_uk_terminal_gate_report,
 )
 from populace.frame import MassChangeRecord, WeightKind
+
+# Retained as the existing library-test monkeypatch seam. Production terminal
+# evaluation resolves the same function inside terminal_gates so its policy
+# attestation can identify the builtin evaluator.
+uk_release_input_coverage_gate = _release_input_coverage.uk_release_input_coverage_gate
 
 __all__ = [
     "UKNationalBuildResult",
@@ -165,8 +175,24 @@ class UKNationalBuildResult:
     input_h5: Path
     staging_h5: Path
     stage_names: tuple[str, ...]
-    input_coverage: GateResult
-    input_coverage_path: Path | None = None
+    terminal_gates: GateReport
+    terminal_gate_path: Path
+
+    @property
+    def input_coverage(self) -> GateResult:
+        """Backward-compatible projection of the consolidated gate report."""
+
+        return next(
+            result
+            for result in self.terminal_gates.results
+            if result.name == "uk_release_input_coverage"
+        )
+
+    @property
+    def input_coverage_path(self) -> Path:
+        """Backward-compatible alias for :attr:`terminal_gate_path`."""
+
+        return self.terminal_gate_path
 
 
 def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
@@ -331,8 +357,12 @@ def build_uk_national_dataset(
     *,
     input_h5: str | Path,
     staging_h5: str | Path,
+    release_id: str,
+    calibration_diagnostics_sha256: str,
     stages: Sequence[UKNationalStage] = (),
     coverage_engine: Any | None = None,
+    parity_evidence: UKReleaseParityEvidence | None = None,
+    terminal_gate_path: str | Path | None = None,
     input_coverage_path: str | Path | None = None,
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5."""
@@ -345,19 +375,31 @@ def build_uk_national_dataset(
     if staging_path.suffix != ".h5":
         raise ValueError("UK national staging path must end with '.h5'.")
 
-    diagnostic_path = (
-        Path(input_coverage_path).resolve() if input_coverage_path is not None else None
+    if terminal_gate_path is not None and input_coverage_path is not None:
+        raise ValueError(
+            "terminal_gate_path and input_coverage_path are mutually exclusive; "
+            "input_coverage_path is a compatibility alias."
+        )
+    legacy_input_coverage_output = input_coverage_path is not None
+    requested_gate_path = (
+        terminal_gate_path
+        if terminal_gate_path is not None
+        else (
+            input_coverage_path
+            if input_coverage_path is not None
+            else staging_path.with_suffix(".terminal_gates.json")
+        )
     )
+    diagnostic_path = Path(requested_gate_path).resolve()
     if diagnostic_path in {input_path, staging_path}:
         raise ValueError(
-            "input_coverage_path must differ from the input and staging H5 paths."
+            "terminal_gate_path must differ from the input and staging H5 paths."
         )
 
     materialized_stages = tuple(stages)
     _validate_stages(materialized_stages)
     staging_path.unlink(missing_ok=True)
-    if diagnostic_path is not None:
-        diagnostic_path.unlink(missing_ok=True)
+    diagnostic_path.unlink(missing_ok=True)
 
     engine = (
         coverage_engine
@@ -375,18 +417,32 @@ def build_uk_national_dataset(
         dataset = stage.run(dataset)
         validate_uk_national_dataset(dataset)
 
-    # Mirrors the US final-export placement: enforce the complete reference
-    # surface after all stages and immediately before the staging writer.
-    input_coverage = uk_release_input_coverage_gate(dataset, engine)
-    if diagnostic_path is not None:
+    # Mirrors the US final-export placement: evaluate every evidenced gate in
+    # one batch after all stages and immediately before the staging writer.
+    fit_weight_records, require_fit_weight_records = _stage_fit_weight_records(
+        materialized_stages
+    )
+    terminal_gates = uk_terminal_gate_report(
+        dataset,
+        engine,
+        release_id=release_id,
+        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
+        fit_weight_records=fit_weight_records,
+        require_fit_weight_records=require_fit_weight_records,
+        parity_evidence=parity_evidence,
+    )
+    if legacy_input_coverage_output:
+        input_coverage = next(
+            gate
+            for gate in terminal_gates.results
+            if gate.name == "uk_release_input_coverage"
+        )
         _write_input_coverage_diagnostic(diagnostic_path, input_coverage)
-    if not input_coverage.passed:
+    else:
+        write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
+    if not terminal_gates.passed:
         raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Input coverage failed: {failure}"
-                for failure in input_coverage.failures
-            )
+            "Release gates failed: " + "; ".join(terminal_gates.failures)
         )
 
     write_uk_national_dataset(dataset, staging_path)
@@ -395,8 +451,8 @@ def build_uk_national_dataset(
         input_h5=input_path,
         staging_h5=staging_path,
         stage_names=tuple(stage.name for stage in materialized_stages),
-        input_coverage=input_coverage,
-        input_coverage_path=diagnostic_path,
+        terminal_gates=terminal_gates,
+        terminal_gate_path=diagnostic_path,
     )
 
 
@@ -413,7 +469,27 @@ def _validate_stages(stages: tuple[UKNationalStage, ...]) -> None:
         names.add(stage.name)
 
 
+def _stage_fit_weight_records(
+    stages: tuple[UKNationalStage, ...],
+) -> tuple[tuple[object, ...] | None, bool]:
+    """Return real fit evidence, requiring it only when HMRC executed."""
+
+    hmrc_stage = next(
+        (stage for stage in stages if stage.name == "hmrc_spi_income"),
+        None,
+    )
+    if hmrc_stage is None:
+        return (None, False)
+    try:
+        records = getattr(hmrc_stage.transform, "fit_weight_records", None)
+        return (() if records is None else tuple(records), True)
+    except Exception:  # noqa: BLE001 - the terminal report must name the failure
+        return ((), True)
+
+
 def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
+    """Write the byte-compatible origin/main schema for the legacy alias."""
+
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": 1,

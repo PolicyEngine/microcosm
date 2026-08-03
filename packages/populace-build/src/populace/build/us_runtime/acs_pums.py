@@ -7,6 +7,12 @@ existing ASEC pool.  Source monetary columns remain native here; the separate
 ACS input-mapping stage applies the Census adjustment factors and records
 which PolicyEngine inputs are native versus transferred.
 
+Raw ``SERIALNO`` remains on the household table.  Person lineage uses the
+stable, sorted household ID assigned from that key, string-valued ``SPORDER``,
+and a sequential row ID.  Those generated fields match the ASEC source-frame
+lineage dtypes required by pre-operator spine assembly without rewriting a
+measured Census value.
+
 Full national archives contain multiple CSV members.  Each member is read in
 bounded chunks, but the final selected-column tables necessarily materialize:
 the returned :class:`~populace.frame.Frame` itself is the dense base-pool
@@ -264,15 +270,12 @@ def build_acs_pums_unit_frame(
     person["household_id"] = person["household_id"].astype("int64")
     person = _with_structural_columns(person)
     person["source_year"] = source.vintage
-    person["source_household_id"] = person["SERIALNO"].astype(str)
-    person["source_person_id"] = _required_integer(person, "SPORDER")
-    person["source_row_id"] = (
-        ACS_2024_1YR_SPINE
-        + ":"
-        + person["SERIALNO"].astype(str)
-        + ":"
-        + person["SPORDER"].astype("int64").astype(str)
-    )
+    person["source_household_id"] = person["household_id"].to_numpy(dtype=np.int64)
+    person["source_person_id"] = pd.Series(
+        _required_integer(person, "SPORDER"),
+        index=person.index,
+    ).astype(str)
+    person["source_row_id"] = np.arange(len(person), dtype=np.int64)
 
     household_weights = _household_weights(household, person)
     # SERIALNO belongs on the household table in the returned Frame. Its

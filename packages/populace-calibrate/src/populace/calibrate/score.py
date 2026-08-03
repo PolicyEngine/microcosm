@@ -111,4 +111,5 @@ def score_targets(
             else "uniform",
             **dict(options or {}),
         },
+        gate_open_probabilities=None,
     )

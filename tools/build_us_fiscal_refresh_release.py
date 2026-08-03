@@ -277,7 +277,10 @@ from populace.data.us_critical_targets import (
     US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
 )
 from populace.frame import Frame, MassChange, WeightKind, Weights
-from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSEngine,
+    PolicyEngineUSVariableMetadataIndex,
+)
 from populace.frame.units import US_SCHEMA
 
 PERIOD = 2024
@@ -3283,21 +3286,19 @@ def _with_snap_state_take_up_outputs(
     )
 
 
-_FORMULA_OWNED_GATE_ADAPTER: PolicyEngineUSEngine | None = None
+_FORMULA_OWNED_GATE_ADAPTER: PolicyEngineUSVariableMetadataIndex | None = None
 
 
-def _formula_owned_gate_adapter() -> PolicyEngineUSEngine:
-    """One adapter — and one engine system build — for every gate call.
+def _formula_owned_gate_adapter() -> PolicyEngineUSVariableMetadataIndex:
+    """One import-free source metadata index for every gate call.
 
-    populace#456: ``PolicyEngineUSEngine`` lazily builds its own
-    ``CountryTaxBenefitSystem`` for variable metadata, and every engine build
-    permanently registers ~5,600 ``sys.modules`` entries (~55-60 MB, immune
-    to gc). This gate runs per materialized reform family and per export, so
-    a fresh adapter per call multiplied engine builds ~100x over a dense run.
+    The export gate needs variable ownership only. Parsing the installed
+    variable declarations avoids importing ``policyengine_us`` (which creates
+    a module-global tax-benefit system) or constructing a second adapter system.
     """
     global _FORMULA_OWNED_GATE_ADAPTER
     if _FORMULA_OWNED_GATE_ADAPTER is None:
-        _FORMULA_OWNED_GATE_ADAPTER = PolicyEngineUSEngine()
+        _FORMULA_OWNED_GATE_ADAPTER = PolicyEngineUSVariableMetadataIndex()
     return _FORMULA_OWNED_GATE_ADAPTER
 
 

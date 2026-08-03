@@ -140,6 +140,12 @@ def assert_uk_hmrc_income_source_contract_current(
     )
     _expect(
         failures,
+        "base_candidate.tier",
+        base.get("tier"),
+        hmrc_restoration.CERTIFIED_UK_CANDIDATE_TIER,
+    )
+    _expect(
+        failures,
         "base_candidate.revision",
         base.get("revision"),
         hmrc_restoration.CERTIFIED_UK_CANDIDATE_REVISION,

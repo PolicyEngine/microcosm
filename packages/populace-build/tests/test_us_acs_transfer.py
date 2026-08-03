@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -20,6 +23,9 @@ from populace.build.us_runtime.acs_transfer import (
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
+from populace.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+)
 
 SCHEMA = EntitySchema(group_entities=("household", "tax_unit"))
 
@@ -252,6 +258,19 @@ def _with_columns(
     )
 
 
+def _with_metadata(frame: Frame, metadata: dict[str, object]) -> Frame:
+    tables = {name: frame.table(name).copy() for name in frame.entities}
+    tables.update({name: frame.link(name).copy() for name in frame.links})
+    return Frame(
+        tables,
+        frame.schema,
+        {name: frame.weights_for(name) for name in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=metadata,
+    )
+
+
 def _with_full_us_schema(frame: Frame) -> Frame:
     """Promote the compact transfer fixture to all PolicyEngine-US grains."""
 
@@ -408,6 +427,8 @@ class _MeanFitted:
         self.weight_kind = weight_kind
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        assert all(dtype == np.dtype("float64") for dtype in frame.dtypes)
+        assert np.isfinite(frame.to_numpy()).all()
         return pd.DataFrame(
             {
                 target: np.full(len(frame), value, dtype=np.float64)
@@ -801,17 +822,32 @@ def test_discrete_year_predictions_snap_to_observed_donor_support(
     assert pd.api.types.is_integer_dtype(values.dtype)
 
 
-def test_engine_boolean_metadata_restores_bool_from_float_h5_donor(
+def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")  # pandas HDF backend
-    # The bool restore reads the engine's variable metadata; without the us
-    # extra the adapter's documented dtype fallback applies instead.
-    pytest.importorskip("policyengine_us")
+    # The bool restore reads the installed engine source metadata; without the
+    # us extra the adapter's documented dtype fallback applies instead.
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+    # Primary PUF finalization physically stores QBI boolean-count outputs as
+    # floats; the supported legacy ACS builder can then load them from HDF as
+    # its transfer donor. Pin that real producer/HDF representation rather
+    # than using an unrelated model-required boolean.
+    source = tmp_path / "legacy-boolean-donor.h5"
+    pd.DataFrame({"business_is_sstb": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]}).to_hdf(
+        source, key="person", format="fixed"
+    )
+    round_tripped = pd.read_hdf(source, key="person")["business_is_sstb"]
+    assert round_tripped.dtype == np.dtype("float64")
+
     donor = _with_columns(
         _donor_frame(),
         "person",
-        {"has_esi": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]},
+        {"business_is_sstb": round_tripped.to_numpy()},
     )
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
     _MeanQRF.calls = []
@@ -819,14 +855,246 @@ def test_engine_boolean_metadata_restores_bool_from_float_h5_donor(
     result = transfer_acs_inputs(
         _recipient_frame(),
         donor,
-        target_families={"person": {"health": ("has_esi",)}},
+        target_families={"person": {"puf_tax_itemization": ("business_is_sstb",)}},
         seed=3,
         n_estimators=1,
     )
 
-    values = result.frame.person["has_esi"]
+    values = result.frame.person["business_is_sstb"]
     assert pd.api.types.is_bool_dtype(values.dtype)
     assert set(values) <= {False, True}
+
+
+@pytest.mark.parametrize(
+    ("values", "offending_type"),
+    [
+        pytest.param(
+            [True, 0.0] * 4,
+            "builtins.float",
+            id="sol-exact-bool-float",
+        ),
+        pytest.param(
+            [1.0, 0.0] * 4,
+            "builtins.float",
+            id="uniform-object-float-zero-one",
+        ),
+        pytest.param([True, 0] * 4, "builtins.int", id="bool-int"),
+        pytest.param([True, "false"] * 4, "builtins.str", id="bool-str"),
+        pytest.param(
+            [np.bool_(True), np.int64(0)] * 4,
+            "numpy.int64",
+            id="numpy-bool-int",
+        ),
+        pytest.param(
+            [np.bool_(True), np.float64(0.0)] * 4,
+            "numpy.float64",
+            id="numpy-bool-float",
+        ),
+        pytest.param(
+            [np.bool_(True), "false"] * 4,
+            "builtins.str",
+            id="numpy-bool-str",
+        ),
+    ],
+)
+def test_known_boolean_metadata_rejects_mixed_object_donor_values(
+    monkeypatch: pytest.MonkeyPatch,
+    values: list[object],
+    offending_type: str,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {"is_blind": np.asarray(values, dtype=object)},
+    )
+    real_metadata = acs_transfer_module._engine_variable_metadata
+
+    def metadata(target: str):
+        if target == "is_blind":
+            return SimpleNamespace(dtype="bool", entity="person")
+        return real_metadata(target)
+
+    monkeypatch.setattr(acs_transfer_module, "_engine_variable_metadata", metadata)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    with pytest.raises(TypeError) as exc_info:
+        transfer_acs_inputs(
+            _recipient_frame(),
+            donor,
+            target_families={"person": {"model_required_boolean": ("is_blind",)}},
+            seed=3,
+            n_estimators=1,
+        )
+
+    message = str(exc_info.value)
+    assert "boolean target 'is_blind'" in message
+    assert "offending value types" in message
+    assert offending_type in message
+    assert _MeanQRF.calls == []
+
+
+def test_known_boolean_metadata_accepts_python_and_numpy_boolean_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        acs_transfer_module,
+        "_engine_variable_metadata",
+        lambda _target: SimpleNamespace(dtype="bool"),
+    )
+    series = pd.Series([True, np.bool_(False)], dtype=object)
+
+    encoding = acs_transfer_module._target_encoding(series, target="is_blind")
+
+    assert encoding.kind == "boolean"
+    np.testing.assert_array_equal(encoding.model_values, np.asarray([1.0, 0.0]))
+
+
+def test_semantic_boolean_predictor_encoding_preserves_missingness() -> None:
+    predictors = pd.DataFrame(
+        {
+            "is_female": pd.Series(
+                [True, None, np.bool_(False)],
+                dtype=object,
+            )
+        }
+    )
+
+    acs_transfer_module._validate_optional_numeric_frame(
+        predictors,
+        context="fixture predictors",
+    )
+    encoded = acs_transfer_module._encoded_predictor_frame(
+        predictors,
+        predictors=("is_female",),
+    )
+    complete = acs_transfer_module._complete_predictor_mask(
+        predictors,
+        predictors=("is_female",),
+    )
+
+    assert encoded["is_female"].dtype == np.dtype("float64")
+    np.testing.assert_allclose(
+        encoded["is_female"].to_numpy(),
+        np.asarray([1.0, np.nan, 0.0]),
+        equal_nan=True,
+    )
+    np.testing.assert_array_equal(complete, np.asarray([True, False, True]))
+    acs_transfer_module._validate_required_numeric_frame(
+        predictors,
+        context="fixture required predictors",
+    )
+
+
+def test_predictor_validation_rejects_infinity() -> None:
+    predictors = pd.DataFrame({"age": [40.0, np.inf]})
+
+    with pytest.raises(ValueError, match="infinite.*age"):
+        acs_transfer_module._validate_required_numeric_frame(
+            predictors,
+            context="fixture required predictors",
+        )
+
+
+def test_required_semantic_boolean_nulls_are_complete_case_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _replace_column(
+        _donor_frame(),
+        "person",
+        "is_female",
+        pd.Series(
+            [None, True, True, False, False, True, True, False],
+            index=_donor_frame().person.index,
+            dtype=object,
+        ),
+    )
+    recipient = _replace_column(
+        _recipient_frame(),
+        "person",
+        "is_female",
+        pd.Series(
+            [None, True, True, False, True, False],
+            index=_recipient_frame().person.index,
+            dtype=object,
+        ),
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {"tax_detail": ("qualified_dividend_income",)},
+        },
+        n_estimators=1,
+    )
+
+    assert result.frame.person["qualified_dividend_income"].isna().tolist() == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
+    provenance = result.imputed_inputs[0]
+    assert provenance.imputed_recipient_rows == 5
+    assert provenance.unmodeled_recipient_rows == 1
+    assert _MeanQRF.calls
+    assert all(
+        np.isfinite(call["features"].to_numpy()).all() for call in _MeanQRF.calls
+    )
+
+
+def test_group_required_predictors_preserve_missing_state_for_masking() -> None:
+    recipient = _replace_column(
+        _recipient_frame(),
+        "household",
+        "state_fips",
+        [6.0, np.nan, 36.0],
+    )
+
+    surface = acs_transfer_module._transfer_feature_surface(
+        recipient,
+        recipient,
+        entity="tax_unit",
+        targets=("first_home_mortgage_balance",),
+    )
+    complete = acs_transfer_module._complete_predictor_mask(
+        surface.recipient,
+        predictors=surface.required,
+    )
+
+    np.testing.assert_allclose(
+        surface.recipient["__acs_transfer_state_fips"].to_numpy(),
+        np.asarray([6.0, np.nan, 36.0]),
+        equal_nan=True,
+    )
+    np.testing.assert_array_equal(complete, np.asarray([True, False, True]))
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [True, 0.0],
+        [np.bool_(False), 1],
+        [True, "False"],
+    ],
+)
+def test_mixed_object_predictor_is_not_a_semantic_boolean(
+    values: list[object],
+) -> None:
+    predictors = pd.DataFrame(
+        {"is_female": pd.Series(values, dtype=object)},
+    )
+
+    with pytest.raises(TypeError, match="numeric/boolean.*is_female"):
+        acs_transfer_module._validate_optional_numeric_frame(
+            predictors,
+            context="fixture predictors",
+        )
 
 
 def test_auto_channel_excludes_artificial_asec_zeros(
@@ -1112,6 +1380,133 @@ def test_explicit_family_is_seed_deterministic_and_preserves_recipient_index() -
     assert first.imputed_inputs[0].donor_channel == "puf_tax_detail"
 
 
+def test_nullable_recipient_target_fills_only_nulls_and_preserves_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "qualified_dividend_income": pd.array(
+                [111.0, pd.NA, 333.0, pd.NA, 555.0, 666.0],
+                dtype="Float64",
+            ),
+            "takes_up_medicaid_if_eligible": pd.array(
+                [True, pd.NA, False, pd.NA, True, False],
+                dtype="boolean",
+            ),
+        },
+    )
+    recipient = _with_metadata(
+        recipient,
+        {
+            "assembly_receipt": {
+                "channels": ("asec", "acs"),
+                "id_bound": 10_000,
+            }
+        },
+    )
+    before = {
+        target: recipient.person[target].copy()
+        for target in (
+            "qualified_dividend_income",
+            "takes_up_medicaid_if_eligible",
+        )
+    }
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        _donor_frame(),
+        target_families={
+            "person": {
+                "tax_detail": (
+                    "qualified_dividend_income",
+                    "takes_up_medicaid_if_eligible",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    for target, target_before in before.items():
+        after = result.frame.person[target]
+        observed = target_before.notna()
+        pd.testing.assert_series_equal(
+            after.loc[observed],
+            target_before.loc[observed],
+        )
+        assert after.loc[~observed].notna().all()
+        assert recipient.person[target].isna().sum() == 2
+    assert result.frame.metadata == recipient.metadata
+    provenance = {item.column: item for item in result.imputed_inputs}
+    assert set(provenance) == set(before)
+    assert all(item.imputed_recipient_rows == 2 for item in provenance.values())
+    assert all(item.unmodeled_recipient_rows == 0 for item in provenance.values())
+    assert all(
+        sum(pattern.recipient_rows for pattern in item.patterns) == 2
+        for item in provenance.values()
+    )
+
+
+def test_donor_family_fit_uses_rows_complete_for_every_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "nullable_target_a": [
+                np.nan,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                8.0,
+            ],
+            "nullable_target_b": [
+                10.0,
+                np.nan,
+                30.0,
+                40.0,
+                50.0,
+                60.0,
+                70.0,
+                80.0,
+            ],
+        },
+    )
+    recipient = _recipient_frame()
+    for column in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ):
+        donor = _drop_column(donor, "person", column)
+        recipient = _drop_column(recipient, "person", column)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "nullable_pair": ("nullable_target_a", "nullable_target_b"),
+            },
+        },
+        n_estimators=1,
+    )
+
+    assert len(_MeanQRF.calls) == 1
+    fitted_targets = _MeanQRF.calls[0]["targets"]
+    assert len(fitted_targets) == 6
+    assert np.isfinite(fitted_targets.to_numpy(dtype=np.float64)).all()
+    assert {item.patterns[0].donor_rows for item in result.imputed_inputs} == {6}
+
+
 def test_formula_owned_target_is_refused_before_fit() -> None:
     with pytest.raises(ValueError, match="formula-owned.*interest_deduction"):
         transfer_acs_inputs(
@@ -1124,17 +1519,65 @@ def test_formula_owned_target_is_refused_before_fit() -> None:
         )
 
 
-def test_non_finite_donor_target_is_refused_without_zero_fill() -> None:
+def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> None:
+    try:
+        PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"ACS transfer targets must be PolicyEngine input leaves, not "
+            r"formula-owned outputs: \['weeks_worked'\]\."
+        ),
+    ):
+        transfer_acs_inputs(
+            _recipient_frame(),
+            _donor_frame(),
+            target_families={
+                "person": {"source_operator_hours_worked": ("weeks_worked",)},
+            },
+            n_estimators=2,
+        )
+
+
+def test_strict_leaf_audit_reports_missing_us_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from populace.frame.adapters import policyengine_us as adapter_module
+
+    class _MissingMetadataIndex:
+        def __init__(self) -> None:
+            raise ImportError("policyengine-us is absent")
+
+    monkeypatch.setattr(
+        adapter_module,
+        "PolicyEngineUSVariableMetadataIndex",
+        _MissingMetadataIndex,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Strict ACS transfer leaf classification requires policyengine-us",
+    ):
+        acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
+            {"employment_income"},
+            require_known=True,
+        )
+
+
+def test_all_missing_donor_target_is_refused_without_zero_fill() -> None:
     donor = _replace_column(
         _donor_frame(),
         "person",
         "qualified_dividend_income",
-        [900.0, 200.0, np.nan, 20.0, 3_000.0, 1_500.0, 8_000.0, 40.0],
+        [np.nan] * 8,
     )
 
     with pytest.raises(
         ValueError,
-        match="donor targets.*non-finite.*qualified_dividend_income",
+        match="no donor rows complete for every target.*qualified_dividend_income",
     ):
         transfer_acs_inputs(
             _recipient_frame(),
@@ -1144,6 +1587,159 @@ def test_non_finite_donor_target_is_refused_without_zero_fill() -> None:
             },
             n_estimators=2,
         )
+
+
+def test_schedule_d_post_transfer_fills_only_newly_imputed_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "long_term_capital_gains_before_response": [
+                100.0,
+                200.0,
+                300.0,
+                400.0,
+                500.0,
+                600.0,
+                700.0,
+                800.0,
+            ],
+            "non_sch_d_capital_gains": [0.0] * 8,
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "long_term_capital_gains_before_response": [
+                1_000.0,
+                np.nan,
+                2_000.0,
+                np.nan,
+                3_000.0,
+                np.nan,
+            ],
+            "non_sch_d_capital_gains": [
+                0.0,
+                np.nan,
+                500.0,
+                np.nan,
+                0.0,
+                np.nan,
+            ],
+            "schedule_d_capital_gain_distributions": [
+                777.0,
+                np.nan,
+                222.0,
+                888.0,
+                333.0,
+                np.nan,
+            ],
+        },
+    )
+    cgd_before = recipient.person["schedule_d_capital_gain_distributions"].copy()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "capital_gain_details": (
+                    "long_term_capital_gains_before_response",
+                    "non_sch_d_capital_gains",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    cgd = result.frame.person["schedule_d_capital_gain_distributions"]
+    measured = cgd_before.notna()
+    pd.testing.assert_series_equal(cgd.loc[measured], cgd_before.loc[measured])
+    assert cgd.iloc[[1, 5]].gt(0.0).all()
+    derived = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "schedule_d_capital_gain_distributions"
+    )
+    assert derived.imputed_recipient_rows == 2
+
+
+def test_adult_care_reconciliation_changes_only_imputed_expenses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "is_incapable_of_self_care": [True] * 8,
+            "pre_subsidy_care_expenses": [
+                100.0,
+                200.0,
+                300.0,
+                400.0,
+                500.0,
+                600.0,
+                700.0,
+                800.0,
+            ],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "is_incapable_of_self_care": [True] * 6,
+            "pre_subsidy_care_expenses": [
+                900.0,
+                np.nan,
+                0.0,
+                np.nan,
+                0.0,
+                np.nan,
+            ],
+            "tax_unit_role_input": ["DEPENDENT"] * 6,
+        },
+    )
+    before = recipient.person["pre_subsidy_care_expenses"].copy()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "adult_care": (
+                    "is_incapable_of_self_care",
+                    "pre_subsidy_care_expenses",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    expenses = result.frame.person["pre_subsidy_care_expenses"]
+    measured = before.notna()
+    pd.testing.assert_series_equal(expenses.loc[measured], before.loc[measured])
+    assert expenses.iloc[1] == 0.0
+    assert expenses.iloc[3] > 0.0
+    assert expenses.iloc[5] == 0.0
+    provenance = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "pre_subsidy_care_expenses"
+    )
+    assert provenance.imputed_recipient_rows == 3
+    assert provenance.reconciliation == {
+        "cleared_ineligible_carriers": 0,
+        "cleared_multi_carrier_rows": 2,
+        "remaining_carriers": 2,
+    }
 
 
 def test_non_finite_recipient_predictor_is_refused_without_zero_fill() -> None:
@@ -1156,7 +1752,7 @@ def test_non_finite_recipient_predictor_is_refused_without_zero_fill() -> None:
 
     with pytest.raises(
         ValueError,
-        match="recipient person predictors.*non-finite.*age",
+        match="recipient person predictors.*infinite.*age",
     ):
         transfer_acs_inputs(
             recipient,

@@ -76,6 +76,7 @@ from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PERSON_SUPPORT_CHANNEL_COLUMN,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     has_support_role_metadata,
     support_clone_index_column,
@@ -143,7 +144,7 @@ US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "age",
     US_SSI_TAKE_UP_ANCHOR,
     "person_source_id",
-    "person_support_channel",
+    PERSON_SUPPORT_CHANNEL_COLUMN,
 )
 
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]

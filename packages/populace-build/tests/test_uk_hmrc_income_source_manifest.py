@@ -194,6 +194,7 @@ def test__given_hmrc_source_artifacts__then_vintages_and_runtime_hashes_are_exac
     assert "tax-year-2023-to-2024" in surface["publication"]
 
     base = stage["base_candidate"]
+    assert base["tier"] == "frs"
     assert base["sha256"] == (
         "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
     )
@@ -491,6 +492,11 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
 @pytest.mark.parametrize(
     ("path", "replacement", "match"),
     [
+        (
+            ("stages", 0, "base_candidate", "tier"),
+            "public",
+            "base_candidate.tier",
+        ),
         (
             ("stages", 0, "base_candidate", "sha256"),
             "0" * 64,

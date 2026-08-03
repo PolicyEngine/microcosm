@@ -6,14 +6,31 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from populace.build.gates import GateResult
+from populace.build.gates import FitWeightRecord, GateReport, GateResult
 from populace.build.uk_runtime.national_build import (
     UKNationalDataset,
     UKNationalStage,
     build_uk_national_dataset,
     load_uk_national_dataset,
 )
+from populace.build.uk_runtime.terminal_gates import (
+    UKReleaseParityEvidence,
+)
+from populace.build.uk_runtime.terminal_gates import (
+    uk_terminal_gate_report as real_uk_terminal_gate_report,
+)
 from populace.frame import MassChangeRecord, WeightKind
+
+TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
+TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
+
+
+def _run_national_build(**kwargs):
+    return build_uk_national_dataset(
+        release_id=TEST_UK_RELEASE_ID,
+        calibration_diagnostics_sha256=TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
+        **kwargs,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +43,32 @@ def _isolate_generic_seam_from_shipped_family_contract(monkeypatch) -> None:
         national_build,
         "assert_uk_release_input_coverage_build_stages",
         lambda _stage_names: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_terminal_gate_report",
+        lambda dataset, engine, **_kwargs: GateReport(
+            (national_build.uk_release_input_coverage_gate(dataset, engine),)
+        ),
+    )
+
+    def write_generic_seam_report(report, path):
+        output = Path(path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                {"schema_version": 2, "enforced": True, **report.to_manifest()},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        return output
+
+    monkeypatch.setattr(
+        national_build,
+        "write_uk_terminal_gate_report",
+        write_generic_seam_report,
     )
 
 
@@ -69,6 +112,52 @@ def _write_toy_h5(path: Path, *, employment_income: float = 0.0) -> None:
         )
 
 
+def _write_two_row_h5(
+    path: Path,
+    *,
+    employment_income: tuple[float, float] = (40_000.0, 55_000.0),
+) -> None:
+    with pd.HDFStore(path) as store:
+        store.put(
+            "person",
+            pd.DataFrame(
+                {
+                    "person_id": [10, 20],
+                    "person_household_id": [1, 2],
+                    "person_benunit_id": [100, 200],
+                    "employment_income": employment_income,
+                }
+            ),
+            format="table",
+            data_columns=True,
+        )
+        store.put(
+            "benunit",
+            pd.DataFrame({"benunit_id": [100, 200]}),
+            format="table",
+            data_columns=True,
+        )
+        store.put(
+            "household",
+            pd.DataFrame(
+                {
+                    "household_id": [1, 2],
+                    "household_weight": [1.0, 2.0],
+                    "household_is_spi_synthetic": [False, True],
+                    "household_is_capital_gains_clone": [False, True],
+                }
+            ),
+            format="table",
+            data_columns=True,
+        )
+        store.put(
+            "time_period",
+            pd.Series(["2023"]),
+            format="table",
+            data_columns=True,
+        )
+
+
 def _passing_gate() -> GateResult:
     return GateResult(
         name="uk_release_input_coverage",
@@ -89,6 +178,16 @@ def _failing_gate() -> GateResult:
             "degenerate": ["employment_income"],
         },
     )
+
+
+class _RecordedFitStage:
+    fit_weight_records = (
+        FitWeightRecord("uk_spi_2022_23_income", "design"),
+        FitWeightRecord("uk_frs_only_spi_fill", "importance"),
+    )
+
+    def __call__(self, dataset: UKNationalDataset) -> UKNationalDataset:
+        return dataset
 
 
 def test_national_build_runs_preflight_stages_gate_then_staging_write(
@@ -139,7 +238,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
         recording_writer,
     )
 
-    result = build_uk_national_dataset(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         stages=(UKNationalStage("income", stage_transform),),
@@ -155,6 +254,9 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     ]
     assert result.stage_names == ("income",)
     assert result.input_coverage.passed is True
+    assert result.terminal_gates.passed is True
+    assert result.terminal_gate_path == coverage_json.resolve()
+    assert result.input_coverage_path == result.terminal_gate_path
     assert result.dataset.source_h5 == input_h5.resolve()
     assert staging_h5.exists()
     staged = load_uk_national_dataset(staging_h5)
@@ -164,6 +266,44 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
+
+
+def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    legacy_json = tmp_path / "input_coverage.json"
+    _write_toy_h5(input_h5, employment_income=40_000.0)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        coverage_engine=object(),
+        input_coverage_path=legacy_json,
+    )
+
+    # Pinned from origin/main's schema-1 serializer for this exact GateResult.
+    expected = (
+        b'{\n  "enforced": true,\n  "input_coverage": {\n'
+        b'    "details": {\n      "degenerate": [],\n      "missing": [],\n'
+        b'      "required_columns": 1\n    },\n    "failures": [],\n'
+        b'    "passed": true\n  },\n  "schema_version": 1\n}\n'
+    )
+    assert legacy_json.read_bytes() == expected
 
 
 def test_national_build_gate_failure_writes_diagnostic_not_h5(
@@ -186,9 +326,8 @@ def test_national_build_gate_failure_writes_diagnostic_not_h5(
         "uk_release_input_coverage_gate",
         lambda _dataset, _engine: _failing_gate(),
     )
-
-    with pytest.raises(RuntimeError, match="Input coverage failed"):
-        build_uk_national_dataset(
+    with pytest.raises(RuntimeError, match="Release gates failed"):
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             coverage_engine=object(),
@@ -197,10 +336,296 @@ def test_national_build_gate_failure_writes_diagnostic_not_h5(
 
     assert not staging_h5.exists()
     diagnostic = json.loads(coverage_json.read_text())
-    assert diagnostic["input_coverage"]["passed"] is False
-    assert diagnostic["input_coverage"]["details"]["degenerate"] == [
-        "employment_income"
+    coverage = diagnostic["input_coverage"]
+    assert coverage["passed"] is False
+    assert coverage["details"]["degenerate"] == ["employment_income"]
+
+
+def test_default_terminal_report_write_precedes_gate_failure_raise(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    default_terminal_json = staging_h5.with_suffix(".terminal_gates.json")
+    _write_toy_h5(input_h5)
+    events: list[str] = []
+    real_loader = national_build.load_uk_national_dataset
+    real_report_writer = national_build.write_uk_terminal_gate_report
+
+    def preflight(**_kwargs) -> None:
+        events.append("preflight")
+
+    def stage_contract(_stage_names) -> None:
+        events.append("stage contract")
+
+    def load(path):
+        events.append("load")
+        return real_loader(path)
+
+    def evaluate(_dataset, _engine):
+        events.append("evaluate")
+        return _failing_gate()
+
+    def write_report(report, path):
+        events.append("write report")
+        assert Path(path) == default_terminal_json.resolve()
+        return real_report_writer(report, path)
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        preflight,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_build_stages",
+        stage_contract,
+    )
+    monkeypatch.setattr(national_build, "load_uk_national_dataset", load)
+    monkeypatch.setattr(national_build, "uk_release_input_coverage_gate", evaluate)
+    monkeypatch.setattr(
+        national_build,
+        "write_uk_terminal_gate_report",
+        write_report,
+    )
+
+    with pytest.raises(RuntimeError, match="Release gates failed"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=staging_h5,
+            coverage_engine=object(),
+            terminal_gate_path=None,
+        )
+    events.append("raise")
+
+    assert events == [
+        "preflight",
+        "stage contract",
+        "load",
+        "evaluate",
+        "write report",
+        "raise",
     ]
+    assert default_terminal_json.is_file()
+    assert json.loads(default_terminal_json.read_text())["passed"] is False
+    assert not staging_h5.exists()
+
+
+def test_national_build_real_terminal_batch_passes_before_staging(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build, terminal_gates
+
+    input_h5 = tmp_path / "healthy.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    _write_two_row_h5(input_h5)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_terminal_gate_report",
+        real_uk_terminal_gate_report,
+    )
+
+    result = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        coverage_engine=object(),
+        terminal_gate_path=terminal_json,
+    )
+
+    assert result.terminal_gates.passed
+    assert [gate.name for gate in result.terminal_gates.results] == [
+        "uk_release_input_coverage",
+        "degenerate_release_surface",
+        "zero_weight_strata",
+        "weight_ess",
+        "weight_ratio",
+    ]
+    assert result.input_coverage is result.terminal_gates.results[0]
+    assert result.terminal_gate_path == terminal_json.resolve()
+    assert staging_h5.is_file()
+    payload = json.loads(terminal_json.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert set(payload["gates"]) == {
+        "uk_release_input_coverage",
+        "degenerate_release_surface",
+        "zero_weight_strata",
+        "weight_ess",
+        "weight_ratio",
+    }
+    assert "weights_audit" not in payload["gates"]
+    assert "export_surface" not in payload["gates"]
+    assert "target_surface" not in payload["gates"]
+    assert "target_fit" not in payload["gates"]
+
+
+def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build, terminal_gates
+
+    input_h5 = tmp_path / "defective.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    _write_two_row_h5(input_h5, employment_income=(0.0, 0.0))
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _failing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _failing_gate(),
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_terminal_gate_report",
+        real_uk_terminal_gate_report,
+    )
+
+    with pytest.raises(RuntimeError, match="Release gates failed") as error:
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=staging_h5,
+            stages=(UKNationalStage("hmrc_spi_income", lambda dataset: dataset),),
+            coverage_engine=object(),
+            terminal_gate_path=terminal_json,
+        )
+
+    assert "[uk_release_input_coverage]" in str(error.value)
+    assert "[degenerate_release_surface]" in str(error.value)
+    assert "[weights_audit]" in str(error.value)
+    assert terminal_json.is_file()
+    payload = json.loads(terminal_json.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["gates"]["uk_release_input_coverage"]["passed"] is False
+    assert payload["gates"]["degenerate_release_surface"]["passed"] is False
+    assert payload["gates"]["weights_audit"] == {
+        "details": {"evidence_missing": True, "fits_checked": 0},
+        "failures": [
+            "A production fit stage ran but emitted no FitWeightRecord evidence; "
+            "an absent audit is not a passing audit."
+        ],
+        "passed": False,
+    }
+    assert not staging_h5.exists()
+
+
+def test_national_build_includes_parity_trio_only_with_real_evidence(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build, terminal_gates
+
+    input_h5 = tmp_path / "healthy.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    _write_two_row_h5(input_h5)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_terminal_gate_report",
+        real_uk_terminal_gate_report,
+    )
+    parity = UKReleaseParityEvidence(
+        candidate_columns=("person.employment_income",),
+        reference_columns=("person.employment_income",),
+        candidate_targets=("population",),
+        reference_targets=("population",),
+        target_relative_errors={"population": 0.0},
+    )
+
+    result = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
+        coverage_engine=object(),
+        parity_evidence=parity,
+        terminal_gate_path=terminal_json,
+    )
+
+    assert result.terminal_gates.passed
+    weights_audit = next(
+        gate for gate in result.terminal_gates.results if gate.name == "weights_audit"
+    )
+    assert weights_audit.details["resolved_weight_kinds"] == {
+        "uk_frs_only_spi_fill": "importance",
+        "uk_spi_2022_23_income": "design",
+    }
+    assert [gate.name for gate in result.terminal_gates.results][-3:] == [
+        "export_surface",
+        "target_surface",
+        "target_fit",
+    ]
+
+
+def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5)
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staging.h5",
+            coverage_engine=object(),
+            terminal_gate_path=tmp_path / "terminal.json",
+            input_coverage_path=tmp_path / "coverage.json",
+        )
+
+    with pytest.raises(ValueError, match="must differ"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staging.h5",
+            coverage_engine=object(),
+            terminal_gate_path=input_h5,
+        )
 
 
 def test_national_build_rejects_duplicate_stage_names_before_running(
@@ -225,7 +650,7 @@ def test_national_build_rejects_duplicate_stage_names_before_running(
     )
 
     with pytest.raises(ValueError, match="Duplicate UK national stage"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(
@@ -267,7 +692,7 @@ def test_national_build_manifest_failure_removes_stale_outputs_before_stages(
     )
 
     with pytest.raises(ValueError, match="manifest drift"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             stages=(UKNationalStage("should_not_run", stage_transform),),
@@ -300,7 +725,7 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
         return dataset.with_tables(person=person)
 
     with pytest.raises(ValueError, match="absent from household"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(UKNationalStage("bad", break_links),),
@@ -345,7 +770,7 @@ def test_national_build_rejects_invalid_stage_population_metadata(
     )
 
     with pytest.raises(ValueError, match=message):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(UKNationalStage(stage_name, transform),),
@@ -366,7 +791,7 @@ def test_national_build_refuses_to_overwrite_its_input(monkeypatch, tmp_path) ->
     )
 
     with pytest.raises(ValueError, match="must differ"):
-        build_uk_national_dataset(
+        _run_national_build(
             input_h5=input_h5,
             staging_h5=input_h5,
             coverage_engine=object(),
@@ -395,7 +820,7 @@ def test_national_build_accepts_hugging_face_style_h5_symlink(
         lambda _dataset, _engine: _passing_gate(),
     )
 
-    result = build_uk_national_dataset(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
