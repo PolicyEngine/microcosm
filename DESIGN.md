@@ -226,7 +226,9 @@ risks, not footnotes:
   mandatory, not optional.
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
-  dividends, interest, retirement income; plus SPM, and the
+  dividends, interest, retirement income; plus the SPM resource-component
+  families (never SPM poverty rates, which are permanent holdouts under
+  the rule below), and the
   benefit-program families) with explicit tolerances. A contribution may not
   worsen any protected family beyond tolerance even if it improves aggregate
   loss. This list is versioned with the population and is the steward's call.
@@ -248,10 +250,7 @@ risks, not footnotes:
   official poverty metrics are expected by construction (corrected
   underreporting should sit below survey-based rates, all else equal) and
   are never inherently problematic — official numbers are comparators, not
-  truth. Note for the steward: the protected-families list above says
-  "plus SPM" — if that denotes SPM poverty rates as a target family it
-  conflicts with this rule and needs a ruling; if it denotes SPM
-  resource-component families, no conflict.
+  truth.
 - **Correlated evidence.** Target standard errors from one survey are
   design-correlated across its published cells; treating them as diagonal
   overweights cell-rich surveys (the standard GREG caveat). Evidence

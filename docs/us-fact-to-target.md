@@ -36,8 +36,14 @@ Release gates may *fail* a certification on a held-out poverty regression;
 
 For raw survey margins, prefer an administrative source when one covers the
 same cell and concept — e.g. congressional-district income binds from
-`irs_soi.congressional_district_2022`, while ACS (the `census_acs.acs`
-family) supplies population and structure.
+`irs_soi.congressional_district_2022`, while ACS (the
+`census_acs.acs1_2023` family) supplies population and structure — in
+CD-enabled builds (`include_congressional_district_targets`). Doctrine
+ahead of machinery: the shipped US parity manifest still classifies the
+ACS family `survey_derived` and excludes it even in CD-on mode
+(`tools/build_us_target_parity_manifest.py`); activating ACS frame
+margins under this rule is open work, so this states the rule, not
+current behavior.
 
 **Corollary: deviations from official poverty metrics are never inherently
 problematic.** A model that corrects benefit underreporting should, all
