@@ -465,9 +465,7 @@ def launch(
     pool_manifest: Path,
     config_path: Path,
     out: Path,
-    release_builder: Callable[[Sequence[str] | None], Mapping[str, str]] = (
-        fiscal_release.main
-    ),
+    release_builder: Callable[[Sequence[str] | None], object] = fiscal_release.main,
 ) -> dict[str, object]:
     """Validate pins, run the house release path, and write a publish receipt."""
 
@@ -478,24 +476,19 @@ def launch(
         config=config,
         pool_manifest_path=resolved_pool_manifest,
     )
-    build = dict(
-        release_builder(
-            _builder_argv(
-                config=config,
-                pool_manifest=resolved_pool_manifest,
-                out=resolved_out,
-                k=config.requested_k,
-            )
+    release_builder(
+        _builder_argv(
+            config=config,
+            pool_manifest=resolved_pool_manifest,
+            out=resolved_out,
+            k=config.requested_k,
         )
     )
-    for key in ("release_id", "release_dir", "artifact_root"):
-        if not isinstance(build.get(key), str) or not build[key]:
-            raise RuntimeError(f"Release builder returned no non-empty {key!r}.")
-    if build["release_id"] != config.release_id:
-        raise RuntimeError(
-            "Release builder returned a different release id: "
-            f"{build['release_id']!r} != {config.release_id!r}."
-        )
+    build = {
+        "release_id": config.release_id,
+        "release_dir": str(resolved_out / "releases" / config.release_id),
+        "artifact_root": str(resolved_out / "artifacts"),
+    }
 
     publish_argv = [
         "tools/publish_release.sh",

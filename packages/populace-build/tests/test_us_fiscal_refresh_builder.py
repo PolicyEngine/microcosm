@@ -1358,6 +1358,31 @@ def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
         assert count_gate < source.index(later_write)
 
 
+def test_legacy_cli_result_is_origin_main_three_key_fixture(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "fixture-release"
+    artifact_root = tmp_path / "artifacts"
+
+    returned = builder._print_build_result(
+        release_id="fixture-release",
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+    )
+
+    assert returned is None
+    assert capsys.readouterr().out == (
+        "{\n"
+        '  "release_id": "fixture-release",\n'
+        f'  "release_dir": "{release_dir}",\n'
+        f'  "artifact_root": "{artifact_root}"\n'
+        "}\n"
+    )
+    assert builder.main.__annotations__["return"] in {None, "None"}
+
+
 def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
@@ -3542,6 +3567,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
+                if stage == "weeks_unemployed_input":
+                    captured["weeks_unemployed_telemetry"] = dict(details)
 
             def attach_artifact(self, name, path, **details):
                 captured.setdefault("telemetry_events", []).append(
@@ -5092,6 +5119,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert not list(release_dir.glob("*manifest*"))
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
+        assert captured["weeks_unemployed_telemetry"] == {
+            "message": (
+                "Restored measured ASEC LKWEEKS before frozen-support "
+                "selection and target materialization."
+            ),
+            "source_path": str(weeks_source.resolve()),
+            "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+            "source_rows": 2,
+        }
     if terminal_mode in {"integrity", "retirement", "telemetry"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",

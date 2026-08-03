@@ -280,13 +280,7 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
 
     def fake_builder(argv):
         captured.extend(argv)
-        return {
-            "release_id": "populace-us-2024-k8-fixture",
-            "release_dir": str(tmp_path / "out" / "releases" / "release"),
-            "artifact_root": str(tmp_path / "out" / "artifacts"),
-            "dataset_path": str(tmp_path / "out" / "artifacts" / "fixture.h5"),
-            "calibration_path": str(tmp_path / "out" / "artifacts" / "fixture.npz"),
-        }
+        return None
 
     result = launcher.launch(
         pool_manifest=manifest,
@@ -300,6 +294,10 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     assert "--no-staging" in captured
     assert captured[captured.index("--pool-manifest-sha256") + 1] == _sha256(manifest)
     assert result["automatic_publish"] is False
+    assert result["release_dir"] == str(
+        tmp_path / "out" / "releases" / "populace-us-2024-k8-fixture"
+    )
+    assert result["artifact_root"] == str(tmp_path / "out" / "artifacts")
     assert result["pointer_update"] is False
     assert result["pointer_updates"]["production"]["pointer_update"] is False
     assert result["pointer_updates"]["staging"]["pointer_update"] is False

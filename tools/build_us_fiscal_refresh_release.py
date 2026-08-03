@@ -8035,7 +8035,27 @@ class _TerminalBatchTelemetry:
         self._call("attach_artifact", name, path, **details)
 
 
-def main(argv: Sequence[str] | None = None) -> dict[str, str]:
+def _print_build_result(
+    *,
+    release_id: str,
+    release_dir: Path,
+    artifact_root: Path,
+) -> None:
+    """Print the legacy three-key builder result without widening its API."""
+
+    print(
+        json.dumps(
+            {
+                "release_id": release_id,
+                "release_dir": str(release_dir),
+                "artifact_root": str(artifact_root),
+            },
+            indent=2,
+        )
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
@@ -8345,16 +8365,23 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             asec_2023_source=weeks_unemployed_source,
         )
         weeks_unemployed_source_receipt = {
-            "source": "asec_2023_source",
             "source_path": str(Path(weeks_unemployed_source_path).resolve()),
             "source_sha256": ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
             "source_rows": len(weeks_unemployed_source),
         }
+        weeks_unemployed_message = (
+            "Restored measured ASEC LKWEEKS before frozen-support selection "
+            "and target materialization."
+        )
     else:
         weeks_unemployed_source_receipt = {
             "source": "validated_multispine_pool",
             "pool_publication_run_id": pool_manifest_payload["publication_run_id"],
         }
+        weeks_unemployed_message = (
+            "Verified measured ASEC LKWEEKS before selection and target "
+            "materialization."
+        )
     weeks_unemployed_gate = us_weeks_unemployed_signal_gate(base_frame)
     if not weeks_unemployed_gate.passed:
         if telemetry is not None:
@@ -8375,10 +8402,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
     if telemetry is not None:
         telemetry.stage(
             "weeks_unemployed_input",
-            message=(
-                "Verified measured ASEC LKWEEKS before selection and target "
-                "materialization."
-            ),
+            message=weeks_unemployed_message,
             **weeks_unemployed_source_receipt,
         )
     # Capture direct ASEC reporter lineage on the FULL clone-aware support.
@@ -11185,15 +11209,11 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
     shutil.copy2(base_h5, release_root / f"base_{base_h5.name}")
-    build_result = {
-        "release_id": release_id,
-        "release_dir": str(release_dir),
-        "artifact_root": str(artifact_root),
-        "dataset_path": str(dataset_path),
-        "calibration_path": str(calibration_path),
-    }
-    print(json.dumps(build_result, indent=2))
-    return build_result
+    _print_build_result(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+    )
 
 
 if __name__ == "__main__":
