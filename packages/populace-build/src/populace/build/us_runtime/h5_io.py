@@ -31,6 +31,7 @@ __all__ = [
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "load_legacy_calibrated_us_h5",
+    "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "read_nullable_us_h5_metadata",
     "write_nullable_us_h5",
@@ -207,6 +208,119 @@ def load_simulation_ready_us_multispine_pool_manifest(
             "the ready manifest publication."
         )
     return manifest
+
+
+def load_simulation_ready_us_multispine_pool(
+    path: str | Path,
+) -> tuple[Frame, dict[str, object]]:
+    """Load a manifest-bound multispine pool with its importance weights.
+
+    The companion manifest remains the readiness authority.  This loader first
+    validates the manifest/H5/agreement publication triple, then reads the
+    fixed-format entity tables and checks the H5 digest again after the read so
+    bytes changed concurrently cannot be treated as the validated pool.  The
+    pool's household weights retain their ``IMPORTANCE`` provenance; the
+    legacy US loader deliberately labels historical datasets ``CALIBRATED``
+    and is therefore not a valid consumer for this artifact.
+
+    Returns:
+        The reconstructed pool :class:`~populace.frame.Frame` and the exact
+        manifest object whose artifact receipts authorized the load.
+    """
+
+    manifest_path = Path(path)
+    manifest = load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+    agreement_gate = _mapping(
+        manifest.get("agreement_gate"),
+        label=f"US multispine pool manifest {manifest_path}.agreement_gate",
+    )
+    if agreement_gate.get("passed") is not True:
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} has no passing "
+            "agreement-gate verdict."
+        )
+
+    pool_receipt = _mapping(
+        manifest.get("pool_h5"),
+        label=f"US multispine pool manifest {manifest_path}.pool_h5",
+    )
+    pool_path = _artifact_path(
+        pool_receipt,
+        label=f"US multispine pool manifest {manifest_path}.pool_h5",
+    )
+    metadata = read_nullable_us_h5_metadata(pool_path)
+    stored_kind = metadata.get("household_weight_kind")
+    if stored_kind != WeightKind.IMPORTANCE.value:
+        raise ValueError(
+            f"US multispine pool H5 {pool_path} must carry importance weights, "
+            f"got {stored_kind!r}."
+        )
+
+    with pd.HDFStore(pool_path, mode="r") as store:
+        keys = {key.lstrip("/") for key in store.keys()}
+        missing = sorted(set(US_SCHEMA.entities) - keys)
+        if missing:
+            raise ValueError(
+                f"US multispine pool H5 {pool_path} is missing entity table(s): "
+                f"{missing}."
+            )
+        tables = {entity: store[entity] for entity in US_SCHEMA.entities}
+        period = store[_TIME_PERIOD_KEY]
+
+    if len(period) != 1 or period.tolist() != [manifest.get("period")]:
+        raise ValueError(
+            f"US multispine pool H5 {pool_path} period does not match its "
+            f"manifest: H5={period.tolist()!r}, manifest={manifest.get('period')!r}."
+        )
+    household = tables["household"].copy()
+    if "household_weight" not in household:
+        raise ValueError(
+            f"US multispine pool H5 {pool_path} household table has no "
+            "household_weight column."
+        )
+    household_weights = household.pop("household_weight").to_numpy(dtype=np.float64)
+    tables["household"] = household
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                household_weights,
+                WeightKind.IMPORTANCE,
+            )
+        },
+    )
+
+    provenance_counts = _mapping(
+        manifest.get("provenance_counts"),
+        label=f"US multispine pool manifest {manifest_path}.provenance_counts",
+    )
+    household_counts = _mapping(
+        provenance_counts.get("household"),
+        label=(
+            f"US multispine pool manifest {manifest_path}.provenance_counts.household"
+        ),
+    )
+    expected_households = household_counts.get("rows")
+    if (
+        isinstance(expected_households, bool)
+        or not isinstance(expected_households, int)
+        or expected_households != frame.n("household")
+    ):
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} household row count "
+            f"{expected_households!r} does not match H5 count "
+            f"{frame.n('household')}."
+        )
+
+    # Close the validation/read time-of-check-to-time-of-use window.  A file
+    # replacement during the HDF read must not inherit the first digest check.
+    _require_matching_sha256(
+        pool_path,
+        pool_receipt,
+        label=f"US multispine pool manifest {manifest_path}.pool_h5",
+    )
+    return frame, manifest
 
 
 def read_nullable_us_h5_metadata(path: str | Path) -> dict[str, object]:
