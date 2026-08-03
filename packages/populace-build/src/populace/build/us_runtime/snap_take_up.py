@@ -55,6 +55,10 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.cps_carried import (
+    CPS_REPORTED_SNAP_RAW_COLUMN,
+    reported_snap_receipt_by_spm_unit,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -63,6 +67,7 @@ __all__ = [
     "US_SNAP_TAKE_UP_RAW_COLUMN",
     "US_SNAP_TAKE_UP_STAGE_NAME",
     "derive_us_snap_take_up_from_manifest",
+    "reported_snap_receipt_by_spm_unit",
     "us_snap_take_up_signal_gate",
     "us_snap_take_up_summary",
     "us_snap_take_up_stage_spec",
@@ -75,7 +80,7 @@ US_SNAP_TAKE_UP_STAGE_NAME = "snap_take_up"
 US_SNAP_TAKE_UP_OUTPUT_COLUMN = "takes_up_snap_if_eligible"
 
 #: Raw CPS ASEC person column carrying the SPM unit's reported SNAP subsidy.
-US_SNAP_TAKE_UP_RAW_COLUMN = "SPM_SNAPSUB"
+US_SNAP_TAKE_UP_RAW_COLUMN = CPS_REPORTED_SNAP_RAW_COLUMN
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _SPM_MEMBERSHIP_COLUMN = "person_spm_unit_id"
@@ -195,13 +200,9 @@ def derive_us_snap_take_up_from_manifest(
         )
     rate = _take_up_rate(operation)
 
-    subsidy = pd.to_numeric(frame[US_SNAP_TAKE_UP_RAW_COLUMN], errors="coerce").fillna(
-        0.0
-    )
     weight = pd.to_numeric(frame[_PERSON_WEIGHT_COLUMN], errors="coerce").fillna(0.0)
-    person = frame.assign(_subsidy=subsidy, _weight=weight)
+    person = frame.assign(_weight=weight)
     aggregates = {
-        "_subsidy": ("_subsidy", "max"),
         "_weight": ("_weight", "first"),
     }
     for column in ("source_year", "source_household_id"):
@@ -215,7 +216,12 @@ def derive_us_snap_take_up_from_manifest(
         .reset_index()
     )
 
-    reported = units["_subsidy"].to_numpy(dtype=np.float64) > 0.0
+    reported = (
+        reported_snap_receipt_by_spm_unit(frame)
+        .reindex(units[_SPM_MEMBERSHIP_COLUMN])
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
     weights = units["_weight"].to_numpy(dtype=np.float64)
     total_weight = float(weights.sum())
     reporter_weight = float(weights[reported].sum())
@@ -317,15 +323,7 @@ def _reported_by_spm_unit(frame: Frame) -> pd.Series | None:
     person = frame.table("person")
     if US_SNAP_TAKE_UP_RAW_COLUMN not in person.columns:
         return None
-    subsidy = pd.to_numeric(person[US_SNAP_TAKE_UP_RAW_COLUMN], errors="coerce").fillna(
-        0.0
-    )
-    return (
-        person.assign(_subsidy=subsidy)
-        .groupby(_SPM_MEMBERSHIP_COLUMN)["_subsidy"]
-        .max()
-        .gt(0.0)
-    )
+    return reported_snap_receipt_by_spm_unit(person)
 
 
 def us_snap_take_up_summary(frame: Frame) -> dict[str, object]:

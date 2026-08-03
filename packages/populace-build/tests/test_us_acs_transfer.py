@@ -626,6 +626,7 @@ def test_declared_families_are_independent_of_release_coverage_surface() -> None
         }
     )
     assert "has_esi" in production_declared["person"]["model_required_boolean"]
+    assert "receives_wic" in production_declared["person"]["model_required_boolean"]
 
 
 def test_declared_plan_carries_the_23_stage_base_surface() -> None:
@@ -666,6 +667,9 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
             "second_home_mortgage_origination_year",
         }
     )
+    assert declared_acs_transfer_target_families()["spm_unit"][
+        "model_required_boolean"
+    ] == ("is_tanf_enrolled", "receives_snap")
 
 
 def test_explicit_transfer_adds_requested_model_inputs(

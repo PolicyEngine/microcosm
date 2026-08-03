@@ -11,6 +11,8 @@ import populace.build.us_runtime.puf_support as puf_support_module
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
+    CPS_CARRIED_PERSON_INPUTS,
+    CPS_CARRIED_SPM_UNIT_INPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
     clone_us_frame_for_puf_support,
@@ -196,6 +198,13 @@ def _raw_asec_predictor_frame() -> Frame:
                 "PEMCPREM": [100.0, 0.0, 25.0],
                 "PMED_VAL": [200.0, 0.0, 40.0],
                 "POTC_VAL": [30.0, 0.0, 10.0],
+                # Unit 100 is TANF-enrolled through the PAW_TYP 3 ("both")
+                # member; unit 200's positive amount is PAW_TYP 2 (other
+                # cash welfare) and must NOT mark TANF enrollment.
+                "PAW_VAL": [0.0, 125.0, 80.0],
+                "PAW_TYP": [0, 3, 2],
+                "SPM_SNAPSUB": [0.0, 0.0, 900.0],
+                "WICYN": [0, 1, 2],
             }
         ),
         "household": pd.DataFrame(
@@ -1114,6 +1123,207 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
         False,
         False,
     ]
+    assert "receives_wic" in CPS_CARRIED_PERSON_INPUTS
+    assert person["receives_wic"].tolist() == [False, True, False]
+    assert pd.api.types.is_bool_dtype(person["receives_wic"])
+
+
+def test_cps_carried_derives_reported_enrollment_by_spm_unit() -> None:
+    derived = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    spm_unit = derived.table("spm_unit")
+
+    assert {"is_tanf_enrolled", "receives_snap"} <= CPS_CARRIED_SPM_UNIT_INPUTS
+    assert spm_unit["spm_unit_id"].tolist() == [100, 200]
+    # Unit 200 reports positive PAW_VAL with PAW_TYP 2 (other cash welfare)
+    # and must stay out of the TANF-specific enrollment leaf.
+    assert spm_unit["is_tanf_enrolled"].tolist() == [True, False]
+    assert spm_unit["receives_snap"].tolist() == [False, True]
+    assert pd.api.types.is_bool_dtype(spm_unit["is_tanf_enrolled"])
+    assert pd.api.types.is_bool_dtype(spm_unit["receives_snap"])
+
+
+def _tanf_gate_person(
+    amounts: Sequence[float],
+    types: Sequence[int] | None,
+) -> pd.DataFrame:
+    person = pd.DataFrame(
+        {
+            "person_spm_unit_id": np.arange(len(amounts), dtype=np.int64) + 100,
+            "PAW_VAL": np.asarray(amounts, dtype=np.float64),
+        }
+    )
+    if types is not None:
+        person["PAW_TYP"] = np.asarray(types, dtype=np.int64)
+    return person
+
+
+def test_reported_tanf_enrollment_gates_on_reported_tanf_type() -> None:
+    from populace.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(
+        _tanf_gate_person(
+            amounts=[500.0, 500.0, 500.0, 500.0, 0.0],
+            types=[1, 2, 3, 0, 1],
+        )
+    )
+
+    # PAW_TYP 1 (TANF/AFDC) and 3 (both) gate in; 2 (other cash welfare)
+    # and 0 (type unreported) gate out; a TANF type without a positive
+    # amount reports no receipt.
+    assert enrollment.index.tolist() == [100, 101, 102, 103, 104]
+    assert enrollment.tolist() == [True, False, True, False, False]
+
+
+def test_reported_tanf_enrollment_requires_paw_typ_for_positive_amounts() -> None:
+    from populace.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    with pytest.raises(ValueError, match="requires PAW_TYP"):
+        reported_tanf_enrollment_by_spm_unit(
+            _tanf_gate_person(amounts=[0.0, 125.0], types=None)
+        )
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(
+        _tanf_gate_person(amounts=[0.0, 0.0], types=None)
+    )
+    assert enrollment.tolist() == [False, False]
+
+
+def test_reported_tanf_enrollment_joins_sidecar_without_mutating_person() -> None:
+    from populace.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype=np.int64),
+            "source_year": np.asarray([2022, 2022, 2022], dtype=np.int64),
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "P_SEQ": np.asarray([1, 2, 1], dtype=np.int64),
+            "A_LINENO": np.asarray([1, 2, 1], dtype=np.int64),
+            "PAW_VAL": [0.0, 125.0, 80.0],
+        }
+    )
+    sidecar = pd.DataFrame(
+        {
+            "source_year": np.asarray([2022, 2022, 2022], dtype=np.int64),
+            "PH_SEQ": np.asarray([101, 101, 202], dtype=np.int64),
+            "P_SEQ": np.asarray([1, 2, 1], dtype=np.int64),
+            "A_LINENO": np.asarray([1, 2, 1], dtype=np.int64),
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "PAW_VAL": [0.0, 125.0, 80.0],
+            "PAW_TYP": np.asarray([0, 1, 2], dtype=np.int64),
+        }
+    )
+    before = person.copy(deep=True)
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(person, sidecar)
+
+    assert enrollment.index.tolist() == [100, 200]
+    assert enrollment.tolist() == [True, False]
+    pd.testing.assert_frame_equal(person, before)
+
+
+def test_cps_carried_reported_enrollment_is_shared_by_support_clones() -> None:
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    )
+    spm_unit = expanded.table("spm_unit")
+    source_id = support_source_id_column("spm_unit")
+    clone_index = support_clone_index_column("spm_unit")
+
+    assert spm_unit.groupby(source_id)[clone_index].nunique().eq(2).all()
+    expected = {
+        "is_tanf_enrolled": {100: True, 200: False},
+        "receives_snap": {100: False, 200: True},
+    }
+    for column, expected_by_source in expected.items():
+        by_source = spm_unit.groupby(source_id)[column]
+        assert by_source.nunique(dropna=False).eq(1).all()
+        assert by_source.first().to_dict() == expected_by_source
+
+    person = expanded.table("person")
+    person_source_id = support_source_id_column("person")
+    by_source = person.groupby(person_source_id)["receives_wic"]
+    assert by_source.nunique(dropna=False).eq(1).all()
+    assert by_source.first().to_dict() == {1: False, 2: True, 3: False}
+
+
+@pytest.mark.parametrize("period", ["2024-01", "2024-12"])
+def test_policyengine_broadcasts_annual_reported_enrollment_to_each_month(
+    period: str,
+) -> None:
+    try:
+        from policyengine_us import CountryTaxBenefitSystem, Simulation
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+    derived = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    spm_flags = derived.table("spm_unit").set_index("spm_unit_id")
+    person_flags = derived.table("person").set_index("person_id")
+    variables = CountryTaxBenefitSystem().variables
+    expected_entities = {
+        "is_tanf_enrolled": "spm_unit",
+        "receives_snap": "spm_unit",
+        "receives_wic": "person",
+    }
+    for name, entity in expected_entities.items():
+        variable = variables[name]
+        assert variable.is_input_variable()
+        assert variable.entity.key == entity
+        assert variable.value_type is bool
+        assert str(variable.definition_period).lower() == "month"
+
+    situation = {
+        "people": {
+            f"person_{person_id}": {
+                "age": {"2024": int(person_flags.loc[person_id, "age"])},
+                "receives_wic": {
+                    "2024": bool(person_flags.loc[person_id, "receives_wic"])
+                },
+            }
+            for person_id in person_flags.index
+        },
+        "spm_units": {
+            "unit_100": {
+                "members": ["person_1", "person_2"],
+                "is_tanf_enrolled": {
+                    "2024": bool(spm_flags.loc[100, "is_tanf_enrolled"])
+                },
+                "receives_snap": {"2024": bool(spm_flags.loc[100, "receives_snap"])},
+            },
+            "unit_200": {
+                "members": ["person_3"],
+                "is_tanf_enrolled": {
+                    "2024": bool(spm_flags.loc[200, "is_tanf_enrolled"])
+                },
+                "receives_snap": {"2024": bool(spm_flags.loc[200, "receives_snap"])},
+            },
+        },
+        "households": {
+            "household": {
+                "members": ["person_1", "person_2", "person_3"],
+                "state_code": {"2024": "CA"},
+            }
+        },
+    }
+    simulation = Simulation(situation=situation)
+
+    np.testing.assert_array_equal(
+        simulation.calculate("is_tanf_enrolled", period),
+        spm_flags["is_tanf_enrolled"].to_numpy(dtype=bool),
+    )
+    np.testing.assert_array_equal(
+        simulation.calculate("receives_snap", period),
+        spm_flags["receives_snap"].to_numpy(dtype=bool),
+    )
+    np.testing.assert_array_equal(
+        simulation.calculate("receives_wic", period),
+        person_flags["receives_wic"].to_numpy(dtype=bool),
+    )
 
 
 def test_cps_carried_derivations_reject_formula_owned_input_columns() -> None:
