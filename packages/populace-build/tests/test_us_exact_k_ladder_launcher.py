@@ -76,6 +76,12 @@ def test_config_requires_explicit_seed_and_ratified_k(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="exactly 'N', 57240, or 20000"):
         launcher._read_config(path)
 
+    unpinned_retry = _config_payload()
+    unpinned_retry["targets"]["ssi_take_up_prior_weight_basis"] = "ssi.json"
+    path = _write_config(tmp_path, unpinned_retry)
+    with pytest.raises(ValueError, match="and its SHA-256 pin"):
+        launcher._read_config(path)
+
 
 def test_config_rejects_k_larger_than_manifest_pool(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -107,6 +113,148 @@ def test_config_rejects_k_larger_than_manifest_pool(
             config=config,
             pool_manifest_path=manifest,
         )
+
+
+def test_pool_manifest_sha_pin_is_checked_before_manifest_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config = launcher._read_config(
+        _write_config(tmp_path, _config_payload(pool_manifest_sha256="a" * 64))
+    )
+    loaded = False
+
+    def unexpected_load(_):
+        nonlocal loaded
+        loaded = True
+
+    monkeypatch.setattr(
+        launcher,
+        "load_simulation_ready_us_multispine_pool_manifest",
+        unexpected_load,
+    )
+
+    with pytest.raises(ValueError, match="Pool manifest SHA-256 mismatch"):
+        launcher._validate_pins_and_resolve_k(
+            config=config,
+            pool_manifest_path=manifest,
+        )
+    assert not loaded
+
+
+def test_n_resolves_to_realized_pool_size_with_valid_pins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    (tmp_path / "ledger").mkdir()
+    incumbent = tmp_path / "incumbent.json"
+    incumbent.write_text(
+        json.dumps({"target_surface": {"sha256": "e" * 64}}),
+        encoding="utf-8",
+    )
+    payload = _config_payload(pool_manifest_sha256=_sha256(manifest))
+    payload["targets"]["incumbent_diagnostics_sha256"] = _sha256(incumbent)
+    config = launcher._read_config(_write_config(tmp_path, payload))
+    validated_manifest = {
+        "agreement_gate": {"passed": True},
+        "provenance_counts": {"household": {"rows": 8}},
+    }
+    monkeypatch.setattr(
+        launcher,
+        "load_simulation_ready_us_multispine_pool_manifest",
+        lambda _: validated_manifest,
+    )
+
+    k, observed_manifest = launcher._validate_pins_and_resolve_k(
+        config=config,
+        pool_manifest_path=manifest,
+    )
+
+    assert k == 8
+    assert observed_manifest is validated_manifest
+
+
+@pytest.mark.parametrize(
+    ("bad_pin", "message"),
+    (
+        ("incumbent_sha", "Incumbent diagnostics SHA-256 mismatch"),
+        ("target_surface", "target-surface SHA-256 mismatch"),
+        ("ssi_prior_basis", "prior-weight basis SHA-256 mismatch"),
+    ),
+)
+def test_incumbent_and_target_surface_pins_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_pin: str,
+    message: str,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    (tmp_path / "ledger").mkdir()
+    incumbent = tmp_path / "incumbent.json"
+    incumbent.write_text(
+        json.dumps({"target_surface": {"sha256": "e" * 64}}),
+        encoding="utf-8",
+    )
+    payload = _config_payload(pool_manifest_sha256=_sha256(manifest))
+    payload["targets"]["incumbent_diagnostics_sha256"] = _sha256(incumbent)
+    prior_basis = tmp_path / "ssi.json"
+    prior_basis.write_text("{}", encoding="utf-8")
+    if bad_pin == "incumbent_sha":
+        payload["targets"]["incumbent_diagnostics_sha256"] = "d" * 64
+    elif bad_pin == "target_surface":
+        payload["targets"]["target_surface_sha256"] = "f" * 64
+    else:
+        payload["targets"]["ssi_take_up_prior_weight_basis"] = "ssi.json"
+        payload["targets"]["ssi_take_up_prior_weight_basis_sha256"] = "1" * 64
+    config = launcher._read_config(_write_config(tmp_path, payload))
+    monkeypatch.setattr(
+        launcher,
+        "load_simulation_ready_us_multispine_pool_manifest",
+        lambda _: {
+            "agreement_gate": {"passed": True},
+            "provenance_counts": {"household": {"rows": 8}},
+        },
+    )
+
+    with pytest.raises(ValueError, match=message):
+        launcher._validate_pins_and_resolve_k(
+            config=config,
+            pool_manifest_path=manifest,
+        )
+
+
+def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
+    tmp_path: Path,
+) -> None:
+    launcher = _launcher_module()
+    payload = _config_payload(
+        requested_k=20_000,
+        release_id="populace-us-2024-k20000-fixture",
+    )
+    payload["targets"]["ssi_take_up_prior_weight_basis"] = "ssi.json"
+    payload["targets"]["ssi_take_up_prior_weight_basis_sha256"] = "1" * 64
+    config = launcher._read_config(_write_config(tmp_path, payload))
+
+    argv = launcher._builder_argv(
+        config=config,
+        pool_manifest=tmp_path / "pool.manifest.json",
+        out=tmp_path / "out",
+        k=20_000,
+    )
+    parsed = launcher.fiscal_release._parse_args(argv)
+
+    assert parsed.exact_k == 20_000
+    assert parsed.seed == 17
+    assert parsed.pool_release_id == "fixture-pool-release"
+    assert parsed.release_id == "populace-us-2024-k20000-fixture"
+    assert parsed.ssi_take_up_prior_weight_basis == tmp_path / "ssi.json"
+    assert parsed.ssi_take_up_prior_weight_basis_sha256 == "1" * 64
 
 
 def test_launcher_delegates_to_house_builder_and_never_publishes(

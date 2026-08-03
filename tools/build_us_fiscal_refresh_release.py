@@ -266,6 +266,7 @@ from populace.calibrate import (
     TargetSpec,
     calibrate,
     calibrate_l0_refit,
+    relative_error_loss,
 )
 from populace.calibrate.diagnostics import (
     diagnostics_payload,
@@ -6414,6 +6415,156 @@ def _incumbent_relative_error(
     return (final_estimate - target_value) / target_value
 
 
+def _exact_k_frozen_register_fit_gate(
+    result,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]],
+    *,
+    target_registry: TargetRegistry,
+    target_loss_weights: np.ndarray,
+) -> GateResult:
+    """Require an exact-k candidate to beat the incumbent on one register.
+
+    The comparison re-scores both artifacts from their per-target rows with
+    the same capped, concept-budget-weighted loss used by the release solve.
+    Target-surface fingerprint equality is checked before this gate is called;
+    exact row-set, value, and loss-vector checks here make that binding
+    executable rather than trusting summary scalars from the incumbent file.
+    """
+
+    diagnostics = tuple(getattr(result, "diagnostics", ()) or ())
+    names = [str(getattr(row, "name", "")) for row in diagnostics]
+    failures: list[str] = []
+    if not names or any(not name for name in names):
+        failures.append(
+            "Exact-k frozen-register comparison has no complete candidate target rows."
+        )
+    if len(names) != len(set(names)):
+        failures.append(
+            "Exact-k frozen-register comparison found duplicate candidate target names."
+        )
+
+    incumbent_names = set(incumbent_diagnostics)
+    candidate_names = set(names)
+    missing = sorted(candidate_names - incumbent_names)
+    extra = sorted(incumbent_names - candidate_names)
+    if missing or extra:
+        failures.append(
+            "Exact-k incumbent target rows do not equal the frozen candidate "
+            f"register (missing={missing[:5]}, extra={extra[:5]})."
+        )
+
+    weights_by_name = {
+        _target_row_name(spec): float(weight)
+        for spec, weight in zip(
+            target_registry.specs,
+            np.asarray(target_loss_weights, dtype=np.float64),
+            strict=True,
+        )
+    }
+    missing_weights = sorted(candidate_names - set(weights_by_name))
+    if missing_weights:
+        failures.append(
+            "Exact-k frozen-register comparison has no loss weight for target "
+            f"row(s) {missing_weights[:5]}."
+        )
+
+    candidate_targets: list[float] = []
+    candidate_estimates: list[float] = []
+    incumbent_estimates: list[float] = []
+    aligned_weights: list[float] = []
+    for diagnostic in diagnostics:
+        name = str(getattr(diagnostic, "name", ""))
+        incumbent = incumbent_diagnostics.get(name)
+        target = getattr(diagnostic, "target", None)
+        estimate = getattr(diagnostic, "final_estimate", None)
+        incumbent_target = None if incumbent is None else incumbent.get("target")
+        incumbent_estimate = (
+            None if incumbent is None else incumbent.get("final_estimate")
+        )
+        values = (target, estimate, incumbent_target, incumbent_estimate)
+        if not all(
+            isinstance(value, int | float) and math.isfinite(float(value))
+            for value in values
+        ):
+            failures.append(
+                "Exact-k frozen-register comparison has non-finite target or "
+                f"estimate data for {name!r}."
+            )
+            continue
+        if not math.isclose(
+            float(target),
+            float(incumbent_target),
+            rel_tol=1e-9,
+            abs_tol=1e-6,
+        ):
+            failures.append(
+                "Exact-k incumbent target value changed for "
+                f"{name!r}: candidate={target!r}, incumbent={incumbent_target!r}."
+            )
+            continue
+        weight = weights_by_name.get(name)
+        if weight is None:
+            continue
+        candidate_targets.append(float(target))
+        candidate_estimates.append(float(estimate))
+        incumbent_estimates.append(float(incumbent_estimate))
+        aligned_weights.append(weight)
+
+    candidate_loss: float | None = None
+    incumbent_loss: float | None = None
+    if not failures:
+        target_vector = np.asarray(candidate_targets, dtype=np.float64)
+        weights = np.asarray(aligned_weights, dtype=np.float64)
+        candidate_loss = relative_error_loss(
+            np.asarray(candidate_estimates, dtype=np.float64),
+            target_vector,
+            target_loss_weights=weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+        )
+        incumbent_loss = relative_error_loss(
+            np.asarray(incumbent_estimates, dtype=np.float64),
+            target_vector,
+            target_loss_weights=weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+        )
+        reported_loss = float(getattr(result, "final_loss", math.nan))
+        if not math.isclose(
+            candidate_loss,
+            reported_loss,
+            rel_tol=1e-6,
+            abs_tol=1e-12,
+        ):
+            failures.append(
+                "Exact-k frozen-register candidate re-score does not match the "
+                f"solver loss: rescored={candidate_loss}, reported={reported_loss}."
+            )
+        elif not candidate_loss < incumbent_loss:
+            failures.append(
+                "Exact-k candidate did not beat the incumbent on the frozen "
+                f"target register: candidate_loss={candidate_loss}, "
+                f"incumbent_loss={incumbent_loss}."
+            )
+
+    return GateResult(
+        name="exact_k_frozen_register_fit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "metric": "capped_concept_budget_weighted_mean_absolute_relative_error",
+            "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            "n_targets": len(names),
+            "candidate_loss": candidate_loss,
+            "incumbent_loss": incumbent_loss,
+            "strict_improvement_required": True,
+            "improvement": (
+                None
+                if candidate_loss is None or incumbent_loss is None
+                else incumbent_loss - candidate_loss
+            ),
+        },
+    )
+
+
 def _incumbent_critical_target_payload(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]],
 ) -> dict[str, dict[str, float]]:
@@ -7013,6 +7164,18 @@ def _build_manifests(
                 "final_loss": diag["final_loss"],
                 "fraction_within_10pct": diag["fraction_within_10pct"],
             },
+            **(
+                {
+                    "exact_k_frozen_register_fit": dict(
+                        exact_k_ladder["frozen_target_register"]["incumbent_fit"]
+                    ),
+                    "exact_k_puf_capital_gains_tail": dict(
+                        exact_k_ladder["invariant_battery"]["puf_capital_gains_tail"]
+                    ),
+                }
+                if exact_k_ladder is not None
+                else {}
+            ),
             "target_compilation": dropped,
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
@@ -7504,6 +7667,8 @@ def _exact_k_ladder_manifest_payload(
     pool_manifest: Mapping[str, object],
     ledger_artifact: Mapping[str, object],
     target_surface: Mapping[str, object],
+    incumbent_fit_gate: GateResult,
+    puf_tail_gate: GateResult,
 ) -> dict[str, object]:
     """Build the one receipt block shared by diagnostics and both manifests."""
 
@@ -7517,7 +7682,7 @@ def _exact_k_ladder_manifest_payload(
         raise RuntimeError("Validated pool manifest lost a required receipt block.")
     if agreement_gate.get("passed") is not True:
         raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
-    return exact_k_ladder_manifest_payload(
+    payload = exact_k_ladder_manifest_payload(
         outcome,
         k=int(args.exact_k),
         seed=int(args.seed),
@@ -7539,7 +7704,64 @@ def _exact_k_ladder_manifest_payload(
             "ledger_artifact": dict(ledger_artifact),
             "target_surface_sha256": target_surface.get("sha256"),
             "incumbent_diagnostics_sha256": args.incumbent_diagnostics_sha256,
+            "incumbent_fit": {
+                "passed": incumbent_fit_gate.passed,
+                "failures": list(incumbent_fit_gate.failures),
+                "details": dict(incumbent_fit_gate.details),
+            },
         },
+    )
+    payload["invariant_battery"] = {
+        "puf_capital_gains_tail": {
+            "passed": puf_tail_gate.passed,
+            "failures": list(puf_tail_gate.failures),
+            "details": dict(puf_tail_gate.details),
+        }
+    }
+    return payload
+
+
+def _exact_k_original_support_frame(
+    frame: Frame,
+    support: np.ndarray,
+) -> Frame:
+    """Subset an original frame by household positions without changing weights."""
+
+    household_ids = frame.table("household")[
+        frame.schema.id_column("household")
+    ].to_numpy()[np.asarray(support, dtype=np.int64)]
+    person_households = frame.table("person")[
+        frame.schema.membership_column("household")
+    ]
+    return frame.select(person_households.isin(household_ids).to_numpy())
+
+
+def _exact_k_puf_tail_support_gate(
+    frame: Frame,
+    support: np.ndarray,
+) -> GateResult:
+    """Batch a post-selection PUF-tail miss without discarding solve evidence."""
+
+    try:
+        receipt = assert_puf_capital_gains_tail_survives_selection(
+            frame,
+            _exact_k_original_support_frame(frame, support),
+            require_present=True,
+        )
+    except ValueError as error:
+        return GateResult(
+            name="exact_k_puf_capital_gains_tail",
+            passed=False,
+            failures=(str(error),),
+            details={
+                "status": "failed",
+                "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
+            },
+        )
+    return GateResult(
+        name="exact_k_puf_capital_gains_tail",
+        passed=True,
+        details={key: value for key, value in receipt.items() if key != "passed"},
     )
 
 
@@ -7713,10 +7935,13 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
     _assert_us_release_id(release_id)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
-        dataset_key = release_id.replace("-", "_")
-        dataset_filename = f"{dataset_key}.h5"
-        calibration_key = f"{dataset_key}_calibration"
-        calibration_filename = f"{calibration_key}.npz"
+        # The immutable release id is the dataset's exact-count name. Keep the
+        # files at the registry's canonical paths so a later *manual* pointer
+        # flip remains loadable by populace-data.
+        dataset_key = "populace_us_2024"
+        dataset_filename = DATASET_FILENAME
+        calibration_key = "populace_us_2024_calibration"
+        calibration_filename = CALIBRATION_FILENAME
     else:
         dataset_key = "populace_us_2024"
         dataset_filename = DATASET_FILENAME
@@ -9648,6 +9873,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
         )
     calibration_started = time.perf_counter()
     ladder_outcome = None
+    exact_k_puf_tail_gate: GateResult | None = None
     if args.exact_k is not None:
         if (
             pool_original_household_ids is None
@@ -9689,6 +9915,14 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             ),
         )
         result = ladder_outcome.result
+        exact_k_puf_tail_gate = _exact_k_puf_tail_support_gate(
+            target_frame,
+            ladder_outcome.support,
+        )
+        early_terminal_gate_failures.extend(
+            f"Exact-k PUF capital-gains tail failed: {failure}"
+            for failure in exact_k_puf_tail_gate.failures
+        )
         default_dataset = {
             "method": (
                 "full_pool_refit"
@@ -9726,6 +9960,11 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             ),
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
+            "puf_capital_gains_tail_retention": {
+                "passed": exact_k_puf_tail_gate.passed,
+                "failures": list(exact_k_puf_tail_gate.failures),
+                "details": dict(exact_k_puf_tail_gate.details),
+            },
         }
     elif args.dense_default_dataset:
         result = calibrate(
@@ -10035,8 +10274,13 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
             f"{error}"
         )
     exact_k_ladder_provenance: Mapping[str, object] | None = None
+    exact_k_incumbent_fit_gate: GateResult | None = None
     if args.exact_k is not None:
-        if ladder_outcome is None or pool_manifest_payload is None:
+        if (
+            ladder_outcome is None
+            or pool_manifest_payload is None
+            or exact_k_puf_tail_gate is None
+        ):
             raise RuntimeError(
                 "Exact-k calibration lost its pool or selection receipt."
             )
@@ -10045,12 +10289,20 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
                 result,
                 target_registry=registry,
             )["target_surface"]
+        exact_k_incumbent_fit_gate = _exact_k_frozen_register_fit_gate(
+            result,
+            incumbent_diagnostics,
+            target_registry=registry,
+            target_loss_weights=target_loss_weights,
+        )
         exact_k_ladder_provenance = _exact_k_ladder_manifest_payload(
             args=args,
             outcome=ladder_outcome,
             pool_manifest=pool_manifest_payload,
             ledger_artifact=ledger_artifact.provenance(),
             target_surface=current_target_surface,
+            incumbent_fit_gate=exact_k_incumbent_fit_gate,
+            puf_tail_gate=exact_k_puf_tail_gate,
         )
     enforced_input_mass_reference_gate = (
         None if args.allow_input_mass_drift else input_mass_reference_gate
@@ -10092,7 +10344,19 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
     # mode guard lines) ride the same list as every other gate group, so the
     # diagnostics artifact records them and the terminal batch aborts on
     # them (populace#547).
-    gate_failures = [*early_terminal_gate_failures, *gate_failures]
+    exact_k_fit_failures = (
+        []
+        if exact_k_incumbent_fit_gate is None
+        else [
+            f"Exact-k frozen-register fit failed: {failure}"
+            for failure in exact_k_incumbent_fit_gate.failures
+        ]
+    )
+    gate_failures = [
+        *early_terminal_gate_failures,
+        *exact_k_fit_failures,
+        *gate_failures,
+    ]
     _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,

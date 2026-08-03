@@ -5464,6 +5464,101 @@ def test_incumbent_diagnostics_must_match_current_target_surface(tmp_path) -> No
         )
 
 
+def test_exact_k_gate_requires_strict_weighted_loss_improvement() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="fixture/one",
+            entity="household",
+            value=100.0,
+            measure="one",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_a",
+        ),
+        TargetSpec(
+            name="fixture/two",
+            entity="household",
+            value=200.0,
+            measure="two",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_b",
+        ),
+    )
+    registry = TargetRegistry(specs, country="us")
+    names = tuple(builder._target_row_name(spec) for spec in specs)
+    loss_weights = np.asarray([1.0, 3.0])
+
+    def result(estimates: tuple[float, float]):
+        targets = np.asarray([100.0, 200.0])
+        final = np.asarray(estimates)
+        return SimpleNamespace(
+            diagnostics=tuple(
+                SimpleNamespace(name=name, target=target, final_estimate=estimate)
+                for name, target, estimate in zip(names, targets, final, strict=True)
+            ),
+            final_loss=builder.relative_error_loss(
+                final,
+                targets,
+                target_loss_weights=loss_weights,
+                target_loss_cap=builder.US_FISCAL_TARGET_LOSS_CAP,
+            ),
+        )
+
+    incumbent = {
+        names[0]: {"target": 100.0, "final_estimate": 120.0},
+        names[1]: {"target": 200.0, "final_estimate": 240.0},
+    }
+    passing = builder._exact_k_frozen_register_fit_gate(
+        result((110.0, 220.0)),
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+    )
+    tied = builder._exact_k_frozen_register_fit_gate(
+        result((120.0, 240.0)),
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+    )
+
+    assert passing.passed
+    assert passing.details["candidate_loss"] < passing.details["incumbent_loss"]
+    assert passing.details["strict_improvement_required"] is True
+    assert not tied.passed
+    assert "did not beat the incumbent" in tied.failures[0]
+
+
+def test_exact_k_frozen_register_gate_fails_closed_on_row_mismatch() -> None:
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    result = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=100.0),),
+        final_loss=0.0,
+    )
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        result,
+        {},
+        target_registry=registry,
+        target_loss_weights=np.ones(1),
+    )
+
+    assert not gate.passed
+    assert "do not equal" in gate.failures[0]
+
+
 def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
     scorer = _load_scorer_module()
 
@@ -7655,15 +7750,15 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
     )
 
 
-def test_build_manifests_uses_exact_count_names_and_round_trips_ladder_receipt(
+def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt(
     monkeypatch, tmp_path
 ) -> None:
     builder = _load_builder_module()
     release_id = "populace-us-2024-k57240-fixture"
-    dataset_key = release_id.replace("-", "_")
-    calibration_key = f"{dataset_key}_calibration"
-    dataset_filename = f"{dataset_key}.h5"
-    calibration_filename = f"{calibration_key}.npz"
+    dataset_key = "populace_us_2024"
+    calibration_key = "populace_us_2024_calibration"
+    dataset_filename = builder.DATASET_FILENAME
+    calibration_filename = builder.CALIBRATION_FILENAME
     release_dir = tmp_path / "release" / release_id
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
@@ -7722,6 +7817,21 @@ def test_build_manifests_uses_exact_count_names_and_round_trips_ladder_receipt(
         "frozen_target_register": {
             "target_surface_sha256": "b" * 64,
             "incumbent_diagnostics_sha256": "f" * 64,
+            "incumbent_fit": {
+                "passed": True,
+                "failures": [],
+                "details": {
+                    "candidate_loss": 0.1,
+                    "incumbent_loss": 0.2,
+                },
+            },
+        },
+        "invariant_battery": {
+            "puf_capital_gains_tail": {
+                "passed": True,
+                "failures": [],
+                "details": {"status": "retained"},
+            }
         },
     }
 
@@ -7737,6 +7847,14 @@ def test_build_manifests_uses_exact_count_names_and_round_trips_ladder_receipt(
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert build_manifest["exact_k_ladder"] == ladder
+    assert (
+        build_manifest["gates"]["exact_k_frozen_register_fit"]
+        == (ladder["frozen_target_register"]["incumbent_fit"])
+    )
+    assert (
+        build_manifest["gates"]["exact_k_puf_capital_gains_tail"]
+        == (ladder["invariant_battery"]["puf_capital_gains_tail"])
+    )
     assert release_manifest["build"]["exact_k_ladder"] == ladder
     assert (
         release_manifest["build"]["exact_k_ladder"]["selection_receipt"]
@@ -7749,6 +7867,111 @@ def test_build_manifests_uses_exact_count_names_and_round_trips_ladder_receipt(
     assert (
         release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
     )
+
+
+def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> None:
+    """The pool is post-agreement input, so its owned producers run only legacy."""
+    import ast
+
+    from populace.build.us_runtime.multispine_pool import POOL_OPERATOR_CONTRACTS
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+
+    def call_name(call: ast.Call) -> str | None:
+        return getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+
+    all_calls = {
+        name
+        for call in ast.walk(main_fn)
+        if isinstance(call, ast.Call)
+        if (name := call_name(call)) is not None
+    }
+    pool_owned_call_sites = {
+        (name, call.lineno)
+        for call in ast.walk(main_fn)
+        if isinstance(call, ast.Call)
+        if (name := call_name(call)) in POOL_OPERATOR_CONTRACTS
+    }
+    guarded_calls: set[str] = set()
+    guarded_call_sites: set[tuple[str, int]] = set()
+    for node in ast.walk(main_fn):
+        if (
+            not isinstance(node, ast.If)
+            or ast.unparse(node.test) != "pool_frame is None"
+        ):
+            continue
+        guarded_calls.update(
+            name
+            for statement in node.body
+            for call in ast.walk(statement)
+            if isinstance(call, ast.Call)
+            if (name := call_name(call)) is not None
+        )
+        guarded_call_sites.update(
+            (name, call.lineno)
+            for statement in node.body
+            for call in ast.walk(statement)
+            if isinstance(call, ast.Call)
+            if (name := call_name(call)) in POOL_OPERATOR_CONTRACTS
+        )
+
+    pool_owned_fiscal_calls = set(POOL_OPERATOR_CONTRACTS) & all_calls
+    assert pool_owned_fiscal_calls
+    assert pool_owned_fiscal_calls <= guarded_calls
+    assert pool_owned_call_sites == guarded_call_sites
+    assert {
+        "with_us_weeks_unemployed",
+        "with_us_qbi_input_reconciliation",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_immigration_inputs",
+        "with_us_take_up_inputs",
+        "with_us_hours_worked_inputs",
+        "with_us_relationship_inputs",
+        "with_us_medicare_take_up_input",
+        "with_us_retirement_distribution_inputs",
+        "with_us_eligibility_inputs",
+        "with_us_education_inputs",
+        "with_us_pregnancy_inputs",
+        "with_us_wic_claim_input",
+    } <= guarded_calls
+    assert "_with_snap_state_take_up_outputs" in all_calls
+    assert "_with_snap_state_take_up_outputs" not in guarded_calls
+
+
+def test_exact_k_selection_batches_original_puf_tail_failure(monkeypatch) -> None:
+    builder = _load_builder_module()
+    marker = object()
+    monkeypatch.setattr(
+        builder,
+        "_exact_k_original_support_frame",
+        lambda frame, support: marker,
+    )
+
+    def fail_tail(frame, selected, *, require_present):
+        assert frame is marker
+        assert selected is marker
+        assert require_present is True
+        raise ValueError("fixture tail donor missing")
+
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        fail_tail,
+    )
+
+    gate = builder._exact_k_puf_tail_support_gate(marker, np.asarray([0]))
+
+    assert not gate.passed
+    assert gate.failures == ("fixture tail donor missing",)
+    assert gate.details["status"] == "failed"
 
 
 def test_build_manifests_records_selection_source_provenance(

@@ -12,6 +12,34 @@ Example::
         --pool-manifest /artifacts/pool.manifest.json \
         --config configs/us_exact_k_57240.json \
         --out build/us-exact-k
+
+Schema-v1 configuration (paths are resolved relative to the config file)::
+
+    {
+      "schema_version": 1,
+      "pool": {"release_id": "...", "manifest_sha256": "<sha256>"},
+      "ladder": {"k": 57240, "seed": 17, "pi_hi": 0.95},
+      "targets": {
+        "ledger_facts": "...", "ledger_facts_sha256": "<sha256>",
+        "ledger_manifest_sha256": "<sha256>",
+        "incumbent_diagnostics": "...",
+        "incumbent_diagnostics_sha256": "<sha256>",
+        "target_surface_sha256": "<sha256>"
+      },
+      "calibration": {
+        "epochs": 256, "learning_rate": 0.02, "max_weight_ratio": 20,
+        "l0_refit_lambda_share": 0.8, "l2_lambda": 0,
+        "refit_l2_lambda": 0
+      },
+      "release": {"id": "populace-us-2024-k57240-...",
+                  "repo_id": "policyengine/populace-us"}
+    }
+
+``ladder.k`` accepts exactly ``"N"``, ``57240``, or ``20000``. ``targets``
+may additionally carry the paired
+``ssi_take_up_prior_weight_basis`` and
+``ssi_take_up_prior_weight_basis_sha256`` fields for the house one-retry
+delivery-gate protocol.
 """
 
 # The sibling house builder is importable only after its tools directory is
@@ -62,6 +90,8 @@ class LadderReleaseConfig:
     incumbent_diagnostics: Path
     incumbent_diagnostics_sha256: str
     target_surface_sha256: str
+    ssi_take_up_prior_weight_basis: Path | None
+    ssi_take_up_prior_weight_basis_sha256: str | None
     epochs: int
     learning_rate: float
     max_weight_ratio: float
@@ -132,6 +162,10 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             "incumbent_diagnostics_sha256",
             "target_surface_sha256",
         },
+        optional={
+            "ssi_take_up_prior_weight_basis",
+            "ssi_take_up_prior_weight_basis_sha256",
+        },
         label="targets",
     )
     calibration = _object(root["calibration"], label="calibration")
@@ -170,6 +204,30 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         targets["incumbent_diagnostics"],
         config_dir,
         "incumbent_diagnostics",
+    )
+    prior_basis_value = targets.get("ssi_take_up_prior_weight_basis")
+    prior_basis_sha_value = targets.get("ssi_take_up_prior_weight_basis_sha256")
+    if (prior_basis_value is None) != (prior_basis_sha_value is None):
+        raise ValueError(
+            "targets.ssi_take_up_prior_weight_basis and its SHA-256 pin must "
+            "be provided together."
+        )
+    prior_basis = (
+        None
+        if prior_basis_value is None
+        else _resolve_path(
+            prior_basis_value,
+            config_dir,
+            "ssi_take_up_prior_weight_basis",
+        )
+    )
+    prior_basis_sha = (
+        None
+        if prior_basis_sha_value is None
+        else _sha256_value(
+            prior_basis_sha_value,
+            label="targets.ssi_take_up_prior_weight_basis_sha256",
+        )
     )
     epochs = _positive_int(calibration["epochs"], label="calibration.epochs")
     learning_rate = _positive_number(
@@ -229,6 +287,8 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             targets["target_surface_sha256"],
             label="targets.target_surface_sha256",
         ),
+        ssi_take_up_prior_weight_basis=prior_basis,
+        ssi_take_up_prior_weight_basis_sha256=prior_basis_sha,
         epochs=epochs,
         learning_rate=learning_rate,
         max_weight_ratio=max_weight_ratio,
@@ -314,6 +374,21 @@ def _validate_pins_and_resolve_k(
             f"{target_surface.get('sha256')!r}, expected "
             f"{config.target_surface_sha256!r}."
         )
+    if config.ssi_take_up_prior_weight_basis is not None:
+        if not config.ssi_take_up_prior_weight_basis.is_file():
+            raise FileNotFoundError(
+                "targets.ssi_take_up_prior_weight_basis is not a file: "
+                f"{config.ssi_take_up_prior_weight_basis}"
+            )
+        observed_prior_basis_sha256 = _sha256(config.ssi_take_up_prior_weight_basis)
+        if observed_prior_basis_sha256 != (
+            config.ssi_take_up_prior_weight_basis_sha256
+        ):
+            raise ValueError(
+                "SSI take-up prior-weight basis SHA-256 mismatch: got "
+                f"{observed_prior_basis_sha256}, expected "
+                f"{config.ssi_take_up_prior_weight_basis_sha256}."
+            )
     return k, pool_manifest
 
 
@@ -324,7 +399,7 @@ def _builder_argv(
     out: Path,
     k: int,
 ) -> list[str]:
-    return [
+    argv = [
         "--pool-manifest",
         str(pool_manifest),
         "--pool-manifest-sha256",
@@ -366,6 +441,16 @@ def _builder_argv(
         "--refit-l2-lambda",
         str(config.refit_l2_lambda),
     ]
+    if config.ssi_take_up_prior_weight_basis is not None:
+        argv.extend(
+            [
+                "--ssi-take-up-prior-weight-basis",
+                str(config.ssi_take_up_prior_weight_basis),
+                "--ssi-take-up-prior-weight-basis-sha256",
+                str(config.ssi_take_up_prior_weight_basis_sha256),
+            ]
+        )
+    return argv
 
 
 def launch(
@@ -444,10 +529,12 @@ def _keys(
     value: Mapping[str, object],
     *,
     required: set[str],
+    optional: set[str] | None = None,
     label: str,
 ) -> None:
+    optional = optional or set()
     missing = sorted(required - set(value))
-    unknown = sorted(set(value) - required)
+    unknown = sorted(set(value) - required - optional)
     if missing or unknown:
         raise ValueError(
             f"{label} keys do not match schema; missing={missing}, unknown={unknown}."
