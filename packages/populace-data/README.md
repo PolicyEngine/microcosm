@@ -65,7 +65,7 @@ strengths and gaps are documented on the dataset card and the
 [populace.dev dashboard](https://populace.dev/dashboard). Historical incumbent
 benchmark comparisons live outside this package.
 
-## Release Contract
+## Release contract
 
 Published releases live under `releases/<release_id>/` in the Hub dataset repo.
 Each release must include `build_manifest.json`, `release_manifest.json`, and
@@ -77,3 +77,9 @@ using PEP 440 specifiers.
 
 Use `latest.json` to discover the current release and its contract file paths;
 use the release id/tag in artifact revisions when loading an immutable release.
+An exact-k ladder candidate published with `--create-tag --no-latest` does not
+update `latest.json` and therefore does not replace the release selected by the
+default `load("us")` resolution. Inspect it through its explicit release id or
+Hub tag until a separate promotion updates `latest.json`. The exact-k build
+also runs with `--no-staging`, so it does not create or update a staging
+pointer.

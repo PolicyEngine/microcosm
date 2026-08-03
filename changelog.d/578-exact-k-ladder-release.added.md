@@ -8,3 +8,13 @@ IDs with immutable `--create-tag --no-latest` publication plumbing without
 moving a pointer. Canonical artifact filenames remain loadable after a later
 manual promotion, and an optional hash-pinned SSI retry basis preserves the
 certified hard-gate path.
+
+The release lane now authenticates the pool's own release id and scores the
+incumbent from the same verified bytes whose SHA-256 enters the manifest. It
+binds the frozen-register comparison to the incumbent's weighting version,
+family multipliers, loss cap, and name-aligned loss-vector digest, and refuses
+basis drift. The house builder independently enforces the `N`, `57240`, and
+`20000` ladder, an explicit seed, requested-versus-realized row-count equality,
+and disabled staging. Package receipts record that neither the production nor
+staging pointer changes. Legacy no-pool builds retain their previous receipt,
+console-output, and CLI contracts.
