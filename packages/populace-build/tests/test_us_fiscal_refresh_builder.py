@@ -7655,6 +7655,102 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
     )
 
 
+def test_build_manifests_uses_exact_count_names_and_round_trips_ladder_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-k57240-fixture"
+    dataset_key = release_id.replace("-", "_")
+    calibration_key = f"{dataset_key}_calibration"
+    dataset_filename = f"{dataset_key}.h5"
+    calibration_filename = f"{calibration_key}.npz"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / dataset_filename).write_bytes(b"h5")
+    (artifact_root / calibration_filename).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+    selection_receipt = {
+        "k": 57_240,
+        "pi_hi": 0.95,
+        "seed": 17,
+        "certainty_count": 3,
+        "boundary_pool_size": 100,
+        "design": "sampford",
+    }
+    ladder = {
+        "k": 57_240,
+        "seed": 17,
+        "selection_receipt": selection_receipt,
+        "refit_baseline_diagnostics": {
+            "method": "normalized_horvitz_thompson_w_over_q"
+        },
+        "pool": {
+            "release_id": "fixture-pool",
+            "release_id_source": "release_config",
+            "manifest_sha256": "c" * 64,
+            "pool_h5_sha256": "d" * 64,
+        },
+        "agreement_gate_reference": {
+            "passed": True,
+            "diagnostics_sha256": "e" * 64,
+        },
+        "frozen_target_register": {
+            "target_surface_sha256": "b" * 64,
+            "incumbent_diagnostics_sha256": "f" * 64,
+        },
+    }
+
+    builder._build_manifests(
+        dataset_key=dataset_key,
+        dataset_filename=dataset_filename,
+        calibration_key=calibration_key,
+        calibration_filename=calibration_filename,
+        exact_k_ladder=ladder,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["exact_k_ladder"] == ladder
+    assert release_manifest["build"]["exact_k_ladder"] == ladder
+    assert (
+        release_manifest["build"]["exact_k_ladder"]["selection_receipt"]
+        == selection_receipt
+    )
+    assert build_manifest["dataset"]["filename"] == dataset_filename
+    assert build_manifest["calibration"]["filename"] == calibration_filename
+    assert release_manifest["default_datasets"] == {"national": dataset_key}
+    assert release_manifest["artifacts"][dataset_key]["path"] == dataset_filename
+    assert (
+        release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
+    )
+
+
 def test_build_manifests_records_selection_source_provenance(
     monkeypatch, tmp_path
 ) -> None:

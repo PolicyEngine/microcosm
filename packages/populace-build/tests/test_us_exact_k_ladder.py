@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us_runtime.exact_k_ladder import calibrate_exact_k_ladder
+from populace.build.us_runtime.exact_k_ladder import (
+    calibrate_exact_k_ladder,
+    exact_k_ladder_manifest_payload,
+)
 from populace.calibrate import Target, TargetSet
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
@@ -104,6 +107,30 @@ def test_each_ladder_point_selects_refits_and_emits_round_trip_receipt(
         rtol=1e-12,
         atol=1e-12,
     )
+    manifest_receipt = exact_k_ladder_manifest_payload(
+        outcome,
+        k=k,
+        seed=17,
+        pool={
+            "release_id": "fixture-pool",
+            "manifest_sha256": "a" * 64,
+        },
+        agreement_gate_reference={
+            "passed": True,
+            "diagnostics_sha256": "b" * 64,
+        },
+        frozen_target_register={
+            "target_surface_sha256": "c" * 64,
+            "incumbent_diagnostics_sha256": "d" * 64,
+        },
+    )
+    round_trip = json.loads(json.dumps(manifest_receipt))
+    assert round_trip["selection_receipt"] == outcome.selection_receipt
+    assert round_trip["k"] == k
+    assert round_trip["seed"] == 17
+    assert round_trip["pool"]["manifest_sha256"] == "a" * 64
+    assert round_trip["agreement_gate_reference"]["passed"] is True
+    assert round_trip["frozen_target_register"]["target_surface_sha256"] == "c" * 64
 
 
 def test_full_pool_support_is_identity_but_weights_are_refit() -> None:

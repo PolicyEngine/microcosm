@@ -11,7 +11,7 @@ and emits the same six-scalar receipt shape with ``design="full-pool"``.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -29,7 +29,11 @@ from populace.calibrate import (
 )
 from populace.frame import Frame
 
-__all__ = ["ExactKLadderCalibration", "calibrate_exact_k_ladder"]
+__all__ = [
+    "ExactKLadderCalibration",
+    "calibrate_exact_k_ladder",
+    "exact_k_ladder_manifest_payload",
+]
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,50 @@ class ExactKLadderCalibration:
     selected_inclusion_probabilities: np.ndarray
     selection_receipt: dict[str, int | float | str]
     refit_baseline_diagnostics: dict[str, int | float | str]
+
+
+def exact_k_ladder_manifest_payload(
+    outcome: ExactKLadderCalibration,
+    *,
+    k: int,
+    seed: int,
+    pool: Mapping[str, object],
+    agreement_gate_reference: Mapping[str, object],
+    frozen_target_register: Mapping[str, object],
+) -> dict[str, object]:
+    """Render the receipt block shared by diagnostics and release manifests."""
+
+    target = _nonnegative_integer(k, name="k")
+    random_seed = _nonnegative_integer(seed, name="seed")
+    receipt = outcome.selection_receipt
+    receipt_keys = {
+        "k",
+        "pi_hi",
+        "seed",
+        "certainty_count",
+        "boundary_pool_size",
+        "design",
+    }
+    if set(receipt) != receipt_keys:
+        raise RuntimeError(
+            "Exact-k selection receipt must remain the public six-scalar "
+            f"contract; got keys {sorted(receipt)}."
+        )
+    if receipt["k"] != target or receipt["seed"] != random_seed:
+        raise RuntimeError(
+            "Exact-k selection receipt disagrees with the configured k or seed."
+        )
+    return {
+        "k": target,
+        "seed": random_seed,
+        # Do not add launcher fields or hashes here: this nested mapping must
+        # round-trip the public #585 six-scalar receipt without reinterpretation.
+        "selection_receipt": dict(receipt),
+        "refit_baseline_diagnostics": dict(outcome.refit_baseline_diagnostics),
+        "pool": dict(pool),
+        "agreement_gate_reference": dict(agreement_gate_reference),
+        "frozen_target_register": dict(frozen_target_register),
+    }
 
 
 def calibrate_exact_k_ladder(
@@ -95,6 +143,11 @@ def calibrate_exact_k_ladder(
     refit_rate = learning_rate if refit_learning_rate is None else refit_learning_rate
     refit_penalty = l2_lambda if refit_l2_lambda is None else refit_l2_lambda
     refit_anchor = l2_anchor if refit_l2_anchor is None else refit_l2_anchor
+    if target < pool_size and warm_start_weights is not None:
+        raise ValueError(
+            "k<N ladder calibration cannot warm-start the positive-L0 selection; "
+            "persisted gate state would be required."
+        )
 
     if target == pool_size:
         support = assert_exact_k_support(
@@ -121,7 +174,7 @@ def calibrate_exact_k_ladder(
             max_weight_ratio=max_weight_ratio,
             l0_lambda=0.0,
             l2_lambda=refit_penalty,
-            l2_anchor=refit_anchor,
+            l2_anchor="initial" if refit_anchor == "design" else refit_anchor,
             init_mean=init_mean,
             temperature=temperature,
             budget_iters=budget_iters,

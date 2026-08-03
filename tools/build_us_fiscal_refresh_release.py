@@ -215,8 +215,16 @@ from populace.build.us_runtime.demographics import (
     write_demographics,
 )
 from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
+from populace.build.us_runtime.exact_k_ladder import (
+    ExactKLadderCalibration,
+    calibrate_exact_k_ladder,
+    exact_k_ladder_manifest_payload,
+)
 from populace.build.us_runtime.fiscal_targets import (
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+)
+from populace.build.us_runtime.h5_io import (
+    load_simulation_ready_us_multispine_pool,
 )
 from populace.build.us_runtime.input_mass import us_input_mass_totals
 from populace.build.us_runtime.l0_refit_export import (
@@ -749,12 +757,50 @@ SUPPORTED_SOI_LEDGER_FILTERS = frozenset(
 )
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--base-h5",
         type=Path,
         help="Existing Populace US H5 to recalibrate. Defaults to HF latest.",
+    )
+    parser.add_argument(
+        "--pool-manifest",
+        type=Path,
+        help=(
+            "Simulation-ready build_us_multispine_pool.py manifest. The "
+            "manifest, rather than a bare H5, is the readiness authority. "
+            "Mutually exclusive with --base-h5."
+        ),
+    )
+    parser.add_argument(
+        "--pool-manifest-sha256",
+        help=(
+            "Expected SHA-256 of --pool-manifest. Required for an exact-k "
+            "ladder release so the artifact-store envelope is pinned."
+        ),
+    )
+    parser.add_argument(
+        "--pool-release-id",
+        help=(
+            "Immutable release id of the pool artifact envelope. The pool "
+            "producer manifest has a publication_run_id but no release_id, so "
+            "the launcher must supply this identity."
+        ),
+    )
+    parser.add_argument(
+        "--exact-k",
+        type=int,
+        help=(
+            "Exact household count for a ladder release. Enables the seeded "
+            "Sampford selection + HT-with-q refit path; k equal to the pool "
+            "size uses identity support with an ordinary full-pool refit."
+        ),
+    )
+    parser.add_argument(
+        "--exact-k-pi-hi",
+        type=float,
+        help="Certainty-unit threshold for --exact-k selection.",
     )
     parser.add_argument(
         "--ledger-facts",
@@ -843,6 +889,20 @@ def _parse_args() -> argparse.Namespace:
             "Optional calibration_diagnostics.json for the current published "
             "release. Critical targets outside their absolute tolerance can "
             "still pass if they improve on this incumbent row by row."
+        ),
+    )
+    parser.add_argument(
+        "--incumbent-diagnostics-sha256",
+        help=(
+            "Expected SHA-256 of --incumbent-diagnostics. Required for an "
+            "exact-k ladder release."
+        ),
+    )
+    parser.add_argument(
+        "--frozen-target-surface-sha256",
+        help=(
+            "Expected target-surface SHA-256 embedded in the pinned "
+            "incumbent diagnostics. Required for an exact-k ladder release."
         ),
     )
     parser.add_argument(
@@ -1376,7 +1436,7 @@ def _parse_args() -> argparse.Namespace:
         default=30.0,
         help="Minimum seconds between progress uploads to the staging repo.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if (
         args.include_congressional_district_targets
         and args.congressional_district_vintage_crosswalk is None
@@ -1398,6 +1458,80 @@ def _parse_args() -> argparse.Namespace:
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
+    ladder_values = (
+        args.exact_k,
+        args.exact_k_pi_hi,
+        args.pool_manifest,
+        args.pool_manifest_sha256,
+        args.pool_release_id,
+    )
+    if any(value is not None for value in ladder_values):
+        if any(value is None for value in ladder_values):
+            parser.error(
+                "--exact-k, --exact-k-pi-hi, --pool-manifest, "
+                "--pool-manifest-sha256, and --pool-release-id must be "
+                "provided together."
+            )
+        if args.base_h5 is not None:
+            parser.error("--pool-manifest is mutually exclusive with --base-h5.")
+        if args.exact_k <= 0:
+            parser.error("--exact-k must be a positive integer.")
+        if not math.isfinite(args.exact_k_pi_hi) or not (
+            0.0 <= args.exact_k_pi_hi <= 1.0
+        ):
+            parser.error("--exact-k-pi-hi must be finite and in [0, 1].")
+        if len(args.pool_manifest_sha256) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in args.pool_manifest_sha256
+        ):
+            parser.error(
+                "--pool-manifest-sha256 must be exactly 64 lowercase "
+                "hexadecimal characters."
+            )
+        if not args.pool_release_id.strip():
+            parser.error("--pool-release-id must be non-empty.")
+        if args.incumbent_diagnostics is None:
+            parser.error(
+                "--exact-k requires --incumbent-diagnostics so every ladder "
+                "point is judged against the incumbent on the frozen target "
+                "register."
+            )
+        for flag, value in (
+            (
+                "--incumbent-diagnostics-sha256",
+                args.incumbent_diagnostics_sha256,
+            ),
+            (
+                "--frozen-target-surface-sha256",
+                args.frozen_target_surface_sha256,
+            ),
+        ):
+            if (
+                value is None
+                or len(value) != 64
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                parser.error(
+                    f"{flag} must be exactly 64 lowercase hexadecimal characters."
+                )
+        if args.ledger_facts_sha256 is None or args.ledger_manifest_sha256 is None:
+            parser.error(
+                "--exact-k requires both --ledger-facts-sha256 and "
+                "--ledger-manifest-sha256 to pin the frozen target register."
+            )
+        if args.dense_default_dataset:
+            parser.error(
+                "--exact-k owns the full-pool identity arm; do not combine it "
+                "with --dense-default-dataset."
+            )
+        if (
+            args.selection_source_h5 is not None
+            or args.selection_source_manifest is not None
+        ):
+            parser.error(
+                "--exact-k operates on the complete multispine pool and cannot "
+                "be combined with a frozen selection source."
+            )
     multipliers: dict[str, float] = {}
     for entry in args.target_family_loss_multiplier:
         family, separator, raw_value = entry.partition("=")
@@ -6396,6 +6530,7 @@ def _write_release_calibration_diagnostics(
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
+    exact_k_ladder: Mapping[str, object] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -6550,6 +6685,11 @@ def _write_release_calibration_diagnostics(
             ),
             "default_dataset": (
                 dict(default_dataset) if default_dataset is not None else None
+            ),
+            **(
+                {"exact_k_ladder": dict(exact_k_ladder)}
+                if exact_k_ladder is not None
+                else {}
             ),
             "timing": dict(timing or {}),
             "release_gates": {
@@ -6769,9 +6909,14 @@ def _build_manifests(
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
+    dataset_key: str = "populace_us_2024",
+    dataset_filename: str = DATASET_FILENAME,
+    calibration_key: str = "populace_us_2024_calibration",
+    calibration_filename: str = CALIBRATION_FILENAME,
+    exact_k_ladder: Mapping[str, object] | None = None,
 ) -> None:
-    dataset_path = artifact_root / DATASET_FILENAME
-    calibration_path = artifact_root / CALIBRATION_FILENAME
+    dataset_path = artifact_root / dataset_filename
+    calibration_path = artifact_root / calibration_filename
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     coverage_path = release_dir / "us_source_coverage.json"
     dataset_sha = _sha256(dataset_path)
@@ -6828,13 +6973,18 @@ def _build_manifests(
         "runtime": runtime,
         "timing": timing_payload,
         "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
+        **(
+            {"exact_k_ladder": dict(exact_k_ladder)}
+            if exact_k_ladder is not None
+            else {}
+        ),
         "dataset": {
-            "filename": DATASET_FILENAME,
+            "filename": dataset_filename,
             "sha256": dataset_sha,
             "default": default_dataset_payload,
         },
         "calibration": {
-            "filename": CALIBRATION_FILENAME,
+            "filename": calibration_filename,
             "sha256": calibration_sha,
             "warm_start": warm_start_payload,
             "selection_source": selection_source_payload,
@@ -7009,7 +7159,7 @@ def _build_manifests(
             "name": "populace-data",
             "version": runtime["populace-data"],
         },
-        "default_datasets": {"national": "populace_us_2024"},
+        "default_datasets": {"national": dataset_key},
         "build": {
             "build_id": release_id,
             "built_at": built_at,
@@ -7023,6 +7173,11 @@ def _build_manifests(
             },
             "timing": timing_payload,
             "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
+            **(
+                {"exact_k_ladder": dict(exact_k_ladder)}
+                if exact_k_ladder is not None
+                else {}
+            ),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
@@ -7136,14 +7291,14 @@ def _build_manifests(
             }
         ],
         "artifacts": {
-            "populace_us_2024": _artifact_entry(
-                DATASET_FILENAME,
+            dataset_key: _artifact_entry(
+                dataset_filename,
                 dataset_sha,
                 kind="microdata",
                 revision=release_id,
             ),
-            "populace_us_2024_calibration": _artifact_entry(
-                CALIBRATION_FILENAME,
+            calibration_key: _artifact_entry(
+                calibration_filename,
                 calibration_sha,
                 kind="calibration",
                 revision=release_id,
@@ -7328,6 +7483,93 @@ def _assert_us_release_id(release_id: str) -> None:
         )
 
 
+def _assert_exact_k_release_id(release_id: str, k: int) -> None:
+    expected_prefix = f"populace-us-{PERIOD}-k{k}-"
+    if not release_id.startswith(expected_prefix):
+        raise ValueError(
+            "US exact-k ladder release ids must start with "
+            f"{expected_prefix!r}; got {release_id!r}."
+        )
+    if any(not (character.isalnum() or character == "-") for character in release_id):
+        raise ValueError(
+            "US exact-k ladder release ids may contain only ASCII letters, "
+            f"digits, and hyphens; got {release_id!r}."
+        )
+
+
+def _exact_k_ladder_manifest_payload(
+    *,
+    args: argparse.Namespace,
+    outcome: ExactKLadderCalibration,
+    pool_manifest: Mapping[str, object],
+    ledger_artifact: Mapping[str, object],
+    target_surface: Mapping[str, object],
+) -> dict[str, object]:
+    """Build the one receipt block shared by diagnostics and both manifests."""
+
+    pool_h5 = pool_manifest.get("pool_h5")
+    agreement_diagnostics = pool_manifest.get("agreement_diagnostics")
+    agreement_gate = pool_manifest.get("agreement_gate")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (pool_h5, agreement_diagnostics, agreement_gate)
+    ):
+        raise RuntimeError("Validated pool manifest lost a required receipt block.")
+    if agreement_gate.get("passed") is not True:
+        raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
+    return exact_k_ladder_manifest_payload(
+        outcome,
+        k=int(args.exact_k),
+        seed=int(args.seed),
+        pool={
+            "release_id": args.pool_release_id,
+            "release_id_source": "release_config",
+            "manifest_sha256": args.pool_manifest_sha256,
+            "publication_run_id": pool_manifest.get("publication_run_id"),
+            "pool_h5_sha256": pool_h5.get("sha256"),
+            "agreement_diagnostics_sha256": agreement_diagnostics.get("sha256"),
+        },
+        agreement_gate_reference={
+            "passed": True,
+            "publication_run_id": pool_manifest.get("publication_run_id"),
+            "diagnostics_sha256": agreement_diagnostics.get("sha256"),
+            "verdict": dict(agreement_gate),
+        },
+        frozen_target_register={
+            "ledger_artifact": dict(ledger_artifact),
+            "target_surface_sha256": target_surface.get("sha256"),
+            "incumbent_diagnostics_sha256": args.incumbent_diagnostics_sha256,
+        },
+    )
+
+
+def _assert_exact_k_original_pool_alignment(
+    frame: Frame,
+    *,
+    household_ids: np.ndarray,
+    household_weights: np.ndarray,
+) -> None:
+    """Fail if downstream preparation changed the pool rows or design weights."""
+
+    observed_weights = frame.weights_for("household")
+    observed_ids = frame.table("household")["household_id"].to_numpy()
+    if observed_weights.kind is not WeightKind.IMPORTANCE:
+        raise RuntimeError(
+            "Exact-k target preparation changed the original pool weight kind: "
+            f"got {observed_weights.kind.value!r}, expected 'importance'."
+        )
+    if not np.array_equal(observed_ids, household_ids):
+        raise RuntimeError(
+            "Exact-k target preparation changed or reordered the original pool "
+            "household support."
+        )
+    if not np.array_equal(observed_weights.values, household_weights):
+        raise RuntimeError(
+            "Exact-k target preparation changed the original pool weights before "
+            "selection; the HT-with-q baseline would no longer be frame-original."
+        )
+
+
 def _staging_telemetry(
     args: argparse.Namespace,
     *,
@@ -7399,8 +7641,8 @@ class _TerminalBatchTelemetry:
         self._call("attach_artifact", name, path, **details)
 
 
-def main() -> None:
-    args = _parse_args()
+def main(argv: Sequence[str] | None = None) -> dict[str, str]:
+    args = _parse_args(argv)
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
     build_started = time.perf_counter()
@@ -7416,17 +7658,70 @@ def main() -> None:
         _refuse_certified_release_dir_reuse(
             args.out.resolve() / "releases" / args.release_id
         )
-    base_h5 = args.base_h5 or _download_base_h5()
+    if args.exact_k is not None:
+        observed_incumbent_sha256 = _sha256(args.incumbent_diagnostics)
+        if observed_incumbent_sha256 != args.incumbent_diagnostics_sha256:
+            raise ValueError(
+                "Incumbent diagnostics SHA-256 mismatch for "
+                f"{args.incumbent_diagnostics}: got {observed_incumbent_sha256}, "
+                f"expected {args.incumbent_diagnostics_sha256}."
+            )
+    pool_frame: Frame | None = None
+    pool_original_household_ids: np.ndarray | None = None
+    pool_original_household_weights: np.ndarray | None = None
+    pool_manifest_payload: dict[str, object] | None = None
+    if args.pool_manifest is not None:
+        observed_pool_manifest_sha256 = _sha256(args.pool_manifest)
+        if observed_pool_manifest_sha256 != args.pool_manifest_sha256:
+            raise ValueError(
+                f"Pool manifest SHA-256 mismatch for {args.pool_manifest}: got "
+                f"{observed_pool_manifest_sha256}, expected "
+                f"{args.pool_manifest_sha256}."
+            )
+        pool_frame, pool_manifest_payload = load_simulation_ready_us_multispine_pool(
+            args.pool_manifest
+        )
+        pool_original_household_ids = pool_frame.table("household")[
+            "household_id"
+        ].to_numpy(copy=True)
+        pool_original_household_weights = pool_frame.weights_for(
+            "household"
+        ).values.copy()
+        if args.exact_k > pool_frame.n("household"):
+            raise ValueError(
+                f"k={args.exact_k} exceeds the pool size "
+                f"{pool_frame.n('household')}; ladder selection never clamps "
+                "the requested cardinality."
+            )
+        pool_h5_receipt = pool_manifest_payload.get("pool_h5")
+        if not isinstance(pool_h5_receipt, Mapping):  # pragma: no cover - loader gate
+            raise RuntimeError("Validated pool manifest lost its pool_h5 receipt.")
+        base_h5 = Path(str(pool_h5_receipt["path"]))
+    else:
+        base_h5 = args.base_h5 or _download_base_h5()
     base_dataset_sha256 = _sha256(base_h5)
     digest = base_dataset_sha256[:7]
     build_timestamp = datetime.now(UTC)
     full_commit = _git_output("rev-parse", "HEAD")
     commit = _git_output("rev-parse", "--short=12", "HEAD")
-    release_id = (
-        args.release_id
-        or f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
+    release_id = args.release_id or (
+        f"populace-us-2024-k{args.exact_k}-{digest}-{commit}-"
+        f"{build_timestamp:%Y%m%dT%H%M%SZ}"
+        if args.exact_k is not None
+        else (f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}")
     )
     _assert_us_release_id(release_id)
+    if args.exact_k is not None:
+        _assert_exact_k_release_id(release_id, args.exact_k)
+        dataset_key = release_id.replace("-", "_")
+        dataset_filename = f"{dataset_key}.h5"
+        calibration_key = f"{dataset_key}_calibration"
+        calibration_filename = f"{calibration_key}.npz"
+    else:
+        dataset_key = "populace_us_2024"
+        dataset_filename = DATASET_FILENAME
+        calibration_key = "populace_us_2024_calibration"
+        calibration_filename = CALIBRATION_FILENAME
     congressional_district_vintage_crosswalk = (
         load_congressional_district_vintage_crosswalk(
             args.congressional_district_vintage_crosswalk
@@ -7615,7 +7910,10 @@ def main() -> None:
 
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
-    base_frame = _load_frame(base_h5)
+    if pool_frame is None:
+        base_frame = _load_frame(base_h5)
+    else:
+        base_frame = pool_frame
     capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
         base_frame,
         base_frame,
@@ -7627,20 +7925,32 @@ def main() -> None:
             message="Verified the materialized PUF capital-gains own-tail.",
             **capital_gains_tail_presence,
         )
-    weeks_unemployed_source_path = (
-        args.asec_2023_weeks_unemployed_source
-        if args.asec_2023_weeks_unemployed_source is not None
-        else fetch_asec_2023_weeks_unemployed_source()
-    )
-    weeks_unemployed_source = load_asec_2023_weeks_unemployed_source(
-        weeks_unemployed_source_path
-    )
-    base_frame = with_us_weeks_unemployed(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-        asec_2023_source=weeks_unemployed_source,
-    )
+    if pool_frame is None:
+        weeks_unemployed_source_path = (
+            args.asec_2023_weeks_unemployed_source
+            if args.asec_2023_weeks_unemployed_source is not None
+            else fetch_asec_2023_weeks_unemployed_source()
+        )
+        weeks_unemployed_source = load_asec_2023_weeks_unemployed_source(
+            weeks_unemployed_source_path
+        )
+        base_frame = with_us_weeks_unemployed(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+            asec_2023_source=weeks_unemployed_source,
+        )
+        weeks_unemployed_source_receipt = {
+            "source": "asec_2023_source",
+            "source_path": str(Path(weeks_unemployed_source_path).resolve()),
+            "source_sha256": ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+            "source_rows": len(weeks_unemployed_source),
+        }
+    else:
+        weeks_unemployed_source_receipt = {
+            "source": "validated_multispine_pool",
+            "pool_publication_run_id": pool_manifest_payload["publication_run_id"],
+        }
     weeks_unemployed_gate = us_weeks_unemployed_signal_gate(base_frame)
     if not weeks_unemployed_gate.passed:
         if telemetry is not None:
@@ -7662,12 +7972,10 @@ def main() -> None:
         telemetry.stage(
             "weeks_unemployed_input",
             message=(
-                "Restored measured ASEC LKWEEKS before frozen-support "
-                "selection and target materialization."
+                "Verified measured ASEC LKWEEKS before selection and target "
+                "materialization."
             ),
-            source_path=str(Path(weeks_unemployed_source_path).resolve()),
-            source_sha256=ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
-            source_rows=len(weeks_unemployed_source),
+            **weeks_unemployed_source_receipt,
         )
     # Capture direct ASEC reporter lineage on the FULL clone-aware support.
     # Frozen-support recovery may retain only a PUF clone; deriving anchors
@@ -7739,7 +8047,26 @@ def main() -> None:
                 )
             )
 
-    base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
+    if pool_frame is None:
+        base_frame, base_population_repair = _with_base_population_mass_repair(
+            base_frame
+        )
+    else:
+        pool_population = _person_population(base_frame)
+        base_population_repair = {
+            "method": "preserve_validated_multispine_pool_weights",
+            "applied": False,
+            "reason": (
+                "Exact-k selection and HT-with-q refit retain the validated "
+                "pool artifact's original importance-weight baseline."
+            ),
+            "initial_population": pool_population,
+            "benchmark": US_BASE_PERSON_POPULATION_BENCHMARK,
+            "factor": 1.0,
+            "initial_relative_error": _base_population_relative_error(pool_population),
+            "repaired_population": pool_population,
+            "repaired_relative_error": _base_population_relative_error(pool_population),
+        }
     base_frame, social_security_component_repair = (
         _with_social_security_component_value_repair(base_frame, target_specs)
     )
@@ -7794,7 +8121,8 @@ def main() -> None:
                 for failure in base_population_gate.failures
             )
         )
-    base_frame = with_us_qbi_input_reconciliation(base_frame)
+    if pool_frame is None:
+        base_frame = with_us_qbi_input_reconciliation(base_frame)
     qbi_inputs_gate = us_qbi_inputs_signal_gate(base_frame)
     if not qbi_inputs_gate.passed:
         if telemetry is not None:
@@ -7965,12 +8293,13 @@ def main() -> None:
                 for failure in capital_gain_details_gate.failures
             )
         )
-    base_frame = with_us_childcare_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-        allow_existing_without_source=True,
-    )
+    if pool_frame is None:
+        base_frame = with_us_childcare_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+            allow_existing_without_source=True,
+        )
     childcare_gate = us_childcare_signal_gate(base_frame)
     if not childcare_gate.passed:
         if telemetry is not None:
@@ -7988,12 +8317,13 @@ def main() -> None:
                 for failure in childcare_gate.failures
             )
         )
-    base_frame = with_us_energy_subsidy_input(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-        allow_existing_without_source=True,
-    )
+    if pool_frame is None:
+        base_frame = with_us_energy_subsidy_input(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+            allow_existing_without_source=True,
+        )
     energy_subsidy_gate = us_energy_subsidy_signal_gate(base_frame)
     if not energy_subsidy_gate.passed:
         if telemetry is not None:
@@ -8067,11 +8397,12 @@ def main() -> None:
             "retirement_contribution_inputs",
             message=("Verifying ASEC-sourced desired retirement-contribution inputs."),
         )
-    base_frame = with_us_retirement_contribution_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_retirement_contribution_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     retirement_contributions_gate = us_retirement_contributions_signal_gate(base_frame)
     if not retirement_contributions_gate.passed:
         if telemetry is not None:
@@ -8094,11 +8425,12 @@ def main() -> None:
             "immigration_inputs",
             message="Deriving SSN card type and immigration status inputs.",
         )
-    base_frame = with_us_immigration_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_immigration_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     immigration_gate = us_immigration_composition_gate(base_frame)
     if not immigration_gate.passed:
         if telemetry is not None:
@@ -8121,11 +8453,12 @@ def main() -> None:
             "take_up_inputs",
             message="Seeding TANF and EITC take-up from administrative rates.",
         )
-    base_frame = with_us_take_up_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_take_up_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     take_up_gate = us_take_up_signal_gate(base_frame)
     if not take_up_gate.passed:
         if telemetry is not None:
@@ -8147,11 +8480,12 @@ def main() -> None:
             "hours_worked_inputs",
             message="Deriving hours-worked inputs from ASEC reported hours.",
         )
-    base_frame = with_us_hours_worked_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_hours_worked_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     hours_worked_gate = us_hours_worked_signal_gate(base_frame)
     if not hours_worked_gate.passed:
         if telemetry is not None:
@@ -8201,11 +8535,12 @@ def main() -> None:
             "relationship_inputs",
             message=("Deriving household-head and marital-status inputs from ASEC."),
         )
-    base_frame = with_us_relationship_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_relationship_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     relationship_inputs_gate = us_relationship_inputs_signal_gate(base_frame)
     if not relationship_inputs_gate.passed:
         if telemetry is not None:
@@ -8228,11 +8563,12 @@ def main() -> None:
             "medicare_take_up_input",
             message="Deriving measured Medicare enrollment from ASEC MCARE.",
         )
-    base_frame = with_us_medicare_take_up_input(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_medicare_take_up_input(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     medicare_take_up_gate = us_medicare_take_up_signal_gate(base_frame)
     if not medicare_take_up_gate.passed:
         if telemetry is not None:
@@ -8303,11 +8639,12 @@ def main() -> None:
                 "Carrying measured ASEC retirement distributions by account type."
             ),
         )
-    base_frame = with_us_retirement_distribution_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_retirement_distribution_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
     early_terminal_gate_failures: list[str] = []
     if not retirement_distributions_gate.passed:
@@ -8337,11 +8674,12 @@ def main() -> None:
             "eligibility_inputs",
             message="Deriving SNAP eligibility and exemption inputs from ASEC.",
         )
-    base_frame = with_us_eligibility_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_eligibility_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base_frame)
     if not eligibility_inputs_gate.passed:
         if telemetry is not None:
@@ -8367,11 +8705,12 @@ def main() -> None:
                 "factual inputs from PUF qualified tuition."
             ),
         )
-    base_frame = with_us_education_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_education_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     education_inputs_gate = us_education_inputs_signal_gate(base_frame)
     if not education_inputs_gate.passed:
         if telemetry is not None:
@@ -8394,11 +8733,12 @@ def main() -> None:
             "pregnancy_inputs",
             message="Seeding pregnancy among women 15-44 at the national rate.",
         )
-    base_frame = with_us_pregnancy_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_pregnancy_inputs(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     pregnancy_gate = us_pregnancy_signal_gate(base_frame)
     if not pregnancy_gate.passed:
         if telemetry is not None:
@@ -8421,11 +8761,12 @@ def main() -> None:
             "wic_claim_input",
             message="Assigning WIC claims from USDA FNS category coverage rates.",
         )
-    base_frame = with_us_wic_claim_input(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
+    if pool_frame is None:
+        base_frame = with_us_wic_claim_input(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
     wic_claim_gate = us_wic_claim_signal_gate(base_frame)
     if not wic_claim_gate.passed:
         if telemetry is not None:
@@ -9237,9 +9578,18 @@ def main() -> None:
             expected_initial_weights=target_frame.resolve_weights("household").values,
         )
     candidate_households = int(target_frame.n("household"))
+    if args.exact_k is not None and args.exact_k > candidate_households:
+        raise ValueError(
+            f"k={args.exact_k} exceeds the pool size {candidate_households}; "
+            "ladder selection never clamps the requested cardinality."
+        )
+    full_pool_calibration = bool(
+        args.dense_default_dataset
+        or (args.exact_k is not None and args.exact_k == candidate_households)
+    )
     l0_refit_lambda = (
         None
-        if args.dense_default_dataset
+        if full_pool_calibration
         else args.l0_refit_lambda_share / float(candidate_households)
     )
     target_loss_weights = _fiscal_target_loss_weights(
@@ -9250,11 +9600,22 @@ def main() -> None:
             "calibrating",
             message=(
                 "Calibrating dense household weights."
-                if args.dense_default_dataset
-                else "Selecting sparse L0 support and refitting household weights."
+                if full_pool_calibration
+                else (
+                    "Selecting an exact-k Sampford support and refitting "
+                    "household weights."
+                    if args.exact_k is not None
+                    else (
+                        "Selecting sparse L0 support and refitting household weights."
+                    )
+                )
             ),
             default_dataset_method=(
-                "dense_no_l0" if args.dense_default_dataset else "l0_refit"
+                ("full_pool_refit" if args.exact_k is not None else "dense_no_l0")
+                if full_pool_calibration
+                else (
+                    "exact_k_sampford_refit" if args.exact_k is not None else "l0_refit"
+                )
             ),
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -9265,15 +9626,13 @@ def main() -> None:
             n_targets=len(registry),
             n_candidate_households=candidate_households,
             l0_refit_lambda_share=(
-                None
-                if args.dense_default_dataset
-                else float(args.l0_refit_lambda_share)
+                None if full_pool_calibration else float(args.l0_refit_lambda_share)
             ),
             l0_lambda=l0_refit_lambda,
             l2_lambda=float(args.l2_lambda),
             refit_l2_lambda=(
                 None
-                if args.dense_default_dataset
+                if full_pool_calibration
                 else float(
                     args.l2_lambda
                     if args.refit_l2_lambda is None
@@ -9288,7 +9647,87 @@ def main() -> None:
             target_compilation_seconds=timing["target_compilation_seconds"],
         )
     calibration_started = time.perf_counter()
-    if args.dense_default_dataset:
+    ladder_outcome = None
+    if args.exact_k is not None:
+        if (
+            pool_original_household_ids is None
+            or pool_original_household_weights is None
+        ):
+            raise RuntimeError("Exact-k calibration lost its original pool baseline.")
+        _assert_exact_k_original_pool_alignment(
+            target_frame,
+            household_ids=pool_original_household_ids,
+            household_weights=pool_original_household_weights,
+        )
+        if l0_refit_lambda is None:
+            # The full-pool branch does not use L0, but the shared function's
+            # ignored value stays finite for a single, explicit call shape.
+            ladder_l0_lambda = float(args.l0_refit_lambda_share) / float(
+                candidate_households
+            )
+        else:
+            ladder_l0_lambda = float(l0_refit_lambda)
+        ladder_outcome = calibrate_exact_k_ladder(
+            target_frame,
+            registry.to_target_set(),
+            k=args.exact_k,
+            pi_hi=args.exact_k_pi_hi,
+            seed=args.seed,
+            epochs=args.epochs,
+            refit_epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            mass="conserve",
+            l0_lambda=ladder_l0_lambda,
+            l2_lambda=args.l2_lambda,
+            refit_l2_lambda=args.refit_l2_lambda,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=(
+                telemetry.calibration_progress if telemetry is not None else None
+            ),
+        )
+        result = ladder_outcome.result
+        default_dataset = {
+            "method": (
+                "full_pool_refit"
+                if args.exact_k == candidate_households
+                else "exact_k_sampford_refit"
+            ),
+            "sparse": args.exact_k < candidate_households,
+            "n_candidate_households": candidate_households,
+            "n_selected_households": int(args.exact_k),
+            "n_exported_households": int(result.frame.n("household")),
+            "l0_lambda_share": (
+                None
+                if args.exact_k == candidate_households
+                else float(args.l0_refit_lambda_share)
+            ),
+            "l0_lambda": (
+                None
+                if args.exact_k == candidate_households
+                else float(result.l0_lambda)
+            ),
+            "selection_epochs": (
+                0 if args.exact_k == candidate_households else int(args.epochs)
+            ),
+            "refit_epochs": int(args.epochs),
+            "selection_l2_lambda": (
+                None if args.exact_k == candidate_households else float(args.l2_lambda)
+            ),
+            "refit_l2_lambda": float(
+                args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
+            ),
+            "selection_final_loss": (
+                None
+                if args.exact_k == candidate_households
+                else _finite_or_none(result.selection.final_loss)
+            ),
+            "refit_initial_loss": _finite_or_none(result.initial_loss),
+            "refit_final_loss": _finite_or_none(result.final_loss),
+        }
+    elif args.dense_default_dataset:
         result = calibrate(
             target_frame,
             registry.to_target_set(),
@@ -9369,7 +9808,7 @@ def main() -> None:
     # the frozen flags for the published diagnostics, and let the gap to the
     # SSA band counts ship in the scorecard as calibration's residual on the
     # #470 registry targets — like every other program's take-up miss.
-    if args.dense_default_dataset:
+    if full_pool_calibration:
         export_frame = _with_calibrated_weights(
             base_frame,
             np.asarray(result.weights, dtype=np.float64),
@@ -9547,6 +9986,7 @@ def main() -> None:
     # diagnostics writer re-hashes any non-None incumbent path, which would
     # replay the exact I/O failure the guard just caught (populace#547,
     # confirm round 2 finding 2).
+    current_target_surface: Mapping[str, object] | None = None
     incumbent_diagnostics_path: Path | None = args.incumbent_diagnostics
     try:
         incumbent_payload = _load_incumbent_diagnostics_payload(
@@ -9557,6 +9997,16 @@ def main() -> None:
                 result,
                 target_registry=registry,
             )["target_surface"]
+            if (
+                args.exact_k is not None
+                and current_target_surface.get("sha256")
+                != args.frozen_target_surface_sha256
+            ):
+                raise ValueError(
+                    "Exact-k target surface does not match the frozen register: "
+                    f"got {current_target_surface.get('sha256')}, expected "
+                    f"{args.frozen_target_surface_sha256}."
+                )
             _assert_incumbent_target_surface_matches(
                 current_target_surface,
                 incumbent_payload,
@@ -9583,6 +10033,24 @@ def main() -> None:
             "Incumbent diagnostics could not be loaded/validated in "
             f"degraded mode; recorded instead of masking earlier failures: "
             f"{error}"
+        )
+    exact_k_ladder_provenance: Mapping[str, object] | None = None
+    if args.exact_k is not None:
+        if ladder_outcome is None or pool_manifest_payload is None:
+            raise RuntimeError(
+                "Exact-k calibration lost its pool or selection receipt."
+            )
+        if current_target_surface is None:
+            current_target_surface = diagnostics_payload(
+                result,
+                target_registry=registry,
+            )["target_surface"]
+        exact_k_ladder_provenance = _exact_k_ladder_manifest_payload(
+            args=args,
+            outcome=ladder_outcome,
+            pool_manifest=pool_manifest_payload,
+            ledger_artifact=ledger_artifact.provenance(),
+            target_surface=current_target_surface,
         )
     enforced_input_mass_reference_gate = (
         None if args.allow_input_mass_drift else input_mass_reference_gate
@@ -9657,6 +10125,7 @@ def main() -> None:
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
+        exact_k_ladder=exact_k_ladder_provenance,
     )
     # Terminal-gate batching: evaluate EVERY terminal gate
     # group and raise once with the full failure list, instead of aborting at
@@ -9980,7 +10449,7 @@ def main() -> None:
         release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
     ):
         stale_evidence.unlink(missing_ok=True)
-    dataset_path = artifact_root / DATASET_FILENAME
+    dataset_path = artifact_root / dataset_filename
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
     # the batched pre-export raise so a gate-failed run never produces it.
@@ -10061,7 +10530,7 @@ def main() -> None:
 
     if telemetry is not None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
-    calibration_path = artifact_root / CALIBRATION_FILENAME
+    calibration_path = artifact_root / calibration_filename
     _write_npz(calibration_path, result=result, registry=registry)
 
     if not args.skip_reform_validation:
@@ -10236,6 +10705,11 @@ def main() -> None:
             if telemetry is not None
             else None
         ),
+        dataset_key=dataset_key,
+        dataset_filename=dataset_filename,
+        calibration_key=calibration_key,
+        calibration_filename=calibration_filename,
+        exact_k_ladder=exact_k_ladder_provenance,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
@@ -10247,16 +10721,15 @@ def main() -> None:
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
     shutil.copy2(base_h5, release_root / f"base_{base_h5.name}")
-    print(
-        json.dumps(
-            {
-                "release_id": release_id,
-                "release_dir": str(release_dir),
-                "artifact_root": str(artifact_root),
-            },
-            indent=2,
-        )
-    )
+    build_result = {
+        "release_id": release_id,
+        "release_dir": str(release_dir),
+        "artifact_root": str(artifact_root),
+        "dataset_path": str(dataset_path),
+        "calibration_path": str(calibration_path),
+    }
+    print(json.dumps(build_result, indent=2))
+    return build_result
 
 
 if __name__ == "__main__":
