@@ -670,15 +670,22 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "spm_unit",
         "model_required_boolean",
     )
+    assert owners["strike_benefits"] == (
+        "person",
+        "source_operator_cps_carried",
+    )
+    assert POOL_OPERATOR_CONTRACTS["derive_us_cps_carried_inputs"].phases == (
+        "pre_clone",
+    )
     assert "weeks_worked" not in owners
     assert "medicare_part_b_premiums_reported" not in owners
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 116
+    assert len(target_names) == 117
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "403ff7dd0ac1a6958f95bbdeda777cec7537848c7084005736e660b013846471"
+        == "516ada3a74c1603e26a1e7861c63adb642689e74bbb730a23f7724c74aeafcf2"
     )
 
 
@@ -686,13 +693,13 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 137
+    assert len(surface) == len(by_name) == 138
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 116,
+            "pool_transfer_target_families": 117,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
             "load_take_up_contract": 13,
@@ -709,6 +716,12 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
         entity="person",
         family="primary_puf_qrf_nontransfer",
         provenance=("PRIMARY_QRF_TARGET_ORDER",),
+    )
+    assert by_name["strike_benefits"] == PoolInputSurfaceEntry(
+        variable="strike_benefits",
+        entity="person",
+        family="source_operator_cps_carried",
+        provenance=("pool_transfer_target_families",),
     )
     assert by_name["first_home_mortgage_balance"] == PoolInputSurfaceEntry(
         variable="first_home_mortgage_balance",
@@ -1231,7 +1244,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 116
+    assert len(targets) == 117
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1256,7 +1269,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 116
+    assert len(targets) == 117
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
@@ -1273,7 +1286,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 119
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 120
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
