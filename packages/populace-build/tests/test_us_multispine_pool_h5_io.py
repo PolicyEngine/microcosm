@@ -8,11 +8,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.us_runtime.h5_io as h5_io
 from populace.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    AuthenticatedPoolH5MismatchError,
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
 )
@@ -109,6 +111,7 @@ def _write_ready_pool(tmp_path: Path) -> Path:
                 "pool_h5": {
                     "path": str(pool_path.resolve()),
                     "sha256": _sha256(pool_path),
+                    "size_bytes": pool_path.stat().st_size,
                     "artifact_kind": US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
                     "publication_run_id": run_id,
                 },
@@ -146,7 +149,7 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
 
     monkeypatch.setattr(Path, "read_bytes", replace_after_pinned_read)
 
-    frame, manifest = load_simulation_ready_us_multispine_pool(
+    frame, manifest, authenticated_pool_h5 = load_simulation_ready_us_multispine_pool(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
     )
@@ -157,10 +160,59 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     assert frame.table("person")["nullable_input"].tolist() == [True, None, False]
     assert frame.n("household") == 3
     assert manifest["publication_run_id"] == "fixture-publication"
+    assert authenticated_pool_h5.path == Path(manifest["pool_h5"]["path"])
+    assert authenticated_pool_h5.sha256 == manifest["pool_h5"]["sha256"]
+    assert authenticated_pool_h5.size_bytes == manifest["pool_h5"]["size_bytes"]
+    assert authenticated_pool_h5.publication_run_id == "fixture-publication"
+    assert authenticated_pool_h5.manifest_sha256 == expected_manifest_sha256
     assert manifest_reads == 1
     assert json.loads(manifest_path.read_text())["publication_run_id"] == (
         "replacement-publication"
     )
+
+
+def test_ready_pool_loader_rejects_a_false_h5_size_receipt(tmp_path: Path) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pool_h5"]["size_bytes"] += 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="pool_h5 size_bytes .* does not match"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_authenticated_pool_h5_copy_rejects_a_raced_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    _, _, authenticated_pool_h5 = load_simulation_ready_us_multispine_pool(
+        manifest_path
+    )
+    replacement = bytearray(authenticated_pool_h5.path.read_bytes())
+    replacement[0] ^= 1
+    original_copy = h5_io._copy_file_bytes
+
+    def replace_then_copy(source: Path, destination: Path) -> None:
+        source.write_bytes(replacement)
+        original_copy(source, destination)
+
+    monkeypatch.setattr(h5_io, "_copy_file_bytes", replace_then_copy)
+    destination = tmp_path / "audit" / "base_pool.h5"
+
+    with pytest.raises(
+        AuthenticatedPoolH5MismatchError,
+        match="builder final local-audit copy.*copied bytes",
+    ):
+        authenticated_pool_h5.copy_verified_to(
+            destination,
+            consumer="builder final local-audit copy",
+        )
+
+    assert not destination.exists()
+    assert not list(destination.parent.glob(".*.tmp"))
 
 
 def test_ready_pool_loader_reconciles_manifest_and_h5_household_counts(

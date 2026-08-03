@@ -127,6 +127,7 @@ def _write_ready_pool(tmp_path: Path) -> Path:
                 "pool_h5": {
                     "path": str(pool_path.resolve()),
                     "sha256": _sha256(pool_path),
+                    "size_bytes": pool_path.stat().st_size,
                     "artifact_kind": US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
                     "publication_run_id": run_id,
                 },
@@ -160,7 +161,9 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
     pytest.importorskip("tables")
     builder = _builder_module()
     pool_manifest_path = _write_ready_pool(tmp_path)
-    pool, pool_manifest = load_simulation_ready_us_multispine_pool(pool_manifest_path)
+    pool, pool_manifest, authenticated_pool_h5 = (
+        load_simulation_ready_us_multispine_pool(pool_manifest_path)
+    )
     target = TargetSpec(
         name="fixture_measure",
         entity="household",
@@ -221,6 +224,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         args=args,
         outcome=outcome,
         pool_manifest=pool_manifest,
+        authenticated_pool_h5=authenticated_pool_h5,
         ledger_artifact={
             "facts_sha256": "a" * 64,
             "manifest_sha256": "b" * 64,
@@ -297,6 +301,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         "manifest_sha256": _sha256(pool_manifest_path),
         "publication_run_id": "fixture-publication",
         "pool_h5_sha256": pool_manifest["pool_h5"]["sha256"],
+        "pool_h5_size_bytes": pool_manifest["pool_h5"]["size_bytes"],
         "agreement_diagnostics_sha256": pool_manifest["agreement_diagnostics"][
             "sha256"
         ],

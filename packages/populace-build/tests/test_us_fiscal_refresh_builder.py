@@ -1,4 +1,5 @@
 import builtins
+import hashlib
 import importlib.util
 import json
 import sys
@@ -1340,6 +1341,107 @@ def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
             {"publication_run_id": "fixture-publication"},
         )
     assert "_assert_pool_release_identity" in builder.main.__code__.co_names
+
+
+def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from populace.build.us_runtime.h5_io import (
+        AuthenticatedPoolH5MismatchError,
+    )
+
+    builder = _load_builder_module()
+    pool_h5 = tmp_path / "pool.h5"
+    authenticated_bytes = b"a" * 32
+    replacement_bytes = b"b" * 32
+    pool_h5.write_bytes(authenticated_bytes)
+    out = tmp_path / "out"
+    argv = _exact_k_builder_argv("20000")
+    argv[argv.index("out")] = str(out)
+
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder,
+        "_refuse_certified_release_dir_reuse",
+        lambda path: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_verified_incumbent_diagnostics_payload",
+        lambda path, *, expected_sha256: ({}, expected_sha256),
+    )
+
+    def fake_load_pool(path, *, expected_manifest_sha256):
+        authenticated = builder.AuthenticatedPoolH5(
+            path=pool_h5.resolve(),
+            sha256=hashlib.sha256(authenticated_bytes).hexdigest(),
+            size_bytes=len(authenticated_bytes),
+            publication_run_id="fixture-publication",
+            manifest_sha256=expected_manifest_sha256,
+        )
+        pool_h5.write_bytes(replacement_bytes)
+        return (
+            SimpleNamespace(),
+            {"publication_run_id": "fixture-publication"},
+            authenticated,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_simulation_ready_us_multispine_pool",
+        fake_load_pool,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_pool_release_id_value",
+        lambda *args: pytest.fail("pool identity ran after an H5 divergence"),
+    )
+
+    with pytest.raises(
+        AuthenticatedPoolH5MismatchError,
+        match="builder base dataset identity",
+    ):
+        builder.main(argv)
+
+    assert not out.exists()
+
+
+def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    forbidden_base_hashes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_sha256"
+        and node.args
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "base_h5"
+    ]
+    assert forbidden_base_hashes == []
+    assert "shutil.copy2(base_h5" not in source
+    assert 'pool_h5.get("sha256")' not in source
+
+    main_source = inspect.getsource(builder.main)
+    diagnostics_source = inspect.getsource(
+        builder._write_release_calibration_diagnostics
+    )
+    receipt_source = inspect.getsource(builder._exact_k_ladder_manifest_payload)
+    assert (
+        "authenticated_pool_h5.verified_digest(\n"
+        '            consumer="builder base dataset identity"'
+    ) in main_source
+    assert "base_dataset_sha256=base_dataset_sha256" in main_source
+    assert '"base_dataset_sha256": base_dataset_sha256' in diagnostics_source
+    assert '"manifest_sha256": authenticated_pool_h5.manifest_sha256' in receipt_source
+    assert '"pool_h5_sha256": authenticated_pool_h5.sha256' in receipt_source
+    assert '"pool_h5_size_bytes": authenticated_pool_h5.size_bytes' in receipt_source
 
 
 def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
@@ -3326,7 +3428,6 @@ def test_release_calibration_diagnostics_include_gate_failures(
         captured["build"] = build
         return path
 
-    monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(
         builder, "write_calibration_diagnostics", fake_write_calibration_diagnostics
     )
@@ -3344,7 +3445,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         result=result,
         release_dir=tmp_path,
         registry=registry,
-        base_h5=tmp_path / "base.h5",
+        base_dataset_sha256="base-sha",
         compilation={"dropped_target_names": []},
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
@@ -3424,7 +3525,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         result=result,
         release_dir=tmp_path,
         registry=registry,
-        base_h5=base_h5,
+        base_dataset_sha256=builder._sha256(base_h5),
         compilation={"dropped_target_names": []},
         target_profile_gate=passing_gate,
         health_input_gate=passing_gate,
@@ -3810,9 +3911,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                     "pool_h5": {
                         "path": str(base_h5),
                         "sha256": "1" * 64,
+                        "size_bytes": base_h5.stat().st_size,
                     },
                     "agreement_diagnostics": {"sha256": "2" * 64},
                 },
+                builder.AuthenticatedPoolH5(
+                    path=base_h5.resolve(),
+                    sha256=__import__("hashlib")
+                    .sha256(base_h5.read_bytes())
+                    .hexdigest(),
+                    size_bytes=base_h5.stat().st_size,
+                    publication_run_id="fixture-publication",
+                    manifest_sha256="a" * 64,
+                ),
             )
 
         monkeypatch.setattr(

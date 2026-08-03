@@ -225,6 +225,7 @@ from populace.build.us_runtime.fiscal_targets import (
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
 from populace.build.us_runtime.h5_io import (
+    AuthenticatedPoolH5,
     load_simulation_ready_us_multispine_pool,
 )
 from populace.build.us_runtime.input_mass import us_input_mass_totals
@@ -785,7 +786,16 @@ def _assert_pool_release_identity(
     configured_release_id: str,
     pool_manifest: Mapping[str, object],
 ) -> str:
-    publication_run_id = pool_manifest.get("publication_run_id")
+    return _assert_pool_release_id_value(
+        configured_release_id,
+        pool_manifest.get("publication_run_id"),
+    )
+
+
+def _assert_pool_release_id_value(
+    configured_release_id: str,
+    publication_run_id: object,
+) -> str:
     if (
         not isinstance(publication_run_id, str)
         or not publication_run_id
@@ -1622,6 +1632,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _legacy_base_h5_sha256(path: Path) -> str:
+    """Hash only the non-pool base path selected by main's legacy branch."""
+
+    return _sha256(path)
+
+
+def _copy_base_h5_for_local_audit(
+    source: Path,
+    destination: Path,
+    *,
+    authenticated_pool_h5: AuthenticatedPoolH5 | None,
+) -> Path:
+    if authenticated_pool_h5 is not None:
+        return authenticated_pool_h5.copy_verified_to(
+            destination,
+            consumer="builder final local-audit copy",
+        )
+    shutil.copy2(source, destination)
+    return destination
+
+
 def _runtime_versions() -> dict[str, str]:
     packages = (
         "populace-build",
@@ -2429,11 +2460,28 @@ def _resolve_selection_source(args):
 def _assert_cd_vintage_support_matches(
     h5_path: Path,
     crosswalk_metadata: Mapping[str, object] | None,
+    *,
+    authenticated_pool_h5: AuthenticatedPoolH5 | None = None,
 ) -> None:
     if crosswalk_metadata is None:
         return
     expected_sha256 = str(crosswalk_metadata.get("sha256") or "")
-    support_provenance = _read_cd_vintage_support_provenance(h5_path)
+    if authenticated_pool_h5 is not None:
+        authenticated_pool_h5.verified_digest(
+            consumer="congressional-district support preflight before H5 read"
+        )
+    try:
+        support_provenance = _read_cd_vintage_support_provenance(h5_path)
+    except Exception:
+        if authenticated_pool_h5 is not None:
+            authenticated_pool_h5.verified_digest(
+                consumer="congressional-district support preflight failed H5 read"
+            )
+        raise
+    if authenticated_pool_h5 is not None:
+        authenticated_pool_h5.verified_digest(
+            consumer="congressional-district support preflight after H5 read"
+        )
     actual_sha256 = support_provenance.get(
         CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR
     )
@@ -6810,7 +6858,7 @@ def _write_release_calibration_diagnostics(
     result,
     release_dir: Path,
     registry: TargetRegistry,
-    base_h5: Path,
+    base_dataset_sha256: str,
     compilation: Mapping[str, object],
     target_profile_gate: GateResult,
     health_input_gate: GateResult | None,
@@ -6860,7 +6908,7 @@ def _write_release_calibration_diagnostics(
         release_dir / "calibration_diagnostics.json",
         target_registry=registry,
         build={
-            "base_dataset_sha256": _sha256(base_h5),
+            "base_dataset_sha256": base_dataset_sha256,
             "target_compilation": compilation,
             "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
             "target_loss_family_multipliers": (
@@ -7830,6 +7878,7 @@ def _exact_k_ladder_manifest_payload(
     args: argparse.Namespace,
     outcome: ExactKLadderCalibration,
     pool_manifest: Mapping[str, object],
+    authenticated_pool_h5: AuthenticatedPoolH5,
     ledger_artifact: Mapping[str, object],
     target_surface: Mapping[str, object],
     target_loss_basis: Mapping[str, object],
@@ -7839,19 +7888,17 @@ def _exact_k_ladder_manifest_payload(
 ) -> dict[str, object]:
     """Build the one receipt block shared by diagnostics and both manifests."""
 
-    pool_h5 = pool_manifest.get("pool_h5")
     agreement_diagnostics = pool_manifest.get("agreement_diagnostics")
     agreement_gate = pool_manifest.get("agreement_gate")
     if not all(
-        isinstance(value, Mapping)
-        for value in (pool_h5, agreement_diagnostics, agreement_gate)
+        isinstance(value, Mapping) for value in (agreement_diagnostics, agreement_gate)
     ):
         raise RuntimeError("Validated pool manifest lost a required receipt block.")
     if agreement_gate.get("passed") is not True:
         raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
-    pool_release_id = _assert_pool_release_identity(
+    pool_release_id = _assert_pool_release_id_value(
         args.pool_release_id,
-        pool_manifest,
+        authenticated_pool_h5.publication_run_id,
     )
     payload = exact_k_ladder_manifest_payload(
         outcome,
@@ -7860,14 +7907,15 @@ def _exact_k_ladder_manifest_payload(
         pool={
             "release_id": pool_release_id,
             "release_id_source": "pool_manifest.publication_run_id",
-            "manifest_sha256": args.pool_manifest_sha256,
-            "publication_run_id": pool_manifest.get("publication_run_id"),
-            "pool_h5_sha256": pool_h5.get("sha256"),
+            "manifest_sha256": authenticated_pool_h5.manifest_sha256,
+            "publication_run_id": authenticated_pool_h5.publication_run_id,
+            "pool_h5_sha256": authenticated_pool_h5.sha256,
+            "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
             "agreement_diagnostics_sha256": agreement_diagnostics.get("sha256"),
         },
         agreement_gate_reference={
             "passed": True,
-            "publication_run_id": pool_manifest.get("publication_run_id"),
+            "publication_run_id": authenticated_pool_h5.publication_run_id,
             "diagnostics_sha256": agreement_diagnostics.get("sha256"),
             "verdict": dict(agreement_gate),
         },
@@ -8085,14 +8133,20 @@ def main(argv: Sequence[str] | None = None) -> None:
     pool_original_household_ids: np.ndarray | None = None
     pool_original_household_weights: np.ndarray | None = None
     pool_manifest_payload: dict[str, object] | None = None
+    authenticated_pool_h5: AuthenticatedPoolH5 | None = None
     if args.pool_manifest is not None:
-        pool_frame, pool_manifest_payload = load_simulation_ready_us_multispine_pool(
-            args.pool_manifest,
-            expected_manifest_sha256=args.pool_manifest_sha256,
+        pool_frame, pool_manifest_payload, authenticated_pool_h5 = (
+            load_simulation_ready_us_multispine_pool(
+                args.pool_manifest,
+                expected_manifest_sha256=args.pool_manifest_sha256,
+            )
         )
-        _assert_pool_release_identity(
+        base_dataset_sha256 = authenticated_pool_h5.verified_digest(
+            consumer="builder base dataset identity"
+        )
+        _assert_pool_release_id_value(
             args.pool_release_id,
-            pool_manifest_payload,
+            authenticated_pool_h5.publication_run_id,
         )
         if args.exact_k == "N":
             args.exact_k = int(pool_frame.n("household"))
@@ -8108,13 +8162,10 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"{pool_frame.n('household')}; ladder selection never clamps "
                 "the requested cardinality."
             )
-        pool_h5_receipt = pool_manifest_payload.get("pool_h5")
-        if not isinstance(pool_h5_receipt, Mapping):  # pragma: no cover - loader gate
-            raise RuntimeError("Validated pool manifest lost its pool_h5 receipt.")
-        base_h5 = Path(str(pool_h5_receipt["path"]))
+        base_h5 = authenticated_pool_h5.path
     else:
         base_h5 = args.base_h5 or _download_base_h5()
-    base_dataset_sha256 = _sha256(base_h5)
+        base_dataset_sha256 = _legacy_base_h5_sha256(base_h5)
     digest = base_dataset_sha256[:7]
     build_timestamp = datetime.now(UTC)
     full_commit = _git_output("rev-parse", "HEAD")
@@ -8156,7 +8207,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         else None
     )
     _assert_cd_vintage_support_matches(
-        base_h5, congressional_district_vintage_crosswalk_metadata
+        base_h5,
+        congressional_district_vintage_crosswalk_metadata,
+        authenticated_pool_h5=authenticated_pool_h5,
     )
     # Preflight (before the expensive calibration): every provision-critical
     # input leaf the reform-validation configs depend on must be produced by a
@@ -8370,7 +8423,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     else:
         weeks_unemployed_source_receipt = {
             "source": "validated_multispine_pool",
-            "pool_publication_run_id": pool_manifest_payload["publication_run_id"],
+            "pool_publication_run_id": authenticated_pool_h5.publication_run_id,
         }
         weeks_unemployed_message = (
             "Verified measured ASEC LKWEEKS before selection and target "
@@ -10491,6 +10544,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if (
             ladder_outcome is None
             or pool_manifest_payload is None
+            or authenticated_pool_h5 is None
             or exact_k_puf_tail_gate is None
         ):
             raise RuntimeError(
@@ -10513,6 +10567,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             args=args,
             outcome=ladder_outcome,
             pool_manifest=pool_manifest_payload,
+            authenticated_pool_h5=authenticated_pool_h5,
             ledger_artifact=ledger_artifact.provenance(),
             target_surface=current_target_surface,
             target_loss_basis=target_loss_basis,
@@ -10577,7 +10632,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         result=result,
         release_dir=release_dir,
         registry=registry,
-        base_h5=base_h5,
+        base_dataset_sha256=base_dataset_sha256,
         compilation=compilation,
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
@@ -11202,7 +11257,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         telemetry.complete()
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
-    shutil.copy2(base_h5, release_root / f"base_{base_h5.name}")
+    _copy_base_h5_for_local_audit(
+        base_h5,
+        release_root / f"base_{base_h5.name}",
+        authenticated_pool_h5=authenticated_pool_h5,
+    )
     _print_build_result(
         release_id=release_id,
         release_dir=release_dir,
