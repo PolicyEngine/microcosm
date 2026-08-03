@@ -737,6 +737,7 @@ def test_primary_qrf_resume_refuses_a_changed_input_binding(
 def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     pool_tool: ModuleType,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
     resume_stage: str,
     expected_order: list[str],
 ) -> None:
@@ -751,10 +752,15 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
         store=cold_store,
     )
     assert cold_order == ["impute", "derive", "seed", "simulate"]
+    cold_output = capsys.readouterr().out
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert cold_output.count(f"Rebuilt pool stage {stage!r}") == 1
+    checkpoint_identity_sha256: dict[str, str] = {}
     for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
         stored_metadata = pool_tool.load_frame_checkpoint(
             cold_store.checkpoint_path(stage)
         ).metadata
+        checkpoint_identity_sha256[stage] = stored_metadata["identity_sha256"]
         assert "agreement_gate" not in stored_metadata
         assert "simulation_ready" not in stored_metadata
         assert "agreement" not in stored_metadata
@@ -777,6 +783,16 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     )
 
     assert warm_order == expected_order
+    warm_output = capsys.readouterr().out
+    cached_stages = pool_tool.POOL_CHECKPOINT_STAGE_ORDER[: resume_index + 1]
+    assert (
+        f"Resumed pool checkpoint {resume_stage!r} from " in warm_output
+        and f"cached stages: {', '.join(cached_stages)}." in warm_output
+    )
+    for stage_index, stage in enumerate(pool_tool.POOL_CHECKPOINT_STAGE_ORDER):
+        assert warm_output.count(f"Rebuilt pool stage {stage!r}") == (
+            0 if stage_index <= resume_index else 1
+        )
     assert resumed.assembly_receipt == uninterrupted.assembly_receipt
     assert resumed.provenance_counts == uninterrupted.provenance_counts
     assert resumed.stage_receipts == uninterrupted.stage_receipts
@@ -840,6 +856,16 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
         primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
     )
     assert provenance["deepest_resumed_stage"] == resume_stage
+    assert provenance["base_identity_sha256"] == warm_store.base_identity_sha256
+    assert (
+        provenance["primary_qrf"]["base_identity_sha256"]
+        == warm_store.base_identity_sha256
+    )
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert (
+            provenance["stages"][stage]["identity_sha256"]
+            == checkpoint_identity_sha256[stage]
+        )
     assert provenance["stages"][resume_stage]["source"] == "checkpoint"
     assert provenance["stages"][resume_stage]["resume_kind"] == "direct"
     for covered_stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER[:resume_index]:
@@ -858,6 +884,69 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
         "cached": False,
         "terminal_verdict_persisted": False,
     }
+
+
+def test_resumed_checkpoint_provenance_is_published_in_final_manifest(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    _unused, outputs, verified_inputs, source_manifest, loaded = _output_context(
+        pool_tool,
+        tmp_path,
+    )
+    base_identity = pool_tool._pool_checkpoint_base_identity(
+        verified_inputs,
+        policyengine_us_version="fixture-engine-1",
+    )
+    cold_store = pool_tool._PoolStageCheckpointStore(
+        outputs.checkpoint_root,
+        base_identity=base_identity,
+    )
+    cold_store.bind_input_receipts(pool_tool._loaded_input_receipts(loaded))
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+
+    warm_store = pool_tool._PoolStageCheckpointStore(
+        outputs.checkpoint_root,
+        base_identity=base_identity,
+    )
+    resume = warm_store.load_deepest()
+    assert resume is not None
+    assert resume.stage == "simulated"
+    resumed, order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=warm_store,
+        resume=resume,
+    )
+    assert order == []
+    checkpoint_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+    )
+
+    pool_tool._write_outputs(
+        resumed,
+        outputs=outputs,
+        verified_inputs=verified_inputs,
+        acs_source_manifest=source_manifest,
+        input_receipts=warm_store.input_receipts,
+        checkpoint_provenance=checkpoint_provenance,
+    )
+
+    manifest = json.loads(outputs.manifest.read_text(encoding="utf-8"))
+    assert manifest["stage_checkpoints"] == checkpoint_provenance
+    assert (
+        manifest["stage_checkpoints"]["base_identity_sha256"]
+        == warm_store.base_identity_sha256
+    )
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        stage_manifest = pool_tool._read_json_object(
+            warm_store.checkpoint_manifest_path(stage)
+        )
+        assert (
+            manifest["stage_checkpoints"]["stages"][stage]["identity_sha256"]
+            == stage_manifest["identity_sha256"]
+        )
 
 
 def test_pool_checkpoint_input_sha_mismatch_rebuilds_every_stage(
