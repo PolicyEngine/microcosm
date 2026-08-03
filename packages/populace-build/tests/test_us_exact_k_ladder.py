@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -167,6 +168,38 @@ def test_full_pool_support_is_identity_but_weights_are_refit() -> None:
         outcome.refit_baseline_diagnostics["method"]
         == "full_pool_original_frame_weights"
     )
+
+
+def test_manifest_refuses_requested_realized_count_mismatch() -> None:
+    """The r1 k=8 receipt/frame.n=7 fault injection never reaches naming."""
+    outcome = SimpleNamespace(
+        result=SimpleNamespace(frame=SimpleNamespace(n=lambda entity: 7)),
+        selection_receipt={
+            "k": 8,
+            "pi_hi": 0.95,
+            "seed": 17,
+            "certainty_count": 8,
+            "boundary_pool_size": 0,
+            "design": "full-pool",
+        },
+        refit_baseline_diagnostics={},
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "ExactKRealizedCountMismatchError: requested/realized household "
+            "count mismatch: requested=8, realized=7"
+        ),
+    ):
+        exact_k_ladder_manifest_payload(
+            outcome,
+            k=8,
+            seed=17,
+            pool={},
+            agreement_gate_reference={},
+            frozen_target_register={},
+        )
 
 
 def test_ladder_calibration_rejects_invalid_cardinality_before_selection() -> None:

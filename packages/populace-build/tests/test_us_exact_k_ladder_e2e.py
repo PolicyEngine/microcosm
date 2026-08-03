@@ -213,7 +213,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
     args = argparse.Namespace(
         exact_k=k,
         seed=17,
-        pool_release_id="fixture-pool-release",
+        pool_release_id="fixture-publication",
         pool_manifest_sha256=_sha256(pool_manifest_path),
         incumbent_diagnostics_sha256="f" * 64,
     )
@@ -292,8 +292,8 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
     assert ladder_receipt["selection_receipt"] == outcome.selection_receipt
     assert ladder_receipt["selection_receipt"]["design"] == expected_design
     assert ladder_receipt["pool"] == {
-        "release_id": "fixture-pool-release",
-        "release_id_source": "release_config",
+        "release_id": "fixture-publication",
+        "release_id_source": "pool_manifest.publication_run_id",
         "manifest_sha256": _sha256(pool_manifest_path),
         "publication_run_id": "fixture-publication",
         "pool_h5_sha256": pool_manifest["pool_h5"]["sha256"],

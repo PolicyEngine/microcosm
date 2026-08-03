@@ -1258,6 +1258,106 @@ def test_weeks_unemployed_source_override_parses(monkeypatch) -> None:
     assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
 
 
+def _exact_k_builder_argv(k: str, *, seed: int | None = 17) -> list[str]:
+    argv = [
+        "--pool-manifest",
+        "pool.manifest.json",
+        "--pool-manifest-sha256",
+        "a" * 64,
+        "--pool-release-id",
+        "fixture-publication",
+        "--exact-k",
+        k,
+        "--exact-k-pi-hi",
+        "0.95",
+        "--ledger-facts",
+        "facts",
+        "--ledger-facts-sha256",
+        "b" * 64,
+        "--ledger-manifest-sha256",
+        "c" * 64,
+        "--incumbent-diagnostics",
+        "incumbent.json",
+        "--incumbent-diagnostics-sha256",
+        "d" * 64,
+        "--frozen-target-surface-sha256",
+        "e" * 64,
+        "--out",
+        "out",
+        "--release-id",
+        "populace-us-2024-k20000-fixture",
+        "--no-staging",
+    ]
+    if seed is not None:
+        argv.extend(("--seed", str(seed)))
+    return argv
+
+
+def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(_exact_k_builder_argv("57241"))
+    assert "ExactKCharterError" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(_exact_k_builder_argv("20000", seed=None))
+    assert "ExactKExplicitSeedError" in capsys.readouterr().err
+
+    parsed = builder._parse_args(_exact_k_builder_argv("N"))
+    assert parsed.exact_k == "N"
+    assert parsed.seed == 17
+    assert parsed.no_staging is True
+
+
+def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
+    builder = _load_builder_module()
+    argv = _exact_k_builder_argv("20000")
+    argv.remove("--no-staging")
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+
+    assert "ExactKPointerSuppressionError" in capsys.readouterr().err
+
+
+def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._assert_pool_release_identity(
+            "fixture-publication",
+            {"publication_run_id": "fixture-publication"},
+        )
+        == "fixture-publication"
+    )
+    with pytest.raises(
+        ValueError,
+        match="PoolReleaseIdentityMismatchError: configured pool release id",
+    ):
+        builder._assert_pool_release_identity(
+            "invented-release",
+            {"publication_run_id": "fixture-publication"},
+        )
+    assert "_assert_pool_release_identity" in builder.main.__code__.co_names
+
+
+def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder.main)
+    count_gate = source.index("assert_exact_k_realized_count(ladder_outcome")
+
+    for later_write in (
+        "_write_release_calibration_diagnostics(",
+        "release_engine.write_dataset(",
+        "_write_npz(",
+        "_build_manifests(",
+    ):
+        assert count_gate < source.index(later_write)
+
+
 def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
@@ -7998,7 +8098,7 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
         },
         "pool": {
             "release_id": "fixture-pool",
-            "release_id_source": "release_config",
+            "release_id_source": "pool_manifest.publication_run_id",
             "manifest_sha256": "c" * 64,
             "pool_h5_sha256": "d" * 64,
         },

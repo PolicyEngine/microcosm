@@ -52,6 +52,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import shlex
 import sys
@@ -69,7 +70,7 @@ from populace.build.us_runtime.h5_io import (
 )
 
 CONFIG_SCHEMA_VERSION = 1
-RATIFIED_SPARSE_K = frozenset({57_240, 20_000})
+RATIFIED_SPARSE_K = fiscal_release.RATIFIED_EXACT_K_COUNTS
 US_RELEASE_REPO_ID = "policyengine/populace-us"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _RELEASE_ID = re.compile(r"[A-Za-z0-9-]+")
@@ -314,6 +315,10 @@ def _validate_pins_and_resolve_k(
     pool_manifest = load_simulation_ready_us_multispine_pool_manifest(
         pool_manifest_path
     )
+    fiscal_release._assert_pool_release_identity(
+        config.pool_release_id,
+        pool_manifest,
+    )
     agreement_gate = _object(
         pool_manifest.get("agreement_gate"), label="pool manifest agreement_gate"
     )
@@ -353,7 +358,8 @@ def _validate_pins_and_resolve_k(
             "targets.incumbent_diagnostics is not a file: "
             f"{config.incumbent_diagnostics}"
         )
-    observed_incumbent_sha256 = _sha256(config.incumbent_diagnostics)
+    incumbent_bytes = config.incumbent_diagnostics.read_bytes()
+    observed_incumbent_sha256 = hashlib.sha256(incumbent_bytes).hexdigest()
     if observed_incumbent_sha256 != config.incumbent_diagnostics_sha256:
         raise ValueError(
             "Incumbent diagnostics SHA-256 mismatch: got "
@@ -361,7 +367,7 @@ def _validate_pins_and_resolve_k(
             f"{config.incumbent_diagnostics_sha256}."
         )
     incumbent = _object(
-        json.loads(config.incumbent_diagnostics.read_text(encoding="utf-8")),
+        json.loads(incumbent_bytes),
         label="incumbent diagnostics",
     )
     target_surface = _object(
@@ -397,7 +403,7 @@ def _builder_argv(
     config: LadderReleaseConfig,
     pool_manifest: Path,
     out: Path,
-    k: int,
+    k: str | int,
 ) -> list[str]:
     argv = [
         "--pool-manifest",
@@ -440,6 +446,7 @@ def _builder_argv(
         str(config.l2_lambda),
         "--refit-l2-lambda",
         str(config.refit_l2_lambda),
+        "--no-staging",
     ]
     if config.ssi_take_up_prior_weight_basis is not None:
         argv.extend(
@@ -477,7 +484,7 @@ def launch(
                 config=config,
                 pool_manifest=resolved_pool_manifest,
                 out=resolved_out,
-                k=k,
+                k=config.requested_k,
             )
         )
     )
@@ -506,6 +513,19 @@ def launch(
         "seed": config.seed,
         "automatic_publish": False,
         "pointer_update": False,
+        "pointer_updates": {
+            "production": {
+                "repo_id": config.repo_id,
+                "pointer_update": False,
+            },
+            "staging": {
+                "repo_id": os.environ.get(
+                    "POPULACE_STAGING_REPO_ID",
+                    "policyengine/populace-us-staging",
+                ),
+                "pointer_update": False,
+            },
+        },
         "publish_argv": publish_argv,
         "publish_command": shlex.join(publish_argv),
     }

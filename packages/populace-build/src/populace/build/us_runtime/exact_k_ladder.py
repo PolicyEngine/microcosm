@@ -31,6 +31,8 @@ from populace.frame import Frame
 
 __all__ = [
     "ExactKLadderCalibration",
+    "ExactKRealizedCountMismatchError",
+    "assert_exact_k_realized_count",
     "calibrate_exact_k_ladder",
     "exact_k_ladder_manifest_payload",
 ]
@@ -47,6 +49,26 @@ class ExactKLadderCalibration:
     refit_baseline_diagnostics: dict[str, int | float | str]
 
 
+class ExactKRealizedCountMismatchError(RuntimeError):
+    """The calibrated export count differs from the requested release count."""
+
+
+def assert_exact_k_realized_count(
+    outcome: ExactKLadderCalibration,
+    k: int,
+) -> int:
+    """Refuse an exact-k receipt whose calibrated frame realized another count."""
+
+    requested = _nonnegative_integer(k, name="k")
+    realized = int(outcome.result.frame.n("household"))
+    if realized != requested:
+        raise ExactKRealizedCountMismatchError(
+            "ExactKRealizedCountMismatchError: requested/realized household "
+            f"count mismatch: requested={requested}, realized={realized}."
+        )
+    return realized
+
+
 def exact_k_ladder_manifest_payload(
     outcome: ExactKLadderCalibration,
     *,
@@ -60,6 +82,7 @@ def exact_k_ladder_manifest_payload(
 
     target = _nonnegative_integer(k, name="k")
     random_seed = _nonnegative_integer(seed, name="seed")
+    assert_exact_k_realized_count(outcome, target)
     receipt = outcome.selection_receipt
     receipt_keys = {
         "k",

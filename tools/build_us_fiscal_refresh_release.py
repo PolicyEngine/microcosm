@@ -217,6 +217,7 @@ from populace.build.us_runtime.demographics import (
 from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime.exact_k_ladder import (
     ExactKLadderCalibration,
+    assert_exact_k_realized_count,
     calibrate_exact_k_ladder,
     exact_k_ladder_manifest_payload,
 )
@@ -343,10 +344,15 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+RATIFIED_EXACT_K_COUNTS = frozenset({57_240, 20_000})
 
 
 class IncumbentLossBasisMismatchError(RuntimeError):
     """The pinned incumbent was scored on a different fiscal-loss basis."""
+
+
+class PoolReleaseIdentityMismatchError(ValueError):
+    """The configured pool identity differs from its authenticated manifest."""
 
 
 # Bumped 1 -> 2 for #217: the per-reform income-tax cache key now depends only on
@@ -764,6 +770,35 @@ SUPPORTED_SOI_LEDGER_FILTERS = frozenset(
 )
 
 
+def _parse_ratified_exact_k(value: str) -> str | int:
+    if value == "N":
+        return value
+    if value in {str(k) for k in RATIFIED_EXACT_K_COUNTS}:
+        return int(value)
+    raise argparse.ArgumentTypeError(
+        "ExactKCharterError: --exact-k must be exactly N, 57240, or 20000; "
+        f"got {value!r}."
+    )
+
+
+def _assert_pool_release_identity(
+    configured_release_id: str,
+    pool_manifest: Mapping[str, object],
+) -> str:
+    publication_run_id = pool_manifest.get("publication_run_id")
+    if (
+        not isinstance(publication_run_id, str)
+        or not publication_run_id
+        or configured_release_id != publication_run_id
+    ):
+        raise PoolReleaseIdentityMismatchError(
+            "PoolReleaseIdentityMismatchError: configured pool release id "
+            f"{configured_release_id!r} does not match authenticated manifest "
+            f"publication_run_id {publication_run_id!r}."
+        )
+    return publication_run_id
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -789,19 +824,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--pool-release-id",
-        help=(
-            "Immutable release id of the pool artifact envelope. The pool "
-            "producer manifest has a publication_run_id but no release_id, so "
-            "the launcher must supply this identity."
-        ),
+        help=("Authenticated publication_run_id of the pool artifact envelope."),
     )
     parser.add_argument(
         "--exact-k",
-        type=int,
+        type=_parse_ratified_exact_k,
         help=(
-            "Exact household count for a ladder release. Enables the seeded "
-            "Sampford selection + HT-with-q refit path; k equal to the pool "
-            "size uses identity support with an ordinary full-pool refit."
+            "Ratified ladder point: N, 57240, or 20000 households. N resolves "
+            "to the authenticated pool size and uses identity support with an "
+            "ordinary full-pool refit."
         ),
     )
     parser.add_argument(
@@ -1179,7 +1210,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "drifting rebuild and is not yet wired into calibration."
         ),
     )
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int)
     parser.add_argument(
         "--asec-2023-weeks-unemployed-source",
         type=Path,
@@ -1481,8 +1512,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             )
         if args.base_h5 is not None:
             parser.error("--pool-manifest is mutually exclusive with --base-h5.")
-        if args.exact_k <= 0:
-            parser.error("--exact-k must be a positive integer.")
+        if args.seed is None or args.seed < 0:
+            parser.error(
+                "ExactKExplicitSeedError: --exact-k requires an explicit "
+                "non-negative --seed."
+            )
+        if not args.no_staging:
+            parser.error(
+                "ExactKPointerSuppressionError: --exact-k requires --no-staging."
+            )
         if not math.isfinite(args.exact_k_pi_hi) or not (
             0.0 <= args.exact_k_pi_hi <= 1.0
         ):
@@ -1539,6 +1577,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 "--exact-k operates on the complete multispine pool and cannot "
                 "be combined with a frozen selection source."
             )
+    elif args.seed is None:
+        # Preserve the pre-exact-k default for every legacy lane.
+        args.seed = 0
     multipliers: dict[str, float] = {}
     for entry in args.target_family_loss_multiplier:
         family, separator, raw_value = entry.partition("=")
@@ -7808,13 +7849,17 @@ def _exact_k_ladder_manifest_payload(
         raise RuntimeError("Validated pool manifest lost a required receipt block.")
     if agreement_gate.get("passed") is not True:
         raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
+    pool_release_id = _assert_pool_release_identity(
+        args.pool_release_id,
+        pool_manifest,
+    )
     payload = exact_k_ladder_manifest_payload(
         outcome,
         k=int(args.exact_k),
         seed=int(args.seed),
         pool={
-            "release_id": args.pool_release_id,
-            "release_id_source": "release_config",
+            "release_id": pool_release_id,
+            "release_id_source": "pool_manifest.publication_run_id",
             "manifest_sha256": args.pool_manifest_sha256,
             "publication_run_id": pool_manifest.get("publication_run_id"),
             "pool_h5_sha256": pool_h5.get("sha256"),
@@ -8031,6 +8076,12 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
         pool_frame, pool_manifest_payload = load_simulation_ready_us_multispine_pool(
             args.pool_manifest
         )
+        _assert_pool_release_identity(
+            args.pool_release_id,
+            pool_manifest_payload,
+        )
+        if args.exact_k == "N":
+            args.exact_k = int(pool_frame.n("household"))
         pool_original_household_ids = pool_frame.table("household")[
             "household_id"
         ].to_numpy(copy=True)
@@ -10051,6 +10102,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, str]:
                 telemetry.calibration_progress if telemetry is not None else None
             ),
         )
+        assert_exact_k_realized_count(ladder_outcome, args.exact_k)
         result = ladder_outcome.result
         exact_k_puf_tail_gate = _exact_k_puf_tail_support_gate(
             target_frame,

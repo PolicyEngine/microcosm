@@ -29,7 +29,7 @@ def _config_payload(
     return {
         "schema_version": 1,
         "pool": {
-            "release_id": "fixture-pool-release",
+            "release_id": "fixture-publication",
             "manifest_sha256": pool_manifest_sha256,
         },
         "ladder": {"k": requested_k, "seed": 17, "pi_hi": 0.95},
@@ -103,6 +103,7 @@ def test_config_rejects_k_larger_than_manifest_pool(
         launcher,
         "load_simulation_ready_us_multispine_pool_manifest",
         lambda _: {
+            "publication_run_id": "fixture-publication",
             "agreement_gate": {"passed": True},
             "provenance_counts": {"household": {"rows": 50_000}},
         },
@@ -160,6 +161,7 @@ def test_n_resolves_to_realized_pool_size_with_valid_pins(
     payload["targets"]["incumbent_diagnostics_sha256"] = _sha256(incumbent)
     config = launcher._read_config(_write_config(tmp_path, payload))
     validated_manifest = {
+        "publication_run_id": "fixture-publication",
         "agreement_gate": {"passed": True},
         "provenance_counts": {"household": {"rows": 8}},
     }
@@ -217,6 +219,7 @@ def test_incumbent_and_target_surface_pins_fail_closed(
         launcher,
         "load_simulation_ready_us_multispine_pool_manifest",
         lambda _: {
+            "publication_run_id": "fixture-publication",
             "agreement_gate": {"passed": True},
             "provenance_counts": {"household": {"rows": 8}},
         },
@@ -251,8 +254,9 @@ def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
 
     assert parsed.exact_k == 20_000
     assert parsed.seed == 17
-    assert parsed.pool_release_id == "fixture-pool-release"
+    assert parsed.pool_release_id == "fixture-publication"
     assert parsed.release_id == "populace-us-2024-k20000-fixture"
+    assert parsed.no_staging is True
     assert parsed.ssi_take_up_prior_weight_basis == tmp_path / "ssi.json"
     assert parsed.ssi_take_up_prior_weight_basis_sha256 == "1" * 64
 
@@ -291,14 +295,98 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
         release_builder=fake_builder,
     )
 
-    assert captured[captured.index("--exact-k") + 1] == "8"
+    assert captured[captured.index("--exact-k") + 1] == "N"
     assert captured[captured.index("--seed") + 1] == "17"
+    assert "--no-staging" in captured
     assert captured[captured.index("--pool-manifest-sha256") + 1] == _sha256(manifest)
     assert result["automatic_publish"] is False
     assert result["pointer_update"] is False
+    assert result["pointer_updates"]["production"]["pointer_update"] is False
+    assert result["pointer_updates"]["staging"]["pointer_update"] is False
     assert result["publish_argv"][-2:] == ["--create-tag", "--no-latest"]
     assert "--artifact-root" in result["publish_argv"]
     assert "--repo-id policyengine/populace-us" in result["publish_command"]
     assert json.loads((tmp_path / "out" / "package_result.json").read_text()) == (
         result
     )
+
+
+def test_pool_release_id_must_match_authenticated_manifest_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    (tmp_path / "ledger").mkdir()
+    incumbent = tmp_path / "incumbent.json"
+    incumbent.write_text(
+        json.dumps({"target_surface": {"sha256": "e" * 64}}),
+        encoding="utf-8",
+    )
+    payload = _config_payload(pool_manifest_sha256=_sha256(manifest))
+    payload["pool"]["release_id"] = "invented-pool-release"
+    payload["targets"]["incumbent_diagnostics_sha256"] = _sha256(incumbent)
+    config = launcher._read_config(_write_config(tmp_path, payload))
+    monkeypatch.setattr(
+        launcher,
+        "load_simulation_ready_us_multispine_pool_manifest",
+        lambda _: {
+            "publication_run_id": "fixture-publication",
+            "agreement_gate": {"passed": True},
+            "provenance_counts": {"household": {"rows": 8}},
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="PoolReleaseIdentityMismatchError: configured pool release id",
+    ):
+        launcher._validate_pins_and_resolve_k(
+            config=config,
+            pool_manifest_path=manifest,
+        )
+
+
+def test_staging_credentials_cannot_enable_pointer_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    payload = _config_payload(
+        requested_k=20_000,
+        release_id="populace-us-2024-k20000-fixture",
+    )
+    config = launcher._read_config(_write_config(tmp_path, payload))
+    monkeypatch.setenv("HF_TOKEN", "credentialed-fixture")
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "fixture/staging")
+    constructed = False
+
+    class UnexpectedTelemetry:
+        def __init__(self, **kwargs):
+            nonlocal constructed
+            constructed = True
+
+    monkeypatch.setattr(
+        launcher.fiscal_release,
+        "StagingTelemetry",
+        UnexpectedTelemetry,
+    )
+    argv = launcher._builder_argv(
+        config=config,
+        pool_manifest=tmp_path / "pool.manifest.json",
+        out=tmp_path / "out",
+        k=20_000,
+    )
+    parsed = launcher.fiscal_release._parse_args(argv)
+
+    telemetry = launcher.fiscal_release._staging_telemetry(
+        parsed,
+        release_root=tmp_path / "out",
+        release_id=config.release_id,
+    )
+
+    assert parsed.no_staging is True
+    assert telemetry is None
+    assert constructed is False
+    assert not (tmp_path / "out" / "staging").exists()
