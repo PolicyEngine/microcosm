@@ -200,6 +200,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
+        "public_assistance_type_source.py",
         "puf_aggregate_records.py",
         "puf_capital_gains_tail.py",
         "puf_donor_io.py",  # Bounded donor artifact I/O; no population treatment.
@@ -3244,8 +3246,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 57, (
-            f"{tool.name} must reach the pinned 57-module runtime graph; "
+        assert len(runtime_graph) == 58, (
+            f"{tool.name} must reach the pinned 58-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

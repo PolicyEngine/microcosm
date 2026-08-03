@@ -56,7 +56,10 @@ _BINDING_KEYS = frozenset(
 ASEC_RAW_STAGE_ARTIFACT_KIND = "populace_us_asec_raw_stage"
 ASEC_RAW_STAGE_CHECKPOINT_FILENAME = "asec_raw_stage.checkpoint.h5"
 ASEC_RAW_STAGE_OPERATOR_STATUS = "operator_untouched"
-ASEC_RAW_STAGE_SCHEMA_VERSION = 2
+# Version 3 added the PAW_TYP restoration that gates TANF enrollment; older
+# artifacts lack the gate column and must fail loudly rather than let
+# PAW_VAL-only conflation back in (populace#591).
+ASEC_RAW_STAGE_SCHEMA_VERSION = 3
 ASEC_RAW_STAGE_STAGE = "raw_source_mapping"
 _RAW_STAGE_BINDING_KEYS = frozenset(
     {
@@ -71,9 +74,9 @@ _RAW_STAGE_BINDING_KEYS = frozenset(
         "stage",
     }
 )
-_RAW_SOURCE_MAPPING_COLUMNS = frozenset({"ED_VAL", "LKWEEKS"})
+_RAW_SOURCE_MAPPING_COLUMNS = frozenset({"ED_VAL", "LKWEEKS", "PAW_TYP"})
 _RAW_STAGE_REQUIRED_PERSON_COLUMNS = frozenset(
-    {"ED_VAL", "LKWEEKS", "PERIDNUM", "source_year"}
+    {"ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "source_year"}
 )
 _RAW_SOURCE_MAPPING_KEYS = frozenset(
     {
@@ -183,9 +186,7 @@ def load_asec_raw_stage_checkpoint(
             "source-construction structural identity it declares."
         )
     metadata["identity"] = stored_identity.to_payload()
-    metadata["source_construction_identity"] = (
-        source_construction_identity.to_payload()
-    )
+    metadata["source_construction_identity"] = source_construction_identity.to_payload()
     return loaded.frame, metadata
 
 
@@ -254,9 +255,8 @@ def _validate_raw_stage_binding(
             "ASEC artifact."
         )
     schema_version = metadata["schema_version"]
-    if (
-        schema_version != ASEC_RAW_STAGE_SCHEMA_VERSION
-        or isinstance(schema_version, bool)
+    if schema_version != ASEC_RAW_STAGE_SCHEMA_VERSION or isinstance(
+        schema_version, bool
     ):
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} has an unsupported raw-stage "
@@ -331,8 +331,7 @@ def _validate_source_receipt(receipt: object, *, path: Path) -> None:
 def _validate_raw_source_mappings(mappings: object, *, path: Path) -> None:
     if not isinstance(mappings, Mapping):
         raise ValueError(
-            f"ASEC raw-stage checkpoint {path} raw_source_mappings must be "
-            "an object."
+            f"ASEC raw-stage checkpoint {path} raw_source_mappings must be an object."
         )
     if frozenset(mappings) != _RAW_SOURCE_MAPPING_COLUMNS:
         raise ValueError(
@@ -415,13 +414,10 @@ def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:
     peridnum = person["PERIDNUM"]
     valid_peridnum = peridnum.notna()
     if pd.api.types.is_string_dtype(peridnum.dtype) or peridnum.dtype == object:
-        valid_peridnum &= (
-            peridnum.astype("string").str.strip().ne("").fillna(False)
-        )
+        valid_peridnum &= peridnum.astype("string").str.strip().ne("").fillna(False)
     if not valid_peridnum.all():
         raise ValueError(
-            f"ASEC raw-stage checkpoint {path} PERIDNUM must be complete and "
-            "nonempty."
+            f"ASEC raw-stage checkpoint {path} PERIDNUM must be complete and nonempty."
         )
 
     education = pd.to_numeric(person["ED_VAL"], errors="coerce").to_numpy(
@@ -433,15 +429,23 @@ def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:
             "and nonnegative."
         )
 
-    weeks = pd.to_numeric(person["LKWEEKS"], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
+    weeks = pd.to_numeric(person["LKWEEKS"], errors="coerce").to_numpy(dtype=np.float64)
     valid_weeks = np.isfinite(weeks) & np.equal(weeks, np.floor(weeks))
     valid_weeks &= (weeks == -1.0) | ((weeks >= 0.0) & (weeks <= 52.0))
     if not valid_weeks.all():
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} LKWEEKS must be complete integers "
             "in {-1, 0, ..., 52}."
+        )
+
+    paw_type = pd.to_numeric(person["PAW_TYP"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid_paw_type = np.isfinite(paw_type) & np.isin(paw_type, (0.0, 1.0, 2.0, 3.0))
+    if not valid_paw_type.all():
+        raise ValueError(
+            f"ASEC raw-stage checkpoint {path} PAW_TYP must be complete integers "
+            "in {0, 1, 2, 3}."
         )
 
 

@@ -283,6 +283,7 @@ def _real_pre_clone_source_frame() -> Frame:
             "VET_VAL": [0.0, 0.0, 0.0, 0.0],
             "SSI_VAL": [0.0, 0.0, 0.0, 0.0],
             "PAW_VAL": [0.0, 125.0, 0.0, 0.0],
+            "PAW_TYP": [0, 3, 0, 0],
             "SPM_SNAPSUB": [0.0, 0.0, 900.0, 900.0],
             "WICYN": [0, 1, 2, 0],
             "SPM_CAPHOUSESUB": [0.0, 0.0, 0.0, 0.0],

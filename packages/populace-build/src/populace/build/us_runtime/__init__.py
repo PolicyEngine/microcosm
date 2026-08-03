@@ -159,9 +159,12 @@ from populace.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
     CPS_CARRIED_SPM_UNIT_INPUTS,
+    CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN,
+    CPS_REPORTED_TANF_TYPE_RAW_COLUMN,
     CPS_REPORTED_WIC_RAW_COLUMN,
     WIC_CARRIER_ADJUDICATION_URL,
     derive_us_cps_carried_inputs,
+    reported_tanf_enrollment_by_spm_unit,
     reported_wic_receipt_carrier,
 )
 from populace.build.us_runtime.demographics import (
@@ -516,6 +519,14 @@ from populace.build.us_runtime.prior_year_income import (
     us_prior_year_income_stage_spec,
     us_prior_year_income_summary,
     with_us_prior_year_income_inputs,
+)
+from populace.build.us_runtime.public_assistance_type_source import (
+    ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS,
+    ASEC_PUBLIC_ASSISTANCE_TYPE_INCOME_YEARS,
+    PAW_TYPE_TANF_CODES,
+    PAW_TYPE_VALID_CODES,
+    fill_asec_public_assistance_type_source,
+    load_asec_public_assistance_type_sources,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -1076,6 +1087,8 @@ __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
+    "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
+    "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
     "WIC_CARRIER_ADJUDICATION_URL",
     "SimpleTaxExpenditureReform",
@@ -1440,6 +1453,12 @@ __all__ = [
     "fetch_asec_education_assistance_source",
     "fill_asec_education_assistance_source",
     "load_asec_education_assistance_sources",
+    "ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS",
+    "ASEC_PUBLIC_ASSISTANCE_TYPE_INCOME_YEARS",
+    "PAW_TYPE_TANF_CODES",
+    "PAW_TYPE_VALID_CODES",
+    "fill_asec_public_assistance_type_source",
+    "load_asec_public_assistance_type_sources",
     "US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_EDUCATION_INPUTS_STAGE_NAME",
     "derive_us_education_inputs_from_manifest",
@@ -1824,6 +1843,7 @@ __all__ = [
     "congressional_district_assignment_summary",
     "congressional_district_distribution_from_ledger_facts",
     "derive_us_cps_carried_inputs",
+    "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "finalize_us_puf_tax_detail_predictions",

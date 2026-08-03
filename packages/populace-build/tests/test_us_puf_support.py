@@ -198,7 +198,11 @@ def _raw_asec_predictor_frame() -> Frame:
                 "PEMCPREM": [100.0, 0.0, 25.0],
                 "PMED_VAL": [200.0, 0.0, 40.0],
                 "POTC_VAL": [30.0, 0.0, 10.0],
-                "PAW_VAL": [0.0, 125.0, 0.0],
+                # Unit 100 is TANF-enrolled through the PAW_TYP 3 ("both")
+                # member; unit 200's positive amount is PAW_TYP 2 (other
+                # cash welfare) and must NOT mark TANF enrollment.
+                "PAW_VAL": [0.0, 125.0, 80.0],
+                "PAW_TYP": [0, 3, 2],
                 "SPM_SNAPSUB": [0.0, 0.0, 900.0],
                 "WICYN": [0, 1, 2],
             }
@@ -1124,16 +1128,103 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert pd.api.types.is_bool_dtype(person["receives_wic"])
 
 
-def test_cps_carried_derives_reported_enrollment_by_spm_unit_max() -> None:
+def test_cps_carried_derives_reported_enrollment_by_spm_unit() -> None:
     derived = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
     spm_unit = derived.table("spm_unit")
 
     assert {"is_tanf_enrolled", "receives_snap"} <= CPS_CARRIED_SPM_UNIT_INPUTS
     assert spm_unit["spm_unit_id"].tolist() == [100, 200]
+    # Unit 200 reports positive PAW_VAL with PAW_TYP 2 (other cash welfare)
+    # and must stay out of the TANF-specific enrollment leaf.
     assert spm_unit["is_tanf_enrolled"].tolist() == [True, False]
     assert spm_unit["receives_snap"].tolist() == [False, True]
     assert pd.api.types.is_bool_dtype(spm_unit["is_tanf_enrolled"])
     assert pd.api.types.is_bool_dtype(spm_unit["receives_snap"])
+
+
+def _tanf_gate_person(
+    amounts: Sequence[float],
+    types: Sequence[int] | None,
+) -> pd.DataFrame:
+    person = pd.DataFrame(
+        {
+            "person_spm_unit_id": np.arange(len(amounts), dtype=np.int64) + 100,
+            "PAW_VAL": np.asarray(amounts, dtype=np.float64),
+        }
+    )
+    if types is not None:
+        person["PAW_TYP"] = np.asarray(types, dtype=np.int64)
+    return person
+
+
+def test_reported_tanf_enrollment_gates_on_reported_tanf_type() -> None:
+    from populace.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(
+        _tanf_gate_person(
+            amounts=[500.0, 500.0, 500.0, 500.0, 0.0],
+            types=[1, 2, 3, 0, 1],
+        )
+    )
+
+    # PAW_TYP 1 (TANF/AFDC) and 3 (both) gate in; 2 (other cash welfare)
+    # and 0 (type unreported) gate out; a TANF type without a positive
+    # amount reports no receipt.
+    assert enrollment.index.tolist() == [100, 101, 102, 103, 104]
+    assert enrollment.tolist() == [True, False, True, False, False]
+
+
+def test_reported_tanf_enrollment_requires_paw_typ_for_positive_amounts() -> None:
+    from populace.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    with pytest.raises(ValueError, match="requires PAW_TYP"):
+        reported_tanf_enrollment_by_spm_unit(
+            _tanf_gate_person(amounts=[0.0, 125.0], types=None)
+        )
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(
+        _tanf_gate_person(amounts=[0.0, 0.0], types=None)
+    )
+    assert enrollment.tolist() == [False, False]
+
+
+def test_reported_tanf_enrollment_joins_sidecar_without_mutating_person() -> None:
+    from populace.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype=np.int64),
+            "source_year": np.asarray([2022, 2022, 2022], dtype=np.int64),
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "P_SEQ": np.asarray([1, 2, 1], dtype=np.int64),
+            "A_LINENO": np.asarray([1, 2, 1], dtype=np.int64),
+            "PAW_VAL": [0.0, 125.0, 80.0],
+        }
+    )
+    sidecar = pd.DataFrame(
+        {
+            "source_year": np.asarray([2022, 2022, 2022], dtype=np.int64),
+            "PH_SEQ": np.asarray([101, 101, 202], dtype=np.int64),
+            "P_SEQ": np.asarray([1, 2, 1], dtype=np.int64),
+            "A_LINENO": np.asarray([1, 2, 1], dtype=np.int64),
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "PAW_VAL": [0.0, 125.0, 80.0],
+            "PAW_TYP": np.asarray([0, 1, 2], dtype=np.int64),
+        }
+    )
+    before = person.copy(deep=True)
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(person, sidecar)
+
+    assert enrollment.index.tolist() == [100, 200]
+    assert enrollment.tolist() == [True, False]
+    pd.testing.assert_frame_equal(person, before)
 
 
 def test_cps_carried_reported_enrollment_is_shared_by_support_clones() -> None:

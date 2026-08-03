@@ -17,6 +17,10 @@ from populace.build.us_runtime.alimony import (
     US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
     derive_us_alimony_from_asec,
 )
+from populace.build.us_runtime.public_assistance_type_source import (
+    PAW_TYPE_TANF_CODES,
+    fill_asec_public_assistance_type_source,
+)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -24,10 +28,13 @@ __all__ = [
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
     "CPS_REPORTED_SNAP_RAW_COLUMN",
+    "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
+    "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
     "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
+    "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
 ]
 
@@ -36,6 +43,8 @@ QUALIFIED_DIVIDEND_FRACTION = 0.448
 TAXABLE_PENSION_FRACTION = 0.590
 LONG_TERM_CAPITAL_GAIN_FRACTION = 0.880
 CPS_REPORTED_SNAP_RAW_COLUMN = "SPM_SNAPSUB"
+CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN = "PAW_VAL"
+CPS_REPORTED_TANF_TYPE_RAW_COLUMN = "PAW_TYP"
 CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
 WIC_CARRIER_ADJUDICATION_URL = (
     "https://github.com/PolicyEngine/populace/issues/591#issuecomment-5160668979"
@@ -102,7 +111,11 @@ CPS_CARRIED_SPM_UNIT_INPUTS = frozenset(
 )
 
 
-def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
+def derive_us_cps_carried_inputs(
+    frame: Frame,
+    *,
+    public_assistance_type_source: pd.DataFrame | None = None,
+) -> Frame:
     """Carry raw CPS ASEC values onto PE input leaves.
 
     Existing leaf input columns are preserved, making the transform idempotent.
@@ -115,6 +128,15 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
     therefore broadcast to all 12 modeled months. The annual source cannot
     reveal entry or exit timing, and ``PAW_VAL > 0`` misses enrolled TANF
     units receiving zero dollars, including sanctioned cases.
+
+    ``is_tanf_enrolled`` is additionally gated on ``PAW_TYP`` because
+    ``PAW_VAL`` alone conflates TANF with other cash welfare; see
+    :func:`reported_tanf_enrollment_by_spm_unit`. When the frame does not
+    already carry ``PAW_TYP`` (the frozen census_cps inputs never did),
+    callers with positive ``PAW_VAL`` rows must pass
+    ``public_assistance_type_source`` — the pinned sidecar loaded by
+    :func:`~populace.build.us_runtime.public_assistance_type_source.load_asec_public_assistance_type_sources`
+    — which is joined transiently and never lands on the output frame.
     """
 
     if frame.schema != US_SCHEMA:
@@ -195,7 +217,11 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         _fill_missing(person, output, _source(person, source))
 
     _fill_health_coverage_inputs(person)
-    _fill_spm_unit_reported_enrollment_inputs(person, tables["spm_unit"])
+    _fill_spm_unit_reported_enrollment_inputs(
+        person,
+        tables["spm_unit"],
+        public_assistance_type_source=public_assistance_type_source,
+    )
     _fill_spm_unit_childcare_inputs(person, tables["spm_unit"])
 
     formula_owned = sorted(CPS_CARRIED_FORMULA_OWNED_COLUMNS.intersection(person))
@@ -212,6 +238,68 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         frame.strata,
         mass_log=frame.mass_log,
         metadata=frame.metadata,
+    )
+
+
+def reported_tanf_enrollment_by_spm_unit(
+    person: pd.DataFrame,
+    public_assistance_type_source: pd.DataFrame | None = None,
+) -> pd.Series:
+    """Return reported TANF enrollment per SPM unit, gated on ``PAW_TYP``.
+
+    A unit is TANF-enrolled when any member reports a positive annual
+    public-assistance amount (``PAW_VAL > 0``) whose reported type is
+    TANF/AFDC (``PAW_TYP`` 1) or both TANF/AFDC and other assistance
+    (``PAW_TYP`` 3). ``PAW_TYP`` 2 (other cash welfare, e.g. general
+    assistance) and unreported-type PAW recipients are NOT marked
+    TANF-enrolled: the engine's ``is_tanf_enrolled`` variable is
+    TANF-specific, and conflating other cash welfare with TANF would poison
+    its 13 cycle-safe TANF helper consumers (populace#591). The conflation
+    is material — in the 2023 ASEC (income year 2022), 271 of 682
+    PAW-positive SPM units (39.7% unweighted, 42.6% SPM-weighted) have no
+    member reporting a TANF type.
+
+    ``PAW_TYP`` is read from ``person`` when present (the pool's raw-stage
+    checkpoint carries it). Otherwise, when any ``PAW_VAL`` is positive, the
+    pinned public-assistance-type sidecar is required and joined transiently
+    without mutating ``person``; refusing to fall back to ``PAW_VAL > 0``
+    keeps the gate impossible to silently drop.
+    """
+
+    if "person_spm_unit_id" not in person.columns:
+        raise ValueError(
+            "Reported TANF enrollment requires person column(s): "
+            "['person_spm_unit_id']."
+        )
+    amounts = _source(person, CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN)
+    if CPS_REPORTED_TANF_TYPE_RAW_COLUMN in person.columns:
+        types = _integer_source(person, CPS_REPORTED_TANF_TYPE_RAW_COLUMN)
+    elif not (amounts > 0.0).any():
+        types = np.zeros(len(person), dtype=np.int64)
+    elif public_assistance_type_source is not None:
+        joined = fill_asec_public_assistance_type_source(
+            person,
+            public_assistance_type_source,
+        )
+        types = _integer_source(joined, CPS_REPORTED_TANF_TYPE_RAW_COLUMN)
+    else:
+        raise ValueError(
+            "Reported TANF enrollment requires PAW_TYP for the positive "
+            f"{CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN} rows: carry the column on "
+            "the frame or pass public_assistance_type_source; PAW_VAL alone "
+            "conflates TANF with other cash welfare (populace#591)."
+        )
+    member_enrolled = (amounts > 0.0) & np.isin(types, sorted(PAW_TYPE_TANF_CODES))
+    return (
+        pd.DataFrame(
+            {
+                "person_spm_unit_id": person["person_spm_unit_id"],
+                "_reported_tanf_enrollment": member_enrolled,
+            }
+        )
+        .groupby("person_spm_unit_id", sort=True)["_reported_tanf_enrollment"]
+        .any()
+        .rename("reported_tanf_enrollment")
     )
 
 
@@ -375,11 +463,16 @@ def _fill_spm_unit_childcare_inputs(
 def _fill_spm_unit_reported_enrollment_inputs(
     person: pd.DataFrame,
     spm_unit: pd.DataFrame,
+    *,
+    public_assistance_type_source: pd.DataFrame | None = None,
 ) -> None:
     """Carry annual reported TANF and SNAP receipt onto monthly leaves."""
 
     if "is_tanf_enrolled" not in spm_unit.columns:
-        tanf = _positive_annual_amount_by_spm_unit(person, "PAW_VAL")
+        tanf = reported_tanf_enrollment_by_spm_unit(
+            person,
+            public_assistance_type_source,
+        )
         spm_unit["is_tanf_enrolled"] = (
             tanf.reindex(spm_unit["spm_unit_id"]).fillna(False).to_numpy(dtype=bool)
         )
@@ -392,23 +485,6 @@ def _fill_spm_unit_reported_enrollment_inputs(
         spm_unit["receives_snap"] = (
             reported.reindex(spm_unit["spm_unit_id"]).fillna(False).to_numpy(dtype=bool)
         )
-
-
-def _positive_annual_amount_by_spm_unit(
-    person: pd.DataFrame,
-    source_column: str,
-) -> pd.Series:
-    member_amounts = pd.DataFrame(
-        {
-            "person_spm_unit_id": person["person_spm_unit_id"],
-            "_annual_amount": _source(person, source_column),
-        }
-    )
-    return (
-        member_amounts.groupby("person_spm_unit_id", sort=True)["_annual_amount"]
-        .max()
-        .gt(0.0)
-    )
 
 
 def _ira_distributions(person: pd.DataFrame) -> np.ndarray:
