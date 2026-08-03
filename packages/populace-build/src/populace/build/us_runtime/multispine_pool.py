@@ -103,6 +103,7 @@ from populace.build.us_runtime.workers_compensation import (
 from populace.frame import Frame
 
 __all__ = [
+    "POOL_CHECKPOINT_STAGE_ORDER",
     "POOL_HOUSEHOLD_MASS_SHARES",
     "POOL_DERIVE_OPERATOR_ORDER",
     "POOL_DEFERRED_TRANSFER_INPUTS",
@@ -116,6 +117,7 @@ __all__ = [
     "POOL_SOURCE_OPERATOR_ORDER",
     "POOL_SPINE_AGREEMENT_REGISTRY",
     "POOL_TIME_PERIOD",
+    "MultispinePoolCheckpoint",
     "MultispinePoolResult",
     "PoolInputSurfaceEntry",
     "PoolStageOutput",
@@ -148,6 +150,9 @@ POOL_OPERATOR_ORDER = (
     "agreement",
 )
 """The executable pool-build order, including the terminal QA evaluation."""
+
+POOL_CHECKPOINT_STAGE_ORDER = ("assembled", "transferred", "simulated")
+"""Durable pool states in their fixed resume-precedence order."""
 
 POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
@@ -240,6 +245,57 @@ class PoolStageOutput:
             )
         if not isinstance(self.receipt, Mapping):
             raise TypeError("PoolStageOutput.receipt must be a mapping.")
+
+
+@dataclass(frozen=True)
+class MultispinePoolCheckpoint:
+    """One validated in-memory pool state suitable for durable serialization.
+
+    ``frame`` is always the input-only state that production may eventually
+    publish. Only the terminal ``simulated`` checkpoint also carries the
+    disposable formula-output view used by the always-fresh agreement gate.
+    """
+
+    stage: str
+    frame: Frame
+    assembly_receipt: Mapping[str, object]
+    stage_receipts: Mapping[str, Mapping[str, object]]
+    simulation_frame: Frame | None = None
+
+    def __post_init__(self) -> None:
+        if self.stage not in POOL_CHECKPOINT_STAGE_ORDER:
+            raise ValueError(
+                f"Unknown multispine pool checkpoint stage {self.stage!r}; "
+                f"expected one of {POOL_CHECKPOINT_STAGE_ORDER}."
+            )
+        if not isinstance(self.frame, Frame):
+            raise TypeError(
+                "MultispinePoolCheckpoint.frame must be a Frame, got "
+                f"{type(self.frame).__name__}."
+            )
+        if not isinstance(self.assembly_receipt, Mapping):
+            raise TypeError(
+                "MultispinePoolCheckpoint.assembly_receipt must be a mapping."
+            )
+        if not isinstance(self.stage_receipts, Mapping) or any(
+            not isinstance(name, str) or not isinstance(receipt, Mapping)
+            for name, receipt in self.stage_receipts.items()
+        ):
+            raise TypeError(
+                "MultispinePoolCheckpoint.stage_receipts must map stage names "
+                "to receipt mappings."
+            )
+        if self.stage == "simulated":
+            if not isinstance(self.simulation_frame, Frame):
+                raise TypeError(
+                    "A simulated multispine pool checkpoint requires a "
+                    "simulation_frame."
+                )
+        elif self.simulation_frame is not None:
+            raise ValueError(
+                "Only a simulated multispine pool checkpoint may carry a "
+                "simulation_frame."
+            )
 
 
 @dataclass(frozen=True)
@@ -1824,6 +1880,82 @@ def _assert_take_up_values_preserved(
             )
 
 
+def _checkpoint_stage_receipts(
+    resume: MultispinePoolCheckpoint,
+) -> dict[str, Mapping[str, object]]:
+    receipts = {name: dict(receipt) for name, receipt in resume.stage_receipts.items()}
+    required = {
+        "assembled": frozenset(),
+        "transferred": frozenset({"impute"}),
+        "simulated": frozenset({"impute", "derive", "seed", "simulate"}),
+    }[resume.stage]
+    allowed = required | ({"clone"} if resume.stage != "assembled" else set())
+    actual = frozenset(receipts)
+    if not required <= actual or not actual <= allowed:
+        clone_expectation = (
+            " with an optional clone receipt" if resume.stage != "assembled" else ""
+        )
+        raise ValueError(
+            f"Multispine pool {resume.stage!r} checkpoint stage receipts are "
+            f"incomplete or out of scope: expected {sorted(required)}"
+            f"{clone_expectation}, got {sorted(actual)}."
+        )
+    return receipts
+
+
+def _validated_resume_checkpoint(
+    resume: MultispinePoolCheckpoint,
+) -> tuple[dict[str, object], dict[str, Mapping[str, object]]]:
+    if not isinstance(resume, MultispinePoolCheckpoint):
+        raise TypeError(
+            f"resume must be a MultispinePoolCheckpoint, got {type(resume).__name__}."
+        )
+    assembly_receipt = spine_assembly_receipt(
+        resume.frame,
+        boundary=f"multispine pool {resume.stage} checkpoint",
+    )
+    if assembly_receipt != dict(resume.assembly_receipt):
+        raise ValueError(
+            f"Multispine pool {resume.stage!r} checkpoint assembly receipt "
+            "differs from its live frame provenance."
+        )
+    if resume.simulation_frame is not None:
+        simulation_receipt = spine_assembly_receipt(
+            resume.simulation_frame,
+            boundary="multispine pool simulated checkpoint evaluation frame",
+        )
+        if simulation_receipt != assembly_receipt:
+            raise ValueError(
+                "Multispine pool simulated checkpoint evaluation provenance "
+                "differs from its persistent frame."
+            )
+    return assembly_receipt, _checkpoint_stage_receipts(resume)
+
+
+def _emit_pool_checkpoint(
+    callback: Callable[[MultispinePoolCheckpoint], None] | None,
+    *,
+    stage: str,
+    frame: Frame,
+    assembly_receipt: Mapping[str, object],
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    simulation_frame: Frame | None = None,
+) -> None:
+    if callback is None:
+        return
+    callback(
+        MultispinePoolCheckpoint(
+            stage=stage,
+            frame=frame,
+            assembly_receipt=dict(assembly_receipt),
+            stage_receipts={
+                name: dict(receipt) for name, receipt in stage_receipts.items()
+            },
+            simulation_frame=simulation_frame,
+        )
+    )
+
+
 def run_multispine_pool_path(
     asec: Frame,
     acs: Frame,
@@ -1834,6 +1966,8 @@ def run_multispine_pool_path(
     seed: PoolOperator,
     simulate: PoolOperator,
     agreement_gate: AgreementGate | None = None,
+    checkpoint: Callable[[MultispinePoolCheckpoint], None] | None = None,
+    resume: MultispinePoolCheckpoint | None = None,
 ) -> MultispinePoolResult:
     """Run the fixed assembly-to-agreement path over two peer source frames.
 
@@ -1849,6 +1983,12 @@ def run_multispine_pool_path(
     Production callers omit it, which invokes
     :func:`~populace.build.us_runtime.spine_agreement.spine_agreement_gate`
     with the immutable pool-specific registry and fixed tolerances.
+
+    ``checkpoint`` observes fresh expensive boundaries in
+    :data:`POOL_CHECKPOINT_STAGE_ORDER`. ``resume`` starts from one such state,
+    revalidates its live assembly provenance and completed-stage receipts, and
+    skips only the stages already represented there. Provenance counts and the
+    terminal agreement gate are always recomputed.
     """
 
     operators = {
@@ -1860,88 +2000,142 @@ def run_multispine_pool_path(
     invalid = [name for name, operator in operators.items() if not callable(operator)]
     if invalid:
         raise TypeError(f"Pool operator(s) are not callable: {invalid}.")
+    if checkpoint is not None and not callable(checkpoint):
+        raise TypeError("checkpoint must be callable when provided.")
 
-    assembled = assemble_spines(
-        {"asec": asec, "acs": acs},
-        household_mass_shares=POOL_HOUSEHOLD_MASS_SHARES,
-        mass_anchor_channel="asec",
-    )
-    assembly_receipt = spine_assembly_receipt(
-        assembled,
-        boundary="multispine pool assembly",
-    )
-
-    receipts: dict[str, Mapping[str, object]] = {}
-    clone_input = assembled
-    clone_preparation_receipt: Mapping[str, object] = {}
-    if prepare_clone is not None:
-        if not callable(prepare_clone):
-            raise TypeError("Pool prepare_clone operator must be callable.")
-        prepared = prepare_clone(clone_input)
-        if not isinstance(prepared, PoolStageOutput):
-            raise TypeError(
-                "Pool prepare_clone operator must return PoolStageOutput, got "
-                f"{type(prepared).__name__}."
-            )
-        clone_input = prepared.frame
-        validate_assembly_provenance(
-            clone_input,
-            boundary="multispine pool clone preparation output",
+    resume_stage: str | None
+    if resume is None:
+        assembled = assemble_spines(
+            {"asec": asec, "acs": acs},
+            household_mass_shares=POOL_HOUSEHOLD_MASS_SHARES,
+            mass_anchor_channel="asec",
         )
-        clone_preparation_receipt = dict(prepared.receipt)
+        assembly_receipt = spine_assembly_receipt(
+            assembled,
+            boundary="multispine pool assembly",
+        )
+        receipts: dict[str, Mapping[str, object]] = {}
+        resume_stage = None
+        _emit_pool_checkpoint(
+            checkpoint,
+            stage="assembled",
+            frame=assembled,
+            assembly_receipt=assembly_receipt,
+            stage_receipts=receipts,
+        )
+    else:
+        assembly_receipt, receipts = _validated_resume_checkpoint(resume)
+        assembled = resume.frame
+        resume_stage = resume.stage
 
-    clone_input_rows = _frame_row_counts(clone_input)
-    current = clone_us_frame_for_puf_support(clone_input)
-    validate_assembly_provenance(
-        current,
-        boundary="multispine pool clone output",
-    )
+    if resume_stage in {None, "assembled"}:
+        clone_input = assembled
+        clone_preparation_receipt: Mapping[str, object] = {}
+        if prepare_clone is not None:
+            if not callable(prepare_clone):
+                raise TypeError("Pool prepare_clone operator must be callable.")
+            prepared = prepare_clone(clone_input)
+            if not isinstance(prepared, PoolStageOutput):
+                raise TypeError(
+                    "Pool prepare_clone operator must return PoolStageOutput, got "
+                    f"{type(prepared).__name__}."
+                )
+            clone_input = prepared.frame
+            validate_assembly_provenance(
+                clone_input,
+                boundary="multispine pool clone preparation output",
+            )
+            clone_preparation_receipt = dict(prepared.receipt)
 
-    if prepare_clone is not None:
-        receipts["clone"] = {
-            "source_preparation": clone_preparation_receipt,
-            "physical_clone": {
-                "input_rows": clone_input_rows,
-                "output_rows": _frame_row_counts(current),
-            },
-        }
-    for stage_name in ("impute", "derive", "seed"):
-        outcome = operators[stage_name](current)
+        clone_input_rows = _frame_row_counts(clone_input)
+        current = clone_us_frame_for_puf_support(clone_input)
+        validate_assembly_provenance(
+            current,
+            boundary="multispine pool clone output",
+        )
+
+        if prepare_clone is not None:
+            receipts["clone"] = {
+                "source_preparation": clone_preparation_receipt,
+                "physical_clone": {
+                    "input_rows": clone_input_rows,
+                    "output_rows": _frame_row_counts(current),
+                },
+            }
+        outcome = operators["impute"](current)
         if not isinstance(outcome, PoolStageOutput):
             raise TypeError(
-                f"Pool {stage_name} operator must return PoolStageOutput, got "
+                "Pool impute operator must return PoolStageOutput, got "
                 f"{type(outcome).__name__}."
             )
         current = outcome.frame
         validate_assembly_provenance(
             current,
-            boundary=f"multispine pool {stage_name} output",
+            boundary="multispine pool impute output",
         )
-        receipts[stage_name] = dict(outcome.receipt)
+        receipts["impute"] = dict(outcome.receipt)
+        _emit_pool_checkpoint(
+            checkpoint,
+            stage="transferred",
+            frame=current,
+            assembly_receipt=assembly_receipt,
+            stage_receipts=receipts,
+        )
+    else:
+        current = resume.frame
+
+    if resume_stage != "simulated":
+        for stage_name in ("derive", "seed"):
+            outcome = operators[stage_name](current)
+            if not isinstance(outcome, PoolStageOutput):
+                raise TypeError(
+                    f"Pool {stage_name} operator must return PoolStageOutput, got "
+                    f"{type(outcome).__name__}."
+                )
+            current = outcome.frame
+            validate_assembly_provenance(
+                current,
+                boundary=f"multispine pool {stage_name} output",
+            )
+            receipts[stage_name] = dict(outcome.receipt)
+
+        simulated = operators["simulate"](current)
+        if not isinstance(simulated, PoolStageOutput):
+            raise TypeError(
+                "Pool simulate operator must return PoolStageOutput, got "
+                f"{type(simulated).__name__}."
+            )
+        validate_assembly_provenance(
+            simulated.frame,
+            boundary="multispine pool simulation output",
+        )
+        receipts["simulate"] = dict(simulated.receipt)
+        simulation_frame = simulated.frame
+        _emit_pool_checkpoint(
+            checkpoint,
+            stage="simulated",
+            frame=current,
+            assembly_receipt=assembly_receipt,
+            stage_receipts=receipts,
+            simulation_frame=simulation_frame,
+        )
+    else:
+        if resume.simulation_frame is None:  # pragma: no cover - dataclass validates
+            raise AssertionError("Simulated resume checkpoint has no evaluation frame.")
+        simulation_frame = resume.simulation_frame
 
     counts = spine_provenance_counts(
         current,
         boundary="multispine pool pre-agreement output",
     )
-    simulated = operators["simulate"](current)
-    if not isinstance(simulated, PoolStageOutput):
-        raise TypeError(
-            "Pool simulate operator must return PoolStageOutput, got "
-            f"{type(simulated).__name__}."
-        )
-    validate_assembly_provenance(
-        simulated.frame,
-        boundary="multispine pool simulation output",
-    )
-    receipts["simulate"] = dict(simulated.receipt)
 
     agreement = (
         spine_agreement_gate(
-            simulated.frame,
+            simulation_frame,
             registry=POOL_SPINE_AGREEMENT_REGISTRY,
         )
         if agreement_gate is None
-        else agreement_gate(simulated.frame)
+        else agreement_gate(simulation_frame)
     )
     if not isinstance(agreement, GateResult):
         raise TypeError(

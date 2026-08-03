@@ -24,6 +24,7 @@ from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_OPERATOR_CONTRACTS,
@@ -33,6 +34,7 @@ from populace.build.us_runtime.multispine_pool import (
     POOL_SOURCE_OPERATOR_CONTRACTS,
     POOL_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    MultispinePoolCheckpoint,
     MultispinePoolResult,
     PoolInputSurfaceEntry,
     PoolStageOutput,
@@ -393,6 +395,33 @@ def _operator(
     return apply
 
 
+def _fixture_pool_operators(
+    order: list[str],
+) -> dict[str, Callable[[Frame], PoolStageOutput]]:
+    return {
+        "impute": _operator(
+            "impute",
+            order,
+            lambda person: person.__setitem__("transferred", person["age"]),
+        ),
+        "derive": _operator(
+            "derive",
+            order,
+            lambda person: person.__setitem__("derived", person["transferred"] * 2),
+        ),
+        "seed": _operator(
+            "seed",
+            order,
+            lambda person: person.__setitem__("seeded", person["age"] >= 40),
+        ),
+        "simulate": _operator(
+            "simulate",
+            order,
+            lambda person: person.__setitem__("ssi", person["derived"]),
+        ),
+    }
+
+
 def _fixture_registry() -> tuple[SpineAgreementSpec, ...]:
     return (
         SpineAgreementSpec("person", "imputed", ("transferred",)),
@@ -524,6 +553,98 @@ def test_full_operator_path_is_ordered_and_keeps_simulation_out_of_pool() -> Non
         "seed": {"operator": "seed"},
         "simulate": {"operator": "simulate"},
     }
+
+
+def test_pool_checkpoint_callbacks_capture_each_fixed_boundary() -> None:
+    order: list[str] = []
+    checkpoints: list[MultispinePoolCheckpoint] = []
+
+    result = run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators(order),
+        agreement_gate=lambda _frame: GateResult("fixture", True),
+        checkpoint=checkpoints.append,
+    )
+
+    assert tuple(item.stage for item in checkpoints) == POOL_CHECKPOINT_STAGE_ORDER
+    assert checkpoints[0].stage_receipts == {}
+    assert set(checkpoints[1].stage_receipts) == {"impute"}
+    assert set(checkpoints[2].stage_receipts) == {
+        "impute",
+        "derive",
+        "seed",
+        "simulate",
+    }
+    assert checkpoints[0].simulation_frame is None
+    assert checkpoints[1].simulation_frame is None
+    assert checkpoints[2].simulation_frame is not None
+    assert "transferred" not in checkpoints[0].frame.table("person")
+    assert "transferred" in checkpoints[1].frame.table("person")
+    assert "ssi" not in checkpoints[2].frame.table("person")
+    assert "ssi" in checkpoints[2].simulation_frame.table("person")
+    for checkpoint in checkpoints:
+        assert checkpoint.assembly_receipt == result.assembly_receipt
+
+
+@pytest.mark.parametrize(
+    ("resume_stage", "expected_order", "expected_checkpoints"),
+    (
+        (
+            "assembled",
+            ["impute", "derive", "seed", "simulate"],
+            ["transferred", "simulated"],
+        ),
+        ("transferred", ["derive", "seed", "simulate"], ["simulated"]),
+        ("simulated", [], []),
+    ),
+)
+def test_pool_resume_skips_completed_stages_and_reruns_gate(
+    resume_stage: str,
+    expected_order: list[str],
+    expected_checkpoints: list[str],
+) -> None:
+    baseline_order: list[str] = []
+    checkpoints: list[MultispinePoolCheckpoint] = []
+    baseline = run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators(baseline_order),
+        agreement_gate=lambda _frame: GateResult("baseline_gate", True),
+        checkpoint=checkpoints.append,
+    )
+    resume = next(item for item in checkpoints if item.stage == resume_stage)
+
+    resumed_order: list[str] = []
+    resumed_checkpoints: list[MultispinePoolCheckpoint] = []
+    gate_frames: list[Frame] = []
+
+    def fresh_gate(frame: Frame) -> GateResult:
+        gate_frames.append(frame)
+        return GateResult("fresh_resume_gate", True)
+
+    resumed = run_multispine_pool_path(
+        _source_frame(offset=1_000.0),
+        _source_frame(offset=2_000.0),
+        **_fixture_pool_operators(resumed_order),
+        agreement_gate=fresh_gate,
+        checkpoint=resumed_checkpoints.append,
+        resume=resume,
+    )
+
+    assert resumed_order == expected_order
+    assert [item.stage for item in resumed_checkpoints] == expected_checkpoints
+    assert len(gate_frames) == 1
+    assert resumed.agreement_gate.name == "fresh_resume_gate"
+    assert resumed.assembly_receipt == baseline.assembly_receipt
+    assert resumed.provenance_counts == baseline.provenance_counts
+    assert resumed.stage_receipts == baseline.stage_receipts
+    for entity in baseline.frame.entities:
+        pd.testing.assert_frame_equal(
+            resumed.frame.table(entity),
+            baseline.frame.table(entity),
+            check_exact=True,
+        )
 
 
 def test_agreement_failures_remain_batched_in_terminal_result() -> None:

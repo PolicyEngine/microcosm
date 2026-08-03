@@ -260,6 +260,126 @@ def _output_context(
     return result, outputs, verified_inputs, source_manifest, loaded
 
 
+def _checkpoint_fixture_store(
+    pool_tool: ModuleType,
+    root: Path,
+    *,
+    changed_role: str | None = None,
+):
+    verified_inputs = {}
+    for index, role in enumerate(
+        (
+            "asec_raw_stage",
+            "acs_household",
+            "acs_person",
+            "acs_rent_donor",
+            "processed_puf",
+            "puf_source_year",
+        ),
+        start=1,
+    ):
+        path = root.parent / f"{role}.checkpoint-fixture"
+        if not path.exists():
+            path.write_bytes(f"checkpoint-input-{index}".encode())
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        actual = "f" * 64 if role == changed_role else digest
+        verified_inputs[role] = pool_tool._VerifiedInput(
+            role=role,
+            path=path,
+            expected_sha256=actual,
+            actual_sha256=actual,
+            size_bytes=path.stat().st_size,
+        )
+    base_identity = pool_tool._pool_checkpoint_base_identity(
+        verified_inputs,
+        policyengine_us_version="fixture-engine-1",
+    )
+    return pool_tool._PoolStageCheckpointStore(
+        root,
+        base_identity=base_identity,
+    )
+
+
+def _checkpoint_fixture_input_receipts() -> dict[str, object]:
+    return {
+        "asec_raw_stage_checkpoint": {"artifact": "fixture-raw-stage"},
+        "acs_pums_build": {"artifact": "fixture-unit-frame"},
+        "acs_native_inputs": {"person": {"age": {"source": "fixture"}}},
+        "puf_donor": {
+            "rows": 0,
+            "columns": [],
+            "build_receipt": {"artifact": "fixture-donor"},
+        },
+    }
+
+
+def _run_checkpoint_fixture(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    *,
+    store,
+    resume=None,
+):
+    order: list[str] = []
+
+    def stage(
+        name: str,
+        transform: Callable[[pd.DataFrame], None],
+    ) -> Callable[[Frame], PoolStageOutput]:
+        def apply(frame: Frame) -> PoolStageOutput:
+            order.append(name)
+            person = frame.table("person").copy()
+            transform(person)
+            return PoolStageOutput(
+                _replace_person(frame, person),
+                {"fixture_stage": name},
+            )
+
+        return apply
+
+    result = pool_tool.build_multispine_pool(
+        _source_frame() if resume is None else None,
+        _source_frame(measured_offset=99.0) if resume is None else None,
+        puf_donor=pd.DataFrame(),
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+        impute=stage(
+            "impute",
+            lambda person: person.__setitem__(
+                "fixture_transfer",
+                person["measured"],
+            ),
+        ),
+        derive=stage(
+            "derive",
+            lambda person: person.__setitem__(
+                "fixture_derived",
+                person["fixture_transfer"] + 1.0,
+            ),
+        ),
+        seed=stage(
+            "seed",
+            lambda person: person.__setitem__(
+                "fixture_seed",
+                person["fixture_derived"] > 0.0,
+            ),
+        ),
+        simulate=stage(
+            "simulate",
+            lambda person: person.__setitem__(
+                "ssi",
+                np.where(
+                    person[support_channel_column("person")].eq("asec"),
+                    1.0,
+                    100.0,
+                ),
+            ),
+        ),
+        checkpoint=store.write,
+        resume=resume,
+    )
+    return result, order
+
+
 def _seed_stale_green_outputs(outputs) -> None:
     outputs.pool_h5.write_bytes(b"stale green h5")
     outputs.agreement_diagnostics.write_text(
@@ -311,7 +431,7 @@ def _assert_publication_tombstone(
         pool_tool.load_simulation_ready_us_multispine_pool_manifest(outputs.manifest)
 
 
-def test_parser_exposes_only_six_pinned_inputs_and_out(
+def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
     pool_tool: ModuleType,
 ) -> None:
     parser = pool_tool._parser()
@@ -327,12 +447,19 @@ def test_parser_exposes_only_six_pinned_inputs_and_out(
         ("puf_source_year_csv", "puf_source_year_csv_sha256"),
     )
     expected_destinations = {destination for pair in pairs for destination in pair} | {
-        "out"
+        "checkpoint_root",
+        "out",
     }
 
     assert set(actions) == expected_destinations
-    assert all(action.required for action in actions.values())
+    assert all(
+        actions[destination].required
+        for destination in expected_destinations - {"checkpoint_root"}
+    )
+    assert not actions["checkpoint_root"].required
     assert actions["out"].option_strings == ["--out"]
+    assert actions["checkpoint_root"].option_strings == ["--checkpoint-root"]
+    assert actions["checkpoint_root"].type is Path
     for path_destination, sha_destination in pairs:
         assert actions[path_destination].type is Path
         assert actions[sha_destination].type is pool_tool._sha256_argument
@@ -371,6 +498,28 @@ def test_pool_tool_structurally_accepts_only_the_raw_stage_loader(
     assert "load_asec_pre_clone_checkpoint" not in imported
     assert "load_asec_pre_clone_checkpoint" not in called
     assert "pre_clone_enrichment" not in source
+
+
+def test_checkpoint_root_defaults_alongside_out_and_accepts_override(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run" / "pool.h5"
+    default = pool_tool._output_paths(output)
+
+    assert default.checkpoint_root == output.with_suffix(".checkpoints")
+    assert default.primary_qrf_checkpoint_dir == (
+        output.with_suffix(".checkpoints") / "primary-qrf"
+    )
+
+    explicit_root = tmp_path / "persistent" / "pool-checkpoints"
+    explicit = pool_tool._output_paths(
+        output,
+        checkpoint_root=explicit_root,
+    )
+
+    assert explicit.checkpoint_root == explicit_root
+    assert explicit.primary_qrf_checkpoint_dir == explicit_root / "primary-qrf"
 
 
 def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
@@ -533,6 +682,253 @@ def test_primary_qrf_resume_refuses_a_changed_input_binding(
         )
 
 
+@pytest.mark.parametrize(
+    ("resume_stage", "expected_order"),
+    (
+        ("assembled", ["impute", "derive", "seed", "simulate"]),
+        ("transferred", ["derive", "seed", "simulate"]),
+        ("simulated", []),
+    ),
+)
+def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    resume_stage: str,
+    expected_order: list[str],
+) -> None:
+    pytest.importorskip("h5py")
+    checkpoint_root = tmp_path / "checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    uninterrupted, cold_order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+    )
+    assert cold_order == ["impute", "derive", "seed", "simulate"]
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        stored_metadata = pool_tool.load_frame_checkpoint(
+            cold_store.checkpoint_path(stage)
+        ).metadata
+        assert "agreement_gate" not in stored_metadata
+        assert "simulation_ready" not in stored_metadata
+        assert "agreement" not in stored_metadata
+        assert "agreement" not in stored_metadata["stage_receipts"]
+
+    resume_index = pool_tool.POOL_CHECKPOINT_STAGE_ORDER.index(resume_stage)
+    for deeper_stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER[resume_index + 1 :]:
+        cold_store.checkpoint_path(deeper_stage).unlink()
+        cold_store.checkpoint_manifest_path(deeper_stage).unlink()
+
+    warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    resume = warm_store.load_deepest()
+    assert resume is not None
+    assert resume.stage == resume_stage
+    resumed, warm_order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=warm_store,
+        resume=resume,
+    )
+
+    assert warm_order == expected_order
+    assert resumed.assembly_receipt == uninterrupted.assembly_receipt
+    assert resumed.provenance_counts == uninterrupted.provenance_counts
+    assert resumed.stage_receipts == uninterrupted.stage_receipts
+    assert pool_tool._json_ready(resumed.frame.metadata) == pool_tool._json_ready(
+        uninterrupted.frame.metadata
+    )
+    for entity in uninterrupted.frame.entities:
+        pd.testing.assert_frame_equal(
+            resumed.frame.table(entity),
+            uninterrupted.frame.table(entity),
+            check_dtype=True,
+            check_exact=True,
+        )
+
+    uninterrupted_path = tmp_path / f"{resume_stage}.uninterrupted.h5"
+    resumed_path = tmp_path / f"{resume_stage}.resumed.h5"
+    pool_tool.write_frame_checkpoint(uninterrupted_path, uninterrupted.frame)
+    pool_tool.write_frame_checkpoint(resumed_path, resumed.frame)
+    assert resumed_path.read_bytes() == uninterrupted_path.read_bytes()
+
+    provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    assert provenance["deepest_resumed_stage"] == resume_stage
+    assert provenance["stages"][resume_stage]["source"] == "checkpoint"
+    assert provenance["stages"][resume_stage]["resume_kind"] == "direct"
+    assert provenance["agreement"] == {
+        "source": "always_fresh",
+        "cached": False,
+        "terminal_verdict_persisted": False,
+    }
+
+
+def test_pool_checkpoint_input_sha_mismatch_rebuilds_every_stage(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    checkpoint_root = tmp_path / "checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+    capsys.readouterr()
+
+    changed_store = _checkpoint_fixture_store(
+        pool_tool,
+        checkpoint_root,
+        changed_role="processed_puf",
+    )
+    assert changed_store.load_deepest() is None
+    changed_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    rebuilt, order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=changed_store,
+    )
+
+    assert order == ["impute", "derive", "seed", "simulate"]
+    assert not rebuilt.simulation_ready
+    output = capsys.readouterr().out
+    assert output.count("Ignored stale pool checkpoint") == 3
+    provenance = changed_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    assert provenance["deepest_resumed_stage"] is None
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert provenance["stages"][stage]["source"] == "rebuilt"
+        assert provenance["stages"][stage]["load_status"] == "identity_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("corrupt_stage", "expected_resume", "expected_order"),
+    (
+        (
+            "assembled",
+            None,
+            ["impute", "derive", "seed", "simulate"],
+        ),
+        (
+            "transferred",
+            "assembled",
+            ["impute", "derive", "seed", "simulate"],
+        ),
+        (
+            "simulated",
+            "transferred",
+            ["derive", "seed", "simulate"],
+        ),
+    ),
+)
+def test_corrupt_pool_checkpoint_names_boundary_and_rebuilds(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    corrupt_stage: str,
+    expected_resume: str | None,
+    expected_order: list[str],
+) -> None:
+    checkpoint_root = tmp_path / "checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    baseline, _order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+    )
+    capsys.readouterr()
+
+    corrupt_index = pool_tool.POOL_CHECKPOINT_STAGE_ORDER.index(corrupt_stage)
+    for deeper_stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER[corrupt_index + 1 :]:
+        cold_store.checkpoint_path(deeper_stage).unlink()
+        cold_store.checkpoint_manifest_path(deeper_stage).unlink()
+    cold_store.checkpoint_path(corrupt_stage).write_bytes(b"corrupt checkpoint")
+
+    warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    resume = warm_store.load_deepest()
+    assert (None if resume is None else resume.stage) == expected_resume
+    if resume is None:
+        warm_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    rebuilt, order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=warm_store,
+        resume=resume,
+    )
+
+    assert order == expected_order
+    output = capsys.readouterr().out
+    assert f"Ignored corrupt pool checkpoint '{corrupt_stage}'" in output
+    assert "SHA-256 mismatch" in output
+    for entity in baseline.frame.entities:
+        pd.testing.assert_frame_equal(
+            rebuilt.frame.table(entity),
+            baseline.frame.table(entity),
+            check_dtype=True,
+            check_exact=True,
+        )
+    provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    corrupt_receipt = provenance["stages"][corrupt_stage]
+    assert corrupt_receipt["source"] == "rebuilt"
+    assert corrupt_receipt["load_status"] == "invalid_rebuild"
+    assert corrupt_receipt["invalid_checkpoint"]["reason"] == (
+        "checkpoint_validation_failed"
+    )
+
+
+@pytest.mark.parametrize(
+    ("drift_field", "expected_error"),
+    (
+        ("row_counts", "row_counts differs from its sidecar"),
+        ("frame_schema", "frame_schema differs from its sidecar"),
+    ),
+)
+def test_checkpoint_sidecar_shape_drift_names_failure_and_falls_back(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    drift_field: str,
+    expected_error: str,
+) -> None:
+    checkpoint_root = tmp_path / "checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+    capsys.readouterr()
+
+    cold_store.checkpoint_path("simulated").unlink()
+    cold_store.checkpoint_manifest_path("simulated").unlink()
+    transferred_manifest_path = cold_store.checkpoint_manifest_path("transferred")
+    transferred_manifest = pool_tool._read_json_object(transferred_manifest_path)
+    if drift_field == "row_counts":
+        transferred_manifest["row_counts"]["person"] += 1
+    else:
+        transferred_manifest["frame_schema"]["entities"]["person"][0]["dtype"] = (
+            "corrupt-dtype"
+        )
+    pool_tool._atomic_write_json(transferred_manifest_path, transferred_manifest)
+
+    warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    resume = warm_store.load_deepest()
+
+    assert resume is not None
+    assert resume.stage == "assembled"
+    output = capsys.readouterr().out
+    assert "Ignored corrupt pool checkpoint 'transferred'" in output
+    assert expected_error in output
+    transferred_receipt = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )["stages"]["transferred"]
+    assert transferred_receipt["load_status"] == "invalid_rebuild"
+    assert transferred_receipt["invalid_checkpoint"]["reason"] == (
+        "checkpoint_validation_failed"
+    )
+
+
 def test_synthetic_two_spine_path_reaches_fixed_red_terminal_gate(
     pool_tool: ModuleType,
     tmp_path: Path,
@@ -657,6 +1053,12 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     assert manifest["assembly_receipt"] == result.assembly_receipt
     assert manifest["provenance_counts"] == result.provenance_counts
     assert manifest["stage_receipts"] == result.stage_receipts
+    assert manifest["stage_checkpoints"]["enabled"] is False
+    assert manifest["stage_checkpoints"]["agreement"] == {
+        "source": "always_fresh",
+        "cached": False,
+        "terminal_verdict_persisted": False,
+    }
     assert manifest["agreement_gate"] == expected_gate
     assert diagnostics["agreement_gate"] == expected_gate
     assert diagnostics["simulation_ready"] is False
