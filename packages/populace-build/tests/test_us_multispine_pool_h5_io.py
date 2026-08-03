@@ -160,7 +160,31 @@ def test_ready_pool_loader_requires_explicitly_green_agreement_receipt(
     manifest_path = _write_ready_pool(tmp_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["agreement_gate"]["passed"] = False
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    diagnostics["agreement_gate"]["passed"] = False
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ValueError, match="no passing agreement-gate verdict"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_pool_loader_binds_diagnostics_agreement_verdict(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    diagnostics["agreement_gate"]["gates"]["us_spine_agreement"]["details"] = {
+        "fixture": False
+    }
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="verdict does not match"):
         load_simulation_ready_us_multispine_pool(manifest_path)

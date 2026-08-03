@@ -207,6 +207,19 @@ def load_simulation_ready_us_multispine_pool_manifest(
             f"US multispine pool diagnostics {diagnostics_path} do not match "
             "the ready manifest publication."
         )
+    manifest_agreement_gate = _mapping(
+        manifest.get("agreement_gate"),
+        label=f"US multispine pool manifest {manifest_path}.agreement_gate",
+    )
+    diagnostics_agreement_gate = _mapping(
+        diagnostics.get("agreement_gate"),
+        label=f"US multispine pool diagnostics {diagnostics_path}.agreement_gate",
+    )
+    if diagnostics_agreement_gate != manifest_agreement_gate:
+        raise ValueError(
+            f"US multispine pool diagnostics {diagnostics_path} agreement-gate "
+            "verdict does not match the ready manifest."
+        )
     return manifest
 
 
