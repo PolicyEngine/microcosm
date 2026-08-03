@@ -8086,15 +8086,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     pool_original_household_weights: np.ndarray | None = None
     pool_manifest_payload: dict[str, object] | None = None
     if args.pool_manifest is not None:
-        observed_pool_manifest_sha256 = _sha256(args.pool_manifest)
-        if observed_pool_manifest_sha256 != args.pool_manifest_sha256:
-            raise ValueError(
-                f"Pool manifest SHA-256 mismatch for {args.pool_manifest}: got "
-                f"{observed_pool_manifest_sha256}, expected "
-                f"{args.pool_manifest_sha256}."
-            )
         pool_frame, pool_manifest_payload = load_simulation_ready_us_multispine_pool(
-            args.pool_manifest
+            args.pool_manifest,
+            expected_manifest_sha256=args.pool_manifest_sha256,
         )
         _assert_pool_release_identity(
             args.pool_release_id,

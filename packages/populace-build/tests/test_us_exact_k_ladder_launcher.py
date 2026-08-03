@@ -102,7 +102,7 @@ def test_config_rejects_k_larger_than_manifest_pool(
     monkeypatch.setattr(
         launcher,
         "load_simulation_ready_us_multispine_pool_manifest",
-        lambda _: {
+        lambda _, **_kwargs: {
             "publication_run_id": "fixture-publication",
             "agreement_gate": {"passed": True},
             "provenance_counts": {"household": {"rows": 50_000}},
@@ -116,33 +116,18 @@ def test_config_rejects_k_larger_than_manifest_pool(
         )
 
 
-def test_pool_manifest_sha_pin_is_checked_before_manifest_loading(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pool_manifest_sha_pin_is_checked_on_loaded_bytes(tmp_path: Path) -> None:
     launcher = _launcher_module()
     manifest = tmp_path / "pool.manifest.json"
     manifest.write_text("fixture", encoding="utf-8")
     config = launcher._read_config(
         _write_config(tmp_path, _config_payload(pool_manifest_sha256="a" * 64))
     )
-    loaded = False
-
-    def unexpected_load(_):
-        nonlocal loaded
-        loaded = True
-
-    monkeypatch.setattr(
-        launcher,
-        "load_simulation_ready_us_multispine_pool_manifest",
-        unexpected_load,
-    )
-
     with pytest.raises(ValueError, match="Pool manifest SHA-256 mismatch"):
         launcher._validate_pins_and_resolve_k(
             config=config,
             pool_manifest_path=manifest,
         )
-    assert not loaded
 
 
 def test_n_resolves_to_realized_pool_size_with_valid_pins(
@@ -165,10 +150,15 @@ def test_n_resolves_to_realized_pool_size_with_valid_pins(
         "agreement_gate": {"passed": True},
         "provenance_counts": {"household": {"rows": 8}},
     }
+
+    def fake_load_manifest(_, *, expected_manifest_sha256):
+        assert expected_manifest_sha256 == config.pool_manifest_sha256
+        return validated_manifest
+
     monkeypatch.setattr(
         launcher,
         "load_simulation_ready_us_multispine_pool_manifest",
-        lambda _: validated_manifest,
+        fake_load_manifest,
     )
 
     k, observed_manifest = launcher._validate_pins_and_resolve_k(
@@ -218,7 +208,7 @@ def test_incumbent_and_target_surface_pins_fail_closed(
     monkeypatch.setattr(
         launcher,
         "load_simulation_ready_us_multispine_pool_manifest",
-        lambda _: {
+        lambda _, **_kwargs: {
             "publication_run_id": "fixture-publication",
             "agreement_gate": {"passed": True},
             "provenance_counts": {"household": {"rows": 8}},
@@ -329,7 +319,7 @@ def test_pool_release_id_must_match_authenticated_manifest_identity(
     monkeypatch.setattr(
         launcher,
         "load_simulation_ready_us_multispine_pool_manifest",
-        lambda _: {
+        lambda _, **_kwargs: {
             "publication_run_id": "fixture-publication",
             "agreement_gate": {"passed": True},
             "provenance_counts": {"household": {"rows": 8}},

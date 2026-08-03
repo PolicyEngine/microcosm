@@ -126,11 +126,30 @@ def _write_ready_pool(tmp_path: Path) -> Path:
 
 def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
     manifest_path = _write_ready_pool(tmp_path)
+    expected_manifest_sha256 = _sha256(manifest_path)
+    original_read_bytes = Path.read_bytes
+    manifest_reads = 0
 
-    frame, manifest = load_simulation_ready_us_multispine_pool(manifest_path)
+    def replace_after_pinned_read(path: Path) -> bytes:
+        nonlocal manifest_reads
+        raw = original_read_bytes(path)
+        if path == manifest_path:
+            manifest_reads += 1
+            replacement = json.loads(raw)
+            replacement["publication_run_id"] = "replacement-publication"
+            path.write_text(json.dumps(replacement), encoding="utf-8")
+        return raw
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_pinned_read)
+
+    frame, manifest = load_simulation_ready_us_multispine_pool(
+        manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
 
     weights = frame.weights_for("household")
     assert weights.kind is WeightKind.IMPORTANCE
@@ -138,6 +157,10 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     assert frame.table("person")["nullable_input"].tolist() == [True, None, False]
     assert frame.n("household") == 3
     assert manifest["publication_run_id"] == "fixture-publication"
+    assert manifest_reads == 1
+    assert json.loads(manifest_path.read_text())["publication_run_id"] == (
+        "replacement-publication"
+    )
 
 
 def test_ready_pool_loader_reconciles_manifest_and_h5_household_counts(

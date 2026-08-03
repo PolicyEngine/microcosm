@@ -3798,10 +3798,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
     if terminal_mode == "puf_tail":
-        monkeypatch.setattr(
-            builder,
-            "load_simulation_ready_us_multispine_pool",
-            lambda path: (
+
+        def fake_load_pool(path, *, expected_manifest_sha256):
+            assert path == pool_manifest
+            assert expected_manifest_sha256 == "a" * 64
+            return (
                 FakeFrame(),
                 {
                     "publication_run_id": "fixture-publication",
@@ -3812,7 +3813,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                     },
                     "agreement_diagnostics": {"sha256": "2" * 64},
                 },
-            ),
+            )
+
+        monkeypatch.setattr(
+            builder,
+            "load_simulation_ready_us_multispine_pool",
+            fake_load_pool,
         )
         monkeypatch.setattr(
             builder,

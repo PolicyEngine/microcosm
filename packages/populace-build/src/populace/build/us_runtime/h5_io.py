@@ -89,17 +89,25 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
 
 def load_simulation_ready_us_multispine_pool_manifest(
     path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
 ) -> dict[str, object]:
     """Validate and return one ready manifest bound to its H5 and diagnostics.
 
     The manifest is the readiness authority. A caller cannot treat an H5 as
     ready merely because it exists: the manifest, nested artifact receipts,
     H5 metadata, diagnostics, and file digests must all bind the same
-    publication run.
+    publication run. When ``expected_manifest_sha256`` is supplied, this
+    function hashes and parses one byte buffer so a replacement cannot inherit
+    the authenticated manifest identity.
     """
 
     manifest_path = Path(path)
-    manifest = _read_json_object(manifest_path, label="pool manifest")
+    manifest = _read_json_object(
+        manifest_path,
+        label="pool manifest",
+        expected_sha256=expected_manifest_sha256,
+    )
     if (
         manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
         or manifest.get("schema_version") != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
@@ -225,6 +233,8 @@ def load_simulation_ready_us_multispine_pool_manifest(
 
 def load_simulation_ready_us_multispine_pool(
     path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Load a manifest-bound multispine pool with its importance weights.
 
@@ -242,7 +252,10 @@ def load_simulation_ready_us_multispine_pool(
     """
 
     manifest_path = Path(path)
-    manifest = load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+    manifest = load_simulation_ready_us_multispine_pool_manifest(
+        manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
     agreement_gate = _mapping(
         manifest.get("agreement_gate"),
         label=f"US multispine pool manifest {manifest_path}.agreement_gate",
@@ -545,10 +558,32 @@ def _artifact_metadata(
     return metadata
 
 
-def _read_json_object(path: Path, *, label: str) -> dict[str, object]:
+def _read_json_object(
+    path: Path,
+    *,
+    label: str,
+    expected_sha256: str | None = None,
+) -> dict[str, object]:
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = Path(path).read_bytes()
     except (OSError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} {path} is not readable valid JSON.") from exc
+    if expected_sha256 is not None:
+        if not isinstance(expected_sha256, str) or not _LOWERCASE_SHA256.fullmatch(
+            expected_sha256
+        ):
+            raise ValueError(
+                f"Expected {label} SHA-256 must be 64 lowercase hexadecimal characters."
+            )
+        observed_sha256 = hashlib.sha256(raw).hexdigest()
+        if observed_sha256 != expected_sha256:
+            raise ValueError(
+                f"{label.capitalize()} SHA-256 mismatch for {path}: got "
+                f"{observed_sha256}, expected {expected_sha256}."
+            )
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError) as exc:
         raise ValueError(f"{label} {path} is not readable valid JSON.") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{label} {path} must contain a JSON object.")

@@ -306,14 +306,9 @@ def _validate_pins_and_resolve_k(
     config: LadderReleaseConfig,
     pool_manifest_path: Path,
 ) -> tuple[int, Mapping[str, object]]:
-    observed_manifest_sha256 = _sha256(pool_manifest_path)
-    if observed_manifest_sha256 != config.pool_manifest_sha256:
-        raise ValueError(
-            f"Pool manifest SHA-256 mismatch for {pool_manifest_path}: got "
-            f"{observed_manifest_sha256}, expected {config.pool_manifest_sha256}."
-        )
     pool_manifest = load_simulation_ready_us_multispine_pool_manifest(
-        pool_manifest_path
+        pool_manifest_path,
+        expected_manifest_sha256=config.pool_manifest_sha256,
     )
     fiscal_release._assert_pool_release_identity(
         config.pool_release_id,
