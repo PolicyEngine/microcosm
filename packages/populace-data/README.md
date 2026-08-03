@@ -77,9 +77,10 @@ using PEP 440 specifiers.
 
 Use `latest.json` to discover the current release and its contract file paths;
 use the release id/tag in artifact revisions when loading an immutable release.
-An exact-k ladder candidate published with `--create-tag --no-latest` does not
-update `latest.json` and therefore does not replace the release selected by the
-default `load("us")` resolution. Inspect it through its explicit release id or
-Hub tag until a separate promotion updates `latest.json`. The exact-k build
-also runs with `--no-staging`, so it does not create or update a staging
-pointer.
+An exact-k ladder candidate published with
+`--create-tag --no-latest --tag-only` changes neither the main branch nor
+`latest.json`, so it does not replace the release selected by the default
+`load("us")` resolution or its canonical root artifacts. Inspect it through its
+explicit release id or Hub tag until a separate promotion updates `latest.json`.
+The exact-k build also runs with `--no-staging`, so it does not create or update
+a staging pointer.

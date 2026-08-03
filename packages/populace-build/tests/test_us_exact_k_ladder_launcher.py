@@ -291,7 +291,11 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     assert result["pointer_update"] is False
     assert result["pointer_updates"]["production"]["pointer_update"] is False
     assert result["pointer_updates"]["staging"]["pointer_update"] is False
-    assert result["publish_argv"][-2:] == ["--create-tag", "--no-latest"]
+    assert result["publish_argv"][-3:] == [
+        "--create-tag",
+        "--no-latest",
+        "--tag-only",
+    ]
     assert "--artifact-root" in result["publish_argv"]
     assert "--repo-id policyengine/populace-us" in result["publish_command"]
     assert json.loads((tmp_path / "out" / "package_result.json").read_text()) == (

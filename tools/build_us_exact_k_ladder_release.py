@@ -494,6 +494,7 @@ def launch(
         build["artifact_root"],
         "--create-tag",
         "--no-latest",
+        "--tag-only",
     ]
     result: dict[str, object] = {
         **build,

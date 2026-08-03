@@ -119,13 +119,14 @@ chosen from the repo id.
 
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
-recorded in `package_result.json`. That command includes the `--create-tag` and
-`--no-latest` flags: it uploads the immutable release and creates its tag without
-updating production `latest.json`. The launcher also forces `--no-staging`, so
-the build writes neither a production nor a staging pointer. The candidate is
-therefore available only by its explicit release id or tag until a separate
-promotion updates `latest.json`. Because Slack alerts are coupled to that
-production pointer update, tag-only publication sends no release alert.
+recorded in `package_result.json`. That command includes `--create-tag`,
+`--no-latest`, and `--tag-only`: it uploads the immutable release and creates its
+tag without committing candidate artifacts or release copies to the production
+main branch. The launcher also forces `--no-staging`, so the build writes neither
+a production nor a staging pointer. The candidate is therefore available only
+by its explicit release id or tag until a separate promotion updates
+`latest.json`. Because Slack alerts are coupled to that production pointer
+update, tag-only publication sends no release alert.
 
 The alert is a **no-op unless the channel's incoming-webhook URL is set**, so
 configure it once on the build machine:
