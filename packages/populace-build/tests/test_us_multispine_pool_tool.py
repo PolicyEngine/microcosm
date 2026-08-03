@@ -522,6 +522,50 @@ def test_checkpoint_root_defaults_alongside_out_and_accepts_override(
     assert explicit.primary_qrf_checkpoint_dir == explicit_root / "primary-qrf"
 
 
+def test_checkpoint_root_allows_safe_input_colocation_on_persistent_volume(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    checkpoint_root = tmp_path / "persistent-volume"
+    outputs = pool_tool._output_paths(
+        tmp_path / "published" / "pool.h5",
+        checkpoint_root=checkpoint_root,
+    )
+
+    pool_tool._validate_checkpoint_path_layout(
+        outputs,
+        source_paths={checkpoint_root / "inputs" / "asec.h5"},
+    )
+
+
+@pytest.mark.parametrize(
+    "outputs",
+    (
+        lambda pool_tool, tmp_path: pool_tool._output_paths(
+            tmp_path / "pool.h5",
+            checkpoint_root=tmp_path / "pool.h5",
+        ),
+        lambda pool_tool, tmp_path: pool_tool._output_paths(
+            tmp_path / "checkpoints" / "assembled.checkpoint.h5",
+            checkpoint_root=tmp_path / "checkpoints",
+        ),
+    ),
+)
+def test_checkpoint_root_rejects_publication_file_collisions(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    outputs: Callable[[ModuleType, Path], object],
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="checkpoint paths collide with publication files",
+    ):
+        pool_tool._validate_checkpoint_path_layout(
+            outputs(pool_tool, tmp_path),
+            source_paths=set(),
+        )
+
+
 def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
     pool_tool: ModuleType,
 ) -> None:
@@ -697,6 +741,7 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     expected_order: list[str],
 ) -> None:
     pytest.importorskip("h5py")
+    pytest.importorskip("tables")
     checkpoint_root = tmp_path / "checkpoints"
     cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
     cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
@@ -746,11 +791,50 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
             check_exact=True,
         )
 
-    uninterrupted_path = tmp_path / f"{resume_stage}.uninterrupted.h5"
-    resumed_path = tmp_path / f"{resume_stage}.resumed.h5"
-    pool_tool.write_frame_checkpoint(uninterrupted_path, uninterrupted.frame)
-    pool_tool.write_frame_checkpoint(resumed_path, resumed.frame)
-    assert resumed_path.read_bytes() == uninterrupted_path.read_bytes()
+    uninterrupted_pool_path = tmp_path / f"{resume_stage}.uninterrupted.pool.h5"
+    resumed_pool_path = tmp_path / f"{resume_stage}.resumed.pool.h5"
+    for path, result in (
+        (uninterrupted_pool_path, uninterrupted),
+        (resumed_pool_path, resumed),
+    ):
+        pool_tool.write_nullable_us_h5(
+            result.frame,
+            path,
+            period=pool_tool.POOL_TIME_PERIOD,
+            artifact_kind=pool_tool.POOL_H5_ARTIFACT_KIND,
+            publication_run_id="fixture-publication",
+        )
+    with (
+        pd.HDFStore(uninterrupted_pool_path, mode="r") as uninterrupted_store,
+        pd.HDFStore(resumed_pool_path, mode="r") as resumed_store,
+    ):
+        assert resumed_store.keys() == uninterrupted_store.keys()
+        for key in uninterrupted_store.keys():
+            expected = uninterrupted_store[key]
+            observed = resumed_store[key]
+            if isinstance(expected, pd.DataFrame):
+                pd.testing.assert_frame_equal(
+                    observed,
+                    expected,
+                    check_dtype=True,
+                    check_exact=True,
+                )
+            else:
+                pd.testing.assert_series_equal(
+                    observed,
+                    expected,
+                    check_dtype=True,
+                    check_exact=True,
+                )
+
+    # PyTables' published container carries nondeterministic HDF metadata. The
+    # deterministic Frame serializer gives the literal byte-level assertion
+    # over the exact input-pool state after the production writer is checked.
+    uninterrupted_canonical = tmp_path / f"{resume_stage}.uninterrupted.canonical.h5"
+    resumed_canonical = tmp_path / f"{resume_stage}.resumed.canonical.h5"
+    pool_tool.write_frame_checkpoint(uninterrupted_canonical, uninterrupted.frame)
+    pool_tool.write_frame_checkpoint(resumed_canonical, resumed.frame)
+    assert resumed_canonical.read_bytes() == uninterrupted_canonical.read_bytes()
 
     provenance = warm_store.provenance(
         primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
@@ -758,6 +842,17 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     assert provenance["deepest_resumed_stage"] == resume_stage
     assert provenance["stages"][resume_stage]["source"] == "checkpoint"
     assert provenance["stages"][resume_stage]["resume_kind"] == "direct"
+    for covered_stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER[:resume_index]:
+        covered = provenance["stages"][covered_stage]
+        assert covered["source"] == "checkpoint"
+        assert covered["resume_kind"] == "covered_by_deeper_checkpoint"
+        assert covered["source_checkpoint_stage"] == resume_stage
+        assert covered["path"] == str(
+            warm_store.checkpoint_path(resume_stage).resolve()
+        )
+        assert covered["nominal_stage_path"] == str(
+            warm_store.checkpoint_path(covered_stage).resolve()
+        )
     assert provenance["agreement"] == {
         "source": "always_fresh",
         "cached": False,
@@ -927,6 +1022,44 @@ def test_checkpoint_sidecar_shape_drift_names_failure_and_falls_back(
     assert transferred_receipt["invalid_checkpoint"]["reason"] == (
         "checkpoint_validation_failed"
     )
+
+
+def test_invalid_deep_checkpoint_receipts_do_not_poison_valid_fallback(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    checkpoint_root = tmp_path / "checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+    capsys.readouterr()
+
+    simulated_path = cold_store.checkpoint_path("simulated")
+    simulated = pool_tool.load_frame_checkpoint(simulated_path)
+    poisoned_metadata = dict(simulated.metadata)
+    poisoned_metadata["input_receipts"] = {"poisoned": True}
+    poisoned_metadata["simulation_output"] = None
+    pool_tool.write_frame_checkpoint(
+        simulated_path,
+        simulated.frame,
+        metadata=poisoned_metadata,
+    )
+    simulated_manifest_path = cold_store.checkpoint_manifest_path("simulated")
+    simulated_manifest = pool_tool._read_json_object(simulated_manifest_path)
+    simulated_manifest["checkpoint"]["sha256"] = pool_tool._file_sha256(simulated_path)
+    simulated_manifest["checkpoint"]["size_bytes"] = simulated_path.stat().st_size
+    pool_tool._atomic_write_json(simulated_manifest_path, simulated_manifest)
+
+    warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    resume = warm_store.load_deepest()
+
+    assert resume is not None
+    assert resume.stage == "transferred"
+    assert warm_store.input_receipts == _checkpoint_fixture_input_receipts()
+    output = capsys.readouterr().out
+    assert "Ignored corrupt pool checkpoint 'simulated'" in output
+    assert "invalid SSI output binding" in output
 
 
 def test_synthetic_two_spine_path_reaches_fixed_red_terminal_gate(

@@ -148,12 +148,25 @@ def write_frame_checkpoint(
     return output_path
 
 
-def load_frame_checkpoint(path: str | Path) -> LoadedFrameCheckpoint:
-    """Load a checkpoint and reconstruct its schema, data, and audit metadata."""
+def load_frame_checkpoint(
+    path: str | Path,
+    *,
+    frame_metadata: Mapping[str, object] | None = None,
+) -> LoadedFrameCheckpoint:
+    """Load a checkpoint and reconstruct its schema, data, and audit metadata.
+
+    ``frame_metadata`` lets a caller restore separately bound
+    :class:`~populace.frame.Frame` metadata during the loader's one Frame
+    construction. This avoids a second full-table copy for large checkpoints.
+    The caller remains responsible for validating that metadata against its
+    own artifact identity or embedded external metadata.
+    """
 
     input_path = Path(path)
     if not input_path.is_file():
         raise FileNotFoundError(f"Frame checkpoint not found: {input_path}.")
+    if frame_metadata is not None and not isinstance(frame_metadata, Mapping):
+        raise TypeError("frame_metadata must be a mapping when provided.")
 
     h5py = _h5py()
     with h5py.File(input_path, mode="r") as h5:
@@ -259,19 +272,26 @@ def load_frame_checkpoint(path: str | Path) -> LoadedFrameCheckpoint:
         ).set_axis(tables[schema.person_entity].index)
         strata.name = "stratum"
 
-    mass_log = _mass_log_from_metadata(stored_metadata, input_path)
-    try:
-        frame = Frame(tables, schema, weights, strata, mass_log=mass_log)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Frame checkpoint {input_path} violates Frame invariants: {exc}"
-        ) from exc
-
     external = stored_metadata.get("external_metadata", {})
     if not isinstance(external, dict):
         raise ValueError(
             f"Frame checkpoint {input_path} external_metadata must be an object."
         )
+    mass_log = _mass_log_from_metadata(stored_metadata, input_path)
+    try:
+        frame = Frame(
+            tables,
+            schema,
+            weights,
+            strata,
+            mass_log=mass_log,
+            metadata=frame_metadata,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Frame checkpoint {input_path} violates Frame invariants: {exc}"
+        ) from exc
+
     return LoadedFrameCheckpoint(frame=frame, metadata=dict(external))
 
 

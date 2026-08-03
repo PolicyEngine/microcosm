@@ -206,6 +206,23 @@ def test_frame_checkpoint_round_trip_is_byte_identical(tmp_path: Path) -> None:
     )
 
 
+def test_frame_checkpoint_restores_caller_bound_frame_metadata_without_rewrite(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "metadata.h5"
+    frame_metadata = {
+        "assembly": {"channels": ["asec", "acs"]},
+        "checkpoint_identity": "a" * 64,
+    }
+    write_frame_checkpoint(path, _checkpoint_frame(), metadata={"stage": "assembled"})
+
+    loaded = load_frame_checkpoint(path, frame_metadata=frame_metadata)
+
+    assert loaded.metadata == {"stage": "assembled"}
+    assert loaded.frame.metadata["checkpoint_identity"] == "a" * 64
+    assert tuple(loaded.frame.metadata["assembly"]["channels"]) == ("asec", "acs")
+
+
 def test_frame_checkpoint_preserves_range_indexes_and_column_axis_name(
     tmp_path: Path,
 ) -> None:

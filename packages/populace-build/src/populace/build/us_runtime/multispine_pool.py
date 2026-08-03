@@ -1957,8 +1957,8 @@ def _emit_pool_checkpoint(
 
 
 def run_multispine_pool_path(
-    asec: Frame,
-    acs: Frame,
+    asec: Frame | None,
+    acs: Frame | None,
     *,
     prepare_clone: PoolOperator | None = None,
     impute: PoolOperator,
@@ -2005,6 +2005,8 @@ def run_multispine_pool_path(
 
     resume_stage: str | None
     if resume is None:
+        if not isinstance(asec, Frame) or not isinstance(acs, Frame):
+            raise TypeError("Fresh multispine pool builds require ASEC and ACS Frames.")
         assembled = assemble_spines(
             {"asec": asec, "acs": acs},
             household_mass_shares=POOL_HOUSEHOLD_MASS_SHARES,

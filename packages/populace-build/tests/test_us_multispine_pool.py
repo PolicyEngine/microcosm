@@ -587,6 +587,19 @@ def test_pool_checkpoint_callbacks_capture_each_fixed_boundary() -> None:
         assert checkpoint.assembly_receipt == result.assembly_receipt
 
 
+def test_fresh_pool_path_rejects_missing_source_frames() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Fresh multispine pool builds require ASEC and ACS Frames",
+    ):
+        run_multispine_pool_path(
+            None,
+            None,
+            **_fixture_pool_operators([]),
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+        )
+
+
 @pytest.mark.parametrize(
     ("resume_stage", "expected_order", "expected_checkpoints"),
     (

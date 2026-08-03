@@ -394,19 +394,14 @@ def _verify_inputs(
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
+    _validate_checkpoint_path_layout(outputs, source_paths=source_paths)
+
     output_paths = {
         outputs.pool_h5.resolve(),
         outputs.manifest.resolve(),
         outputs.agreement_diagnostics.resolve(),
-        outputs.checkpoint_root.resolve(),
-        outputs.primary_qrf_checkpoint_dir.resolve(),
     }
-    checkpoint_root = outputs.checkpoint_root.resolve()
-    collisions = sorted(
-        str(path)
-        for path in source_paths
-        if path in output_paths or path.is_relative_to(checkpoint_root)
-    )
+    collisions = sorted(str(path) for path in source_paths if path in output_paths)
     if collisions:
         raise ValueError(f"Pool outputs must not overwrite inputs: {collisions}.")
 
@@ -452,6 +447,54 @@ def _verify_inputs(
         ),
     }
     return verified, acs_source_manifest
+
+
+def _validate_checkpoint_path_layout(
+    outputs: PoolBuildOutputs,
+    *,
+    source_paths: set[Path],
+) -> None:
+    """Reject only paths the checkpoint store can actually overwrite."""
+
+    checkpoint_root = outputs.checkpoint_root.resolve()
+    primary_qrf_root = (checkpoint_root / "primary-qrf").resolve()
+    stage_files = {
+        (checkpoint_root / filename).resolve()
+        for filename in _POOL_STAGE_CHECKPOINT_FILENAMES.values()
+    }
+    stage_files.update(
+        path.with_suffix(".manifest.json") for path in tuple(stage_files)
+    )
+    publication_paths = {
+        outputs.pool_h5.resolve(),
+        outputs.manifest.resolve(),
+        outputs.agreement_diagnostics.resolve(),
+    }
+
+    def conflicts_with_checkpoint_store(path: Path) -> bool:
+        if path == checkpoint_root or checkpoint_root.is_relative_to(path):
+            return True
+        if path == primary_qrf_root or path.is_relative_to(primary_qrf_root):
+            return True
+        return any(
+            path == target or path.is_relative_to(target) for target in stage_files
+        )
+
+    publication_collisions = sorted(
+        str(path) for path in publication_paths if conflicts_with_checkpoint_store(path)
+    )
+    if publication_collisions:
+        raise ValueError(
+            "Pool checkpoint paths collide with publication files: "
+            f"{publication_collisions}."
+        )
+    source_collisions = sorted(
+        str(path) for path in source_paths if conflicts_with_checkpoint_store(path)
+    )
+    if source_collisions:
+        raise ValueError(
+            f"Pool checkpoint paths must not overwrite inputs: {source_collisions}."
+        )
 
 
 def _load_inputs(
@@ -803,6 +846,7 @@ class _PoolStageCheckpointStore:
                 },
                 "row_counts": _frame_row_counts(stored_frame),
                 "frame_schema": _frame_schema_payload(stored_frame),
+                "frame_metadata": metadata["frame_metadata"],
             },
         )
         write_seconds = time.perf_counter() - started_at
@@ -836,6 +880,10 @@ class _PoolStageCheckpointStore:
                 if resumed_index is not None and stage_index <= resumed_index
                 else "rebuilt"
             )
+            covered_by_deeper = source == "checkpoint" and stage != self._resumed_from
+            artifact_stage = self._resumed_from if covered_by_deeper else stage
+            if artifact_stage is None:  # pragma: no cover - source proves non-null
+                raise AssertionError("Covered checkpoint stage has no source stage.")
             record: dict[str, object] = {
                 "source": source,
                 "resume_kind": (
@@ -850,8 +898,10 @@ class _PoolStageCheckpointStore:
                 "identity_sha256": _pool_checkpoint_identity_sha256(identity),
                 "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
                 "materializer_version": (POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION),
-                "path": str(self.checkpoint_path(stage).resolve()),
-                "manifest_path": str(self.checkpoint_manifest_path(stage).resolve()),
+                "path": str(self.checkpoint_path(artifact_stage).resolve()),
+                "manifest_path": str(
+                    self.checkpoint_manifest_path(artifact_stage).resolve()
+                ),
                 **self._attempts[stage],
             }
             if stage in self._writes:
@@ -864,10 +914,21 @@ class _PoolStageCheckpointStore:
                         if key in {"checkpoint_sha256", "size_bytes"}
                     }
                 )
-            if source == "checkpoint" and stage != self._resumed_from:
+            if covered_by_deeper:
                 record["source_checkpoint_stage"] = self._resumed_from
-                record["source_checkpoint_path"] = str(
-                    self.checkpoint_path(self._resumed_from).resolve()
+                record["source_checkpoint_identity_sha256"] = (
+                    _pool_checkpoint_identity_sha256(
+                        _pool_checkpoint_stage_identity(
+                            self._base_identity,
+                            artifact_stage,
+                        )
+                    )
+                )
+                record["nominal_stage_path"] = str(
+                    self.checkpoint_path(stage).resolve()
+                )
+                record["nominal_stage_manifest_path"] = str(
+                    self.checkpoint_manifest_path(stage).resolve()
                 )
             stages[stage] = record
         return {
@@ -974,7 +1035,15 @@ class _PoolStageCheckpointStore:
                     f"{path.stat().st_size}, expected {expected_size!r}"
                 )
 
-            loaded = load_frame_checkpoint(path)
+            sidecar_frame_metadata = manifest.get("frame_metadata")
+            if not isinstance(sidecar_frame_metadata, Mapping):
+                raise ValueError(
+                    f"{stage} checkpoint frame_metadata sidecar must be an object"
+                )
+            loaded = load_frame_checkpoint(
+                path,
+                frame_metadata=sidecar_frame_metadata,
+            )
             metadata = loaded.metadata
             _validate_checkpoint_metadata(
                 metadata,
@@ -982,7 +1051,7 @@ class _PoolStageCheckpointStore:
                 expected_identity=expected_identity,
                 expected_identity_sha256=expected_identity_sha256,
             )
-            for key in ("row_counts", "frame_schema"):
+            for key in ("row_counts", "frame_schema", "frame_metadata"):
                 if metadata.get(key) != manifest.get(key):
                     raise ValueError(
                         f"{stage} checkpoint {key} differs from its sidecar"
@@ -990,7 +1059,7 @@ class _PoolStageCheckpointStore:
             frame_metadata = metadata.get("frame_metadata")
             if not isinstance(frame_metadata, Mapping):
                 raise ValueError(f"{stage} checkpoint frame_metadata must be an object")
-            frame = _restore_frame_metadata(loaded.frame, frame_metadata)
+            frame = loaded.frame
             _validate_checkpoint_frame(
                 frame,
                 stage=stage,
@@ -1015,8 +1084,6 @@ class _PoolStageCheckpointStore:
             if not isinstance(input_receipts, Mapping):
                 raise ValueError(f"{stage} checkpoint input_receipts must be an object")
             _validate_checkpoint_receipt_prefix(stage, stage_receipts)
-            self.bind_input_receipts(input_receipts)
-
             persistent_frame = frame
             simulation_frame: Frame | None = None
             if stage == "simulated":
@@ -1032,18 +1099,20 @@ class _PoolStageCheckpointStore:
                 simulation_frame = frame
                 persistent_frame = _without_simulation_output(frame)
 
-            self._attempts[stage] = {
-                "load_status": "resumed",
-                "checkpoint_sha256": actual_file_sha256,
-                "size_bytes": path.stat().st_size,
-            }
-            return MultispinePoolCheckpoint(
+            checkpoint = MultispinePoolCheckpoint(
                 stage=stage,
                 frame=persistent_frame,
                 assembly_receipt=dict(assembly_receipt),
                 stage_receipts=dict(stage_receipts),
                 simulation_frame=simulation_frame,
             )
+            self.bind_input_receipts(input_receipts)
+            self._attempts[stage] = {
+                "load_status": "resumed",
+                "checkpoint_sha256": actual_file_sha256,
+                "size_bytes": path.stat().st_size,
+            }
+            return checkpoint
         except Exception as error:  # corrupted local artifacts are rebuildable
             return self._invalid(
                 stage,
@@ -1161,22 +1230,6 @@ def _validate_checkpoint_frame(
     validate_assembly_provenance(
         frame,
         boundary=f"pool {stage} checkpoint load",
-    )
-
-
-def _restore_frame_metadata(
-    frame: Frame,
-    metadata: Mapping[str, object],
-) -> Frame:
-    tables = {entity: frame.table(entity) for entity in frame.entities}
-    tables.update({link: frame.link(link) for link in frame.links})
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=dict(metadata),
     )
 
 
