@@ -11,8 +11,9 @@ for the US pipeline, in the order that avoids the known failure modes.
 
 Before minting anything, apply the rule (doctrine, Max 2026-08-02):
 
-**We may not calibrate against tax-benefit quantities measured in a survey,
-or anything derived from such.** The four quadrants:
+**We may not calibrate against tax-benefit quantities from a survey —
+reported or computed, any of them — or anything derived from such.** The
+four quadrants:
 
 | | administrative source | survey source |
 |---|---|---|

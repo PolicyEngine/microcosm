@@ -235,8 +235,8 @@ risks, not footnotes:
   variables the objective never saw — otherwise "passes calibration" launders
   into "is correct."
 - **Survey-measured tax-benefit quantities are permanent holdouts.** The
-  rule: never calibrate against tax-benefit quantities measured in a
-  survey, or anything derived from such. Tax-benefit quantities from
+  rule: never calibrate against ANY tax-benefit quantity from a survey —
+  reported or computed — or anything derived from such. Tax-benefit quantities from
   administrative data are targets (SOI, FNS, SSA, ACF); raw survey
   quantities are targets (ACS population/structure, income margins); but
   survey-measured program totals (total SNAP from the CPS) and everything
