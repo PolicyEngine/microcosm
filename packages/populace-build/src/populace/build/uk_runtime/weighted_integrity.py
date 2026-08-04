@@ -74,6 +74,32 @@ reintroduces the US constants by default:
   Both thresholds must come from a staged candidate, whose licensed UKDS
   inputs (SPI donor SN 9422, the HMRC surface, and a raw FRS directory) are
   the remaining blocker.
+
+The comparison production actually runs — the shipped release against the
+next shipping of the same kind, the US ``_export_input_mass_gate`` pairing
+whose reference #327 adjudicated to a certified release — has a measured
+baseline. The only consecutive certified UK pair
+(``populace-uk-2023-72aeefc-20260611``, sha ``f489b7ef…``, against
+``…dd68c73-4aa4b14-20260619T023711Z``, sha ``f17306cc…``; both verified
+before reading) shows:
+
+* **The incident class this gate exists for passed cleanly.** Zero columns
+  dropped, zero columns zeroed across the shipping; four columns were added
+  (reported, never failing). A #278-style silent loss between certified
+  releases would have failed at *any* tolerance, with no threshold judgment
+  involved.
+* **A drift tolerance cannot be tight yet.** The 143 shared nonzero columns
+  moved with median |drift| 10.52% and maximum +2,973.71%
+  (``person.adult_ema``), dominated by intentional reported-benefit
+  repopulation. Any tolerance between 5% and 50% would have failed 22–89
+  columns of a reviewed, correct shipping. The no-headroom boundary for the
+  release arm is therefore the pair's exact maximum, ``29.737060`` — wide
+  enough to pass every certified intentional movement, and a hard fence
+  against anything larger, while the real teeth (zero/absence) are
+  tolerance-independent. As consecutive same-code shippings stabilise
+  toward calibration-scale drift, the boundary ratchets *down* in reviewed
+  steps, never up, re-measured from each newly certified pair with the
+  measurement tooling.
 """
 
 from __future__ import annotations
