@@ -508,7 +508,10 @@ def _write_target_checkpoint(
                 track_times=False,
             )
             h5.flush()
+        with temporary.open("rb") as stream:
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
+        _fsync_parent_directory(path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -740,7 +743,21 @@ def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary_path, path)
+        _fsync_parent_directory(path)
         temporary_path = None
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Persist a completed atomic rename in its containing directory."""
+
+    # O_DIRECTORY is not universal. A read-only directory descriptor is the
+    # supported POSIX fallback; failures to open or fsync still propagate.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

@@ -23,7 +23,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import import_module
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -39,6 +39,7 @@ from populace.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
 )
+from populace.fit import QRFChainState
 from populace.frame import EntitySchema, Frame, Weights
 
 QRF: Any | None = None
@@ -53,8 +54,11 @@ __all__ = [
     "ACS_PERSON_TRANSFER_PREDICTORS",
     "ASEC_PUF_DONOR_SPINE",
     "AcsImputedInput",
+    "AcsTransferBankPatternStep",
     "AcsTransferPattern",
     "AcsTransferResult",
+    "AcsTransferTargetBank",
+    "AcsTransferTargetCheckpoint",
     "TargetFamilies",
     "acs_transfer_donor_requirements",
     "assert_acs_transfer_targets_are_input_leaves",
@@ -368,6 +372,69 @@ class AcsTransferResult:
 
 
 @dataclass(frozen=True)
+class AcsTransferBankPatternStep:
+    """One availability pattern's state transition for a banked target."""
+
+    pattern: str
+    state_before: QRFChainState
+    state_after: QRFChainState
+
+
+@dataclass(frozen=True)
+class AcsTransferTargetCheckpoint:
+    """Raw draws and chain states for one ordered ACS model target."""
+
+    target_index: int
+    total_targets: int
+    entity: str
+    family: str
+    family_targets: tuple[str, ...]
+    model_targets: tuple[str, ...]
+    model_target: str
+    exported_targets: tuple[str, ...]
+    raw_draw: np.ndarray
+    pattern_steps: tuple[AcsTransferBankPatternStep, ...]
+
+    def __post_init__(self) -> None:
+        raw_draw = np.asarray(self.raw_draw)
+        if raw_draw.ndim != 1 or raw_draw.dtype != np.dtype(np.float64):
+            raise ValueError(
+                "ACS transfer target checkpoints require a one-dimensional "
+                "float64 raw draw."
+            )
+        raw_draw = np.ascontiguousarray(raw_draw)
+        raw_draw.setflags(write=False)
+        object.__setattr__(self, "raw_draw", raw_draw)
+
+
+class AcsTransferTargetBank(Protocol):
+    """Durable target store consumed by the checkpointed ACS transfer path."""
+
+    def load_target(
+        self,
+        *,
+        target_index: int,
+        total_targets: int,
+        entity: str,
+        family: str,
+        family_targets: tuple[str, ...],
+        model_targets: tuple[str, ...],
+        model_target: str,
+        exported_targets: tuple[str, ...],
+        recipient_rows: int,
+        expected_states: Mapping[str, QRFChainState],
+    ) -> AcsTransferTargetCheckpoint | None:
+        """Load one valid target or return ``None`` so it is rebuilt."""
+
+        ...
+
+    def write_target(self, checkpoint: AcsTransferTargetCheckpoint) -> None:
+        """Atomically persist one completed target."""
+
+        ...
+
+
+@dataclass(frozen=True)
 class _FeatureSurface:
     donor: pd.DataFrame
     recipient: pd.DataFrame
@@ -384,6 +451,13 @@ class _FamilyFit:
     weight_kind: str
     family_seed: int
     target_encodings: Mapping[str, _TargetEncoding]
+
+
+@dataclass(frozen=True)
+class _BankPatternContext:
+    pattern: AcsTransferPattern
+    recipient_positions: np.ndarray
+    donor_mask: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -726,6 +800,7 @@ def transfer_acs_inputs(
     seed: int = 0,
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -746,6 +821,12 @@ def transfer_acs_inputs(
     determine fit eligibility. Pass ``None`` only to deliberately fit every
     donor row. The resolved role, patterns, seeds, row counts, and weight kind
     are recorded outside the returned frame.
+
+    When ``target_bank`` is provided, every availability-pattern QRF uses the
+    target-at-a-time chain API. Raw draws and advanced RNG states are banked
+    after each ordered model target, so a retry can continue without changing
+    the monolithic chained-QRF result. The ordinary in-memory fit remains the
+    default for library callers that do not request durable banking.
     """
 
     _validate_frames(recipient, donor)
@@ -796,6 +877,12 @@ def transfer_acs_inputs(
     provenance: list[AcsImputedInput] = []
     fit_records: list[FitWeightRecord] = []
     imputed_masks: dict[tuple[str, str], np.ndarray] = {}
+    ordered_bank_targets = [
+        (entity, family, model_target)
+        for entity, family, targets in requested
+        for model_target in _model_target_names(targets)
+    ]
+    bank_target_indexes = {key: index for index, key in enumerate(ordered_bank_targets)}
 
     for entity, family, targets in active:
         recipient_table = recipient.table(entity)
@@ -807,16 +894,34 @@ def transfer_acs_inputs(
             )
             for target in targets
         }
-        fitted = _fit_family_patterns(
-            fit_donor,
-            recipient,
-            entity=entity,
-            family=family,
-            targets=targets,
-            target_missing=target_missing,
-            seed=seed,
-            n_estimators=n_estimators,
-        )
+        if target_bank is None:
+            fitted = _fit_family_patterns(
+                fit_donor,
+                recipient,
+                entity=entity,
+                family=family,
+                targets=targets,
+                target_missing=target_missing,
+                seed=seed,
+                n_estimators=n_estimators,
+            )
+        else:
+            fitted = _fit_family_patterns_banked(
+                fit_donor,
+                recipient,
+                entity=entity,
+                family=family,
+                targets=targets,
+                target_missing=target_missing,
+                seed=seed,
+                n_estimators=n_estimators,
+                target_bank=target_bank,
+                target_indexes={
+                    model_target: bank_target_indexes[(entity, family, model_target)]
+                    for model_target in _model_target_names(targets)
+                },
+                total_targets=len(ordered_bank_targets),
+            )
         for target in targets:
             predicted = _prediction_values(
                 fitted.predictions[target],
@@ -995,6 +1100,23 @@ def _apply_post_transfer_structure(
                 break
 
 
+def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:
+    """Return the exact chained-QRF target order for exported leaves."""
+
+    requested = set(targets)
+    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
+    model_targets: list[str] = []
+    joint_added = False
+    for target in targets:
+        if target in immigration_pair and immigration_pair.issubset(requested):
+            if not joint_added:
+                model_targets.append(_IMMIGRATION_STATUS_MODEL_TARGET)
+                joint_added = True
+            continue
+        model_targets.append(target)
+    return tuple(model_targets)
+
+
 def _fit_family_patterns(
     donor: Frame,
     recipient: Frame,
@@ -1019,9 +1141,7 @@ def _fit_family_patterns(
         targets=targets,
         complete=target_complete,
     )
-    model_targets = tuple(
-        dict.fromkeys(encoding.model_target for encoding in target_encodings.values())
-    )
+    model_targets = _model_target_names(targets)
     surface = _transfer_feature_surface(
         donor,
         recipient,
@@ -1159,6 +1279,387 @@ def _fit_family_patterns(
         family_seed=family_seed,
         target_encodings=target_encodings,
     )
+
+
+def _fit_family_patterns_banked(
+    donor: Frame,
+    recipient: Frame,
+    *,
+    entity: str,
+    family: str,
+    targets: tuple[str, ...],
+    target_missing: Mapping[str, np.ndarray],
+    seed: int,
+    n_estimators: int,
+    target_bank: AcsTransferTargetBank,
+    target_indexes: Mapping[str, int],
+    total_targets: int,
+) -> _FamilyFit:
+    """Fit one family targetwise, resuming exact raw chained draws."""
+
+    _validate_donor_targets(donor, entity=entity, targets=targets)
+    donor_table = donor.table(entity)
+    target_complete = _complete_target_mask(donor_table, targets=targets)
+    if not target_complete.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            f"donor rows complete for every target {list(targets)}."
+        )
+    target_encodings = _complete_case_target_encodings(
+        donor_table,
+        targets=targets,
+        complete=target_complete,
+    )
+    model_targets = _model_target_names(targets)
+    encoded_model_targets = tuple(
+        dict.fromkeys(encoding.model_target for encoding in target_encodings.values())
+    )
+    if model_targets != encoded_model_targets:  # pragma: no cover - codec invariant
+        raise AssertionError(
+            "ACS transfer model-target ordering changed during encode."
+        )
+
+    surface = _transfer_feature_surface(
+        donor,
+        recipient,
+        entity=entity,
+        targets=targets,
+    )
+    overlap = sorted(set(surface.required).intersection(targets))
+    if overlap:
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has target(s) "
+            f"that are required predictors: {overlap}."
+        )
+    needs_prediction = np.logical_or.reduce(
+        [np.asarray(target_missing[target], dtype=bool) for target in targets]
+    )
+    eligible = (
+        _complete_predictor_mask(
+            surface.recipient,
+            predictors=surface.required,
+        )
+        & needs_prediction
+    )
+    if not eligible.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            f"recipient rows with required predictors {list(surface.required)}."
+        )
+
+    contexts: list[_BankPatternContext] = []
+    states: dict[str, QRFChainState] = {}
+    raw_priors: dict[str, pd.DataFrame] = {}
+    pattern_records: list[AcsTransferPattern] = []
+    fit_records: list[FitWeightRecord] = []
+    for position, (observed_optional, recipient_positions) in enumerate(
+        _availability_patterns(surface, eligible=eligible)
+    ):
+        predictors = (*surface.required, *observed_optional)
+        donor_mask = (
+            _complete_predictor_mask(surface.donor, predictors=predictors)
+            & target_complete
+        )
+        donor_rows = int(donor_mask.sum())
+        if donor_rows == 0:
+            raise ValueError(
+                f"ACS transfer family {family!r} on entity {entity!r} has no "
+                f"donor rows finite for availability pattern "
+                f"{list(observed_optional)} and predictors {list(predictors)}."
+            )
+        pattern_name = _pattern_name(position, observed_optional)
+        pattern_seed = _pattern_seed(
+            seed,
+            entity=entity,
+            family=family,
+            observed_optional=observed_optional,
+        )
+        model_frame = _model_frame(
+            donor,
+            entity=entity,
+            features=surface.donor,
+            predictors=predictors,
+            target_encodings=target_encodings,
+            mask=donor_mask,
+        )
+        resolved_kind = model_frame.resolve_weights(entity).kind.value
+        model = _qrf()(n_estimators=n_estimators, seed=pattern_seed)
+        if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
+            raise TypeError(
+                "Banked ACS transfer requires a QRF with start_chain and "
+                "fit_draw_next support."
+            )
+        state = model.start_chain(
+            model_frame,
+            list(predictors),
+            list(model_targets),
+            weights=resolved_kind,
+        )
+        if state.weight_kind != resolved_kind:
+            raise RuntimeError(
+                f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
+                f"weight kind {state.weight_kind!r}, expected the donor "
+                f"Frame's {resolved_kind!r}."
+            )
+        pattern = AcsTransferPattern(
+            name=pattern_name,
+            observed_optional_predictors=observed_optional,
+            predictors=predictors,
+            seed=pattern_seed,
+            weight_kind=state.weight_kind,
+            donor_rows=donor_rows,
+            recipient_rows=len(recipient_positions),
+        )
+        contexts.append(
+            _BankPatternContext(
+                pattern=pattern,
+                recipient_positions=recipient_positions,
+                donor_mask=donor_mask,
+            )
+        )
+        states[pattern_name] = state
+        raw_priors[pattern_name] = pd.DataFrame(
+            index=surface.recipient.iloc[recipient_positions].index
+        )
+        pattern_records.append(pattern)
+        fit_records.append(
+            FitWeightRecord(
+                f"acs_transfer:{entity}:{family}:{pattern_name}",
+                state.weight_kind,
+            )
+        )
+
+    n_recipient = len(surface.recipient)
+    raw_by_model_target: dict[str, np.ndarray] = {}
+    for model_target in model_targets:
+        exported_targets = tuple(
+            target
+            for target in targets
+            if target_encodings[target].model_target == model_target
+        )
+        expected_states = dict(states)
+        checkpoint = target_bank.load_target(
+            target_index=target_indexes[model_target],
+            total_targets=total_targets,
+            entity=entity,
+            family=family,
+            family_targets=targets,
+            model_targets=model_targets,
+            model_target=model_target,
+            exported_targets=exported_targets,
+            recipient_rows=n_recipient,
+            expected_states=expected_states,
+        )
+        if checkpoint is None:
+            raw_draw = np.full(n_recipient, np.nan, dtype=np.float64)
+            steps: list[AcsTransferBankPatternStep] = []
+            for context in contexts:
+                pattern = context.pattern
+                state_before = states[pattern.name]
+                model_frame = _model_frame(
+                    donor,
+                    entity=entity,
+                    features=surface.donor,
+                    predictors=pattern.predictors,
+                    target_encodings=target_encodings,
+                    mask=context.donor_mask,
+                )
+                recipient_pattern = _encoded_predictor_frame(
+                    surface.recipient.iloc[context.recipient_positions],
+                    predictors=pattern.predictors,
+                )
+                result = _qrf()(
+                    n_estimators=n_estimators,
+                    seed=pattern.seed,
+                ).fit_draw_next(
+                    model_frame,
+                    recipient_pattern,
+                    raw_priors[pattern.name],
+                    state=state_before,
+                    weights=pattern.weight_kind,
+                )
+                if result.target != model_target:
+                    raise AssertionError(
+                        f"ACS transfer chain returned {result.target!r}, "
+                        f"expected {model_target!r}."
+                    )
+                if result.weight_kind != pattern.weight_kind:
+                    raise RuntimeError(
+                        f"ACS transfer {entity!r}/{family!r}/{pattern.name!r} "
+                        f"resolved weight kind {result.weight_kind!r}, expected "
+                        f"{pattern.weight_kind!r}."
+                    )
+                raw_draw[context.recipient_positions] = result.raw_draw
+                _validate_prediction_values(
+                    pd.DataFrame(
+                        {model_target: result.raw_draw},
+                        index=recipient_pattern.index,
+                    ),
+                    entity=entity,
+                    family=family,
+                    pattern=pattern.name,
+                )
+                steps.append(
+                    AcsTransferBankPatternStep(
+                        pattern=pattern.name,
+                        state_before=state_before,
+                        state_after=result.state,
+                    )
+                )
+            checkpoint = AcsTransferTargetCheckpoint(
+                target_index=target_indexes[model_target],
+                total_targets=total_targets,
+                entity=entity,
+                family=family,
+                family_targets=targets,
+                model_targets=model_targets,
+                model_target=model_target,
+                exported_targets=exported_targets,
+                raw_draw=raw_draw,
+                pattern_steps=tuple(steps),
+            )
+            target_bank.write_target(checkpoint)
+
+        _validate_banked_target_checkpoint(
+            checkpoint,
+            target_index=target_indexes[model_target],
+            total_targets=total_targets,
+            entity=entity,
+            family=family,
+            family_targets=targets,
+            model_targets=model_targets,
+            model_target=model_target,
+            exported_targets=exported_targets,
+            recipient_rows=n_recipient,
+            expected_states=expected_states,
+            expected_patterns=tuple(context.pattern.name for context in contexts),
+        )
+        steps_by_pattern = {step.pattern: step for step in checkpoint.pattern_steps}
+        raw_by_model_target[model_target] = checkpoint.raw_draw
+        for context in contexts:
+            pattern_name = context.pattern.name
+            raw_priors[pattern_name][model_target] = checkpoint.raw_draw[
+                context.recipient_positions
+            ]
+            states[pattern_name] = steps_by_pattern[pattern_name].state_after
+
+    incomplete_states = [
+        name for name, state in states.items() if not state.is_complete
+    ]
+    if incomplete_states:  # pragma: no cover - one step per declared target
+        raise AssertionError(
+            f"ACS transfer bank left incomplete pattern chains: {incomplete_states}."
+        )
+    patterns = tuple(pattern_records)
+    kinds = {pattern.weight_kind for pattern in patterns}
+    if len(kinds) != 1:  # pragma: no cover - every subset resolves one donor kind
+        raise RuntimeError(
+            f"ACS transfer family {family!r} resolved mixed weight kinds: "
+            f"{sorted(kinds)}."
+        )
+    used_predictors = tuple(
+        predictor
+        for predictor in (*surface.required, *surface.optional)
+        if any(predictor in pattern.predictors for pattern in patterns)
+    )
+    return _FamilyFit(
+        predictions={
+            target: raw_by_model_target[target_encodings[target].model_target]
+            for target in targets
+        },
+        patterns=patterns,
+        fit_records=tuple(fit_records),
+        predictors=used_predictors,
+        weight_kind=next(iter(kinds)),
+        family_seed=_family_seed(seed, entity=entity, family=family),
+        target_encodings=target_encodings,
+    )
+
+
+def _validate_banked_target_checkpoint(
+    checkpoint: AcsTransferTargetCheckpoint,
+    *,
+    target_index: int,
+    total_targets: int,
+    entity: str,
+    family: str,
+    family_targets: tuple[str, ...],
+    model_targets: tuple[str, ...],
+    model_target: str,
+    exported_targets: tuple[str, ...],
+    recipient_rows: int,
+    expected_states: Mapping[str, QRFChainState],
+    expected_patterns: tuple[str, ...],
+) -> None:
+    observed_binding = (
+        checkpoint.target_index,
+        checkpoint.total_targets,
+        checkpoint.entity,
+        checkpoint.family,
+        checkpoint.family_targets,
+        checkpoint.model_targets,
+        checkpoint.model_target,
+        checkpoint.exported_targets,
+    )
+    expected_binding = (
+        target_index,
+        total_targets,
+        entity,
+        family,
+        family_targets,
+        model_targets,
+        model_target,
+        exported_targets,
+    )
+    if observed_binding != expected_binding:
+        raise ValueError(
+            f"ACS transfer bank returned the wrong target binding for "
+            f"{entity}.{model_target}."
+        )
+    if len(checkpoint.raw_draw) != recipient_rows:
+        raise ValueError(
+            f"ACS transfer bank returned {len(checkpoint.raw_draw)} rows for "
+            f"{entity}.{model_target}; expected {recipient_rows}."
+        )
+    if tuple(step.pattern for step in checkpoint.pattern_steps) != expected_patterns:
+        raise ValueError(
+            f"ACS transfer bank returned the wrong availability patterns for "
+            f"{entity}.{model_target}."
+        )
+    for step in checkpoint.pattern_steps:
+        state_before = expected_states[step.pattern]
+        if step.state_before != state_before:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} does not "
+                f"continue pattern {step.pattern!r}'s prior state."
+            )
+        if state_before.next_target != model_target:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} is not the "
+                f"next target for pattern {step.pattern!r}."
+            )
+        expected_completed = (*state_before.completed_targets, model_target)
+        if step.state_after.completed_targets != expected_completed:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} advanced "
+                f"pattern {step.pattern!r} to the wrong target prefix."
+            )
+        if (
+            step.state_after.predictors != state_before.predictors
+            or step.state_after.targets != state_before.targets
+            or step.state_after.entity != state_before.entity
+            or step.state_after.weight_kind != state_before.weight_kind
+            or step.state_after.weight_sha256 != state_before.weight_sha256
+            or step.state_after.donor_index != state_before.donor_index
+            or (
+                state_before.recipient_index is not None
+                and step.state_after.recipient_index != state_before.recipient_index
+            )
+        ):
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} changed "
+                f"pattern {step.pattern!r}'s bound chain identity."
+            )
 
 
 def _availability_patterns(

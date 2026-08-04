@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,6 +10,8 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
+import populace.build.us_runtime.acs_transfer_bank as acs_transfer_bank_module
+from populace.build.frame_checkpoint import write_frame_checkpoint
 from populace.build.us_runtime.acs_transfer import (
     ACS_DEFERRED_GEOGRAPHY_INPUTS,
     ACS_DONOR_CHANNEL_AUTO,
@@ -20,6 +24,9 @@ from populace.build.us_runtime.acs_transfer import (
     default_acs_transfer_target_families,
     transfer_acs_inputs,
 )
+from populace.build.us_runtime.acs_transfer_bank import (
+    AcsTransferTargetBankStore,
+)
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
@@ -28,6 +35,38 @@ from populace.frame.adapters.policyengine_us import (
 )
 
 SCHEMA = EntitySchema(group_entities=("household", "tax_unit"))
+
+_BANK_FAMILY = "fixture_banked_three_target"
+_BANK_TARGETS = (
+    "qualified_dividend_income",
+    "pre_subsidy_rent",
+    "takes_up_medicaid_if_eligible",
+)
+
+
+def _bank_identity(name: str = "current") -> dict[str, object]:
+    return {
+        "artifact_kind": "fixture_acs_transfer_target_bank_identity",
+        "fixture_version": 1,
+        "name": name,
+    }
+
+
+def _bank_store(
+    root: Path,
+    *,
+    identity_name: str = "current",
+) -> AcsTransferTargetBankStore:
+    return AcsTransferTargetBankStore(
+        root,
+        identity=_bank_identity(identity_name),
+    )
+
+
+def _bank_paths(bank: AcsTransferTargetBankStore) -> tuple[Path, ...]:
+    return tuple(
+        bank.target_path(index, target) for index, target in enumerate(_BANK_TARGETS)
+    )
 
 
 def _donor_frame() -> Frame:
@@ -438,6 +477,70 @@ class _MeanFitted:
         )
 
 
+def _run_bank_fixture(
+    target_bank: AcsTransferTargetBankStore | None = None,
+) -> AcsTransferResult:
+    return transfer_acs_inputs(
+        _recipient_frame(),
+        _donor_frame(),
+        target_families={"person": {_BANK_FAMILY: _BANK_TARGETS}},
+        seed=37,
+        n_estimators=1,
+        target_bank=target_bank,
+    )
+
+
+def _assert_transfer_results_exact(
+    actual: AcsTransferResult,
+    expected: AcsTransferResult,
+) -> None:
+    assert actual.frame.schema == expected.frame.schema
+    assert actual.frame.entities == expected.frame.entities
+    for entity in expected.frame.entities:
+        pd.testing.assert_frame_equal(
+            actual.frame.table(entity),
+            expected.frame.table(entity),
+            check_dtype=True,
+            check_exact=True,
+        )
+    for entity in expected.frame.weighted_entities:
+        actual_weights = actual.frame.weights_for(entity)
+        expected_weights = expected.frame.weights_for(entity)
+        assert actual_weights.kind is expected_weights.kind
+        np.testing.assert_array_equal(actual_weights.values, expected_weights.values)
+    pd.testing.assert_series_equal(
+        actual.frame.strata,
+        expected.frame.strata,
+        check_dtype=True,
+        check_exact=True,
+    )
+    assert actual.frame.mass_log == expected.frame.mass_log
+    assert actual.frame.metadata == expected.frame.metadata
+    assert actual.imputed_inputs == expected.imputed_inputs
+    assert actual.fit_records == expected.fit_records
+    assert actual.deferred_inputs == expected.deferred_inputs
+    assert actual.resolved_donor_channel == expected.resolved_donor_channel
+
+
+def _lock_bank_fixture_threads(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+
+
+def _assert_bank_receipt(
+    bank: AcsTransferTargetBankStore,
+    *,
+    sources: tuple[str, ...],
+    load_statuses: tuple[str, ...],
+) -> dict[str, dict[str, object]]:
+    targets = bank.receipt()["targets"]
+    assert tuple(targets[str(index)]["source"] for index in range(3)) == sources
+    assert (
+        tuple(targets[str(index)]["load_status"] for index in range(3)) == load_statuses
+    )
+    return targets
+
+
 def test_default_transfer_preserves_native_fields_and_registers_added_inputs() -> None:
     donor = _donor_frame()
     recipient = _recipient_frame()
@@ -789,6 +892,286 @@ def test_large_target_family_is_split_to_bound_retained_qrf_forests(
         "wide_numeric__batch_3",
         "wide_numeric__batch_4",
     }
+
+
+def test_target_bank_cold_output_matches_unbanked_monolith(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    monolithic = _run_bank_fixture()
+    bank = _bank_store(tmp_path / "cold-bank")
+
+    banked = _run_bank_fixture(bank)
+
+    _assert_transfer_results_exact(banked, monolithic)
+    _assert_bank_receipt(
+        bank,
+        sources=("rebuilt", "rebuilt", "rebuilt"),
+        load_statuses=("missing", "missing", "missing"),
+    )
+    assert all(path.is_file() for path in _bank_paths(bank))
+
+
+def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "materializer-v1-bank"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            acs_transfer_bank_module,
+            "ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION",
+            1,
+        )
+        legacy_bank = _bank_store(bank_root)
+        baseline = _run_bank_fixture(legacy_bank)
+        legacy_paths = _bank_paths(legacy_bank)
+        assert all(path.is_file() for path in legacy_paths)
+        for path in legacy_paths:
+            metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(path)
+            assert metadata["materializer_version"] == 1
+
+    assert acs_transfer_bank_module.ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION == 2
+    current_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(current_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        current_bank,
+        sources=("rebuilt",) * len(_BANK_TARGETS),
+        load_statuses=("invalid_rebuild",) * len(_BANK_TARGETS),
+    )
+    for record in targets.values():
+        invalid = record["invalid_checkpoint"]
+        assert invalid["reason"] == "checkpoint_validation_failed"
+        assert invalid["message"] == (
+            "ACS transfer target checkpoint has an unsupported binding."
+        )
+
+
+def test_target_bank_fsyncs_file_then_parent_directory_after_each_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(acs_transfer_bank_module.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(acs_transfer_bank_module.os, "replace", tracked_replace)
+    bank = _bank_store(tmp_path / "durable-bank")
+
+    _run_bank_fixture(bank)
+
+    assert len(events) == 3 * len(_BANK_TARGETS)
+    for index, target in enumerate(_BANK_TARGETS):
+        assert events[index * 3 : (index + 1) * 3] == [
+            ("fsync", "file"),
+            ("replace", bank.target_path(index, target).name),
+            ("fsync", "directory"),
+        ]
+
+
+def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
+            "immigration_status_str": ["CITIZEN"] * 6
+            + ["UNDOCUMENTED", "UNDOCUMENTED"],
+        },
+    )
+    families = {
+        "person": {
+            "source_operator_immigration": (
+                "ssn_card_type",
+                "immigration_status_str",
+            )
+        }
+    }
+
+    def run(
+        target_bank: AcsTransferTargetBankStore | None = None,
+    ) -> AcsTransferResult:
+        return transfer_acs_inputs(
+            _recipient_frame(),
+            donor,
+            target_families=families,
+            seed=37,
+            n_estimators=1,
+            target_bank=target_bank,
+        )
+
+    monolithic = run()
+    bank_root = tmp_path / "joint-bank"
+    cold_bank = _bank_store(bank_root)
+    cold = run(cold_bank)
+    _assert_transfer_results_exact(cold, monolithic)
+
+    warm_bank = _bank_store(bank_root)
+    resumed = run(warm_bank)
+    _assert_transfer_results_exact(resumed, monolithic)
+
+    targets = warm_bank.receipt()["targets"]
+    assert set(targets) == {"0"}
+    assert targets["0"]["source"] == "checkpoint"
+    assert targets["0"]["descriptor"]["model_target"] == (
+        "__acs_transfer_immigration_status_pair"
+    )
+    assert targets["0"]["descriptor"]["exported_targets"] == [
+        "ssn_card_type",
+        "immigration_status_str",
+    ]
+
+
+def test_target_bank_interrupt_resumes_durable_prefix_byte_identically(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    uninterrupted_bank = _bank_store(tmp_path / "uninterrupted-bank")
+    uninterrupted = _run_bank_fixture(uninterrupted_bank)
+
+    interrupted_bank = _bank_store(tmp_path / "interrupted-bank")
+    durable_write = interrupted_bank.write_target
+
+    def interrupt_after_first_durable_target(checkpoint) -> None:
+        durable_write(checkpoint)
+        if checkpoint.target_index == 0:
+            raise RuntimeError("fixture interrupt after durable ACS target 0")
+
+    monkeypatch.setattr(
+        interrupted_bank,
+        "write_target",
+        interrupt_after_first_durable_target,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="fixture interrupt after durable ACS target 0",
+    ):
+        _run_bank_fixture(interrupted_bank)
+
+    interrupted_paths = _bank_paths(interrupted_bank)
+    assert interrupted_paths[0].is_file()
+    assert not interrupted_paths[1].exists()
+    assert not interrupted_paths[2].exists()
+
+    resumed_bank = _bank_store(tmp_path / "interrupted-bank")
+    resumed = _run_bank_fixture(resumed_bank)
+    _assert_transfer_results_exact(resumed, uninterrupted)
+
+    uninterrupted_path = tmp_path / "uninterrupted.frame.h5"
+    resumed_path = tmp_path / "resumed.frame.h5"
+    write_frame_checkpoint(uninterrupted_path, uninterrupted.frame)
+    write_frame_checkpoint(resumed_path, resumed.frame)
+    assert resumed_path.read_bytes() == uninterrupted_path.read_bytes()
+
+    _assert_bank_receipt(
+        resumed_bank,
+        sources=("checkpoint", "rebuilt", "rebuilt"),
+        load_statuses=("resumed", "missing", "missing"),
+    )
+
+
+def test_target_bank_identity_mismatch_rebuilds_only_stale_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "identity-bank"
+    cold_bank = _bank_store(bank_root)
+    baseline = _run_bank_fixture(cold_bank)
+
+    stale_bank = _bank_store(
+        tmp_path / "stale-identity-bank",
+        identity_name="stale",
+    )
+    _run_bank_fixture(stale_bank)
+    stale_path = stale_bank.target_path(1, _BANK_TARGETS[1])
+    cold_bank.target_path(1, _BANK_TARGETS[1]).write_bytes(stale_path.read_bytes())
+
+    warm_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(warm_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        warm_bank,
+        sources=("checkpoint", "rebuilt", "checkpoint"),
+        load_statuses=("resumed", "identity_mismatch", "resumed"),
+    )
+    assert targets["1"]["load_status"] == "identity_mismatch"
+    assert targets["1"]["ignored_checkpoint"]["reason"] == "identity_mismatch"
+
+
+def test_target_bank_torn_files_fail_closed_and_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "torn-bank"
+    cold_bank = _bank_store(bank_root)
+    baseline = _run_bank_fixture(cold_bank)
+
+    truncated, missing_final, _intact = _bank_paths(cold_bank)
+    truncated.write_bytes(b"truncated ACS target checkpoint")
+    missing_final.unlink()
+    orphan = missing_final.with_name(f".{missing_final.name}.fixture.tmp")
+    orphan.write_bytes(b"orphan target temporary")
+
+    warm_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(warm_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        warm_bank,
+        sources=("rebuilt", "rebuilt", "checkpoint"),
+        load_statuses=("invalid_rebuild", "invalid_rebuild", "resumed"),
+    )
+    assert targets["0"]["load_status"] == "invalid_rebuild"
+    assert (
+        targets["0"]["invalid_checkpoint"]["reason"] == "checkpoint_validation_failed"
+    )
+    assert targets["1"]["load_status"] == "invalid_rebuild"
+    assert targets["1"]["invalid_checkpoint"]["reason"] == "incomplete_checkpoint"
+
+
+def test_target_bank_mixed_hole_rebuilds_only_missing_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "mixed-bank"
+    cold_bank = _bank_store(bank_root)
+    baseline = _run_bank_fixture(cold_bank)
+    _bank_paths(cold_bank)[1].unlink()
+
+    warm_bank = _bank_store(bank_root)
+    resumed = _run_bank_fixture(warm_bank)
+
+    _assert_transfer_results_exact(resumed, baseline)
+    _assert_bank_receipt(
+        warm_bank,
+        sources=("checkpoint", "rebuilt", "checkpoint"),
+        load_statuses=("resumed", "missing", "resumed"),
+    )
 
 
 def test_discrete_year_predictions_snap_to_observed_donor_support(

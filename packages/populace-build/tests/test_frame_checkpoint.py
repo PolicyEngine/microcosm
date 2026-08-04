@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 import time
 from pathlib import Path
 
@@ -7,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.frame_checkpoint as frame_checkpoint_module
 from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -204,6 +207,35 @@ def test_frame_checkpoint_round_trip_is_byte_identical(tmp_path: Path) -> None:
         loaded.frame.person["float_measure"].to_numpy().view(np.uint32),
         frame.person["float_measure"].to_numpy().view(np.uint32),
     )
+
+
+def test_frame_checkpoint_fsyncs_parent_directory_after_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(frame_checkpoint_module.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(frame_checkpoint_module.os, "replace", tracked_replace)
+    output = tmp_path / "durable.frame.h5"
+
+    write_frame_checkpoint(output, _checkpoint_frame())
+
+    assert events == [
+        ("replace", output.name),
+        ("fsync", "directory"),
+    ]
 
 
 def test_frame_checkpoint_restores_caller_bound_frame_metadata_without_rewrite(

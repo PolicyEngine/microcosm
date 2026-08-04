@@ -52,6 +52,7 @@ from populace.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     transfer_acs_inputs,
 )
+from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from populace.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
@@ -111,7 +112,7 @@ from populace.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
     validate_assembly_provenance,
 )
-from populace.build.us_runtime.take_up_contract import load_take_up_contract
+from populace.build.us_runtime.take_up_contract import take_up_contract_identity
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -140,6 +141,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 #    pre/post-clone operator registries, physical PUF clone and QRF target
 #    order, tail and ACS transfer producers, derive registry, take-up seeding,
 #    SSI materialization, fixed seeds/period/fit sizes, and PolicyEngine-US.
+# 2: The take-up contract identity binds the canonical SHA-256 of the entire
+#    parsed resource, plus readable explicit fields. Version-1 volume
+#    checkpoints are deliberately stale.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -147,7 +151,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # its public registry name stays constant. Correctness takes priority over
 # retaining warm checkpoints (the same rule as TARGET_FRAME_CHECKPOINT's
 # materializer-version ledger in build_us_fiscal_refresh_release.py).
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 1
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 2
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -157,11 +161,15 @@ _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND = "populace_us_multispine_pool_stage_checkp
 _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND = (
     "populace_us_multispine_pool_stage_checkpoint_manifest"
 )
+_POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND = (
+    "populace_us_multispine_pool_stage_checkpoint_operational_receipts"
+)
 _POOL_STAGE_CHECKPOINT_FILENAMES: Mapping[str, str] = {
     stage: f"{stage}.checkpoint.h5" for stage in POOL_CHECKPOINT_STAGE_ORDER
 }
 _POOL_SIMULATION_OUTPUT_COLUMN = "ssi"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_BANK_IDENTITY_SIBLING_SCAN_LIMIT = 64
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 
@@ -175,6 +183,7 @@ class PoolBuildOutputs:
     agreement_diagnostics: Path
     checkpoint_root: Path
     primary_qrf_checkpoint_dir: Path
+    acs_transfer_checkpoint_dir: Path
 
 
 @dataclass(frozen=True)
@@ -325,22 +334,86 @@ def _output_paths(
         agreement_diagnostics=pool_h5.with_suffix(".agreement.json"),
         checkpoint_root=resolved_checkpoint_root,
         primary_qrf_checkpoint_dir=resolved_checkpoint_root / "primary-qrf",
+        acs_transfer_checkpoint_dir=resolved_checkpoint_root / "acs-transfer",
     )
 
 
-def _with_primary_qrf_identity(
+def _with_checkpoint_identity(
     outputs: PoolBuildOutputs,
     *,
     base_identity_sha256: str,
 ) -> PoolBuildOutputs:
-    """Select a non-mixing QRF chain directory for one pool identity."""
+    """Select non-mixing intra-phase bank directories for one pool identity."""
 
     return replace(
         outputs,
         primary_qrf_checkpoint_dir=(
             outputs.checkpoint_root / "primary-qrf" / base_identity_sha256
         ),
+        acs_transfer_checkpoint_dir=(
+            outputs.checkpoint_root / "acs-transfer" / base_identity_sha256
+        ),
     )
+
+
+def _identity_routed_bank_open_receipt(
+    selected_dir: Path,
+    *,
+    current_base_identity_sha256: str,
+) -> dict[str, object]:
+    """Name bypassed prior-identity siblings without opening their contents."""
+
+    selected = Path(selected_dir)
+    if not _LOWERCASE_SHA256.fullmatch(current_base_identity_sha256):
+        raise ValueError("Current bank base identity must be a lowercase SHA-256.")
+    if selected.name != current_base_identity_sha256:
+        raise ValueError(
+            "Identity-routed bank path does not end in its current base identity: "
+            f"{selected}."
+        )
+    bank_root = selected.parent
+    entries_examined = 0
+    truncated = False
+    mismatches: list[dict[str, object]] = []
+    if bank_root.exists():
+        if not bank_root.is_dir():
+            raise ValueError(
+                f"Identity-routed bank root is not a directory: {bank_root}."
+            )
+        with os.scandir(bank_root) as entries:
+            for entry in entries:
+                if entries_examined == _BANK_IDENTITY_SIBLING_SCAN_LIMIT:
+                    truncated = True
+                    break
+                entries_examined += 1
+                stale_digest = entry.name
+                if (
+                    stale_digest == current_base_identity_sha256
+                    or not _LOWERCASE_SHA256.fullmatch(stale_digest)
+                    or not entry.is_dir(follow_symlinks=False)
+                ):
+                    continue
+                mismatches.append(
+                    {
+                        "load_status": "identity_mismatch",
+                        "stale_base_identity_sha256": stale_digest,
+                        "current_base_identity_sha256": (current_base_identity_sha256),
+                        "disposition": "bypassed",
+                        "path": str((bank_root / stale_digest).resolve()),
+                    }
+                )
+    mismatches.sort(key=lambda record: str(record["stale_base_identity_sha256"]))
+    return {
+        "bank_root": str(bank_root.resolve()),
+        "selected_path": str(selected.resolve()),
+        "current_base_identity_sha256": current_base_identity_sha256,
+        "scan": {
+            "limit": _BANK_IDENTITY_SIBLING_SCAN_LIMIT,
+            "entries_examined": entries_examined,
+            "truncated": truncated,
+        },
+        "identity_mismatches": mismatches,
+    }
 
 
 def _verify_file(role: str, path: Path, expected_sha256: str) -> _VerifiedInput:
@@ -458,6 +531,7 @@ def _validate_checkpoint_path_layout(
 
     checkpoint_root = outputs.checkpoint_root.resolve()
     primary_qrf_root = (checkpoint_root / "primary-qrf").resolve()
+    acs_transfer_root = (checkpoint_root / "acs-transfer").resolve()
     stage_files = {
         (checkpoint_root / filename).resolve()
         for filename in _POOL_STAGE_CHECKPOINT_FILENAMES.values()
@@ -475,6 +549,8 @@ def _validate_checkpoint_path_layout(
         if path == checkpoint_root or checkpoint_root.is_relative_to(path):
             return True
         if path == primary_qrf_root or path.is_relative_to(primary_qrf_root):
+            return True
+        if path == acs_transfer_root or path.is_relative_to(acs_transfer_root):
             return True
         return any(
             path == target or path.is_relative_to(target) for target in stage_files
@@ -614,7 +690,6 @@ def _pool_checkpoint_base_identity(
 ) -> dict[str, object]:
     """Return every input and semantic surface that determines cached stages."""
 
-    take_up_contract = load_take_up_contract()
     return {
         "artifact_kind": "populace_us_multispine_pool_checkpoint_identity",
         "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
@@ -645,13 +720,7 @@ def _pool_checkpoint_base_identity(
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
-            "take_up_contract": {
-                "version": take_up_contract.version,
-                "country": take_up_contract.country,
-                "programs": [
-                    _json_ready(program.raw) for program in take_up_contract.programs
-                ],
-            },
+            "take_up_contract": take_up_contract_identity(),
             "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
             "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
             "acs_transfer_max_targets_per_fit": (
@@ -720,6 +789,10 @@ class _PoolStageCheckpointStore:
         return _pool_checkpoint_identity_sha256(self._base_identity)
 
     @property
+    def base_identity(self) -> dict[str, object]:
+        return dict(self._base_identity)
+
+    @property
     def input_receipts(self) -> dict[str, object]:
         if self._input_receipts is None:
             raise RuntimeError("Pool checkpoint input receipts are not bound.")
@@ -745,6 +818,12 @@ class _PoolStageCheckpointStore:
     def checkpoint_manifest_path(self, stage: str) -> Path:
         path = self.checkpoint_path(stage)
         return path.with_suffix(".manifest.json")
+
+    def checkpoint_receipts_path(self, stage: str) -> Path:
+        """Return the non-identity-bearing operational-receipts sidecar path."""
+
+        path = self.checkpoint_path(stage)
+        return path.with_suffix(".receipts.json")
 
     def load_deepest(self) -> MultispinePoolCheckpoint | None:
         """Load the deepest valid checkpoint, ignoring stale or corrupt files."""
@@ -799,6 +878,16 @@ class _PoolStageCheckpointStore:
             stored_frame,
             boundary=f"pool {stage} checkpoint write",
         )
+        canonical_stage_receipts, operational_stage_receipts = (
+            _split_checkpoint_stage_receipts(checkpoint.stage_receipts)
+        )
+        receipts_path = self.checkpoint_receipts_path(stage)
+        try:
+            receipts_path.unlink()
+        except FileNotFoundError:
+            pass
+        else:
+            _fsync_parent_directory(receipts_path)
         identity = _pool_checkpoint_stage_identity(self._base_identity, stage)
         identity_sha256 = _pool_checkpoint_identity_sha256(identity)
         metadata = {
@@ -812,7 +901,7 @@ class _PoolStageCheckpointStore:
             "frame_schema": _frame_schema_payload(stored_frame),
             "frame_metadata": _json_ready(stored_frame.metadata),
             "assembly_receipt": _json_ready(checkpoint.assembly_receipt),
-            "stage_receipts": _json_ready(checkpoint.stage_receipts),
+            "stage_receipts": canonical_stage_receipts,
             "input_receipts": self._input_receipts,
             "simulation_output": (
                 {
@@ -849,11 +938,41 @@ class _PoolStageCheckpointStore:
                 "frame_metadata": metadata["frame_metadata"],
             },
         )
+        receipts_record: dict[str, object] = {
+            "path": str(receipts_path.resolve()),
+            "write_status": "not_applicable",
+        }
+        if operational_stage_receipts:
+            _atomic_write_json(
+                receipts_path,
+                {
+                    "artifact_kind": _POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND,
+                    "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+                    "materializer_version": (
+                        POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                    ),
+                    "stage": stage,
+                    "identity_sha256": identity_sha256,
+                    "checkpoint": {
+                        "filename": path.name,
+                        "sha256": checkpoint_sha256,
+                        "size_bytes": size_bytes,
+                    },
+                    "operational_stage_receipts": operational_stage_receipts,
+                },
+            )
+            receipts_record = {
+                "path": str(receipts_path.resolve()),
+                "write_status": "written",
+                "sha256": _file_sha256(receipts_path),
+                "size_bytes": receipts_path.stat().st_size,
+            }
         write_seconds = time.perf_counter() - started_at
         self._writes[stage] = {
             "checkpoint_sha256": checkpoint_sha256,
             "size_bytes": size_bytes,
             "write_seconds": write_seconds,
+            "receipts_sidecar": receipts_record,
         }
         print(
             f"Rebuilt pool stage {stage!r}; wrote checkpoint {path} "
@@ -864,6 +983,7 @@ class _PoolStageCheckpointStore:
         self,
         *,
         primary_qrf_checkpoint_dir: Path,
+        acs_transfer_checkpoint_dir: Path | None = None,
     ) -> dict[str, object]:
         """Return final-manifest evidence for every cached or rebuilt stage."""
 
@@ -942,6 +1062,17 @@ class _PoolStageCheckpointStore:
             "primary_qrf": {
                 "path": str(Path(primary_qrf_checkpoint_dir).resolve()),
                 "base_identity_sha256": self.base_identity_sha256,
+            },
+            "acs_transfer": {
+                "path": str(
+                    Path(
+                        acs_transfer_checkpoint_dir
+                        if acs_transfer_checkpoint_dir is not None
+                        else self.root / "acs-transfer" / self.base_identity_sha256
+                    ).resolve()
+                ),
+                "base_identity_sha256": self.base_identity_sha256,
+                "boundary_stage": "transferred",
             },
             "agreement": {
                 "source": "always_fresh",
@@ -1084,6 +1215,15 @@ class _PoolStageCheckpointStore:
             if not isinstance(input_receipts, Mapping):
                 raise ValueError(f"{stage} checkpoint input_receipts must be an object")
             _validate_checkpoint_receipt_prefix(stage, stage_receipts)
+            restored_stage_receipts, receipts_record = (
+                self._load_operational_stage_receipts(
+                    stage,
+                    canonical_stage_receipts=stage_receipts,
+                    expected_identity_sha256=expected_identity_sha256,
+                    checkpoint_sha256=actual_file_sha256,
+                    checkpoint_size=path.stat().st_size,
+                )
+            )
             persistent_frame = frame
             simulation_frame: Frame | None = None
             if stage == "simulated":
@@ -1103,7 +1243,7 @@ class _PoolStageCheckpointStore:
                 stage=stage,
                 frame=persistent_frame,
                 assembly_receipt=dict(assembly_receipt),
-                stage_receipts=dict(stage_receipts),
+                stage_receipts=restored_stage_receipts,
                 simulation_frame=simulation_frame,
             )
             self.bind_input_receipts(input_receipts)
@@ -1111,6 +1251,7 @@ class _PoolStageCheckpointStore:
                 "load_status": "resumed",
                 "checkpoint_sha256": actual_file_sha256,
                 "size_bytes": path.stat().st_size,
+                "receipts_sidecar": receipts_record,
             }
             return checkpoint
         except Exception as error:  # corrupted local artifacts are rebuildable
@@ -1119,6 +1260,107 @@ class _PoolStageCheckpointStore:
                 reason="checkpoint_validation_failed",
                 error=error,
             )
+
+    def _load_operational_stage_receipts(
+        self,
+        stage: str,
+        *,
+        canonical_stage_receipts: Mapping[str, object],
+        expected_identity_sha256: str,
+        checkpoint_sha256: str,
+        checkpoint_size: int,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        """Restore optional observability without affecting checkpoint validity."""
+
+        receipts_path = self.checkpoint_receipts_path(stage)
+        base_record: dict[str, object] = {"path": str(receipts_path.resolve())}
+        if not receipts_path.exists():
+            return dict(canonical_stage_receipts), {
+                **base_record,
+                "load_status": "missing",
+            }
+        if not receipts_path.is_file():
+            error = ValueError("operational receipts sidecar must be a regular file")
+            return dict(canonical_stage_receipts), self._invalid_receipts_record(
+                stage,
+                receipts_path,
+                error,
+            )
+        try:
+            payload = _read_json_object(receipts_path)
+            expected_keys = {
+                "artifact_kind",
+                "schema_version",
+                "materializer_version",
+                "stage",
+                "identity_sha256",
+                "checkpoint",
+                "operational_stage_receipts",
+            }
+            if set(payload) != expected_keys:
+                raise ValueError("operational receipts sidecar keys changed")
+            if (
+                payload.get("artifact_kind")
+                != _POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND
+                or payload.get("schema_version") != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
+                or payload.get("materializer_version")
+                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or payload.get("stage") != stage
+                or payload.get("identity_sha256") != expected_identity_sha256
+            ):
+                raise ValueError(
+                    "operational receipts sidecar has an unsupported binding"
+                )
+            checkpoint = payload.get("checkpoint")
+            if checkpoint != {
+                "filename": self.checkpoint_path(stage).name,
+                "sha256": checkpoint_sha256,
+                "size_bytes": checkpoint_size,
+            }:
+                raise ValueError(
+                    "operational receipts sidecar checkpoint binding changed"
+                )
+            operational = payload.get("operational_stage_receipts")
+            if not isinstance(operational, Mapping):
+                raise ValueError("operational_stage_receipts must be an object")
+            restored = _attach_checkpoint_operational_receipts(
+                canonical_stage_receipts,
+                operational,
+            )
+            return restored, {
+                **base_record,
+                "load_status": "loaded",
+                "sha256": _file_sha256(receipts_path),
+                "size_bytes": receipts_path.stat().st_size,
+            }
+        except Exception as error:
+            return dict(canonical_stage_receipts), self._invalid_receipts_record(
+                stage,
+                receipts_path,
+                error,
+            )
+
+    @staticmethod
+    def _invalid_receipts_record(
+        stage: str,
+        receipts_path: Path,
+        error: Exception,
+    ) -> dict[str, object]:
+        failure = {
+            "reason": "operational_receipts_validation_failed",
+            "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
+            "message": str(error),
+            "path": str(receipts_path.resolve()),
+        }
+        print(
+            f"Ignored invalid pool checkpoint operational receipts for {stage!r} "
+            f"at {receipts_path}: {type(error).__name__}: {error}."
+        )
+        return {
+            "path": str(receipts_path.resolve()),
+            "load_status": "invalid_ignored",
+            "invalid_sidecar": failure,
+        }
 
     def _invalid(
         self,
@@ -1182,6 +1424,93 @@ def _validate_checkpoint_receipt_prefix(
             f"{stage} checkpoint receipt stages are {sorted(observed)}, "
             f"expected {sorted(expected)} with an optional clone receipt"
         )
+
+
+def _split_checkpoint_stage_receipts(
+    stage_receipts: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Separate operational bank evidence from canonical stage receipts."""
+
+    normalized = _json_ready(stage_receipts)
+    if not isinstance(normalized, dict):  # pragma: no cover - mapping normalization
+        raise TypeError("Pool checkpoint stage receipts must normalize to an object.")
+    impute = normalized.get("impute")
+    if not isinstance(impute, dict):
+        return normalized, {}
+    operational_impute: dict[str, object] = {}
+    primary_qrf = impute.get("primary_puf_qrf")
+    if isinstance(primary_qrf, dict):
+        operational_primary: dict[str, object] = {}
+        if "resume_status" in primary_qrf:
+            resume_status = primary_qrf.pop("resume_status")
+            if not isinstance(resume_status, str) or not resume_status:
+                raise ValueError(
+                    "Primary QRF resume status must be a non-empty string."
+                )
+            operational_primary["resume_status"] = resume_status
+        if "identity_routing" in primary_qrf:
+            identity_routing = primary_qrf.pop("identity_routing")
+            if not isinstance(identity_routing, Mapping):
+                raise ValueError("Primary QRF identity routing must be an object.")
+            operational_primary["identity_routing"] = dict(identity_routing)
+        if operational_primary:
+            operational_impute["primary_puf_qrf"] = operational_primary
+    acs_transfer = impute.get("acs_qrf_transfer")
+    if isinstance(acs_transfer, dict) and "target_bank" in acs_transfer:
+        target_bank = acs_transfer.pop("target_bank")
+        if not isinstance(target_bank, Mapping):
+            raise ValueError("ACS transfer target-bank receipt must be an object.")
+        operational_impute["acs_qrf_transfer"] = {
+            "target_bank": dict(target_bank),
+        }
+    if not operational_impute:
+        return normalized, {}
+    return normalized, {"impute": operational_impute}
+
+
+def _attach_checkpoint_operational_receipts(
+    canonical_stage_receipts: Mapping[str, object],
+    operational_stage_receipts: Mapping[str, object],
+) -> dict[str, object]:
+    """Reattach non-canonical bank evidence for runtime observability."""
+
+    canonical, existing_operational = _split_checkpoint_stage_receipts(
+        canonical_stage_receipts
+    )
+    if existing_operational:
+        raise ValueError("canonical stage receipts already contain bank provenance")
+    operational = _json_ready(operational_stage_receipts)
+    if not isinstance(operational, dict):  # pragma: no cover - mapping normalization
+        raise TypeError("Operational stage receipts must normalize to an object.")
+    if set(operational) != {"impute"}:
+        raise ValueError("operational stage receipts must contain only impute")
+    operational_impute = operational.get("impute")
+    if not isinstance(operational_impute, dict) or not operational_impute:
+        raise ValueError("operational impute receipt shape changed")
+    canonical_impute = canonical.get("impute")
+    if not isinstance(canonical_impute, dict):
+        raise ValueError("canonical stage receipts have no impute object")
+    allowed_fields = {
+        "primary_puf_qrf": frozenset({"resume_status", "identity_routing"}),
+        "acs_qrf_transfer": frozenset({"target_bank"}),
+    }
+    for section, operational_section in operational_impute.items():
+        if section not in allowed_fields or not isinstance(operational_section, dict):
+            raise ValueError("operational impute receipt shape changed")
+        if (
+            not operational_section
+            or not set(operational_section) <= allowed_fields[section]
+        ):
+            raise ValueError(f"operational {section} receipt shape changed")
+        canonical_section = canonical_impute.get(section)
+        if not isinstance(canonical_section, dict):
+            raise ValueError(f"canonical impute receipt has no {section} object")
+        if set(canonical_section) & set(operational_section):
+            raise ValueError(
+                f"canonical {section} receipt already contains bank provenance"
+            )
+        canonical_section.update(operational_section)
+    return canonical
 
 
 def _frame_row_counts(frame: Frame) -> dict[str, int]:
@@ -1353,21 +1682,28 @@ def _impute_pool(
     frame: Frame,
     *,
     puf_donor: pd.DataFrame,
-    checkpoint_dir: Path,
+    primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path,
+    checkpoint_identity: Mapping[str, object],
     checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
+    current_base_identity_sha256 = _pool_checkpoint_identity_sha256(checkpoint_identity)
+    primary_qrf_identity_routing = _identity_routed_bank_open_receipt(
+        primary_qrf_checkpoint_dir,
+        current_base_identity_sha256=current_base_identity_sha256,
+    )
     qrf_resume_status = _initialize_or_resume_primary_qrf(
         frame,
         puf_donor,
-        checkpoint_dir,
+        primary_qrf_checkpoint_dir,
         input_binding=checkpoint_input_binding,
     )
-    run_primary_puf_qrf_chain(checkpoint_dir)
+    run_primary_puf_qrf_chain(primary_qrf_checkpoint_dir)
 
     tail_bound_diagnostics: list[dict[str, object]] = []
     with_primary_detail, primary_weight_kind = finalize_primary_puf_qrf_chain(
         frame,
-        checkpoint_dir,
+        primary_qrf_checkpoint_dir,
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
     with_tail, tail_receipt = transfer_puf_capital_gains_tail(
@@ -1386,6 +1722,17 @@ def _impute_pool(
         )
     source_completion = complete_multispine_source_inputs(with_tail)
     transfer_families = pool_transfer_target_families()
+    acs_transfer_identity_routing = _identity_routed_bank_open_receipt(
+        acs_transfer_checkpoint_dir,
+        current_base_identity_sha256=current_base_identity_sha256,
+    )
+    target_bank = AcsTransferTargetBankStore(
+        acs_transfer_checkpoint_dir,
+        identity=_pool_checkpoint_stage_identity(
+            checkpoint_identity,
+            "transferred",
+        ),
+    )
     transferred = transfer_acs_inputs(
         source_completion.frame,
         source_completion.frame,
@@ -1394,6 +1741,7 @@ def _impute_pool(
         seed=POOL_RANDOM_SEED,
         n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
         max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+        target_bank=target_bank,
     )
 
     fit_records = (
@@ -1407,8 +1755,14 @@ def _impute_pool(
             + "\n  ".join(weights_audit.failures)
         )
 
-    qrf_manifest_path = _primary_qrf_manifest_path(checkpoint_dir)
-    qrf_binding_path = _primary_qrf_input_binding_path(checkpoint_dir)
+    qrf_manifest_path = _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
+    qrf_binding_path = _primary_qrf_input_binding_path(primary_qrf_checkpoint_dir)
+    target_bank_receipt = target_bank.receipt()
+    if "identity_routing" in target_bank_receipt:
+        raise ValueError(
+            "ACS transfer target-bank receipt already has identity routing."
+        )
+    target_bank_receipt["identity_routing"] = acs_transfer_identity_routing
     return PoolStageOutput(
         transferred.frame,
         {
@@ -1417,6 +1771,7 @@ def _impute_pool(
             },
             "primary_puf_qrf": {
                 "resume_status": qrf_resume_status,
+                "identity_routing": primary_qrf_identity_routing,
                 "checkpoint_manifest": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
                 "input_binding": _read_json_object(qrf_binding_path),
@@ -1433,6 +1788,7 @@ def _impute_pool(
                 "imputed_inputs": list(transferred.imputed_inputs),
                 "fit_records": list(transferred.fit_records),
                 "deferred_inputs": list(transferred.deferred_inputs),
+                "target_bank": target_bank_receipt,
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),
         },
@@ -1446,6 +1802,8 @@ def build_multispine_pool(
     puf_donor: pd.DataFrame | None,
     acs_rent_donor: pd.DataFrame | None = None,
     primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path | None = None,
+    checkpoint_identity: Mapping[str, object] | None = None,
     checkpoint_input_binding: Mapping[str, object] | None = None,
     source_native_inputs: Mapping[
         str,
@@ -1489,6 +1847,13 @@ def build_multispine_pool(
                 "Production pool imputation requires a verified checkpoint "
                 "input binding."
             )
+        if impute_will_run and (
+            acs_transfer_checkpoint_dir is None or checkpoint_identity is None
+        ):
+            raise ValueError(
+                "Production pool imputation requires an identity-bound ACS "
+                "transfer checkpoint directory."
+            )
         if impute_will_run and puf_donor is None:
             raise ValueError("Production pool imputation requires the PUF donor.")
         if clone_preparation_will_run and acs_rent_donor is None:
@@ -1497,12 +1862,19 @@ def build_multispine_pool(
             )
 
         def impute_operator(frame: Frame) -> PoolStageOutput:
-            if puf_donor is None or checkpoint_input_binding is None:
+            if (
+                puf_donor is None
+                or acs_transfer_checkpoint_dir is None
+                or checkpoint_identity is None
+                or checkpoint_input_binding is None
+            ):
                 raise AssertionError("Pool imputation dependencies were not loaded.")
             return _impute_pool(
                 frame,
                 puf_donor=puf_donor,
-                checkpoint_dir=primary_qrf_checkpoint_dir,
+                primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+                acs_transfer_checkpoint_dir=acs_transfer_checkpoint_dir,
+                checkpoint_identity=checkpoint_identity,
                 checkpoint_input_binding=checkpoint_input_binding,
             )
 
@@ -1606,6 +1978,9 @@ def _manifest_payload(
             "publication_run_id": publication_run_id,
         },
         "primary_qrf_checkpoint_dir": str(outputs.primary_qrf_checkpoint_dir.resolve()),
+        "acs_transfer_checkpoint_dir": str(
+            outputs.acs_transfer_checkpoint_dir.resolve()
+        ),
         "calibration": {
             "applied": False,
             "position": "downstream",
@@ -1794,8 +2169,22 @@ def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, output)
+        _fsync_parent_directory(output)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Persist a completed atomic rename in its containing directory."""
+
+    # O_DIRECTORY is not universal. A read-only directory descriptor is the
+    # supported POSIX fallback; failures to open or fsync still propagate.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1811,7 +2200,7 @@ def main(argv: list[str] | None = None) -> int:
         outputs.checkpoint_root,
         base_identity=_pool_checkpoint_base_identity(verified_inputs),
     )
-    outputs = _with_primary_qrf_identity(
+    outputs = _with_checkpoint_identity(
         outputs,
         base_identity_sha256=checkpoint_store.base_identity_sha256,
     )
@@ -1845,6 +2234,8 @@ def main(argv: list[str] | None = None) -> int:
         puf_donor=puf_donor,
         acs_rent_donor=acs_rent_donor,
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
+        checkpoint_identity=checkpoint_store.base_identity,
         checkpoint_input_binding=_checkpoint_input_binding(verified_inputs),
         source_native_inputs=source_native_inputs,
         checkpoint=checkpoint_store.write,
@@ -1852,6 +2243,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     checkpoint_provenance = checkpoint_store.provenance(
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
     )
     _write_outputs(
         result,

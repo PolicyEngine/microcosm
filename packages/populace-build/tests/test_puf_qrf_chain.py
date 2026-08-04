@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
+from contextlib import nullcontext
 from pathlib import Path
 
 import h5py
@@ -11,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.us_runtime.puf_qrf_chain as puf_qrf_chain_module
 from populace.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_TARGET_ORDER,
@@ -19,6 +23,7 @@ from populace.build.us_runtime.puf_qrf_chain import (
     initialize_primary_puf_qrf_chain,
     load_primary_puf_qrf_predictions,
     run_primary_puf_qrf_chain,
+    run_primary_puf_qrf_target,
 )
 from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -158,6 +163,84 @@ def test_primary_qrf_production_target_order_is_locked() -> None:
         json.dumps(list(PRIMARY_QRF_TARGET_ORDER), separators=(",", ":")).encode()
     ).hexdigest()
     assert digest == PRIMARY_QRF_TARGET_ORDER_SHA256
+
+
+def test_primary_qrf_manifest_fsyncs_file_then_parent_directory_after_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(puf_qrf_chain_module.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(puf_qrf_chain_module.os, "replace", tracked_replace)
+    manifest_path = tmp_path / "manifest.json"
+
+    puf_qrf_chain_module._atomic_write_json(manifest_path, {"fixture": True})
+
+    assert events == [
+        ("fsync", "file"),
+        ("replace", manifest_path.name),
+        ("fsync", "directory"),
+    ]
+
+
+def test_primary_qrf_target_fsyncs_file_then_parent_directory_after_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    checkpoint_dir = tmp_path / "primary_qrf"
+    initialize_primary_puf_qrf_chain(
+        _expanded_frame(),
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+    )
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(puf_qrf_chain_module.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(puf_qrf_chain_module.os, "replace", tracked_replace)
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "profile_stage",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+
+    target_path = run_primary_puf_qrf_target(checkpoint_dir, 0)
+
+    assert target_path.is_file()
+    assert events == [
+        ("fsync", "file"),
+        ("replace", target_path.name),
+        ("fsync", "directory"),
+    ]
 
 
 def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(

@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import importlib.util
 import inspect
 import json
+import os
+import stat
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -20,6 +23,9 @@ import pytest
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 from populace.build.gates import GateReport, GateResult
 from populace.build.us_runtime.acs_transfer import transfer_acs_inputs
+from populace.build.us_runtime.acs_transfer_bank import (
+    ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
+)
 from populace.build.us_runtime.multispine_pool import PoolStageOutput
 from populace.build.us_runtime.operator_boundary import (
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
@@ -30,6 +36,10 @@ from populace.build.us_runtime.puf_support import (
 from populace.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
+)
+from populace.build.us_runtime.take_up_contract import (
+    load_take_up_contract,
+    take_up_contract_identity,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -319,6 +329,7 @@ def _run_checkpoint_fixture(
     *,
     store,
     resume=None,
+    target_bank_receipt: Mapping[str, object] | None = None,
 ):
     order: list[str] = []
 
@@ -330,10 +341,25 @@ def _run_checkpoint_fixture(
             order.append(name)
             person = frame.table("person").copy()
             transform(person)
-            return PoolStageOutput(
-                _replace_person(frame, person),
-                {"fixture_stage": name},
-            )
+            receipt: dict[str, object] = {"fixture_stage": name}
+            if name == "impute" and target_bank_receipt is not None:
+                receipt = {
+                    "source_operator_chain": {"post_primary_completion": {}},
+                    "primary_puf_qrf": {"fixture_manifest": True},
+                    "puf_capital_gains_tail_transfer": {"fixture": True},
+                    "acs_qrf_transfer": {
+                        "target_families": {"person": {"fixture": ["target"]}},
+                        "n_estimators": 100,
+                        "max_targets_per_fit": 8,
+                        "resolved_donor_channel": "puf_tax_detail",
+                        "imputed_inputs": [],
+                        "fit_records": [],
+                        "deferred_inputs": [],
+                        "target_bank": dict(target_bank_receipt),
+                    },
+                    "weights_audit": {"passed": True},
+                }
+            return PoolStageOutput(_replace_person(frame, person), receipt)
 
         return apply
 
@@ -378,6 +404,181 @@ def _run_checkpoint_fixture(
         resume=resume,
     )
     return result, order
+
+
+def _run_production_impute_checkpoint_fixture(
+    pool_tool: ModuleType,
+    *,
+    store,
+    primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path,
+    checkpoint_input_binding: Mapping[str, object],
+):
+    """Run the production impute closure while keeping later fixture stages tiny."""
+
+    def stage(
+        transform: Callable[[pd.DataFrame], None],
+    ) -> Callable[[Frame], PoolStageOutput]:
+        def apply(frame: Frame) -> PoolStageOutput:
+            person = frame.table("person").copy()
+            transform(person)
+            return PoolStageOutput(
+                _replace_person(frame, person),
+                {"fixture_stage": True},
+            )
+
+        return apply
+
+    return pool_tool.build_multispine_pool(
+        _source_frame(),
+        _source_frame(measured_offset=99.0),
+        puf_donor=pd.DataFrame(),
+        acs_rent_donor=pd.DataFrame(),
+        primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=acs_transfer_checkpoint_dir,
+        checkpoint_identity=store.base_identity,
+        checkpoint_input_binding=checkpoint_input_binding,
+        prepare_clone=stage(lambda _person: None),
+        derive=stage(
+            lambda person: person.__setitem__("fixture_derived", 1.0),
+        ),
+        seed=stage(
+            lambda person: person.__setitem__("fixture_seed", True),
+        ),
+        simulate=stage(
+            lambda person: person.__setitem__(
+                "ssi",
+                np.where(
+                    person[support_channel_column("person")].eq("asec"),
+                    1.0,
+                    100.0,
+                ),
+            ),
+        ),
+        checkpoint=store.write,
+    )
+
+
+def _stub_production_impute_kernels(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    active_bank_receipt: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[str, object]:
+    """Replace expensive kernels while retaining real routing and resume logic."""
+
+    def initialize_primary_fixture(
+        _frame: Frame,
+        _donor: pd.DataFrame,
+        checkpoint_dir: Path,
+        **_kwargs,
+    ) -> None:
+        checkpoint_dir.mkdir(parents=True)
+        pool_tool._atomic_write_json(
+            pool_tool._primary_qrf_manifest_path(checkpoint_dir),
+            {
+                "artifact_kind": "fixture_primary_qrf_manifest",
+                "target_order": ["fixture_target"],
+            },
+        )
+
+    tail_receipt = {
+        "tail_distribution_receipts": {
+            "frame_after_stage": {
+                "positive_mass_five_x_target_exceeded": True,
+            }
+        }
+    }
+
+    monkeypatch.setattr(
+        pool_tool,
+        "initialize_primary_puf_qrf_chain",
+        initialize_primary_fixture,
+    )
+    monkeypatch.setattr(pool_tool, "run_primary_puf_qrf_chain", lambda *_args: None)
+    monkeypatch.setattr(
+        pool_tool,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, *_args, **_kwargs: (frame, "calibrated"),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "transfer_puf_capital_gains_tail",
+        lambda frame, *_args, **_kwargs: (frame, tail_receipt),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "validate_puf_capital_gains_tail_manifest",
+        lambda _receipt: None,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "complete_multispine_source_inputs",
+        lambda frame: SimpleNamespace(frame=frame, receipt={"fixture": True}),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "pool_transfer_target_families",
+        lambda: {"person": {"fixture": ("fixture_target",)}},
+    )
+
+    def transfer_fixture(frame: Frame, *_args, target_bank=None, **_kwargs):
+        assert isinstance(target_bank, pool_tool.AcsTransferTargetBankStore)
+        return SimpleNamespace(
+            frame=frame,
+            fit_records=(),
+            resolved_donor_channel="fixture",
+            imputed_inputs=(),
+            deferred_inputs=(),
+        )
+
+    monkeypatch.setattr(pool_tool, "transfer_acs_inputs", transfer_fixture)
+    if active_bank_receipt is not None:
+        monkeypatch.setattr(
+            pool_tool.AcsTransferTargetBankStore,
+            "receipt",
+            lambda _self: copy.deepcopy(active_bank_receipt["value"]),
+        )
+    return {
+        "artifact_kind": "fixture_pool_input_binding",
+        "schema_version": 1,
+    }
+
+
+def _target_bank_receipt_after_interruption(
+    durable_target_index: int | None,
+    *,
+    total_targets: int = 9,
+) -> dict[str, object]:
+    targets: dict[str, object] = {}
+    for index in range(total_targets):
+        resumed = durable_target_index is not None and index <= durable_target_index
+        source = "checkpoint" if resumed else "rebuilt"
+        record: dict[str, object] = {
+            "source": source,
+            "descriptor": {
+                "target_index": index,
+                "total_targets": total_targets,
+                "model_target": f"target_{index}",
+            },
+            "load_status": "resumed" if resumed else "missing",
+            "path": f"/fixture/targets/{index:03d}__target_{index}.h5",
+            "checkpoint_sha256": f"{index:064x}",
+            "size_bytes": 1_000 + index,
+        }
+        if not resumed:
+            record["write_status"] = "rebuilt"
+            record["write_seconds"] = index + 0.25
+        targets[str(index)] = record
+    return {
+        "artifact_kind": "populace_us_multispine_acs_transfer_target_bank_provenance",
+        "schema_version": 1,
+        "materializer_version": ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
+        "root": "/fixture/acs-transfer",
+        "identity": {"fixture": "identity"},
+        "identity_sha256": "a" * 64,
+        "targets": targets,
+    }
 
 
 def _seed_stale_green_outputs(outputs) -> None:
@@ -511,6 +712,9 @@ def test_checkpoint_root_defaults_alongside_out_and_accepts_override(
     assert default.primary_qrf_checkpoint_dir == (
         output.with_suffix(".checkpoints") / "primary-qrf"
     )
+    assert default.acs_transfer_checkpoint_dir == (
+        output.with_suffix(".checkpoints") / "acs-transfer"
+    )
 
     explicit_root = tmp_path / "persistent" / "pool-checkpoints"
     explicit = pool_tool._output_paths(
@@ -520,6 +724,81 @@ def test_checkpoint_root_defaults_alongside_out_and_accepts_override(
 
     assert explicit.checkpoint_root == explicit_root
     assert explicit.primary_qrf_checkpoint_dir == explicit_root / "primary-qrf"
+    assert explicit.acs_transfer_checkpoint_dir == explicit_root / "acs-transfer"
+
+    identity_sha256 = "a" * 64
+    bound = pool_tool._with_checkpoint_identity(
+        explicit,
+        base_identity_sha256=identity_sha256,
+    )
+    assert bound.primary_qrf_checkpoint_dir == (
+        explicit_root / "primary-qrf" / identity_sha256
+    )
+    assert bound.acs_transfer_checkpoint_dir == (
+        explicit_root / "acs-transfer" / identity_sha256
+    )
+
+
+def test_identity_routed_bank_sibling_scan_is_bounded_and_ignores_junk(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bank_root = tmp_path / "primary-qrf"
+    bank_root.mkdir()
+    current_digest = "f" * 64
+    selected = bank_root / current_digest
+
+    class _Entry:
+        def __init__(self, name: str, *, directory: bool) -> None:
+            self.name = name
+            self._directory = directory
+
+        def is_dir(self, *, follow_symlinks: bool) -> bool:
+            assert follow_symlinks is False
+            return self._directory
+
+    entries = [
+        _Entry(current_digest, directory=True),
+        _Entry("not-a-digest", directory=True),
+        _Entry("1" * 64, directory=False),
+        _Entry("2" * 64, directory=False),
+        _Entry("3" * 64, directory=True),
+        *[_Entry(f"{index:064x}", directory=True) for index in range(10, 70)],
+    ]
+
+    class _Scandir:
+        def __enter__(self):
+            return iter(entries)
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr(pool_tool.os, "scandir", lambda _root: _Scandir())
+
+    receipt = pool_tool._identity_routed_bank_open_receipt(
+        selected,
+        current_base_identity_sha256=current_digest,
+    )
+
+    assert receipt["scan"] == {
+        "limit": pool_tool._BANK_IDENTITY_SIBLING_SCAN_LIMIT,
+        "entries_examined": pool_tool._BANK_IDENTITY_SIBLING_SCAN_LIMIT,
+        "truncated": True,
+    }
+    stale_digests = {
+        record["stale_base_identity_sha256"]
+        for record in receipt["identity_mismatches"]
+    }
+    assert "3" * 64 in stale_digests
+    assert current_digest not in stale_digests
+    assert "1" * 64 not in stale_digests
+    assert "2" * 64 not in stale_digests
+    assert all(
+        record["load_status"] == "identity_mismatch"
+        and record["disposition"] == "bypassed"
+        for record in receipt["identity_mismatches"]
+    )
 
 
 def test_checkpoint_root_allows_safe_input_colocation_on_persistent_volume(
@@ -566,6 +845,37 @@ def test_checkpoint_root_rejects_publication_file_collisions(
         )
 
 
+def test_atomic_json_fsyncs_parent_directory_after_rename(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(pool_tool.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(pool_tool.os, "replace", tracked_replace)
+    output = tmp_path / "receipt.json"
+
+    pool_tool._atomic_write_json(output, {"fixture": True})
+
+    assert events == [
+        ("fsync", "file"),
+        ("replace", output.name),
+        ("fsync", "directory"),
+    ]
+
+
 def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
     pool_tool: ModuleType,
 ) -> None:
@@ -578,6 +888,7 @@ def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
         "transfer_puf_capital_gains_tail",
         "complete_multispine_source_inputs",
         "pool_transfer_target_families",
+        "AcsTransferTargetBankStore",
         "transfer_acs_inputs",
     )
     calls = sorted(
@@ -592,6 +903,148 @@ def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
     )
 
     assert tuple(name for _line, name in calls) == expected
+
+    bank_call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AcsTransferTargetBankStore"
+    )
+    identity_value = next(
+        keyword.value for keyword in bank_call.keywords if keyword.arg == "identity"
+    )
+    assert isinstance(identity_value, ast.Call)
+    assert isinstance(identity_value.func, ast.Name)
+    assert identity_value.func.id == "_pool_checkpoint_stage_identity"
+    assert isinstance(identity_value.args[0], ast.Name)
+    assert identity_value.args[0].id == "checkpoint_identity"
+    assert isinstance(identity_value.args[1], ast.Constant)
+    assert identity_value.args[1].value == "transferred"
+
+    transfer_call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "transfer_acs_inputs"
+    )
+    target_bank_value = next(
+        keyword.value
+        for keyword in transfer_call.keywords
+        if keyword.arg == "target_bank"
+    )
+    assert isinstance(target_bank_value, ast.Name)
+    assert target_bank_value.id == "target_bank"
+
+
+def test_pool_imputation_binds_and_publishes_acs_target_bank(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _source_frame()
+    checkpoint_identity = {
+        "artifact_kind": "fixture-pool-checkpoint-identity",
+        "materializer_version": 7,
+        "inputs": {"fixture": {"sha256": "b" * 64}},
+    }
+    base_identity_sha256 = pool_tool._pool_checkpoint_identity_sha256(
+        checkpoint_identity
+    )
+    primary_qrf_dir = tmp_path / "primary-qrf" / base_identity_sha256
+    primary_qrf_dir.mkdir(parents=True)
+    pool_tool._atomic_write_json(
+        pool_tool._primary_qrf_manifest_path(primary_qrf_dir),
+        {"artifact_kind": "fixture-primary-manifest"},
+    )
+    pool_tool._atomic_write_json(
+        pool_tool._primary_qrf_input_binding_path(primary_qrf_dir),
+        {"artifact_kind": "fixture-primary-binding"},
+    )
+    acs_bank_dir = tmp_path / "acs-transfer" / base_identity_sha256
+    observed: dict[str, object] = {}
+    bank_receipt = {
+        "artifact_kind": "fixture-acs-target-bank-receipt",
+        "targets": {"0": {"source": "checkpoint"}},
+    }
+
+    class _RecordingBank:
+        def __init__(self, root: Path, *, identity: object) -> None:
+            observed["bank"] = self
+            observed["root"] = root
+            observed["identity"] = identity
+
+        def receipt(self) -> dict[str, object]:
+            return bank_receipt
+
+    def fake_transfer(*args, target_bank=None, **kwargs):
+        observed["transfer_target_bank"] = target_bank
+        return SimpleNamespace(
+            frame=args[0],
+            fit_records=(),
+            resolved_donor_channel="fixture",
+            imputed_inputs=(),
+            deferred_inputs=(),
+        )
+
+    tail_receipt = {
+        "tail_distribution_receipts": {
+            "frame_after_stage": {
+                "positive_mass_five_x_target_exceeded": True,
+            }
+        }
+    }
+    monkeypatch.setattr(
+        pool_tool,
+        "_initialize_or_resume_primary_qrf",
+        lambda *args, **kwargs: "resumed",
+    )
+    monkeypatch.setattr(pool_tool, "run_primary_puf_qrf_chain", lambda *args: None)
+    monkeypatch.setattr(
+        pool_tool,
+        "finalize_primary_puf_qrf_chain",
+        lambda *args, **kwargs: (frame, "calibrated"),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "transfer_puf_capital_gains_tail",
+        lambda *args, **kwargs: (frame, tail_receipt),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "validate_puf_capital_gains_tail_manifest",
+        lambda receipt: None,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "complete_multispine_source_inputs",
+        lambda input_frame: SimpleNamespace(frame=input_frame, receipt={}),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "pool_transfer_target_families",
+        lambda: {"person": {"fixture": ("fixture_target",)}},
+    )
+    monkeypatch.setattr(pool_tool, "AcsTransferTargetBankStore", _RecordingBank)
+    monkeypatch.setattr(pool_tool, "transfer_acs_inputs", fake_transfer)
+
+    result = pool_tool._impute_pool(
+        frame,
+        puf_donor=pd.DataFrame(),
+        primary_qrf_checkpoint_dir=primary_qrf_dir,
+        acs_transfer_checkpoint_dir=acs_bank_dir,
+        checkpoint_identity=checkpoint_identity,
+        checkpoint_input_binding={"artifact_kind": "fixture-input-binding"},
+    )
+
+    assert observed["root"] == acs_bank_dir
+    assert observed["identity"] == pool_tool._pool_checkpoint_stage_identity(
+        checkpoint_identity,
+        "transferred",
+    )
+    assert observed["transfer_target_bank"] is observed["bank"]
+    assert result.receipt["acs_qrf_transfer"]["target_bank"] == bank_receipt
 
 
 def test_production_pool_wires_source_preparation_into_clone_stage(
@@ -724,6 +1177,263 @@ def test_primary_qrf_resume_refuses_a_changed_input_binding(
             checkpoint_dir,
             input_binding=changed,
         )
+
+
+@pytest.mark.parametrize(
+    ("interruption_label", "durable_target_index"),
+    (
+        ("j0", 0),
+        ("j1", 1),
+        ("j2", 2),
+        ("mid", 4),
+        ("last", 8),
+    ),
+)
+def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_provenance(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    interruption_label: str,
+    durable_target_index: int,
+) -> None:
+    active_bank_receipt: dict[str, Mapping[str, object]] = {}
+    checkpoint_input_binding = _stub_production_impute_kernels(
+        pool_tool,
+        monkeypatch,
+        active_bank_receipt=active_bank_receipt,
+    )
+
+    canonical_acs_receipt_keys = {
+        "target_families",
+        "n_estimators",
+        "max_targets_per_fit",
+        "resolved_donor_channel",
+        "imputed_inputs",
+        "fit_records",
+        "deferred_inputs",
+    }
+    canonical_primary_receipt_keys = {
+        "checkpoint_manifest",
+        "checkpoint_manifest_sha256",
+        "input_binding",
+        "input_binding_sha256",
+        "n_estimators",
+        "tail_bound_diagnostics",
+    }
+    canonical_impute_receipt_keys = {
+        "source_operator_chain",
+        "primary_puf_qrf",
+        "puf_capital_gains_tail_transfer",
+        "acs_qrf_transfer",
+        "weights_audit",
+    }
+    cold_receipt = _target_bank_receipt_after_interruption(None)
+    cold_store = _checkpoint_fixture_store(pool_tool, tmp_path / "cold-checkpoints")
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    primary_qrf_dir = tmp_path / "primary-qrf" / cold_store.base_identity_sha256
+    acs_transfer_dir = tmp_path / "acs-transfer" / cold_store.base_identity_sha256
+    active_bank_receipt["value"] = cold_receipt
+    cold_result = _run_production_impute_checkpoint_fixture(
+        pool_tool,
+        store=cold_store,
+        primary_qrf_checkpoint_dir=primary_qrf_dir,
+        acs_transfer_checkpoint_dir=acs_transfer_dir,
+        checkpoint_input_binding=checkpoint_input_binding,
+    )
+    cold_bytes = cold_store.checkpoint_path("transferred").read_bytes()
+    cold_sidecar = pool_tool._read_json_object(
+        cold_store.checkpoint_receipts_path("transferred")
+    )["operational_stage_receipts"]
+    cold_primary_operational = cold_sidecar["impute"]["primary_puf_qrf"]
+    assert cold_primary_operational["resume_status"] == "initialized"
+    assert cold_primary_operational["identity_routing"]["identity_mismatches"] == []
+    cold_target_bank = copy.deepcopy(
+        cold_sidecar["impute"]["acs_qrf_transfer"]["target_bank"]
+    )
+    assert cold_target_bank.pop("identity_routing")["identity_mismatches"] == []
+    assert cold_target_bank == cold_receipt
+    assert (
+        cold_result.stage_receipts["impute"]["primary_puf_qrf"]["resume_status"]
+        == "initialized"
+    )
+
+    resumed_receipt = _target_bank_receipt_after_interruption(durable_target_index)
+    resumed_store = _checkpoint_fixture_store(
+        pool_tool,
+        tmp_path / f"{interruption_label}-checkpoints",
+    )
+    resumed_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    assert resumed_store.base_identity_sha256 == cold_store.base_identity_sha256
+    active_bank_receipt["value"] = resumed_receipt
+    resumed_result = _run_production_impute_checkpoint_fixture(
+        pool_tool,
+        store=resumed_store,
+        primary_qrf_checkpoint_dir=primary_qrf_dir,
+        acs_transfer_checkpoint_dir=acs_transfer_dir,
+        checkpoint_input_binding=checkpoint_input_binding,
+    )
+
+    transferred_path = resumed_store.checkpoint_path("transferred")
+    assert transferred_path.read_bytes() == cold_bytes
+    metadata = pool_tool.load_frame_checkpoint(transferred_path).metadata
+    canonical_receipts = metadata["stage_receipts"]
+    assert set(canonical_receipts) == {"clone", "impute"}
+    canonical_impute_receipt = canonical_receipts["impute"]
+    assert set(canonical_impute_receipt) == canonical_impute_receipt_keys
+    canonical_primary_receipt = canonical_impute_receipt["primary_puf_qrf"]
+    assert set(canonical_primary_receipt) == canonical_primary_receipt_keys
+    assert "resume_status" not in canonical_primary_receipt
+    canonical_acs_receipt = canonical_impute_receipt["acs_qrf_transfer"]
+    assert set(canonical_acs_receipt) == canonical_acs_receipt_keys
+    assert "target_bank" not in canonical_acs_receipt
+
+    receipts_path = resumed_store.checkpoint_receipts_path("transferred")
+    sidecar = pool_tool._read_json_object(receipts_path)
+    operational_impute = sidecar["operational_stage_receipts"]["impute"]
+    assert operational_impute["primary_puf_qrf"]["resume_status"] == "resumed"
+    assert (
+        operational_impute["primary_puf_qrf"]["identity_routing"]["identity_mismatches"]
+        == []
+    )
+    resumed_target_bank = copy.deepcopy(
+        operational_impute["acs_qrf_transfer"]["target_bank"]
+    )
+    assert resumed_target_bank.pop("identity_routing")["identity_mismatches"] == []
+    assert resumed_target_bank == resumed_receipt
+
+    resumed_store.checkpoint_path("simulated").unlink()
+    resumed_store.checkpoint_manifest_path("simulated").unlink()
+    warm_store = _checkpoint_fixture_store(
+        pool_tool,
+        tmp_path / f"{interruption_label}-checkpoints",
+    )
+    checkpoint = warm_store.load_deepest()
+    assert checkpoint is not None
+    assert checkpoint.stage == "transferred"
+    assert (
+        checkpoint.stage_receipts["impute"]["primary_puf_qrf"]["resume_status"]
+        == "resumed"
+    )
+    restored_target_bank = copy.deepcopy(
+        checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]["target_bank"]
+    )
+    restored_target_bank.pop("identity_routing")
+    assert restored_target_bank == resumed_receipt
+    runtime_target_bank = copy.deepcopy(
+        resumed_result.stage_receipts["impute"]["acs_qrf_transfer"]["target_bank"]
+    )
+    runtime_target_bank.pop("identity_routing")
+    assert runtime_target_bank == resumed_receipt
+    receipts_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf"
+    )["stages"]["transferred"]["receipts_sidecar"]
+    assert receipts_provenance["load_status"] == "loaded"
+    assert receipts_provenance["path"] == str(receipts_path.resolve())
+
+
+@pytest.mark.parametrize("damage", ("missing", "corrupt"))
+def test_operational_receipts_sidecar_damage_does_not_invalidate_checkpoint(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    root = tmp_path / f"{damage}-checkpoints"
+    target_bank_receipt = _target_bank_receipt_after_interruption(2)
+    cold_store = _checkpoint_fixture_store(pool_tool, root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+        target_bank_receipt=target_bank_receipt,
+    )
+    transferred_path = cold_store.checkpoint_path("transferred")
+    canonical_bytes = transferred_path.read_bytes()
+    expected_identity_sha256 = pool_tool.load_frame_checkpoint(
+        transferred_path
+    ).metadata["identity_sha256"]
+    cold_store.checkpoint_path("simulated").unlink()
+    cold_store.checkpoint_manifest_path("simulated").unlink()
+    receipts_path = cold_store.checkpoint_receipts_path("transferred")
+    if damage == "missing":
+        receipts_path.unlink()
+        expected_status = "missing"
+    else:
+        receipts_path.write_text("{not-json", encoding="utf-8")
+        expected_status = "invalid_ignored"
+
+    warm_store = _checkpoint_fixture_store(pool_tool, root)
+    checkpoint = warm_store.load_deepest()
+
+    assert checkpoint is not None
+    assert checkpoint.stage == "transferred"
+    assert transferred_path.read_bytes() == canonical_bytes
+    assert (
+        pool_tool.load_frame_checkpoint(transferred_path).metadata["identity_sha256"]
+        == expected_identity_sha256
+    )
+    assert "target_bank" not in checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]
+    receipts_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf"
+    )["stages"]["transferred"]["receipts_sidecar"]
+    assert receipts_provenance["load_status"] == expected_status
+
+
+def test_same_identity_rewrite_cannot_reattach_stale_operational_receipts(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "rewrite-checkpoints"
+    receipt_a = _target_bank_receipt_after_interruption(0)
+    cold_store = _checkpoint_fixture_store(pool_tool, root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+        target_bank_receipt=receipt_a,
+    )
+    receipts_path = cold_store.checkpoint_receipts_path("transferred")
+    assert receipts_path.is_file()
+    cold_store.checkpoint_path("simulated").unlink()
+    cold_store.checkpoint_manifest_path("simulated").unlink()
+    cold_store.checkpoint_receipts_path("simulated").unlink()
+
+    real_atomic_write_json = pool_tool._atomic_write_json
+
+    def interrupt_before_receipts_install(path: Path, payload: Mapping[str, object]):
+        if Path(path) == receipts_path:
+            assert not receipts_path.exists()
+            raise RuntimeError("fixture crash before fresh receipts install")
+        return real_atomic_write_json(path, payload)
+
+    monkeypatch.setattr(
+        pool_tool,
+        "_atomic_write_json",
+        interrupt_before_receipts_install,
+    )
+    rewrite_store = _checkpoint_fixture_store(pool_tool, root)
+    rewrite_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    with pytest.raises(RuntimeError, match="before fresh receipts install"):
+        _run_checkpoint_fixture(
+            pool_tool,
+            tmp_path,
+            store=rewrite_store,
+            target_bank_receipt=_target_bank_receipt_after_interruption(4),
+        )
+    assert not receipts_path.exists()
+
+    warm_store = _checkpoint_fixture_store(pool_tool, root)
+    checkpoint = warm_store.load_deepest()
+
+    assert checkpoint is not None
+    assert checkpoint.stage == "transferred"
+    assert "target_bank" not in checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]
+    receipts_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf"
+    )["stages"]["transferred"]["receipts_sidecar"]
+    assert receipts_provenance["load_status"] == "missing"
 
 
 @pytest.mark.parametrize(
@@ -861,6 +1571,11 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
         provenance["primary_qrf"]["base_identity_sha256"]
         == warm_store.base_identity_sha256
     )
+    assert (
+        provenance["acs_transfer"]["base_identity_sha256"]
+        == warm_store.base_identity_sha256
+    )
+    assert provenance["acs_transfer"]["boundary_stage"] == "transferred"
     for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
         assert (
             provenance["stages"][stage]["identity_sha256"]
@@ -984,6 +1699,259 @@ def test_pool_checkpoint_input_sha_mismatch_rebuilds_every_stage(
     for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
         assert provenance["stages"][stage]["source"] == "rebuilt"
         assert provenance["stages"][stage]["load_status"] == "identity_mismatch"
+
+
+@pytest.mark.parametrize(
+    "contract_field",
+    (
+        pytest.param("asserted_constraint", id="asserted_constraint_changed"),
+        pytest.param(
+            "inventory_built_against",
+            id="inventory_built_against_changed",
+        ),
+    ),
+)
+def test_production_bank_routing_names_stale_contract_identity_siblings(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    contract_field: str,
+) -> None:
+    checkpoint_root = tmp_path / "production-routing-checkpoints"
+    base_outputs = pool_tool._output_paths(
+        tmp_path / "pool.h5",
+        checkpoint_root=checkpoint_root,
+    )
+    contract = load_take_up_contract()
+    current_contract_identity = take_up_contract_identity(contract)
+    stale_contract = replace(
+        contract,
+        **{contract_field: f"{getattr(contract, contract_field)}-stale"},
+    )
+    stale_contract_identity = take_up_contract_identity(stale_contract)
+    monkeypatch.setattr(
+        pool_tool,
+        "take_up_contract_identity",
+        lambda: stale_contract_identity,
+    )
+    stale_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    stale_outputs = pool_tool._with_checkpoint_identity(
+        base_outputs,
+        base_identity_sha256=stale_store.base_identity_sha256,
+    )
+    stale_markers = []
+    for bank_dir in (
+        stale_outputs.primary_qrf_checkpoint_dir,
+        stale_outputs.acs_transfer_checkpoint_dir,
+    ):
+        bank_dir.mkdir(parents=True)
+        marker = bank_dir / "must-not-be-opened"
+        marker.write_text("stale bank marker\n", encoding="utf-8")
+        stale_markers.append(marker)
+
+    monkeypatch.setattr(
+        pool_tool,
+        "take_up_contract_identity",
+        lambda: current_contract_identity,
+    )
+    current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    current_outputs = pool_tool._with_checkpoint_identity(
+        base_outputs,
+        base_identity_sha256=current_store.base_identity_sha256,
+    )
+    assert current_store.base_identity_sha256 != stale_store.base_identity_sha256
+    assert (
+        current_outputs.primary_qrf_checkpoint_dir
+        != stale_outputs.primary_qrf_checkpoint_dir
+    )
+    assert (
+        current_outputs.acs_transfer_checkpoint_dir
+        != stale_outputs.acs_transfer_checkpoint_dir
+    )
+
+    checkpoint_input_binding = _stub_production_impute_kernels(
+        pool_tool,
+        monkeypatch,
+    )
+    current_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    result = _run_production_impute_checkpoint_fixture(
+        pool_tool,
+        store=current_store,
+        primary_qrf_checkpoint_dir=current_outputs.primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=current_outputs.acs_transfer_checkpoint_dir,
+        checkpoint_input_binding=checkpoint_input_binding,
+    )
+
+    operational_impute = pool_tool._read_json_object(
+        current_store.checkpoint_receipts_path("transferred")
+    )["operational_stage_receipts"]["impute"]
+    assert operational_impute["primary_puf_qrf"]["resume_status"] == "initialized"
+    primary_routing = operational_impute["primary_puf_qrf"]["identity_routing"]
+    target_bank = operational_impute["acs_qrf_transfer"]["target_bank"]
+    acs_routing = target_bank["identity_routing"]
+    assert target_bank["root"] == str(
+        current_outputs.acs_transfer_checkpoint_dir.resolve()
+    )
+    assert target_bank["targets"] == {}
+
+    for routing, bank_root, selected_path, stale_path in (
+        (
+            primary_routing,
+            current_outputs.primary_qrf_checkpoint_dir.parent,
+            current_outputs.primary_qrf_checkpoint_dir,
+            stale_outputs.primary_qrf_checkpoint_dir,
+        ),
+        (
+            acs_routing,
+            current_outputs.acs_transfer_checkpoint_dir.parent,
+            current_outputs.acs_transfer_checkpoint_dir,
+            stale_outputs.acs_transfer_checkpoint_dir,
+        ),
+    ):
+        assert routing["bank_root"] == str(bank_root.resolve())
+        assert routing["selected_path"] == str(selected_path.resolve())
+        assert (
+            routing["current_base_identity_sha256"]
+            == current_store.base_identity_sha256
+        )
+        assert routing["scan"] == {
+            "limit": pool_tool._BANK_IDENTITY_SIBLING_SCAN_LIMIT,
+            "entries_examined": 1,
+            "truncated": False,
+        }
+        assert routing["identity_mismatches"] == [
+            {
+                "load_status": "identity_mismatch",
+                "stale_base_identity_sha256": stale_store.base_identity_sha256,
+                "current_base_identity_sha256": current_store.base_identity_sha256,
+                "disposition": "bypassed",
+                "path": str(stale_path.resolve()),
+            }
+        ]
+    assert all(
+        marker.read_text(encoding="utf-8") == "stale bank marker\n"
+        for marker in stale_markers
+    )
+    assert (
+        result.stage_receipts["impute"]["primary_puf_qrf"]["identity_routing"]
+        == primary_routing
+    )
+
+
+@pytest.mark.parametrize(
+    "contract_field",
+    (
+        pytest.param("asserted_constraint", id="asserted_constraint_changed"),
+        pytest.param(
+            "inventory_built_against",
+            id="inventory_built_against_changed",
+        ),
+    ),
+)
+def test_take_up_contract_identity_mutation_rebuilds_every_pool_boundary(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    contract_field: str,
+) -> None:
+    checkpoint_root = tmp_path / "take-up-contract-checkpoints"
+    contract = load_take_up_contract()
+    original_contract_identity = take_up_contract_identity(contract)
+    monkeypatch.setattr(
+        pool_tool,
+        "take_up_contract_identity",
+        lambda: original_contract_identity,
+    )
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    assert (
+        cold_store.base_identity["pool_code"]["take_up_contract"]
+        == original_contract_identity
+    )
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+
+    changed_contract = replace(
+        contract,
+        **{contract_field: f"{getattr(contract, contract_field)}-changed"},
+    )
+    changed_contract_identity = take_up_contract_identity(changed_contract)
+    monkeypatch.setattr(
+        pool_tool,
+        "take_up_contract_identity",
+        lambda: changed_contract_identity,
+    )
+    changed_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+
+    assert (
+        changed_store.base_identity["pool_code"]["take_up_contract"]
+        == changed_contract_identity
+    )
+    assert changed_store.base_identity_sha256 != cold_store.base_identity_sha256
+    assert changed_store.load_deepest() is None
+    changed_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    rebuilt, order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=changed_store,
+    )
+
+    assert order == ["impute", "derive", "seed", "simulate"]
+    assert not rebuilt.simulation_ready
+    provenance = changed_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    assert provenance["deepest_resumed_stage"] is None
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert provenance["stages"][stage]["source"] == "rebuilt"
+        assert provenance["stages"][stage]["load_status"] == "identity_mismatch"
+
+
+def test_pool_materializer_v1_artifacts_fail_closed_with_named_receipts(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    checkpoint_root = tmp_path / "materializer-v1-checkpoints"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(pool_tool, "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION", 1)
+        legacy_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+        assert legacy_store.base_identity["materializer_version"] == 1
+        legacy_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+        _run_checkpoint_fixture(pool_tool, tmp_path, store=legacy_store)
+        for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+            metadata = pool_tool.load_frame_checkpoint(
+                legacy_store.checkpoint_path(stage)
+            ).metadata
+            manifest = pool_tool._read_json_object(
+                legacy_store.checkpoint_manifest_path(stage)
+            )
+            assert metadata["materializer_version"] == 1
+            assert metadata["identity"]["materializer_version"] == 1
+            assert manifest["materializer_version"] == 1
+            assert manifest["identity"]["materializer_version"] == 1
+    capsys.readouterr()
+
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 2
+    current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    assert current_store.base_identity["materializer_version"] == 2
+    assert current_store.load_deepest() is None
+
+    output = capsys.readouterr().out
+    provenance = current_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert f"Ignored corrupt pool checkpoint '{stage}'" in output
+        receipt = provenance["stages"][stage]
+        assert receipt["source"] == "rebuilt"
+        assert receipt["load_status"] == "invalid_rebuild"
+        invalid = receipt["invalid_checkpoint"]
+        assert invalid["reason"] == "checkpoint_validation_failed"
+        assert invalid["message"] == (
+            f"{stage} checkpoint manifest has an unsupported binding"
+        )
 
 
 @pytest.mark.parametrize(
