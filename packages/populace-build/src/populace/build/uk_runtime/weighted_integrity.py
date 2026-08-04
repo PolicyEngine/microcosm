@@ -23,9 +23,41 @@ stale entries fail).
 Thresholds carry **no committed defaults**: the US numbers are calibrated to
 US incidents and the #609 measurement pass has not yet adjudicated UK
 boundaries. Arming either gate requires explicit policy values; once the
-measurement numbers are posted on #578, the adjudicated constants belong
-next to :data:`~populace.build.uk_runtime.terminal_gates.UK_MAX_TO_MEDIAN_WEIGHT_RATIO`
+measurement numbers are adjudicated, the constants belong next to
+:data:`~populace.build.uk_runtime.terminal_gates.UK_MAX_TO_MEDIAN_WEIGHT_RATIO`
 with the same derivation-comment discipline.
+
+What the first measurement pass against the pinned enhanced-FRS incumbent
+(sha ``584ae33d…``, 2026-08-04) established, so that no later reader
+reintroduces the US constants by default:
+
+* **The US 0.75 top-share threshold is wrong for this surface.** At the US
+  ``top_k=100`` / ``min_nonzero_records=500`` settings the incumbent itself
+  exceeds 0.75 on 16 of the 28 checked columns. UK reported-benefit columns
+  sit on small, high-intensity subpopulations, so concentrated weighted mass
+  is their normal state rather than a defect.
+* **No single global top-share threshold is both incumbent-compatible and
+  incident-catching.** The lowest no-headroom threshold that passes the
+  incumbent on a broad surface is ~0.996, which would not have caught the
+  #462 incident that motivated the gate (89% of mass in 100 of 2,295
+  carriers). Tightening it instead requires raising ``min_nonzero_records``
+  far enough to drop half the surface.
+* **The incumbent cannot supply the QRF baseline at all.** Eleven stage-1
+  outputs (every ``hmrc_spi_*`` column plus ``other_investment_income``) and
+  five stage-2 disability columns are absent from it, and the seven stage-1
+  columns it does carry hold *survey-reported FRS values, not donor draws*.
+  Concentration measured there is a different distribution from the one the
+  gate exists to police, so the QRF threshold must come from a staged
+  candidate where the columns are actually QRF draws.
+* **A magnitude floor is not a coherent materiality filter here.** The
+  reference surface mixes units: currency totals into the trillions,
+  weighted person counts in the millions, and flag counts in the tens of
+  thousands. Inheriting the US ``1e9`` floor would stop checking 50 of 131
+  columns, including ``person.gift_aid`` and
+  ``person.charitable_investment_gifts`` — the two the release input
+  coverage manifest specifically requires distributional effective mass for.
+  A floor of ``0.0`` still skips the three exact-zero reference columns,
+  because the shared gate compares ``<=``.
 """
 
 from __future__ import annotations
