@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import importlib.util
 import inspect
@@ -344,7 +345,7 @@ def _run_checkpoint_fixture(
             if name == "impute" and target_bank_receipt is not None:
                 receipt = {
                     "source_operator_chain": {"post_primary_completion": {}},
-                    "primary_puf_qrf": {"resume_status": "fixture"},
+                    "primary_puf_qrf": {"fixture_manifest": True},
                     "puf_capital_gains_tail_transfer": {"fixture": True},
                     "acs_qrf_transfer": {
                         "target_families": {"person": {"fixture": ["target"]}},
@@ -403,6 +404,59 @@ def _run_checkpoint_fixture(
         resume=resume,
     )
     return result, order
+
+
+def _run_production_impute_checkpoint_fixture(
+    pool_tool: ModuleType,
+    *,
+    store,
+    primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path,
+    checkpoint_input_binding: Mapping[str, object],
+):
+    """Run the production impute closure while keeping later fixture stages tiny."""
+
+    def stage(
+        transform: Callable[[pd.DataFrame], None],
+    ) -> Callable[[Frame], PoolStageOutput]:
+        def apply(frame: Frame) -> PoolStageOutput:
+            person = frame.table("person").copy()
+            transform(person)
+            return PoolStageOutput(
+                _replace_person(frame, person),
+                {"fixture_stage": True},
+            )
+
+        return apply
+
+    return pool_tool.build_multispine_pool(
+        _source_frame(),
+        _source_frame(measured_offset=99.0),
+        puf_donor=pd.DataFrame(),
+        acs_rent_donor=pd.DataFrame(),
+        primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=acs_transfer_checkpoint_dir,
+        checkpoint_identity=store.base_identity,
+        checkpoint_input_binding=checkpoint_input_binding,
+        prepare_clone=stage(lambda _person: None),
+        derive=stage(
+            lambda person: person.__setitem__("fixture_derived", 1.0),
+        ),
+        seed=stage(
+            lambda person: person.__setitem__("fixture_seed", True),
+        ),
+        simulate=stage(
+            lambda person: person.__setitem__(
+                "ssi",
+                np.where(
+                    person[support_channel_column("person")].eq("asec"),
+                    1.0,
+                    100.0,
+                ),
+            ),
+        ),
+        checkpoint=store.write,
+    )
 
 
 def _target_bank_receipt_after_interruption(
@@ -986,10 +1040,89 @@ def test_primary_qrf_resume_refuses_a_changed_input_binding(
 )
 def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_provenance(
     pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     interruption_label: str,
     durable_target_index: int,
 ) -> None:
+    active_bank_receipt: dict[str, Mapping[str, object]] = {}
+    checkpoint_input_binding = {
+        "artifact_kind": "fixture_pool_input_binding",
+        "schema_version": 1,
+    }
+
+    def initialize_primary_fixture(
+        _frame: Frame,
+        _donor: pd.DataFrame,
+        checkpoint_dir: Path,
+        **_kwargs,
+    ) -> None:
+        checkpoint_dir.mkdir(parents=True)
+        pool_tool._atomic_write_json(
+            pool_tool._primary_qrf_manifest_path(checkpoint_dir),
+            {
+                "artifact_kind": "fixture_primary_qrf_manifest",
+                "target_order": ["fixture_target"],
+            },
+        )
+
+    tail_receipt = {
+        "tail_distribution_receipts": {
+            "frame_after_stage": {
+                "positive_mass_five_x_target_exceeded": True,
+            }
+        }
+    }
+
+    monkeypatch.setattr(
+        pool_tool,
+        "initialize_primary_puf_qrf_chain",
+        initialize_primary_fixture,
+    )
+    monkeypatch.setattr(pool_tool, "run_primary_puf_qrf_chain", lambda *_args: None)
+    monkeypatch.setattr(
+        pool_tool,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, *_args, **_kwargs: (frame, "calibrated"),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "transfer_puf_capital_gains_tail",
+        lambda frame, *_args, **_kwargs: (frame, tail_receipt),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "validate_puf_capital_gains_tail_manifest",
+        lambda _receipt: None,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "complete_multispine_source_inputs",
+        lambda frame: SimpleNamespace(frame=frame, receipt={"fixture": True}),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "pool_transfer_target_families",
+        lambda: {"person": {"fixture": ("fixture_target",)}},
+    )
+
+    def transfer_fixture(frame: Frame, *_args, target_bank=None, **_kwargs):
+        assert isinstance(target_bank, pool_tool.AcsTransferTargetBankStore)
+        return SimpleNamespace(
+            frame=frame,
+            fit_records=(),
+            resolved_donor_channel="fixture",
+            imputed_inputs=(),
+            deferred_inputs=(),
+        )
+
+    monkeypatch.setattr(pool_tool, "transfer_acs_inputs", transfer_fixture)
+    monkeypatch.setattr(
+        pool_tool.AcsTransferTargetBankStore,
+        "receipt",
+        lambda _self: copy.deepcopy(active_bank_receipt["value"]),
+    )
+
     canonical_acs_receipt_keys = {
         "target_families",
         "n_estimators",
@@ -999,16 +1132,44 @@ def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_proven
         "fit_records",
         "deferred_inputs",
     }
+    canonical_primary_receipt_keys = {
+        "checkpoint_manifest",
+        "checkpoint_manifest_sha256",
+        "input_binding",
+        "input_binding_sha256",
+        "n_estimators",
+        "tail_bound_diagnostics",
+    }
+    canonical_impute_receipt_keys = {
+        "source_operator_chain",
+        "primary_puf_qrf",
+        "puf_capital_gains_tail_transfer",
+        "acs_qrf_transfer",
+        "weights_audit",
+    }
     cold_receipt = _target_bank_receipt_after_interruption(None)
     cold_store = _checkpoint_fixture_store(pool_tool, tmp_path / "cold-checkpoints")
     cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
-    _run_checkpoint_fixture(
+    primary_qrf_dir = tmp_path / "primary-qrf" / cold_store.base_identity_sha256
+    acs_transfer_dir = tmp_path / "acs-transfer" / cold_store.base_identity_sha256
+    active_bank_receipt["value"] = cold_receipt
+    cold_result = _run_production_impute_checkpoint_fixture(
         pool_tool,
-        tmp_path,
         store=cold_store,
-        target_bank_receipt=cold_receipt,
+        primary_qrf_checkpoint_dir=primary_qrf_dir,
+        acs_transfer_checkpoint_dir=acs_transfer_dir,
+        checkpoint_input_binding=checkpoint_input_binding,
     )
     cold_bytes = cold_store.checkpoint_path("transferred").read_bytes()
+    cold_sidecar = pool_tool._read_json_object(
+        cold_store.checkpoint_receipts_path("transferred")
+    )["operational_stage_receipts"]
+    assert cold_sidecar["impute"]["primary_puf_qrf"] == {"resume_status": "initialized"}
+    assert cold_sidecar["impute"]["acs_qrf_transfer"] == {"target_bank": cold_receipt}
+    assert (
+        cold_result.stage_receipts["impute"]["primary_puf_qrf"]["resume_status"]
+        == "initialized"
+    )
 
     resumed_receipt = _target_bank_receipt_after_interruption(durable_target_index)
     resumed_store = _checkpoint_fixture_store(
@@ -1016,26 +1177,37 @@ def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_proven
         tmp_path / f"{interruption_label}-checkpoints",
     )
     resumed_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
-    resumed_result, _order = _run_checkpoint_fixture(
+    assert resumed_store.base_identity_sha256 == cold_store.base_identity_sha256
+    active_bank_receipt["value"] = resumed_receipt
+    resumed_result = _run_production_impute_checkpoint_fixture(
         pool_tool,
-        tmp_path,
         store=resumed_store,
-        target_bank_receipt=resumed_receipt,
+        primary_qrf_checkpoint_dir=primary_qrf_dir,
+        acs_transfer_checkpoint_dir=acs_transfer_dir,
+        checkpoint_input_binding=checkpoint_input_binding,
     )
 
     transferred_path = resumed_store.checkpoint_path("transferred")
     assert transferred_path.read_bytes() == cold_bytes
     metadata = pool_tool.load_frame_checkpoint(transferred_path).metadata
     canonical_receipts = metadata["stage_receipts"]
-    assert set(canonical_receipts) == {"impute"}
-    canonical_acs_receipt = canonical_receipts["impute"]["acs_qrf_transfer"]
+    assert set(canonical_receipts) == {"clone", "impute"}
+    canonical_impute_receipt = canonical_receipts["impute"]
+    assert set(canonical_impute_receipt) == canonical_impute_receipt_keys
+    canonical_primary_receipt = canonical_impute_receipt["primary_puf_qrf"]
+    assert set(canonical_primary_receipt) == canonical_primary_receipt_keys
+    assert "resume_status" not in canonical_primary_receipt
+    canonical_acs_receipt = canonical_impute_receipt["acs_qrf_transfer"]
     assert set(canonical_acs_receipt) == canonical_acs_receipt_keys
     assert "target_bank" not in canonical_acs_receipt
 
     receipts_path = resumed_store.checkpoint_receipts_path("transferred")
     sidecar = pool_tool._read_json_object(receipts_path)
     assert sidecar["operational_stage_receipts"] == {
-        "impute": {"acs_qrf_transfer": {"target_bank": resumed_receipt}}
+        "impute": {
+            "primary_puf_qrf": {"resume_status": "resumed"},
+            "acs_qrf_transfer": {"target_bank": resumed_receipt},
+        }
     }
 
     resumed_store.checkpoint_path("simulated").unlink()
@@ -1047,6 +1219,10 @@ def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_proven
     checkpoint = warm_store.load_deepest()
     assert checkpoint is not None
     assert checkpoint.stage == "transferred"
+    assert (
+        checkpoint.stage_receipts["impute"]["primary_puf_qrf"]["resume_status"]
+        == "resumed"
+    )
     assert (
         checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]["target_bank"]
         == resumed_receipt

@@ -1376,57 +1376,70 @@ def _split_checkpoint_stage_receipts(
     impute = normalized.get("impute")
     if not isinstance(impute, dict):
         return normalized, {}
-    acs_transfer = impute.get("acs_qrf_transfer")
-    if not isinstance(acs_transfer, dict) or "target_bank" not in acs_transfer:
-        return normalized, {}
-    target_bank = acs_transfer.pop("target_bank")
-    if not isinstance(target_bank, Mapping):
-        raise ValueError("ACS transfer target-bank receipt must be an object.")
-    return normalized, {
-        "impute": {
-            "acs_qrf_transfer": {
-                "target_bank": dict(target_bank),
-            }
+    operational_impute: dict[str, object] = {}
+    primary_qrf = impute.get("primary_puf_qrf")
+    if isinstance(primary_qrf, dict) and "resume_status" in primary_qrf:
+        resume_status = primary_qrf.pop("resume_status")
+        if not isinstance(resume_status, str) or not resume_status:
+            raise ValueError("Primary QRF resume status must be a non-empty string.")
+        operational_impute["primary_puf_qrf"] = {
+            "resume_status": resume_status,
         }
-    }
+    acs_transfer = impute.get("acs_qrf_transfer")
+    if isinstance(acs_transfer, dict) and "target_bank" in acs_transfer:
+        target_bank = acs_transfer.pop("target_bank")
+        if not isinstance(target_bank, Mapping):
+            raise ValueError("ACS transfer target-bank receipt must be an object.")
+        operational_impute["acs_qrf_transfer"] = {
+            "target_bank": dict(target_bank),
+        }
+    if not operational_impute:
+        return normalized, {}
+    return normalized, {"impute": operational_impute}
 
 
 def _attach_checkpoint_operational_receipts(
     canonical_stage_receipts: Mapping[str, object],
     operational_stage_receipts: Mapping[str, object],
 ) -> dict[str, object]:
-    """Reattach the one non-canonical receipt path for runtime observability."""
+    """Reattach non-canonical bank evidence for runtime observability."""
 
     canonical, existing_operational = _split_checkpoint_stage_receipts(
         canonical_stage_receipts
     )
     if existing_operational:
-        raise ValueError("canonical stage receipts already contain target_bank")
+        raise ValueError("canonical stage receipts already contain bank provenance")
     operational = _json_ready(operational_stage_receipts)
     if not isinstance(operational, dict):  # pragma: no cover - mapping normalization
         raise TypeError("Operational stage receipts must normalize to an object.")
     if set(operational) != {"impute"}:
         raise ValueError("operational stage receipts must contain only impute")
     operational_impute = operational.get("impute")
-    if not isinstance(operational_impute, dict) or set(operational_impute) != {
-        "acs_qrf_transfer"
-    }:
+    if not isinstance(operational_impute, dict) or not operational_impute:
         raise ValueError("operational impute receipt shape changed")
-    operational_transfer = operational_impute.get("acs_qrf_transfer")
-    if not isinstance(operational_transfer, dict) or set(operational_transfer) != {
-        "target_bank"
-    }:
-        raise ValueError("operational ACS transfer receipt shape changed")
-    target_bank = operational_transfer.get("target_bank")
-    if not isinstance(target_bank, Mapping):
-        raise ValueError("operational target_bank receipt must be an object")
     canonical_impute = canonical.get("impute")
     if not isinstance(canonical_impute, dict):
         raise ValueError("canonical stage receipts have no impute object")
-    canonical_transfer = canonical_impute.get("acs_qrf_transfer")
-    if not isinstance(canonical_transfer, dict):
-        raise ValueError("canonical impute receipt has no acs_qrf_transfer object")
-    canonical_transfer["target_bank"] = dict(target_bank)
+    allowed_fields = {
+        "primary_puf_qrf": frozenset({"resume_status"}),
+        "acs_qrf_transfer": frozenset({"target_bank"}),
+    }
+    for section, operational_section in operational_impute.items():
+        if section not in allowed_fields or not isinstance(operational_section, dict):
+            raise ValueError("operational impute receipt shape changed")
+        if (
+            not operational_section
+            or not set(operational_section) <= allowed_fields[section]
+        ):
+            raise ValueError(f"operational {section} receipt shape changed")
+        canonical_section = canonical_impute.get(section)
+        if not isinstance(canonical_section, dict):
+            raise ValueError(f"canonical impute receipt has no {section} object")
+        if set(canonical_section) & set(operational_section):
+            raise ValueError(
+                f"canonical {section} receipt already contains bank provenance"
+            )
+        canonical_section.update(operational_section)
     return canonical
 
 
