@@ -9,6 +9,10 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.h5_io as h5_io
+from populace.build.frame_checkpoint import (
+    load_frame_checkpoint,
+    write_frame_checkpoint,
+)
 from populace.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -54,6 +58,81 @@ def _pool_frame() -> Frame:
             )
         },
     )
+
+
+def _pool_frame_with_object_strings_on_every_entity() -> Frame:
+    """Match the assembled pool's object-backed source-string shape."""
+
+    frame = _pool_frame()
+    tables = {}
+    for entity in frame.entities:
+        table = frame.table(entity).copy()
+        column = "PERIDNUM" if entity == "person" else f"{entity}_source_label"
+        table[column] = pd.Series(
+            [f"{entity}-{index}" for index in range(len(table))],
+            index=table.index,
+            dtype=object,
+        )
+        tables[entity] = table
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
+    return tuple(
+        column
+        for column in table.columns
+        if isinstance(table[column].dtype, pd.StringDtype)
+        or (
+            pd.api.types.is_object_dtype(table[column].dtype)
+            and pd.api.types.infer_dtype(table[column], skipna=True) == "string"
+        )
+    )
+
+
+def test_object_string_simulated_checkpoint_reproduces_pool_export_failure(
+    tmp_path: Path,
+) -> None:
+    """Pin the production failure and prove the checkpoint loader is symmetric."""
+
+    pytest.importorskip("h5py")
+    pytest.importorskip("tables")
+    fresh = _pool_frame_with_object_strings_on_every_entity()
+    checkpoint_path = tmp_path / "simulated.checkpoint.h5"
+    write_frame_checkpoint(
+        checkpoint_path,
+        fresh,
+        metadata={"stage": "simulated"},
+    )
+    resumed = load_frame_checkpoint(checkpoint_path).frame
+
+    for entity in US_SCHEMA.entities:
+        string_columns = _semantic_string_columns(fresh.table(entity))
+        assert string_columns
+        for column in string_columns:
+            assert fresh.table(entity)[column].dtype == np.dtype(object)
+            assert resumed.table(entity)[column].dtype == np.dtype(object)
+
+    for label, frame in (("fresh", fresh), ("resumed", resumed)):
+        with pytest.raises(RuntimeError) as exc_info:
+            write_nullable_us_h5(
+                frame,
+                tmp_path / f"{label}.pool.h5",
+                period=2024,
+                artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+                publication_run_id=f"{label}-fixture-publication",
+            )
+        message = str(exc_info.value)
+        assert "round trip changed entity 'person'" in message
+        assert 'column name="PERIDNUM"' in message
+        assert "StringDtype(storage='python', na_value=nan)" in message
+        assert "object" in message
 
 
 def _write_ready_pool(tmp_path: Path) -> Path:
