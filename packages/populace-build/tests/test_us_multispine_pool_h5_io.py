@@ -72,10 +72,14 @@ def _pool_frame_with_object_strings_on_every_entity() -> Frame:
     for entity in frame.entities:
         table = frame.table(entity).copy()
         column = "PERIDNUM" if entity == "person" else f"{entity}_source_label"
-        table[column] = pd.Series(
-            [f"{entity}-0", None, f"{entity}-2"],
-            index=table.index,
-            dtype=object,
+        table.insert(
+            0,
+            column,
+            pd.Series(
+                [f"{entity}-0", None, f"{entity}-2"],
+                index=table.index,
+                dtype=object,
+            ),
         )
         tables[entity] = table
     return Frame(
@@ -131,6 +135,7 @@ def test_object_string_simulated_checkpoint_resume_exports_canonical_strings(
     pytest.importorskip("h5py")
     pytest.importorskip("tables")
     fresh = _pool_frame_with_object_strings_on_every_entity()
+    assert fresh.table("person").columns[0] == "PERIDNUM"
     checkpoint_path = tmp_path / "simulated.checkpoint.h5"
     write_frame_checkpoint(
         checkpoint_path,
@@ -265,7 +270,7 @@ def _write_ready_pool(tmp_path: Path) -> Path:
         },
     }
     write_nullable_us_h5(
-        _pool_frame(),
+        _pool_frame_with_object_strings_on_every_entity(),
         pool_path,
         period=2024,
         artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -352,6 +357,13 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     np.testing.assert_array_equal(weights.values, [2.0, 3.0, 5.0])
     assert frame.table("person")["nullable_input"].tolist() == [True, None, False]
     assert frame.n("household") == 3
+    for entity in US_SCHEMA.entities:
+        string_columns = _semantic_string_columns(frame.table(entity))
+        assert string_columns
+        assert all(
+            frame.table(entity)[column].dtype == CANONICAL_STRING_DTYPE
+            for column in string_columns
+        )
     assert manifest["publication_run_id"] == "fixture-publication"
     assert authenticated_pool_h5.path == Path(manifest["pool_h5"]["path"])
     assert authenticated_pool_h5.sha256 == manifest["pool_h5"]["sha256"]
