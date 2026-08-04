@@ -18,11 +18,19 @@ from populace.build.us_runtime.eligibility_inputs import (
 )
 from populace.build.us_runtime.hours_worked import US_HOURS_WORKED_OUTPUT_COLUMNS
 from populace.build.us_runtime.immigration import US_IMMIGRATION_OUTPUT_COLUMNS
+from populace.build.us_runtime.org_wages import US_ORG_WAGES_OUTPUT_COLUMNS
 from populace.build.us_runtime.parity_reference import (
+    ECPS_PARITY_KNOWN_GAPS_RESOURCE,
     ECPS_PARITY_REFERENCE_RESOURCE,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.scf_auto_loans import US_SCF_AUTO_LOAN_OUTPUT_COLUMNS
+from populace.build.us_runtime.sipp_head_start import (
+    US_SIPP_HEAD_START_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.sipp_tips import US_SIPP_TIPS_OUTPUT_COLUMNS
+from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
 from populace.build.us_runtime.snap_take_up import US_SNAP_TAKE_UP_OUTPUT_COLUMN
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 
@@ -80,6 +88,16 @@ class TestReference:
         reference = load_ecps_parity_reference()
         assert set(raw["nonzero_shares"]) == set(reference.nonzero_shares)
         assert raw["source"]["sha256"] == reference.source.sha256
+
+    def test_deprecated_marketplace_leaf_is_a_reviewed_reference_exclusion(
+        self,
+    ) -> None:
+        raw = json.loads(_resource(ECPS_PARITY_REFERENCE_RESOURCE).read_text())
+        assert raw["reviewed_consumerless_inputs_excluded"] == [
+            "has_marketplace_health_coverage"
+        ]
+        assert "has_marketplace_health_coverage" not in raw["nonzero_shares"]
+        assert "has_marketplace_health_coverage_at_interview" in raw["nonzero_shares"]
 
     def test_empty_reference_is_refused(self, tmp_path) -> None:
         bad = tmp_path / "bad_reference.json"
@@ -158,6 +176,11 @@ class TestKnownGapsRegister:
             set(US_IMMIGRATION_OUTPUT_COLUMNS)
             | set(US_HOURS_WORKED_OUTPUT_COLUMNS)
             | set(US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS)
+            | set(US_SIPP_TIPS_OUTPUT_COLUMNS)
+            | set(US_SIPP_HEAD_START_OUTPUT_COLUMNS)
+            | set(US_SIPP_VEHICLE_OUTPUT_COLUMNS)
+            | set(US_ORG_WAGES_OUTPUT_COLUMNS)
+            | set(US_SCF_AUTO_LOAN_OUTPUT_COLUMNS)
             | {US_SNAP_TAKE_UP_OUTPUT_COLUMN}
             | {
                 program.variable
@@ -171,6 +194,73 @@ class TestKnownGapsRegister:
             if gap.variable in produced
         )
         assert stale == [], f"register exempts release-produced layers: {stale}"
+
+    def test_legacy_auto_loan_gaps_are_retired(self) -> None:
+        gaps = {gap.variable for gap in load_ecps_parity_known_gaps()}
+        assert "auto_loan_balance" not in gaps
+        assert "auto_loan_interest" not in gaps
+
+    def test_weeks_unemployed_gap_is_retired_with_measured_asec_stage(self) -> None:
+        gaps = {gap.variable for gap in load_ecps_parity_known_gaps()}
+
+        assert "weeks_unemployed" not in gaps
+
+    def test_ssi_take_up_gap_is_retired_with_count_calibrated_stage(self) -> None:
+        gaps = {gap.variable for gap in load_ecps_parity_known_gaps()}
+        program = load_take_up_contract().program_map()["takes_up_ssi_if_eligible"]
+
+        assert program.populace_treatment == "count_calibrated"
+        assert "takes_up_ssi_if_eligible" not in gaps
+
+    def test_head_start_gap_is_retired_but_early_head_start_is_evidenced(self) -> None:
+        gaps = {gap.variable: gap for gap in load_ecps_parity_known_gaps()}
+        programs = load_take_up_contract().program_map()
+
+        standard = "takes_up_head_start_if_eligible"
+        early = "takes_up_early_head_start_if_eligible"
+        assert programs[standard].populace_treatment == "out_of_scope"
+        assert standard not in gaps
+
+        assert early in gaps
+        assert gaps[early].reason.startswith("SOURCE UNAVAILABILITY WITH EVIDENCE:")
+        assert "datasets/cps/cps.py lines 582-583 and 640-648" in gaps[early].reason
+        assert "parameters/take_up/early_head_start.yaml lines 1-9" in (
+            gaps[early].reason
+        )
+
+        raw = json.loads(_resource(ECPS_PARITY_KNOWN_GAPS_RESOURCE).read_text())
+        evidence = raw["known_gaps"][early]["evidence"]
+        assert evidence["classification"] == "source_unavailability"
+        assert evidence["retired_derivation"] == {
+            "repository_owner": "PolicyEngine",
+            "repository_name_parts": ["policyengine-", "us-data"],
+            "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+            "path_parts": [
+                "policyengine_",
+                "us_data",
+                "datasets",
+                "cps",
+                "cps.py",
+            ],
+            "lines": "582-583,640-648",
+        }
+        assert evidence["retired_rate"]["lines"] == "1-9"
+        assert evidence["retired_rate"]["value"] == 0.09
+        assert evidence["retired_randomness"]["lines"] == "5-28"
+        assert evidence["policyengine_variable"]["eligibility_domain"].startswith(
+            "age < 3 or is_pregnant"
+        )
+        assert len(evidence["hermetic_asec_inputs"]) == 3
+        assert all(
+            early in artifact["missing_columns"]
+            for artifact in evidence["hermetic_asec_inputs"]
+        )
+        assert early in evidence["processed_puf"]["missing_columns"]
+        assert evidence["pinned_sipp"]["pregnancy_signal"] == "none"
+        assert (
+            "person identity"
+            in evidence["administrative_non_substitutes"]["cumulative_enrollment"]
+        )
 
     def test_register_entries_are_unique(self) -> None:
         register = load_ecps_parity_known_gaps()

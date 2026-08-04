@@ -174,15 +174,27 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # _soi_return_universe_from_record_set_id -> "itemized_returns", so
     # _soi_reference_from_fact auto-stamps itemized_only=true and the target
     # sums the model variable over ITEMIZERS ONLY -- the correct universe for a
-    # Schedule-A line. Maps to home_mortgage_interest, the gross person-level
-    # export input column itself (same "target the export column's own variable"
-    # pattern as the Table 1.4 columns above and the person-level, itemized-only
-    # real_estate_taxes target), so calibration directly pulls the itemizer
-    # share of the export mass down from the Build G +44.5% JCT overshoot toward
-    # the SOI level. Only the CW/CX "Total" measure is mapped; the two leg
+    # Schedule-A line. Only the CW/CX "Total" measure is mapped; the two leg
     # measures (mortgage_interest_paid_*, home_mortgage_personal_seller_*) stay
     # unmapped to avoid double-counting.
-    "home_mortgage_interest_amount": "home_mortgage_interest",
+    #
+    # populace#511: the SOI line is the amount DEDUCTED on Schedule A, i.e.
+    # after the section 163(h)(3) acquisition-debt caps, so the target maps to
+    # the engine's capped deductible_mortgage_interest_tax_unit rather than the
+    # gross home_mortgage_interest export input Build H used. On certified O-1
+    # the gross column summed $241.3B over itemizers (+29.5%) while the capped
+    # concept summed $214.2B (+15.0%) against the $186.3B aged fact -- the cap
+    # haircut alone was a $27.1B pure concept gap. The capped formula is linear
+    # in the first/second_home_mortgage_interest export inputs (balances and
+    # origination years only set the deductible share), so calibration keeps
+    # the same pull-through to the export mass that Build H wanted. A
+    # positive-balance unit's deductible share is always positive; gross and
+    # structural carriers are independently imputed, so equality is a data
+    # property, verified on O-1 post-itemizer-mask (identical weighted carrier
+    # totals; the only gross-vs-structural divergent units are non-itemizers).
+    # The residual overshoot is the donor-side E19200 total-interest lineage
+    # (populace#515, #487-adjacent).
+    "home_mortgage_interest_amount": "deductible_mortgage_interest",
 }
 
 
@@ -232,8 +244,12 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
     # Build H (populace#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
-    # home mortgage interest deduction).
-    "home_mortgage_interest_returns": "home_mortgage_interest",
+    # home mortgage interest deduction). populace#511: indicator over the same
+    # capped concept as the amount row. The deductible share is positive
+    # wherever a positive mortgage balance backs positive interest; carrier
+    # equality with the old gross indicator is a data property (independently
+    # imputed columns), verified on O-1 post-itemizer-mask.
+    "home_mortgage_interest_returns": "deductible_mortgage_interest",
 }
 
 
@@ -258,11 +274,14 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "miscellaneous_income": "miscellaneous_income",
     "miscellaneous_losses": "miscellaneous_income",
     "non_sch_d_capital_gains": "non_sch_d_capital_gains",
-    # Build H (populace#299): SOI Table 2.1 home mortgage interest concept ->
-    # gross person-level pe-us home_mortgage_interest (the export input column);
-    # itemized_only masking (auto from the itemized_all_returns record set)
-    # restricts the sum to itemizers, matching the Schedule-A universe.
-    "home_mortgage_interest": "home_mortgage_interest",
+    # populace#511 (supersedes the Build H gross mapping): SOI Table 2.1 home
+    # mortgage interest is the amount deducted on Schedule A, post the section
+    # 163(h)(3) acquisition-debt caps, so the concept maps to the engine's
+    # capped tax-unit aggregate. itemized_only masking (auto from the
+    # itemized_all_returns record set, plus the concept's membership in
+    # _SOI_ITEMIZED_ONLY_VARIABLES) restricts the sum to itemizers, matching
+    # the Schedule-A universe.
+    "deductible_mortgage_interest": "deductible_mortgage_interest_tax_unit",
     "exempt_interest": "tax_exempt_interest_income",
     "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",
@@ -331,6 +350,7 @@ _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
 _SOI_ITEMIZED_ONLY_VARIABLES = frozenset(
     {
         "charitable_deduction",
+        "deductible_mortgage_interest",
         "interest_deduction",
         "itemized_taxable_income_deductions",
         "medical_expense_deduction",
@@ -427,6 +447,17 @@ DIRECT_LEDGER_TARGETS: dict[
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
+    # Household net worth: the retired us-data/eCPS pipeline calibrated a
+    # national wealth control (loss.py "net_worth", PR #282). Per-household
+    # net_worth is SCF-imputed and fixed, so the weighted sum is linear in the
+    # reweighting weights — a valid direct-sum target that pins the post-reweight
+    # aggregate the input-stage SCF imputation does not. Federal Reserve Z.1
+    # series BOGZ1FL192090005Q (households & nonprofits net worth).
+    ("federal_reserve", "amount_outstanding", "fl152090005"): (
+        "net_worth",
+        "federal_reserve",
+        {"target_role": "household_net_worth"},
+    ),
 }
 
 
@@ -484,10 +515,97 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
         "cms_medicaid",
         {"target_role": "medicaid_chip_enrollment"},
     ),
+    # FNS reports fiscal-year average monthly caseloads. We proxy the
+    # household caseload as an indicator sum over SPM units with positive
+    # annual snap. The take-up assignment seeds takers to reproduce the FNS
+    # participation rate, so the taker set is the model counterpart of the
+    # average monthly caseload rather than an annual-ever count. Validated
+    # on populace-us-2024-buildi-sparse-rmloss100: 21.89M weighted taker
+    # units vs the 22.20M FY2024 FNS national average (-1.4%) with no
+    # calibration pressure on counts.
+    #
+    # average_monthly_persons is deliberately NOT mapped: the real SNAP
+    # assistance unit is often a subset of the SPM unit (FY2024 FNS persons
+    # per household is 1.88 vs 2.82 members per simulated taker unit), and
+    # PolicyEngine-US does not model sub-unit participation, so a person
+    # indicator overcounts by ~50% and would fight the household target.
+    ("usda_snap", "average_monthly_households"): (
+        "snap",
+        "usda_snap",
+        {
+            "target_role": "snap_households",
+            "fact_aggregation": "time_mean",
+        },
+    ),
+    # LIHEAP recipient households: the retired us-data/eCPS pipeline calibrated
+    # the ACF national recipient-household count (loss.py
+    # _add_liheap_targets_from_db, PR #688) as an indicator sum of the model's
+    # energy-subsidy receipt over SPM units — the exact SNAP-caseload pattern.
+    # Only the recipient COUNT is targeted; LIHEAP dollars stay deferred (the
+    # ACF component split is not a clean model concept, us-data PR #688).
+    ("hhs_acf_liheap", "households_served"): (
+        "spm_unit_energy_subsidy",
+        "hhs_acf_liheap",
+        {"target_role": "liheap_households"},
+    ),
 }
 
 
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount": (
+        "The PUF pipeline maps miscellaneous_income = E01200 (policyengine-us- "
+        "data datasets/puf/puf.py), but E01200 is Form 4797 / Form 1040 line 14 "
+        "business-property net gain or loss (IRS Research Bulletin 2017 Table "
+        "A1), not the 'other income' line concept SOI Table 1.4 reports (Form "
+        "1040 line 21 in ty2015; Schedule 1 in later years) — populace#393's "
+        "remedy experiments reached this final "
+        "determination and the export-parity registry already carries it for the "
+        "miscellaneous_income column. Both signs are therefore concept- "
+        "mismatched, and the measured legs bear the 4797 reading: ty2015 E01200 "
+        "as the pipeline ingests it (aggregate records removed) is two-sided "
+        "($22.84B positive on 1.09M returns vs $21.55B negative on 1.18M; "
+        "$33.42B/$21.95B on the full raw file) while SOI ty2015 other income "
+        "is heavily positive "
+        "($46.77B on 6.12M income returns vs $6.69B on 332,708 loss returns, "
+        "with NOL a separate item at $197.5B on 1,138,112 returns; ty2023 keeps "
+        "the concepts separate as items 91-94 vs 95-96, raw loss $12.21B on "
+        "318,839 returns before feed aging). Build P attempts 9/10 "
+        "(populace#507) measured the consequence: the solve must crush truthful "
+        "business-property loss mass to fit the loss rows ($34.3B design-weight "
+        "truth vs $13.3B aged target), and the income row's historical +0.005% "
+        "fit was free reweighting, not concept agreement. All four rows are "
+        "excluded until the populace#393 remedy lands in full: remap E01200 to "
+        "other_net_gain AND separately source or impute true miscellaneous "
+        "income — a remap-only rebuild leaves miscellaneous_income "
+        "zero/absent, so these exclusions lift only when both halves land."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns": (
+        "Same Form 4797 concept mismatch as the other_income_net_loss_amount "
+        "entry: E01200 carries Form 1040 line-14 business-property net "
+        "gain/loss, not the SOI Table 1.4 line-21 'other income' concept, so "
+        "this row compares incompatible concepts regardless of sign. Excluded "
+        "until the populace#393 remedy lands in full (remap E01200 to "
+        "other_net_gain AND separately source true miscellaneous income); "
+        "see the loss-amount entry for the full adjudication."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount": (
+        "Same Form 4797 concept mismatch as the other_income_net_loss_amount "
+        "entry: E01200 carries Form 1040 line-14 business-property net "
+        "gain/loss, not the SOI Table 1.4 line-21 'other income' concept, so "
+        "this row compares incompatible concepts regardless of sign. Excluded "
+        "until the populace#393 remedy lands in full (remap E01200 to "
+        "other_net_gain AND separately source true miscellaneous income); "
+        "see the loss-amount entry for the full adjudication."
+    ),
+    "irs_soi.ty2023.table_1_4.all.other_income_net_income_returns": (
+        "Same Form 4797 concept mismatch as the other_income_net_loss_amount "
+        "entry: E01200 carries Form 1040 line-14 business-property net "
+        "gain/loss, not the SOI Table 1.4 line-21 'other income' concept, so "
+        "this row compares incompatible concepts regardless of sign. Excluded "
+        "until the populace#393 remedy lands in full (remap E01200 to "
+        "other_net_gain AND separately source true miscellaneous income); "
+        "see the loss-amount entry for the full adjudication."
+    ),
     "census_stc.fy2023.individual_income_tax_collections.tn.t40.collections": (
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
@@ -497,6 +615,36 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
         "from the current state_income_tax variable."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.vt.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero Vermont taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated. MEASURED on the "
+        "Build P2 dense frame (base-P2 fca79b42, FULL 337,704-household pool, no "
+        "selection, frame identity b54feb926c6e5396…, release "
+        "populace-us-2024-buildp-dense-cae8640-20260728T050443Z): registry "
+        "aggregates "
+        "exactly 0.0 initial and final for both rows, household weights strictly "
+        "positive (min 19.58), taxable_interest_income nonnegative with 201,242 "
+        "positive person records (122,852 unique carrier households) pool-wide — the cell is unexpressible from the pool "
+        "itself, not a sparse-selection artifact, which is the ia/nd class. The "
+        "Build P sparse per-run register carries a now-redundant VT pair that "
+        "hands off to this standing entry."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.vt.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero Vermont taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated. MEASURED on the "
+        "Build P2 dense frame (base-P2 fca79b42, FULL 337,704-household pool, no "
+        "selection, frame identity b54feb926c6e5396…, release "
+        "populace-us-2024-buildp-dense-cae8640-20260728T050443Z): registry "
+        "aggregates "
+        "exactly 0.0 initial and final for both rows, household weights strictly "
+        "positive (min 19.58), taxable_interest_income nonnegative with 201,242 "
+        "positive person records (122,852 unique carrier households) pool-wide — the cell is unexpressible from the pool "
+        "itself, not a sparse-selection artifact, which is the ia/nd class. The "
+        "Build P sparse per-run register carries a now-redundant VT pair that "
+        "hands off to this standing entry."
     ),
     "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_amount": (
         "Current national CPS+PUF support has zero Iowa taxable-interest support "
@@ -519,9 +667,12 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "richer state/tail support before it can be calibrated."
     ),
     "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
-        "Current US support does not yet materialize a positive tip_income source "
-        "column; W-2 Social Security tip return counts need the SIPP/ORG tip "
-        "source stage wired into the fiscal refresh before calibration."
+        "The SIPP tip stage now materializes tip_income (549 carriers, $9.9B "
+        "weighted on certified Build M), but that support is under 1% of the "
+        "6.04M-return W-2 Box 7 class, so binding the return-count target "
+        "would demand ~600x weight concentration on those carriers. The "
+        "dollar-amount target binds first; the count target waits for tip "
+        "support widening (PolicyEngine/populace#451 item 3)."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -844,7 +995,7 @@ def compile_us_fiscal_target_registry(
     )
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
-    registry = _uprate_cross_period_soi_decompositions(
+    registry = _rebase_stale_soi_taxable_interest_distributions(
         registry,
         materialized_facts,
         target_period=target_period,
@@ -1097,7 +1248,8 @@ def _uprate_cross_period_eitc_decompositions(
                     **dict(spec.metadata),
                     "uprating_index": _eitc_uprating_index(kind),
                     "uprating_from_period": source_period,
-                    "uprating_to_period": str(spec.period),
+                    # Value lands at the CONTROL's period; aging owns the rest.
+                    "uprating_to_period": target_total.source_period,
                     "uprating_index_source_period": target_total.source_period,
                     "uprating_index_source_record_id": target_total.source_record_id,
                     "uprating_factor": _format_float(factor),
@@ -1161,7 +1313,10 @@ def _rebase_stale_soi_capital_gains_distributions(
                     **dict(spec.metadata),
                     "uprating_index": _soi_capital_gains_uprating_index(kind),
                     "uprating_from_period": spec.metadata["source_period"],
-                    "uprating_to_period": str(spec.period),
+                    # The rebase lands the value at the CONTROL's period —
+                    # NOT the build period; target aging completes the
+                    # remaining links from there.
+                    "uprating_to_period": control.source_period,
                     "uprating_index_source_period": control.source_period,
                     "uprating_index_source_record_id": control.source_record_id,
                     "uprating_factor": _format_float(factor),
@@ -1294,73 +1449,204 @@ def _soi_capital_gains_uprating_index(kind: str) -> str:
     return "total_net_capital_gains_amount"
 
 
-def _uprate_cross_period_soi_decompositions(
+#: Control universes admitted for the stale-interest rebase. A stale spec's
+#: own universe always outranks the bridge, and the ONE admitted bridge is
+#: all_returns -> returns_excluding_dependents: the Pub 1304 excluding-
+#: dependents total (Table 4.3 — the sole Pub 1304 interest total in the
+#: v9.2 feed) may stand in for the all-returns concept. The dependent
+#: sliver it omits is 0.22% of amount / 2.0% of returns at TY2023 (Table
+#: 1.4 23in14ar.xls $313.813B / 55.260M vs Table 4.3 23in43ts.xls
+#: $313.120B / 54.167M), so the bridged control conservatively understates
+#: the all-returns truth and retires automatically when a Table 1.4
+#: interest fact reaches the feed. The reverse bridge is never admitted,
+#: and the itemized-only universe (Table 2.1) is a genuinely different
+#: population — never a stand-in in either direction.
+_SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES: tuple[str, ...] = (
+    "all_returns",
+    "returns_excluding_dependents",
+)
+_SOI_TAXABLE_INTEREST_UNIVERSE_BRIDGES: dict[str, tuple[str, ...]] = {
+    "all_returns": ("returns_excluding_dependents",),
+}
+
+
+def _soi_taxable_interest_control_universe_preference(
+    spec_universe: str,
+) -> tuple[str, ...]:
+    """Candidate control universes for a stale spec, most preferred first."""
+    return (
+        spec_universe,
+        *_SOI_TAXABLE_INTEREST_UNIVERSE_BRIDGES.get(spec_universe, ()),
+    )
+
+
+def _rebase_stale_soi_taxable_interest_distributions(
     registry: TargetRegistry,
     facts: tuple[object, ...],
     *,
     target_period: int | str,
 ) -> TargetRegistry:
-    """Scale stale SOI AGI slices to same-scope active SOI totals."""
+    """Use stale HT2 taxable-interest rows as shares, not hard old-year totals.
 
-    source_totals = _soi_total_controls_by_source_period(facts)
-    active_totals = _soi_active_total_controls(facts, target_period=target_period)
+    The populace#489 adjudication, with every value from the official IRS
+    workbooks: HT2 is a correct photo of its own tax year (TY2022 US A00300
+    $133.122B vs Pub 1304 Table 1.4 TY2022 $133.597B, -0.36%; TY2021 the
+    identity holds at -0.13%), but taxable interest grew x2.349 from TY2022
+    to TY2023 ($133.597B -> $313.813B, 22in14ar.xls -> 23in14ar.xls) while
+    interest dollar targets age on the CBO AGI default (x1.1203 over
+    2022->2024) — the aging model has no interest series of its own. The
+    compiled surface therefore carried the same unfiltered model sum at two
+    live values 2.28x apart (HT2-all $149.1B vs Table 4.3 $340.4B) plus an
+    itemized-only sub-target ($180.0B) EXCEEDING the smaller national total
+    — a logical impossibility no solve can satisfy; certified Build N wrote
+    off ~470 HT2/CD-lineage rows past the loss cap (+128% on the national
+    all-row) while sitting exactly on the Table 4.3 truth.
+
+    Remedy (the net-capital-gains doctrine, x0.7719 precedent): every stale
+    HT2 interest row rebases by ONE national realized factor onto the
+    latest Pub 1304-class national actual, preserving TY2022 cross-sectional
+    shares; the stale national all-AGI rows retire because the active
+    control's own compiled row owns the national concept. Congressional-
+    district aggregates are never controls: the CD table is a processing-
+    window subset of the filing universe (US A00300 $123.791B = 92.7% of
+    the same-year Table 1.4 actual) and the feed's ty2023 stamp on
+    22incd.csv is a vintage error — IRS's latest congressional-district
+    publication is tax year 2022. The rebase lands values at the CONTROL's
+    period; target aging owns the remaining links (populace#488).
+    """
+
+    controls = _soi_taxable_interest_active_totals(
+        facts,
+        target_period=target_period,
+    )
+    stale_national_totals = _soi_taxable_interest_stale_national_totals(facts)
+    # The all-returns concept has exactly one live national owner: when an
+    # exact all-returns control exists for a (measure, status), any compiled
+    # excluding-dependents national surrogate of the same pair retires — the
+    # bridge target must not ALSO bind, or the surface re-creates a (0.22%-
+    # class) copy of the very dual-scale defect this pass removes.
+    retired_bridge_owners = {
+        (measure_id, status)
+        for (measure_id, status, universe) in controls
+        if universe == "all_returns"
+    }
     specs: list[TargetSpec] = []
     for spec in registry.specs:
-        if spec.metadata.get("requires_total_soi_uprating") != "true":
+        kind = _soi_taxable_interest_kind(spec)
+        if kind is None:
+            specs.append(spec)
+            continue
+        if not _is_stale_soi_historic_taxable_interest_spec(spec):
+            if _is_retired_soi_interest_bridge_surrogate_spec(
+                spec, retired_bridge_owners
+            ):
+                continue
             specs.append(spec)
             continue
 
         measure_id = spec.metadata.get("source_measure_id", "")
+        status = spec.metadata.get("filing_status", "")
+        spec_universe = spec.metadata.get("soi_return_universe", "all_returns")
         source_period = spec.metadata.get("source_period", "")
-        key = _soi_total_control_key_from_spec(spec)
-        source_total = source_totals.get((*key, source_period))
-        active_total = active_totals.get(key)
-        if source_total in (None, 0) or active_total is None:
+        source_total = (
+            stale_national_totals.get(
+                (measure_id, status, spec_universe, source_period)
+            )
+            if source_period
+            else None
+        )
+        if source_total in (None, 0):
+            # A stale AGI slice whose own family carries no national total
+            # is unverifiable — dropped, never shipped unanchored. The
+            # full-range rows ARE levels of their own and stay.
+            if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
+                continue
+            specs.append(spec)
+            continue
+        # Eligibility is part of SELECTION: an unusably old control in a
+        # preferred universe must not shadow an eligible one behind it.
+        source_period_key = _period_key_from_value(source_period)
+        control: _SoiTotalControl | None = None
+        control_universe = ""
+        for universe in _soi_taxable_interest_control_universe_preference(
+            spec_universe
+        ):
+            candidate = controls.get((measure_id, status, universe))
+            if candidate is None:
+                continue
+            if not _period_not_before(candidate.period_key, source_period_key):
+                continue
+            control = candidate
+            control_universe = universe
+            break
+        if control is None:
+            specs.append(spec)
             continue
 
-        factor = active_total.value / source_total
-        specs.append(
-            replace(
-                spec,
-                value=spec.value * factor,
-                metadata={
-                    **dict(spec.metadata),
-                    "uprating_index": _soi_total_uprating_index(measure_id),
-                    "uprating_from_period": source_period,
-                    "uprating_to_period": str(spec.period),
-                    "uprating_index_source_period": active_total.source_period,
-                    "uprating_index_source_record_id": active_total.source_record_id,
-                    "uprating_factor": _format_float(factor),
-                },
-            )
-        )
+        if _is_national_all_agi_spec(spec):
+            continue
+
+        factor = control.value / source_total
+        metadata = {
+            **dict(spec.metadata),
+            "uprating_index": _soi_total_uprating_index(measure_id),
+            "uprating_from_period": source_period,
+            # The rebase lands the value at the CONTROL's period — NOT the
+            # build period; target aging completes the remaining links from
+            # there (populace#488 chain-completion law).
+            "uprating_to_period": control.source_period,
+            "uprating_index_source_period": control.source_period,
+            "uprating_index_source_record_id": control.source_record_id,
+            "uprating_factor": _format_float(factor),
+            "stale_distribution_rebased_to_active_total": "true",
+        }
+        if control_universe != spec_universe:
+            # A bridged control is declared, never silent: the manifest must
+            # show which universe supplied the national level.
+            metadata["soi_return_universe_bridge"] = control_universe
+        specs.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(specs, country=registry.country)
 
 
-def _soi_total_controls_by_source_period(
-    facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str, str], float] = {}
-    for fact in facts:
-        if not _is_soi_total_uprating_control_fact(fact):
-            continue
-        key = (
-            *_soi_total_control_key_from_fact(fact),
-            str(_period_value(fact)),
-        )
-        totals[key] = _numeric_value(fact)
-    return totals
+def _is_retired_soi_interest_bridge_surrogate_spec(
+    spec: TargetSpec,
+    retired_bridge_owners: set[tuple[str, str]],
+) -> bool:
+    """Whether this national excluding-dependents row lost concept ownership.
+
+    True only for a non-HT2, national, full-AGI-range interest spec in the
+    bridge universe whose (measure, status) has an exact all-returns control
+    compiled — the all-returns row owns the concept and the surrogate must
+    not also bind.
+    """
+    if spec.family != "irs_soi":
+        return False
+    if (
+        spec.metadata.get("soi_return_universe", "all_returns")
+        != "returns_excluding_dependents"
+    ):
+        return False
+    if not _is_national_all_agi_spec(spec):
+        return False
+    key = (
+        spec.metadata.get("source_measure_id", ""),
+        spec.metadata.get("filing_status", ""),
+    )
+    return key in retired_bridge_owners
 
 
-def _soi_active_total_controls(
+def _soi_taxable_interest_active_totals(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-) -> dict[tuple[str, str, str, str], _SoiTotalControl]:
-    totals: dict[tuple[str, str, str, str], _SoiTotalControl] = {}
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
-        if not _is_soi_total_uprating_control_fact(fact):
+        key = _soi_taxable_interest_control_key_from_fact(fact)
+        if key is None:
+            continue
+        if _is_stale_soi_historic_taxable_interest_fact(fact):
             continue
         period_key = _period_key(fact)
         if not _not_after_target_period(period_key, target_period_key):
@@ -1368,58 +1654,106 @@ def _soi_active_total_controls(
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
-        key = _soi_total_control_key_from_fact(fact)
         candidate = _SoiTotalControl(
             value=_numeric_value(fact),
             source_period=str(_period_value(fact)),
             source_record_id=source_record_id,
             period_key=period_key,
         )
-        current = totals.get(key)
+        current = controls.get(key)
         if current is None or _prefer_candidate(
             candidate.period_key,
             current.period_key,
             target_period_key=target_period_key,
         ):
-            totals[key] = candidate
+            controls[key] = candidate
+    return controls
+
+
+def _soi_taxable_interest_stale_national_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str], float] = {}
+    for fact in facts:
+        if not _is_stale_soi_historic_taxable_interest_fact(fact):
+            continue
+        if _geography_level(fact) != "country":
+            continue
+        # Full AGI range only — filing-status slices keep their own totals
+        # (keyed by status below), matching the capital-gains template.
+        if not _is_all_agi_range_fact(fact):
+            continue
+        status = _filing_status_label(_dimensions(fact).get("filing_status"))
+        if status is None:
+            continue
+        totals[
+            (
+                _measure_id(fact),
+                status,
+                _soi_return_universe_from_fact(fact),
+                str(_period_value(fact)),
+            )
+        ] = _numeric_value(fact)
     return totals
 
 
-def _is_soi_total_uprating_control_fact(fact: object) -> bool:
+def _soi_taxable_interest_kind(spec: TargetSpec) -> str | None:
+    return _soi_taxable_interest_kind_from_measure(
+        spec.metadata.get("source_measure_id", "")
+    )
+
+
+def _soi_taxable_interest_kind_from_measure(measure_id: str) -> str | None:
+    if measure_id in _SOI_TOTAL_UPRATED_AMOUNT_MEASURES:
+        return "amount"
+    if measure_id in _SOI_TOTAL_UPRATED_RETURN_MEASURES:
+        return "returns"
+    return None
+
+
+def _is_stale_soi_historic_taxable_interest_spec(spec: TargetSpec) -> bool:
+    if spec.family != "irs_soi":
+        return False
+    if _soi_taxable_interest_kind(spec) is None:
+        return False
+    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
+
+
+def _is_stale_soi_historic_taxable_interest_fact(fact: object) -> bool:
     if _source_name(fact) != "irs_soi":
         return False
-    if _measure_id(fact) not in _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES:
+    if _soi_taxable_interest_kind_from_measure(_measure_id(fact)) is None:
         return False
-    if _geography_level(fact) not in {"country", "state"}:
-        return False
-    if not _source_record_id(fact):
-        return False
-    if not _is_all_income_range(fact):
-        return False
-    lower, upper = _agi_bounds(fact)
-    return lower == "-inf" and upper == "inf"
+    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
 
 
-def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str, str]:
-    state_fips = _state_fips(fact)
-    geography_key = f"state:{state_fips}" if state_fips else "country"
-    return (
-        _measure_id(fact),
-        geography_key,
-        _filing_status_label(_dimensions(fact).get("filing_status")) or "",
-        _soi_return_universe_from_fact(fact),
-    )
-
-
-def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str, str]:
-    state_fips = spec.metadata.get("state_fips", "")
-    geography_key = f"state:{state_fips}" if state_fips else "country"
-    return (
-        spec.metadata.get("source_measure_id", ""),
-        geography_key,
-        spec.metadata.get("filing_status", ""),
-        spec.metadata.get("soi_return_universe", "all_returns"),
-    )
+def _soi_taxable_interest_control_key_from_fact(
+    fact: object,
+) -> tuple[str, str, str] | None:
+    if _source_name(fact) != "irs_soi":
+        return None
+    measure_id = _measure_id(fact)
+    if _soi_taxable_interest_kind_from_measure(measure_id) is None:
+        return None
+    if _geography_level(fact) != "country":
+        return None
+    # Congressional-district aggregates are a processing-window subset of
+    # the filing universe (and the feed's CD vintage stamp is in error —
+    # populace#489); they never anchor the interest family.
+    if _is_soi_congressional_district_record_set(fact):
+        return None
+    # Full AGI range only — a filing-status total is a valid control for its
+    # own status family (the key carries the status), matching the
+    # capital-gains template.
+    if not _is_all_agi_range_fact(fact):
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    universe = _soi_return_universe_from_fact(fact)
+    if universe not in _SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES:
+        return None
+    return (measure_id, status, universe)
 
 
 def _soi_total_uprating_index(measure_id: str) -> str:
@@ -2021,7 +2355,20 @@ def _reference_from_ledger_fact(
                 include_congressional_district_targets
             ),
         )
+    if source_name == "ssa":
+        return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
+    if source_name == "bea":
+        return _bea_reference_from_fact(fact, target_period=target_period)
     if source_name == "jct":
+        # JCT facts never bind through dynamic dispatch: tax-expenditure rows
+        # compile only as declared SimpleTaxExpenditureReform references
+        # (fiscal_target_references.json), and the OBBBA Title VII
+        # no-tax-provision projections (jct.obbba_title_vii.*, JCX-35-25)
+        # are a fenced parity reviewed-exclusion until a build's target
+        # period sits inside TY2025-TY2028 law — at 2024 law both channels
+        # score exactly $0, and the 2026-law reform-coverage probes carry
+        # the anchors (populace#451 items 3-4; sign and 45B-scope conversion
+        # caveats are recorded in that parity fence).
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
 
@@ -2060,11 +2407,14 @@ def _soi_reference_from_fact(
     if variable is None:
         variable = SOI_RETURN_MEASURE_VARIABLES.get(measure_id)
         is_count = variable is not None
-    if variable is None:
-        return None
+    # The layout override must run before the unmapped early-return: W-2 item
+    # facts carry the generic "amount" measure id, which no measure-id map can
+    # route, and are identified by their layout alone (populace#451 item 3).
     override = _soi_layout_variable_override(fact, measure_id=measure_id)
     if override is not None:
         variable, is_count = override
+    if variable is None:
+        return None
 
     lower, upper = _agi_bounds(fact)
     cross_period_agi_slice = _is_untransformed_cross_period_agi_slice(
@@ -2180,6 +2530,12 @@ def _soi_layout_variable_override(
         and groupby_value in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
     ):
         return "tip_income", True
+    if (
+        measure_id == "amount"
+        and groupby_dimension == _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION
+        and groupby_value in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
+    ):
+        return "tip_income", False
     return None
 
 
@@ -2213,6 +2569,13 @@ def _is_soi_total_uprated_decomposition_fact(
     measure_id: str,
 ) -> bool:
     if measure_id not in _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES:
+        return False
+    # Only Historic Table 2 slices are rescuable: they are the population the
+    # rebase pass normalizes. A cross-period bounded interest slice from any
+    # other table would compile flagged but never rebase — a silent stale
+    # hard target, the exact populace#489 disease — so it is not rescued and
+    # the cross-period gate drops it instead.
+    if ".historic_table_2." not in _str_at(fact, "layout", "record_set_id"):
         return False
     return not _is_all_income_range(fact)
 
@@ -2308,6 +2671,331 @@ def _population_age_reference_from_fact(
     )
 
 
+# SSA by-area record sets carry an eligibility category (total/aged/blind/
+# disabled) fused into ``layout.groupby_value_id`` (``all_areas_total``,
+# ``alabama_aged`` …). Only the all-category ``total`` has a PolicyEngine-US
+# counterpart: the model computes SSI receipt and amount but not the SSI
+# eligibility-category split, so aged/blind/disabled sub-rows are reviewed
+# exclusions in the target-parity manifest rather than silent drops.
+#
+# Role-separation guard (populace#508 owner adjudication, 2026-07-23): the
+# by-area "aged" rows are the AGED ELIGIBILITY CATEGORY (Table 7.B1 national
+# aged row: 1,161,623 — people who qualified under the age-65+ pathway), NOT
+# the age-65+ population. The SSA by-age 65+ band (2,382,142) counts people
+# aged 65+ across ALL eligibility categories — mostly disabled-category
+# recipients who aged past 65. The category rows must never be "fixed" to the
+# age bands or vice versa: category rows never compile (below), and the age
+# bands bind only through the by-age record set's first-class age constraints
+# under the distinct role ``ssa_ssi_age_band_recipients``.
+_SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN = "oasdi_ssi_payments"
+_SSA_SSI_CALIBRATABLE_AREA_CATEGORY = "total"
+#: Engine-computed SSI counterpart both by-area families bind through. Receipt
+#: is an indicator sum of person-level ``ssi`` (recipients); federal payments
+#: are its dollar sum — the same variable the national ``ssi_total`` payment
+#: target already materializes.
+_SSA_SSI_BASE_VARIABLE = "ssi"
+_SSA_SSI_BY_AGE_RECORD_SET_TOKEN = ".ssi_federal_payment_recipients.by_age"
+SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE = "ssa_ssi_age_band_recipients"
+SSA_SSI_RECIPIENTS_TARGET_ROLE = "ssi_recipients"
+SSA_SSI_STATE_PAYMENTS_TARGET_ROLE = "ssi_state_payments"
+
+
+def _ssa_area_category(fact: object) -> str:
+    """The SSA by-area eligibility category (``total``/``aged``/``blind``/...).
+
+    Encoded as the suffix of ``layout.groupby_value_id``; empty when the fact is
+    not an area-category row (e.g. the national OASDI payment aggregates).
+    """
+    groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
+    if not groupby_value_id:
+        return ""
+    return groupby_value_id.rsplit("_", 1)[-1]
+
+
+def _ssa_ssi_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    """Compile an SSA (``source_name == "ssa"``) fact into a US target.
+
+    Three SSA record sets reach here:
+
+    - ``oasdi_ssi_payments`` — the six national OASDI benefit and SSI payment
+      aggregates. Delegated unchanged to :func:`_direct_reference_from_fact` so
+      the standing ``DIRECT_LEDGER_TARGETS`` ``ssa`` mappings (family ``ssa``:
+      ``social_security_total`` … ``ssi_total``) never regress.
+    - ``ssi_recipients.by_area_category`` — SSI recipients (a count) in the
+      *federally administered* universe, which includes ~115k people receiving
+      a state supplementary payment only (no federal SSI payment). The
+      all-category ``total`` maps to an indicator sum of engine ``ssi`` receipt
+      at STATE grain only (role ``ssi_recipients``). The national
+      ``all_areas_total`` (7,404,820 in December 2024) is a non-binding
+      witnessed reference per the populace#508 owner adjudication (2026-07-23):
+      engine ``ssi`` is the federal payment, so the national caseload binds
+      through the by-age *federal-payment* cells (Σ = 7,289,843) whose sum is
+      the national goal — the #430-era rescale to 7,404,820 mixed universes.
+      State rows keep binding as the only state-grain SSI caseload signal;
+      their ~115k aggregate universe gap is a documented residual pending a
+      state-level federal-payment source or a modeled state-supplement
+      concept.
+    - ``ssi_payments.by_area_category`` — SSI federal payments (a dollar sum).
+      The national ``all_areas_total`` equals the ``oasdi_ssi_payments``
+      ``ssi_payments`` figure already compiled as ``ssi_total``, so only the
+      state ``total`` rows the national OASDI table does not carry are compiled
+      here (role ``ssi_state_payments``).
+
+    Non-``total`` eligibility categories (aged/blind/disabled) return ``None``;
+    PolicyEngine-US does not model the SSI eligibility-category split, so those
+    sub-rows are reviewed exclusions in the target-parity manifest.
+    """
+    record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+    if _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN in record_set_id:
+        return _direct_reference_from_fact(fact, target_period=target_period)
+
+    if _SSA_SSI_BY_AGE_RECORD_SET_TOKEN in record_set_id:
+        # SSA SSI Monthly Statistics Table 1: federal-payment recipients by
+        # age group (populace#470). The age-band rows bind as national
+        # indicator counts of engine ``ssi`` receipt sliced by the fact's
+        # first-class age constraints — the ordinary-target replacement for
+        # the retired take-up assignment goals (#469/#473). These three
+        # disjoint, exhaustive bands ARE the national federal-payment goal:
+        # their sum (7,289,843 in December 2024) is the caseload the solve
+        # enforces, per the populace#508 adjudication. The all-ages row never
+        # binds: it would double-weight the identical constraint the three
+        # band rows already carry.
+        if _measure_id(fact) != "recipient_count":
+            return None
+        if _geography_level(fact) != "country":
+            return None
+        lower, upper = _age_bounds(fact)
+        if lower == "-inf" and upper == "inf":
+            return None
+        # Role-separation guard, second layer (populace#508 sol review
+        # finding 7): the row's own groupby identity must agree with its
+        # first-class age constraints before it may bind under the band
+        # role. A mislabeled row — say an eligibility-category count
+        # wearing the by-age layout — fails loudly instead of quietly
+        # becoming a band target.
+        groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
+        try:
+            lower_value = float(lower)
+            upper_value = float(upper)
+        except (TypeError, ValueError):
+            lower_value = upper_value = float("nan")
+        # Keys are the pinned feed's actual by-age groupby vocabulary
+        # (consumer facts v9.x): under_18 / age_18_to_64 / age_65_or_older,
+        # with all_ages already returned above as the non-binding total.
+        expected_bounds_by_band: dict[str, tuple[bool, bool]] = {
+            "under_18": (lower_value <= 0, upper_value == 18.0),
+            "age_18_to_64": (lower_value == 18.0, upper_value == 65.0),
+            "age_65_or_older": (lower_value == 65.0, upper_value == float("inf")),
+        }
+        if groupby_value_id not in expected_bounds_by_band:
+            raise ValueError(
+                "SSA SSI by-age fact carries an unrecognized band groupby "
+                f"{groupby_value_id!r}; the three-band contract "
+                "(under_18/age_18_to_64/age_65_or_older, populace#470) "
+                "admits no other binding rows."
+            )
+        if not all(expected_bounds_by_band[groupby_value_id]):
+            raise ValueError(
+                "SSA SSI by-age fact's groupby identity "
+                f"{groupby_value_id!r} disagrees with its age constraints "
+                f"[{lower!r}, {upper!r}); refusing to bind a mislabeled "
+                "row under the band role (populace#508 role separation)."
+            )
+        # _age_bounds erases operator strictness, and the materializer
+        # applies the half-open convention lower <= age < upper — so a row
+        # spelled with "> lower" or "<= upper" would silently bind a
+        # different stratum than its face value (sol review round 2,
+        # finding 7). The pinned feed's band rows use >= / < exclusively.
+        for constraint in _constraint_rows(fact):
+            if not isinstance(constraint, dict):
+                continue
+            if str(constraint.get("variable") or "") != "age":
+                continue
+            operator = str(constraint.get("operator") or "")
+            if operator not in {">=", "<"}:
+                raise ValueError(
+                    "SSA SSI by-age fact carries a non-canonical age "
+                    f"constraint operator {operator!r} (expected '>=' for "
+                    "the lower edge and '<' for the upper edge); refusing "
+                    "to bind a stratum that materialization would reshape."
+                )
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            return None
+        return LedgerTargetReference(
+            name=source_record_id,
+            ledger_source_record_id=source_record_id,
+            entity="household",
+            measure=source_record_id,
+            period=target_period,
+            family="ssa",
+            metadata={
+                "materializer": "policyengine_variable",
+                "measure_mode": "indicator_sum",
+                "base_variable": _SSA_SSI_BASE_VARIABLE,
+                "target_role": SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+                "source_measure_id": "recipient_count",
+                "source_period": str(_period_value(fact)),
+                "target_period": str(target_period),
+                "age_lower_bound": lower,
+                "age_upper_bound": upper,
+            },
+        )
+
+    measure_id = _measure_id(fact)
+    if measure_id == "recipient_count":
+        target_role = SSA_SSI_RECIPIENTS_TARGET_ROLE
+        measure_mode = "indicator_sum"
+    elif measure_id == "payment_amount":
+        target_role = SSA_SSI_STATE_PAYMENTS_TARGET_ROLE
+        measure_mode = "sum"
+    else:
+        return None
+
+    if _ssa_area_category(fact) != _SSA_SSI_CALIBRATABLE_AREA_CATEGORY:
+        return None
+
+    geography_level = _geography_level(fact)
+    if geography_level == "state":
+        state_fips = _state_fips(fact)
+        if state_fips is None:
+            return None
+    elif geography_level == "country":
+        # Neither national by-area row binds. The payment duplicates the
+        # OASDI-table ssi_total already compiled from oasdi_ssi_payments. The
+        # recipient count (all_areas_total, 7,404,820 in December 2024) is
+        # the *federally administered* universe — it includes ~115k
+        # state-supplement-only recipients with no federal SSI payment — and
+        # per the populace#508 owner adjudication (2026-07-23) it must not
+        # bind engine ``ssi`` (the federal payment): it stays a non-binding
+        # witnessed reference, and the national federal-payment caseload
+        # binds as the sum of the three by-age band targets (7,289,843,
+        # role ``ssa_ssi_age_band_recipients``). Only state rows compile.
+        return None
+    else:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": measure_mode,
+        "base_variable": _SSA_SSI_BASE_VARIABLE,
+        "target_role": target_role,
+        "source_measure_id": measure_id,
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+        "state_fips": state_fips,
+    }
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="ssa",
+        metadata=metadata,
+    )
+
+
+# BEA all-population (nonfiler-inclusive) income targets the retired us-data/
+# eCPS pipeline calibrated to (us-data utils/loss.py
+# BEA_NIPA_DIRECT_SUM_TARGETS, PR #994). Only the national wage and proprietors'
+# income series are direct-sum targets here: us-data explicitly declined the
+# NIPA interest/dividend totals because they include imputed interest,
+# pension-plan dividends, and trust flows that are not a close microdata concept
+# (PR #1059), and its state wage target (PR #1034) requires a place-of-work ->
+# residence definitional adjustment the feed's raw SAINC4 line-50 facts cannot
+# reproduce, so state wages are a documented reviewed exclusion. Every other BEA
+# series in the feed is a ledger reference fact, not a calibration target.
+_BEA_NATIONAL_WAGES_RECORD_SET = "bea_nipa.total_wages_salaries"
+_BEA_NATIONAL_PROPRIETORS_RECORD_SET = "bea_nipa.proprietors_income"
+#: The engine-computed counterparts us-data mapped these NIPA totals to.
+_BEA_WAGES_BASE_VARIABLE = "employment_income_before_lsr"
+_BEA_PROPRIETORS_BASE_VARIABLES = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+    "farm_operations_income",
+    "partnership_s_corp_income",
+)
+BEA_NIPA_WAGES_TARGET_ROLE = "nipa_wages_and_salaries"
+BEA_NIPA_PROPRIETORS_TARGET_ROLE = "nipa_proprietors_income"
+
+
+def _bea_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    """Compile a BEA (``source_name == "bea"``) fact into a US target.
+
+    Follows the retired us-data/eCPS mapping exactly (us-data
+    utils/loss.py ``BEA_NIPA_DIRECT_SUM_TARGETS``, PR #994):
+
+    - ``bea_nipa.total_wages_salaries`` (BEA NIPA Table 2.1 gross wages and
+      salaries for all workers, **including nonfilers**; FRED A034RC) →
+      economy-wide engine ``employment_income_before_lsr``, national. This is
+      the ~$12.4T wage universe that filed tax returns and CPS-reported wages
+      (~$4T in the base microdata) systematically undercount — the nonfiler /
+      unreported-wage coverage gap the target was added to close (PR #994).
+    - ``bea_nipa.proprietors_income`` (BEA NIPA Table 2.1 proprietors' income
+      with IVA and CCAdj, all persons; FRED A041RC) → the same additive
+      expression us-data used: Schedule C non-SSTB and SSTB self-employment
+      income before labor-supply responses, farm operations income, and active
+      partnership/S-corp income, national.
+
+    Only these two national record sets compile; every other BEA series returns
+    ``None`` (a reviewed exclusion in the target-parity manifest, whose fence
+    records the NIPA interest/dividend decline and the state-wage
+    residence-adjustment gap).
+    """
+    record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+    if _geography_level(fact) != "country":
+        return None
+
+    if record_set_id == _BEA_NATIONAL_WAGES_RECORD_SET:
+        base_variable: str | tuple[str, ...] = _BEA_WAGES_BASE_VARIABLE
+        target_role = BEA_NIPA_WAGES_TARGET_ROLE
+    elif record_set_id == _BEA_NATIONAL_PROPRIETORS_RECORD_SET:
+        base_variable = _BEA_PROPRIETORS_BASE_VARIABLES
+        target_role = BEA_NIPA_PROPRIETORS_TARGET_ROLE
+    else:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": "sum",
+        "target_role": target_role,
+        "source_measure_id": _measure_id(fact),
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+    }
+    if isinstance(base_variable, tuple):
+        metadata["base_variables"] = ",".join(base_variable)
+    else:
+        metadata["base_variable"] = base_variable
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="bea",
+        signed=_numeric_value(fact) < 0,
+        metadata=metadata,
+    )
+
+
 def _direct_reference_from_fact(
     fact: object,
     *,
@@ -2397,6 +3085,19 @@ def _references_for_target_period(
 
 
 def _soi_target_role(fact: object, measure_id: str) -> str:
+    # W-2 item facts (generic "amount" measure id, layout-routed via the
+    # form_w2_item override) get a named role so target aging can pin them
+    # to the wages series: tips are a W-2 wage component, and the feed's
+    # TY2020 vintage needs the SOI wages actuals as its chain bridge into
+    # the CBO projection years (populace#451 item 3).
+    if (
+        measure_id == "amount"
+        and _str_at(fact, "layout", "groupby_dimension")
+        == _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION
+        and _str_at(fact, "layout", "groupby_value_id")
+        in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
+    ):
+        return "w2_social_security_tips_total"
     if _is_all_income_range(fact):
         if measure_id == "premium_tax_credit_amount":
             return "aca_spending"
@@ -2762,6 +3463,19 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         label="USDA SNAP total",
         accepted_families=("usda_snap",),
         required_metadata=(("target_role", "snap_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="snap_state_benefits",
+        label="USDA SNAP state benefit totals",
+        accepted_families=("usda_snap",),
+        required_metadata=(("target_role", "snap_total"),),
+        required_metadata_keys=("state_fips",),
+        min_matches=51,
+        notes=(
+            "FNS FY69-to-current state activity rows: 50 states plus DC. "
+            "Territory rows (Guam, USVI) resolve no PolicyEngine state FIPS "
+            "and are skipped at reference compilation, so they do not count."
+        ),
     ),
     TargetCoverageRequirement(
         requirement_id="unemployment_compensation_total",

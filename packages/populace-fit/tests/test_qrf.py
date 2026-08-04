@@ -9,11 +9,14 @@ input, and that a fixed seed makes a freshly fitted model reproducible.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
+import pandas as pd
 import pytest
 
-from populace.fit import Regime, fit
-from populace.fit.qrf import detect_regime
+from populace.fit import QRFChainState, Regime, RegimeGatedQRF, fit
+from populace.fit.qrf import _DISCRETE_Y_LEAF_BOUND, _fit_n_jobs, detect_regime
 
 # ----------------------------------------------------------------------------
 # Regime detection: structural, unweighted support classification
@@ -540,3 +543,234 @@ def test_forests_keep_all_leaf_samples(make_person_frame) -> None:
     fitted = fit(frame, ["x"], ["target"], n_estimators=8, seed=0)
     forest = fitted._target_models["target"].positive.model
     assert forest.max_samples_leaf is None
+
+
+def test_near_discrete_targets_get_bounded_leaf_samples(make_person_frame) -> None:
+    """A few-atom target trades full leaf retention for a bounded subsample.
+
+    With ``max_samples_leaf=None`` a near-discrete ``y`` (here six atoms, one
+    dominant) stops splitting once nodes are y-pure, so a dominant atom piles
+    hundreds of thousands of identical samples into single leaves and the
+    forest's dense per-leaf store (``trees x leaves x largest_leaf``) reaches
+    tens of GB — the QBI ``*_would_be_qualified`` targets jetsammed the Build M
+    base at 57-67GB per worker this way. The guard caps such targets' leaf
+    storage at _DISCRETE_Y_LEAF_BOUND; their leaf conditionals hold at most a
+    few dozen atoms, so the capped subsample reproduces every leaf quantile to
+    multinomial noise.
+    """
+    rng = np.random.default_rng(0)
+    n = 600
+    atoms = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    target = atoms[rng.choice(len(atoms), size=n, p=[0.05, 0.05, 0.7, 0.1, 0.05, 0.05])]
+    frame = make_person_frame({"x": rng.normal(size=n), "target": target})
+    fitted = fit(frame, ["x"], ["target"], n_estimators=8, seed=0)
+    forest = fitted._target_models["target"].positive.model
+    assert forest.max_samples_leaf == _DISCRETE_Y_LEAF_BOUND
+
+
+def test_near_discrete_bound_never_overrides_explicit_config(
+    make_person_frame,
+) -> None:
+    """An explicit ``max_samples_leaf`` wins over the near-discrete guard.
+
+    The guard exists to rescue the ``None`` (keep-everything) default from
+    pathological targets; a caller who pinned a leaf budget said what they
+    meant, and silently rewriting it would make the recorded chain config lie.
+    """
+    rng = np.random.default_rng(0)
+    n = 600
+    atoms = np.array([0.0, 0.5, 1.0])
+    target = atoms[rng.choice(len(atoms), size=n, p=[0.2, 0.6, 0.2])]
+    frame = make_person_frame({"x": rng.normal(size=n), "target": target})
+    fitted = RegimeGatedQRF(n_estimators=8, seed=0, max_samples_leaf=7).fit(
+        frame, ["x"], ["target"]
+    )
+    forest = fitted._target_models["target"].positive.model
+    assert forest.max_samples_leaf == 7
+
+
+def test_near_discrete_bound_draws_are_seed_deterministic(make_person_frame) -> None:
+    """The bounded-leaf path draws identically across identical fits.
+
+    The guard is a pure function of the pre-bootstrap ``y``, consumes no RNG,
+    and the capped forest is seeded — so two fits from the same seed must agree
+    bit for bit, exactly like the uncapped path. This is what lets a resumed
+    per-target chain refit a capped target without perturbing the stream.
+    """
+    rng = np.random.default_rng(1)
+    n = 500
+    atoms = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    data = {
+        "x": rng.normal(size=n),
+        "target": atoms[rng.choice(len(atoms), size=n)],
+    }
+    frame = make_person_frame(data)
+    first = fit(frame, ["x"], ["target"], n_estimators=8, seed=7).predict(
+        frame.table("person").loc[:, ["x"]]
+    )
+    second = fit(frame, ["x"], ["target"], n_estimators=8, seed=7).predict(
+        frame.table("person").loc[:, ["x"]]
+    )
+    np.testing.assert_array_equal(
+        first["target"].to_numpy(), second["target"].to_numpy()
+    )
+
+
+# ----------------------------------------------------------------------------
+# Checkpointed targetwise chain: exact monolith equivalence and safe resume
+# ----------------------------------------------------------------------------
+
+
+def _json_roundtrip_chain_state(state: QRFChainState) -> QRFChainState:
+    """Exercise the public JSON checkpoint contract exactly as a worker does."""
+    return QRFChainState.from_dict(json.loads(json.dumps(state.to_dict())))
+
+
+def test_targetwise_chain_is_bit_identical_to_monolith_after_json_resumes(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """A per-target subprocess chain reproduces monolithic float bits.
+
+    The state is JSON-roundtripped before the first target and after every
+    target, which proves that the separately restored fit/draw RNG states and
+    external raw recipient priors are sufficient to resume without changing a
+    single output bit.
+    """
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame, _ = correlated_targets_frame(seed=3, n=240)
+    recipient = frame.table("person").iloc[::2].loc[:, ["x"]].copy()
+    model = RegimeGatedQRF(n_estimators=8, seed=19)
+
+    monolith = model.fit(frame, ["x"], ["first", "second"]).predict(recipient)
+    state = _json_roundtrip_chain_state(
+        model.start_chain(frame, ["x"], ["first", "second"])
+    )
+    assert state.next_target == "first"
+    assert not state.is_complete
+    raw_priors = pd.DataFrame(index=recipient.index)
+
+    for expected_target in ("first", "second"):
+        step = model.fit_draw_next(
+            frame,
+            recipient,
+            raw_priors,
+            state=state,
+        )
+        assert step.target == expected_target
+        assert step.raw_draw.dtype == np.dtype(np.float64)
+        assert not step.raw_draw.flags.writeable
+        np.testing.assert_array_equal(
+            step.raw_draw,
+            monolith[expected_target].to_numpy(),
+        )
+        raw_priors[step.target] = step.raw_draw
+        state = _json_roundtrip_chain_state(step.state)
+
+    assert state.is_complete
+    assert state.next_target is None
+    assert state.completed_targets == state.targets == ("first", "second")
+    np.testing.assert_array_equal(raw_priors.to_numpy(), monolith.to_numpy())
+
+
+def test_targetwise_chain_refuses_config_prefix_order_and_index_drift(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """Resume checks fail closed before fitting on drifted chain inputs."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame, _ = correlated_targets_frame(seed=4, n=120)
+    recipient = frame.table("person").iloc[:50].loc[:, ["x"]].copy()
+    model = RegimeGatedQRF(n_estimators=4, seed=23)
+    state = model.start_chain(frame, ["x"], ["first", "second"])
+    empty_priors = pd.DataFrame(index=recipient.index)
+
+    changed_model = RegimeGatedQRF(n_estimators=5, seed=23)
+    with pytest.raises(ValueError, match="model configuration changed"):
+        changed_model.fit_draw_next(frame, recipient, empty_priors, state=state)
+    with pytest.raises(ValueError, match="exact completed target prefix"):
+        model.fit_draw_next(
+            frame,
+            recipient,
+            pd.DataFrame({"second": np.zeros(len(recipient))}, index=recipient.index),
+            state=state,
+        )
+
+    first = model.fit_draw_next(frame, recipient, empty_priors, state=state)
+    priors = pd.DataFrame({"first": first.raw_draw}, index=recipient.index)
+
+    reordered_recipient = recipient.iloc[::-1]
+    reordered_priors = priors.iloc[::-1]
+    with pytest.raises(ValueError, match="recipient index/order changed"):
+        model.fit_draw_next(
+            frame,
+            reordered_recipient,
+            reordered_priors,
+            state=first.state,
+        )
+
+    float32_priors = priors.astype(np.float32)
+    with pytest.raises(ValueError, match="must retain float64 raw QRF draws"):
+        model.fit_draw_next(
+            frame,
+            recipient,
+            float32_priors,
+            state=first.state,
+        )
+
+    drifted_order = first.state.to_dict()
+    drifted_order["targets"] = ["second", "first"]
+    with pytest.raises(ValueError, match="exact target-order prefix"):
+        QRFChainState.from_dict(drifted_order)
+
+
+def test_targetwise_chain_locks_resolved_fit_threading(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """A subprocess cannot silently resume under a different fit width."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    frame, _ = correlated_targets_frame(seed=5, n=80)
+    recipient = frame.table("person").iloc[:20].loc[:, ["x"]].copy()
+    model = RegimeGatedQRF(n_estimators=3, seed=29)
+    state = model.start_chain(frame, ["x"], ["first", "second"])
+    assert state.fit_n_jobs == 1
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "2")
+    with pytest.raises(ValueError, match="model configuration changed"):
+        model.fit_draw_next(
+            frame,
+            recipient,
+            pd.DataFrame(index=recipient.index),
+            state=state,
+        )
+
+
+def test_fit_n_jobs_unset_preserves_historical_default(monkeypatch) -> None:
+    """Unset fit threading keeps quantile-forest's existing all-core default."""
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    assert _fit_n_jobs() == -1
+
+
+@pytest.mark.parametrize(("configured", "expected"), [("1", 1), ("4", 4)])
+def test_fit_n_jobs_accepts_positive_integers(
+    configured,
+    expected,
+    monkeypatch,
+) -> None:
+    """A positive integer environment override is resolved exactly."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", configured)
+    assert _fit_n_jobs() == expected
+
+
+@pytest.mark.parametrize("configured", ["", "0", "-1", "1.5", " 1", "01", "+1"])
+def test_fit_n_jobs_rejects_non_strict_positive_integers(
+    configured,
+    monkeypatch,
+) -> None:
+    """Configured fit threading is strict: only canonical positive ints pass."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", configured)
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        _fit_n_jobs()

@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 from populace.data.release import publish_release
-from populace.data.slack import notify_release
 
 
 def _staging_missing(release_dir: Path) -> bool:
@@ -65,7 +64,10 @@ def main(argv: list[str] | None = None) -> int:
         "--create-tag",
         action="store_true",
         default=True,
-        help="Create a Hugging Face tag for the release before updating latest.json.",
+        help=(
+            "Create a Hugging Face tag for the immutable release before any "
+            "main-branch update."
+        ),
     )
     parser.add_argument(
         "--no-create-tag",
@@ -84,11 +86,28 @@ def main(argv: list[str] | None = None) -> int:
         "--extra-file",
         action="append",
         default=[],
-        help="Additional release-dir file to upload before latest.json.",
+        help="Additional release-dir file to include in the immutable release.",
     )
     parser.add_argument(
         "--updated-at",
         help="Optional latest.json timestamp override for reproducible tests.",
+    )
+    parser.add_argument(
+        "--no-latest",
+        action="store_true",
+        help=(
+            "Publish as a non-default release: upload files and create the "
+            "immutable tag, but never touch latest.json (the default pointer)."
+        ),
+    )
+    parser.add_argument(
+        "--tag-only",
+        action="store_true",
+        help=(
+            "Publish only the immutable tag revision, without any main-branch "
+            "commit. Requires --no-latest and tag creation; used by exact-k "
+            "ladder candidates."
+        ),
     )
     parser.add_argument(
         "--allow-incomplete-reform-validation",
@@ -100,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    if args.tag_only and not args.no_latest:
+        parser.error("--tag-only requires --no-latest.")
+    if args.tag_only and not args.create_tag:
+        parser.error("--tag-only requires tag creation; remove --no-create-tag.")
 
     if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
         Path(args.release_dir)
@@ -131,17 +155,14 @@ def main(argv: list[str] | None = None) -> int:
         tag_name=args.tag_name,
         extra_files=tuple(args.extra_file),
         updated_at=args.updated_at,
+        update_latest=not args.no_latest,
+        tag_only=args.tag_only,
     )
     print(json.dumps(pointer, indent=2))
 
-    # Real-time release alert, fired the moment latest.json is live. No-op
-    # unless the country's SLACK_WEBHOOK_POPULACE_* env var is set, and never
-    # fatal — a Slack failure must not fail an otherwise-successful publish.
-    notify_release(
-        args.repo_id,
-        str(pointer.get("release_id", "")),
-        pointer.get("updated_at"),
-    )
+    # The Slack release alert now fires inside publish_release (coupled to the
+    # promotion, so every publish path announces the release), warning loudly if
+    # the webhook is unset. Nothing to do here.
     return 0
 
 

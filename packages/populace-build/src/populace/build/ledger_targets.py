@@ -515,12 +515,19 @@ def target_spec_from_ledger_reference(
         )
 
     aggregation = _str_at(fact, "aggregation", "method")
-    if aggregation not in SUPPORTED_LEDGER_AGGREGATIONS:
+    accepts_time_mean = (
+        reference.metadata.get("fact_aggregation") == "time_mean"
+        and aggregation == "mean"
+    )
+    if aggregation not in SUPPORTED_LEDGER_AGGREGATIONS and not accepts_time_mean:
         raise ValueError(
             f"Ledger fact for {reference.name!r} has unsupported aggregation "
             f"{aggregation!r}; Populace targets must be compiled from sum "
             "facts, including counts represented as sums of prepared indicator "
-            "columns."
+            "columns. A mean fact is only accepted when the Populace mapping "
+            "declares fact_aggregation=time_mean, asserting the mean is taken "
+            "over time periods on a stock count (still a linear level), never "
+            "over entities (a per-unit ratio is not calibratable)."
         )
     if not reference.measure:
         raise ValueError(

@@ -385,6 +385,10 @@ def score_state_files(
             "target_period": release.PERIOD,
             "target_registry_version": target_registry.version,
             "state_file_collection": collection_sha256,
+            # Scorer vectors declare no release materializer identity:
+            # the explicit None is identity-distinct from every release
+            # digest, so scorer and release vectors can never mix (PR #557).
+            "target_frame_materializer_identity_sha256": None,
         }
         if target_materialization_cache_dir is not None
         else None

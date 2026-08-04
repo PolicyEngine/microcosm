@@ -49,6 +49,9 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import GateResult
+from populace.build.us_runtime.support_provenance import (
+    support_source_id_column,
+)
 from populace.build.us_runtime.take_up_contract import (
     TakeUpProgram,
     load_take_up_contract,
@@ -107,7 +110,11 @@ def _person_membership_column(entity: str) -> str:
 
 
 def _stable_unit_draws(
-    units: pd.DataFrame, *, id_column: str, seed: int, variable: str
+    units: pd.DataFrame,
+    *,
+    id_column: str,
+    seed: int,
+    variable: str,
 ) -> np.ndarray:
     """Seeded uniform draws keyed by stable source identity per unit.
 
@@ -116,16 +123,24 @@ def _stable_unit_draws(
     clones of one source unit — which share that identity — always draw
     together. Frames without source columns key on the entity id itself.
     """
+    entity = id_column.removesuffix("_id")
+    source_id_column = support_source_id_column(entity)
+    keys = units[id_column].astype(str)
+    if source_id_column in units:
+        source_ids = units[source_id_column]
+        keys = keys.where(source_ids.isna(), source_ids.astype(str))
     if set(_SOURCE_IDENTITY_COLUMNS) <= set(units.columns):
-        keys = (
+        complete_identity = (
+            units.loc[:, list(_SOURCE_IDENTITY_COLUMNS)].notna().all(axis=1)
+        )
+        source_keys = (
             units["source_year"].astype(str)
             + ":"
             + units["source_household_id"].astype(str)
             + ":"
             + units["source_person_id"].astype(str)
         )
-    else:
-        keys = units[id_column].astype(str)
+        keys = keys.where(~complete_identity, source_keys)
     denominator = float(2**64)
     return np.asarray(
         [
@@ -156,6 +171,9 @@ def _units_with_source_identity(frame: Frame, entity: str) -> pd.DataFrame:
     id_column = _entity_id_column(entity)
     table = frame.table(entity)
     units = pd.DataFrame({id_column: table[id_column].to_numpy()})
+    source_id = support_source_id_column(entity)
+    if source_id in table:
+        units[source_id] = table[source_id].to_numpy(copy=True)
     units["_weight"] = np.asarray(
         frame.resolve_weights(entity).values, dtype=np.float64
     )
@@ -235,7 +253,10 @@ def _seed_program(
     id_column = _entity_id_column(entity)
     units = _units_with_source_identity(frame, entity)
     draws = _stable_unit_draws(
-        units, id_column=id_column, seed=seed, variable=program.variable
+        units,
+        id_column=id_column,
+        seed=seed,
+        variable=program.variable,
     )
 
     if program.variable == "takes_up_eitc":
@@ -292,11 +313,13 @@ def with_us_take_up_inputs(
 ) -> Frame:
     """Seed every ``seed`` take-up flag from the contract onto a US frame.
 
-    For each seeded program, assigns its ``takes_up_*`` flag across all units of
-    the flag's entity at the administrative rate (per-child for EITC). A frame
-    already carrying a non-constant column for a program is left untouched for
-    that program (idempotent); a missing or constant column is (re)computed —
-    the published all-True landmine is repaired, not trusted.
+    For each seeded program, assigns its ``takes_up_*`` flag at the
+    administrative rate (per-child for EITC). On an assembled pool, existing
+    non-null cells are measured/source-owned and remain untouched; only missing
+    cells receive seeded values. A complete assembled column is idempotent,
+    including a constant one, which its downstream signal gate may reject.
+    Legacy unassembled frames retain the prior behavior: a missing or constant
+    column is recomputed to repair the published all-True landmine.
 
     Args:
         frame: A US-schema frame carrying ``age`` on the person table and the
@@ -319,14 +342,25 @@ def with_us_take_up_inputs(
     seeded = programs if programs is not None else seeded_take_up_programs()
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    assembled = all(
+        support_source_id_column(entity) in frame.table(entity)
+        for entity in frame.entities
+    )
     changed = False
     for program in seeded:
         entity = program.entity
         table = tables[entity]
-        if program.variable in table.columns and _column_carries_signal(
-            table, program.variable
-        ):
-            continue
+        if program.variable in table.columns:
+            if assembled:
+                missing = table[program.variable].isna()
+                if not missing.any():
+                    continue
+            elif _column_carries_signal(table, program.variable):
+                continue
+            else:
+                missing = pd.Series(True, index=table.index)
+        else:
+            missing = pd.Series(True, index=table.index)
         column, _ = _seed_program(frame, program, seed=seed)
         id_column = _entity_id_column(entity)
         assigned = (
@@ -339,7 +373,13 @@ def with_us_take_up_inputs(
                 f"US take-up stage output for {program.variable} does not cover "
                 f"every {entity}."
             )
-        table[program.variable] = assigned.to_numpy(dtype=bool)
+        if program.variable not in table:
+            table[program.variable] = assigned.to_numpy(dtype=bool)
+        else:
+            updated = table[program.variable].copy()
+            missing_positions = missing.to_numpy(dtype=bool)
+            updated.loc[missing] = assigned.to_numpy(dtype=bool)[missing_positions]
+            table[program.variable] = updated
         changed = True
 
     if not changed:
@@ -350,6 +390,7 @@ def with_us_take_up_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

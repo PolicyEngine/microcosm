@@ -82,7 +82,12 @@ _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 from populace.calibrate.diagnostics import (  # noqa: E402 - after the compat gate
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     diagnostics_payload,
+    past_cap_census,
     write_calibration_diagnostics,
+)
+from populace.calibrate.exact_k import (  # noqa: E402 - after the compat gate
+    assert_exact_k_support,
+    select_exact_k,
 )
 from populace.calibrate.matrix import (  # noqa: E402 - after the compat gate
     CalibrationProblem,
@@ -131,12 +136,15 @@ __all__ = [
     "build_constraint_matrix",
     "calibrate",
     "calibrate_l0_refit",
+    "assert_exact_k_support",
     "default_target_loss_scales",
     "effective_sample_size",
     "refit_l0_selection",
     "diagnostics_payload",
+    "past_cap_census",
     "relative_error_loss",
     "score_targets",
+    "select_exact_k",
     "specs_from_pe_surface",
     "write_calibration_diagnostics",
     "__version__",

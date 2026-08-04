@@ -1,0 +1,333 @@
+{
+  "base_h5": null,
+  "base_household_weight_total": 134690323.34024483,
+  "base_rows": {
+    "family": 189401,
+    "household": 168852,
+    "marital_unit": 345873,
+    "person": 432523,
+    "spm_unit": 176039,
+    "tax_unit": 231007
+  },
+  "base_sha256": null,
+  "base_source": {
+    "kind": "pooled_asec",
+    "metadata": {
+      "anchor_year": 2024,
+      "sources": [
+        {
+          "raw_household_rows": 55762,
+          "raw_person_population": 325952369.06,
+          "raw_person_rows": 142125,
+          "relationship_recode_source": "source:A_EXPRRP",
+          "scale": 0.3333333333333333,
+          "share": 0.3333333333333333,
+          "source_file": "census_cps_2024.h5",
+          "weighted_person_population": 108650789.68666667,
+          "year": 2024
+        },
+        {
+          "raw_household_rows": 56251,
+          "raw_person_population": 320890854.43000007,
+          "raw_person_rows": 144265,
+          "relationship_recode_source": "derived:line_spouse_parent",
+          "scale": 0.3385911071839787,
+          "share": 0.3333333333333333,
+          "source_file": "census_cps_2023.h5",
+          "weighted_person_population": 108650789.68666664,
+          "year": 2023
+        },
+        {
+          "raw_household_rows": 56839,
+          "raw_person_population": 318771270.71000004,
+          "raw_person_rows": 146133,
+          "relationship_recode_source": "derived:line_spouse_parent",
+          "scale": 0.34084247756916264,
+          "share": 0.3333333333333333,
+          "source_file": "census_cps_2022.h5",
+          "weighted_person_population": 108650789.68666667,
+          "year": 2022
+        }
+      ],
+      "target_person_population": 325952369.06,
+      "weighted_person_population": 325952369.05999994
+    },
+    "sources": [
+      {
+        "max_households": null,
+        "path": "/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2024.h5",
+        "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+        "share": null,
+        "year": 2024
+      },
+      {
+        "max_households": null,
+        "path": "/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2023.h5",
+        "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+        "share": null,
+        "year": 2023
+      },
+      {
+        "max_households": null,
+        "path": "/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2022.h5",
+        "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+        "share": null,
+        "year": 2022
+      }
+    ],
+    "support_spine_spec": null,
+    "target_year": 2024
+  },
+  "channel_output_totals": {
+    "asec": {
+      "charitable_cash_donations": 0.0,
+      "charitable_non_cash_donations": 0.0,
+      "employment_income_before_lsr": 14293206088.0,
+      "estate_income": 0.0,
+      "farm_income": 63222024.0,
+      "first_home_mortgage_balance": 0.0,
+      "first_home_mortgage_interest": 0.0,
+      "first_home_mortgage_origination_year": 0.0,
+      "health_savings_account_ald": 0.0,
+      "home_mortgage_interest": 0.0,
+      "long_term_capital_gains_before_response": 232680034.4,
+      "miscellaneous_income": 29767313.0,
+      "non_qualified_dividend_income": 138071929.46400002,
+      "non_sch_d_capital_gains": 0.0,
+      "partnership_income": 0.0,
+      "partnership_self_employment_net_earnings": 0.0,
+      "qualified_dividend_income": 112058377.53599998,
+      "real_estate_taxes": 0.0,
+      "rental_income": 284749686.0,
+      "s_corp_income": 0.0,
+      "second_home_mortgage_balance": 0.0,
+      "second_home_mortgage_interest": 0.0,
+      "second_home_mortgage_origination_year": 0.0,
+      "self_employed_pension_contributions_desired": 0.0,
+      "self_employment_income_before_lsr": 690840548.0,
+      "short_term_capital_gains": 31729095.599999998,
+      "social_security_dependents": 14907978.0,
+      "social_security_disability": 129518946.0,
+      "social_security_retirement": 1239220149.0,
+      "social_security_survivors": 26586427.0,
+      "student_loan_interest": 0.0,
+      "tax_exempt_interest_income": 0.0,
+      "taxable_interest_income": 514367888.0927237,
+      "taxable_ira_distributions": 123244773.0,
+      "taxable_private_pension_income": 389261169.46,
+      "traditional_ira_contributions_desired": 0.0
+    },
+    "puf_tax_detail": {
+      "charitable_cash_donations": 342688295.3525839,
+      "charitable_non_cash_donations": 77570376.92806828,
+      "employment_income_before_lsr": 14293804422.785645,
+      "estate_income": 73795642.36272816,
+      "farm_income": 31307556.17238779,
+      "first_home_mortgage_balance": 19289480396.62441,
+      "first_home_mortgage_interest": 797427068.1769809,
+      "first_home_mortgage_origination_year": 126020724.0,
+      "health_savings_account_ald": 13793535.662896382,
+      "home_mortgage_interest": 811476377.0874662,
+      "long_term_capital_gains_before_response": 232618448.50891668,
+      "miscellaneous_income": -54218786.68478381,
+      "non_qualified_dividend_income": 50460052.57471234,
+      "non_sch_d_capital_gains": 77359759.73723212,
+      "partnership_income": 2121535525.9958038,
+      "partnership_self_employment_net_earnings": 31650070.658615656,
+      "qualified_dividend_income": 193736584.97692686,
+      "real_estate_taxes": 442184659.1189757,
+      "rental_income": 222925083.61599404,
+      "s_corp_income": 0.0,
+      "second_home_mortgage_balance": 0.0,
+      "second_home_mortgage_interest": 0.0,
+      "second_home_mortgage_origination_year": 0.0,
+      "self_employed_pension_contributions_desired": 57817825.61378294,
+      "self_employment_income_before_lsr": 692610785.4284253,
+      "short_term_capital_gains": 31770680.093051545,
+      "social_security_dependents": 174872201.82958794,
+      "social_security_disability": 258516855.45894375,
+      "social_security_retirement": 1034295691.7649374,
+      "social_security_survivors": 182250560.93798137,
+      "student_loan_interest": 24355401.72528515,
+      "tax_exempt_interest_income": 63255778.16347217,
+      "taxable_interest_income": 514394536.21998626,
+      "taxable_ira_distributions": 726191580.246481,
+      "taxable_private_pension_income": 1797676388.1225595,
+      "traditional_ira_contributions_desired": 46450772.81113391
+    }
+  },
+  "channel_weight_totals": {
+    "asec": 67345161.67012241,
+    "puf_tax_detail": 67345161.67012241
+  },
+  "congressional_district_assignment": {
+    "applied": true,
+    "assigned_congressional_districts": 436,
+    "assigned_states": 51,
+    "congressional_district_vintage_crosswalk": "/Users/maxghenis/PolicyEngine/_buildf-runtime/inputs/congressional_district_vintage_crosswalk.csv",
+    "congressional_district_vintage_crosswalk_sha256": "383a666631aafd4f584816935ae340960fb3fc127929dccf61d223790a82140b",
+    "distribution_congressional_districts": 436,
+    "distribution_states": 51,
+    "household_rows": 337704,
+    "ledger_facts": "/Users/maxghenis/PolicyEngine/_buildf-runtime/inputs/consumer_facts_builde_aging_v5.jsonl",
+    "ledger_facts_sha256": "a5d34d4aad325d8c79c45ea4944c7eec3a4e51e30a9997c3efa1da4571976816",
+    "seed": 0,
+    "state_total_proxy_districts": 0
+  },
+  "expanded_household_weight_total": 134690323.34024483,
+  "expanded_rows": {
+    "family": 378802,
+    "household": 337704,
+    "marital_unit": 691746,
+    "person": 865046,
+    "spm_unit": 352078,
+    "tax_unit": 462014
+  },
+  "geography_ladder_assignment": {
+    "applied": true,
+    "artifact": "/Users/maxghenis/PolicyEngine/_buildf-runtime/inputs/us_block_ladder_2020.npz",
+    "artifact_sha256": "7ba39b959068181b56a7ce1dc8f2477b31af33f28d0a1803ff6cba84cdfab06b",
+    "assigned_block_geoid_values": 295559,
+    "assigned_cbsa_code_values": 918,
+    "assigned_county_fips_values": 3115,
+    "assigned_place_fips_values": 13757,
+    "assigned_sldl_values": 596,
+    "assigned_sldu_values": 100,
+    "assigned_tract_geoid_values": 76901,
+    "block_geoid_nonempty_weighted_share": 1.0,
+    "cbsa_code_nonempty_weighted_share": 0.934370818765334,
+    "county_fips_nonempty_weighted_share": 1.0,
+    "gate": {
+      "details": {
+        "cbsa_code_nonempty_weighted_share": 0.934370818765334,
+        "nyc_weighted_household_share": 0.02569792738318323,
+        "nyc_weighted_share_of_new_york": 0.435428985645774,
+        "place_fips_nonempty_weighted_share": 0.7501115109795187,
+        "sldl_nonempty_weighted_share": 0.99153514241429,
+        "sldu_nonempty_weighted_share": 1.0
+      },
+      "failures": [],
+      "passed": true
+    },
+    "household_rows": 337704,
+    "ladder_blocks": 5769942,
+    "layer_vintages": {
+      "block": "2020_tabulation_blocks",
+      "cbsa": "omb_2023_delineations",
+      "congressional_district": "119th_congress",
+      "place": "2020_census",
+      "sldl": "2020_baf",
+      "sldu": "2020_baf"
+    },
+    "nyc_weighted_household_share": 0.02569792738318323,
+    "place_fips_nonempty_weighted_share": 0.7501115109795187,
+    "sampling_basis": "population",
+    "seed": 0,
+    "sldl_nonempty_weighted_share": 0.99153514241429,
+    "sldu_nonempty_weighted_share": 1.0,
+    "tract_geoid_nonempty_weighted_share": 1.0
+  },
+  "immigration_composition": {
+    "immigration_status_str": {
+      "population": {
+        "CITIZEN": 300278565.90654266,
+        "CUBAN_HAITIAN_ENTRANT": 551871.8912606479,
+        "DACA": 422917.8040477772,
+        "LEGAL_PERMANENT_RESIDENT": 11549530.381346337,
+        "UNDOCUMENTED": 13149483.076802507
+      },
+      "share": {
+        "CITIZEN": 0.9212344943910152,
+        "CUBAN_HAITIAN_ENTRANT": 0.0016931059370796035,
+        "DACA": 0.0012974834490923066,
+        "LEGAL_PERMANENT_RESIDENT": 0.03543318434731287,
+        "UNDOCUMENTED": 0.0403417318754999
+      }
+    },
+    "person_population": 325952369.05999994,
+    "ssn_card_type": {
+      "population": {
+        "CITIZEN": 300278565.90654266,
+        "NONE": 13149483.076802507,
+        "NON_CITIZEN_VALID_EAD": 4068284.563125225,
+        "OTHER_NON_CITIZEN": 8456035.51352954
+      },
+      "share": {
+        "CITIZEN": 0.9212344943910152,
+        "NONE": 0.0403417318754999,
+        "NON_CITIZEN_VALID_EAD": 0.012481224096813827,
+        "OTHER_NON_CITIZEN": 0.025942549636670958
+      }
+    }
+  },
+  "n_estimators": 32,
+  "output_h5": "/Users/maxghenis/PolicyEngine/_buildj-runtime/out/base-j/base_populace_us_2024_puf_support.h5",
+  "output_sha256": "0b50660a21e0e138cbdcf941303240435b8cf92f4ca3824b2c062ae1085e9c51",
+  "puf_donor_columns": [
+    "charitable_cash_donations",
+    "charitable_non_cash_donations",
+    "employment_income_before_lsr",
+    "estate_income",
+    "farm_income",
+    "filing_status_code",
+    "first_home_mortgage_balance",
+    "first_home_mortgage_interest",
+    "first_home_mortgage_origination_year",
+    "health_savings_account_ald",
+    "home_mortgage_interest",
+    "long_term_capital_gains_before_response",
+    "miscellaneous_income",
+    "non_qualified_dividend_income",
+    "non_sch_d_capital_gains",
+    "partnership_income",
+    "partnership_self_employment_net_earnings",
+    "puf_predictor_dividend_income",
+    "puf_predictor_employment_income",
+    "puf_predictor_filing_status_code",
+    "puf_predictor_long_term_capital_gains",
+    "puf_predictor_self_employment_income",
+    "puf_predictor_short_term_capital_gains",
+    "puf_predictor_tax_unit_person_count",
+    "puf_predictor_taxable_interest_income",
+    "qualified_dividend_income",
+    "real_estate_taxes",
+    "rental_income",
+    "s_corp_income",
+    "second_home_mortgage_balance",
+    "second_home_mortgage_interest",
+    "second_home_mortgage_origination_year",
+    "self_employed_pension_contributions_desired",
+    "self_employment_income_before_lsr",
+    "short_term_capital_gains",
+    "social_security_dependents",
+    "social_security_disability",
+    "social_security_retirement",
+    "social_security_survivors",
+    "student_loan_interest",
+    "tax_exempt_interest_income",
+    "tax_unit_id",
+    "tax_unit_person_count",
+    "taxable_interest_income",
+    "taxable_ira_distributions",
+    "taxable_private_pension_income",
+    "traditional_ira_contributions_desired",
+    "weight"
+  ],
+  "puf_donor_rows": 211677,
+  "puf_h5": "/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/puf_2024.h5",
+  "puf_sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df",
+  "seed": 0,
+  "weights_audit": {
+    "details": {
+      "allowed_unweighted": {},
+      "fits_checked": 1,
+      "resolved_weight_kinds": {
+        "us_puf_tax_detail_support": "design"
+      },
+      "unused_allowed_unweighted": [],
+      "unweighted_fits": []
+    },
+    "failures": [],
+    "passed": true
+  }
+}

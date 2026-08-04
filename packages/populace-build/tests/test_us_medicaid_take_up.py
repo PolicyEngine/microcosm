@@ -109,7 +109,8 @@ def _scenario(n: int = 400, seed: int = 7):
 class TestContractTreatment:
     def test_medicaid_is_count_calibrated_not_seeded(self) -> None:
         assert [p.variable for p in count_calibrated_take_up_programs()] == [
-            "takes_up_medicaid_if_eligible"
+            "takes_up_medicaid_if_eligible",
+            "takes_up_ssi_if_eligible",
         ]
         assert "takes_up_medicaid_if_eligible" not in {
             p.variable for p in seeded_take_up_programs()

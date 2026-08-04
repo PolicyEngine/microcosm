@@ -44,10 +44,22 @@ def _weighted_total(simulation: Any, measure: str, period: int) -> float:
     return float(simulation.calculate(measure, period).sum())
 
 
-def _build_reform(parameter_changes: dict[str, Any]) -> Any:
+def _build_reform(probe: ReformCoverageProbe) -> Any:
     from policyengine_core.reforms import Reform
 
-    return Reform.from_dict(parameter_changes, country_id="us")
+    if probe.neutralized_variable:
+        variable = probe.neutralized_variable
+
+        class _Neutralize(Reform):
+            def apply(self) -> None:
+                self.neutralize_variable(variable)
+                neutralized = self.variables[variable]
+                neutralized.default_value = (
+                    False if neutralized.value_type is bool else 0
+                )
+
+        return _Neutralize
+    return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
 
 
 def us_reform_coverage_smoke_gate(
@@ -60,21 +72,21 @@ def us_reform_coverage_smoke_gate(
     """Score each pinned probe on the export; a ~$0 bound reform fails.
 
     For each probe, the budget-measure change (reform vs baseline, signed by
-    ``effect_direction``) must have magnitude at least ``min_abs_effect``. A
-    smaller magnitude means the reform did not bind — its ``binding_inputs`` are
-    absent/degenerate on the export — and fails the release.
+    ``effect_direction``) must have the declared ``expected_sign`` and magnitude
+    at least ``min_abs_effect``. A zero, undersized, or wrong-signed effect means
+    the reform did not bind as declared and fails the release.
 
     Args:
         simulate: ``simulate(None)`` builds the baseline; ``simulate(reform)``
             builds the reformed simulation. Each result answers
             ``.calculate(measure, period).sum()`` as a weighted total.
         probes: Probes to run. Defaults to the shipped manifest's probe set.
-        period: The period to score at.
+        period: Default period for probes without a probe-specific period.
         name: Gate name for the manifest.
 
     Returns:
         The reform-coverage smoke gate result. Passes iff every probe scores at
-        least its ``min_abs_effect`` in magnitude.
+        its expected sign and at least its ``min_abs_effect`` in magnitude.
     """
     probes = tuple(
         probes if probes is not None else us_release_reform_coverage_probes()
@@ -89,30 +101,51 @@ def us_reform_coverage_smoke_gate(
     failures: list[str] = []
     results: dict[str, Any] = {}
     for probe in probes:
-        reform = _build_reform(dict(probe.parameter_changes))
+        reform = _build_reform(probe)
         reformed = simulate(reform)
-        baseline_total = _weighted_total(baseline, probe.budget_measure, period)
-        reform_total = _weighted_total(reformed, probe.budget_measure, period)
+        probe_period = int(probe.period if probe.period is not None else period)
+        baseline_total = _weighted_total(baseline, probe.budget_measure, probe_period)
+        reform_total = _weighted_total(reformed, probe.budget_measure, probe_period)
         if probe.effect_direction == "baseline_minus_reform":
             effect = baseline_total - reform_total
         else:
             effect = reform_total - baseline_total
+        # "either" proves BINDING without a directional claim: the probe
+        # passes when the reform moves the measure by the floor in either
+        # direction. For a signed, two-channel input (measured ASEC leg plus
+        # donor-pinned PUF leg, e.g. farm_operations_income) the aggregate
+        # sign is a property of the frame mix, not of coverage — pinning a
+        # direction rots when the frame's honest composition changes.
+        if probe.expected_sign == "either":
+            signed_magnitude = abs(effect)
+        else:
+            signed_magnitude = effect if probe.expected_sign == "positive" else -effect
+        passed = signed_magnitude >= probe.min_abs_effect
         results[probe.id] = {
             "name": probe.name,
+            "period": probe_period,
             "budget_measure": probe.budget_measure,
             "baseline_total": baseline_total,
             "reform_total": reform_total,
             "effect": effect,
+            "expected_sign": probe.expected_sign,
             "min_abs_effect": probe.min_abs_effect,
             "binding_inputs": list(probe.binding_inputs),
             "issue": probe.issue,
-            "passed": abs(effect) >= probe.min_abs_effect,
+            "passed": passed,
         }
-        if abs(effect) < probe.min_abs_effect:
+        if not passed:
+            expectation = (
+                "an effect in either direction"
+                if probe.expected_sign == "either"
+                else f"a {probe.expected_sign} effect"
+            )
             failures.append(
                 f"{probe.id}: '{probe.name}' scores {effect:+,.0f} on "
-                f"{probe.budget_measure} (|effect| < ${probe.min_abs_effect:,.0f}) "
-                "— the reform did not bind, so its input leaves "
+                f"{probe.budget_measure} for {probe_period}; expected "
+                f"{expectation} with magnitude at least "
+                f"${probe.min_abs_effect:,.0f}. The reform did not bind as "
+                "declared, so its input leaves "
                 f"{list(probe.binding_inputs)} are absent or degenerate on the "
                 f"export. {probe.reason} Restore them ({probe.issue})."
             )
@@ -122,7 +155,7 @@ def us_reform_coverage_smoke_gate(
         passed=not failures,
         failures=tuple(failures),
         details={
-            "period": int(period),
+            "default_period": int(period),
             "probes": len(probes),
             "results": results,
         },

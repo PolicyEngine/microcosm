@@ -4,52 +4,36 @@
    "status": "required"
   },
   "alimony_expense": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "alimony_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "attends_eligible_educational_institution_for_american_opportunity_credit": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "auto_loan_balance": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "auto_loan_interest": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "bank_account_assets": {
    "note": "SSI countable-resource asset input; required with NO reviewed exclusion per PolicyEngine/populace#368 so the gate fails until the asset stage is restored (Deliverable 2). Currently absent — this is the intended red gate.",
    "status": "required"
   },
   "block_geoid": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "bond_assets": {
    "note": "SSI countable-resource asset input; required with NO reviewed exclusion per PolicyEngine/populace#368 so the gate fails until the asset stage is restored (Deliverable 2). Currently absent — this is the intended red gate.",
    "status": "required"
   },
   "business_is_sstb": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "casualty_loss": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "charitable_cash_donations": {
    "status": "required"
@@ -58,56 +42,38 @@
    "status": "required"
   },
   "child_support_expense": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HHS OCSE child-support received/paid SPM input; not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "child_support_received": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HHS OCSE child-support received/paid SPM input; not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "congressional_district_geoid": {
    "status": "required"
   },
   "county_fips": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "cps_race": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "detailed_occupation_recode": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "disability_benefits": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "domestic_production_ald": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "educational_assistance": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "Educational-assistance income input tied to the education-credit surface; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "educator_expense": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "employer_sponsored_insurance_premiums": {
    "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 197-271 and 1575-1581 requires NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL; datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs consumed by the hermetic --asec-h5 build contain PHIP_VAL but omit all three required NOW_* fields, so the retired owner/payment/plan-type derivation cannot execute. has_esi and NOW_GRP are not semantically valid substitutes.",
    "status": "reviewed_exclusion"
   },
   "employment_income_before_lsr": {
@@ -117,36 +83,26 @@
    "status": "required"
   },
   "estate_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_income": {
    "status": "required"
   },
   "farm_operations_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_operations_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_rent_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_rent_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "financial_assistance": {
    "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1493-1496 derives person-level financial_assistance directly from FIN_VAL; datasets/cps/census_cps.py lines 39-58 and 306-359 make FIN_VAL a required person source. All three SHA-recorded 2022-2024 ASEC H5 inputs consumed by the hermetic --asec-h5 build omit FIN_VAL, FIN_YN, and I_FINVAL from their person tables. HFINVAL and FFINVAL are household/family aggregates and cannot recover the person recipient without synthetic allocation. The retired PUF-clone QRF at datasets/cps/extended_cps.py lines 140-194 and 639-745 trains financial_assistance from CPS person observations, so PUF provides no independent replacement source.",
    "status": "reviewed_exclusion"
   },
   "first_home_mortgage_balance": {
@@ -158,15 +114,14 @@
   "first_home_mortgage_origination_year": {
    "status": "required"
   },
+  "fsla_overtime_premium": {
+   "status": "required"
+  },
   "has_american_opportunity_credit_1098_t_or_exception": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "has_american_opportunity_credit_institution_ein": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "has_champva_health_coverage_at_interview": {
    "status": "required"
@@ -177,9 +132,6 @@
   "has_indian_health_service_coverage_at_interview": {
    "status": "required"
   },
-  "has_marketplace_health_coverage": {
-   "status": "required"
-  },
   "has_marketplace_health_coverage_at_interview": {
    "status": "required"
   },
@@ -187,9 +139,7 @@
    "status": "required"
   },
   "has_never_worked": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "has_non_marketplace_direct_purchase_health_coverage_at_interview": {
    "status": "required"
@@ -203,78 +153,60 @@
   "has_va_health_coverage_at_interview": {
    "status": "required"
   },
+  "health_insurance_premiums": {
+   "note": "Self-employed premium attribution leaf (PolicyEngine/populace#451 item 2): the deterministic attribution operation of the other_health_insurance_premiums release stage copies the reported non-Part-B premium onto this person input for strictly-positive Schedule C people outside the Medicare proxy, which is the only channel populating the section 162(l) self-employed health ALD (SOI Pub 1304 Table 1.4 TY2023: 3,595,764 returns / $31.23B, ledger#105). Absent on pre-attribution artifacts by construction; any new release produces it.",
+   "status": "required"
+  },
   "health_insurance_premiums_without_medicare_part_b": {
    "status": "required"
   },
   "health_savings_account_ald": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "home_mortgage_interest": {
    "status": "required"
   },
   "hourly_wage": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "hours_worked_last_week": {
    "status": "required"
   },
   "household_vehicles_owned": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "household_vehicles_value": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "household_weight": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Incumbent stored a household_weight input column; Populace carries weights as a typed Frame weight vector, not a stored input variable. Classify as reported-observation vs reviewed-exclusion under #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "immigration_status_str": {
    "status": "required"
   },
   "investment_income_elected_form_4952": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "investment_interest_expense": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_blind": {
    "status": "required"
   },
   "is_computer_scientist": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_disabled": {
    "status": "required"
   },
   "is_enrolled_at_least_half_time_for_american_opportunity_credit": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_executive_administrative_professional": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_farmer_fisher": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_female": {
    "status": "required"
@@ -283,78 +215,67 @@
    "status": "required"
   },
   "is_hispanic": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_household_head": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "is_incapable_of_self_care": {
+   "note": "Section 21 qualifying-individual flag for the CDCC adult-care leg (PolicyEngine/populace#451 item 1), derived from the measured ASEC self-care difficulty item PEDISDRS by the adult_care_inputs base-builder stage. Also read by SNAP/Medicaid work-requirement exemptions and state CDCC analogs in PolicyEngine-US 1.764.6. Currently absent — the intended red gate until the next base rebuild carries the stage through.",
+   "status": "required"
   },
   "is_military": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_paid_hourly": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_pregnant": {
    "status": "required"
   },
   "is_pursuing_credential_for_american_opportunity_credit": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "is_self_employed": {
+   "note": "Gate flag for the self-employed premium attribution (PolicyEngine/populace#451 item 2): opens the defined_for gate on the engine's self_employed_health_insurance_premiums adds-aggregation for every strictly-positive Schedule C person. Written by the same attribution operation as health_insurance_premiums.",
+   "status": "required"
   },
   "is_separated": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_surviving_spouse": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_union_member_or_covered": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_unmarried_partner_of_household_head": {
    "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1214-1221 derives is_unmarried_partner_of_household_head exclusively from person PERRP; datasets/cps/census_cps.py lines 306-318 declares that person source. All three SHA-recorded 2022-2024 ASEC HDF inputs consumed by the hermetic build omit PERRP. The 2022 and 2023 inputs also omit PECOHAB, A_EXPRRP, and A_FAMREL; only 2024 carries those alternatives, and its A_EXPRRP code 13 conflates partner with roommate. Populace's older-year relationship fallback uses only line, spouse, sex, and parent pointers and never identifies a partner. Using the 2024 pointer for one-third of the pool while treating the other two-thirds as false, or assigning partner status from the combined partner/roommate code, would synthesize statuses the locked sources do not report.",
    "status": "reviewed_exclusion"
   },
   "is_wic_at_nutritional_risk": {
    "issue": "PolicyEngine/populace#312",
-   "reason": "WIC take-up / eligibility-screen input the incumbent seeds; not yet produced by Populace (take-up family).",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 684-701 does not map a measured nutritional-risk assessment; it loads category priors, makes a seeded Bernoulli draw, and ORs that synthetic draw with reported WIC receipt. parameters/take_up/wic_nutritional_risk.yaml lines 1-13 gives every fixed category prior a 1980 effective key (the infant factor was historically adopted in 1991), while parameters/__init__.py lines 38-50 merely carries the latest value forward. datasets/cps/census_cps.py lines 293-365 loads only WIC receipt/value fields, and cps.py line 1558 maps WICYN solely to receives_wic. All three SHA-recorded 2022-2024 ASEC H5 inputs consumed by the hermetic build contain only SPM_WICVAL/WICYN on person and HRNUMWIC/HRWICYN on household; none contains an individual nutritional-risk assessment. The Census questionnaire gives WICYN an adult-female universe and allows receipt reporting for the respondent or on behalf of a child, so a yes does not identify the assessed person and code 0 is not-in-universe rather than a negative assessment. USDA requires a competent professional to assess and document risk in separate WIC certification records; FNS adopted an all-category 1.0 risk adjustment while producing its CY2020 estimates and applied it to the revised CY2016-2021 series. Assigning risk to a WICYN row, assigning False to nonrecipients, or recreating the retired random False outcomes would synthesize person-level assessments absent from the locked sources, while assigning True to all unknowns is the PolicyEngine-US default and carries no non-default signal.",
    "status": "reviewed_exclusion"
   },
   "keogh_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "long_term_capital_gains_before_response": {
    "status": "required"
   },
   "long_term_capital_gains_on_collectibles": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "meets_ssi_disability_criteria": {
+   "status": "required"
   },
   "miscellaneous_income": {
    "status": "required"
   },
   "net_worth": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "non_qualified_dividend_income": {
    "status": "required"
@@ -363,9 +284,7 @@
    "status": "required"
   },
   "other_health_insurance_premiums": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "other_medical_expenses": {
    "status": "required"
@@ -377,74 +296,72 @@
    "status": "required"
   },
   "partnership_s_corp_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "pre_subsidy_care_expenses": {
+   "note": "Adult/disabled-dependent care expense leaf of the section 21 CDCC (PolicyEngine/populace#451 item 1), written by the adult_care_inputs base-builder stage: without it every CDCC reform binding through adult care scores exactly $0 (the #368 absent-input class). Currently absent — the intended red gate until the next base rebuild carries the stage through.",
+   "status": "required"
   },
   "pre_subsidy_rent": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "previous_year_income_available": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "qualified_bdc_income": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "qualified_dividend_income": {
    "status": "required"
   },
+  "qualified_passenger_vehicle_loan_interest": {
+   "status": "required"
+  },
   "qualified_reit_and_ptp_income": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "qualified_tuition_expenses": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (#253).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "real_estate_taxes": {
    "status": "required"
   },
   "receives_housing_assistance": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "rental_income": {
    "status": "required"
   },
   "rental_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "roth_401k_contributions_desired": {
+   "status": "required"
+  },
+  "roth_ira_contributions_desired": {
+   "status": "required"
   },
   "salt_refund_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "schedule_d_capital_gain_distributions": {
+   "note": "Schedule D line 13 route leg of the #282 capital-gain-distributions split (memo component of long_term_capital_gains, written by the capital_gain_distributions source stage); required with NO reviewed exclusion per PolicyEngine/populace#462 so a release whose export drops the route (the Build M live default shipped it at $0 while non_sch_d_capital_gains carried 7.3x its SOI target) fails the coverage gate. Currently absent — this is the intended red gate until the Build N rebuild carries the split through.",
+   "status": "required"
   },
   "selected_marketplace_plan_benchmark_ratio": {
+   "status": "required"
+  },
+  "self_employed_pension_contributions_desired": {
    "status": "required"
   },
   "self_employment_income_before_lsr": {
    "status": "required"
   },
   "self_employment_income_last_year": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "self_employment_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "short_term_capital_gains": {
    "status": "required"
@@ -462,42 +379,28 @@
    "status": "required"
   },
   "spm_unit_energy_subsidy": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM energy-subsidy (LIHEAP) resource input; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "spm_unit_pre_subsidy_childcare_expenses": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM childcare-expense input; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "spm_unit_tenure_type": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "ssn_card_type": {
    "status": "required"
   },
   "sstb_self_employment_income_before_lsr": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_self_employment_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_unadjusted_basis_qualified_property": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_w2_wages_from_qualified_business": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "state_fips": {
    "status": "required"
@@ -511,7 +414,7 @@
   },
   "survivor_benefits": {
    "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py line 1495 derives person-level survivor_benefits exclusively from SRVS_VAL; datasets/cps/census_cps.py lines 39-58 and 306-359 make SRVS_VAL a required person source. All three SHA-recorded 2022-2024 ASEC H5 inputs consumed by the hermetic --asec-h5 build omit SRVS_VAL from their person tables. Their FSURVAL/HSURVAL fields are only family/household aggregates: each household value exactly equals summed family values, and 657/647/610 positive families have multiple people, so the recipient cannot be recovered. The retired PUF-clone QRF at datasets/cps/extended_cps.py lines 140-194 and 639-745 trains survivor_benefits from CPS person observations, so PUF provides no independent replacement source. Restoring a nonzero person-year amount without SRVS_VAL would synthesize data.",
    "status": "reviewed_exclusion"
   },
   "takes_up_aca_if_eligible": {
@@ -519,42 +422,34 @@
   },
   "takes_up_dc_ptc": {
    "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 565-599 does not carry an observed DC property-tax-credit claim; it loads a scalar rate and assigns takes_up_dc_ptc by an independent seeded Bernoulli draw. parameters/take_up/dc_ptc.yaml lines 1-11 divides an aggregate 37,133-claim count by a 131,791,388 PolicyEngine value estimate, which is neither dimensionally a participation denominator nor mathematically 0.32; utils/randomness.py lines 5-28 confirms the output is generated from a variable-name-seeded random stream. Archived census_cps.py lines 251-262 exposes only generic state-tax liability amounts, not a Schedule H claim; archived puf.py lines 704-719 maps other_credits from federal P08000, and the locked PUF has no state geography. All three SHA-recorded 2022-2024 ASEC H5 inputs and the SHA-recorded processed PUF 1.8.0 input consumed by the hermetic build omit takes_up_dc_ptc and any DC Schedule H claim indicator. The aggregate claim count cannot identify claiming tax units, so replaying the retired draw or selecting modeled-eligible units would synthesize claimant identities absent from every locked source.",
    "status": "reviewed_exclusion"
   },
   "takes_up_early_head_start_if_eligible": {
    "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 1.764.6 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
    "status": "reviewed_exclusion"
   },
   "takes_up_eitc": {
    "status": "required"
   },
   "takes_up_head_start_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_housing_assistance_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_medicaid_if_eligible": {
    "status": "required"
   },
   "takes_up_medicare_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_snap_if_eligible": {
    "status": "required"
   },
   "takes_up_ssi_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_tanf_if_eligible": {
    "status": "required"
@@ -563,22 +458,16 @@
    "status": "required"
   },
   "tax_exempt_ira_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tax_exempt_private_pension_income": {
    "status": "required"
   },
   "taxable_401k_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "taxable_403b_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "taxable_interest_income": {
    "status": "required"
@@ -590,86 +479,66 @@
    "status": "required"
   },
   "taxable_sep_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tenure_type": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tip_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tract_geoid": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
+  },
+  "traditional_401k_contributions_desired": {
+   "status": "required"
+  },
+  "traditional_ira_contributions_desired": {
+   "status": "required"
   },
   "treasury_tipped_occupation_code": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "unadjusted_basis_qualified_property": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "unemployment_compensation": {
    "status": "required"
   },
   "unrecaptured_section_1250_gain": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "unreimbursed_business_employee_expenses": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "veterans_benefits": {
    "status": "required"
   },
   "w2_wages_from_qualified_business": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "weekly_hours_worked_before_lsr": {
    "status": "required"
   },
   "weeks_unemployed": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "workers_compensation": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "Workers' compensation benefit SPM input; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "would_claim_wic": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "WIC take-up / eligibility-screen input the incumbent seeds; not yet produced by Populace (take-up family).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "would_file_taxes_voluntarily": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Voluntary-filing take-up flag the incumbent seeds; not yet produced by Populace (take-up family).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   }
  },
  "counts": {
-  "required": 65,
-  "reviewed_exclusion": 93,
-  "total": 158
+  "required": 163,
+  "reviewed_exclusion": 7,
+  "total": 170
  },
- "derivation": "Required surface = ecps_parity_reference.json populated layers (input columns the pinned, sha-verified reference eCPS populates). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/populace#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -684,12 +553,159 @@
  "reform_coverage_probes": [
   {
    "binding_inputs": [
+    "self_employment_income_last_year"
+   ],
+   "budget_measure": "tax_unit_earned_income_last_year",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "prior_year_self_employment_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000000.0,
+   "name": "Prior-year self-employment support neutralization",
+   "neutralized_variable": "self_employment_income_last_year",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US adds self_employment_income_last_year to earned_income_last_year and then aggregates it over tax-unit nondependents. The Wyden-Smith ACTC lookback is the downstream policy consumer, but its parameter also reads formula-owned prior-year wages, so neutralizing this one leaf is the unique coverage probe. The SHA-locked strict equal-share 2022-2024 ASEC pool carries $357.24 billion of weighted net source amount; without the adjacent-year carry the neutralization is a structural zero. The distinct previous_year_income_available flag has no formula consumer in PolicyEngine-US 1.764.6 and remains protected by the hard non-default column gate."
+  },
+  {
+   "binding_inputs": [
+    "keogh_distributions"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "keogh_distribution_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "Keogh distribution neutralization",
+   "neutralized_variable": "keogh_distributions",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes keogh_distributions directly in taxable retirement distributions and federal gross income. Neutralizing only the measured code-5 ASEC leaf lowers federal income tax. On the 865,046-person staged Build-J support, the locked ASEC source carries $148.97 million of weighted Keogh distributions and the baseline-minus-neutralized income-tax effect is +$24.47 million. Without the restored DST_SC*/DST_VAL* mapping the effect is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "tip_income"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "tip_income_neutralization",
+   "issue": "PolicyEngine/populace#451",
+   "min_abs_effect": 100000000.0,
+   "name": "Tip income neutralization",
+   "neutralized_variable": "tip_income",
+   "parameter_changes": {},
+   "period": 2026,
+   "reason": "PolicyEngine-US treats W-2 wages as already containing tips; tip_income is the attribution column whose only federal tax channel is the OBBBA qualified-tips deduction (2025-2028), so the probe runs at 2026 law and the sign is negative: neutralizing the column removes the deduction and raises reform-side tax. Measured on certified Build N (549 carriers, $34.28 billion weighted): baseline-minus-reform -$1.63 billion. External class: IRS SOI W-2 Table 4.B Box 7 $26.79 billion (TY2020); JCT JCX-35-25 no-tax-on-tips FY2026 -$10.121 billion (ledger fact jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect); Treasury filing-season claims over 7.5 million filers averaging over $7,000 (sb0517, June 2026). A structural zero means the tip attribution column was dropped or the deduction channel broke."
+  },
+  {
+   "binding_inputs": [
+    "fsla_overtime_premium"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "fsla_overtime_premium_neutralization",
+   "issue": "PolicyEngine/populace#451",
+   "min_abs_effect": 4000000000.0,
+   "name": "FLSA overtime premium neutralization",
+   "neutralized_variable": "fsla_overtime_premium",
+   "parameter_changes": {},
+   "period": 2026,
+   "reason": "PolicyEngine-US treats W-2 wages as already containing overtime; fsla_overtime_premium is the attribution column whose only federal tax channel is the OBBBA qualified-overtime deduction (2025-2028), so the probe runs at 2026 law with a negative expected sign. Measured on certified Build N (8,748 carriers, $114.79 billion weighted): baseline-minus-reform -$16.86 billion. External anchors: JCT JCX-35-25 no-tax-on-overtime FY2026 -$32.806 billion (ledger fact jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect — the only exact-valued official overtime anchor: no BLS or Census FLSA-premium aggregate exists); Treasury filing-season claims over 29 million filers averaging over $3,100, an approximately $90 billion claimed floor (sb0517, June 2026). A structural zero means the attribution column was dropped or the deduction channel broke."
+  },
+  {
+   "binding_inputs": [
+    "is_household_head"
+   ],
+   "budget_measure": "spm_unit_capped_work_childcare_expenses",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "household_head_childcare_cap_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "Household-head childcare earned-cap neutralization",
+   "neutralized_variable": "is_household_head",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US uses is_household_head to identify whose earnings cap SPM work-childcare expenses when an SPM unit contains multiple tax units. Neutralizing only the measured head flag falls back to tax-unit roles and changes the cap. On the 865,046-person staged Build-J artifact, baseline-minus-neutralized capped expenses are -$265.50 million. Without the restored P_SEQ input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "health_insurance_premiums",
+    "is_self_employed"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "self_employed_health_premium_neutralization",
+   "issue": "PolicyEngine/populace#451",
+   "min_abs_effect": 300000000.0,
+   "name": "Self-employed health premium neutralization",
+   "neutralized_variable": "health_insurance_premiums",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US computes the section 162(l) self-employed health ALD as min(total_self_employment_income, self_employed_health_insurance_premiums), where the premium aggregation adds the person health_insurance_premiums input under the is_self_employed gate — the two leaves the deterministic attribution operation of the other_health_insurance_premiums release stage populates for strictly-positive Schedule C people outside the Medicare proxy and outside measured employer-sponsored coverage (the 162(l)(2)(B) subsidized-plan exclusion proxy). The Medicare-proxy guard keeps the statutory medical-expense premium concept numerically invariant, so this neutralization isolates exactly the ALD channel on federal income tax. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0): $16.37 billion attributed to 1,402 carrier rows (3.57 million weighted people, against the SOI Pub 1304 Table 1.4 TY2023 fact of 3,595,764 returns / $31.23 billion, ledger#105, buildn v9.2 feed), baseline ALD $11.97 billion, baseline-minus-reform -$1.45 billion; the level gap to the banked SOI fact is the calibration solve's to close over this support. A structural zero means the attribution operation was dropped or the defined_for gate never opened."
+  },
+  {
+   "binding_inputs": [
+    "is_incapable_of_self_care",
+    "pre_subsidy_care_expenses"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "cdcc_adult_care_expense_neutralization",
+   "issue": "PolicyEngine/populace#451",
+   "min_abs_effect": 30000000.0,
+   "name": "CDCC adult-care expense neutralization",
+   "neutralized_variable": "pre_subsidy_care_expenses",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US sums pre_subsidy_care_expenses (via care_expenses) into cdcc_relevant_expenses as the section 21 adult/disabled-dependent care leg; the is_incapable_of_self_care flag supplies the 21(b)(1) qualifying individuals and the 21(d)(2) spouse deeming, and stays active in both arms so the neutralization isolates exactly the dollar leg. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0) after the adult_care_inputs stage: 2,067 measured PEDISDRS carriers (5.998 million weighted, a 1.76% person share consistent with the published self-care difficulty prevalence), $3.41 billion of donor-matched expenses on 137 carrier rows, baseline-minus-reform -$153.9 million on federal income tax. A structural zero means the base rebuild dropped the stage or the CDCC adult-care channel broke."
+  },
+  {
+   "binding_inputs": [
+    "spm_unit_energy_subsidy"
+   ],
+   "budget_measure": "spm_unit_benefits",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "spm_unit_energy_subsidy_neutralization",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 100000000.0,
+   "name": "SPM energy-subsidy neutralization",
+   "neutralized_variable": "spm_unit_energy_subsidy",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US adds this measured LIHEAP resource dollar-for-dollar to spm_unit_benefits. Neutralizing the leaf must therefore lower benefits by its weighted source mass; without the restored SPM_ENGVAL carry, the effect is a structural zero. No OBBBA provision consumes this SPM resource, so the direct neutralization is the uniquely isolating policy-engine probe."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_medicare_if_eligible"
+   ],
+   "budget_measure": "medicare_cost",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "medicare_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 1000000000.0,
+   "name": "Measured Medicare enrollment neutralization",
+   "neutralized_variable": "takes_up_medicare_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US computes medicare_enrolled from the measured takes_up_medicare_if_eligible leaf and modeled eligibility, then gates Medicare costs on enrollment. Neutralizing only the restored MCARE == 1 leaf must reduce aggregate Medicare cost; without the measured carry the probe is a structural zero."
+  },
+  {
+   "binding_inputs": [
     "bank_account_assets",
     "stock_assets",
     "bond_assets"
    ],
    "budget_measure": "ssi",
    "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
    "id": "ssi_asset_limit_10k_20k",
    "issue": "PolicyEngine/populace#356",
    "min_abs_effect": 1000000000.0,
@@ -702,7 +718,702 @@
      "2024-01-01.2100-12-31": 10000
     }
    },
+   "period": 2024,
    "reason": "Raising the SSI resource limit is a pure relaxation that only changes who passes meets_ssi_resource_test, which compares ssi_countable_resources = bank_account_assets + stock_assets + bond_assets against the limit. With those asset inputs absent, countable resources are 0 for every record, everyone already passes the resource test, and raising the limit scores exactly $0. Dense-native reference: +$1.6B at $10k/$20k, ~+$16.1B with no limit (PolicyEngine/populace#356)."
+  },
+  {
+   "binding_inputs": [
+    "meets_ssi_disability_criteria"
+   ],
+   "budget_measure": "ssi",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "ssi_disability_criteria_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "SSI disability-criteria neutralization",
+   "neutralized_variable": "meets_ssi_disability_criteria",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US requires the person-level disability criterion for non-aged SSI eligibility. Neutralizing only the restored SIPP-imputed criterion must therefore remove SSI from otherwise eligible disabled or blind people, so baseline-minus-neutralized SSI is positive. If the post-reference exported input is absent or degenerate, this isolated eligibility channel scores exactly $0. A deterministic 6,000-source-household Build-J smoke with the pinned SIPP and SCF donors scored +$586.393 million baseline-minus-neutralized SSI; the $100 million floor retains ample sampling margin while rejecting a materially weakened criterion channel."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_ssi_if_eligible"
+   ],
+   "budget_measure": "ssi",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "ssi_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 10000000000.0,
+   "name": "SSI take-up neutralization",
+   "neutralized_variable": "takes_up_ssi_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US gates SSI benefits on the restored person-level take-up leaf after eligibility. Neutralizing only that leaf must therefore remove SSI from source-reported and SSA-count-calibrated recipients, so baseline-minus-neutralized SSI is positive. If the restored exported input is absent, all false, or not persisted, this isolated channel scores exactly $0. A production-ingredient sparse smoke (staged artifact sha256 c5939dad81153da51b2cc57081ddb3e729700366144868df742b3ad86eafcd7c; restored artifact sha256 9269360d3409fdc15c90c43dda394ada6c91eff5bb64c12ccd9def7d670dd077) measured +$57,114,569,526.38 of baseline-minus-neutralized 2024 SSI. The $10 billion floor retains over 5.7x observed margin while rejecting a materially degenerate persisted flag."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_head_start_if_eligible"
+   ],
+   "budget_measure": "head_start",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "head_start_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "Measured Head Start take-up neutralization",
+   "neutralized_variable": "takes_up_head_start_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US gates Head Start benefits on the person-level take-up leaf after modeled age, income, and categorical eligibility. Neutralizing only the restored SIPP response model must therefore remove Head Start from measured-proxy recipients, so baseline-minus-neutralized Head Start is positive. If the restored export is absent, all false, or not persisted, this isolated channel scores exactly $0. A production-ingredient sparse smoke (staged artifact sha256 67ad74b9ad9222ed342a0279dfc8175e872966fa59f86aeecb7fad52021ba500) measured +$4,575,181,976.69 of baseline-minus-neutralized 2024 Head Start. The $100 million floor retains over 45x observed margin while remaining far above numerical noise."
+  },
+  {
+   "binding_inputs": [
+    "qualified_tuition_expenses",
+    "is_pursuing_credential_for_american_opportunity_credit",
+    "attends_eligible_educational_institution_for_american_opportunity_credit",
+    "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+    "has_american_opportunity_credit_1098_t_or_exception",
+    "has_american_opportunity_credit_institution_ein"
+   ],
+   "budget_measure": "american_opportunity_credit",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "aotc_abolition",
+   "issue": "PolicyEngine/populace#253",
+   "min_abs_effect": 100000000.0,
+   "name": "American Opportunity Tax Credit abolition",
+   "parameter_changes": {
+    "gov.irs.credits.education.american_opportunity_credit.abolition": {
+     "2024-01-01.2100-12-31": true
+    }
+   },
+   "period": 2024,
+   "reason": "Abolishing the American Opportunity Tax Credit sets the credit to zero, so baseline-minus-reform AOTC must be positive. With qualified tuition or any of the five affirmative AOTC factual inputs absent or degenerate, the baseline credit is a structural zero and the abolition scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired"
+   ],
+   "budget_measure": "savers_credit",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "savers_credit_abolition",
+   "issue": "PolicyEngine/populace#278",
+   "min_abs_effect": 100000000.0,
+   "name": "Retirement Saver's Credit abolition",
+   "parameter_changes": {
+    "gov.irs.credits.retirement_saving.contributions_cap": {
+     "2024-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2024,
+   "reason": "Setting the Saver's Credit contribution cap to zero abolishes the credit, so baseline-minus-reform Saver's Credit must be positive. PolicyEngine-US builds qualified contributions from the realized forms of all five desired retirement-contribution inputs. If the desired-input family is absent or degenerate, the baseline credit is a structural zero and abolition scores $0."
+  },
+  {
+   "binding_inputs": [
+    "qualified_reit_and_ptp_income"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "qbi_reit_ptp_rate_abolition",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Section 199A qualified REIT/PTP component abolition",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.max.reit_ptp_rate": {
+     "2024-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2024,
+   "reason": "Setting only the qualified REIT/PTP component rate to zero removes that component from the Section 199A deduction, so baseline-minus-reform QBID must be positive. Without populated qualified_reit_and_ptp_income the change is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "qbi_wage_property_guardrails_zeroed",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Section 199A W-2 wage and UBIA guardrails zeroed",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.max.business_property.rate": {
+     "2024-01-01.2100-12-31": 0
+    },
+    "gov.irs.deductions.qbi.max.w2_wages.alt_rate": {
+     "2024-01-01.2100-12-31": 0
+    },
+    "gov.irs.deductions.qbi.max.w2_wages.rate": {
+     "2024-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2024,
+   "reason": "Zeroing all W-2 wage and UBIA cap rates tightens the Section 199A deduction for high-income qualified businesses, so baseline-minus-reform QBID must be positive. If the total W-2 and UBIA inputs are absent, both baseline and reform guardrails are zero and the change is a structural zero. The archived all-or-nothing SSTB routing leaves its SSTB-allocable copies to the hard signal gate rather than overclaiming reform coverage."
+  },
+  {
+   "binding_inputs": [
+    "farm_operations_income"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "either",
+   "id": "qbi_farm_operations_income_exclusion",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude farm-operations income from Section 199A QBI",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.income_definition": {
+     "2026-01-01.2026-12-31": [
+      "self_employment_income",
+      "partnership_s_corp_income",
+      "farm_rent_income",
+      "rental_income",
+      "estate_income"
+     ]
+    }
+   },
+   "period": 2026,
+   "reason": "Removing only farm_operations_income from the 2026 Section 199A income definition isolates the restored Schedule F leaf. The leaf is signed and two-channel: the ASEC channel carries the measured FRSE farm self-employment values (net-positive in the pooled frame) and the PUF channel carries the donor-pinned signed Schedule F values (net-negative, loss-heavy, populace#435), so the aggregate QBID effect direction is a property of the frame mix and the solve, not of coverage. The probe therefore requires a binding effect of at least the floor in either direction; a structural zero still fails."
+  },
+  {
+   "binding_inputs": [
+    "farm_rent_income"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "qbi_farm_rent_income_exclusion",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude farm-rent income from Section 199A QBI",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.income_definition": {
+     "2026-01-01.2026-12-31": [
+      "self_employment_income",
+      "partnership_s_corp_income",
+      "farm_operations_income",
+      "rental_income",
+      "estate_income"
+     ]
+    }
+   },
+   "period": 2026,
+   "reason": "Removing only farm_rent_income from the 2026 Section 199A income definition isolates the restored signed E27200 leaf. The real staged candidate produces +$9.14M baseline-minus-reform QBID. Without farm_rent_income the reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "domestic_production_ald"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "domestic_production_ald_reactivation",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Former Section 199 domestic-production deduction reactivation",
+   "parameter_changes": {
+    "gov.irs.ald.deductions": {
+     "2024-01-01.2024-12-31": [
+      "loss_ald",
+      "self_employment_tax_ald",
+      "student_loan_interest_ald",
+      "early_withdrawal_penalty",
+      "alimony_expense_ald",
+      "educator_expense",
+      "health_savings_account_ald",
+      "self_employed_health_insurance_ald",
+      "self_employed_pension_contribution_ald",
+      "traditional_ira_contributions",
+      "qualified_adoption_assistance_expense",
+      "us_bonds_for_higher_ed",
+      "specified_possession_income",
+      "puerto_rico_income",
+      "domestic_production_ald"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "PolicyEngine-US 1.764.6 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe preserves the exact 2024 list and adds only domestic_production_ald, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "investment_income_elected_form_4952"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "form_4952_election_neutralization",
+   "issue": "PolicyEngine/populace#274",
+   "min_abs_effect": 1000000.0,
+   "name": "Form 4952 elected investment income neutralization",
+   "neutralized_variable": "investment_income_elected_form_4952",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US subtracts the tax-unit sum of investment_income_elected_form_4952 from net capital gain. Neutralizing only that leaf increases preferential net capital gain and lowers income tax, so baseline-minus-reform income tax must be positive. Without the restored E58990 input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "salt_refund_income"
+   ],
+   "budget_measure": "state_income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "salt_refund_income_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "State and local tax refund income neutralization",
+   "neutralized_variable": "salt_refund_income",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US 1.764.6 includes salt_refund_income in the South Carolina, Idaho, and West Virginia subtraction lists. Neutralizing only that leaf removes the state subtraction and raises state income tax, so baseline-minus-reform state income tax must be negative. Without the restored E00700 input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "long_term_capital_gains_on_collectibles"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "collectibles_gain_neutralization",
+   "issue": "PolicyEngine/populace#274",
+   "min_abs_effect": 1000000.0,
+   "name": "Long-term collectibles gain neutralization",
+   "neutralized_variable": "long_term_capital_gains_on_collectibles",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes collectibles in capital_gains_28_percent_rate_gain. Neutralizing only the E24518 memo leaf reclassifies those gains from the special 28-percent bucket to the ordinary preferential capital-gain schedule, so baseline-minus-reform income tax must be positive. Without the restored leaf the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "unrecaptured_section_1250_gain"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "unrecaptured_section_1250_gain_neutralization",
+   "issue": "PolicyEngine/populace#274",
+   "min_abs_effect": 1000000.0,
+   "name": "Unrecaptured section 1250 gain neutralization",
+   "neutralized_variable": "unrecaptured_section_1250_gain",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US taxes the E24515 memo leaf at the special unrecaptured-section-1250 rate. Neutralizing only that leaf reclassifies the same net gain onto the ordinary preferential capital-gain schedule, so baseline-minus-reform income tax must be positive. Without the restored leaf the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "child_support_received"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
+   "id": "child_support_received_snap_exclusion",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude child-support receipts from SNAP unearned income",
+   "parameter_changes": {
+    "gov.usda.snap.income.sources.unearned": {
+     "2024-01-01.2024-12-31": [
+      "ssi",
+      "tanf",
+      "general_assistance",
+      "pension_income",
+      "veterans_benefits",
+      "unemployment_compensation",
+      "disability_benefits",
+      "workers_compensation",
+      "social_security",
+      "retirement_distributions",
+      "rental_income",
+      "alimony_income",
+      "financial_assistance",
+      "survivor_benefits",
+      "dividend_income",
+      "interest_income",
+      "miscellaneous_income"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only child_support_received from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. Without the measured/QRF child-support receipt leaf, the source-list reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "child_support_expense"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "child_support_expense_snap_deduction_abolition",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "Abolish the SNAP child-support expense deduction",
+   "parameter_changes": {
+    "gov.usda.snap.income.deductions.allowed": {
+     "2024-01-01.2024-12-31": [
+      "snap_standard_deduction",
+      "snap_earned_income_deduction",
+      "snap_dependent_care_deduction",
+      "snap_excess_medical_expense_deduction",
+      "snap_excess_shelter_expense_deduction"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only snap_child_support_deduction raises countable net income and must reduce SNAP in states that take the expense as a net-income deduction. Without the measured/QRF positive expense leaf, abolition is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "disability_benefits"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
+   "id": "disability_benefits_snap_exclusion",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude disability benefits from SNAP unearned income",
+   "parameter_changes": {
+    "gov.usda.snap.income.sources.unearned": {
+     "2024-01-01.2024-12-31": [
+      "ssi",
+      "tanf",
+      "general_assistance",
+      "pension_income",
+      "veterans_benefits",
+      "unemployment_compensation",
+      "workers_compensation",
+      "social_security",
+      "retirement_distributions",
+      "rental_income",
+      "child_support_received",
+      "alimony_income",
+      "financial_assistance",
+      "survivor_benefits",
+      "dividend_income",
+      "interest_income",
+      "miscellaneous_income"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only disability_benefits from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. Without the measured/QRF non-workers-compensation benefit leaf, the source-list reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "workers_compensation"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
+   "id": "workers_compensation_snap_exclusion",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 10000000.0,
+   "name": "Exclude workers' compensation from SNAP unearned income",
+   "parameter_changes": {
+    "gov.usda.snap.income.sources.unearned": {
+     "2024-01-01.2024-12-31": [
+      "ssi",
+      "tanf",
+      "general_assistance",
+      "pension_income",
+      "veterans_benefits",
+      "unemployment_compensation",
+      "disability_benefits",
+      "social_security",
+      "retirement_distributions",
+      "rental_income",
+      "child_support_received",
+      "alimony_income",
+      "financial_assistance",
+      "survivor_benefits",
+      "dividend_income",
+      "interest_income",
+      "miscellaneous_income"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. A production-ingredient 30,000-household smoke scored +$28.26M reform-minus-baseline; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "would_claim_wic"
+   ],
+   "budget_measure": "wic",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "wic_claim_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 25000000.0,
+   "name": "WIC claim neutralization",
+   "neutralized_variable": "would_claim_wic",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US multiplies each eligible person's monthly WIC food package by would_claim_wic. A 6,000-household production-ingredient smoke with the FNS category-rate stage scored +$57.19M baseline-minus-neutralized; without the restored claim surface the probe is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "educator_expense"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
+   "id": "educator_expense_ald_abolition",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "Abolish the educator-expense above-the-line deduction",
+   "parameter_changes": {
+    "gov.irs.ald.deductions": {
+     "2024-01-01.2024-12-31": [
+      "loss_ald",
+      "self_employment_tax_ald",
+      "student_loan_interest_ald",
+      "early_withdrawal_penalty",
+      "alimony_expense_ald",
+      "health_savings_account_ald",
+      "self_employed_health_insurance_ald",
+      "self_employed_pension_contribution_ald",
+      "traditional_ira_contributions",
+      "qualified_adoption_assistance_expense",
+      "us_bonds_for_higher_ed",
+      "specified_possession_income",
+      "puerto_rico_income"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only educator_expense from the above-the-line deduction source list raises taxable income and must increase income tax for some filers. Without the restored PUF E03220 leaf, abolition is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "alimony_expense"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "alimony_expense_ald_abolition",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "Alimony expense above-the-line deduction abolition",
+   "parameter_changes": {
+    "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount": {
+     "2024-01-01.2100-12-31": false
+    }
+   },
+   "period": 2024,
+   "reason": "The retired export has no nondefault divorce_year input, so PolicyEngine-US applies its default year 0 through the first eligibility bracket. Setting that bracket's amount to false abolishes the alimony-expense above-the-line deduction on the release, so baseline-minus-reform income tax must be negative. With alimony_expense absent or degenerate, the abolition scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "casualty_loss"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "obbba_casualty_loss_limit",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "OBBBA casualty-loss deduction reactivation",
+   "parameter_changes": {
+    "gov.irs.deductions.itemized.casualty.active": {
+     "2026-01-01.2026-12-31": true
+    }
+   },
+   "period": 2026,
+   "reason": "Reactivating the casualty-loss deduction lowers income tax only for tax units with casualty_loss above the statutory AGI floor, so baseline-minus-reform income tax must be positive. With the casualty-loss input absent or degenerate, the reactivation scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "unreimbursed_business_employee_expenses"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "obbba_misc_itemized_deductions",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA miscellaneous-itemized deduction reactivation",
+   "parameter_changes": {
+    "gov.irs.deductions.itemized.misc.applies": {
+     "2026-01-01.2026-12-31": true
+    }
+   },
+   "period": 2026,
+   "reason": "Reactivating the miscellaneous itemized deduction lowers income tax only for tax units with qualifying expenses above its AGI floor, so baseline-minus-reform income tax must be positive. Without unreimbursed_business_employee_expenses, the retired pipeline's only populated miscellaneous-expense input, the reactivation is a structural zero on the export."
+  },
+  {
+   "binding_inputs": [
+    "spm_unit_pre_subsidy_childcare_expenses"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_cdcc",
+   "issue": "PolicyEngine/populace#278",
+   "min_abs_effect": 1000000.0,
+   "name": "OBBBA Child and Dependent Care Credit reversion",
+   "parameter_changes": {
+    "gov.irs.credits.cdcc.phase_out.amended_structure.applies": {
+     "2026-01-01.2026-12-31": false
+    },
+    "gov.irs.credits.cdcc.phase_out.max": {
+     "2026-01-01.2026-12-31": 0.35
+    },
+    "gov.irs.credits.cdcc.phase_out.min": {
+     "2026-01-01.2026-12-31": 0.2
+    }
+   },
+   "period": 2026,
+   "reason": "Reverting the OBBBA CDCC enhancement raises income tax, so baseline-minus-reform income tax must be negative. With measured pre-subsidy childcare expenses absent or degenerate, no filer has qualifying care expenses and the reversion scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "tip_income",
+    "treasury_tipped_occupation_code"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_no_tax_on_tips",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA no-tax-on-tips deduction",
+   "parameter_changes": {
+    "gov.irs.deductions.tip_income.cap": {
+     "2026-01-01.2026-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting the OBBBA tip-deduction cap to zero removes the deduction, so baseline-minus-reform income tax must be negative in 2026. With tip_income or the Treasury tipped-occupation code absent, qualified tip income is zero and the repeal scores exactly $0. External anchor: JCT JCX-35-25 no-tax-on-tips FY2026 -$10.121 billion (ledger fact jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect); certified Build N measures -$1.63 billion."
+  },
+  {
+   "binding_inputs": [
+    "fsla_overtime_premium"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_no_tax_on_overtime",
+   "issue": "PolicyEngine/populace#242",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA no-tax-on-overtime deduction",
+   "parameter_changes": {
+    "gov.irs.deductions.overtime_income.cap.HEAD_OF_HOUSEHOLD": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.JOINT": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.SEPARATE": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.SINGLE": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.SURVIVING_SPOUSE": {
+     "2026-01-01.2026-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting every OBBBA overtime-deduction cap to zero removes the deduction, so reform income tax rises and baseline-minus-reform must be negative in 2026. With fsla_overtime_premium absent or degenerate, qualified overtime is zero and the repeal scores $0. External anchor: JCT JCX-35-25 no-tax-on-overtime FY2026 -$32.806 billion (ledger fact jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect); certified Build N measures -$16.86 billion."
+  },
+  {
+   "binding_inputs": [
+    "qualified_passenger_vehicle_loan_interest"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_auto_loan_interest",
+   "issue": "PolicyEngine/populace#252",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA no-tax-on-auto-loan-interest deduction",
+   "parameter_changes": {
+    "gov.irs.deductions.auto_loan_interest.cap": {
+     "2026-01-01.2026-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting the OBBBA auto-loan-interest deduction cap to zero removes the deduction, so reform income tax rises and baseline-minus-reform must be negative in 2026. With qualified passenger-vehicle loan interest absent or degenerate, the repeal scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "household_vehicles_owned",
+    "household_vehicles_value"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "tx_snap_additional_vehicle_exemption_abolition",
+   "issue": "PolicyEngine/populace#49",
+   "min_abs_effect": 1000000.0,
+   "name": "Texas SNAP additional-vehicle exemption abolition",
+   "parameter_changes": {
+    "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption": {
+     "2026-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting the Texas TANF non-cash additional-vehicle exemption to zero tightens the asset test used by Texas SNAP categorical eligibility, so baseline-minus-reform SNAP must be positive. PolicyEngine-US computes the exemption from both household vehicle count and value; if either restored SIPP vehicle input is absent or degenerate, this vehicle-specific reform loses its intended binding channel. A persisted 30,000-household Populace smoke scored +$3.58 million in 2026 SNAP."
+  },
+  {
+   "binding_inputs": [
+    "would_file_taxes_voluntarily"
+   ],
+   "budget_measure": "aca_ptc",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "voluntary_filing_aca_ptc_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "Voluntary tax filing ACA PTC neutralization",
+   "neutralized_variable": "would_file_taxes_voluntarily",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes would_file_taxes_voluntarily in tax_unit_is_filer alongside required and credit filers. Neutralizing only the restored SIPP filing-response leaf therefore removes ACA premium tax credits from otherwise eligible voluntary filers, so baseline-minus-neutralized aca_ptc must be positive. With the filing leaf absent or degenerate, this isolated response channel scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "pre_subsidy_rent"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "pre_subsidy_rent_neutralization",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "Pre-subsidy rent neutralization",
+   "neutralized_variable": "pre_subsidy_rent",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter deduction. Neutralizing only the restored ACS rent leaf therefore reduces SNAP; on the pinned retired small eCPS artifact under PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is +$11.731 billion. Without nondefault ACS rent, that effect is a structural zero. The other source-mapped housing leaves are enforced by their exact ASEC mappings and signal gate; household tenure_type has no standalone PolicyEngine-US 1.764.6 formula consumer."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_housing_assistance_if_eligible"
+   ],
+   "budget_measure": "housing_assistance",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "housing_assistance_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "Measured housing-assistance take-up neutralization",
+   "neutralized_variable": "takes_up_housing_assistance_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US multiplies HUD HAP by the restored SPM-unit take-up leaf after eligibility. Populace keeps that leaf exactly equal to source-backed housing-assistance receipt, so neutralizing it must remove the assistance paid to measured/imputed recipients. A 6,000-household production-ingredient smoke scored $202.795 million baseline-minus-neutralized; the $100 million floor is below that observed subset effect but far above numerical noise. A default-only or absent carry makes the source reconciliation or this uniquely isolating probe fail."
   }
  ],
  "schema_version": 1,

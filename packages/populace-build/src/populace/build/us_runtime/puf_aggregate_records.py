@@ -17,6 +17,27 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.us_runtime.alimony import derive_us_alimony_from_puf
+from populace.build.us_runtime.capital_gain_details import (
+    derive_us_capital_gain_details_from_puf,
+)
+from populace.build.us_runtime.casualty_losses import (
+    derive_us_casualty_loss_from_puf,
+)
+from populace.build.us_runtime.domestic_production import (
+    derive_us_domestic_production_ald_from_puf,
+)
+from populace.build.us_runtime.educator_expenses import (
+    derive_us_educator_expense_from_puf,
+)
+from populace.build.us_runtime.farm_business_income import (
+    derive_us_farm_business_income_from_puf,
+)
+from populace.build.us_runtime.form_4952 import derive_us_form_4952_election_from_puf
+from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
+from populace.build.us_runtime.salt_refund_income import (
+    derive_us_salt_refund_income_from_puf,
+)
 from populace.calibrate import relative_error_loss
 
 __all__ = [
@@ -69,6 +90,7 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E00400": "tax_exempt_interest_income",
     "E00600": "ordinary_dividends",
     "E00650": "qualified_dividends",
+    "E00700": "state_and_local_tax_refund_income",
     "E00900": "business_net_profits",
     "E01100": "capital_gains_distributions",
     "E01400": "ira_distributions",
@@ -78,9 +100,17 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E02400": "total_social_security",
     "E02500": "taxable_social_security",
     "E03210": "student_loan_interest",
+    "E03220": "educator_expense",
     "E17500": "medical_expense_deduction",
     "E18400": "state_income_tax_paid",
     "E18500": "real_estate_taxes_paid",
+    # Raw E19200 is Schedule A "Interest paid deduction, TOTAL" (home
+    # mortgage + points + QMIP + investment interest), NOT mortgage-only;
+    # the attribute name predates that distinction and stays stable because
+    # it keys raw-source audit payloads. The processed donor decomposes this
+    # lineage using the published TY2015 Table 2.1 component shares for each
+    # AGI band (populace#515); compare this raw audit figure only with the sum
+    # of the carved mortgage and non-mortgage donor masses.
     "E19200": "mortgage_interest_paid",
     "E19800": "charitable_cash_contributions",
     "E20100": "charitable_noncash_contributions",
@@ -89,7 +119,7 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E24515": "unrecaptured_section_1250_gain",
     "E24518": "collectibles_capital_gains",
     "E26270": "partnership_and_s_corp_income",
-    "E87521": "net_investment_income_tax",
+    "E87521": "american_opportunity_credit",
 }
 _COMBINED_SOURCE_FIELDS = {
     "capital_gains_proxy": ("P22250", "P23250", "E01100"),
@@ -209,6 +239,37 @@ def derive_puf_policyengine_variables(
     qualified_dividend_source: str = "E00650",
     qualified_dividend_output: str = "qualified_dividend_income",
     non_qualified_dividend_output: str = "non_qualified_dividend_income",
+    qualified_tuition_primary_source: str | None = None,
+    qualified_tuition_optional_source: str | None = None,
+    qualified_tuition_output: str = "qualified_tuition_expenses",
+    alimony_income_source: str | None = None,
+    alimony_income_output: str = "alimony_income",
+    alimony_expense_source: str | None = None,
+    alimony_expense_output: str = "alimony_expense",
+    casualty_loss_source: str | None = None,
+    casualty_loss_output: str = "casualty_loss",
+    domestic_production_ald_source: str | None = None,
+    domestic_production_ald_output: str = "domestic_production_ald",
+    educator_expense_source: str | None = None,
+    educator_expense_output: str = "educator_expense",
+    unreimbursed_business_employee_expenses_source: str | None = None,
+    unreimbursed_business_employee_expenses_output: str = (
+        "unreimbursed_business_employee_expenses"
+    ),
+    farm_operations_income_source: str | None = None,
+    farm_operations_income_output: str = "farm_operations_income",
+    farm_rent_income_source: str | None = None,
+    farm_rent_income_output: str = "farm_rent_income",
+    investment_income_elected_form_4952_source: str | None = None,
+    investment_income_elected_form_4952_output: str = (
+        "investment_income_elected_form_4952"
+    ),
+    salt_refund_income_source: str | None = None,
+    salt_refund_income_output: str = "salt_refund_income",
+    collectibles_capital_gain_source: str | None = None,
+    collectibles_capital_gain_output: str = "long_term_capital_gains_on_collectibles",
+    unrecaptured_section_1250_gain_source: str | None = None,
+    unrecaptured_section_1250_gain_output: str = "unrecaptured_section_1250_gain",
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -225,6 +286,106 @@ def derive_puf_policyengine_variables(
 
     result[qualified_dividend_output] = qualified
     result[non_qualified_dividend_output] = ordinary - qualified
+    if qualified_tuition_primary_source is not None:
+        _require_columns(result, [qualified_tuition_primary_source])
+        tuition = _numeric_series(result[qualified_tuition_primary_source]).clip(
+            lower=0.0
+        )
+        if (
+            qualified_tuition_optional_source is not None
+            and qualified_tuition_optional_source in result
+        ):
+            optional = _numeric_series(result[qualified_tuition_optional_source]).clip(
+                lower=0.0
+            )
+            tuition = pd.Series(
+                np.maximum(tuition.to_numpy(), optional.to_numpy()),
+                index=result.index,
+                dtype="float64",
+            )
+        result[qualified_tuition_output] = tuition
+    alimony_sources = (alimony_income_source, alimony_expense_source)
+    if any(source is not None for source in alimony_sources):
+        if not all(source is not None for source in alimony_sources):
+            raise ValueError(
+                "PUF alimony derivation requires both income and expense source "
+                "columns when either is configured."
+            )
+        result = derive_us_alimony_from_puf(
+            result,
+            income_source_column=alimony_income_source,
+            income_output_column=alimony_income_output,
+            expense_source_column=alimony_expense_source,
+            expense_output_column=alimony_expense_output,
+        )
+    if casualty_loss_source is not None:
+        result = derive_us_casualty_loss_from_puf(
+            result,
+            source_column=casualty_loss_source,
+            output_column=casualty_loss_output,
+        )
+    if domestic_production_ald_source is not None:
+        result = derive_us_domestic_production_ald_from_puf(
+            result,
+            source_column=domestic_production_ald_source,
+            output_column=domestic_production_ald_output,
+        )
+    if educator_expense_source is not None:
+        result = derive_us_educator_expense_from_puf(
+            result,
+            source_column=educator_expense_source,
+            output_column=educator_expense_output,
+        )
+    if unreimbursed_business_employee_expenses_source is not None:
+        result = derive_us_misc_itemized_from_puf(
+            result,
+            source_column=unreimbursed_business_employee_expenses_source,
+            output_column=unreimbursed_business_employee_expenses_output,
+        )
+    if investment_income_elected_form_4952_source is not None:
+        result = derive_us_form_4952_election_from_puf(
+            result,
+            source_column=investment_income_elected_form_4952_source,
+            output_column=investment_income_elected_form_4952_output,
+        )
+    if salt_refund_income_source is not None:
+        result = derive_us_salt_refund_income_from_puf(
+            result,
+            source_column=salt_refund_income_source,
+            output_column=salt_refund_income_output,
+        )
+    capital_gain_detail_sources = (
+        collectibles_capital_gain_source,
+        unrecaptured_section_1250_gain_source,
+    )
+    if any(source is not None for source in capital_gain_detail_sources):
+        if not all(source is not None for source in capital_gain_detail_sources):
+            raise ValueError(
+                "PUF capital-gain detail derivation requires both collectibles "
+                "and unrecaptured-section-1250 source columns when either is "
+                "configured."
+            )
+        result = derive_us_capital_gain_details_from_puf(
+            result,
+            collectibles_source_column=collectibles_capital_gain_source,
+            collectibles_output_column=collectibles_capital_gain_output,
+            unrecaptured_source_column=unrecaptured_section_1250_gain_source,
+            unrecaptured_output_column=unrecaptured_section_1250_gain_output,
+        )
+    farm_sources = (farm_operations_income_source, farm_rent_income_source)
+    if any(source is not None for source in farm_sources):
+        if not all(source is not None for source in farm_sources):
+            raise ValueError(
+                "PUF farm-business derivation requires both operations and rent "
+                "source columns when either is configured."
+            )
+        result = derive_us_farm_business_income_from_puf(
+            result,
+            operations_source_column=farm_operations_income_source,
+            operations_output_column=farm_operations_income_output,
+            rent_source_column=farm_rent_income_source,
+            rent_output_column=farm_rent_income_output,
+        )
     return result
 
 
@@ -281,7 +442,17 @@ def disaggregate_puf_aggregate_records(
 
     synthetic_df = pd.concat(pieces, ignore_index=True)
     result = pd.concat([regular, synthetic_df], ignore_index=True)
-    return _reconcile_puf_dividend_columns_from_components(result)
+    result = _reconcile_puf_dividend_columns_from_components(result)
+    result = _reconcile_puf_qualified_tuition_from_sources(result)
+    result = _reconcile_puf_alimony_from_sources(result)
+    result = _reconcile_puf_casualty_loss_from_source(result)
+    result = _reconcile_puf_domestic_production_ald_from_source(result)
+    result = _reconcile_puf_educator_expense_from_source(result)
+    result = _reconcile_puf_misc_itemized_from_source(result)
+    result = _reconcile_puf_form_4952_election_from_source(result)
+    result = _reconcile_puf_salt_refund_income_from_source(result)
+    result = _reconcile_puf_capital_gain_details_from_sources(result)
+    return _reconcile_puf_farm_business_income_from_sources(result)
 
 
 def audit_puf_aggregate_disaggregation(
@@ -846,6 +1017,147 @@ def _reconcile_puf_dividend_columns_from_components(puf: pd.DataFrame) -> pd.Dat
     if "E00600" in result.columns:
         result["E00600"] = ordinary
     return result
+
+
+def _reconcile_puf_qualified_tuition_from_sources(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute tuition after aggregate-row source amounts are replaced.
+
+    ``derive_puf_policyengine_variables`` runs before aggregate-record
+    disaggregation.  The disaggregator subsequently reallocates the raw
+    ``E03230``/``E87530`` amounts, so carrying the earlier derived column would
+    leave donor-template values that no longer agree with either source field.
+    Re-deriving here preserves the retired ``max(E03230, E87530)`` contract on
+    every regular and synthetic row.
+    """
+
+    output = "qualified_tuition_expenses"
+    primary = "E03230"
+    optional = "E87530"
+    if output not in puf.columns or primary not in puf.columns:
+        return puf
+
+    result = puf.copy()
+    tuition = _numeric_series(result[primary]).clip(lower=0.0)
+    if optional in result.columns:
+        optional_tuition = _numeric_series(result[optional]).clip(lower=0.0)
+        tuition = pd.Series(
+            np.maximum(tuition.to_numpy(), optional_tuition.to_numpy()),
+            index=result.index,
+            dtype="float64",
+        )
+    result[output] = tuition
+    return result
+
+
+def _reconcile_puf_casualty_loss_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute casualty loss after aggregate-row amounts are replaced.
+
+    The raw ``E20500`` amount participates in PUF aggregate-record
+    disaggregation.  Reusing the pre-disaggregation derived column would leave
+    donor-template values on synthetic rows, so restore the archived direct
+    mapping after the source amounts reach their final rows.
+    """
+
+    if "casualty_loss" not in puf.columns or "E20500" not in puf.columns:
+        return puf
+    return derive_us_casualty_loss_from_puf(puf)
+
+
+def _reconcile_puf_alimony_from_sources(puf: pd.DataFrame) -> pd.DataFrame:
+    """Recompute both alimony leaves after raw source amounts are replaced."""
+
+    required = {"alimony_income", "alimony_expense", "E00800", "E03500"}
+    if not required.issubset(puf.columns):
+        return puf
+    return derive_us_alimony_from_puf(puf)
+
+
+def _reconcile_puf_domestic_production_ald_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E03240 carry after aggregate-row amounts are replaced."""
+
+    output = "domestic_production_ald"
+    if output not in puf.columns or "E03240" not in puf.columns:
+        return puf
+    return derive_us_domestic_production_ald_from_puf(puf)
+
+
+def _reconcile_puf_educator_expense_from_source(puf: pd.DataFrame) -> pd.DataFrame:
+    """Recompute the E03220 carry after aggregate-row amounts are replaced."""
+
+    if "educator_expense" not in puf.columns or "E03220" not in puf.columns:
+        return puf
+    return derive_us_educator_expense_from_puf(puf)
+
+
+def _reconcile_puf_misc_itemized_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E20400 proxy after aggregate-row amounts are replaced."""
+
+    output = "unreimbursed_business_employee_expenses"
+    if output not in puf.columns or "E20400" not in puf.columns:
+        return puf
+    return derive_us_misc_itemized_from_puf(puf)
+
+
+def _reconcile_puf_form_4952_election_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E58990 carry after aggregate-row amounts are replaced."""
+
+    output = "investment_income_elected_form_4952"
+    if output not in puf.columns or "E58990" not in puf.columns:
+        return puf
+    return derive_us_form_4952_election_from_puf(puf)
+
+
+def _reconcile_puf_salt_refund_income_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E00700 carry after aggregate-row amounts are replaced."""
+
+    output = "salt_refund_income"
+    if output not in puf.columns or "E00700" not in puf.columns:
+        return puf
+    return derive_us_salt_refund_income_from_puf(puf)
+
+
+def _reconcile_puf_capital_gain_details_from_sources(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute E24518/E24515 carries after source amounts are replaced."""
+
+    required = {
+        "long_term_capital_gains_on_collectibles",
+        "unrecaptured_section_1250_gain",
+        "E24518",
+        "E24515",
+    }
+    if not required.issubset(puf.columns):
+        return puf
+    return derive_us_capital_gain_details_from_puf(puf)
+
+
+def _reconcile_puf_farm_business_income_from_sources(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute signed E02100/E27200 carries after disaggregation."""
+
+    required = {
+        "farm_operations_income",
+        "farm_rent_income",
+        "E02100",
+        "E27200",
+    }
+    if not required.issubset(puf.columns):
+        return puf
+    return derive_us_farm_business_income_from_puf(puf)
 
 
 def _assert_nonnegative_dividend_component(

@@ -73,7 +73,7 @@ __all__ = [
 # Bump the version whenever the factor policy changes; no Ledger fact and no
 # consumer-artifact hash changes when it does — only Populace build outputs.
 AGING_MODEL_ID = "cbo_growth_factor_aging"
-AGING_MODEL_VERSION = "1.1.0"
+AGING_MODEL_VERSION = "1.2.0"
 
 
 # CBO income-by-source ``groupby_value_id`` for the AGI projection series. This
@@ -124,6 +124,17 @@ _TARGET_ROLE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
     "cbo_qualified_dividend_income": "qualified_dividend_income",
     "cbo_net_capital_gain": "net_capital_gain",
     "cbo_net_business_income": "net_business_income",
+    # BEA NIPA all-population income targets (nonfiler-inclusive) age by their
+    # own CBO income-by-source series so a cy2023 source level is projected to
+    # the build year on the matching concept, not the AGI default. The cy2024
+    # NIPA wage level needs no aging (source == build period).
+    "nipa_wages_and_salaries": "wages_and_salaries",
+    "bea_state_wages": "wages_and_salaries",
+    "nipa_proprietors_income": "net_business_income",
+    # W-2 Box 7 social security tips (populace#451 item 3): tips are a wage
+    # component, and the fact's TY2020 vintage predates the CBO projection
+    # span, so the wages series' SOI actuals provide the chained bridge.
+    "w2_social_security_tips_total": "wages_and_salaries",
 }
 
 
@@ -307,6 +318,17 @@ def _age_spec(
     build_period_key: int | None,
 ) -> TargetSpec:
     aged_to = str(target_period)
+    if "uprating_factor" in spec.metadata:
+        stamped = spec.metadata.get("uprating_to_period")
+        if stamped is not None and _period_year(str(stamped)) is None:
+            # Applies to EVERY uprated row — counts and non-USD rows
+            # included: they never age, but a populace-authored stamp that
+            # does not parse is a code bug and must not pass silently
+            # (PR #488 round-2 finding 1).
+            raise ValueError(
+                f"Uprated target {spec.name!r} carries an unparseable "
+                f"uprating_to_period {stamped!r}."
+            )
     not_ageable_reason = _not_ageable_reason(spec)
     if not_ageable_reason is not None:
         # Counts, non-USD rows, and rows already period-aligned upstream are
@@ -321,7 +343,19 @@ def _age_spec(
             aging_factor_source=not_ageable_reason,
         )
 
-    source_period = spec.metadata.get("source_period", "")
+    # An uprated row's value sits wherever the uprating pass landed it
+    # (``uprating_to_period`` — the rebase control's period, not the build
+    # period); age the remaining links from there. A row uprated all the way
+    # to the build period falls through to source_equals_build with factor
+    # one, and a row stopped at an earlier control (the Build N
+    # net-capital-gains cross-vintage defect) receives exactly the missing
+    # links. Unrebased rows age from their source period as before.
+    source_period = str(
+        spec.metadata.get("uprating_to_period")
+        or spec.metadata.get("source_period", "")
+        if "uprating_factor" in spec.metadata
+        else spec.metadata.get("source_period", "")
+    )
     source_period_key = _period_year(source_period)
     if (
         source_period_key is None
@@ -397,9 +431,14 @@ def _not_ageable_reason(spec: TargetSpec) -> str | None:
     """Why a spec is not an ageable nominal dollar amount, or ``None``.
 
     Ageable rows are USD ``sum`` measures. Counts (``indicator_sum``) stay
-    raw. Rows already period-aligned within-surface by an uprating pass carry
-    ``uprating_factor`` and must not be re-aged (double counting). The returned
-    string is the ``aging_factor_source`` diagnostic recorded for the skip.
+    raw. Rows rebased within-surface by an uprating pass carry
+    ``uprating_factor`` and are aged FROM their control period (recorded as
+    ``uprating_index_source_period``), never from the original source period
+    — the rebase covered source->control, aging covers control->build, so no
+    link is double-counted and none is dropped (the Build N net-capital-gains
+    cross-vintage defect: the states' chain stopped at the TY2023 control
+    while the national row continued to TY2024). The returned string is the
+    ``aging_factor_source`` diagnostic recorded for the skip.
     """
 
     metadata = spec.metadata
@@ -408,8 +447,6 @@ def _not_ageable_reason(spec: TargetSpec) -> str | None:
     unit = metadata.get("ledger_measure_unit", "")
     if unit and unit != "usd":
         return "not_usd_unit"
-    if "uprating_factor" in metadata:
-        return "already_period_aligned"
     if metadata.get("ledger_assertion") == "source_projection":
         # A publisher projection is consumed at its published level whatever
         # period it describes; re-projecting it here would silently compound
@@ -505,9 +542,7 @@ def _soi_national_chain_series(
 
     wanted = {
         (table, measure): income_source
-        for income_source, (table, measure) in (
-            _CBO_INCOME_SOURCE_TO_SOI_CHAIN.items()
-        )
+        for income_source, (table, measure) in (_CBO_INCOME_SOURCE_TO_SOI_CHAIN.items())
     }
     series: dict[str, dict[int, tuple[float, str]]] = {}
     for fact in facts:

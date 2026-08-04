@@ -13,7 +13,51 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File"
+          "locator": "IRS SOI Public Use File, including source-year adjusted gross income E00100, weight S006, total interest paid deduction E19200, state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
+        },
+        {
+          "kind": "published_aggregate_table",
+          "format": "xls_and_pdf",
+          "vintage": "tax year 2015",
+          "source": "https://www.irs.gov/pub/irs-soi/15in21id.xls",
+          "report_source": "https://www.irs.gov/pub/irs-soi/15inalcr.pdf",
+          "locator": "IRS SOI Table 2.1, rows 10-32; total interest CF, home mortgage interest CH, points CN, qualified mortgage insurance premiums CP, and investment interest CR; verbatim values and workbook coordinates packaged in soi_table_2_1_interest_components_ty2015.json"
+        },
+        {
+          "kind": "versioned_derived_microdata",
+          "format": "hdf5_arrays",
+          "vintage": "2024 (2015-based)",
+          "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "lineage": {
+            "archived_commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+            "generator_path_parts": ["policyengine_", "us_data", "datasets", "puf", "puf.py"],
+            "generator_lines": "1378-1398",
+            "disaggregator_path_parts": ["policyengine_", "us_data", "datasets", "puf", "disaggregate_puf.py"],
+            "disaggregator_lines": "55-60,85-123",
+            "operation_order": [
+              "uprate",
+              "disaggregate_aggregate_records"
+            ],
+            "aggregate_disaggregation_seed": 42,
+            "forbes_top_tail_enabled": true,
+            "forbes_aggregate_recid": 999999,
+            "forbes_synthetic_record_count": 3900
+          }
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "puf", "puf.py"],
+          "lines": "654-708,804-850",
+          "outputs": [
+            "long_term_capital_gains_on_collectibles",
+            "salt_refund_income",
+            "unrecaptured_section_1250_gain"
+          ],
+          "imputation_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "imputation_lines": "90-198,940-1075"
         }
       ],
       "operations": [
@@ -27,7 +71,34 @@
           "ordinary_dividend_source": "E00600",
           "qualified_dividend_source": "E00650",
           "qualified_dividend_output": "qualified_dividend_income",
-          "non_qualified_dividend_output": "non_qualified_dividend_income"
+          "non_qualified_dividend_output": "non_qualified_dividend_income",
+          "qualified_tuition_primary_source": "E03230",
+          "qualified_tuition_optional_source": "E87530",
+          "qualified_tuition_output": "qualified_tuition_expenses",
+          "alimony_income_source": "E00800",
+          "alimony_income_output": "alimony_income",
+          "alimony_expense_source": "E03500",
+          "alimony_expense_output": "alimony_expense",
+          "casualty_loss_source": "E20500",
+          "casualty_loss_output": "casualty_loss",
+          "domestic_production_ald_source": "E03240",
+          "domestic_production_ald_output": "domestic_production_ald",
+          "educator_expense_source": "E03220",
+          "educator_expense_output": "educator_expense",
+          "unreimbursed_business_employee_expenses_source": "E20400",
+          "unreimbursed_business_employee_expenses_output": "unreimbursed_business_employee_expenses",
+          "farm_operations_income_source": "E02100",
+          "farm_operations_income_output": "farm_operations_income",
+          "farm_rent_income_source": "E27200",
+          "farm_rent_income_output": "farm_rent_income",
+          "investment_income_elected_form_4952_source": "E58990",
+          "investment_income_elected_form_4952_output": "investment_income_elected_form_4952",
+          "salt_refund_income_source": "E00700",
+          "salt_refund_income_output": "salt_refund_income",
+          "collectibles_capital_gain_source": "E24518",
+          "collectibles_capital_gain_output": "long_term_capital_gains_on_collectibles",
+          "unrecaptured_section_1250_gain_source": "E24515",
+          "unrecaptured_section_1250_gain_output": "unrecaptured_section_1250_gain"
         },
         {
           "kind": "disaggregate_aggregate_records",
@@ -47,6 +118,25 @@
           "kind": "uprate",
           "from_year": 2015,
           "to_year_from_build_config": true
+        },
+        {
+          "kind": "derive",
+          "method": "decompose_e19200_by_soi_agi_band",
+          "raw_total": "home_mortgage_interest",
+          "banding_variable": "E00100",
+          "banding_period": "source_year_2015",
+          "band_alignment": "direct RECID join for regular returns; archived seed-42 aggregate-record donor allocation for the three bounded synthetic buckets; source bucket floor for the Forbes-backed $100 million-plus tail",
+          "archived_processed_puf_disaggregation_seed": 42,
+          "published_source_year": 2015,
+          "published_total_column": "CF",
+          "published_home_mortgage_column": "CH",
+          "mortgage_output": "home_mortgage_interest",
+          "non_mortgage_output": "investment_interest_expense",
+          "allocation": "deterministic proportional allocation within each published AGI band",
+          "outlier_screen_before_split": {
+            "variable": "home_mortgage_interest",
+            "maximum": 10000000
+          }
         },
         {
           "kind": "fit_weighted_qrf",
@@ -74,6 +164,8 @@
         "tax_exempt_interest_income",
         "short_term_capital_gains",
         "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
+        "unrecaptured_section_1250_gain",
         "non_sch_d_capital_gains",
         "taxable_private_pension_income",
         "taxable_ira_distributions",
@@ -81,16 +173,28 @@
         "social_security_disability",
         "social_security_dependents",
         "social_security_survivors",
+        "alimony_income",
+        "alimony_expense",
+        "salt_refund_income",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
+        "investment_income_elected_form_4952",
         "student_loan_interest",
+        "educator_expense",
+        "qualified_tuition_expenses",
+        "casualty_loss",
+        "domestic_production_ald",
+        "unreimbursed_business_employee_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "rental_income",
         "estate_income",
         "farm_income",
+        "farm_operations_income",
+        "farm_rent_income",
         "miscellaneous_income",
         "partnership_income",
         "s_corp_income",
@@ -101,7 +205,22 @@
         "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
-        "health_savings_account_ald"
+        "health_savings_account_ald",
+        "estate_income_would_be_qualified",
+        "farm_operations_income_would_be_qualified",
+        "farm_rent_income_would_be_qualified",
+        "partnership_s_corp_income_would_be_qualified",
+        "rental_income_would_be_qualified",
+        "self_employment_income_would_be_qualified",
+        "sstb_self_employment_income_would_be_qualified",
+        "business_is_sstb",
+        "qualified_bdc_income",
+        "qualified_reit_and_ptp_income",
+        "sstb_self_employment_income_before_lsr",
+        "sstb_unadjusted_basis_qualified_property",
+        "sstb_w2_wages_from_qualified_business",
+        "unadjusted_basis_qualified_property",
+        "w2_wages_from_qualified_business"
       ],
       "nonnegative_outputs": [
         "employment_income_before_lsr",
@@ -111,17 +230,29 @@
         "non_qualified_dividend_income",
         "tax_exempt_interest_income",
         "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
+        "unrecaptured_section_1250_gain",
         "taxable_private_pension_income",
         "taxable_ira_distributions",
         "social_security_retirement",
         "social_security_disability",
         "social_security_dependents",
         "social_security_survivors",
+        "alimony_income",
+        "alimony_expense",
+        "salt_refund_income",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
+        "investment_income_elected_form_4952",
         "student_loan_interest",
+        "educator_expense",
+        "qualified_tuition_expenses",
+        "casualty_loss",
+        "domestic_production_ald",
+        "unreimbursed_business_employee_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -130,9 +261,553 @@
         "first_home_mortgage_interest",
         "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
-        "second_home_mortgage_origination_year"
+        "second_home_mortgage_origination_year",
+        "qualified_bdc_income",
+        "qualified_reit_and_ptp_income",
+        "sstb_unadjusted_basis_qualified_property",
+        "sstb_w2_wages_from_qualified_business",
+        "unadjusted_basis_qualified_property",
+        "w2_wages_from_qualified_business"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. The pinned PUF lineage uprates the raw TY2015 rows before replacing the four IRS disclosure aggregate records (archived puf.py lines 1378-1398). Its seed-42 disaggregator enables the Forbes backbone for aggregate RECID 999999 (archived disaggregate_puf.py lines 55-60 and 85-123), producing the 3,900-record open tail retained by puf_2024.h5. This build consumes that versioned H5 and does not request unsupported Forbes synthesis from the source-stage runtime. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Educator expense reproduces the retired direct mapping educator_expense = E03220 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-649, with filer/spouse allocation by earnings share at lines 617-620 and export at lines 804-815; the processed 1.8.0 artifact carries the leaf. Populace places this PUF-only detail on its dedicated PUF support channel and sparsifies to the donor positive rate, rather than reproducing the retired both-half override. Form 4952 elected investment income reproduces the archived direct mapping investment_income_elected_form_4952 = E58990 at puf.py line 708, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. SALT refund income reproduces the archived direct mapping salt_refund_income = E00700 at puf.py line 707, its export at lines 804-850, and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic ASEC target has no EARNSPLIT. Populace therefore aggregates each processed donor leaf to its identifiable tax-unit total, places that total on the unit's first person, and sparsifies only the PUF support channel to the donor positive rate rather than inventing an earnings-based split or reproducing the retired both-half override. This within-unit placement is policy-neutral in PolicyEngine-US 1.764.6 because the relevant formulas sum these leaves to the tax unit. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672); Populace deliberately preserves measured ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Populace source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
+    },
+    {
+      "stage": "education_inputs",
+      "survey": "IRS PUF 2015 (uprated) + Census CPS ASEC",
+      "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "fixed_width_or_csv",
+          "vintage": "2015",
+          "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+          "locator": "IRS SOI Public Use File E03230 and optional E87530 tuition fields"
+        },
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person ED_VAL educational-assistance field"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_education_inputs"
+        }
+      ],
+      "outputs": [
+        "qualified_tuition_expenses",
+        "educational_assistance",
+        "is_pursuing_credential_for_american_opportunity_credit",
+        "attends_eligible_educational_institution_for_american_opportunity_credit",
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+        "has_american_opportunity_credit_1098_t_or_exception",
+        "has_american_opportunity_credit_institution_ein"
+      ],
+      "nonnegative_outputs": [
+        "qualified_tuition_expenses",
+        "educational_assistance"
+      ],
+      "notes": "Retired published-eCPS construction: the PUF publication path drops the reported american_opportunity_credit tax output before AOTC factual-input postprocessing, so archived extended_cps.py takes its positive-qualified-tuition fallback and sets all five affirmative AOTC inputs on that mask (publication candidate 9f8db56e9ed1ca25f0ed16285fcc928343d2e474). educational_assistance carries directly from measured ASEC ED_VAL (archived cps.py at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1). The pinned export independently confirms that the five flags and tuition share one support mask."
+    },
+    {
+      "stage": "retirement_contributions",
+      "survey": "Census CPS ASEC + published retirement-contribution shares",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person RETCB_VAL, WSAL_VAL, and SEMP_VAL fields"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimates",
+          "vintage": "2022-2024",
+          "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
+          "locator": "IRS SOI IRA contribution totals and Publication 1304 Table 1.4 Keogh-plan payments"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_time_series",
+          "vintage": "2023",
+          "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+          "locator": "BEA/FRED employee and employer defined-contribution pension-plan contribution series Y351RC1A027NBEA and W351RC0A144NBEA"
+        },
+        {
+          "kind": "research_report",
+          "format": "pdf",
+          "vintage": "2024",
+          "source": "https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf",
+          "locator": "Vanguard How America Saves 2024 Roth defined-contribution participation evidence"
+        },
+        {
+          "kind": "research_report",
+          "format": "web",
+          "vintage": "2024",
+          "source": "https://www.psca.org/news/psca-news/2024/12/401k-savings-and-participation-rates-rise/",
+          "locator": "Plan Sponsor Council of America 67th Annual Survey Roth participation evidence"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_retirement_contributions",
+          "se_pension_share": 0.046,
+          "dc_share_of_remainder": 0.908,
+          "roth_dc_share": 0.15,
+          "traditional_ira_share": 0.392
+        },
+        {
+          "kind": "impute_retirement_contributions_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired"
+      ],
+      "nonnegative_outputs": [
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired"
+      ],
+      "notes": "Exact port of the retired published-eCPS allocation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1 (datasets/cps/cps.py lines 1500-1552; imputation_parameters.yaml lines 24-55). Measured ASEC RETCB_VAL is allocated across self-employed pension, defined-contribution, and IRA pools only where ASEC reports the corresponding earned-income source. After PUF support expansion, the retired second-stage treatment (extended_cps.py lines 639-780 and 1014-1073) QRF-imputes all five leaves onto the PUF half from the ASEC rows and PUF-imputed income. PolicyEngine-US applies statutory limits to these five desired-contribution leaves; this source stage does not cap or synthesize the measured total."
+    },
+    {
+      "stage": "childcare_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC replicated SPM-unit SPM_CHILDCAREXPNS field"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_childcare_inputs"
+        },
+        {
+          "kind": "impute_childcare_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight",
+          "reduction": "value_from_first_person"
+        }
+      ],
+      "outputs": [
+        "spm_unit_pre_subsidy_childcare_expenses"
+      ],
+      "nonnegative_outputs": [
+        "spm_unit_pre_subsidy_childcare_expenses"
+      ],
+      "notes": "Measured ASEC SPM_CHILDCAREXPNS carries directly to spm_unit_pre_subsidy_childcare_expenses (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces non-person output with value_from_first_person (extended_cps.py lines 234-248, 639-739, and 1014-1069). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
+    },
+    {
+      "stage": "adult_care_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "hermetic ASEC pool years",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person PEDISDRS self-care difficulty item and the measured SPM-unit childcare expense distribution"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_adult_care_inputs",
+          "self_care_difficulty_source": "PEDISDRS",
+          "childcare_expense_source": "spm_unit_pre_subsidy_childcare_expenses",
+          "full_time_student_source": "is_full_time_college_student",
+          "support_channel_source": "person_support_channel",
+          "child_qualifying_age_limit": 13,
+          "earned_income_sources": [
+            "employment_income_before_lsr",
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr"
+          ],
+          "seed_from_build_config": true,
+          "output_flag": "is_incapable_of_self_care",
+          "output_expenses": "pre_subsidy_care_expenses"
+        }
+      ],
+      "outputs": [
+        "is_incapable_of_self_care",
+        "pre_subsidy_care_expenses"
+      ],
+      "nonnegative_outputs": [
+        "pre_subsidy_care_expenses"
+      ],
+      "notes": "Section 21 CDCC adult/disabled-dependent care inputs (PolicyEngine/populace#451 item 1), previously structural zeros in both the retired eCPS and every Populace base. Source decision receipts (Census API variable dictionaries, ASEC 2024 and SIPP 2023, read 2026-07-22): ASEC carries the qualifying concept directly - person item PEDISDRS ('difficulty dressing or bathing') operationalizes 'physically or mentally incapable of self-care', with SIPP's identical ESELFCARE item corroborating; NEITHER instrument's current public-use release carries in-household adult-care expenditures: ASEC's only care-expense items are childcare HCHCARE_VAL/SPM_CHILDCAREXPNS, and while the 2018 SIPP panel's Child & Dependent Care topical module collected paid dependent-care fields (ECREPAYANYON, TDEPNDNTEXP), they are absent from the 2023 SIPP PUF dictionary (the pinned donor vintage), whose only adult-care payment amount TDPCAREAMT covers care of a former household member, failing section 21's same-principal-abode requirement. The dollar leg is therefore an explicitly documented same-instrument proxy: the measured ASEC work-related childcare expense distribution (the same section 21 employment-related expense class, subject to the same 26 USC 21(c) per-person cap) supplies the paid-care usage rate and the positive level distribution (weighted quantiles, zero-weight donors excluded). The donor universe is measured at SPM-unit grain, where the childcare leaf lives: units with any member under the 21(b)(1)(A) age limit and any positive member earnings, on the measured ASEC channel - an approximation of the binding childcare population at donor grain, not a reproduction of the tax-unit minimum-earnings test. Recipient support is restricted to tax units where the statute can bind: a measured disabled qualifying individual under 21(b)(1)(B) (dependent) or 21(b)(1)(C) (married head or spouse), plus the 21(d) earnings structure computed exactly as the engine's min_head_spouse_earned binds - both spouses earning, or a 21(d)(2) floor-eligible spouse (incapable of self-care, or the measured full-time college student via is_full_time_college_student) deemed while the OTHER spouse actually earns; deeming never rescues a unit whose only earner is the floor-eligible spouse. Selection is a seeded weight-targeted permutation prefix over sorted unit ids (invariant to person-row order) at the measured usage rate; levels are a distribution-preserving weighted-quantile draw whose grid is the selected units' own cumulative-weight midpoints, placed on the qualifying person with the smallest person_id. PolicyEngine-US 1.764.6 owns all downstream CDCC formulas; is_incapable_of_self_care is also read by SNAP/Medicaid work-requirement exemptions and state CDCC analogs, which move those programs from flag-off defaults toward the measured disability structure."
+    },
+    {
+      "stage": "energy_subsidy",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC replicated SPM-unit SPM_ENGVAL field"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_energy_subsidy"
+        },
+        {
+          "kind": "impute_energy_subsidy_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight",
+          "reduction": "value_from_first_person"
+        }
+      ],
+      "outputs": [
+        "spm_unit_energy_subsidy"
+      ],
+      "nonnegative_outputs": [
+        "spm_unit_energy_subsidy"
+      ],
+      "notes": "Measured ASEC SPM_ENGVAL carries directly to spm_unit_energy_subsidy (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method includes this leaf in CPS_ONLY_IMPUTED_VARIABLES, uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces this non-person output with value_from_first_person (extended_cps.py lines 135-194, 234-248, 639-739, and 1014-1073). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
+    },
+    {
+      "stage": "child_support_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year and prior year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person CSP_VAL child support received and CHSP_VAL annual child support paid fields"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_child_support_inputs",
+          "received_source": "CSP_VAL",
+          "received_output": "child_support_received",
+          "expense_source": "CHSP_VAL",
+          "expense_output": "child_support_expense"
+        },
+        {
+          "kind": "impute_child_support_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "child_support_received",
+        "child_support_expense"
+      ],
+      "nonnegative_outputs": [
+        "child_support_received",
+        "child_support_expense"
+      ],
+      "notes": "Measured annual ASEC CSP_VAL carries directly to child_support_received and positive annual CHSP_VAL carries directly to child_support_expense (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1493-1496 and 1572-1574). After PUF tax-detail imputation, one joint person-grain QRF uses the exact archived eight-predictor subset and at most 5,000 ASEC training people to replace both leaves on the PUF support half (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1076). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
+    },
+    {
+      "stage": "disability_benefits_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year and prior year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person DIS_VAL1, DIS_SC1, DIS_VAL2, and DIS_SC2 fields"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_disability_benefits",
+          "first_amount_source": "DIS_VAL1",
+          "first_code_source": "DIS_SC1",
+          "second_amount_source": "DIS_VAL2",
+          "second_code_source": "DIS_SC2",
+          "workers_compensation_code": 1,
+          "output": "disability_benefits"
+        },
+        {
+          "kind": "impute_disability_benefits_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "disability_benefits"
+      ],
+      "nonnegative_outputs": [
+        "disability_benefits"
+      ],
+      "notes": "The retired ASEC derivation sums annual DIS_VAL1 and DIS_VAL2 only when the corresponding DIS_SC source code is not 1 (workers' compensation), keeping Social Security disability and workers' compensation in their separate leaves (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1561-1571). After PUF tax-detail imputation, the CPS-only output is replaced on the PUF support half using the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1076). The archive did not explicitly pin the QRF tree count; Populace pins 100 trees and typed person weights as reproducibility hardening."
+    },
+    {
+      "stage": "workers_compensation_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "2022-2024 pooled",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person annual workers' compensation amount WC_VAL"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1559-1571",
+          "source_declaration_path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "source_declaration_lines": "306-381",
+          "puf_output_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "puf_output_lines": "135-194",
+          "puf_predictor_lines": "234-248",
+          "puf_imputation_lines": "639-745,1014-1073"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_workers_compensation",
+          "source": "WC_VAL",
+          "output": "workers_compensation"
+        },
+        {
+          "kind": "impute_workers_compensation_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "workers_compensation"
+      ],
+      "nonnegative_outputs": [
+        "workers_compensation"
+      ],
+      "notes": "Exact annual person-level WC_VAL carry from archived cps.py lines 1559-1571; code-1 DIS_VAL slots remain excluded from the separate disability_benefits leaf rather than added here. The CPS-only workers_compensation output is replaced on the PUF support half with the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1073). Populace pins 100 trees and typed person weights as reproducibility hardening."
+    },
+    {
+      "stage": "weeks_unemployed_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "zip_csv",
+          "vintage": "2023 ASEC / 2022 income reference year",
+          "locator": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
+          "sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+          "size_bytes": 150165063,
+          "member": "pppub23.csv",
+          "member_size_bytes": 281065733,
+          "member_crc32": "49c09e5f",
+          "member_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe"
+        },
+        {
+          "kind": "official_data_dictionary",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "lines": "person LKWEEKS entry, position 305 length 2"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1438-1442",
+          "source_path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "source_lines": "39-58,89-133,245,306-351",
+          "puf_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "puf_lines": "703-785"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_weeks_unemployed",
+          "source": "LKWEEKS",
+          "niu_value": -1,
+          "niu_replacement": 0,
+          "output": "weeks_unemployed"
+        },
+        {
+          "kind": "impute_weeks_unemployed_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "tax_unit_is_joint",
+            "is_tax_unit_head",
+            "is_tax_unit_spouse",
+            "is_tax_unit_dependent",
+            "unemployment_compensation"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight",
+          "clip": [
+            0,
+            52
+          ],
+          "round": "nearest_integer",
+          "zero_unless": "unemployment_compensation > 0"
+        }
+      ],
+      "outputs": [
+        "weeks_unemployed"
+      ],
+      "nonnegative_outputs": [
+        "weeks_unemployed"
+      ],
+      "notes": "Restores the final retired eCPS person-year weeks_unemployed input. Archived cps.py lines 1438-1442 carries Census ASEC LKWEEKS directly, mapping only the historical -1 not-in-universe sentinel to zero; the SHA-pinned 2023 ASEC public-use archive supplies the omitted 2022-income-year source rows exactly. Its 146,133 person records match the locked 2022 H5 one-for-one on PH_SEQ, P_SEQ, A_LINENO, A_AGE, A_FNLWGT, UC_VAL, and WKSWORK. The source has 4,200 positive LKWEEKS rows, range 0--51, 3.1456094276% A_FNLWGT-weighted positive support, and 172,563,622.04 weighted person-weeks; Census allocation flags are retained because the retired direct carry did not filter them. Archived calibration/puf_impute.py lines 703-785 replaces only the PUF support half with a QRF using age, sex, three tax-unit roles, joint filing, and unemployment compensation, caps training at 5,000 ASEC people, clips predictions to 0--52, and forces predictions to zero without positive unemployment compensation. Populace pins 100 trees and typed person weights as reproducibility hardening, and rounds its interpolating QRF draws back to the source's integer-week domain; no 2022 source value is filled statistically."
     },
     {
       "stage": "capital_gain_distributions",
@@ -180,22 +855,155 @@
     },
     {
       "stage": "scf_wealth",
-      "survey": "Fed SCF 2022",
+      "survey": "Fed SCF 2022 + Census SIPP 2023",
       "source": "https://www.federalreserve.gov/econres/scfindex.htm",
       "grain": "household",
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "sas_or_stata",
+          "format": "stata_in_zip",
           "vintage": "2022",
-          "locator": "Federal Reserve Survey of Consumer Finances public extract"
+          "locator": "https://www.federalreserve.gov/econres/files/scfp2022s.zip",
+          "member": "rscfp2022.dta",
+          "sha256": "3bb4d890ae2463ff6039ec7692e375f544dd98a55a37ca2cb2340354b9cc9d80",
+          "member_sha256": "6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1"
+        },
+        {
+          "kind": "public_microdata",
+          "format": "stata_in_zip",
+          "vintage": "2022",
+          "locator": "https://www.federalreserve.gov/econres/files/scf2022s.zip",
+          "member": "p22i6.dta",
+          "expected_rows": 22975,
+          "integrity_note": "Full-file SHA-256 pending one network-enabled provisioning fetch; do not reuse the unrelated summary-extract hashes. Runtime validates the exact member plus a complete one-to-one (y1, yy1) implicate join."
+        },
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "repository": {
+            "provider": "huggingface_hub",
+            "owner": "PolicyEngine",
+            "name_parts": [
+              "policyengine-",
+              "us-data"
+            ],
+            "repo_type": "model"
+          },
+          "member": "pu2023.csv",
+          "revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
         }
       ],
       "operations": [
         {
-          "kind": "read_table",
-          "table": "scf_household",
+          "kind": "read_tables",
+          "tables": [
+            "scf_summary_extract",
+            "scf_full_extract"
+          ],
           "weight": "wgt"
+        },
+        {
+          "kind": "read_table",
+          "table": "sipp_2023_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "weight": "WPFINWGT",
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EMS",
+            "TSSSAMT",
+            "TRETINCAMT",
+            "TVAL_BANK",
+            "TVAL_STMF",
+            "TVAL_BOND",
+            "TINC_BANK",
+            "TINC_STMF",
+            "TINC_BOND",
+            "TINC_RENT",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM",
+            "AJSSAVVAL",
+            "AJOSAVVAL",
+            "AOSAVVAL",
+            "AJSMMVAL",
+            "AJOMMVAL",
+            "AOMMVAL",
+            "AJSCDVAL",
+            "AJOCDVAL",
+            "AOCDVAL",
+            "AJSCHKVAL",
+            "AJOCHKVAL",
+            "AOCHKVAL",
+            "AJSSTVAL",
+            "AJOSTVAL",
+            "AOSTVAL",
+            "AJSMFVAL",
+            "AJOMFVAL",
+            "AOMFVAL",
+            "AJSGOVSVAL",
+            "AJOGOVSVAL",
+            "AOGOVSVAL",
+            "AJSMCBDVAL",
+            "AJOMCBDVAL",
+            "AOMCBDVAL"
+          ],
+          "targets": {
+            "bank_account_assets": "TVAL_BANK",
+            "stock_assets": "TVAL_STMF",
+            "bond_assets": "TVAL_BOND"
+          },
+          "target_allocation_status_columns": {
+            "bank_account_assets": [
+              "AJSSAVVAL",
+              "AJOSAVVAL",
+              "AOSAVVAL",
+              "AJSMMVAL",
+              "AJOMMVAL",
+              "AOMMVAL",
+              "AJSCDVAL",
+              "AJOCDVAL",
+              "AOCDVAL",
+              "AJSCHKVAL",
+              "AJOCHKVAL",
+              "AOCHKVAL"
+            ],
+            "stock_assets": [
+              "AJSSTVAL",
+              "AJOSTVAL",
+              "AOSTVAL",
+              "AJSMFVAL",
+              "AJOMFVAL",
+              "AOMFVAL"
+            ],
+            "bond_assets": [
+              "AJSGOVSVAL",
+              "AJOGOVSVAL",
+              "AOGOVSVAL",
+              "AJSMCBDVAL",
+              "AJOMCBDVAL",
+              "AOMCBDVAL"
+            ]
+          },
+          "allocation_status_observed_values": [
+            0,
+            1,
+            9
+          ]
         },
         {
           "kind": "replace_sentinels",
@@ -208,16 +1016,53 @@
           "scope": "not_applicable_or_missing_fields"
         },
         {
+          "kind": "join",
+          "left": "scf_summary_extract",
+          "right": "scf_full_extract",
+          "keys": [
+            "y1",
+            "yy1"
+          ],
+          "validation": "one_to_one_all_five_implicates"
+        },
+        {
           "kind": "derive",
           "outputs": [
             "auto_loan_interest",
+            "auto_loan_balance",
+            "net_worth_anchor",
             "net_worth_components",
             "financial_asset_components",
             "household_asset_components"
-          ]
+          ],
+          "net_worth_source_column": "networth",
+          "auto_loan_amount_columns": [
+            "x2209",
+            "x2309",
+            "x2409",
+            "x7158"
+          ],
+          "auto_loan_rate_columns": [
+            "x2219",
+            "x2319",
+            "x2419",
+            "x7170"
+          ],
+          "rate_divisor": 10000,
+          "floor_negative_source_values": true
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "qualified_passenger_vehicle_loan_interest"
+          ],
+          "method": "expected_share_of_auto_loan_interest",
+          "annual_qualifying_loan_target": 6000000,
+          "source": "https://www.irs.gov/irb/2026-05_IRB"
         },
         {
           "kind": "fit_weighted_qrf",
+          "donor": "scf_2022_summary_extract",
           "predictors": [
             "age",
             "is_female",
@@ -227,13 +1072,82 @@
             "employment_income",
             "interest_dividend_income",
             "social_security_pension_income"
-          ]
+          ],
+          "financial_asset_targets": [
+            "bank_account_assets",
+            "stock_assets",
+            "bond_assets"
+          ],
+          "weight": "wgt",
+          "net_worth_target": "networth",
+          "net_worth_signed": true
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "donor": "sipp_2023_person",
+          "predictors": [
+            "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "social_security",
+            "retirement_income",
+            "non_ssi_income",
+            "age",
+            "is_female",
+            "is_married",
+            "count_under_18",
+            "count_under_6",
+            "household_size"
+          ],
+          "predictor_mapping": {
+            "employment_income": "12 * sum(TJB1_MSUM..TJB7_MSUM)",
+            "interest_income": "12 * (TINC_BANK + TINC_BOND)",
+            "dividend_income": "12 * TINC_STMF",
+            "rental_income": "12 * TINC_RENT",
+            "social_security": "12 * TSSSAMT",
+            "retirement_income": "12 * TRETINCAMT",
+            "non_ssi_income": "employment_income + social_security + retirement_income",
+            "age": "TAGE",
+            "is_female": "ESEX == 2",
+            "is_married": "EMS == 1",
+            "count_under_18": "household count(TAGE < 18)",
+            "count_under_6": "household count(TAGE < 6)",
+            "household_size": "household count(PNUM)"
+          },
+          "targets": {
+            "bank_account_assets": "TVAL_BANK",
+            "stock_assets": "TVAL_STMF",
+            "bond_assets": "TVAL_BOND"
+          },
+          "weight": "WPFINWGT",
+          "target_specific_allocation_status_masks": true,
+          "target_balanced_max_train_samples": 20000,
+          "seed_from_build_config": true
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "bank_account_assets",
+            "bond_assets",
+            "stock_assets"
+          ],
+          "method": "seeded_household_source_block_blend",
+          "scf_probability": 0.5,
+          "one_source_per_household": true,
+          "seed_from_build_config": true,
+          "period_in_seed": true
         },
         {
           "kind": "head_carry",
           "from_entity": "household",
           "to_entity": "person",
-          "condition": "is_household_head"
+          "condition": "is_household_head",
+          "outputs": [
+            "bank_account_assets",
+            "bond_assets",
+            "stock_assets"
+          ]
         },
         {
           "kind": "support_clip",
@@ -263,14 +1177,398 @@
         "scf_other_debt",
         "auto_loan_balance",
         "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
         "bank_account_assets",
         "bond_assets",
         "stock_assets"
       ],
       "nonnegative_outputs": [
-        "auto_loan_interest"
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets"
       ],
-      "notes": "Sentinel replacement is declared here so impossible negative auto-loan interest is rejected at the source boundary and again at export gates."
+      "notes": "Populace #374 restores the retired 50/50 SIPP/SCF financial-asset blend: a seeded recipient-household draw selects one complete three-leaf vector, and the reference person carries it while all other people receive zero. The SIPP mapping matches archived commit 42ed5d45's final 13-predictor asset QRF, while the explicitly requested immutable pu2023.csv artifact replaces that commit's later pu2024 default. The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45 utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth QRF anchor; calibration/source_impute.py lines 1146-1164 fits that anchor with these eight predictors and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting net_worth. Populace therefore persists that signed household anchor directly, including indebted households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped."
+    },
+    {
+      "stage": "ssi_disability_criteria",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "AJOCDVAL",
+            "AJOCHKVAL",
+            "AJOGOVSVAL",
+            "AJOMCBDVAL",
+            "AJOMFVAL",
+            "AJOMMVAL",
+            "AJOSAVVAL",
+            "AJOSTVAL",
+            "AJSCDVAL",
+            "AJSCHKVAL",
+            "AJSGOVSVAL",
+            "AJSMCBDVAL",
+            "AJSMFVAL",
+            "AJSMMVAL",
+            "AJSSAVVAL",
+            "AJSSTVAL",
+            "AOCDVAL",
+            "AOCHKVAL",
+            "AOGOVSVAL",
+            "AOMCBDVAL",
+            "AOMFVAL",
+            "AOMMVAL",
+            "AOSAVVAL",
+            "AOSTVAL",
+            "ASSI_BRSN",
+            "ASSI_YRYN",
+            "EAMBULAT",
+            "ECOGNIT",
+            "EDISABL",
+            "EDISANY",
+            "EERRANDS",
+            "EHEARING",
+            "EHLTHCOND",
+            "EMS",
+            "ENJ_NOWRK3",
+            "ESEEING",
+            "ESELFCARE",
+            "ESEX",
+            "ESSI_BRSN",
+            "ESSRSN2YN",
+            "MONTHCODE",
+            "PNUM",
+            "RDIS",
+            "RDIS_ALT",
+            "RSSI_YRYN",
+            "SPANEL",
+            "SSUID",
+            "SWAVE",
+            "TAGE",
+            "TDIS10AMT",
+            "TDIS1AMT",
+            "TDIS2AMT",
+            "TDIS3AMT",
+            "TDIS4AMT",
+            "TDIS5AMT",
+            "TDIS6AMT",
+            "TDIS7AMT",
+            "TDIS8AMT",
+            "TDIS9AMT",
+            "TINC_BANK",
+            "TINC_BOND",
+            "TINC_RENT",
+            "TINC_STMF",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM",
+            "TPTOTINC",
+            "TRETINCAMT",
+            "TSSSAMT",
+            "TVAL_BANK",
+            "TVAL_BOND",
+            "TVAL_STMF",
+            "WPFINWGT"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "is_female",
+            "is_married",
+            "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "bank_account_assets",
+            "stock_assets",
+            "bond_assets",
+            "count_under_18",
+            "difficulty_dressing_or_bathing",
+            "difficulty_hearing",
+            "difficulty_seeing",
+            "difficulty_doing_errands",
+            "difficulty_walking_or_climbing_stairs",
+            "difficulty_remembering_or_making_decisions",
+            "social_security_disability",
+            "has_disability_income"
+          ],
+          "target": "meets_ssi_disability_criteria",
+          "weight": "household_weight",
+          "training_candidate": "ssi_disability_training_candidate",
+          "label_source_columns": [
+            "RSSI_YRYN",
+            "ESSI_BRSN"
+          ],
+          "label_allocation_columns": [
+            "ASSI_YRYN",
+            "ASSI_BRSN"
+          ],
+          "max_train_samples": 20000,
+          "sample_with_replacement": true,
+          "training_sample_seed_name": "sipp_ssi_disability_model_training_sample",
+          "training_sample_seed": 8386123572872638692,
+          "n_estimators": 100,
+          "model_seed": 42,
+          "seed_from_build_config": false,
+          "postprediction_signal_predictors": [
+            "difficulty_dressing_or_bathing",
+            "difficulty_hearing",
+            "difficulty_seeing",
+            "difficulty_doing_errands",
+            "difficulty_walking_or_climbing_stairs",
+            "difficulty_remembering_or_making_decisions",
+            "social_security_disability",
+            "has_disability_income"
+          ],
+          "preserve_under_65_asec_ssi_reporters": true
+        }
+      ],
+      "outputs": [
+        "meets_ssi_disability_criteria"
+      ],
+      "notes": "Exact final retired eCPS SSI disability-criterion method at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 63-105 and 404-428 define the output, nineteen predictors, source columns, and allocation flags; lines 541-562 require observed receipt and, for recipients, observed benefit reason; lines 565-630 apply the source-time SSI resource, countable-income, and SGA candidate screen; lines 633-703 construct December labels and predictors; lines 724-795 require a measured difficulty, SSDI, or disability-income signal after prediction; and lines 892-949 perform the fixed weighted bootstrap and QRF fit. The immutable donor yields 9,346 candidates (577 positive, 8,769 negative), 88,690,359.47893329 of total source weight, and a 0.05566746987074994 weighted true share. Its archived fixed WPFINWGT bootstrap seed 8386123572872638692 resamples 9,346 rows with replacement (5,314 unique source rows; 524 positive) before an unweighted 100-tree MicroImpute QRF with model seed 42. datasets/cps/cps.py lines 2853-2886 and calibration/source_impute.py lines 869-990 predict the ASEC receiver and preserve direct under-65 ASEC SSI reporters. datasets/cps/extended_cps.py lines 140-170, 392-424, and 981-992 separately predict PUF-support people from their imputed income, asset, and disability-signal inputs; the ASEC reporter anchor is never copied to PUF support."
+    },
+    {
+      "stage": "sipp_head_start",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
+        },
+        {
+          "kind": "official_data_dictionary",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf",
+          "lines": "pages 7, 1028, and 1031"
+        },
+        {
+          "kind": "official_survey_instrument",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/sipp/questionnaires/2023/2023_SIPP_PU_Instrument_Specifications.pdf",
+          "lines": "page 742"
+        },
+        {
+          "kind": "administrative_validation_only",
+          "format": "pdf",
+          "vintage": "2023-2024",
+          "locator": "https://headstart.gov/sites/default/files/pdf/service-snapshot-hs-2023-2024.pdf",
+          "measure": "cumulative enrollment by age; not used for calibration or assignment"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": [
+            "policyengine-",
+            "us-data"
+          ],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "cps.py"
+          ],
+          "lines": "582-583,640-648",
+          "rate_path_parts": [
+            "policyengine_",
+            "us_data",
+            "parameters",
+            "take_up",
+            "head_start.yaml"
+          ],
+          "rate_lines": "1-10",
+          "randomness_path_parts": [
+            "policyengine_",
+            "us_data",
+            "utils",
+            "randomness.py"
+          ],
+          "randomness_lines": "5-28"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EED_SCRNR",
+            "AED_SCRNR",
+            "EEDGRADE",
+            "AEDGRADE",
+            "EEDEMONTH",
+            "AEDMONTH",
+            "EEDHEADST",
+            "AEDHEADST",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "is_female",
+            "household_size",
+            "count_under_18",
+            "count_under_6",
+            "household_employment_income"
+          ],
+          "target": "takes_up_head_start_if_eligible",
+          "weight": "sipp_weight",
+          "age_domain": [
+            3,
+            5
+          ],
+          "direct_response_filter": "AEDHEADST == 1 and EEDHEADST in [1, 2]",
+          "structural_no_filters": [
+            "AEDHEADST == 0 and AED_SCRNR == 1 and EED_SCRNR == 2",
+            "AEDHEADST == 0 and AED_SCRNR == 1 and EED_SCRNR == 1 and AEDGRADE == 1 and EEDGRADE != 21"
+          ],
+          "excluded_statuses": "AEDHEADST == 2 or AED_SCRNR == 4",
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "assignment_unit": "person_source_id",
+          "fan_to_support_clones": true
+        }
+      ],
+      "outputs": [
+        "takes_up_head_start_if_eligible"
+      ],
+      "notes": "Restores the retired Head Start take-up export from a measured person-month response instead of replaying its unsourced NIEER scalar or stochastic draw. The official 2023 SIPP dictionary defines EEDHEADST for nursery/preschool enrollees and records AEDHEADST allocation status; the survey instrument describes a federally sponsored preschool and names Head Start, Even Start, and Fair Start as examples, so this is documented as a measured Head Start proxy rather than a program-only identifier. The immutable December (December 2022 reference-month) donor keeps only direct age-3--5 answers and strict structural negatives whose upstream enrollment or grade screen is also reported, excluding hot-decked target answers and imputed upstream screens. The reviewed transform yields 785 training people (45 positive, 740 negative), 7,978,494.5412483 of total weight, 491,970.1041311 positive weight, and a 0.06166202177461505 weighted true share. The positive weighted count is close to the independent 2023--24 PIR age-matched cumulative count, but cumulative enrollment includes turnover and funded enrollment is capacity, so neither aggregate is used for calibration or person assignment. A weighted QRF predicts once per stable source-person identity on the age-3--5 receiver domain, fans the same decision to both support clones, and leaves every out-of-domain person false; modeled eligibility remains solely in PolicyEngine-US."
+    },
+    {
+      "stage": "ssi_take_up",
+      "survey": "CPS ASEC reported SSI + SSA SSI Monthly Statistics December 2024",
+      "source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "CPS ASEC annual SSI amount SSI_VAL, used only as the reported-recipient true anchor"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "html_table",
+          "vintage": "2024-12",
+          "locator": "SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by age",
+          "source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+          "measure": "Total with—Federal payment"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": [
+            "policyengine-",
+            "us-data"
+          ],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "cps.py"
+          ],
+          "lines": "584,650-657,1497-1499",
+          "randomness_path_parts": [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "takeup.py"
+          ],
+          "randomness_lines": "10-35",
+          "targets_path_parts": [
+            "policyengine_",
+            "us_data",
+            "utils",
+            "ssi_targets.py"
+          ],
+          "targets_lines": "41-74"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "output": "takes_up_ssi_if_eligible",
+          "draw": "stable_source_person_draw",
+          "rate_key": "ssi_age_band_count_prior",
+          "rate_column": "ssi_take_up_assignment_prior",
+          "reported_true_anchor": "SSI_VAL > 0",
+          "assignment_unit": "person_source_id",
+          "fan_to_support_clones": true,
+          "age_bands": {
+            "under_18": "age < 18",
+            "18_64": "18 <= age < 65",
+            "65_plus": "age >= 65"
+          },
+          "rate_derivation": "(band_target - basis_reporter_candidate_floor) / (basis_candidate_capacity - basis_reporter_candidate_floor) over uncapped_ssi > 0 candidates, so anchored-plus-drawn mass expects the target; basis = this frame's weights, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (populace#507/#508); zero once the reporter floor meets the target; min(basis_reporter_candidate_floor / capacity, 1) once capacity cannot subsample the target",
+          "rate_target_role": "ssa_ssi_age_band_recipients",
+          "target_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+          "target_period": "2024-12",
+          "target_measure": "Total with—Federal payment"
+        }
+      ],
+      "outputs": [
+        "takes_up_ssi_if_eligible"
+      ],
+      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, populace#469 and populace#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the anchored-mass-corrected count-truthful threshold (band target minus basis reporter floor) over (basis candidate capacity minus basis reporter floor) on weighted uncapped_ssi > 0 candidates, zero once the reporter floor meets the target, falling back to the basis reporter share of capacity when capacity cannot subsample the target — seeded and stable per person_source_id, with the decision fanned identically to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (populace#507/#508); either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release weights are gated per enforced band (18_64, 65_plus) within a documented relative tolerance; the under-18 band is fenced pending populace#453/#509 and its gap ships in the release scorecard."
     },
     {
       "stage": "sipp_tips",
@@ -280,9 +1578,10 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "census_extract",
-          "vintage": "latest_available",
-          "locator": "Census Survey of Income and Program Participation"
+          "format": "csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use slim tip extract; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "1f0bcb8e045ef1118e8eba4b4a2997bdaaf947bd0dd09d41fa7c7d5657a3d7d5"
         }
       ],
       "operations": [
@@ -294,65 +1593,156 @@
           "kind": "fit_tip_income_model",
           "predictors": [
             "employment_income",
-            "is_tipped_occupation",
-            "age"
+            "age",
+            "count_under_18",
+            "count_under_6",
+            "is_tipped_occupation"
+          ],
+          "source_columns": [
+            "TJB1_TXAMT",
+            "TJB2_TXAMT",
+            "TJB3_TXAMT",
+            "TJB4_TXAMT",
+            "TJB5_TXAMT",
+            "TJB6_TXAMT",
+            "TJB7_TXAMT"
+          ],
+          "allocation_flag_columns": [
+            "AJB1_TXAMT",
+            "AJB2_TXAMT",
+            "AJB3_TXAMT",
+            "AJB4_TXAMT",
+            "AJB5_TXAMT",
+            "AJB6_TXAMT",
+            "AJB7_TXAMT"
+          ],
+          "observed_status_values": [
+            0,
+            1,
+            9
           ]
-        },
-        {
-          "kind": "zero_when_false",
-          "condition": "is_tipped_occupation"
         }
       ],
       "outputs": [
-        "tip_income"
+        "tip_income",
+        "treasury_tipped_occupation_code"
       ],
       "nonnegative_outputs": [
-        "tip_income"
-      ]
+        "tip_income",
+        "treasury_tipped_occupation_code"
+      ],
+      "notes": "Tip income is the weighted-QRF port pinned to the retired implementation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1: observed-source December SIPP monthly tips across jobs 1-7 times 12, conditioned on employment income, age, child counts, and Treasury tipped occupation. SIPP allocation statuses 0, 1, and 9 are retained; imputed statuses 2-8 are excluded. The occupation indicator is a predictor rather than a hard domain mask: the pinned reference eCPS carries positive tips outside Treasury-listed occupations, while the OBBBA formula applies its own occupation-qualification test. treasury_tipped_occupation_code is mapped directly from CPS ASEC PEIOOCC using the IRS/Treasury 2025-42 tipped-occupation list and Census 2018 occupation/SOC crosswalk. The final retired downloader moved to an unpinned SIPP 2024 zip; this stage follows the final observed-source method while pinning the archived repository's immutable 2023 donor artifact, the artifact underlying the reference eCPS."
     },
     {
       "stage": "org_wages",
       "survey": "CPS ORG",
-      "source": "https://www.bls.gov/cps/earnings.htm",
+      "source": "https://www2.census.gov/programs-surveys/cps/datasets/2024/basic/",
       "grain": "person",
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "cps_basic_monthly",
-          "vintage": "build_year",
-          "locator": "CPS Outgoing Rotation Group"
+          "format": "cps_basic_monthly_csv_or_zip",
+          "vintage": "2024",
+          "locator": "jan24pub through dec24pub; HRMIS 4 and 8",
+          "generated_cache": "census_cps_org_2024_wages.csv.gz",
+          "generated_cache_content_sha256": "d74600236cfdd34033d487cd9d82f6eb00b1858ba28de17f4f985f2aec516f86",
+          "generated_cache_rows": 119237
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "2024",
+          "locator": "https://www.bls.gov/news.release/archives/union2_01282025.htm#union2.t01.1"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "2024",
+          "locator": "https://www.bls.gov/news.release/archives/union2_01282025.htm#union2.t05.1"
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "cps_org_person"
+          "table": "twelve_month_cps_org_person"
         },
         {
-          "kind": "fit_labor_market_models",
+          "kind": "derive",
+          "method": "filter_outgoing_rotation_wage_salary_workers",
+          "rotation_groups": [
+            4,
+            8
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
           "predictors": [
+            "employment_income_before_lsr",
+            "weeks_worked",
+            "weekly_hours_worked_before_lsr",
             "age",
             "is_female",
-            "cps_race",
             "is_hispanic",
-            "state_fips",
-            "employment_income",
+            "race_wbho",
+            "state_fips"
+          ],
+          "targets": [
+            "hourly_wage",
+            "is_paid_hourly"
+          ]
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "method": "assign_union_coverage",
+          "source": "BLS 2024 represented-by-union state and demographic rates"
+        },
+        {
+          "kind": "derive",
+          "method": "derive_from_asec",
+          "inputs": [
+            "PRDTRACE",
+            "PRDTHSP",
+            "POCCU2"
+          ]
+        },
+        {
+          "kind": "derive",
+          "method": "derive_flsa_overtime_premium",
+          "inputs": [
+            "employment_income_before_lsr",
             "hours_worked_last_week",
-            "weeks_worked"
+            "weekly_hours_worked_before_lsr",
+            "weeks_worked",
+            "is_paid_hourly",
+            "has_never_worked",
+            "is_military",
+            "is_computer_scientist",
+            "is_executive_administrative_professional",
+            "is_farmer_fisher"
           ]
         }
       ],
       "outputs": [
+        "cps_race",
+        "is_hispanic",
+        "detailed_occupation_recode",
+        "has_never_worked",
+        "is_military",
+        "is_computer_scientist",
+        "is_executive_administrative_professional",
+        "is_farmer_fisher",
         "hourly_wage",
         "is_paid_hourly",
         "is_union_member_or_covered",
         "fsla_overtime_premium"
       ],
       "nonnegative_outputs": [
+        "cps_race",
+        "detailed_occupation_recode",
         "hourly_wage",
         "fsla_overtime_premium"
       ],
-      "notes": "Usual weekly hours are owned by the hours_worked stage (ASEC HRSWK), matching the retired enhanced-CPS pipeline mapping; this stage consumes them as predictors."
+      "notes": "Port of the final retired ORG/FLSA method at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1: donor build, weighted QRF for hourly wage and hourly-pay status, archived deterministic BLS 2024 state-rate union assignment, and direct ASEC carries of CPS race, Hispanic status, and FLSA occupation groups are all exact — except the recipient-side QRF income feature, which is deliberately concept-aligned to the donor: the donor's employment_income is the annualized reference week (pternwa x 52), so recipients feed the full-year-equivalent of actual annual income (income x 52/weeks_worked, income untouched when weeks are zero or missing); without this, part-year workers matched low-wage full-year donors and the imputed wage distribution carried a severe sub-minimum tail (populace#529 receipts). The twelve official 2024 CPS basic-month files are transformed into the upstream 119,237-row cache; its canonical CSV content hash is pinned so a source reissue fails closed. Usual hours remain owned by hours_worked. fsla_overtime_premium keeps the upstream variable spelling and the archived annual-wage-share formula but deliberately deviates from the retired reference-week-only carrier gate: the retired construction annualized the March survey week (A_HRS1, outside the retrospective income year) and so collapsed incidence to one week's draw — 19.9M weighted carriers on certified Build N against Treasury's published '>29 million' TY2025 claimant floor (sb0517/sb0553, rounded floors, not mintable as exact-valued ledger facts). The two-signal estimator makes usual weekly hours worked last year (HRSWK) the persistent-overtime leg — usual>threshold carries with the usual-hours share as annualizer — while usual<=threshold retains the retired reference-week snapshot leg unchanged: representative for steady schedules, under- or over-recovering an occasional overtimer's annual premium depending on the sampled week (not an unbiased mass estimator), retained because it is the only measured signal for that population. On ASEC-channel rows HRSWK shares the retrospective year with employment_income and weeks_worked; on PUF-support-channel rows both hours signals are donor-ASEC schedule proxies attached to PUF income, the support design's property inherited equally by the reference-week leg. A frame whose ORG surface is already populated is fully re-imputed and compared on every entry: an identical surface passes through unchanged (the seeded QRF, deterministic union lottery, and pure derives make same-code re-entry byte-stable), and any stale construction of any output converges instead of silently surviving. The income-feature scaling also changes the deterministic union lottery's hash inputs, so which individuals carry union coverage reshuffles within unchanged state-level quotas — the assignment method itself remains the exact archived port. Exemption screens unchanged; both hours measures count all jobs while FLSA section 7 applies per employer (inherited upward concept edge). Adjudication and measurements: populace#451 item 4 overtime-incidence lane."
     },
     {
       "stage": "meps_esi_premiums",
@@ -360,6 +1750,12 @@
       "source": "https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
       "grain": "person",
       "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "hermetic ASEC pool years (2022-2024 for target 2024)",
+          "locator": "Census CPS ASEC NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL fields; the three NOW_* fields are absent from the current hermetic HDF inputs"
+        },
         {
           "kind": "administrative_table",
           "format": "published_table",
@@ -375,10 +1771,20 @@
         {
           "kind": "assign_by_plan_type",
           "inputs": [
-            "has_esi",
-            "is_esi_dependent",
-            "tax_unit_size",
-            "state_fips"
+            "NOW_OWNGRP",
+            "NOW_HIPAID",
+            "NOW_GRPFTYP",
+            "PHIP_VAL"
+          ],
+          "owner_code": 1,
+          "employer_pays_all_code": 1,
+          "employer_pays_some_code": 2,
+          "family_plan_code": 1,
+          "self_only_plan_code": 2,
+          "source_unavailable_when_missing": [
+            "NOW_OWNGRP",
+            "NOW_HIPAID",
+            "NOW_GRPFTYP"
           ]
         }
       ],
@@ -387,7 +1793,8 @@
       ],
       "nonnegative_outputs": [
         "employer_sponsored_insurance_premiums"
-      ]
+      ],
+      "notes": "The retired derivation identifies the policy owner with NOW_OWNGRP, employer payment status with NOW_HIPAID, family/self-only plan type with NOW_GRPFTYP, and reported employee-paid premium with PHIP_VAL, then applies MEPS-IC family/self-only total and employee contribution priors (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 197-271 and 1575-1581). datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs used by the hermetic build omit the three NOW_* fields, so this stage is intentionally source-unavailable; has_esi and NOW_GRP are forbidden proxies."
     },
     {
       "stage": "prior_year_income",
@@ -398,32 +1805,52 @@
         {
           "kind": "public_microdata",
           "format": "census_asec",
-          "vintage": "build_year_minus_one",
-          "locator": "Census CPS ASEC person file"
+          "vintage": "pooled_adjacent_years",
+          "locator": "Census CPS ASEC person files identified by source_year and PERIDNUM"
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "asec_person",
-          "columns": [
-            "PERIDNUM",
-            "WSAL_VAL",
-            "SEMP_VAL"
-          ]
+          "table": "person"
         },
         {
-          "kind": "join",
-          "left": "current_person.PERIDNUM",
-          "right": "prior_person.PERIDNUM"
-        },
-        {
-          "kind": "replace_sentinels",
+          "kind": "derive_prior_year_income",
+          "person_id": "PERIDNUM",
+          "source_year": "source_year",
+          "prior_year_offset": -1,
+          "employment_source": "WSAL_VAL",
+          "self_employment_source": "SEMP_VAL",
+          "employment_allocation_flag": "I_ERNVAL",
+          "self_employment_allocation_flag": "I_SEVAL",
+          "unallocated_flag": 0,
           "sentinels": [
             -1,
             -9999
           ],
-          "value": null
+          "fallback_to_current": true,
+          "no_prior_artifact": "leave_defaults"
+        },
+        {
+          "kind": "impute_prior_year_income_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "outputs": [
+            "employment_income_last_year",
+            "self_employment_income_last_year"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
         }
       ],
       "outputs": [
@@ -432,9 +1859,9 @@
         "previous_year_income_available"
       ],
       "nonnegative_outputs": [
-        "employment_income_last_year",
-        "self_employment_income_last_year"
-      ]
+        "employment_income_last_year"
+      ],
+      "notes": "Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1680-1783 returns without creating values when no prior-year artifact exists; otherwise it joins adjacent ASEC files on PERIDNUM, requires I_ERNVAL == I_SEVAL == 0 on the prior record, treats only -1/-9999 as unavailable, records availability before falling back to current WSAL_VAL/SEMP_VAL, and preserves signed self-employment losses. After support cloning, datasets/cps/extended_cps.py lines 140-194, 639-745, and 1014-1073 jointly QRF-imputes both earnings leaves onto the PUF half from the exact eight predictors with a 5,000-person cap. Populace adds typed design weights. The archived finalizer drops formula-owned employment_income_last_year; the signed self-employment leaf and availability flag persist."
     },
     {
       "stage": "immigration_status",
@@ -517,7 +1944,7 @@
         "hours_worked_last_week",
         "weeks_worked"
       ],
-      "notes": "Direct mappings of measured ASEC hours variables, identical to the retired enhanced-CPS pipeline: weekly_hours_worked_before_lsr <- HRSWK (usual hours per week last year, 0 for non-workers), hours_worked_last_week <- A_HRS1, weeks_worked <- WKSWORK clipped to [0, 52]. Nothing is imputed. Without this stage PolicyEngine-US defaults every person to 40 weekly hours, so the SNAP 30-hour general and 20-hour ABAWD work requirements pass universally (populace #242/#248). HRSWK is an annual usual-hours measure while the ABAWD standard is a monthly 80-hour test; week-by-week volatility is not observable in the CPS and is deliberately out of scope."
+      "notes": "Direct mappings of measured ASEC hours variables, identical to the retired enhanced-CPS pipeline: weekly_hours_worked_before_lsr <- HRSWK (usual hours per week last year, 0 for non-workers), hours_worked_last_week <- A_HRS1, and weeks_worked <- WKSWORK clipped to [0, 52]. Nothing is imputed. The legacy fiscal-refresh path retains all three columns because ORG/FLSA consumes weeks_worked and the 2024 period-scoped export guard permits it; the multispine pool wrapper projects canonical weeks_worked away after this shared kernel runs while retaining raw WKSWORK evidence. Without this stage PolicyEngine-US defaults every person to 40 weekly hours, so the SNAP 30-hour general and 20-hour ABAWD work requirements pass universally (populace #242/#248). HRSWK is an annual usual-hours measure while the ABAWD standard is a monthly 80-hour test; week-by-week volatility is not observable in the CPS and is deliberately out of scope."
     },
     {
       "stage": "snap_take_up",
@@ -555,7 +1982,196 @@
       "outputs": [
         "takes_up_snap_if_eligible"
       ],
-      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243)."
+      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243). The national fill is an assignment prior: the snap_state_take_up stage recalibrates it per state to FNS caseloads (populace #372)."
+    },
+    {
+      "stage": "snap_state_take_up",
+      "survey": "Census CPS ASEC reported receipt + USDA FNS state average-monthly household caseloads",
+      "source": "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+      "grain": "spm_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC SPM unit reported SNAP subsidy (SPM_SNAPSUB)"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "fiscal_year_2024",
+          "locator": "USDA FNS SNAP average monthly households by state (usda_snap.fy2024.state_average_monthly_households.*)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "spm_unit",
+          "weight": "spm_unit_weight"
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "output": "takes_up_snap_if_eligible",
+          "draw": "stable_spm_unit_draw",
+          "rate_key": "snap",
+          "rate_column": "snap_take_up_rate",
+          "reported_true_anchor": "snap_reported_receipt"
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "takes_up_snap_if_eligible",
+          "targets": [
+            "usda_snap_households_by_state"
+          ],
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "snap_reported_receipt",
+          "domain": "is_snap_eligible",
+          "weight": "spm_unit_weight",
+          "draw": "stable_spm_unit_draw"
+        }
+      ],
+      "outputs": [
+        "takes_up_snap_if_eligible"
+      ],
+      "notes": "Anchored count-calibration to FNS state caseloads (populace #372), following the medicaid_take_up pattern at SPM-unit grain. Reported recipients always take up; the fill draws at an in-build state rate (FNS average-monthly household count over weighted modeled-eligible units, an assignment prior, never cited as provenance) and is greedily calibrated to the FNS FY2024 state counts among eligible non-anchored units. Caseload semantics are fiscal-year average-monthly stocks - the same rows the snap_households weight-calibration targets compile from, so the seed and the calibration objective agree. CPS receipt underreporting is strongly state-dependent, so the national snap_take_up fill leaves the worst-underreporting states short of taker households no reweighting can recover. The assign operation deliberately carries no eligibility mask: off-domain units keep a draw-based propensity so eligibility-expanding reforms do not inherit a hard-coded zero response. States whose FNS count meets or exceeds modeled eligible weight saturate (all eligible units take up) and are recorded as saturated in diagnostics, not failed. Persons caseloads are deliberately untargeted: the SNAP assistance unit is often a subset of the SPM unit, so member counts overcount FNS participants by roughly half."
+    },
+    {
+      "stage": "relationship_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person household sequence (PH_SEQ), within-household person sequence (P_SEQ), and marital status (A_MARITL)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_relationship_inputs"
+        }
+      ],
+      "outputs": [
+        "is_household_head",
+        "is_separated",
+        "is_surviving_spouse"
+      ],
+      "notes": "Exact measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1069-1075 and 1209-1221: is_household_head <- P_SEQ == 1; is_separated <- A_MARITL == 6; is_surviving_spouse <- A_MARITL == 4. Nothing is imputed. The stage fails unless every frame household has exactly one P_SEQ == 1 record (PH_SEQ before support cloning, person_household_id after cloning)."
+    },
+    {
+      "stage": "medicare_take_up_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "2022-2024 pooled",
+          "locator": "SHA-locked Census CPS ASEC person Medicare coverage last year (MCARE)"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1579-1585",
+          "source_declaration_path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "source_declaration_lines": "39-58,306-406",
+          "clone_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "clone_lines": "608-629",
+          "export_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "export_lines": "1747-1754"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_medicare_take_up",
+          "source": "MCARE",
+          "enrolled_code": 1,
+          "output": "takes_up_medicare_if_eligible"
+        }
+      ],
+      "outputs": [
+        "takes_up_medicare_if_eligible"
+      ],
+      "notes": "Exact measured ASEC mapping from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py line 1584: medicare_enrolled <- MCARE == 1. Archived calibration/puf_impute.py lines 608-629 duplicates non-imputed CPS variables onto the PUF support half, and datasets/cps/extended_cps.py lines 1747-1754 renames medicare_enrolled to the leaf takes_up_medicare_if_eligible before export. No take-up rate or stochastic draw is used."
+    },
+    {
+      "stage": "retirement_distributions",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person retirement-distribution account codes and amounts (DST_SC1/DST_VAL1, DST_SC2/DST_VAL2, DST_SC1_YNG/DST_VAL1_YNG, DST_SC2_YNG/DST_VAL2_YNG)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_retirement_distributions",
+          "output_by_account_code": {
+            "1": "taxable_401k_distributions",
+            "2": "taxable_403b_distributions",
+            "3": "tax_exempt_ira_distributions",
+            "4": "taxable_ira_distributions",
+            "5": "keogh_distributions",
+            "6": "taxable_sep_distributions"
+          }
+        },
+        {
+          "kind": "impute_retirement_distributions_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "tax_exempt_ira_distributions",
+        "taxable_ira_distributions",
+        "keogh_distributions",
+        "taxable_sep_distributions"
+      ],
+      "nonnegative_outputs": [
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "tax_exempt_ira_distributions",
+        "taxable_ira_distributions",
+        "keogh_distributions",
+        "taxable_sep_distributions"
+      ],
+      "notes": "Direct measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1448-1481. Four account-code/amount pairs are summed by person: code 1 -> taxable 401(k), 2 -> taxable 403(b), 3 -> tax-exempt Roth IRA, 4 -> taxable regular IRA, 5 -> Keogh, and 6 -> taxable SEP. Archived imputation_parameters.yaml lines 10-15 sets the 401(k), 403(b), regular-IRA, and SEP taxable fractions to 1.0; Keogh is directly taxable in the engine aggregate. Code 7 has no PolicyEngine-US leaf and is deliberately not allocated. After support expansion, the retired second stage (extended_cps.py lines 140-148, 639-745, and 1014-1073) QRF-imputes, among these six populated leaves, taxable 401(k), taxable 403(b), Keogh, and taxable SEP onto the PUF half. Its three tax-exempt employer-account companions remain zero under the 1.0 taxable shares and lie outside the populated coverage surface. The measured ASEC half remains exact, PUF-sourced taxable IRA is preserved, and tax-exempt Roth IRA remains a direct copied ASEC mapping. No uncited allocation or redraw is introduced."
     },
     {
       "stage": "eligibility_inputs",
@@ -631,6 +2247,60 @@
       "notes": "The CPS ASEC does not ask about pregnancy, so is_pregnant is seeded rather than mapped, matching the retired enhanced-CPS pipeline: women aged 15-44 receive stable blake2b draws against the pregnancy rate (point-in-time rate = annual births x 39/52 over the female 15-44 population; 4.1% nationally, the retired pipeline's national rate). The retired pipeline varied the rate by state using live CDC VSRR + Census ACS fetches; populace builds are hermetic, so the national rate applies uniformly and state-level variation is follow-up work under populace #351. Without this stage is_pregnant defaults to False for everyone and the SNAP ABAWD pregnancy exemption (7 U.S.C. 2015(o)(3)(E)) never fires."
     },
     {
+      "stage": "wic_claim_input",
+      "survey": "USDA FNS WIC Eligibility and Enrollment Estimates + Census CPS ASEC",
+      "source": "https://www.fns.usda.gov/research/wic/eligibility-and-coverage-rates-2022",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "CY2022",
+          "source": "https://fns-prod.azureedge.us/sites/default/files/resource-files/wic-eer-2022-summary.pdf",
+          "locator": "USDA FNS WIC coverage rates by participant category, Summary Table 1"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "684-691",
+          "parameter_path_parts": ["policyengine_", "us_data", "parameters", "take_up", "wic_takeup.yaml"],
+          "parameter_lines": "1-33",
+          "randomness_path_parts": ["policyengine_", "us_data", "utils", "randomness.py"],
+          "randomness_lines": "5-28"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_wic_claim",
+          "seed_from_build_config": true,
+          "category_rates": {
+            "source": "https://fns-prod.azureedge.us/sites/default/files/resource-files/wic-eer-2022-summary.pdf",
+            "vintage": "CY2022",
+            "values": {
+              "pregnant": 0.456,
+              "postpartum": 0.689,
+              "breastfeeding": 0.663,
+              "infant": 0.784,
+              "child": 0.46,
+              "none": 0.0
+            }
+          }
+        }
+      ],
+      "outputs": [
+        "would_claim_wic"
+      ],
+      "notes": "The retired eCPS derives PolicyEngine-US wic_category_str and assigns a stable seeded Bernoulli at category-specific rates (archived cps.py lines 684-691, wic_takeup.yaml lines 1-33, and randomness.py lines 5-28). The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%, all postpartum 68.9%, breastfeeding 66.3%, infants 78.4%, and children 46.0%. Populace deliberately runs this stage after pregnancy; the retired file computed WIC categories before its later pregnancy seed, which accidentally made the pregnant rate unreachable. The hermetic sources carry no breastfeeding assessment, so breastfeeding remains unavailable and mothers of infants use FNS's all-postpartum rate rather than an invented breastfeeding status. Stable source-identity hashes preserve paired support-clone outcomes. The separate is_wic_at_nutritional_risk input remains a reviewed source-unavailability exclusion."
+    },
+    {
       "stage": "snap_abawd_discretionary_exemption",
       "survey": "Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))",
       "source": "https://www.law.cornell.edu/uscode/text/7/2015#o_6",
@@ -677,7 +2347,7 @@
         {
           "kind": "derived_from_prior_stages",
           "inputs": [
-            "interest_deduction",
+            "home_mortgage_interest",
             "scf_mortgage_debt",
             "tenure_type"
           ]
@@ -687,7 +2357,7 @@
         {
           "kind": "derive_mortgage_balance_hints",
           "inputs": [
-            "interest_deduction",
+            "home_mortgage_interest",
             "scf_mortgage_debt",
             "filing_status"
           ]
@@ -706,17 +2376,15 @@
         "deductible_mortgage_interest",
         "home_mortgage_interest",
         "mortgage_interest",
-        "mortgage_principal",
-        "investment_interest_expense"
+        "mortgage_principal"
       ],
       "nonnegative_outputs": [
         "deductible_mortgage_interest",
         "home_mortgage_interest",
         "mortgage_interest",
-        "mortgage_principal",
-        "investment_interest_expense"
+        "mortgage_principal"
       ],
-      "notes": "The conversion is a declarative structural transform over PUF and SCF outputs, not a benchmark data loader."
+      "notes": "This structural stage consumes the mortgage-only lineage already produced by puf_tax_detail's source-backed Table 2.1 E19200 decomposition. It combines that lineage with SCF mortgage-debt hints to derive mortgage balances and person-carried mortgage inputs; it neither constructs nor overwrites investment_interest_expense."
     },
     {
       "stage": "acs_rent",
@@ -726,52 +2394,140 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "acs_pums",
+          "format": "census_asec_hdf5",
+          "vintage": "2022-2024 pooled",
+          "locator": "SHA-locked Census CPS ASEC person and household tables",
+          "source_columns": [
+            "H_TENURE",
+            "SPM_CAPHOUSESUB",
+            "SPM_TENMORTSTATUS",
+            "SPM_ID"
+          ]
+        },
+        {
+          "kind": "versioned_derived_microdata",
+          "format": "hdf5_arrays",
           "vintage": "2022",
-          "locator": "Census ACS PUMS household and person files"
+          "locator": "Census ACS 2022 PUMS processed person/household arrays (acs_2022.h5)",
+          "sha256": "0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4",
+          "official_person_source": "https://www2.census.gov/programs-surveys/acs/data/pums/2022/1-Year/csv_pus.zip",
+          "official_household_source": "https://www2.census.gov/programs-surveys/acs/data/pums/2022/1-Year/csv_hus.zip",
+          "integrity_note": "The runtime validates the immutable artifact hash, entity alignment, archived head-only annual-rent construction, tenure collapse, both target-allocation flags, nonnegative weights, and positive total household support. Zero-WGTP group-quarters heads remain in the deterministic archived sample and receive zero mass in Populace's weighted fit; the runtime does not import or trust a local generating checkout."
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "417-535,1612-1635",
+          "take_up_lines": "585,664-682",
+          "take_up_parameter_path_parts": ["policyengine_", "us_data", "parameters", "take_up", "housing_assistance.yaml"],
+          "take_up_parameter_lines": "1-15",
+          "hud_etl_path_parts": ["policyengine_", "us_data", "db", "etl_housing_assistance.py"],
+          "hud_etl_lines": "35-169",
+          "acs_path_parts": ["policyengine_", "us_data", "datasets", "acs", "acs.py"],
+          "acs_lines": "82-135",
+          "census_acs_path_parts": ["policyengine_", "us_data", "datasets", "acs", "census_acs.py"],
+          "census_acs_lines": "13-68,95-125",
+          "puf_imputation_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "puf_imputation_lines": "135-194,234-248,639-745,1014-1073"
         }
       ],
       "operations": [
         {
-          "kind": "read_tables",
-          "tables": [
-            "acs_household",
-            "acs_person"
-          ]
+          "kind": "derive_housing_tenure_inputs",
+          "household_tenure_source": "H_TENURE",
+          "household_tenure_map": {
+            "0": "NONE",
+            "1": "OWNED_WITH_MORTGAGE",
+            "2": "RENTED",
+            "3": "NONE"
+          },
+          "housing_assistance_source": "SPM_CAPHOUSESUB",
+          "housing_take_up_output": "takes_up_housing_assistance_if_eligible",
+          "housing_take_up_assignment": "equal_to_measured_receipt",
+          "spm_tenure_source": "SPM_TENMORTSTATUS",
+          "spm_tenure_map": {
+            "1": "OWNER_WITH_MORTGAGE",
+            "2": "OWNER_WITHOUT_MORTGAGE",
+            "3": "RENTER"
+          }
         },
         {
-          "kind": "aggregate_person_to_household",
-          "aggregates": [
-            "employment_income",
-            "household_size"
-          ]
+          "kind": "read_acs_rent_donor",
+          "table": "acs_2022_arrays",
+          "target": "rent",
+          "allocation_flag": "rent_is_allocated",
+          "source_unit": "annual_usd",
+          "source_already_annualized": true,
+          "household_head_only": true
         },
         {
-          "kind": "fit_weighted_imputer",
+          "kind": "fit_weighted_acs_rent_qrf",
           "predictors": [
-            "state_fips",
-            "household_employment_income",
+            "is_household_head",
+            "age",
+            "is_male",
+            "tenure_type",
+            "employment_income",
+            "self_employment_income",
+            "social_security",
+            "pension_income",
+            "state_code_str",
             "household_size"
           ],
-          "weight": "household_weight"
+          "target": "rent",
+          "shared_sample_targets": [
+            "rent",
+            "real_estate_taxes"
+          ],
+          "target_allocation_flags": {
+            "rent": "rent_is_allocated",
+            "real_estate_taxes": "real_estate_taxes_is_allocated"
+          },
+          "per_target_initial_cap": 5000,
+          "sample_fill_salt": "fill",
+          "weight": "household_weight",
+          "max_train_samples": 10000,
+          "n_estimators": 100,
+          "training_seed_name": "legacy_acs_rent_training_sample",
+          "seed_from_build_config": true,
+          "head_carry_output": "pre_subsidy_rent"
         },
         {
-          "kind": "zero_when_false",
-          "condition": "tenure_type == RENTED"
-        },
-        {
-          "kind": "head_carry",
-          "from_entity": "household",
-          "to_entity": "person",
-          "condition": "is_household_head"
+          "kind": "impute_housing_assistance_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "target": "receives_housing_assistance",
+          "take_up_output": "takes_up_housing_assistance_if_eligible",
+          "take_up_assignment": "equal_to_imputed_receipt",
+          "weight": "person_weight",
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "reduction": "value_from_first_person"
         }
       ],
       "outputs": [
-        "pre_subsidy_rent"
+        "pre_subsidy_rent",
+        "receives_housing_assistance",
+        "takes_up_housing_assistance_if_eligible",
+        "spm_unit_tenure_type",
+        "tenure_type"
       ],
       "nonnegative_outputs": [
         "pre_subsidy_rent"
-      ]
+      ],
+      "notes": "Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. receives_housing_assistance receives the retired second-stage CPS-to-PUF QRF, and takes_up_housing_assistance_if_eligible is kept exactly equal to that measured/imputed receipt anchor. Archived cps.py lines 664-682 preserved reporters before adding eligible nonreporters from a 0.50 draw; parameters/take_up/housing_assistance.yaml lines 12-15 say 0.50 was an ad hoc eCPS benchmark adjustment pending fuller calibration. Archived db/etl_housing_assistance.py lines 35-169 use a live HUD workbook to produce household-grain state counts, not SPM-unit recipient identities; that workbook is not pinned in the hermetic build and allocating its counts to SPM units would synthesize recipients. Populace never turns a reporter off and does not add unobserved take-up. Rent and both tenure enums are cloned unchanged."
     },
     {
       "stage": "vehicle_assets",
@@ -781,32 +2537,66 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "census_extract",
-          "vintage": "latest_available",
-          "locator": "Census Survey of Income and Program Participation"
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "sipp_household"
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EMS",
+            "TPTOTINC",
+            "TINC_BANK",
+            "TINC_STMF",
+            "TINC_BOND",
+            "TINC_RENT",
+            "TVEH_NUM",
+            "THVAL_VEH",
+            "THVAL_HOME",
+            "AVEH_NUM",
+            "AHVAL_VEH",
+            "AVEH1VAL",
+            "AVEH2VAL",
+            "AVEH3VAL"
+          ]
         },
         {
           "kind": "fit_vehicle_model",
           "predictors": [
-            "employment_income",
-            "interest_dividend_income",
-            "rental_income",
-            "age",
-            "is_female",
-            "is_married",
-            "tenure_type"
-          ]
-        },
-        {
-          "kind": "fold_into",
-          "output": "net_worth",
-          "component": "household_vehicles_value"
+            "household_employment_income",
+            "household_interest_income",
+            "household_dividend_income",
+            "household_rental_income",
+            "reference_age",
+            "reference_is_female",
+            "reference_is_married",
+            "count_under_18",
+            "household_size",
+            "is_homeowner"
+          ],
+          "weight": "household_weight",
+          "observed_status_values": [0, 1, 9],
+          "owned_allocation_flag": "AVEH_NUM",
+          "value_allocation_flags": ["AVEH1VAL", "AVEH2VAL", "AVEH3VAL"],
+          "training_sample_cap": 20000,
+          "count_model": "weighted_random_forest_classifier",
+          "value_model": "weighted_qrf_conditioned_on_predicted_count",
+          "n_estimators": 100,
+          "seed": 42
         }
       ],
       "outputs": [
@@ -816,7 +2606,75 @@
       "nonnegative_outputs": [
         "household_vehicles_owned",
         "household_vehicles_value"
-      ]
+      ],
+      "notes": "Restores the retired household-grain SIPP vehicle family from the immutable full 2023 public-use donor at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 430-456 and 953-1059 pin the exact 20 columns, December household transform, target-specific observed-source masks, positive survey weights, and 20,000-row cap; calibration/source_impute.py lines 992-1084 and utils/asset_imputation.py lines 503-603 pin the CPS receiver and output types. Vehicle count is classified first and vehicle value is then drawn conditionally; both are clipped nonnegative, count is rounded int32, and value is float32. The 65.6 MB tip-only slim SIPP file lacks this family. Populace deliberately does not execute the old placeholder fold into net_worth: the retired pipeline blended SIPP/SCF vehicle value before reconciling construction-only balance-sheet components, while Populace now persists the independently source-backed direct SCF networth anchor. Keeping the vehicle leaves and signed SCF anchor as separate policy inputs avoids inventing a partial component formula."
+    },
+    {
+      "stage": "voluntary_filing_input",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "tax_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EPNSPOUSE",
+            "AFILING",
+            "EFILING",
+            "AWILLFILE",
+            "EWILLFILE",
+            "EDEPCLM",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "employment_income",
+            "reference_age",
+            "reference_is_female",
+            "reference_is_married",
+            "count_under_18"
+          ],
+          "target": "would_file_taxes_voluntarily",
+          "weight": "tax_unit_weight",
+          "response_filter": "AFILING == 1 and (EFILING == 1 or (EFILING == 2 and AWILLFILE == 1))",
+          "dependent_exclusion": "EDEPCLM == 1",
+          "canonical_unit": "SSUID plus the sorted PNUM/EPNSPOUSE pair for reciprocal spouses; otherwise PNUM",
+          "n_estimators": 100,
+          "seed_from_build_config": true
+        }
+      ],
+      "outputs": [
+        "would_file_taxes_voluntarily"
+      ],
+      "notes": "Restores a measured voluntary-filing response from the pinned full 2023 SIPP donor instead of replaying the retired uncited demographic probability table. Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 726-747, defines the retired output, predictors, and random draw; parameters/take_up/voluntary_filing.yaml lines 1-43 contains the uncited child-by-wage-by-age rates being replaced. Census SIPP 2023 public-use dictionary fields anchor the observed response: retain December records with AFILING == 1 and, when EFILING == 2, AWILLFILE == 1; set the target when EFILING == 1 or EWILLFILE == 1; and exclude EDEPCLM == 1 people because they report being claimed as another return's dependent. Reciprocal spouses form one canonical unit through EPNSPOUSE; their filing responses agree in the donor. Reference attributes and survey weight come from the complete unit's minimum-PNUM member before response filtering. Annual employment income is the canonical unit sum of December TJB1_MSUM through TJB7_MSUM times 12. count_under_18 is the full December SSUID household count, computed before response filtering and repeated as household composition context for each canonical source unit; it is deliberately not a claimed-dependent count because SIPP does not identify the claimant and separated-parent pointers can double-assign children. The source transformation yields 22,313 observed canonical units: 16,820 positive and 5,493 negative; 22,296 have positive finite reference weights, including 16,817 positive units, at a 0.7603084563 weighted true share. The weighted QRF is fit once per source tax unit and predicted once per unique receiver tax_unit_source_id so support clones remain identical."
     },
     {
       "stage": "aca_marketplace_inputs",
@@ -976,6 +2834,79 @@
         "takes_up_medicaid_if_eligible"
       ],
       "notes": "Anchored count-calibration (take-up contract treatment: count_calibrated; populace #331). Eligible reporters always take up; the fill draws at an in-build state rate (CMS count over weighted modeled eligibles, an assignment prior, never cited as provenance) and is greedily calibrated to the CMS December 2024 state snapshot among eligible non-anchored persons. Point-in-time (average-month) enrollment semantics per #332 - never ever-enrolled-in-year counts. The assign operation deliberately carries no eligibility mask: off-domain persons keep a draw-based propensity so eligibility-expanding reforms do not inherit a hard-coded zero response; the engine's is_medicaid_eligible gate hides the flag at baseline. States whose CMS count meets or exceeds modeled eligible weight saturate (all eligibles enroll) and are recorded as saturated in diagnostics, not failed (#170's eligibility-undercount shortfall is out of scope). CHIP deliberately excluded pending the #321 M-CHIP/separate-CHIP ledger concept split."
+    },
+    {
+      "stage": "other_health_insurance_premiums",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "hermetic ASEC pool years (2022-2024 for target 2024)",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person PHIP_VAL reported premium, carried as health_insurance_premiums_without_medicare_part_b"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_other_health_insurance_premiums",
+          "reported_source": "health_insurance_premiums_without_medicare_part_b",
+          "chip_premium_source": "chip_premium",
+          "marketplace_net_premium_source": "marketplace_net_premium",
+          "medicaid_premium_source": "medicaid_premium",
+          "output": "other_health_insurance_premiums"
+        },
+        {
+          "kind": "impute_other_health_insurance_premiums_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        },
+        {
+          "kind": "attribute_self_employed_health_premiums",
+          "reported_source": "health_insurance_premiums_without_medicare_part_b",
+          "self_employment_income_sources": [
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr"
+          ],
+          "medicare_age_source": "age",
+          "medicare_age_threshold": 65,
+          "medicare_ssdi_source": "social_security_disability",
+          "employer_coverage_source": "has_esi",
+          "output_premiums": "health_insurance_premiums",
+          "output_self_employed_flag": "is_self_employed"
+        }
+      ],
+      "outputs": [
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_health_insurance_premiums",
+        "health_insurance_premiums",
+        "is_self_employed"
+      ],
+      "nonnegative_outputs": [
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_health_insurance_premiums",
+        "health_insurance_premiums"
+      ],
+      "notes": "After ACA and Medicaid take-up inputs are materialized, the retired annual residual is max(PHIP_VAL - chip_premium - marketplace_net_premium - medicaid_premium, 0), with tax-unit modeled premiums assigned to the first person (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 828-944). The archived CPS-only output list and exact eight-predictor, at-most-5,000-person joint QRF are extended_cps.py lines 135-194, 234-248, and 639-745, with only the PUF support half replaced at lines 1014-1076. Because the archive predicted the two PUF leaves jointly without clipping one to the other, PUF-only residual-order exceedances remain diagnostics; measured ASEC rows must preserve the exact residual identity. The archive did not explicitly pin tree count or weights; Populace pins 100 trees and typed person weights as reproducibility hardening. The final attribution operation (PolicyEngine/populace#451 item 2) is deterministic: it copies the finished reported non-Part-B premium onto the person health_insurance_premiums input exactly where combined Schedule C income (self_employment_income_before_lsr + sstb_self_employment_income_before_lsr) is strictly positive, the person is outside the Medicare proxy (age 65+ or any Social Security disability income), and the person is outside measured employer-sponsored coverage (has_esi - the conservative, incomplete proxy for the 26 USC 162(l)(2)(B) subsidized-employer-plan month exclusion; eligibility through a spouse's or dependent's employer is not measured and remains documented residual overbreadth), and marks is_self_employed for every strictly-positive Schedule C person. PolicyEngine-US 1.764.6 then computes self_employed_health_insurance_premiums (a formula-owned adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the section 162(l) ALD as min(total_self_employment_income, premiums). The Medicare proxy keeps the statutory medical-expense premium concept numerically invariant because the direct input equals the decomposed reported premium whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US 1.764.6 reads the bare health_insurance_premiums input in five state/local formulas (MO qualified-premium subtraction, MI household resources, OH uninsured unreimbursed medical expenses, CA Orange County general relief countable income, MO child-care-subsidy adjusted income): attribution moves those programs from premiums-invisible toward the measured premium structure for the self-employed slice, outside the federal income_tax probe's scope. External anchor class: IRS SOI Pub 1304 Table 1.4 TY2023 self-employed health insurance deduction, 3,595,764 returns / $31.23B (ledger#105, buildn v9.2 feed)."
     }
   ]
 }

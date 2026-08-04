@@ -1,0 +1,288 @@
+{
+  "source": {
+    "title": "Individual Income Tax Returns Complete Report, Publication 1304, Tax Year 2015, Table 2.1",
+    "report_url": "https://www.irs.gov/pub/irs-soi/15inalcr.pdf",
+    "workbook_url": "https://www.irs.gov/pub/irs-soi/15in21id.xls",
+    "table": "2.1",
+    "tax_year": 2015,
+    "units": "thousands_of_us_dollars",
+    "columns": {
+      "total_interest_paid_amount": {
+        "printed_column": 83,
+        "workbook_column": "CF"
+      },
+      "home_mortgage_interest_amount": {
+        "printed_column": 85,
+        "workbook_column": "CH"
+      },
+      "deductible_points_amount": {
+        "printed_column": 91,
+        "workbook_column": "CN"
+      },
+      "qualified_mortgage_insurance_premiums_amount": {
+        "printed_column": 93,
+        "workbook_column": "CP"
+      },
+      "investment_interest_amount": {
+        "printed_column": 95,
+        "workbook_column": "CR"
+      }
+    },
+    "report_pages": {
+      "total_home_points_and_mortgage_insurance": 100,
+      "investment_interest": 101
+    }
+  },
+  "all_returns": {
+    "source_row": 10,
+    "total_interest_paid_amount": 304461163,
+    "home_mortgage_interest_amount": 283004465,
+    "deductible_points_amount": 1273716,
+    "qualified_mortgage_insurance_premiums_amount": 6287486,
+    "investment_interest_amount": 13895495
+  },
+  "agi_bands": [
+    {
+      "source_row": 11,
+      "label": "Under $5,000",
+      "lower_bound": null,
+      "upper_bound": 5000,
+      "total_interest_paid_amount": 1231416,
+      "home_mortgage_interest_amount": 1174521,
+      "deductible_points_amount": 1459,
+      "qualified_mortgage_insurance_premiums_amount": 36879,
+      "investment_interest_amount": 18556
+    },
+    {
+      "source_row": 12,
+      "label": "$5,000 under $10,000",
+      "lower_bound": 5000,
+      "upper_bound": 10000,
+      "total_interest_paid_amount": 1284063,
+      "home_mortgage_interest_amount": 1237451,
+      "deductible_points_amount": 871,
+      "qualified_mortgage_insurance_premiums_amount": 35605,
+      "investment_interest_amount": 10135
+    },
+    {
+      "source_row": 13,
+      "label": "$10,000 under $15,000",
+      "lower_bound": 10000,
+      "upper_bound": 15000,
+      "total_interest_paid_amount": 2148799,
+      "home_mortgage_interest_amount": 2083827,
+      "deductible_points_amount": 3523,
+      "qualified_mortgage_insurance_premiums_amount": 56173,
+      "investment_interest_amount": 5276
+    },
+    {
+      "source_row": 14,
+      "label": "$15,000 under $20,000",
+      "lower_bound": 15000,
+      "upper_bound": 20000,
+      "total_interest_paid_amount": 2699978,
+      "home_mortgage_interest_amount": 2589295,
+      "deductible_points_amount": 12649,
+      "qualified_mortgage_insurance_premiums_amount": 93731,
+      "investment_interest_amount": 4303
+    },
+    {
+      "source_row": 15,
+      "label": "$20,000 under $25,000",
+      "lower_bound": 20000,
+      "upper_bound": 25000,
+      "total_interest_paid_amount": 3181401,
+      "home_mortgage_interest_amount": 2992991,
+      "deductible_points_amount": 16428,
+      "qualified_mortgage_insurance_premiums_amount": 148030,
+      "investment_interest_amount": 23951
+    },
+    {
+      "source_row": 16,
+      "label": "$25,000 under $30,000",
+      "lower_bound": 25000,
+      "upper_bound": 30000,
+      "total_interest_paid_amount": 3748228,
+      "home_mortgage_interest_amount": 3591380,
+      "deductible_points_amount": 13066,
+      "qualified_mortgage_insurance_premiums_amount": 136509,
+      "investment_interest_amount": 7273
+    },
+    {
+      "source_row": 17,
+      "label": "$30,000 under $35,000",
+      "lower_bound": 30000,
+      "upper_bound": 35000,
+      "total_interest_paid_amount": 4214763,
+      "home_mortgage_interest_amount": 3946351,
+      "deductible_points_amount": 16300,
+      "qualified_mortgage_insurance_premiums_amount": 246026,
+      "investment_interest_amount": 6085
+    },
+    {
+      "source_row": 18,
+      "label": "$35,000 under $40,000",
+      "lower_bound": 35000,
+      "upper_bound": 40000,
+      "total_interest_paid_amount": 5435778,
+      "home_mortgage_interest_amount": 5122692,
+      "deductible_points_amount": 10850,
+      "qualified_mortgage_insurance_premiums_amount": 289043,
+      "investment_interest_amount": 13193
+    },
+    {
+      "source_row": 19,
+      "label": "$40,000 under $45,000",
+      "lower_bound": 40000,
+      "upper_bound": 45000,
+      "total_interest_paid_amount": 6009927,
+      "home_mortgage_interest_amount": 5651139,
+      "deductible_points_amount": 22472,
+      "qualified_mortgage_insurance_premiums_amount": 322044,
+      "investment_interest_amount": 14272
+    },
+    {
+      "source_row": 20,
+      "label": "$45,000 under $50,000",
+      "lower_bound": 45000,
+      "upper_bound": 50000,
+      "total_interest_paid_amount": 6888540,
+      "home_mortgage_interest_amount": 6411648,
+      "deductible_points_amount": 36417,
+      "qualified_mortgage_insurance_premiums_amount": 430176,
+      "investment_interest_amount": 10299
+    },
+    {
+      "source_row": 21,
+      "label": "$50,000 under $55,000",
+      "lower_bound": 50000,
+      "upper_bound": 55000,
+      "total_interest_paid_amount": 6955789,
+      "home_mortgage_interest_amount": 6543517,
+      "deductible_points_amount": 21952,
+      "qualified_mortgage_insurance_premiums_amount": 378557,
+      "investment_interest_amount": 11762
+    },
+    {
+      "source_row": 22,
+      "label": "$55,000 under $60,000",
+      "lower_bound": 55000,
+      "upper_bound": 60000,
+      "total_interest_paid_amount": 7424513,
+      "home_mortgage_interest_amount": 6985554,
+      "deductible_points_amount": 35610,
+      "qualified_mortgage_insurance_premiums_amount": 387597,
+      "investment_interest_amount": 15752
+    },
+    {
+      "source_row": 23,
+      "label": "$60,000 under $75,000",
+      "lower_bound": 60000,
+      "upper_bound": 75000,
+      "total_interest_paid_amount": 23294604,
+      "home_mortgage_interest_amount": 21825640,
+      "deductible_points_amount": 111241,
+      "qualified_mortgage_insurance_premiums_amount": 1272959,
+      "investment_interest_amount": 84765
+    },
+    {
+      "source_row": 24,
+      "label": "$75,000 under $100,000",
+      "lower_bound": 75000,
+      "upper_bound": 100000,
+      "total_interest_paid_amount": 43398259,
+      "home_mortgage_interest_amount": 40897449,
+      "deductible_points_amount": 238507,
+      "qualified_mortgage_insurance_premiums_amount": 2096979,
+      "investment_interest_amount": 165323
+    },
+    {
+      "source_row": 25,
+      "label": "$100,000 under $200,000",
+      "lower_bound": 100000,
+      "upper_bound": 200000,
+      "total_interest_paid_amount": 104846625,
+      "home_mortgage_interest_amount": 103319155,
+      "deductible_points_amount": 466821,
+      "qualified_mortgage_insurance_premiums_amount": 357177,
+      "investment_interest_amount": 703472
+    },
+    {
+      "source_row": 26,
+      "label": "$200,000 under $500,000",
+      "lower_bound": 200000,
+      "upper_bound": 500000,
+      "total_interest_paid_amount": 53562301,
+      "home_mortgage_interest_amount": 51606382,
+      "deductible_points_amount": 206890,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 1749030
+    },
+    {
+      "source_row": 27,
+      "label": "$500,000 under $1,000,000",
+      "lower_bound": 500000,
+      "upper_bound": 1000000,
+      "total_interest_paid_amount": 12836968,
+      "home_mortgage_interest_amount": 11335153,
+      "deductible_points_amount": 40960,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 1460856
+    },
+    {
+      "source_row": 28,
+      "label": "$1,000,000 under $1,500,000",
+      "lower_bound": 1000000,
+      "upper_bound": 1500000,
+      "total_interest_paid_amount": 3505209,
+      "home_mortgage_interest_amount": 2559360,
+      "deductible_points_amount": 7938,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 937911
+    },
+    {
+      "source_row": 29,
+      "label": "$1,500,000 under $2,000,000",
+      "lower_bound": 1500000,
+      "upper_bound": 2000000,
+      "total_interest_paid_amount": 1666807,
+      "home_mortgage_interest_amount": 1043154,
+      "deductible_points_amount": 2635,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 621017
+    },
+    {
+      "source_row": 30,
+      "label": "$2,000,000 under $5,000,000",
+      "lower_bound": 2000000,
+      "upper_bound": 5000000,
+      "total_interest_paid_amount": 3412493,
+      "home_mortgage_interest_amount": 1521570,
+      "deductible_points_amount": 5102,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 1885822
+    },
+    {
+      "source_row": 31,
+      "label": "$5,000,000 under $10,000,000",
+      "lower_bound": 5000000,
+      "upper_bound": 10000000,
+      "total_interest_paid_amount": 1535736,
+      "home_mortgage_interest_amount": 360807,
+      "deductible_points_amount": 1387,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 1173542
+    },
+    {
+      "source_row": 32,
+      "label": "$10,000,000 or more",
+      "lower_bound": 10000000,
+      "upper_bound": null,
+      "total_interest_paid_amount": 5178966,
+      "home_mortgage_interest_amount": 205431,
+      "deductible_points_amount": 637,
+      "qualified_mortgage_insurance_premiums_amount": 0,
+      "investment_interest_amount": 4972898
+    }
+  ]
+}

@@ -1163,6 +1163,7 @@ name = "populace-build"
 version = "0.1.0"
 source = { editable = "packages/populace-build" }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "populace-calibrate" },
@@ -1181,6 +1182,7 @@ us = [
     { name = "h5py" },
     { name = "microunit" },
     { name = "policyengine-us" },
+    { name = "populace-data" },
     { name = "tables" },
 ]
 
@@ -1193,12 +1195,14 @@ dev = [
 requires-dist = [
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
+    { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },
     { name = "populace-calibrate", editable = "packages/populace-calibrate" },
+    { name = "populace-data", marker = "extra == 'us'", editable = "packages/populace-data" },
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
     { name = "scipy", specifier = ">=1.13" },

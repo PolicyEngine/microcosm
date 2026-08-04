@@ -47,9 +47,69 @@ from pathlib import Path
 from typing import Any
 
 from populace.build.gates import GateResult, input_column_coverage_gate
+from populace.build.us_runtime.capital_gain_details import (
+    US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.child_support import US_CHILD_SUPPORT_OUTPUT_COLUMNS
+from populace.build.us_runtime.disability_benefits import (
+    US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.domestic_production import (
+    US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.educator_expenses import (
+    US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
+from populace.build.us_runtime.farm_business_income import (
+    US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.form_4952 import US_FORM_4952_OUTPUT_COLUMNS
+from populace.build.us_runtime.housing_inputs import US_HOUSING_INPUTS_OUTPUT_COLUMNS
+from populace.build.us_runtime.medicare_take_up import (
+    US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.other_health_insurance import (
+    US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
+from populace.build.us_runtime.relationship_inputs import (
+    US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.retirement_distributions import (
+    US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.salt_refund_income import (
+    US_SALT_REFUND_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.scf_wealth import US_SCF_NET_WORTH_OUTPUT_COLUMNS
+from populace.build.us_runtime.sipp_head_start import (
+    US_SIPP_HEAD_START_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
+from populace.build.us_runtime.ssi_disability_criteria import (
+    US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_OUTPUT_COLUMNS
+from populace.build.us_runtime.voluntary_filing import (
+    US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.weeks_unemployed import (
+    US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.wic_claim import US_WIC_CLAIM_OUTPUT_COLUMNS
+from populace.build.us_runtime.workers_compensation import (
+    US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
+)
 
 __all__ = [
+    "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
     "ReleaseInputCoverageManifest",
@@ -62,6 +122,75 @@ __all__ = [
 ]
 
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
+
+# The frozen reference artifact predates the retired pipeline's export of the
+# pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
+# vehicle interest leaf, the final pipeline's five desired retirement-
+# contribution inputs, its final SIPP-imputed SSI disability criterion, and
+# the #282 capital-gain-distributions route split's Schedule-D leg.
+# These are hard requirements because their shipped validation rows otherwise
+# become structural zeroes.
+POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
+    {
+        "fsla_overtime_premium",
+        "qualified_passenger_vehicle_loan_interest",
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+        "schedule_d_capital_gain_distributions",
+        *US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
+        # PolicyEngine/populace#451 items 1-2: the CDCC adult-care leg
+        # (base-builder adult_care_inputs stage) and the section 162(l)
+        # self-employed premium attribution (other_health_insurance_premiums
+        # release stage). Structural zeros before these stages exist.
+        "pre_subsidy_care_expenses",
+        "is_incapable_of_self_care",
+        "health_insurance_premiums",
+        "is_self_employed",
+    }
+)
+
+# Populated inputs in the frozen reference that have been restored from their
+# primary-source derivations. Keeping this separate from the post-reference
+# additions lets the anti-rot check reject any future attempt to put a completed
+# family back behind a reviewed exclusion.
+RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
+    {
+        "alimony_expense",
+        "alimony_income",
+        "casualty_loss",
+        *US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+        *US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
+        *US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
+        *US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
+        *US_WIC_CLAIM_OUTPUT_COLUMNS,
+        *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
+        *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
+        *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+        *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
+        *US_FORM_4952_OUTPUT_COLUMNS,
+        *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
+        *US_SALT_REFUND_OUTPUT_COLUMNS,
+        *US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
+        *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
+        *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
+        *US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
+        *US_SIPP_HEAD_START_OUTPUT_COLUMNS,
+        *US_SSI_TAKE_UP_OUTPUT_COLUMNS,
+        *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
+        *US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
+        *US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
+        "investment_interest_expense",
+        "spm_unit_pre_subsidy_childcare_expenses",
+        "household_weight",
+        "unreimbursed_business_employee_expenses",
+        *US_QBI_OUTPUT_COLUMNS,
+        *US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
+        *US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+    }
+)
 
 _US_PACKAGE = "populace.build.us"
 _ECPS_PARITY_REFERENCE_RESOURCE = "ecps_parity_reference.json"
@@ -78,6 +207,23 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
     "bank_account_assets",
     "stock_assets",
     "bond_assets",
+)
+
+#: The two legs of the #282 capital-gain-distributions route split
+#: (populace#462 / #361 remedy): the direct route reported on Form 1040 line 7
+#: without Schedule D (``non_sch_d_capital_gains``, PUF E01100, the SOI Pub
+#: 1304 Table 1.4 "capital gain distributions" concept) and the Schedule D
+#: line 13 route (``schedule_d_capital_gain_distributions``, a memo component
+#: of ``long_term_capital_gains`` written by the ``capital_gain_distributions``
+#: source stage). The Build M live default shipped the direct leg 7.3x over
+#: its SOI dollar target while the Schedule-D leg was absent from the export
+#: entirely. Both ship as hard requirements with NO reviewed exclusion, so a
+#: release whose export drops either route leg fails the coverage gate — red
+#: on today's artifacts by design until the Build N rebuild carries the split
+#: through.
+US_CGD_ROUTE_REQUIRED_INPUTS = (
+    "non_sch_d_capital_gains",
+    "schedule_d_capital_gain_distributions",
 )
 
 
@@ -136,14 +282,22 @@ class ReformCoverageProbe:
         id: Stable probe id.
         name: Human-readable reform description.
         parameter_changes: ``Reform.from_dict`` payload (country ``us``).
+            Exactly one of this mapping or ``neutralized_variable`` is
+            non-empty.
+        neutralized_variable: Input leaf neutralized by a
+            structural reform when no parameter change isolates the leaf.
         budget_measure: The variable whose weighted total change is scored.
         effect_direction: ``"reform_minus_baseline"`` or
             ``"baseline_minus_reform"``.
+        period: Optional probe-specific scoring year. OBBBA probes use 2026
+            while the release's source-data period remains 2024.
+        expected_sign: Required sign of the direction-normalized effect.
         binding_inputs: The input leaves the reform binds through; named in the
             failure so the fix target is explicit.
-        min_abs_effect: The reform fails the smoke gate when
-            ``abs(effect) < min_abs_effect`` — a floor above simulation noise
-            and far below the plausible effect, so only a structural zero fails.
+        min_abs_effect: The reform fails the smoke gate when the effect in its
+            declared ``expected_sign`` direction is smaller than this floor.
+            The floor sits above simulation noise and far below the plausible
+            effect, so a structural zero or wrong-signed result fails.
         reason: Why a $0 here means a coverage hole (the mechanism).
         issue: Tracking issue for the restoration work.
     """
@@ -157,12 +311,27 @@ class ReformCoverageProbe:
     reason: str
     issue: str
     effect_direction: str = "reform_minus_baseline"
+    period: int | None = None
+    expected_sign: str = "positive"
+    neutralized_variable: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("ReformCoverageProbe.id is required.")
-        if not self.parameter_changes:
-            raise ValueError(f"{self.id}: parameter_changes is required.")
+        has_params = bool(self.parameter_changes)
+        has_neutralize = bool(self.neutralized_variable)
+        if has_params == has_neutralize:
+            raise ValueError(
+                f"{self.id}: provide exactly one of parameter_changes or "
+                "neutralized_variable."
+            )
+        if (
+            self.neutralized_variable
+            and self.neutralized_variable not in self.binding_inputs
+        ):
+            raise ValueError(
+                f"{self.id}: neutralized_variable must be one of binding_inputs."
+            )
         if not self.budget_measure:
             raise ValueError(f"{self.id}: budget_measure is required.")
         if self.effect_direction not in {
@@ -175,6 +344,12 @@ class ReformCoverageProbe:
             )
         if not (self.min_abs_effect > 0):
             raise ValueError(f"{self.id}: min_abs_effect must be positive.")
+        if self.period is not None and self.period < 1990:
+            raise ValueError(f"{self.id}: period must be a plausible year.")
+        if self.expected_sign not in {"positive", "negative", "either"}:
+            raise ValueError(
+                f"{self.id}: expected_sign must be 'positive', 'negative', or 'either'."
+            )
 
 
 @dataclass(frozen=True)
@@ -202,6 +377,11 @@ class ReleaseInputCoverageManifest:
             if column.name in by_name:
                 raise ValueError(f"Duplicate manifest column {column.name!r}.")
             by_name[column.name] = column
+        probe_ids: set[str] = set()
+        for probe in self.probes:
+            if probe.id in probe_ids:
+                raise ValueError(f"Duplicate reform coverage probe id {probe.id!r}.")
+            probe_ids.add(probe.id)
         object.__setattr__(self, "_by_name", by_name)
 
     @property
@@ -303,6 +483,17 @@ def load_release_input_coverage_manifest(
                 effect_direction=str(
                     raw_probe.get("effect_direction", "reform_minus_baseline")
                 ),
+                period=(
+                    None
+                    if raw_probe.get("period") is None
+                    else int(raw_probe["period"])
+                ),
+                expected_sign=str(raw_probe.get("expected_sign", "positive")),
+                neutralized_variable=(
+                    None
+                    if raw_probe.get("neutralized_variable") is None
+                    else str(raw_probe["neutralized_variable"])
+                ),
             )
         )
 
@@ -336,18 +527,21 @@ def us_release_reform_coverage_probes() -> tuple[ReformCoverageProbe, ...]:
 def _degenerate_columns(
     column_values: Mapping[str, Any],
     engine: Any,
-) -> set[str]:
-    """Columns whose every observed value equals the engine default.
+) -> tuple[set[str], set[str]]:
+    """Degenerate columns and the subset with no finite/non-null observations.
 
     Reuses :func:`populace.build.gates.default_valued_columns_gate`'s exact
     degeneracy classification (same scalar/enum comparison the degenerate-input
-    gate uses) so "present but default" is judged identically everywhere.
+    gate uses) so "present but no signal" is judged identically everywhere.
     """
     from populace.build.gates import default_valued_columns_gate
 
     defaults = engine.default_values(sorted(column_values))
     classification = default_valued_columns_gate(column_values, defaults)
-    return set(classification.details["default_valued_columns"])
+    return (
+        set(classification.details["default_valued_columns"]),
+        set(classification.details["no_observed_value_columns"]),
+    )
 
 
 def us_release_input_coverage_gate(
@@ -359,11 +553,12 @@ def us_release_input_coverage_gate(
     """Build the named US release input-column coverage gate for an export frame.
 
     Every ``required`` manifest column must be persisted by ``frame`` as a key
-    with at least one non-default value; a required column that is absent or
-    degenerate (every value the engine default) fails the gate, and a reviewed
-    exclusion whose column now carries signal is stale and fails too (#286
-    cannot-rot). Run on the calibrated export frame just before
-    ``write_dataset``, it hard-fails the release like the export-mass parity gate.
+    with at least one finite/non-null, non-default value; a required column that
+    is absent or degenerate (no observations, or every value the engine default)
+    fails the gate, and a reviewed exclusion whose column now carries signal is
+    stale and fails too (#286 cannot-rot). Run on the calibrated export frame
+    just before ``write_dataset``, it hard-fails the release like the export-mass
+    parity gate.
 
     Args:
         frame: The export :class:`populace.frame.Frame`.
@@ -385,11 +580,21 @@ def us_release_input_coverage_gate(
             if column in relevant and column not in present_values:
                 present_values[column] = table[column].to_numpy()
 
-    degenerate = _degenerate_columns(present_values, engine)
+    # Frame weights are typed pipeline state, not ordinary table data. The US
+    # adapter materializes this authoritative vector as ``household_weight``
+    # when writing PolicyEngine H5, overwriting any redundant table column.
+    # Mirror that export behavior here so the gate covers what is persisted.
+    if "household_weight" in relevant:
+        present_values.pop("household_weight", None)
+        if "household" in frame.weighted_entities:
+            present_values["household_weight"] = frame.weights_for("household").values
+
+    degenerate, no_observed = _degenerate_columns(present_values, engine)
     return input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
+        no_observed_columns=no_observed,
         reviewed_exclusions=reviewed,
         name="us_release_input_coverage",
     )
@@ -435,8 +640,9 @@ def assert_release_input_coverage_manifest_current(
     (when available):
 
     - The declared columns must equal the reference eCPS populated input surface
-      (``ecps_parity_reference.json``): the manifest is the eCPS export surface,
-      no more, no less. A layer the incumbent gains/loses must be reflected here.
+      (``ecps_parity_reference.json``) plus the explicit post-reference inputs
+      required by shipped reform probes. A change to either surface must be
+      reflected here.
     - The three SSI countable-resource asset inputs must be ``required`` with no
       reviewed exclusion — the #368 red-gate guarantee cannot be quietly undone.
     - Every declared column must be a real PolicyEngine-US input leaf, and every
@@ -453,7 +659,7 @@ def assert_release_input_coverage_manifest_current(
     failures: list[str] = []
 
     declared = set(manifest.declared_columns)
-    surface = set(_ecps_populated_layers())
+    surface = set(_ecps_populated_layers()) | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
     missing_from_manifest = sorted(surface - declared)
     extra_in_manifest = sorted(declared - surface)
     if missing_from_manifest:
@@ -464,7 +670,8 @@ def assert_release_input_coverage_manifest_current(
         )
     if extra_in_manifest:
         failures.append(
-            "manifest declares column(s) the reference eCPS does not populate "
+            "manifest declares column(s) neither populated by the reference "
+            "eCPS nor documented as post-reference required inputs "
             f"{extra_in_manifest}; regenerate the manifest."
         )
 
@@ -481,6 +688,31 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{asset}: SSI countable-resource asset input must be a "
                 "required manifest column (#368)."
+            )
+
+    for route_leg in US_CGD_ROUTE_REQUIRED_INPUTS:
+        if route_leg in reviewed:
+            failures.append(
+                f"{route_leg}: capital-gain-distributions route leg is a "
+                "reviewed exclusion, but #462 requires both #282 route legs "
+                "be hard requirements with no exclusion so a release that "
+                "drops either route from the export fails the coverage gate."
+            )
+        elif route_leg not in required:
+            failures.append(
+                f"{route_leg}: capital-gain-distributions route leg must be a "
+                "required manifest column (#462)."
+            )
+
+    for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:
+        if column in reviewed:
+            failures.append(
+                f"{column}: restored reference eCPS input cannot return to a "
+                "reviewed exclusion."
+            )
+        elif column not in required:
+            failures.append(
+                f"{column}: restored reference eCPS input must remain required."
             )
 
     if engine is None:

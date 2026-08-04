@@ -18,7 +18,9 @@ from populace.build.us_runtime import (
     us_eligibility_inputs_summary,
     with_us_eligibility_inputs,
 )
+from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.source_runtime import us_source_operation_handlers
+from populace.build.us_runtime.support_provenance import support_clone_index_column
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 TIME_PERIOD = 2024
@@ -269,6 +271,19 @@ class TestFrameIntegration:
         assert person["own_children_in_household"].iloc[_PARENT_INDEX] == 1.0
         assert person["own_children_in_household"].iloc[_CHILD_INDEX] == 0.0
         assert person["veterans_benefits"].iloc[_VETERAN_INDEX] == 12_000.0
+
+    def test_parent_pointer_count_is_derived_once_then_cloned(self) -> None:
+        direct = with_us_eligibility_inputs(
+            _us_frame([{}, {"PEPAR1": 1, "A_AGE": 8}]),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        expanded = clone_us_frame_for_puf_support(direct)
+        person = expanded.table("person")
+        parent = person["A_LINENO"].eq(1)
+
+        assert set(person.loc[parent, support_clone_index_column("person")]) == {0, 1}
+        assert person.loc[parent, "own_children_in_household"].tolist() == [1.0, 1.0]
 
     def test_frame_with_signal_passes_through_untouched(self) -> None:
         derived = with_us_eligibility_inputs(

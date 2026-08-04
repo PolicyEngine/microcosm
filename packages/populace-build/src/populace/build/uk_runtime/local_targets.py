@@ -66,6 +66,9 @@ def metric_names(
         names.extend(CONSTITUENCY_UC_CHILDREN_METRICS)
     else:
         names.extend(LA_EXTRA_METRICS)
+    # Appended last deliberately: adding a metric must never renumber the
+    # incumbent within-area metric indices for positional consumers.
+    names.append("households")
     return tuple(names)
 
 
@@ -205,6 +208,8 @@ def compute_household_metrics(
             "person",
             "household",
         )
+
+    matrix["households"] = np.ones(len(matrix), dtype=float)
 
     on_uc = (_values(_calculate(sim, "universal_credit", period)) > 0).astype(float)
     on_uc_hh = _map_result(sim, on_uc, "benunit", "household")

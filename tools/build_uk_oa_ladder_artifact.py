@@ -1,5 +1,8 @@
 """Build the UK OA-ladder artifact from primary ONS/Nomis sources.
 
+Builds the full-UK ladder by default: England & Wales at 2021 Census OA
+grain, Scotland at 2022 Census OA grain, and Northern Ireland at DZ2021
+grain (--coverage england_and_wales preserves the original milestone).
 Downloads (with a local cache) the England-&-Wales 2021 Census output-area
 sources — the OA -> LSOA -> MSOA -> LAD structural hierarchy, OA -> LAD (April
 2023), OA -> PCON24 constituency best-fit, OA usual-resident population (Nomis
@@ -13,10 +16,12 @@ The artifact is self-checked by loading it back through
 ``populace.build.uk_runtime.load_uk_oa_ladder`` before the summary is written,
 so a published ladder is by construction a loadable ladder.
 
-England & Wales is the first milestone (populace #349). Scotland and Northern
-Ireland follow once their lookup vintages are pinned — the assignment refuses a
-household whose region is absent from the ladder, so a GB/UK build cannot
-silently ship partial coverage.
+Scotland and Northern Ireland vintages were pinned on populace#495
+(increment 3): both Scotland ladder-only layers come from the NRS Census
+2022 index zip, NI households from the NISRA table builder, and the NI ward
+analogue (DEA2014) from the pinned DZ2021 GeoJSON. The assignment still
+refuses a household whose region is absent from the ladder, so a partial
+build cannot silently ship.
 
 Example:
     uv run python tools/build_uk_oa_ladder_artifact.py \
@@ -34,6 +39,7 @@ import urllib.request
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from populace.build.uk_runtime import (
     ENGLAND_LAD_REGION_URL,
@@ -44,8 +50,22 @@ from populace.build.uk_runtime import (
     EW_OA_POPULATION_URL,
     EW_OA_WARD_URL,
     LAD23_ITL_URL,
+    NI_DZ_GEOJSON_ZIP_URL,
+    NI_DZ_HOUSEHOLDS_CSV_URL,
+    NI_DZ_POPULATION_CSV_URL,
+    SCOTLAND_CENSUS_INDEX_ZIP_URL,
+    SCOTLAND_OA_CONSTITUENCY_URL,
+    SCOTLAND_OA_DZ_IZ_URL,
+    SCOTLAND_OA_LAU_ITL_URL,
+    SCOTLAND_OA_POPULATION_URL,
+    UK_POSTCODE_OA_MAY25_ZIP_URL,
+    UK_POSTCODE_PCON_MAY24_ZIP_URL,
     assemble_uk_oa_ladder,
     build_england_wales_crosswalk,
+    build_northern_ireland_crosswalk,
+    build_scotland_crosswalk,
+    concat_uk_ladder_frames,
+    infer_ni_dz_constituencies_from_postcodes,
     join_uk_oa_ladder_layers,
     load_england_lad_region_lookup,
     load_england_wales_oa_constituencies,
@@ -55,7 +75,19 @@ from populace.build.uk_runtime import (
     load_england_wales_oa_ward_lookup,
     load_ew_oa_lad23_lookup,
     load_lad_itl_lookup,
+    load_ni_dz_hierarchy,
+    load_ni_dz_households,
+    load_ni_dz_population,
+    load_ni_dz_ward_lookup,
+    load_scotland_oa_constituencies,
+    load_scotland_oa_dz_iz_lookup,
+    load_scotland_oa_households,
+    load_scotland_oa_lau_lookup,
+    load_scotland_oa_population,
+    load_scotland_oa_ward_lookup,
     load_uk_oa_ladder,
+    load_uk_postcode_constituency_lookup,
+    load_uk_postcode_oa_lookup,
 )
 
 #: Per-source provenance: cache filename, download URL, and the layer(s) it
@@ -131,12 +163,94 @@ SOURCES = {
     },
 }
 
+#: Scotland and Northern Ireland sources (populace#495 increment 3). Only
+#: fetched for --coverage uk.
+UK_EXTRA_SOURCES = {
+    "scotland_dz_iz": {
+        "url": SCOTLAND_OA_DZ_IZ_URL,
+        "name": "scotland_oa22_dz22_iz22.zip",
+        "vintage": "2022_census",
+        "citation": "NRS, OA2022 to Data Zone 2022 to Intermediate Zone 2022 lookup",
+    },
+    "scotland_lau": {
+        "url": SCOTLAND_OA_LAU_ITL_URL,
+        "name": "scotland_oa22_lau25_itl25.zip",
+        "vintage": "2019_council_area",
+        "citation": "NRS, OA2022 to LAU 2025 lookup (council area via CA19 join)",
+    },
+    "scotland_constituency": {
+        "url": SCOTLAND_OA_CONSTITUENCY_URL,
+        "name": "scotland_oa22_ukpc24.zip",
+        "vintage": "2024_pcon",
+        "citation": "NRS, OA2022 to UK Parliamentary Constituency 2024 lookup",
+    },
+    "scotland_population": {
+        "url": SCOTLAND_OA_POPULATION_URL,
+        "name": "scotland_outputarea2022_population.csv",
+        "vintage": "2022_census",
+        "citation": "NRS, Output Area 2022 usual resident population",
+    },
+    "scotland_census_index": {
+        "url": SCOTLAND_CENSUS_INDEX_ZIP_URL,
+        "name": "scotland_census_2022_index.zip",
+        "vintage": "2022_census",
+        "citation": (
+            "NRS Census 2022 index: OA_TO_HIGHER_AREAS (EW2022 electoral "
+            "ward, PiP centroid) and Postcode_To_OA (census occupied "
+            "household counts, cell-key perturbed), per the in-zip index "
+            "file specification"
+        ),
+    },
+    "ni_geojson": {
+        "url": NI_DZ_GEOJSON_ZIP_URL,
+        "name": "ni_dz2021_geojson.zip",
+        "vintage": "2021_census",
+        "citation": (
+            "NISRA DZ2021 GeoJSON (SDZ2021, LGD2014, and DEA2014 feature properties)"
+        ),
+    },
+    "ni_population": {
+        "url": NI_DZ_POPULATION_CSV_URL,
+        "name": "ni_dz21_population.csv",
+        "vintage": "2021_census",
+        "citation": "NISRA Census 2021 table builder, usual residents by DZ21",
+    },
+    "ni_households": {
+        "url": NI_DZ_HOUSEHOLDS_CSV_URL,
+        "name": "ni_dz21_households.csv",
+        "vintage": "2021_census",
+        "citation": "NISRA Census 2021 table builder, households by DZ21",
+    },
+    "postcode_oa": {
+        "url": UK_POSTCODE_OA_MAY25_ZIP_URL,
+        "name": "uk_postcode_oa21_may25.zip",
+        "vintage": "2025_may_postcodes",
+        "citation": "ONS, UK postcode to OA (2021) lookup (May 2025)",
+    },
+    "postcode_pcon": {
+        "url": UK_POSTCODE_PCON_MAY24_ZIP_URL,
+        "name": "uk_postcode_pcon24_may24.zip",
+        "vintage": "2024_pcon",
+        "citation": "ONS, UK postcode to Westminster constituency (May 2024)",
+    },
+}
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build the national UK OA-ladder NPZ artifact (England & Wales)."
+        description="Build the national UK OA-ladder NPZ artifact."
     )
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument(
+        "--coverage",
+        choices=("uk", "england_and_wales"),
+        default="uk",
+        help=(
+            "Geographic coverage: full UK (England & Wales OA21 + Scotland "
+            "OA22 + Northern Ireland DZ21) or the original England & Wales "
+            "milestone."
+        ),
+    )
     parser.add_argument(
         "--cache-dir",
         type=Path,
@@ -182,10 +296,13 @@ def _download(url: str, cache_dir: Path, name: str) -> Path:
     return destination
 
 
-def _fetch(cache_dir: Path) -> dict[str, dict[str, str]]:
+def _fetch(
+    cache_dir: Path,
+    sources: dict[str, dict[str, str]] | None = None,
+) -> dict[str, dict[str, str]]:
     """Download every source, returning the cache path and sha256 per source."""
     fetched: dict[str, dict[str, str]] = {}
-    for key, spec in SOURCES.items():
+    for key, spec in (SOURCES if sources is None else sources).items():
         path = _download(spec["url"], cache_dir, spec["name"])
         fetched[key] = {
             "path": str(path),
@@ -222,10 +339,154 @@ def _layer_metadata(fetched: dict[str, dict[str, str]]) -> dict[str, dict[str, s
     }
 
 
+def _build_scotland_frame(fetched: dict[str, dict[str, str]]) -> pd.DataFrame:
+    """Join Scotland's OA22-grain ladder frame from the pinned NRS sources."""
+
+    base = build_scotland_crosswalk(
+        load_scotland_oa_dz_iz_lookup(_file_url(fetched, "scotland_dz_iz")),
+        load_scotland_oa_lau_lookup(_file_url(fetched, "scotland_lau")),
+        load_scotland_oa_constituencies(_file_url(fetched, "scotland_constituency")),
+        load_scotland_oa_population(_file_url(fetched, "scotland_population")),
+    )
+    return join_uk_oa_ladder_layers(
+        base,
+        oa_households=load_scotland_oa_households(
+            _file_url(fetched, "scotland_census_index")
+        ),
+        oa_ward=load_scotland_oa_ward_lookup(
+            _file_url(fetched, "scotland_census_index")
+        ),
+        lad_itl=load_lad_itl_lookup(_file_url(fetched, "lad_itl")),
+    )
+
+
+def _build_ni_frame(fetched: dict[str, dict[str, str]]) -> pd.DataFrame:
+    """Join Northern Ireland's DZ21-grain ladder frame from NISRA sources."""
+
+    base = build_northern_ireland_crosswalk(
+        load_ni_dz_hierarchy(_file_url(fetched, "ni_geojson")),
+        load_ni_dz_population(_file_url(fetched, "ni_population")),
+        infer_ni_dz_constituencies_from_postcodes(
+            load_uk_postcode_oa_lookup(_file_url(fetched, "postcode_oa")),
+            load_uk_postcode_constituency_lookup(_file_url(fetched, "postcode_pcon")),
+        ),
+    )
+    return join_uk_oa_ladder_layers(
+        base,
+        oa_households=load_ni_dz_households(_file_url(fetched, "ni_households")),
+        oa_ward=load_ni_dz_ward_lookup(_file_url(fetched, "ni_geojson")),
+        lad_itl=load_lad_itl_lookup(_file_url(fetched, "lad_itl")),
+    )
+
+
+def _uk_layer_metadata(
+    fetched: dict[str, dict[str, str]],
+) -> dict[str, dict[str, str]]:
+    """Per-layer metadata for full-UK coverage: one composite vintage per
+    derived layer (vintage_policy: error), with per-country identities in the
+    countries submap and every source sha-pinned in source_files."""
+
+    ew = _layer_metadata(fetched)
+
+    def country_entry(key: str) -> dict[str, object]:
+        return {
+            "vintage": fetched[key]["vintage"],
+            "source": fetched[key]["citation"],
+            "url": fetched[key]["url"],
+            "sha256": fetched[key]["sha256"],
+        }
+
+    def composite(
+        layer: str,
+        scotland_key: str,
+        ni_key: str,
+        vintage: str,
+        *,
+        ni_entry: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        # No top-level url/sha256 on composite layers: a single conventional
+        # identity would go stale when only Scotland/NI inputs change. The
+        # per-country identities below and source_files carry every sha.
+        entry = {
+            "vintage": vintage,
+            "source": (
+                f"{ew[layer]['source']}; Scotland: "
+                f"{fetched[scotland_key]['citation']}; NI: "
+                f"{fetched[ni_key]['citation']}"
+            ),
+            "countries": {
+                "england_and_wales": ew[layer],
+                "scotland": country_entry(scotland_key),
+                "northern_ireland": (
+                    country_entry(ni_key) if ni_entry is None else ni_entry
+                ),
+            },
+        }
+        return entry
+
+    ni_constituency_entry = {
+        "vintage": "2024_pcon",
+        "source": (
+            "Reviewed active-postcode modal inference "
+            "(infer_ni_dz_constituencies_from_postcodes) joining the ONS "
+            "postcode->OA (May 2025) and postcode->PCON24 (May 2024) lookups; "
+            "fenced by the max-unmatched-active-postcode share."
+        ),
+        "sources": {
+            "postcode_oa": country_entry("postcode_oa"),
+            "postcode_constituency": country_entry("postcode_pcon"),
+        },
+    }
+    return {
+        "constituency": composite(
+            "constituency",
+            "scotland_constituency",
+            "postcode_pcon",
+            "2024_pcon",
+            ni_entry=ni_constituency_entry,
+        ),
+        "lsoa": composite(
+            "lsoa",
+            "scotland_dz_iz",
+            "ni_geojson",
+            "ew:2021_census;scotland:2022_census;ni:2021_census",
+        ),
+        "msoa": composite(
+            "msoa",
+            "scotland_dz_iz",
+            "ni_geojson",
+            "ew:2021_census;scotland:2022_census;ni:2021_census",
+        ),
+        "local_authority": composite(
+            "local_authority",
+            "scotland_lau",
+            "ni_geojson",
+            "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd",
+        ),
+        "ward": composite(
+            "ward",
+            "scotland_census_index",
+            "ni_geojson",
+            "ew:2022_wd;scotland:2022_ew;ni:2014_dea",
+        ),
+        "itl": ew["itl"],
+        "region": composite(
+            "region",
+            "scotland_dz_iz",
+            "ni_geojson",
+            "ew:2022_rgn;scotland:sentinel_s99999999;ni:sentinel_n99999999",
+        ),
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
-    _log("Building UK OA ladder for England & Wales")
-    fetched = _fetch(args.cache_dir)
+    full_uk = args.coverage == "uk"
+    _log(f"Building UK OA ladder ({args.coverage})")
+    sources = dict(SOURCES)
+    if full_uk:
+        sources.update(UK_EXTRA_SOURCES)
+    fetched = _fetch(args.cache_dir, sources)
 
     _log("  parsing base England & Wales OA crosswalk")
     base = build_england_wales_crosswalk(
@@ -246,14 +507,39 @@ def main(argv: list[str] | None = None) -> None:
         lad_itl=load_lad_itl_lookup(_file_url(fetched, "lad_itl")),
     )
 
+    if full_uk:
+        _log("  joining Scotland OA22 ladder frame")
+        scotland = _build_scotland_frame(fetched)
+        _log("  joining Northern Ireland DZ21 ladder frame")
+        northern_ireland = _build_ni_frame(fetched)
+        _log(
+            f"  concatenating {len(joined):,} EW + {len(scotland):,} S + "
+            f"{len(northern_ireland):,} NI output areas"
+        )
+        joined = concat_uk_ladder_frames(joined, scotland, northern_ireland)
+
     metadata = {
         "schema_version": 1,
         "kind": "uk_oa_ladder",
-        "coverage": "england_and_wales",
-        "oa_vintage": "2021_census",
-        "constituency_sampling_basis": "census_2021_household_counts",
-        "oa_sampling_basis": "census_2021_usual_resident_population",
-        "layers": _layer_metadata(fetched),
+        "coverage": args.coverage,
+        "oa_vintage": (
+            "ew:2021_census;scotland:2022_census;ni:dz2021"
+            if full_uk
+            else "2021_census"
+        ),
+        "constituency_sampling_basis": (
+            "census household counts (EW TS041 2021; Scotland census 2022 "
+            "postcode index; NI census 2021 table builder)"
+            if full_uk
+            else "census_2021_household_counts"
+        ),
+        "oa_sampling_basis": (
+            "census usual-resident population (EW TS001 2021; Scotland NRS "
+            "OA22; NI census 2021)"
+            if full_uk
+            else "census_2021_usual_resident_population"
+        ),
+        "layers": _uk_layer_metadata(fetched) if full_uk else _layer_metadata(fetched),
         "source_files": {
             key: {"sha256": spec["sha256"], "url": spec["url"]}
             for key, spec in fetched.items()

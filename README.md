@@ -60,11 +60,53 @@ See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).
 
+## Release-gate preflight
+
+Several release gates fail on facts that are already determined by the base
+pool, the frozen selection, and the target/coverage registry — no calibration
+solve needed to see them. `tools/preflight_us_release_gates.py` recovers those
+signals in **minutes** so a two-hour release launch is not the first place a
+knowable defect surfaces:
+
+```bash
+uv run python tools/preflight_us_release_gates.py \
+  --base-h5 out/base-m/base_populace_us_2024_puf_support.h5 \
+  --selection-source-manifest inputs/buildm_keogh_swap_selection_source.json \
+  --export-input-mass-reference-h5 forensics/populace_us_2024.h5
+```
+
+It is read-only against the H5 artifacts and reports, per check, `PASS` /
+`FAIL` / `AT-RISK` with the measured numbers (exit `1` on any FAIL, `2` on
+AT-RISK only, `0` clean):
+
+1. **Selection carryover** — the frozen selection-source manifest maps cleanly
+   onto the base pool (the frozen-support recovery contract, run pre-solve).
+2. **Zero-support preview** — compiled positive fiscal targets whose
+   materialized support is ~0 under the selection at base weights stay a
+   structural zero after the solve. Direct-column targets are checked;
+   engine-derived measures are marked *not statically checkable* (pass
+   `--ledger-facts` to compile the target surface).
+3. **Export-mass parity risk** — each export-mass column's pool mass at *base*
+   weights against its reference band, honoring the release tool's
+   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register (reused, never
+   re-declared). A column out of band pre-solve is flagged for review.
+4. **Smoke-probe support audit** — every reform-coverage probe leaf's pool vs
+   *selected* nonzero support and pool sign-leg decomposition. A leaf with pool
+   support but zero selected support **fails** (the input the frozen selection
+   cannot express); a thin selection or a signed leaf whose net sign
+   contradicts the probe's `expected_sign` is AT-RISK.
+
+**Run it** at base-build exit, before any release launch, and after any change
+to the selection-source manifest or the target/coverage registry. The
+synthetic-fixture unit tests
+(`packages/populace-build/tests/test_us_release_gate_preflight.py`) run in the
+normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
+
 ## Releasing & alerts
 
-Publishing uploads the locally built `releases/<id>/` artifacts to the Hugging
-Face dataset, tags the release, and updates `latest.json`. It runs on the build
-machine (it needs the freshly built H5), so it isn't a CI step:
+Standard publication uploads the locally built `releases/<id>/` artifacts to
+the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
+on the build machine (it needs the freshly built H5), so it isn't a CI step:
 
 ```bash
 tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
@@ -74,6 +116,17 @@ tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 (all arguments pass straight through). The moment `latest.json` goes live, the
 publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.
+
+US exact-k ladder candidates use a tag-only lane. Run
+`tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
+recorded in `package_result.json`. That command includes `--create-tag`,
+`--no-latest`, and `--tag-only`: it uploads the immutable release and creates its
+tag without committing candidate artifacts or release copies to the production
+main branch. The launcher also forces `--no-staging`, so the build writes neither
+a production nor a staging pointer. The candidate is therefore available only
+by its explicit release id or tag until a separate promotion updates
+`latest.json`. Because Slack alerts are coupled to that production pointer
+update, tag-only publication sends no release alert.
 
 The alert is a **no-op unless the channel's incoming-webhook URL is set**, so
 configure it once on the build machine:
@@ -86,3 +139,13 @@ cp tools/release.env.example tools/release.env   # then paste the webhook URLs
 `SLACK_WEBHOOK_POPULACE_US` / `SLACK_WEBHOOK_POPULACE_UK` in your shell) and
 warns if neither is set. After that, every release publishes with an automatic
 Slack alert.
+
+Canonical UK exact-k builds also require a stable, base64-encoded 32-byte
+`POPULACE_UK_TERMINAL_GATE_SIGNING_KEY`. Source `tools/release.env` before the
+national build as well as publication. The terminal-gate aggregator authenticates
+the complete report, canonical release id, and exact calibration-diagnostics
+digest with HMAC-SHA256; the persistence seam
+cannot sign caller-composed gate results, and publication independently verifies
+the report from the same out-of-band key. If the key is missing or malformed,
+the writer first persists an unsigned failed report and then raises, and
+publication rejects it.

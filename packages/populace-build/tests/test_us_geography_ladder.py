@@ -223,6 +223,45 @@ def test_assignment_is_deterministic_and_population_weighted(tmp_path) -> None:
     assert dominant_share > 0.9
 
 
+def test_assignment_consumes_normalized_cd_rng_groups_in_sorted_order(tmp_path) -> None:
+    ladder = load_us_block_ladder(
+        _write_ladder(
+            tmp_path / "ladder.npz",
+            block_geoid=np.asarray(
+                [
+                    10010001001000,
+                    10010001001001,
+                    10030002002000,
+                    10030002002001,
+                ],
+                dtype=np.int64,
+            ),
+            population=np.ones(4, dtype=np.float64),
+            congressional_district_geoid=np.asarray(
+                [101, 101, 102, 102], dtype=np.int64
+            ),
+        )
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": range(4),
+            "state_fips": [1, 1, 1, 1],
+            "congressional_district_geoid": ["0102", 101, 102, "0101"],
+        }
+    )
+
+    assigned = assign_us_geography_ladder(household, ladder, seed=0)
+
+    rng = np.random.default_rng(0)
+    expected_index = np.empty(len(household), dtype=np.int64)
+    expected_index[[1, 3]] = rng.choice([0, 1], size=2, replace=True, p=[0.5, 0.5])
+    expected_index[[0, 2]] = rng.choice([2, 3], size=2, replace=True, p=[0.5, 0.5])
+    expected_blocks = [
+        f"{value:015d}" for value in ladder.block_geoid[expected_index].tolist()
+    ]
+    assert assigned["block_geoid"].tolist() == expected_blocks
+
+
 def test_assignment_requires_congressional_districts(tmp_path) -> None:
     ladder = load_us_block_ladder(_write_ladder(tmp_path / "ladder.npz"))
     household = pd.DataFrame({"household_id": [1], "state_fips": [1]})

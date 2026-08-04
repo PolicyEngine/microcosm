@@ -12,6 +12,7 @@
   "release_input_coverage_manifest.json",
   "soca_capital_gain_distribution_shares.json",
   "soi_baseline_levels.json",
+  "soi_table_2_1_interest_components_ty2015.json",
   "source_stages.json",
   "state_program_levels.json",
   "state_program_reforms.json",
@@ -19,6 +20,8 @@
   "state_spm_poverty_levels.json",
   "support_spine.json",
   "take_up_contract.json",
+  "target_parity_feed_families.json",
+  "target_parity_manifest.json",
   "tax_expenditure_reforms.json"
  ]
 }

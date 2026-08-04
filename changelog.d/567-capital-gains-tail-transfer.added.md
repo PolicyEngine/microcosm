@@ -1,0 +1,1 @@
+Add a deterministic PUF capital-gains own-tail stage that transfers joint signed donor vectors through exact household-weight splits, with synthetic-lineage eligibility, materialized-frame reconciliation, concentration checks, and a repairable standalone manifest. Frozen-support recovery now fails loudly if a stale selection source would discard any transferred tail donor.

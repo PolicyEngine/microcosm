@@ -873,14 +873,35 @@ def test_state_reform_specs_shipped_config_loads():
     from populace.build.us_runtime.reform_validation import state_reform_specs
 
     specs = state_reform_specs(period=2026)
-    # 8 bills: MA H5007 was dropped (its DOR estimate has no primary source).
-    assert len(specs) >= 8
-    assert all(spec.category == "State reform" for spec in specs)
+    # 8 original state bills (MA H5007 dropped: its DOR estimate has no
+    # primary source) plus the tracker-informed expansion: state
+    # credit/deduction bills and federal benchmark rows (ARPA provisions,
+    # CBO rate option, UBI mechanical check).
+    assert len(specs) >= 17
     assert all(not spec.in_sample for spec in specs)
     assert all(spec.parameter_changes for spec in specs)
-    # Each row scores its own state's income tax, and carries a real benchmark.
-    assert all(spec.budget_measure.endswith("_income_tax") for spec in specs)
     assert all(spec.jct_score is not None for spec in specs)
+    by_category = {}
+    for spec in specs:
+        by_category.setdefault(spec.category, []).append(spec)
+    assert set(by_category) == {"State reform", "Federal reform", "Mechanical check"}
+    # State rows each score their own state's income tax.
+    assert len(by_category["State reform"]) >= 13
+    assert all(
+        spec.budget_measure.endswith("_income_tax")
+        for spec in by_category["State reform"]
+    )
+    # Federal rows score federal income tax against JCT/CBO published figures.
+    assert all(
+        spec.budget_measure == "income_tax"
+        for spec in by_category["Federal reform"]
+    )
+    # Mechanical rows measure the reform's own spending variable, so the
+    # benchmark is an exact external anchor (population x amount).
+    assert all(
+        spec.jct_score_type == "mechanical"
+        for spec in by_category["Mechanical check"]
+    )
 
 
 def test_default_baseline_level_specs_concatenates(monkeypatch, tmp_path):

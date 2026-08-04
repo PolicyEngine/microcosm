@@ -68,11 +68,13 @@ def test_metric_names_match_expected_constituency_surface() -> None:
     )
     assert "age/0_10" in names
     assert "age/70_80" in names
-    assert names[-4:] == (
+    assert names[-5:] == (
         "uc_hh_0_children",
         "uc_hh_1_child",
         "uc_hh_2_children",
         "uc_hh_3plus_children",
+        # Appended last so incumbent metric positions never renumber.
+        "households",
     )
 
 

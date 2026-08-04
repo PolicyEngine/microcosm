@@ -174,6 +174,54 @@ def assemble_uk_oa_ladder(
     return payload
 
 
+def concat_uk_ladder_frames(*frames: pd.DataFrame) -> pd.DataFrame:
+    """Concatenate per-country ladder OA frames into one full-UK frame.
+
+    Every frame must carry the full ladder column set and be non-empty, and
+    OA codes must be disjoint across frames — the concat is the seam where a
+    silent cross-country code collision would corrupt every derived layer,
+    so it fails closed instead.
+    """
+
+    if not frames:
+        raise ValueError("at least one ladder frame is required.")
+    for index, frame in enumerate(frames):
+        if frame.empty:
+            raise ValueError(f"ladder frame {index} is empty.")
+        missing = sorted(set(LADDER_OA_COLUMNS) - set(frame.columns))
+        if missing:
+            raise ValueError(f"ladder frame {index} is missing column(s): {missing}.")
+    for index, frame in enumerate(frames):
+        allowed = {str(code)[:1] for code in frame["oa_code"]}
+        for column in (
+            "lsoa_code",
+            "msoa_code",
+            "local_authority_code",
+            "ward_code",
+            "constituency_code",
+            "region_code",
+        ):
+            prefixes = {str(code)[:1] for code in frame[column]}
+            foreign = sorted(prefixes - allowed)
+            if foreign:
+                raise ValueError(
+                    f"ladder frame {index} mixes countries: {column} carries "
+                    f"prefix(es) {foreign} while its oa_code prefixes are "
+                    f"{sorted(allowed)}."
+                )
+    combined = pd.concat(
+        [frame.loc[:, list(LADDER_OA_COLUMNS)] for frame in frames],
+        ignore_index=True,
+    )
+    if combined["oa_code"].duplicated().any():
+        duplicates = combined.loc[combined["oa_code"].duplicated(), "oa_code"].unique()
+        raise ValueError(
+            "ladder frames must have disjoint oa_code values; duplicate "
+            f"value(s): {list(map(str, duplicates[:5]))}."
+        )
+    return combined
+
+
 def _normalise_lookup(
     frame: pd.DataFrame,
     *,
@@ -215,5 +263,6 @@ def _raise_on_unmatched(
 __all__ = [
     "LADDER_OA_COLUMNS",
     "assemble_uk_oa_ladder",
+    "concat_uk_ladder_frames",
     "join_uk_oa_ladder_layers",
 ]

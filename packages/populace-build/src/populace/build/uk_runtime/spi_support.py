@@ -16,13 +16,31 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.uk_runtime.hmrc_income import (
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+)
 from populace.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+from populace.frame import (
+    MassChangeRecord,
+    WeightKind,
+    Weights,
+)
 
 BASE_FRS_SUPPORT_CHANNEL = "frs"
 SPI_SYNTHETIC_SUPPORT_CHANNEL = "spi"
 UK_SPI_SUPPORT_STAGE_NAME = "spi_support_channel"
 DEFAULT_SPI_SUPPORT_HOUSEHOLDS = 10_000
+DEFAULT_SPI_PRIOR_MASS_SHARE = 0.5
 HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN = "household_is_spi_synthetic"
+SPI_REPLACEMENT_STRATA_COLUMNS = (
+    "clone_index",
+    "household_is_capital_gains_clone",
+    "region",
+)
+SPI_PRIOR_MASS_CHANGE_REASON = (
+    "Allocate 50% of certified UK national household prior mass to the "
+    "rebuilt 2022-23 SPI support channel; total national mass is conserved."
+)
 
 SPI_INCOME_COMPONENT_COLUMNS = (
     "employment_income",
@@ -31,6 +49,7 @@ SPI_INCOME_COMPONENT_COLUMNS = (
     "dividend_income",
     "private_pension_income",
     "property_income",
+    "other_investment_income",
 )
 
 # Mirrors the eFRS SPI-trained first-stage QRF output surface. Gift Aid and
@@ -40,12 +59,72 @@ SPI_INCOME_IMPUTATION_COLUMNS = SPI_INCOME_COMPONENT_COLUMNS + (
     "gift_aid",
     "charitable_investment_gifts",
 )
+SPI_HMRC_EMPLOYED_INCOME_COLUMN = "hmrc_spi_employed_income"
+SPI_HMRC_OTHER_INCOME_COLUMN = "hmrc_spi_other_income"
+SPI_HMRC_STATE_PENSION_INCOME_COLUMN = "hmrc_spi_state_pension_income"
+SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN = "hmrc_spi_total_earned_income"
+SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN = "hmrc_spi_total_investment_income"
+SPI_HMRC_PAY_COLUMN = "hmrc_spi_pay"
+SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN = "hmrc_spi_employment_benefits"
+SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN = "hmrc_spi_employment_expenses"
+SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN = "hmrc_spi_incapacity_benefit_income"
+SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN = "hmrc_spi_other_social_security_income"
+SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN = "hmrc_spi_taxable_termination_pay"
+SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN = "hmrc_spi_unemployment_benefit_income"
+SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN = (
+    "hmrc_spi_miscellaneous_employment_income"
+)
+SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS = (
+    SPI_HMRC_PAY_COLUMN,
+    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+    SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
+    SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN,
+    SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
+    SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
+    SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
+    SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+)
+
+# These are source leaves drawn jointly by the first-stage QRF.  TI itself is
+# deliberately absent: the documented accounting aggregates below are derived
+# after every draw so the identity cannot drift stochastically.
+SPI_HMRC_QRF_AUXILIARY_COLUMNS = (
+    *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+)
+SPI_HMRC_DERIVED_AUXILIARY_COLUMNS = (
+    SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+    SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+    SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+)
+SPI_INCOME_QRF_OUTPUT_COLUMNS = (
+    *(
+        column
+        for column in SPI_INCOME_IMPUTATION_COLUMNS
+        if column != "employment_income"
+    ),
+    *SPI_HMRC_QRF_AUXILIARY_COLUMNS,
+)
+
+# The enhanced-FRS FRS-only stage uses these six income predictors. OTHERINV
+# is a first-stage SPI draw and HMRC accounting component, but the FRS base
+# does not supply `other_investment_income` for second-stage training.
+FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS = (
+    "employment_income",
+    "self_employment_income",
+    "savings_interest_income",
+    "dividend_income",
+    "private_pension_income",
+    "property_income",
+)
 
 FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS = (
     "age",
     "gender",
     "region",
-    *SPI_INCOME_COMPONENT_COLUMNS,
+    *FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
 )
 
 # Mirrors the eFRS second-stage FRS-only QRF output surface. These fields are
@@ -103,6 +182,10 @@ class UKSPISupportResult:
     household: pd.DataFrame
     id_multiplier: int
     spi_household_ids: tuple[Any, ...]
+    household_weight_kind: WeightKind | None = None
+    mass_log: tuple[MassChangeRecord, ...] = ()
+    replaced_spi_households: int = 0
+    spi_prior_mass_share: float = 0.0
 
     @property
     def n_spi_households(self) -> int:
@@ -118,6 +201,7 @@ def create_uk_spi_support_tables(
     seed: int = 42,
     source_year: int | None = None,
     id_multiplier: int | None = None,
+    selected_household_ids: Sequence[Any] | None = None,
 ) -> UKSPISupportResult:
     """Create a zero-weight SPI support copy from UK single-year tables.
 
@@ -149,11 +233,17 @@ def create_uk_spi_support_tables(
     elif id_multiplier <= 0:
         raise ValueError("id_multiplier must be positive.")
 
-    selected_household_ids = _sample_spi_household_ids(
-        household_frame,
-        spi_household_count=spi_household_count,
-        seed=seed,
-    )
+    if selected_household_ids is None:
+        selected_household_ids = _sample_spi_household_ids(
+            household_frame,
+            spi_household_count=spi_household_count,
+            seed=seed,
+        )
+    else:
+        selected_household_ids = _validate_selected_household_ids(
+            household_frame,
+            selected_household_ids,
+        )
     selected_household_set = set(selected_household_ids)
     selected_person = person_frame[
         person_frame["person_household_id"].isin(selected_household_set)
@@ -227,6 +317,121 @@ def create_uk_spi_support_tables(
     )
     _validate_uk_support_outputs(result.person, result.benunit, result.household)
     return result
+
+
+def replace_uk_spi_support_tables(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    seed: int = 42,
+    source_year: int | None = None,
+    spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE,
+    input_weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
+    strata_columns: Sequence[str] = SPI_REPLACEMENT_STRATA_COLUMNS,
+) -> UKSPISupportResult:
+    """Drop one dead SPI channel and rebuild it with conserved positive mass.
+
+    The certified Populace UK candidate contains a complete enhanced-FRS base
+    plus a zero-weight SPI-synthetic channel. This transform removes that dead
+    channel, samples replacement source households within the exact reviewed
+    clone/capital-gains/region quotas, rebuilds linked rows once, and allocates
+    a fixed share of national household mass to the new channel. The allocation
+    advances weights to ``IMPORTANCE`` and records a deliberate, factor-one
+    :class:`MassChangeRecord`; national mass never doubles or disappears.
+    """
+
+    if not isinstance(input_weight_kind, WeightKind):
+        raise TypeError("input_weight_kind must be a WeightKind.")
+    if not isinstance(mass_log, tuple) or any(
+        not isinstance(record, MassChangeRecord) for record in mass_log
+    ):
+        raise TypeError("mass_log must be a tuple of MassChangeRecord.")
+    share = float(spi_prior_mass_share)
+    if not np.isfinite(share) or not 0.0 < share < 1.0:
+        raise ValueError("spi_prior_mass_share must be finite and in (0, 1).")
+    if not isinstance(seed, int):
+        raise ValueError("seed must be an integer.")
+
+    person_frame = person.copy()
+    benunit_frame = benunit.copy()
+    household_frame = household.copy()
+    _validate_uk_support_inputs(person_frame, benunit_frame, household_frame)
+    if HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN not in household_frame:
+        raise ValueError(
+            "Certified UK base is missing household_is_spi_synthetic; the "
+            "replacement stage requires one explicit existing SPI channel."
+        )
+    synthetic = _strict_bool_mask(
+        household_frame[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN],
+        label=HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    )
+    if not synthetic.any():
+        raise ValueError(
+            "Certified UK base has no SPI-synthetic households to replace."
+        )
+    incoming_weights = pd.to_numeric(
+        household_frame["household_weight"], errors="coerce"
+    ).to_numpy(dtype=float, na_value=np.nan)
+    if not np.allclose(incoming_weights[synthetic], 0.0, rtol=0.0, atol=0.0):
+        raise ValueError(
+            "Existing SPI-synthetic households must all have zero incoming "
+            "weight before replacement; refusing to discard live population mass."
+        )
+
+    stratum_columns = tuple(str(column) for column in strata_columns)
+    if not stratum_columns or any(not column for column in stratum_columns):
+        raise ValueError("strata_columns must contain non-empty column names.")
+    _require_columns(household_frame, stratum_columns, label="household")
+    replacement_source_ids = _sample_replacement_household_ids(
+        household_frame,
+        synthetic=synthetic,
+        strata_columns=stratum_columns,
+        seed=seed,
+    )
+
+    dead_household_ids = set(household_frame.loc[synthetic, "household_id"])
+    dead_people = person_frame["person_household_id"].isin(dead_household_ids)
+    dead_benunit_ids = set(person_frame.loc[dead_people, "person_benunit_id"])
+    surviving_people = person_frame.loc[~dead_people].copy()
+    surviving_benunits = benunit_frame.loc[
+        ~benunit_frame["benunit_id"].isin(dead_benunit_ids)
+    ].copy()
+    surviving_households = household_frame.loc[~synthetic].copy()
+    surviving_people = _strip_support_metadata(surviving_people, entity="person")
+    surviving_benunits = _strip_support_metadata(surviving_benunits, entity="benunit")
+    surviving_households = _strip_support_metadata(
+        surviving_households,
+        entity="household",
+    ).drop(columns=[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN])
+
+    rebuilt = create_uk_spi_support_tables(
+        person=surviving_people,
+        benunit=surviving_benunits,
+        household=surviving_households,
+        spi_household_count=None,
+        seed=seed,
+        source_year=source_year,
+        selected_household_ids=replacement_source_ids,
+    )
+    allocated = _allocate_spi_prior_mass(
+        rebuilt,
+        spi_prior_mass_share=share,
+        input_weight_kind=input_weight_kind,
+        mass_log=mass_log,
+    )
+    return UKSPISupportResult(
+        person=allocated.person,
+        benunit=allocated.benunit,
+        household=allocated.household,
+        id_multiplier=allocated.id_multiplier,
+        spi_household_ids=allocated.spi_household_ids,
+        household_weight_kind=allocated.household_weight_kind,
+        mass_log=allocated.mass_log,
+        replaced_spi_households=int(synthetic.sum()),
+        spi_prior_mass_share=share,
+    )
 
 
 def fill_support_channel_from_source(
@@ -391,6 +596,302 @@ def _sample_spi_household_ids(
     return tuple(selected["household_id"].tolist())
 
 
+def _validate_selected_household_ids(
+    household: pd.DataFrame,
+    selected_household_ids: Sequence[Any],
+) -> tuple[Any, ...]:
+    if isinstance(selected_household_ids, str | bytes):
+        raise TypeError("selected_household_ids must be a sequence of IDs.")
+    selected = tuple(selected_household_ids)
+    if not selected:
+        raise ValueError("selected_household_ids must not be empty.")
+    if len(set(selected)) != len(selected):
+        raise ValueError("selected_household_ids must be unique.")
+    available = set(household["household_id"])
+    missing = [value for value in selected if value not in available]
+    if missing:
+        raise ValueError(
+            "selected_household_ids contains value(s) absent from household: "
+            f"{list(map(str, missing[:5]))}."
+        )
+    selected_set = set(selected)
+    return tuple(
+        value for value in household["household_id"].tolist() if value in selected_set
+    )
+
+
+def _sample_replacement_household_ids(
+    household: pd.DataFrame,
+    *,
+    synthetic: np.ndarray,
+    strata_columns: tuple[str, ...],
+    seed: int,
+) -> tuple[Any, ...]:
+    base = household.loc[~synthetic]
+    dead = household.loc[synthetic]
+    base_groups = base.groupby(
+        list(strata_columns),
+        sort=True,
+        dropna=False,
+    ).indices
+    dead_groups = dead.groupby(
+        list(strata_columns),
+        sort=True,
+        dropna=False,
+    ).indices
+    rng = np.random.default_rng(seed)
+    selected_ids: list[Any] = []
+    for key in sorted(dead_groups, key=_stratum_sort_key):
+        quota = len(dead_groups[key])
+        candidates = base_groups.get(key)
+        if candidates is None or len(candidates) < quota:
+            capacity = 0 if candidates is None else len(candidates)
+            raise ValueError(
+                "Cannot rebuild the certified SPI quota for stratum "
+                f"{key!r}: need {quota} base household(s), found {capacity}."
+            )
+        chosen_positions = rng.choice(candidates, size=quota, replace=False)
+        selected_ids.extend(base.iloc[chosen_positions]["household_id"].tolist())
+    return _validate_selected_household_ids(base, selected_ids)
+
+
+def _stratum_sort_key(value: Any) -> tuple[str, ...]:
+    values = value if isinstance(value, tuple) else (value,)
+    return tuple("<NA>" if pd.isna(item) else str(item) for item in values)
+
+
+def _strict_bool_mask(values: pd.Series, *, label: str) -> np.ndarray:
+    if values.isna().any():
+        raise ValueError(f"{label} contains missing values.")
+    if pd.api.types.is_bool_dtype(values):
+        return values.to_numpy(dtype=bool)
+    if pd.api.types.is_numeric_dtype(values):
+        numeric = pd.to_numeric(values, errors="coerce")
+        if not numeric.isin([0, 1]).all():
+            raise ValueError(f"{label} must contain only boolean/0/1 values.")
+        return numeric.to_numpy(dtype=float) != 0.0
+    normalized = values.astype(str).str.strip().str.lower()
+    if not normalized.isin(["true", "false", "1", "0"]).all():
+        raise ValueError(f"{label} must contain only boolean/0/1 values.")
+    return normalized.isin(["true", "1"]).to_numpy(dtype=bool)
+
+
+def _strip_support_metadata(frame: pd.DataFrame, *, entity: str) -> pd.DataFrame:
+    metadata = {
+        support_channel_column(entity),
+        support_clone_index_column(entity),
+        support_source_id_column(entity),
+    }
+    return frame.drop(columns=sorted(metadata & set(frame.columns)))
+
+
+def _allocate_spi_prior_mass(
+    result: UKSPISupportResult,
+    *,
+    spi_prior_mass_share: float,
+    input_weight_kind: WeightKind,
+    mass_log: tuple[MassChangeRecord, ...],
+) -> UKSPISupportResult:
+    household = result.household.copy()
+    channels = household[support_channel_column("household")]
+    base_mask = channels.eq(BASE_FRS_SUPPORT_CHANNEL).to_numpy()
+    spi_mask = channels.eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy()
+    if not base_mask.any() or not spi_mask.any() or np.any(~(base_mask | spi_mask)):
+        raise ValueError(
+            "Rebuilt UK support must contain exactly FRS and SPI channels."
+        )
+
+    pre_weights = pd.to_numeric(
+        household["household_weight"], errors="coerce"
+    ).to_numpy(dtype=float, na_value=np.nan)
+    old_total = float(pre_weights.sum())
+    source_weights = pd.Series(
+        pre_weights[base_mask],
+        index=household.loc[base_mask, "household_id"].to_numpy(),
+    )
+    spi_source_ids = household.loc[
+        spi_mask,
+        support_source_id_column("household"),
+    ]
+    spi_raw = spi_source_ids.map(source_weights).to_numpy(dtype=np.float64)
+    if not np.isfinite(spi_raw).all() or not (spi_raw > 0.0).all():
+        raise ValueError(
+            "Every rebuilt SPI household must inherit a strictly positive "
+            "source-household prior."
+        )
+    final_weights = np.zeros_like(pre_weights)
+    final_weights[base_mask] = pre_weights[base_mask] * (1.0 - spi_prior_mass_share)
+    final_weights[spi_mask] = spi_raw * (
+        old_total * spi_prior_mass_share / float(spi_raw.sum())
+    )
+
+    # This is a newly assembled two-channel population, not an in-place
+    # replacement of the incoming weight vector. Like the US ACS multispine
+    # pool, its explicitly uncalibrated allocation is therefore IMPORTANCE
+    # weighted even when the certified base arrived with CALIBRATED weights.
+    # Calling Frame.with_weights here would incorrectly treat that legitimate
+    # pool construction as a forbidden backward transition.
+    allocated_weights = _importance_weights_with_exact_total(
+        final_weights,
+        old_total,
+    )
+    household["household_weight"] = allocated_weights.values
+    if allocated_weights.total != old_total:
+        raise ValueError("UK SPI prior allocation failed to conserve national mass.")
+    if not (household.loc[spi_mask, "household_weight"] > 0.0).all():
+        raise ValueError("Rebuilt UK SPI channel contains dead zero-weight rows.")
+    allocation_record = MassChangeRecord(
+        entity="household",
+        old_total=old_total,
+        new_total=allocated_weights.total,
+        declared_factor=1.0,
+        reason=_spi_prior_mass_change_reason(spi_prior_mass_share),
+    )
+    return UKSPISupportResult(
+        person=result.person,
+        benunit=result.benunit,
+        household=household,
+        id_multiplier=result.id_multiplier,
+        spi_household_ids=result.spi_household_ids,
+        household_weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(*mass_log, allocation_record),
+        spi_prior_mass_share=spi_prior_mass_share,
+    )
+
+
+def _importance_weights_with_exact_total(
+    values: np.ndarray,
+    target: float,
+) -> Weights:
+    """Return importance weights whose NumPy reduction is exactly ``target``."""
+
+    weights = Weights(values, WeightKind.IMPORTANCE)
+    if weights.total == target:
+        return weights
+    positive_indices = np.flatnonzero(weights.values > 0.0)
+    correction_indices = dict.fromkeys(
+        (
+            int(np.argmax(weights.values)),
+            int(positive_indices[-1]),
+            int(positive_indices[0]),
+            int(positive_indices[np.argmin(weights.values[positive_indices])]),
+            int(positive_indices[len(positive_indices) // 2]),
+        )
+    )
+    for correction_index in correction_indices:
+        corrected = _exact_total_correction(
+            weights.values,
+            target=target,
+            correction_index=correction_index,
+        )
+        if corrected is not None:
+            return Weights(corrected, WeightKind.IMPORTANCE)
+    raise ValueError("UK SPI allocation has no representable exact-total correction.")
+
+
+def _exact_total_correction(
+    values: np.ndarray,
+    *,
+    target: float,
+    correction_index: int,
+) -> np.ndarray | None:
+    corrected = np.array(values, dtype=np.float64, copy=True)
+    initial_value = float(corrected[correction_index])
+    initial_total = float(corrected.sum())
+    candidate_value = initial_value + (target - initial_total)
+    if not np.isfinite(candidate_value) or candidate_value <= 0.0:
+        return None
+
+    def total_at(value: float) -> float:
+        corrected[correction_index] = value
+        return float(corrected.sum())
+
+    candidate_total = total_at(candidate_value)
+    if candidate_total == target:
+        return corrected
+
+    initial_total = total_at(initial_value)
+    bracket = _target_bracket(
+        target=target,
+        left=(initial_value, initial_total),
+        right=(candidate_value, candidate_total),
+    )
+    if bracket is None:
+        origin_value = candidate_value
+        origin_total = candidate_total
+        origin_bits = _positive_float_bits(origin_value)
+        direction = 1 if origin_total < target else -1
+        step = 1
+        for _ in range(64):
+            trial_bits = origin_bits + direction * step
+            if trial_bits <= 0 or trial_bits >= 0x7FF0000000000000:
+                break
+            trial_value = _positive_float_from_bits(trial_bits)
+            trial_total = total_at(trial_value)
+            if trial_total == target:
+                return corrected
+            bracket = _target_bracket(
+                target=target,
+                left=(origin_value, origin_total),
+                right=(trial_value, trial_total),
+            )
+            if bracket is not None:
+                break
+            step *= 2
+    if bracket is None:
+        return None
+
+    low, high = bracket
+    low_bits = _positive_float_bits(low[0])
+    high_bits = _positive_float_bits(high[0])
+    while high_bits - low_bits > 1:
+        middle_bits = (low_bits + high_bits) // 2
+        middle_value = _positive_float_from_bits(middle_bits)
+        middle_total = total_at(middle_value)
+        if middle_total == target:
+            return corrected
+        if middle_total < target:
+            low_bits = middle_bits
+        else:
+            high_bits = middle_bits
+
+    for bits in (low_bits, high_bits):
+        value = _positive_float_from_bits(bits)
+        if total_at(value) == target:
+            return corrected
+    return None
+
+
+def _target_bracket(
+    *,
+    target: float,
+    left: tuple[float, float],
+    right: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    low, high = sorted((left, right), key=lambda item: item[0])
+    if low[1] <= target <= high[1]:
+        return low, high
+    return None
+
+
+def _positive_float_bits(value: float) -> int:
+    return int(np.asarray(value, dtype=np.float64).view(np.uint64))
+
+
+def _positive_float_from_bits(bits: int) -> float:
+    return float(np.asarray(bits, dtype=np.uint64).view(np.float64))
+
+
+def _spi_prior_mass_change_reason(share: float) -> str:
+    if np.isclose(share, DEFAULT_SPI_PRIOR_MASS_SHARE, rtol=0.0, atol=0.0):
+        return SPI_PRIOR_MASS_CHANGE_REASON
+    return (
+        f"Allocate {share:.12g} of certified UK national household prior mass "
+        "to the rebuilt 2022-23 SPI support channel; total national mass is "
+        "conserved."
+    )
+
+
 def _validate_uk_support_inputs(
     person: pd.DataFrame,
     benunit: pd.DataFrame,
@@ -536,17 +1037,39 @@ def _require_entity(entity: str) -> str:
 
 __all__ = [
     "BASE_FRS_SUPPORT_CHANNEL",
+    "DEFAULT_SPI_PRIOR_MASS_SHARE",
     "DEFAULT_SPI_SUPPORT_HOUSEHOLDS",
+    "FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS",
     "FRS_ONLY_SPI_FILL_PERSON_COLUMNS",
     "FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS",
     "HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN",
     "SPI_SYNTHETIC_SUPPORT_CHANNEL",
     "SPI_INCOME_COMPONENT_COLUMNS",
+    "SPI_HMRC_DERIVED_AUXILIARY_COLUMNS",
+    "SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS",
+    "SPI_HMRC_EMPLOYED_INCOME_COLUMN",
+    "SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN",
+    "SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN",
+    "SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN",
+    "SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN",
+    "SPI_HMRC_OTHER_INCOME_COLUMN",
+    "SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN",
+    "SPI_HMRC_PAY_COLUMN",
+    "SPI_HMRC_QRF_AUXILIARY_COLUMNS",
+    "SPI_HMRC_STATE_PENSION_INCOME_COLUMN",
+    "SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN",
+    "SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN",
+    "SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN",
+    "SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN",
     "SPI_INCOME_IMPUTATION_COLUMNS",
+    "SPI_INCOME_QRF_OUTPUT_COLUMNS",
+    "SPI_PRIOR_MASS_CHANGE_REASON",
+    "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",
     "create_uk_spi_support_tables",
     "fill_support_channel_from_source",
+    "replace_uk_spi_support_tables",
     "support_channel_column",
     "support_clone_index_column",
     "support_source_id_column",

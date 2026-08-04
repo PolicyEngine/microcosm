@@ -9,11 +9,14 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from populace.calibrate import (
+    CalibrationResult,
     L0RefitResult,
     Target,
     TargetSet,
@@ -23,7 +26,10 @@ from populace.calibrate import (
     effective_sample_size,
     refit_l0_selection,
     relative_error_loss,
+    select_exact_k,
 )
+from populace.calibrate import solve as solve_module
+from populace.calibrate.gates import hard_concrete_open_probability_threshold
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 
@@ -88,6 +94,51 @@ def _l2_concentration_fixture() -> tuple[Frame, TargetSet, np.ndarray]:
         )
     )
     return frame, targets, initial_weights
+
+
+def _exact_k_design_fixture(
+    initial_weights: np.ndarray,
+    measure_values: np.ndarray,
+) -> tuple[Frame, TargetSet, CalibrationResult]:
+    """Build a tiny design-weighted frame and a valid L0 selection receipt."""
+    weights = np.asarray(initial_weights, dtype=np.float64)
+    measure = np.asarray(measure_values, dtype=np.float64)
+    n = len(weights)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": range(n),
+                    "adjudicated_measure": measure,
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="adjudicated",
+                entity="household",
+                value=float(weights @ measure),
+                measure="adjudicated_measure",
+                tolerance=0.01,
+            ),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        l0_lambda=1e-8,
+    )
+    return frame, targets, selection
 
 
 def test_method_prox_l1_selects_sparse_subset() -> None:
@@ -303,6 +354,7 @@ def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> N
         )
     )
     result = calibrate(frame, targets, epochs=400, seed=0)
+    assert result.gate_open_probabilities is None
     assert result.final_loss < result.initial_loss * 0.01
     for diag in result.diagnostics:
         assert abs(diag.relative_error) < 0.01  # within 1%
@@ -590,8 +642,92 @@ def test_target_records_controls_the_budget_not_just_lambda(
     assert abs(high.n_nonzero - 250) <= 60, high.n_nonzero
     # A budget-controlled run reports the penalty it settled on.
     assert low.l0_lambda > 0.0 and high.l0_lambda > 0.0
+    assert low.gate_open_probabilities is not None
+    assert high.gate_open_probabilities is not None
+    assert low.gate_open_probabilities.shape == low.weights.shape
+    assert high.gate_open_probabilities.shape == high.weights.shape
     # The smaller pool took the stronger penalty (more pruning pressure).
     assert low.l0_lambda > high.l0_lambda
+
+
+def test_budget_search_returns_probabilities_from_the_winning_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    counts = [5, 2, 1]
+
+    def fake_optimize(*args, return_gate_open_probabilities=False, **kwargs):
+        evaluation = len(counts_seen)
+        counts_seen.append(counts[evaluation])
+        weights = np.concatenate(
+            (np.ones(counts[evaluation]), np.zeros(5 - counts[evaluation]))
+        )
+        trajectory = np.asarray([float(evaluation)])
+        probabilities = np.full(5, float(evaluation + 1))
+        assert return_gate_open_probabilities is True
+        return weights, trajectory, probabilities
+
+    counts_seen: list[int] = []
+    monkeypatch.setattr(solve_module, "_optimize", fake_optimize)
+    result = solve_module._search_l0_lambda_for_budget(
+        None,
+        None,
+        None,
+        None,
+        10.0,
+        np.ones(5),
+        target_records=3,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        max_weight_ratio=None,
+        l2_lambda=0.0,
+        init_mean=0.9,
+        temperature=0.25,
+        seed=0,
+        prune_atol=1e-6,
+        initial_lambda=None,
+        budget_iters=3,
+        return_gate_open_probabilities=True,
+    )
+
+    weights, trajectory, realized_lambda, n_nonzero, probabilities = result
+    np.testing.assert_array_equal(weights, [1.0, 1.0, 0.0, 0.0, 0.0])
+    np.testing.assert_array_equal(trajectory, [1.0])
+    assert realized_lambda == pytest.approx(0.1)
+    assert n_nonzero == 2
+    np.testing.assert_array_equal(probabilities, np.full(5, 2.0))
+
+
+def test_budget_search_default_preserves_legacy_optimizer_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def legacy_optimize(*args, **kwargs):
+        assert "return_gate_open_probabilities" not in kwargs
+        return np.ones(5), np.asarray([0.0])
+
+    monkeypatch.setattr(solve_module, "_optimize", legacy_optimize)
+    result = solve_module._search_l0_lambda_for_budget(
+        None,
+        None,
+        None,
+        None,
+        10.0,
+        np.ones(5),
+        target_records=3,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        max_weight_ratio=None,
+        l2_lambda=0.0,
+        init_mean=0.9,
+        temperature=0.25,
+        seed=0,
+        prune_atol=1e-6,
+        initial_lambda=None,
+        budget_iters=1,
+    )
+
+    assert len(result) == 4
 
 
 def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> None:
@@ -609,11 +745,34 @@ def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> N
         )
     )
     weak = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3e-4)
-    strong = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3e-3)
+    strong = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3.5e-3)
     assert strong.n_nonzero < weak.n_nonzero
     # Reported penalty is the value supplied, unchanged.
     assert weak.l0_lambda == 3e-4
-    assert strong.l0_lambda == 3e-3
+    assert strong.l0_lambda == 3.5e-3
+    assert weak.gate_open_probabilities is not None
+    assert weak.gate_open_probabilities.shape == weak.weights.shape
+    assert weak.gate_open_probabilities.dtype == np.float64
+    assert np.isfinite(weak.gate_open_probabilities).all()
+    assert (
+        (0.0 <= weak.gate_open_probabilities) & (weak.gate_open_probabilities <= 1.0)
+    ).all()
+
+    # The stronger fit straddles the probability threshold, so this fixture
+    # distinguishes the exact formula from thresholds that merely happen to
+    # retain every record. Latent weights stay comfortably above the pruning
+    # tolerance, making the gate boundary the only support boundary here.
+    probability_threshold = hard_concrete_open_probability_threshold(0.25)
+    assert (
+        float(strong.gate_open_probabilities.min())
+        < probability_threshold
+        < float(strong.gate_open_probabilities.max())
+    )
+    current_support = strong.weights > 1e-6 * float(np.mean(strong.initial_weights))
+    np.testing.assert_array_equal(
+        strong.gate_open_probabilities > probability_threshold,
+        current_support,
+    )
 
 
 def test_l0_refit_returns_refit_on_selected_support(feasible_frame) -> None:
@@ -679,6 +838,353 @@ def test_refit_l0_selection_reuses_existing_selection(feasible_frame) -> None:
     assert result.refit.l0_lambda == 0.0
     assert result.frame.n("household") == selection.n_nonzero
     assert len(result.selected_entity_ids) == selection.n_nonzero
+
+    with pytest.raises(ValueError, match="only be provided with support and k"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support_inclusion_probabilities=np.ones(selection.n_nonzero),
+            epochs=1,
+        )
+
+
+def test_refit_l0_selection_accepts_gate_asserted_exact_k_support(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame(n=120)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=250,
+        seed=0,
+        target_records=30,
+        mass="conserve",
+    )
+    threshold = 1e-6 * float(np.mean(selection.initial_weights))
+    closed = np.flatnonzero(selection.weights <= threshold)
+    assert closed.size > 0
+    other = np.flatnonzero(np.arange(120) != closed[0])[:11]
+    support = np.sort(np.concatenate(([closed[0]], other)))
+
+    with pytest.raises(ValueError, match="exact-k cardinality gate failed"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support=support[:-1],
+            k=12,
+            epochs=10,
+        )
+
+    with pytest.raises(ValueError, match="inclusion_probabilities are required"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support=support,
+            k=12,
+            epochs=10,
+        )
+
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support,
+        k=12,
+        support_inclusion_probabilities=np.full(12, 0.1),
+        epochs=80,
+        seed=1,
+        mass="conserve",
+    )
+
+    expected_mask = np.zeros(120, dtype=bool)
+    expected_mask[support] = True
+    np.testing.assert_array_equal(result.selected_mask, expected_mask)
+    np.testing.assert_array_equal(result.selected_entity_ids, support)
+    assert result.frame.n("household") == 12
+    assert len(result.weights) == 12
+    # The sampled closed gate proves the explicit path initialized from the
+    # original frame's positive design weights, not selection.frame's zeros.
+    assert closed[0] in support
+    np.testing.assert_array_equal(result.initial_weights, np.full(12, 10_000.0))
+
+
+def test_exact_k_refit_conserves_full_pool_mass(feasible_frame) -> None:
+    """A 3-of-12 refit conserves 12,000, not the selected-only 3,000."""
+    frame, truths = feasible_frame(n=12, weight=1000.0)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        l0_lambda=1e-8,
+    )
+
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=np.array([0, 4, 8], dtype=np.int64),
+        k=3,
+        support_inclusion_probabilities=np.full(3, 0.25),
+        epochs=1,
+        seed=0,
+        mass="conserve",
+    )
+
+    np.testing.assert_array_equal(result.initial_weights, np.full(3, 4_000.0))
+    assert result.initial_weights.sum() == truths["population"]
+    assert result.weights.sum() == pytest.approx(truths["population"])
+    assert result.diagnostics[0].final_estimate == pytest.approx(truths["population"])
+
+
+@pytest.mark.parametrize(
+    "inclusion_probabilities",
+    [
+        pytest.param(
+            np.asarray([0.2 + 7j, 0.6 + 8j, 0.8 + 9j], dtype=np.complex128),
+            id="finite-imaginary",
+        ),
+        pytest.param(
+            np.asarray(
+                [complex(0.2, np.nan), 0.6 + 8j, 0.8 + 9j],
+                dtype=np.complex128,
+            ),
+            id="nan-imaginary",
+        ),
+    ],
+)
+def test_exact_k_refit_rejects_complex_inclusion_probabilities_by_name(
+    inclusion_probabilities: np.ndarray,
+) -> None:
+    frame, targets, selection = _exact_k_design_fixture(
+        np.asarray([2.0, 3.0, 5.0]),
+        np.ones(3),
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", np.exceptions.ComplexWarning)
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"^support_inclusion_probabilities must be a one-dimensional "
+                r"numeric vector aligned with support\.$"
+            ),
+        ):
+            refit_l0_selection(
+                frame,
+                targets,
+                selection,
+                support=np.arange(3, dtype=np.int64),
+                k=3,
+                support_inclusion_probabilities=inclusion_probabilities,
+                epochs=1,
+            )
+
+
+def test_exact_k_refit_cap_uses_full_pool_expansion_weights(feasible_frame) -> None:
+    """The 2-of-12 free-mass refit can reach 12,000 under a 5x cap."""
+    frame, truths = feasible_frame(n=12, weight=1000.0)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        l0_lambda=1e-8,
+    )
+
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=np.array([1, 9], dtype=np.int64),
+        k=2,
+        support_inclusion_probabilities=np.full(2, 1.0 / 6.0),
+        epochs=10,
+        learning_rate=0.001,
+        seed=0,
+        mass="free",
+        max_weight_ratio=5.0,
+    )
+
+    np.testing.assert_array_equal(result.initial_weights, np.full(2, 6_000.0))
+    assert result.diagnostics[0].final_estimate == pytest.approx(
+        truths["population"], rel=1e-5
+    )
+    assert (result.weights <= 5.0 * result.initial_weights).all()
+
+
+def test_exact_k_refit_reaches_sols_inclusion_aware_cap_case() -> None:
+    """Sol's seed-113 case reaches [2, 1] only with the selected w/q baseline."""
+    weights = np.asarray([0.125, 1.0, 0.9375, 0.9375])
+    inclusion_probabilities = np.asarray([0.125, 0.5, 0.6875, 0.6875])
+    low_q_group = np.asarray([1.0, 0.0, 1.0, 1.0])
+    frame, targets, selection = _exact_k_design_fixture(weights, low_q_group)
+    support, _, selected_q = select_exact_k(
+        inclusion_probabilities,
+        k=2,
+        pi_hi=1.0,
+        seed=113,
+    )
+
+    np.testing.assert_array_equal(support, [0, 1])
+    np.testing.assert_array_equal(selected_q, [0.125, 0.5])
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support,
+        k=2,
+        support_inclusion_probabilities=selected_q,
+        epochs=100,
+        learning_rate=0.02,
+        seed=0,
+        mass="conserve",
+        max_weight_ratio=5.0,
+    )
+
+    np.testing.assert_array_equal(result.initial_weights, [1.0, 2.0])
+    np.testing.assert_array_equal(5.0 * result.initial_weights, [5.0, 10.0])
+    np.testing.assert_allclose(result.weights, [2.0, 1.0], rtol=0.0, atol=0.01)
+    assert abs(result.diagnostics[0].relative_error) < 0.005
+    assert result.diagnostics[0].within_tolerance is True
+
+    ratio_baseline = weights[support] * weights.sum() / weights[support].sum()
+    assert 5.0 * ratio_baseline[0] == pytest.approx(5.0 / 3.0)
+    assert (5.0 * ratio_baseline[0] - 2.0) / 2.0 == pytest.approx(-1.0 / 6.0)
+
+
+def test_exact_k_refit_unequal_q_allocates_baseline_and_cap_by_w_over_q() -> None:
+    weights = np.asarray([2.0, 3.0, 5.0, 10.0, 20.0])
+    inclusion_probabilities = np.asarray([0.2, 0.6, 0.8, 0.7, 0.7])
+    frame, targets, selection = _exact_k_design_fixture(
+        weights,
+        np.ones(len(weights)),
+    )
+    support, _, selected_q = select_exact_k(
+        inclusion_probabilities,
+        k=3,
+        pi_hi=1.0,
+        seed=13,
+    )
+
+    np.testing.assert_array_equal(support, [0, 1, 2])
+    # Reverse both arrays to prove the refit seam preserves their alignment
+    # while sorting the realized frame support back into pool order.
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support[::-1],
+        k=3,
+        support_inclusion_probabilities=selected_q[::-1],
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        max_weight_ratio=5.0,
+    )
+
+    expected = np.asarray([320.0 / 17.0, 160.0 / 17.0, 200.0 / 17.0])
+    ratio_baseline = weights[support] * weights.sum() / weights[support].sum()
+    np.testing.assert_allclose(result.initial_weights, expected, rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(
+        5.0 * result.initial_weights,
+        5.0 * expected,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    assert not np.allclose(result.initial_weights, ratio_baseline)
+
+
+def test_exact_k_refit_uniform_q_matches_ratio_rescale() -> None:
+    weights = np.asarray([2.0, 3.0, 5.0, 10.0, 20.0])
+    inclusion_probabilities = np.full(len(weights), 0.6)
+    frame, targets, selection = _exact_k_design_fixture(
+        weights,
+        np.ones(len(weights)),
+    )
+    support, _, selected_q = select_exact_k(
+        inclusion_probabilities,
+        k=3,
+        pi_hi=1.0,
+        seed=13,
+    )
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        support=support,
+        k=3,
+        support_inclusion_probabilities=selected_q,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+    )
+
+    ratio_baseline = weights[support] * weights.sum() / weights[support].sum()
+    np.testing.assert_allclose(
+        result.initial_weights,
+        ratio_baseline,
+        rtol=1e-15,
+        atol=0.0,
+    )
+
+
+def test_exact_k_refit_calls_named_gate_after_subsetting(
+    feasible_frame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The named cardinality gate protects both sides of frame subsetting."""
+    frame, truths = feasible_frame(n=12, weight=1000.0)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        l0_lambda=1e-8,
+    )
+    real_gate = solve_module.assert_exact_k_support
+    calls: list[tuple[np.ndarray, int, int | None]] = []
+
+    def recording_gate(support, k, *, pool_size=None):
+        normalized = real_gate(support, k, pool_size=pool_size)
+        calls.append((normalized.copy(), k, pool_size))
+        if len(calls) == 2:
+            raise ValueError("post-subset exact-k gate sentinel")
+        return normalized
+
+    monkeypatch.setattr(solve_module, "assert_exact_k_support", recording_gate)
+
+    with pytest.raises(ValueError, match="post-subset exact-k gate sentinel"):
+        refit_l0_selection(
+            frame,
+            targets,
+            selection,
+            support=np.array([0, 4, 8], dtype=np.int64),
+            k=3,
+            support_inclusion_probabilities=np.full(3, 0.25),
+            epochs=1,
+        )
+
+    assert len(calls) == 2
+    np.testing.assert_array_equal(calls[0][0], [0, 4, 8])
+    np.testing.assert_array_equal(calls[1][0], [0, 1, 2])
+    assert calls[0][2] == 12
+    assert calls[1][2] == 3
 
 
 def test_l0_refit_requires_l0_pruning_control(feasible_frame) -> None:

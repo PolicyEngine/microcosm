@@ -22,9 +22,9 @@
       "value_type": "bool",
       "default": true,
       "populace_treatment": "out_of_scope",
-      "scope_owner": "snap_take_up source stage (populace#243, landed in PR #294)",
+      "scope_owner": "snap_state_take_up source stage (populace#372); national prior from snap_take_up (populace#243, PR #294)",
       "rate": {"value": 0.82, "source": "https://www.fns.usda.gov/snap/participation-rates", "agency": "USDA FNS", "status": "sourced_administrative"},
-      "notes": "SNAP take-up is seeded by the snap_take_up source stage, reported-receipt-anchored on raw ASEC SPM_SNAPSUB and gated by snap_take_up_signal. Not seeded here to avoid duplicating that work; out_of_scope means out of scope for this module's Bernoulli seeding, not unseeded."
+      "notes": "SNAP take-up is seeded by the snap_take_up source stage (reported-receipt-anchored on raw ASEC SPM_SNAPSUB, national FNS rate fill, gated by snap_take_up_signal), then recalibrated per state by the snap_state_take_up stage to FNS average-monthly household caseloads among eligible non-anchored units (anchored count-calibration, medicaid_take_up pattern, gated by snap_state_take_up) — CPS receipt underreporting is state-dependent, so the national fill alone starves the worst-underreporting states of taker households (populace#372). The sourced national rate remains the prior, so this entry stays out_of_scope for this module's Bernoulli seeding rather than count_calibrated (that treatment forbids a sourced rate); out_of_scope means out of scope for this module's seeding, not unseeded."
     },
     {
       "variable": "takes_up_tanf_if_eligible",
@@ -111,10 +111,11 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "near_universal",
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "medicare_take_up_input source stage (measured ASEC MCARE == 1)",
       "consumed_via": "medicare_enrolled (adds), gated by is_medicare_eligible",
-      "rate": {"status": "near_universal_by_design", "source": "https://www.cms.gov/newsroom/fact-sheets", "note": "Part A near-automatic (~99%+ premium-free via 40+ work quarters); Part B ~90-93% among Part-A holders. Auto-enrollment at 65 for SSA claimants makes eligibility approximately equal enrollment."},
-      "notes": "Take-up seeding is not meaningful for Medicare: the administrative reality is ~100% and CMS publishes enrollment counts rather than a take-up-among-eligibles rate. The engine default (True) is approximately correct; forcing sub-100% would be the error. Documented, not seeded."
+      "rate": {"status": "not_used_measured_source"},
+      "notes": "The dedicated source stage restores the retired measured mapping MCARE == 1 from every locked ASEC year and copies it with source-identity clones onto the PUF support half. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_ssi_if_eligible",
@@ -122,11 +123,26 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "count_calibrated",
       "consumed_via": "ssi",
-      "rate": {"status": "scope_mismatch", "us_data_value": 0.50, "verified_source_value": {"value": 0.49, "scope": "adults 65+ only", "citation": "Urban Institute Giannarelli et al. 2024 (ATTIS, 2018), 49.0% aged SSI participation"}},
-      "followup": "Source an SSI participation rate that covers the full eligible population (aged + blind + disabled), ideally split, as a Ledger fact; SSA disability-recipient take-up is not covered by the Urban aged-only estimate.",
-      "notes": "us-data's 0.50 was applied to ALL SSI eligibles, but the cited Urban estimate (49%) is explicitly adults 65+ only, while the majority of the SSI caseload is blind/disabled. Applying an aged-only rate to the whole caseload is unsupported. Left unseeded until a full-scope rate is sourced."
+      "calibration": {
+        "anchor": "SSI_VAL",
+        "targets": ["ssa_ssi_federal_payment_recipients_by_age"],
+        "target_table": "ssa_ssi_federal_payment_recipients_by_age",
+        "target_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+        "target_period": "2024-12",
+        "target_measure": "Total with—Federal payment",
+        "target_role": "ssa_ssi_age_band_recipients",
+        "age_bands": {
+          "under_18": "age < 18",
+          "18_64": "18 <= age < 65",
+          "65_plus": "age >= 65"
+        },
+        "semantics": "SSA SSI Monthly Statistics December 2024 Table 1 recipients in the Total with—Federal payment row, by age band. The counts live in the ledger and bind as ordinary weight-calibration targets (registry role ssa_ssi_age_band_recipients, populace#469/#470); the take-up stage derives its seeded Bernoulli priors from the same registry values — the anchored-mass-corrected threshold (band target minus reporter floor) over (candidate capacity minus reporter floor), on this frame's weights or a prior attempt's delivered-weight us_ssi_take_up.json basis (populace#507/#508), with the observed reporter share of capacity under saturation — and never count-matches the flags."
+      },
+      "rate": {"status": "rejected_scope_mismatch", "retired_value": 0.50, "verified_source_value": {"value": 0.49, "scope": "adults 65+ only", "citation": "Urban Institute Giannarelli et al. 2024 (ATTIS, 2018), 49.0% aged SSI participation"}},
+      "scope_owner": "ssi_take_up source stage (eCPS exported-input coverage)",
+      "notes": "The retired 0.50 rate was applied to all SSI eligibles even though its cited 49% estimate covers adults 65+ only; it is rejected, not copied. The ssi_take_up stage preserves every direct ASEC SSI_VAL reporter and gives every other source-person identity one seeded Bernoulli draw at the documented band prior derived from the ledger-fed SSA December 2024 Table 1 counts (populace#469), computed on this frame's weights or a prior attempt's delivered-weight us_ssi_take_up.json basis (populace#507/#508). Those counts bind as ordinary calibration registry targets (populace#470); delivered recipients on release weights are HARD-gated per enforced adult band (18_64, 65_plus) within a documented relative tolerance — a miss fails the release and writes the delivered-weight artifact for the one-shot retry — while the under-18 band stays fenced pending populace#453/#509 and its gap ships in the release scorecard. Still no count matching, no saturation fill, no in-process reconcile loop."
     },
     {
       "variable": "takes_up_dc_ptc",
@@ -146,11 +162,11 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "sipp_head_start source stage (measured SIPP enrollment response)",
       "consumed_via": "head_start",
-      "rate": {"status": "research_only_not_administrative", "us_data_value": "0.40 (2020), 0.30 (2021)", "detail": "NIEER (Rutgers) State(s) of Head Start chart values; 40% is a pre-pandemic plateau and 30% the single pandemic program-year, so the 2020->2021 annual split is a framing artifact. NIEER is a research institute, not ACF/HHS."},
-      "followup": "Construct a Head Start participation rate from ACF Head Start Program Facts enrollment over a Census poverty-eligible denominator (Ledger fact).",
-      "notes": "The spec requires an administrative (FNS/CMS/IRS/ACF) source; NIEER does not clear that bar and the year split is an artifact. Left unseeded pending an ACF-sourced rate."
+      "rate": {"status": "not_used_measured_source"},
+      "notes": "The sipp_head_start source stage fits a weighted QRF to direct December age-3--5 SIPP EEDHEADST responses and strict reported structural negatives, then predicts once per source-person identity and fans the decision to both support clones. The survey instrument describes a federally sponsored preschool and names Head Start, Even Start, and Fair Start as examples, so the response is documented as a measured Head Start proxy rather than a program-only identifier. The retired NIEER scalar is not reused. ACF cumulative enrollment includes turnover and funded enrollment is capacity; neither aggregate is converted into a participation rate or allocated to people. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_early_head_start_if_eligible",
@@ -160,9 +176,9 @@
       "default": true,
       "populace_treatment": "rate_unsourced",
       "consumed_via": "early_head_start",
-      "rate": {"status": "research_only_not_administrative", "us_data_value": 0.09, "detail": "NIEER (Rutgers) chart value, ~9% throughout including 2020-2021. Research institute, not ACF/HHS."},
-      "followup": "Construct an Early Head Start participation rate from ACF Program Facts over an eligible-infant/toddler denominator (Ledger fact).",
-      "notes": "Same as Head Start: NIEER is research-only, below the administrative-source bar. Left unseeded pending an ACF-sourced rate."
+      "rate": {"status": "source_unavailable", "retired_value": 0.09, "detail": "The retired NIEER research-chart scalar was not an observed individual-level source and is rejected."},
+      "followup": "Require a locked individual-level source that observes Early Head Start enrollment across infants, toddlers, and pregnant participants before restoring this person flag.",
+      "notes": "SOURCE UNAVAILABILITY WITH EVIDENCE is recorded structurally in ecps_parity_known_gaps.json. The pinned SIPP nursery/preschool item has no reported positives under age 3, its child-care items begin at age 2 and do not distinguish Early Head Start, and it has no pregnancy branch. All locked ASEC and PUF inputs omit an individual enrollment signal. ACF cumulative enrollment includes turnover and funded enrollment is capacity, so allocating either aggregate would synthesize person identities."
     },
     {
       "variable": "takes_up_housing_assistance_if_eligible",
@@ -170,11 +186,11 @@
       "entity": "spm_unit",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "acs_rent source stage (measured/imputed housing-assistance receipt anchor)",
       "consumed_via": "housing_assistance",
-      "rate": {"status": "no_source", "detail": "No housing-assistance take-up rate parameter has ever existed in us-data. Housing assistance is rationed (waitlists, funding caps), so 'take-up among eligibles' is not the right model - assistance is capped by appropriation, not declined by eligibles."},
-      "followup": "Housing assistance is supply-constrained; a HUD-sourced coverage rate (assisted households over eligible/waitlisted households) would be the Ledger fact, and the semantics differ from voluntary take-up.",
-      "notes": "No sourced rate and the take-up abstraction is a poor fit for a rationed program. Left unseeded; flagged for guardian review of the right modeling abstraction."
+      "rate": {"status": "not_used_measured_source"},
+      "notes": "The source stage preserves every ASEC SPM_CAPHOUSESUB reporter and sets take-up exactly equal to receipt on both support channels. The retired 0.50 parameter was an ad hoc benchmark adjustment. The archived HUD ETL instead reads household-grain state counts from a live workbook, which cannot identify SPM-unit recipients in the hermetic build; Populace therefore does not allocate extra recipients. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_aca_if_eligible",

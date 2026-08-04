@@ -284,9 +284,14 @@ def assign_us_geography_ladder(
     sorted_cd = ladder.congressional_district_geoid[order]
     assigned_index = np.empty(len(household), dtype=np.int64)
     rng = np.random.default_rng(seed)
-    for cd_value, positions in household_cd.groupby(
-        household_cd, sort=True
-    ).groups.items():
+    cd_groups = household_cd.groupby(household_cd, sort=True).groups
+    cd_group_order = list(cd_groups)
+    assert cd_group_order == sorted(household_cd.unique().tolist()), (
+        "Block-ladder RNG congressional-district groups must be sorted unique "
+        "normalized geoids."
+    )
+    for cd_value in cd_group_order:
+        positions = cd_groups[cd_value]
         lo = int(np.searchsorted(sorted_cd, cd_value, side="left"))
         hi = int(np.searchsorted(sorted_cd, cd_value, side="right"))
         block_rows = order[lo:hi]
@@ -356,6 +361,7 @@ def with_household_us_geography_ladder(
         weights,
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

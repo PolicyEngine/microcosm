@@ -29,7 +29,6 @@ def _load_builder_module():
 _EXPECTED = {
     "is_homeless",
     "was_in_foster_care",
-    "is_incapable_of_self_care",
     "is_snap_work_program_participant",
     "weekly_snap_work_program_hours",
     "is_snap_workfare_participant",
@@ -51,9 +50,16 @@ def test_every_entry_names_a_tracking_issue() -> None:
 
 def test_seeded_inputs_are_not_documented_as_absent() -> None:
     # These are produced by stages; listing them here would contradict
-    # the build.
+    # the build. is_incapable_of_self_care joined this set with the
+    # adult_care_inputs stage (populace#451 item 1), which seeds it from
+    # the measured ASEC PEDISDRS self-care difficulty item.
     builder = _load_builder_module()
-    for column in ("is_pregnant", "is_disabled", "is_snap_abawd_discretionary_exempt"):
+    for column in (
+        "is_pregnant",
+        "is_disabled",
+        "is_snap_abawd_discretionary_exempt",
+        "is_incapable_of_self_care",
+    ):
         assert column not in builder.US_DOCUMENTED_ABSENT_INPUTS
 
 
