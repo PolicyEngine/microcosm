@@ -31,6 +31,21 @@ weighted totals and top-k concentration for any national artifact, and
 `tools/build_uk_efrs_parity_reference.py --emit-weighted-totals` extracts the
 pinned eFRS incumbent's totals to a file outside the repository.
 
+The first measurement pass ran against the pinned enhanced-FRS incumbent and
+the certified compact, and its result is why both gates ship unarmed rather
+than with inherited constants. The US 0.75 top-share threshold fails the
+incumbent on 16 of 28 checked columns, and no single global threshold is both
+incumbent-compatible and able to catch a #462-scale incident. The US 1e9 mass
+floor would stop checking 50 of 131 columns, including the two the release
+input coverage manifest requires distributional effective mass for, so the
+adjudicated floor is 0.0. And the certified compact turns out not to be a
+valid candidate against the incumbent — 8.1% less household mass, a 22.3%
+median per-column drift, and no `hmrc_spi_*` columns, because it is the input
+to the stage that creates them — which confirms the issue's reading that both
+thresholds must come from a staged candidate. The findings are recorded beside
+the policy dataclasses so a later reader cannot reintroduce the US numbers by
+default.
+
 The measurement recorder is disclosure-controlled at the source, because its
 output exists to be posted: UKDS End User Licence CD137 v16.00 clause 8 binds
 published outputs to the standards in CD171-ResearchDataHandling §5.2.1, which

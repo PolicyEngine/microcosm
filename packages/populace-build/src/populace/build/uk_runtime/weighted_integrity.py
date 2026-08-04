@@ -57,7 +57,23 @@ reintroduces the US constants by default:
   ``person.charitable_investment_gifts`` — the two the release input
   coverage manifest specifically requires distributional effective mass for.
   A floor of ``0.0`` still skips the three exact-zero reference columns,
-  because the shared gate compares ``<=``.
+  because the shared gate compares ``<=``. So ``0.0`` is the adjudicated
+  floor; it is not committed as a constant yet only because a policy arms
+  both thresholds together and the tolerance is still unmeasurable.
+* **The certified compact is not a valid candidate against this reference,
+  confirming the #609 reading of option 2.** Measured against the pinned
+  incumbent it carries 8.1% less household mass (28,840,551 versus
+  31,389,678), a different surface (150 columns against the reference's 131,
+  22 of them candidate-only), and per-column drift with a 22.3% median and a
+  578% maximum — it is a differently calibrated build, not a mass-preserving
+  derivative. It also zeroes ``gift_aid`` and
+  ``charitable_investment_gifts`` and lacks all eleven ``hmrc_spi_*``
+  columns, because it is the *input* to the HMRC/SPI stage that fills them:
+  those are stage-1 QRF outputs. Comparing the two therefore reproduces the
+  #327 failure mode on the restoration surface, exactly as #609 predicted.
+  Both thresholds must come from a staged candidate, whose licensed UKDS
+  inputs (SPI donor SN 9422, the HMRC surface, and a raw FRS directory) are
+  the remaining blocker.
 """
 
 from __future__ import annotations
