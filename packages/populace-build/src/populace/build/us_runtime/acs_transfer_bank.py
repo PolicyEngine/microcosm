@@ -306,6 +306,7 @@ class AcsTransferTargetBankStore:
             with temporary_path.open("rb") as stream:
                 os.fsync(stream.fileno())
             os.replace(temporary_path, path)
+            _fsync_parent_directory(path)
             temporary_path = None
         finally:
             if temporary_path is not None:
@@ -858,6 +859,19 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Persist a completed atomic rename in its containing directory."""
+
+    # O_DIRECTORY is not universal. A read-only directory descriptor is the
+    # supported POSIX fallback; failures to open or fsync still propagate.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _is_lowercase_sha256(value: object) -> bool:

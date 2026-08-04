@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,6 +10,7 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
+import populace.build.us_runtime.acs_transfer_bank as acs_transfer_bank_module
 from populace.build.frame_checkpoint import write_frame_checkpoint
 from populace.build.us_runtime.acs_transfer import (
     ACS_DEFERRED_GEOGRAPHY_INPUTS,
@@ -908,6 +911,39 @@ def test_target_bank_cold_output_matches_unbanked_monolith(
         load_statuses=("missing", "missing", "missing"),
     )
     assert all(path.is_file() for path in _bank_paths(bank))
+
+
+def test_target_bank_fsyncs_file_then_parent_directory_after_each_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(acs_transfer_bank_module.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(acs_transfer_bank_module.os, "replace", tracked_replace)
+    bank = _bank_store(tmp_path / "durable-bank")
+
+    _run_bank_fixture(bank)
+
+    assert len(events) == 3 * len(_BANK_TARGETS)
+    for index, target in enumerate(_BANK_TARGETS):
+        assert events[index * 3 : (index + 1) * 3] == [
+            ("fsync", "file"),
+            ("replace", bank.target_path(index, target).name),
+            ("fsync", "directory"),
+        ]
 
 
 def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(

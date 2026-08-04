@@ -7,8 +7,10 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import os
+import stat
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -319,6 +321,7 @@ def _run_checkpoint_fixture(
     *,
     store,
     resume=None,
+    target_bank_receipt: Mapping[str, object] | None = None,
 ):
     order: list[str] = []
 
@@ -330,10 +333,25 @@ def _run_checkpoint_fixture(
             order.append(name)
             person = frame.table("person").copy()
             transform(person)
-            return PoolStageOutput(
-                _replace_person(frame, person),
-                {"fixture_stage": name},
-            )
+            receipt: dict[str, object] = {"fixture_stage": name}
+            if name == "impute" and target_bank_receipt is not None:
+                receipt = {
+                    "source_operator_chain": {"post_primary_completion": {}},
+                    "primary_puf_qrf": {"resume_status": "fixture"},
+                    "puf_capital_gains_tail_transfer": {"fixture": True},
+                    "acs_qrf_transfer": {
+                        "target_families": {"person": {"fixture": ["target"]}},
+                        "n_estimators": 100,
+                        "max_targets_per_fit": 8,
+                        "resolved_donor_channel": "puf_tax_detail",
+                        "imputed_inputs": [],
+                        "fit_records": [],
+                        "deferred_inputs": [],
+                        "target_bank": dict(target_bank_receipt),
+                    },
+                    "weights_audit": {"passed": True},
+                }
+            return PoolStageOutput(_replace_person(frame, person), receipt)
 
         return apply
 
@@ -378,6 +396,42 @@ def _run_checkpoint_fixture(
         resume=resume,
     )
     return result, order
+
+
+def _target_bank_receipt_after_interruption(
+    durable_target_index: int | None,
+    *,
+    total_targets: int = 9,
+) -> dict[str, object]:
+    targets: dict[str, object] = {}
+    for index in range(total_targets):
+        resumed = durable_target_index is not None and index <= durable_target_index
+        source = "checkpoint" if resumed else "rebuilt"
+        record: dict[str, object] = {
+            "source": source,
+            "descriptor": {
+                "target_index": index,
+                "total_targets": total_targets,
+                "model_target": f"target_{index}",
+            },
+            "load_status": "resumed" if resumed else "missing",
+            "path": f"/fixture/targets/{index:03d}__target_{index}.h5",
+            "checkpoint_sha256": f"{index:064x}",
+            "size_bytes": 1_000 + index,
+        }
+        if not resumed:
+            record["write_status"] = "rebuilt"
+            record["write_seconds"] = index + 0.25
+        targets[str(index)] = record
+    return {
+        "artifact_kind": "populace_us_multispine_acs_transfer_target_bank_provenance",
+        "schema_version": 1,
+        "materializer_version": 1,
+        "root": "/fixture/acs-transfer",
+        "identity": {"fixture": "identity"},
+        "identity_sha256": "a" * 64,
+        "targets": targets,
+    }
 
 
 def _seed_stale_green_outputs(outputs) -> None:
@@ -580,6 +634,37 @@ def test_checkpoint_root_rejects_publication_file_collisions(
             outputs(pool_tool, tmp_path),
             source_paths=set(),
         )
+
+
+def test_atomic_json_fsyncs_parent_directory_after_rename(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    events: list[tuple[str, str]] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        kind = "directory" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file"
+        events.append(("fsync", kind))
+        real_fsync(descriptor)
+
+    def tracked_replace(source: Path, destination: Path) -> None:
+        events.append(("replace", Path(destination).name))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(pool_tool.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(pool_tool.os, "replace", tracked_replace)
+    output = tmp_path / "receipt.json"
+
+    pool_tool._atomic_write_json(output, {"fixture": True})
+
+    assert events == [
+        ("fsync", "file"),
+        ("replace", output.name),
+        ("fsync", "directory"),
+    ]
 
 
 def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
@@ -880,6 +965,199 @@ def test_primary_qrf_resume_refuses_a_changed_input_binding(
             checkpoint_dir,
             input_binding=changed,
         )
+
+
+@pytest.mark.parametrize(
+    ("interruption_label", "durable_target_index"),
+    (
+        ("j0", 0),
+        ("j1", 1),
+        ("j2", 2),
+        ("mid", 4),
+        ("last", 8),
+    ),
+)
+def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_provenance(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    interruption_label: str,
+    durable_target_index: int,
+) -> None:
+    canonical_acs_receipt_keys = {
+        "target_families",
+        "n_estimators",
+        "max_targets_per_fit",
+        "resolved_donor_channel",
+        "imputed_inputs",
+        "fit_records",
+        "deferred_inputs",
+    }
+    cold_receipt = _target_bank_receipt_after_interruption(None)
+    cold_store = _checkpoint_fixture_store(pool_tool, tmp_path / "cold-checkpoints")
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+        target_bank_receipt=cold_receipt,
+    )
+    cold_bytes = cold_store.checkpoint_path("transferred").read_bytes()
+
+    resumed_receipt = _target_bank_receipt_after_interruption(durable_target_index)
+    resumed_store = _checkpoint_fixture_store(
+        pool_tool,
+        tmp_path / f"{interruption_label}-checkpoints",
+    )
+    resumed_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    resumed_result, _order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=resumed_store,
+        target_bank_receipt=resumed_receipt,
+    )
+
+    transferred_path = resumed_store.checkpoint_path("transferred")
+    assert transferred_path.read_bytes() == cold_bytes
+    metadata = pool_tool.load_frame_checkpoint(transferred_path).metadata
+    canonical_receipts = metadata["stage_receipts"]
+    assert set(canonical_receipts) == {"impute"}
+    canonical_acs_receipt = canonical_receipts["impute"]["acs_qrf_transfer"]
+    assert set(canonical_acs_receipt) == canonical_acs_receipt_keys
+    assert "target_bank" not in canonical_acs_receipt
+
+    receipts_path = resumed_store.checkpoint_receipts_path("transferred")
+    sidecar = pool_tool._read_json_object(receipts_path)
+    assert sidecar["operational_stage_receipts"] == {
+        "impute": {"acs_qrf_transfer": {"target_bank": resumed_receipt}}
+    }
+
+    resumed_store.checkpoint_path("simulated").unlink()
+    resumed_store.checkpoint_manifest_path("simulated").unlink()
+    warm_store = _checkpoint_fixture_store(
+        pool_tool,
+        tmp_path / f"{interruption_label}-checkpoints",
+    )
+    checkpoint = warm_store.load_deepest()
+    assert checkpoint is not None
+    assert checkpoint.stage == "transferred"
+    assert (
+        checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]["target_bank"]
+        == resumed_receipt
+    )
+    assert (
+        resumed_result.stage_receipts["impute"]["acs_qrf_transfer"]["target_bank"]
+        == resumed_receipt
+    )
+    receipts_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf"
+    )["stages"]["transferred"]["receipts_sidecar"]
+    assert receipts_provenance["load_status"] == "loaded"
+    assert receipts_provenance["path"] == str(receipts_path.resolve())
+
+
+@pytest.mark.parametrize("damage", ("missing", "corrupt"))
+def test_operational_receipts_sidecar_damage_does_not_invalidate_checkpoint(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    root = tmp_path / f"{damage}-checkpoints"
+    target_bank_receipt = _target_bank_receipt_after_interruption(2)
+    cold_store = _checkpoint_fixture_store(pool_tool, root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+        target_bank_receipt=target_bank_receipt,
+    )
+    transferred_path = cold_store.checkpoint_path("transferred")
+    canonical_bytes = transferred_path.read_bytes()
+    expected_identity_sha256 = pool_tool.load_frame_checkpoint(
+        transferred_path
+    ).metadata["identity_sha256"]
+    cold_store.checkpoint_path("simulated").unlink()
+    cold_store.checkpoint_manifest_path("simulated").unlink()
+    receipts_path = cold_store.checkpoint_receipts_path("transferred")
+    if damage == "missing":
+        receipts_path.unlink()
+        expected_status = "missing"
+    else:
+        receipts_path.write_text("{not-json", encoding="utf-8")
+        expected_status = "invalid_ignored"
+
+    warm_store = _checkpoint_fixture_store(pool_tool, root)
+    checkpoint = warm_store.load_deepest()
+
+    assert checkpoint is not None
+    assert checkpoint.stage == "transferred"
+    assert transferred_path.read_bytes() == canonical_bytes
+    assert (
+        pool_tool.load_frame_checkpoint(transferred_path).metadata["identity_sha256"]
+        == expected_identity_sha256
+    )
+    assert "target_bank" not in checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]
+    receipts_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf"
+    )["stages"]["transferred"]["receipts_sidecar"]
+    assert receipts_provenance["load_status"] == expected_status
+
+
+def test_same_identity_rewrite_cannot_reattach_stale_operational_receipts(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "rewrite-checkpoints"
+    receipt_a = _target_bank_receipt_after_interruption(0)
+    cold_store = _checkpoint_fixture_store(pool_tool, root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+        target_bank_receipt=receipt_a,
+    )
+    receipts_path = cold_store.checkpoint_receipts_path("transferred")
+    assert receipts_path.is_file()
+    cold_store.checkpoint_path("simulated").unlink()
+    cold_store.checkpoint_manifest_path("simulated").unlink()
+    cold_store.checkpoint_receipts_path("simulated").unlink()
+
+    real_atomic_write_json = pool_tool._atomic_write_json
+
+    def interrupt_before_receipts_install(path: Path, payload: Mapping[str, object]):
+        if Path(path) == receipts_path:
+            assert not receipts_path.exists()
+            raise RuntimeError("fixture crash before fresh receipts install")
+        return real_atomic_write_json(path, payload)
+
+    monkeypatch.setattr(
+        pool_tool,
+        "_atomic_write_json",
+        interrupt_before_receipts_install,
+    )
+    rewrite_store = _checkpoint_fixture_store(pool_tool, root)
+    rewrite_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    with pytest.raises(RuntimeError, match="before fresh receipts install"):
+        _run_checkpoint_fixture(
+            pool_tool,
+            tmp_path,
+            store=rewrite_store,
+            target_bank_receipt=_target_bank_receipt_after_interruption(4),
+        )
+    assert not receipts_path.exists()
+
+    warm_store = _checkpoint_fixture_store(pool_tool, root)
+    checkpoint = warm_store.load_deepest()
+
+    assert checkpoint is not None
+    assert checkpoint.stage == "transferred"
+    assert "target_bank" not in checkpoint.stage_receipts["impute"]["acs_qrf_transfer"]
+    receipts_provenance = warm_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf"
+    )["stages"]["transferred"]["receipts_sidecar"]
+    assert receipts_provenance["load_status"] == "missing"
 
 
 @pytest.mark.parametrize(

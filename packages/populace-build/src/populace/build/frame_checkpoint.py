@@ -142,10 +142,24 @@ def write_frame_checkpoint(
             )
             h5.flush()
         os.replace(temporary_path, output_path)
+        _fsync_parent_directory(output_path)
     except BaseException:
         temporary_path.unlink(missing_ok=True)
         raise
     return output_path
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Persist a completed atomic rename in its containing directory."""
+
+    # O_DIRECTORY is not universal. A read-only directory descriptor is the
+    # supported POSIX fallback; failures to open or fsync still propagate.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def load_frame_checkpoint(

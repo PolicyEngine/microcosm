@@ -158,6 +158,9 @@ _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND = "populace_us_multispine_pool_stage_checkp
 _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND = (
     "populace_us_multispine_pool_stage_checkpoint_manifest"
 )
+_POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND = (
+    "populace_us_multispine_pool_stage_checkpoint_operational_receipts"
+)
 _POOL_STAGE_CHECKPOINT_FILENAMES: Mapping[str, str] = {
     stage: f"{stage}.checkpoint.h5" for stage in POOL_CHECKPOINT_STAGE_ORDER
 }
@@ -759,6 +762,12 @@ class _PoolStageCheckpointStore:
         path = self.checkpoint_path(stage)
         return path.with_suffix(".manifest.json")
 
+    def checkpoint_receipts_path(self, stage: str) -> Path:
+        """Return the non-identity-bearing operational-receipts sidecar path."""
+
+        path = self.checkpoint_path(stage)
+        return path.with_suffix(".receipts.json")
+
     def load_deepest(self) -> MultispinePoolCheckpoint | None:
         """Load the deepest valid checkpoint, ignoring stale or corrupt files."""
 
@@ -812,6 +821,16 @@ class _PoolStageCheckpointStore:
             stored_frame,
             boundary=f"pool {stage} checkpoint write",
         )
+        canonical_stage_receipts, operational_stage_receipts = (
+            _split_checkpoint_stage_receipts(checkpoint.stage_receipts)
+        )
+        receipts_path = self.checkpoint_receipts_path(stage)
+        try:
+            receipts_path.unlink()
+        except FileNotFoundError:
+            pass
+        else:
+            _fsync_parent_directory(receipts_path)
         identity = _pool_checkpoint_stage_identity(self._base_identity, stage)
         identity_sha256 = _pool_checkpoint_identity_sha256(identity)
         metadata = {
@@ -825,7 +844,7 @@ class _PoolStageCheckpointStore:
             "frame_schema": _frame_schema_payload(stored_frame),
             "frame_metadata": _json_ready(stored_frame.metadata),
             "assembly_receipt": _json_ready(checkpoint.assembly_receipt),
-            "stage_receipts": _json_ready(checkpoint.stage_receipts),
+            "stage_receipts": canonical_stage_receipts,
             "input_receipts": self._input_receipts,
             "simulation_output": (
                 {
@@ -862,11 +881,41 @@ class _PoolStageCheckpointStore:
                 "frame_metadata": metadata["frame_metadata"],
             },
         )
+        receipts_record: dict[str, object] = {
+            "path": str(receipts_path.resolve()),
+            "write_status": "not_applicable",
+        }
+        if operational_stage_receipts:
+            _atomic_write_json(
+                receipts_path,
+                {
+                    "artifact_kind": _POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND,
+                    "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+                    "materializer_version": (
+                        POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                    ),
+                    "stage": stage,
+                    "identity_sha256": identity_sha256,
+                    "checkpoint": {
+                        "filename": path.name,
+                        "sha256": checkpoint_sha256,
+                        "size_bytes": size_bytes,
+                    },
+                    "operational_stage_receipts": operational_stage_receipts,
+                },
+            )
+            receipts_record = {
+                "path": str(receipts_path.resolve()),
+                "write_status": "written",
+                "sha256": _file_sha256(receipts_path),
+                "size_bytes": receipts_path.stat().st_size,
+            }
         write_seconds = time.perf_counter() - started_at
         self._writes[stage] = {
             "checkpoint_sha256": checkpoint_sha256,
             "size_bytes": size_bytes,
             "write_seconds": write_seconds,
+            "receipts_sidecar": receipts_record,
         }
         print(
             f"Rebuilt pool stage {stage!r}; wrote checkpoint {path} "
@@ -1109,6 +1158,15 @@ class _PoolStageCheckpointStore:
             if not isinstance(input_receipts, Mapping):
                 raise ValueError(f"{stage} checkpoint input_receipts must be an object")
             _validate_checkpoint_receipt_prefix(stage, stage_receipts)
+            restored_stage_receipts, receipts_record = (
+                self._load_operational_stage_receipts(
+                    stage,
+                    canonical_stage_receipts=stage_receipts,
+                    expected_identity_sha256=expected_identity_sha256,
+                    checkpoint_sha256=actual_file_sha256,
+                    checkpoint_size=path.stat().st_size,
+                )
+            )
             persistent_frame = frame
             simulation_frame: Frame | None = None
             if stage == "simulated":
@@ -1128,7 +1186,7 @@ class _PoolStageCheckpointStore:
                 stage=stage,
                 frame=persistent_frame,
                 assembly_receipt=dict(assembly_receipt),
-                stage_receipts=dict(stage_receipts),
+                stage_receipts=restored_stage_receipts,
                 simulation_frame=simulation_frame,
             )
             self.bind_input_receipts(input_receipts)
@@ -1136,6 +1194,7 @@ class _PoolStageCheckpointStore:
                 "load_status": "resumed",
                 "checkpoint_sha256": actual_file_sha256,
                 "size_bytes": path.stat().st_size,
+                "receipts_sidecar": receipts_record,
             }
             return checkpoint
         except Exception as error:  # corrupted local artifacts are rebuildable
@@ -1144,6 +1203,107 @@ class _PoolStageCheckpointStore:
                 reason="checkpoint_validation_failed",
                 error=error,
             )
+
+    def _load_operational_stage_receipts(
+        self,
+        stage: str,
+        *,
+        canonical_stage_receipts: Mapping[str, object],
+        expected_identity_sha256: str,
+        checkpoint_sha256: str,
+        checkpoint_size: int,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        """Restore optional observability without affecting checkpoint validity."""
+
+        receipts_path = self.checkpoint_receipts_path(stage)
+        base_record: dict[str, object] = {"path": str(receipts_path.resolve())}
+        if not receipts_path.exists():
+            return dict(canonical_stage_receipts), {
+                **base_record,
+                "load_status": "missing",
+            }
+        if not receipts_path.is_file():
+            error = ValueError("operational receipts sidecar must be a regular file")
+            return dict(canonical_stage_receipts), self._invalid_receipts_record(
+                stage,
+                receipts_path,
+                error,
+            )
+        try:
+            payload = _read_json_object(receipts_path)
+            expected_keys = {
+                "artifact_kind",
+                "schema_version",
+                "materializer_version",
+                "stage",
+                "identity_sha256",
+                "checkpoint",
+                "operational_stage_receipts",
+            }
+            if set(payload) != expected_keys:
+                raise ValueError("operational receipts sidecar keys changed")
+            if (
+                payload.get("artifact_kind")
+                != _POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND
+                or payload.get("schema_version") != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
+                or payload.get("materializer_version")
+                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or payload.get("stage") != stage
+                or payload.get("identity_sha256") != expected_identity_sha256
+            ):
+                raise ValueError(
+                    "operational receipts sidecar has an unsupported binding"
+                )
+            checkpoint = payload.get("checkpoint")
+            if checkpoint != {
+                "filename": self.checkpoint_path(stage).name,
+                "sha256": checkpoint_sha256,
+                "size_bytes": checkpoint_size,
+            }:
+                raise ValueError(
+                    "operational receipts sidecar checkpoint binding changed"
+                )
+            operational = payload.get("operational_stage_receipts")
+            if not isinstance(operational, Mapping):
+                raise ValueError("operational_stage_receipts must be an object")
+            restored = _attach_checkpoint_operational_receipts(
+                canonical_stage_receipts,
+                operational,
+            )
+            return restored, {
+                **base_record,
+                "load_status": "loaded",
+                "sha256": _file_sha256(receipts_path),
+                "size_bytes": receipts_path.stat().st_size,
+            }
+        except Exception as error:
+            return dict(canonical_stage_receipts), self._invalid_receipts_record(
+                stage,
+                receipts_path,
+                error,
+            )
+
+    @staticmethod
+    def _invalid_receipts_record(
+        stage: str,
+        receipts_path: Path,
+        error: Exception,
+    ) -> dict[str, object]:
+        failure = {
+            "reason": "operational_receipts_validation_failed",
+            "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
+            "message": str(error),
+            "path": str(receipts_path.resolve()),
+        }
+        print(
+            f"Ignored invalid pool checkpoint operational receipts for {stage!r} "
+            f"at {receipts_path}: {type(error).__name__}: {error}."
+        )
+        return {
+            "path": str(receipts_path.resolve()),
+            "load_status": "invalid_ignored",
+            "invalid_sidecar": failure,
+        }
 
     def _invalid(
         self,
@@ -1207,6 +1367,71 @@ def _validate_checkpoint_receipt_prefix(
             f"{stage} checkpoint receipt stages are {sorted(observed)}, "
             f"expected {sorted(expected)} with an optional clone receipt"
         )
+
+
+def _split_checkpoint_stage_receipts(
+    stage_receipts: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Separate operational bank evidence from canonical stage receipts."""
+
+    normalized = _json_ready(stage_receipts)
+    if not isinstance(normalized, dict):  # pragma: no cover - mapping normalization
+        raise TypeError("Pool checkpoint stage receipts must normalize to an object.")
+    impute = normalized.get("impute")
+    if not isinstance(impute, dict):
+        return normalized, {}
+    acs_transfer = impute.get("acs_qrf_transfer")
+    if not isinstance(acs_transfer, dict) or "target_bank" not in acs_transfer:
+        return normalized, {}
+    target_bank = acs_transfer.pop("target_bank")
+    if not isinstance(target_bank, Mapping):
+        raise ValueError("ACS transfer target-bank receipt must be an object.")
+    return normalized, {
+        "impute": {
+            "acs_qrf_transfer": {
+                "target_bank": dict(target_bank),
+            }
+        }
+    }
+
+
+def _attach_checkpoint_operational_receipts(
+    canonical_stage_receipts: Mapping[str, object],
+    operational_stage_receipts: Mapping[str, object],
+) -> dict[str, object]:
+    """Reattach the one non-canonical receipt path for runtime observability."""
+
+    canonical, existing_operational = _split_checkpoint_stage_receipts(
+        canonical_stage_receipts
+    )
+    if existing_operational:
+        raise ValueError("canonical stage receipts already contain target_bank")
+    operational = _json_ready(operational_stage_receipts)
+    if not isinstance(operational, dict):  # pragma: no cover - mapping normalization
+        raise TypeError("Operational stage receipts must normalize to an object.")
+    if set(operational) != {"impute"}:
+        raise ValueError("operational stage receipts must contain only impute")
+    operational_impute = operational.get("impute")
+    if not isinstance(operational_impute, dict) or set(operational_impute) != {
+        "acs_qrf_transfer"
+    }:
+        raise ValueError("operational impute receipt shape changed")
+    operational_transfer = operational_impute.get("acs_qrf_transfer")
+    if not isinstance(operational_transfer, dict) or set(operational_transfer) != {
+        "target_bank"
+    }:
+        raise ValueError("operational ACS transfer receipt shape changed")
+    target_bank = operational_transfer.get("target_bank")
+    if not isinstance(target_bank, Mapping):
+        raise ValueError("operational target_bank receipt must be an object")
+    canonical_impute = canonical.get("impute")
+    if not isinstance(canonical_impute, dict):
+        raise ValueError("canonical stage receipts have no impute object")
+    canonical_transfer = canonical_impute.get("acs_qrf_transfer")
+    if not isinstance(canonical_transfer, dict):
+        raise ValueError("canonical impute receipt has no acs_qrf_transfer object")
+    canonical_transfer["target_bank"] = dict(target_bank)
+    return canonical
 
 
 def _frame_row_counts(frame: Frame) -> dict[str, int]:
@@ -1849,8 +2074,22 @@ def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, output)
+        _fsync_parent_directory(output)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Persist a completed atomic rename in its containing directory."""
+
+    # O_DIRECTORY is not universal. A read-only directory descriptor is the
+    # supported POSIX fallback; failures to open or fsync still propagate.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def main(argv: list[str] | None = None) -> int:
