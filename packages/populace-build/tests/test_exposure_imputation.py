@@ -413,3 +413,96 @@ def test_exposure_imputation_stage_produces_the_column(
 
     out = stage.transform(target)
     assert DEFAULT_EXPOSURE_COLUMN in out.person.columns
+
+
+# ----------------------------------------------------------------------------
+# Donor/target soc_major_group coding must match (digits vs FRS thousands)
+# ----------------------------------------------------------------------------
+
+
+def _digit_coded(n: int, seed: int, *, with_exposure: bool) -> Frame:
+    """A synthetic frame like ``_synthetic_population`` but SOC coded 1-9."""
+
+    rng = np.random.default_rng(seed)
+    columns = _covariates(n, rng)
+    exposure = _planted_exposure(columns, rng)
+    columns[SOC_MAJOR_GROUP_COLUMN] = (columns[SOC_MAJOR_GROUP_COLUMN] // 1000).astype(
+        "int64"
+    )
+    if with_exposure:
+        columns = {**columns, DEFAULT_EXPOSURE_COLUMN: exposure}
+    return _person_frame(columns, np.full(n, 5.0))
+
+
+def test_digit_donor_refuses_thousand_coded_target(target_frame) -> None:
+    """A 1-9 donor must not silently draw for a 1000-9000 target.
+
+    The QRF conditions on the raw group number, so disjoint codings would
+    produce plausible-looking draws conditioned on out-of-support values —
+    the silent-failure shape this module's donor contract documents.
+    """
+
+    donor = _digit_coded(DONOR_N, 1, with_exposure=True)
+    fitted = fit_exposure_imputer(donor, PREDICTORS, n_estimators=20, seed=0)
+    target, _ = target_frame
+    with pytest.raises(ValueError, match="coding"):
+        impute_exposure(fitted, target)
+
+
+def test_thousand_donor_refuses_digit_coded_target(donor_frame) -> None:
+    donor, _ = donor_frame
+    fitted = fit_exposure_imputer(donor, PREDICTORS, n_estimators=20, seed=0)
+    with pytest.raises(ValueError, match="coding"):
+        impute_exposure(fitted, _digit_coded(TARGET_N, 2, with_exposure=False))
+
+
+def test_matched_codings_still_draw(donor_frame, target_frame) -> None:
+    """Same coding on both sides (thousands here) imputes as before."""
+
+    donor, _ = donor_frame
+    target, _ = target_frame
+    fitted = fit_exposure_imputer(donor, PREDICTORS, n_estimators=20, seed=0)
+    draws = impute_exposure(fitted, target)
+    assert len(draws) == TARGET_N
+    assert np.isfinite(draws.to_numpy()).all()
+
+
+def test_mixed_coding_donor_is_rejected_at_fit(donor_frame) -> None:
+    """A donor mixing 1-9 with 1000-9000 codes cannot stamp a coding."""
+
+    donor, _ = donor_frame
+    person = donor.person.copy()
+    person.loc[person.index[:5], SOC_MAJOR_GROUP_COLUMN] = 3
+    mixed = _person_frame(
+        {c: person[c].to_numpy() for c in person.columns if c != "person_id"},
+        np.full(len(person), 5.0),
+    )
+    with pytest.raises(ValueError, match="neither"):
+        fit_exposure_imputer(mixed, PREDICTORS, n_estimators=20, seed=0)
+
+
+def test_blind_fit_carries_no_coding_stamp(donor_frame, target_frame) -> None:
+    """The blind fallback (no SOC predictor) is unaffected by the guard."""
+
+    donor, _ = donor_frame
+    target, _ = target_frame
+    with pytest.warns(UserWarning, match="blind fallback"):
+        fitted = fit_exposure_imputer(donor, BLIND_PREDICTORS, n_estimators=20, seed=0)
+    assert getattr(fitted, "soc_major_group_coding", None) is None
+    draws = impute_exposure(fitted, target)
+    assert len(draws) == TARGET_N
+
+
+def test_coding_stamp_preserves_model_surface(donor_frame) -> None:
+    """The stamped wrapper still exposes the fitted model's attributes.
+
+    ``exposure_imputation_stage`` reads ``fitted.predictors`` to declare its
+    ``consumes``; the stamp must not break that passthrough.
+    """
+
+    donor, _ = donor_frame
+    fitted = fit_exposure_imputer(donor, PREDICTORS, n_estimators=20, seed=0)
+    assert fitted.soc_major_group_coding == "thousand"
+    assert list(fitted.predictors) == PREDICTORS
+    stage = exposure_imputation_stage(fitted)
+    assert stage.consumes == tuple(PREDICTORS)

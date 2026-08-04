@@ -108,6 +108,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -195,6 +196,61 @@ def _crosswalk_hint() -> str:
             "(populace.build.uk_runtime.ai_exposure, once that module lands) "
             "before fitting"
         )
+
+
+#: The two recognised numeric codings of the 1-digit SOC major group: plain
+#: digits ``1``-``9`` (e.g. an LFS-derived donor) and the FRS ``adult.tab``
+#: thousands ``1000``-``9000`` (what :mod:`~populace.build.uk_runtime.frs_occupation`
+#: produces). The QRF conditions on the raw number, so a donor on one coding
+#: and a target on the other would yield plausible-looking draws conditioned
+#: on out-of-support values — silently. The fit therefore records the donor's
+#: coding and :func:`impute_exposure` refuses a mismatched target.
+_SOC_DIGIT_CODING = frozenset(range(1, 10))
+_SOC_THOUSAND_CODING = frozenset(range(1000, 10_000, 1000))
+
+
+def _soc_major_group_coding(values: pd.Series | np.ndarray) -> str | None:
+    """Classify ``soc_major_group`` values as ``"digit"`` or ``"thousand"``.
+
+    Returns None when there are no non-missing values to classify.
+
+    Raises:
+        ValueError: When the non-missing values fit neither recognised
+            coding, or mix the two.
+    """
+
+    numeric = pd.to_numeric(pd.Series(np.asarray(values)), errors="coerce").dropna()
+    if numeric.empty:
+        return None
+    unique = set(numeric.unique().tolist())
+    if unique <= _SOC_DIGIT_CODING:
+        return "digit"
+    if unique <= _SOC_THOUSAND_CODING:
+        return "thousand"
+    raise ValueError(
+        f"{SOC_MAJOR_GROUP_COLUMN!r} carries values fitting neither the 1-9 "
+        "digit coding nor the FRS 1000-9000 coding (or mixing the two): "
+        f"sample {sorted(unique)[:8]}. Normalise one side — "
+        "frs_occupation.frs_major_group_to_digit converts FRS codes to "
+        "digits — so donor and target share a coding."
+    )
+
+
+@dataclass(frozen=True)
+class _CodingStampedModel:
+    """A :class:`~populace.fit.FittedModel` passthrough carrying the donor's
+    ``soc_major_group`` coding, so :func:`impute_exposure` can refuse a
+    target frame on the other coding. Every other attribute (``predictors``,
+    seeding, ...) delegates to the wrapped model."""
+
+    inner: FittedModel
+    soc_major_group_coding: str | None
+
+    def predict(self, frame_or_df: Frame | pd.DataFrame) -> pd.DataFrame:
+        return self.inner.predict(frame_or_df)
+
+    def __getattr__(self, name: str):
+        return getattr(self.inner, name)
 
 
 def _require_donor_columns(
@@ -297,7 +353,14 @@ def fit_exposure_imputer(
             stacklevel=2,
         )
     _require_donor_columns(donor_frame, predictors, target)
-    return fit(donor_frame, predictors, [target], weights=weights, **model_kwargs)
+    fitted = fit(donor_frame, predictors, [target], weights=weights, **model_kwargs)
+    if SOC_MAJOR_GROUP_COLUMN not in predictors:
+        return fitted
+    if isinstance(donor_frame, Frame):
+        donor_soc = donor_frame.person[SOC_MAJOR_GROUP_COLUMN]
+    else:
+        donor_soc = donor_frame[SOC_MAJOR_GROUP_COLUMN]
+    return _CodingStampedModel(fitted, _soc_major_group_coding(donor_soc))
 
 
 def impute_exposure(fitted: FittedModel, frame: Frame | pd.DataFrame) -> pd.Series:
@@ -315,9 +378,29 @@ def impute_exposure(fitted: FittedModel, frame: Frame | pd.DataFrame) -> pd.Seri
 
     Raises:
         ValueError: If ``fitted`` imputes anything but a single target (it
-            did not come from :func:`fit_exposure_imputer`), or a predictor
-            column is missing from ``frame``.
+            did not come from :func:`fit_exposure_imputer`), a predictor
+            column is missing from ``frame``, or ``frame``'s
+            :data:`SOC_MAJOR_GROUP_COLUMN` is on a different numeric coding
+            than the donor the model was fitted on (digits ``1``-``9``
+            versus FRS thousands ``1000``-``9000``) — the QRF conditions on
+            the raw number, so a mismatch would silently produce draws
+            conditioned on out-of-support values.
     """
+    donor_coding = getattr(fitted, "soc_major_group_coding", None)
+    if donor_coding is not None:
+        table = frame.person if isinstance(frame, Frame) else frame
+        if SOC_MAJOR_GROUP_COLUMN in table.columns:
+            target_coding = _soc_major_group_coding(table[SOC_MAJOR_GROUP_COLUMN])
+            if target_coding is not None and target_coding != donor_coding:
+                raise ValueError(
+                    f"The exposure imputer was fitted on a donor whose "
+                    f"{SOC_MAJOR_GROUP_COLUMN!r} uses the {donor_coding} "
+                    f"coding, but the target frame carries the "
+                    f"{target_coding} coding; refusing to draw. Normalise "
+                    "one side (frs_occupation produces FRS 1000-9000 codes; "
+                    "frs_occupation.frs_major_group_to_digit converts them "
+                    "to digits) so donor and target match."
+                )
     drawn = fitted.predict(frame)
     if len(drawn.columns) != 1:
         raise ValueError(
