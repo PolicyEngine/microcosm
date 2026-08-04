@@ -1,0 +1,1 @@
+Bank each completed ACS-transfer QRF target under the pool checkpoint identity, with lossless draws, resumable chain state, atomic replacement, and named stale or corrupt checkpoint rebuild receipts while preserving the phase-complete `transferred` boundary and fresh agreement gate.

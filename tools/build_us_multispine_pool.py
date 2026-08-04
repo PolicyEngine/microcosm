@@ -52,6 +52,7 @@ from populace.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     transfer_acs_inputs,
 )
+from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from populace.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
@@ -175,6 +176,7 @@ class PoolBuildOutputs:
     agreement_diagnostics: Path
     checkpoint_root: Path
     primary_qrf_checkpoint_dir: Path
+    acs_transfer_checkpoint_dir: Path
 
 
 @dataclass(frozen=True)
@@ -325,20 +327,24 @@ def _output_paths(
         agreement_diagnostics=pool_h5.with_suffix(".agreement.json"),
         checkpoint_root=resolved_checkpoint_root,
         primary_qrf_checkpoint_dir=resolved_checkpoint_root / "primary-qrf",
+        acs_transfer_checkpoint_dir=resolved_checkpoint_root / "acs-transfer",
     )
 
 
-def _with_primary_qrf_identity(
+def _with_checkpoint_identity(
     outputs: PoolBuildOutputs,
     *,
     base_identity_sha256: str,
 ) -> PoolBuildOutputs:
-    """Select a non-mixing QRF chain directory for one pool identity."""
+    """Select non-mixing intra-phase bank directories for one pool identity."""
 
     return replace(
         outputs,
         primary_qrf_checkpoint_dir=(
             outputs.checkpoint_root / "primary-qrf" / base_identity_sha256
+        ),
+        acs_transfer_checkpoint_dir=(
+            outputs.checkpoint_root / "acs-transfer" / base_identity_sha256
         ),
     )
 
@@ -458,6 +464,7 @@ def _validate_checkpoint_path_layout(
 
     checkpoint_root = outputs.checkpoint_root.resolve()
     primary_qrf_root = (checkpoint_root / "primary-qrf").resolve()
+    acs_transfer_root = (checkpoint_root / "acs-transfer").resolve()
     stage_files = {
         (checkpoint_root / filename).resolve()
         for filename in _POOL_STAGE_CHECKPOINT_FILENAMES.values()
@@ -475,6 +482,8 @@ def _validate_checkpoint_path_layout(
         if path == checkpoint_root or checkpoint_root.is_relative_to(path):
             return True
         if path == primary_qrf_root or path.is_relative_to(primary_qrf_root):
+            return True
+        if path == acs_transfer_root or path.is_relative_to(acs_transfer_root):
             return True
         return any(
             path == target or path.is_relative_to(target) for target in stage_files
@@ -720,6 +729,10 @@ class _PoolStageCheckpointStore:
         return _pool_checkpoint_identity_sha256(self._base_identity)
 
     @property
+    def base_identity(self) -> dict[str, object]:
+        return dict(self._base_identity)
+
+    @property
     def input_receipts(self) -> dict[str, object]:
         if self._input_receipts is None:
             raise RuntimeError("Pool checkpoint input receipts are not bound.")
@@ -864,6 +877,7 @@ class _PoolStageCheckpointStore:
         self,
         *,
         primary_qrf_checkpoint_dir: Path,
+        acs_transfer_checkpoint_dir: Path | None = None,
     ) -> dict[str, object]:
         """Return final-manifest evidence for every cached or rebuilt stage."""
 
@@ -942,6 +956,17 @@ class _PoolStageCheckpointStore:
             "primary_qrf": {
                 "path": str(Path(primary_qrf_checkpoint_dir).resolve()),
                 "base_identity_sha256": self.base_identity_sha256,
+            },
+            "acs_transfer": {
+                "path": str(
+                    Path(
+                        acs_transfer_checkpoint_dir
+                        if acs_transfer_checkpoint_dir is not None
+                        else self.root / "acs-transfer" / self.base_identity_sha256
+                    ).resolve()
+                ),
+                "base_identity_sha256": self.base_identity_sha256,
+                "boundary_stage": "transferred",
             },
             "agreement": {
                 "source": "always_fresh",
@@ -1353,21 +1378,23 @@ def _impute_pool(
     frame: Frame,
     *,
     puf_donor: pd.DataFrame,
-    checkpoint_dir: Path,
+    primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path,
+    checkpoint_identity: Mapping[str, object],
     checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
     qrf_resume_status = _initialize_or_resume_primary_qrf(
         frame,
         puf_donor,
-        checkpoint_dir,
+        primary_qrf_checkpoint_dir,
         input_binding=checkpoint_input_binding,
     )
-    run_primary_puf_qrf_chain(checkpoint_dir)
+    run_primary_puf_qrf_chain(primary_qrf_checkpoint_dir)
 
     tail_bound_diagnostics: list[dict[str, object]] = []
     with_primary_detail, primary_weight_kind = finalize_primary_puf_qrf_chain(
         frame,
-        checkpoint_dir,
+        primary_qrf_checkpoint_dir,
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
     with_tail, tail_receipt = transfer_puf_capital_gains_tail(
@@ -1386,6 +1413,13 @@ def _impute_pool(
         )
     source_completion = complete_multispine_source_inputs(with_tail)
     transfer_families = pool_transfer_target_families()
+    target_bank = AcsTransferTargetBankStore(
+        acs_transfer_checkpoint_dir,
+        identity=_pool_checkpoint_stage_identity(
+            checkpoint_identity,
+            "transferred",
+        ),
+    )
     transferred = transfer_acs_inputs(
         source_completion.frame,
         source_completion.frame,
@@ -1394,6 +1428,7 @@ def _impute_pool(
         seed=POOL_RANDOM_SEED,
         n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
         max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+        target_bank=target_bank,
     )
 
     fit_records = (
@@ -1407,8 +1442,8 @@ def _impute_pool(
             + "\n  ".join(weights_audit.failures)
         )
 
-    qrf_manifest_path = _primary_qrf_manifest_path(checkpoint_dir)
-    qrf_binding_path = _primary_qrf_input_binding_path(checkpoint_dir)
+    qrf_manifest_path = _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
+    qrf_binding_path = _primary_qrf_input_binding_path(primary_qrf_checkpoint_dir)
     return PoolStageOutput(
         transferred.frame,
         {
@@ -1433,6 +1468,7 @@ def _impute_pool(
                 "imputed_inputs": list(transferred.imputed_inputs),
                 "fit_records": list(transferred.fit_records),
                 "deferred_inputs": list(transferred.deferred_inputs),
+                "target_bank": target_bank.receipt(),
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),
         },
@@ -1446,6 +1482,8 @@ def build_multispine_pool(
     puf_donor: pd.DataFrame | None,
     acs_rent_donor: pd.DataFrame | None = None,
     primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path | None = None,
+    checkpoint_identity: Mapping[str, object] | None = None,
     checkpoint_input_binding: Mapping[str, object] | None = None,
     source_native_inputs: Mapping[
         str,
@@ -1489,6 +1527,13 @@ def build_multispine_pool(
                 "Production pool imputation requires a verified checkpoint "
                 "input binding."
             )
+        if impute_will_run and (
+            acs_transfer_checkpoint_dir is None or checkpoint_identity is None
+        ):
+            raise ValueError(
+                "Production pool imputation requires an identity-bound ACS "
+                "transfer checkpoint directory."
+            )
         if impute_will_run and puf_donor is None:
             raise ValueError("Production pool imputation requires the PUF donor.")
         if clone_preparation_will_run and acs_rent_donor is None:
@@ -1497,12 +1542,19 @@ def build_multispine_pool(
             )
 
         def impute_operator(frame: Frame) -> PoolStageOutput:
-            if puf_donor is None or checkpoint_input_binding is None:
+            if (
+                puf_donor is None
+                or acs_transfer_checkpoint_dir is None
+                or checkpoint_identity is None
+                or checkpoint_input_binding is None
+            ):
                 raise AssertionError("Pool imputation dependencies were not loaded.")
             return _impute_pool(
                 frame,
                 puf_donor=puf_donor,
-                checkpoint_dir=primary_qrf_checkpoint_dir,
+                primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+                acs_transfer_checkpoint_dir=acs_transfer_checkpoint_dir,
+                checkpoint_identity=checkpoint_identity,
                 checkpoint_input_binding=checkpoint_input_binding,
             )
 
@@ -1606,6 +1658,9 @@ def _manifest_payload(
             "publication_run_id": publication_run_id,
         },
         "primary_qrf_checkpoint_dir": str(outputs.primary_qrf_checkpoint_dir.resolve()),
+        "acs_transfer_checkpoint_dir": str(
+            outputs.acs_transfer_checkpoint_dir.resolve()
+        ),
         "calibration": {
             "applied": False,
             "position": "downstream",
@@ -1811,7 +1866,7 @@ def main(argv: list[str] | None = None) -> int:
         outputs.checkpoint_root,
         base_identity=_pool_checkpoint_base_identity(verified_inputs),
     )
-    outputs = _with_primary_qrf_identity(
+    outputs = _with_checkpoint_identity(
         outputs,
         base_identity_sha256=checkpoint_store.base_identity_sha256,
     )
@@ -1845,6 +1900,8 @@ def main(argv: list[str] | None = None) -> int:
         puf_donor=puf_donor,
         acs_rent_donor=acs_rent_donor,
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
+        checkpoint_identity=checkpoint_store.base_identity,
         checkpoint_input_binding=_checkpoint_input_binding(verified_inputs),
         source_native_inputs=source_native_inputs,
         checkpoint=checkpoint_store.write,
@@ -1852,6 +1909,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     checkpoint_provenance = checkpoint_store.provenance(
         primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+        acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
     )
     _write_outputs(
         result,

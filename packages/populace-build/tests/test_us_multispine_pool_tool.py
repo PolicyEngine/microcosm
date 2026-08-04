@@ -11,7 +11,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -511,6 +511,9 @@ def test_checkpoint_root_defaults_alongside_out_and_accepts_override(
     assert default.primary_qrf_checkpoint_dir == (
         output.with_suffix(".checkpoints") / "primary-qrf"
     )
+    assert default.acs_transfer_checkpoint_dir == (
+        output.with_suffix(".checkpoints") / "acs-transfer"
+    )
 
     explicit_root = tmp_path / "persistent" / "pool-checkpoints"
     explicit = pool_tool._output_paths(
@@ -520,6 +523,19 @@ def test_checkpoint_root_defaults_alongside_out_and_accepts_override(
 
     assert explicit.checkpoint_root == explicit_root
     assert explicit.primary_qrf_checkpoint_dir == explicit_root / "primary-qrf"
+    assert explicit.acs_transfer_checkpoint_dir == explicit_root / "acs-transfer"
+
+    identity_sha256 = "a" * 64
+    bound = pool_tool._with_checkpoint_identity(
+        explicit,
+        base_identity_sha256=identity_sha256,
+    )
+    assert bound.primary_qrf_checkpoint_dir == (
+        explicit_root / "primary-qrf" / identity_sha256
+    )
+    assert bound.acs_transfer_checkpoint_dir == (
+        explicit_root / "acs-transfer" / identity_sha256
+    )
 
 
 def test_checkpoint_root_allows_safe_input_colocation_on_persistent_volume(
@@ -578,6 +594,7 @@ def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
         "transfer_puf_capital_gains_tail",
         "complete_multispine_source_inputs",
         "pool_transfer_target_families",
+        "AcsTransferTargetBankStore",
         "transfer_acs_inputs",
     )
     calls = sorted(
@@ -592,6 +609,145 @@ def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
     )
 
     assert tuple(name for _line, name in calls) == expected
+
+    bank_call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AcsTransferTargetBankStore"
+    )
+    identity_value = next(
+        keyword.value for keyword in bank_call.keywords if keyword.arg == "identity"
+    )
+    assert isinstance(identity_value, ast.Call)
+    assert isinstance(identity_value.func, ast.Name)
+    assert identity_value.func.id == "_pool_checkpoint_stage_identity"
+    assert isinstance(identity_value.args[0], ast.Name)
+    assert identity_value.args[0].id == "checkpoint_identity"
+    assert isinstance(identity_value.args[1], ast.Constant)
+    assert identity_value.args[1].value == "transferred"
+
+    transfer_call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "transfer_acs_inputs"
+    )
+    target_bank_value = next(
+        keyword.value
+        for keyword in transfer_call.keywords
+        if keyword.arg == "target_bank"
+    )
+    assert isinstance(target_bank_value, ast.Name)
+    assert target_bank_value.id == "target_bank"
+
+
+def test_pool_imputation_binds_and_publishes_acs_target_bank(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _source_frame()
+    primary_qrf_dir = tmp_path / "primary-qrf" / ("a" * 64)
+    primary_qrf_dir.mkdir(parents=True)
+    pool_tool._atomic_write_json(
+        pool_tool._primary_qrf_manifest_path(primary_qrf_dir),
+        {"artifact_kind": "fixture-primary-manifest"},
+    )
+    pool_tool._atomic_write_json(
+        pool_tool._primary_qrf_input_binding_path(primary_qrf_dir),
+        {"artifact_kind": "fixture-primary-binding"},
+    )
+    acs_bank_dir = tmp_path / "acs-transfer" / ("a" * 64)
+    checkpoint_identity = {
+        "artifact_kind": "fixture-pool-checkpoint-identity",
+        "materializer_version": 7,
+        "inputs": {"fixture": {"sha256": "b" * 64}},
+    }
+    observed: dict[str, object] = {}
+    bank_receipt = {
+        "artifact_kind": "fixture-acs-target-bank-receipt",
+        "targets": {"0": {"source": "checkpoint"}},
+    }
+
+    class _RecordingBank:
+        def __init__(self, root: Path, *, identity: object) -> None:
+            observed["bank"] = self
+            observed["root"] = root
+            observed["identity"] = identity
+
+        def receipt(self) -> dict[str, object]:
+            return bank_receipt
+
+    def fake_transfer(*args, target_bank=None, **kwargs):
+        observed["transfer_target_bank"] = target_bank
+        return SimpleNamespace(
+            frame=args[0],
+            fit_records=(),
+            resolved_donor_channel="fixture",
+            imputed_inputs=(),
+            deferred_inputs=(),
+        )
+
+    tail_receipt = {
+        "tail_distribution_receipts": {
+            "frame_after_stage": {
+                "positive_mass_five_x_target_exceeded": True,
+            }
+        }
+    }
+    monkeypatch.setattr(
+        pool_tool,
+        "_initialize_or_resume_primary_qrf",
+        lambda *args, **kwargs: "resumed",
+    )
+    monkeypatch.setattr(pool_tool, "run_primary_puf_qrf_chain", lambda *args: None)
+    monkeypatch.setattr(
+        pool_tool,
+        "finalize_primary_puf_qrf_chain",
+        lambda *args, **kwargs: (frame, "calibrated"),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "transfer_puf_capital_gains_tail",
+        lambda *args, **kwargs: (frame, tail_receipt),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "validate_puf_capital_gains_tail_manifest",
+        lambda receipt: None,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "complete_multispine_source_inputs",
+        lambda input_frame: SimpleNamespace(frame=input_frame, receipt={}),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "pool_transfer_target_families",
+        lambda: {"person": {"fixture": ("fixture_target",)}},
+    )
+    monkeypatch.setattr(pool_tool, "AcsTransferTargetBankStore", _RecordingBank)
+    monkeypatch.setattr(pool_tool, "transfer_acs_inputs", fake_transfer)
+
+    result = pool_tool._impute_pool(
+        frame,
+        puf_donor=pd.DataFrame(),
+        primary_qrf_checkpoint_dir=primary_qrf_dir,
+        acs_transfer_checkpoint_dir=acs_bank_dir,
+        checkpoint_identity=checkpoint_identity,
+        checkpoint_input_binding={"artifact_kind": "fixture-input-binding"},
+    )
+
+    assert observed["root"] == acs_bank_dir
+    assert observed["identity"] == pool_tool._pool_checkpoint_stage_identity(
+        checkpoint_identity,
+        "transferred",
+    )
+    assert observed["transfer_target_bank"] is observed["bank"]
+    assert result.receipt["acs_qrf_transfer"]["target_bank"] == bank_receipt
 
 
 def test_production_pool_wires_source_preparation_into_clone_stage(
@@ -861,6 +1017,11 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
         provenance["primary_qrf"]["base_identity_sha256"]
         == warm_store.base_identity_sha256
     )
+    assert (
+        provenance["acs_transfer"]["base_identity_sha256"]
+        == warm_store.base_identity_sha256
+    )
+    assert provenance["acs_transfer"]["boundary_stage"] == "transferred"
     for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
         assert (
             provenance["stages"][stage]["identity_sha256"]
