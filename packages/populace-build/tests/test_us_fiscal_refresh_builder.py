@@ -1,4 +1,5 @@
 import builtins
+import hashlib
 import importlib.util
 import json
 import sys
@@ -1256,6 +1257,232 @@ def test_weeks_unemployed_source_override_parses(monkeypatch) -> None:
     args = builder._parse_args()
 
     assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
+
+
+def _exact_k_builder_argv(k: str, *, seed: int | None = 17) -> list[str]:
+    argv = [
+        "--pool-manifest",
+        "pool.manifest.json",
+        "--pool-manifest-sha256",
+        "a" * 64,
+        "--pool-release-id",
+        "fixture-publication",
+        "--exact-k",
+        k,
+        "--exact-k-pi-hi",
+        "0.95",
+        "--ledger-facts",
+        "facts",
+        "--ledger-facts-sha256",
+        "b" * 64,
+        "--ledger-manifest-sha256",
+        "c" * 64,
+        "--incumbent-diagnostics",
+        "incumbent.json",
+        "--incumbent-diagnostics-sha256",
+        "d" * 64,
+        "--frozen-target-surface-sha256",
+        "e" * 64,
+        "--out",
+        "out",
+        "--release-id",
+        "populace-us-2024-k20000-fixture",
+        "--no-staging",
+    ]
+    if seed is not None:
+        argv.extend(("--seed", str(seed)))
+    return argv
+
+
+def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(_exact_k_builder_argv("57241"))
+    assert "ExactKCharterError" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(_exact_k_builder_argv("20000", seed=None))
+    assert "ExactKExplicitSeedError" in capsys.readouterr().err
+
+    parsed = builder._parse_args(_exact_k_builder_argv("N"))
+    assert parsed.exact_k == "N"
+    assert parsed.seed == 17
+    assert parsed.no_staging is True
+
+
+def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
+    builder = _load_builder_module()
+    argv = _exact_k_builder_argv("20000")
+    argv.remove("--no-staging")
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+
+    assert "ExactKPointerSuppressionError" in capsys.readouterr().err
+
+
+def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._assert_pool_release_identity(
+            "fixture-publication",
+            {"publication_run_id": "fixture-publication"},
+        )
+        == "fixture-publication"
+    )
+    with pytest.raises(
+        ValueError,
+        match="PoolReleaseIdentityMismatchError: configured pool release id",
+    ):
+        builder._assert_pool_release_identity(
+            "invented-release",
+            {"publication_run_id": "fixture-publication"},
+        )
+    assert "_assert_pool_release_id_value" in builder.main.__code__.co_names
+
+
+def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from populace.build.us_runtime.h5_io import (
+        AuthenticatedPoolH5MismatchError,
+    )
+
+    builder = _load_builder_module()
+    pool_h5 = tmp_path / "pool.h5"
+    authenticated_bytes = b"a" * 32
+    replacement_bytes = b"b" * 32
+    pool_h5.write_bytes(authenticated_bytes)
+    out = tmp_path / "out"
+    argv = _exact_k_builder_argv("20000")
+    argv[argv.index("out")] = str(out)
+
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder,
+        "_refuse_certified_release_dir_reuse",
+        lambda path: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_verified_incumbent_diagnostics_payload",
+        lambda path, *, expected_sha256: ({}, expected_sha256),
+    )
+
+    def fake_load_pool(path, *, expected_manifest_sha256):
+        authenticated = builder.AuthenticatedPoolH5(
+            path=pool_h5.resolve(),
+            sha256=hashlib.sha256(authenticated_bytes).hexdigest(),
+            size_bytes=len(authenticated_bytes),
+            publication_run_id="fixture-publication",
+            manifest_sha256=expected_manifest_sha256,
+        )
+        pool_h5.write_bytes(replacement_bytes)
+        return (
+            SimpleNamespace(),
+            {"publication_run_id": "fixture-publication"},
+            authenticated,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_simulation_ready_us_multispine_pool",
+        fake_load_pool,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_pool_release_id_value",
+        lambda *args: pytest.fail("pool identity ran after an H5 divergence"),
+    )
+
+    with pytest.raises(
+        AuthenticatedPoolH5MismatchError,
+        match="builder base dataset identity",
+    ):
+        builder.main(argv)
+
+    assert not out.exists()
+
+
+def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    forbidden_base_hashes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_sha256"
+        and node.args
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "base_h5"
+    ]
+    assert forbidden_base_hashes == []
+    assert "shutil.copy2(base_h5" not in source
+    assert 'pool_h5.get("sha256")' not in source
+
+    main_source = inspect.getsource(builder.main)
+    diagnostics_source = inspect.getsource(
+        builder._write_release_calibration_diagnostics
+    )
+    receipt_source = inspect.getsource(builder._exact_k_ladder_manifest_payload)
+    assert (
+        "authenticated_pool_h5.verified_digest(\n"
+        '            consumer="builder base dataset identity"'
+    ) in main_source
+    assert "base_dataset_sha256=base_dataset_sha256" in main_source
+    assert '"base_dataset_sha256": base_dataset_sha256' in diagnostics_source
+    assert '"manifest_sha256": authenticated_pool_h5.manifest_sha256' in receipt_source
+    assert '"pool_h5_sha256": authenticated_pool_h5.sha256' in receipt_source
+    assert '"pool_h5_size_bytes": authenticated_pool_h5.size_bytes' in receipt_source
+
+
+def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder.main)
+    count_gate = source.index("assert_exact_k_realized_count(ladder_outcome")
+
+    for later_write in (
+        "_write_release_calibration_diagnostics(",
+        "release_engine.write_dataset(",
+        "_write_npz(",
+        "_build_manifests(",
+    ):
+        assert count_gate < source.index(later_write)
+
+
+def test_legacy_cli_result_is_origin_main_three_key_fixture(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "fixture-release"
+    artifact_root = tmp_path / "artifacts"
+
+    returned = builder._print_build_result(
+        release_id="fixture-release",
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+    )
+
+    assert returned is None
+    assert capsys.readouterr().out == (
+        "{\n"
+        '  "release_id": "fixture-release",\n'
+        f'  "release_dir": "{release_dir}",\n'
+        f'  "artifact_root": "{artifact_root}"\n'
+        "}\n"
+    )
+    assert builder.main.__annotations__["return"] in {None, "None"}
 
 
 def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
@@ -3201,7 +3428,6 @@ def test_release_calibration_diagnostics_include_gate_failures(
         captured["build"] = build
         return path
 
-    monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(
         builder, "write_calibration_diagnostics", fake_write_calibration_diagnostics
     )
@@ -3219,7 +3445,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         result=result,
         release_dir=tmp_path,
         registry=registry,
-        base_h5=tmp_path / "base.h5",
+        base_dataset_sha256="base-sha",
         compilation={"dropped_target_names": []},
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
@@ -3299,7 +3525,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         result=result,
         release_dir=tmp_path,
         registry=registry,
-        base_h5=base_h5,
+        base_dataset_sha256=builder._sha256(base_h5),
         compilation={"dropped_target_names": []},
         target_profile_gate=passing_gate,
         health_input_gate=passing_gate,
@@ -3319,7 +3545,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
 
 @pytest.mark.parametrize(
     "terminal_mode",
-    ["merge", "integrity", "retirement", "crash", "telemetry"],
+    ["merge", "integrity", "retirement", "crash", "telemetry", "puf_tail"],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
@@ -3344,14 +3570,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``telemetry``: live telemetry raises while attaching the already-written
     calibration diagnostics; the exception becomes a batch line and every
     later terminal gate group still evaluates before the terminal raise.
+    ``puf_tail``: exact-k selection loses the original PUF capital-gains tail;
+    the failure is batched while diagnostics and final-weight evidence remain,
+    every later terminal group runs, and release artifacts stay suppressed.
     """
     builder = _load_builder_module()
-    release_id = "populace-us-2024-gate-failure-test"
+    release_id = (
+        "populace-us-2024-k2-gate-failure-test"
+        if terminal_mode == "puf_tail"
+        else "populace-us-2024-gate-failure-test"
+    )
     base_h5 = tmp_path / "base.h5"
+    pool_manifest = tmp_path / "pool.manifest.json"
     weeks_source = tmp_path / "asecpub23csv.zip"
     facts = tmp_path / "facts.jsonl"
     out = tmp_path / "out"
     base_h5.write_bytes(b"h5")
+    pool_manifest.write_text("fixture", encoding="utf-8")
     facts.write_text("{}\n")
     target_spec = TargetSpec(
         name="amount",
@@ -3370,6 +3605,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         l0_lambda=0.2,
         n_nonzero=2,
         frame=SimpleNamespace(n=lambda entity: 2),
+        weights=np.asarray([12.0, 35.0]),
+        initial_weights=np.asarray([1.0, 1.0]),
         weight_entity="household",
         selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
     )
@@ -3385,7 +3622,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     class FakeFrame:
         def n(self, entity):
             assert entity == "household"
-            return 4
+            return 2 if terminal_mode == "puf_tail" else 4
+
+        def table(self, entity):
+            assert entity == "household"
+            size = self.n("household")
+            return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.ones(self.n("household"), dtype=np.float64),
+                WeightKind.IMPORTANCE,
+            )
 
     class FakeExportFrame:
         def n(self, entity):
@@ -3403,21 +3652,71 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
 
-    argv = [
-        "build_us_fiscal_refresh_release.py",
-        "--base-h5",
-        str(base_h5),
-        "--ledger-facts",
-        str(facts),
-        "--out",
-        str(out),
-        "--release-id",
-        release_id,
-        "--asec-2023-weeks-unemployed-source",
-        str(weeks_source),
-        "--no-target-frame-checkpoint",
-    ]
-    if terminal_mode != "telemetry":
+    if terminal_mode == "puf_tail":
+        loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
+        incumbent = tmp_path / "incumbent.json"
+        incumbent.write_text(
+            json.dumps(
+                {
+                    "target_surface": {"sha256": "e" * 64, "n_targets": 0},
+                    "build": {"target_loss_basis": loss_basis},
+                    "targets": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        incumbent_sha256 = (
+            __import__("hashlib").sha256(incumbent.read_bytes()).hexdigest()
+        )
+        argv = [
+            "build_us_fiscal_refresh_release.py",
+            "--pool-manifest",
+            str(pool_manifest),
+            "--pool-manifest-sha256",
+            "a" * 64,
+            "--pool-release-id",
+            "fixture-publication",
+            "--exact-k",
+            "N",
+            "--exact-k-pi-hi",
+            "0.95",
+            "--seed",
+            "17",
+            "--ledger-facts",
+            str(facts),
+            "--ledger-facts-sha256",
+            "b" * 64,
+            "--ledger-manifest-sha256",
+            "c" * 64,
+            "--incumbent-diagnostics",
+            str(incumbent),
+            "--incumbent-diagnostics-sha256",
+            incumbent_sha256,
+            "--frozen-target-surface-sha256",
+            "e" * 64,
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--no-target-frame-checkpoint",
+            "--no-staging",
+        ]
+    else:
+        argv = [
+            "build_us_fiscal_refresh_release.py",
+            "--base-h5",
+            str(base_h5),
+            "--ledger-facts",
+            str(facts),
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--asec-2023-weeks-unemployed-source",
+            str(weeks_source),
+            "--no-target-frame-checkpoint",
+        ]
+    if terminal_mode not in {"telemetry", "puf_tail"}:
         argv.append("--no-staging")
     if terminal_mode == "crash":
         # Nonexistent incumbent: the degraded-mode guard must record the
@@ -3429,10 +3728,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+
+    def fake_sha256(path):
+        if terminal_mode == "puf_tail" and Path(path) == pool_manifest:
+            return "a" * 64
+        if Path(path) == weeks_source:
+            return "weeks-source-sha"
+        return "base-sha"
+
     monkeypatch.setattr(
         builder,
         "_sha256",
-        lambda path: "weeks-source-sha" if Path(path) == weeks_source else "base-sha",
+        fake_sha256,
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
     if terminal_mode == "telemetry":
@@ -3442,6 +3749,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
+                if stage == "weeks_unemployed_input":
+                    captured["weeks_unemployed_telemetry"] = dict(details)
 
             def attach_artifact(self, name, path, **details):
                 captured.setdefault("telemetry_events", []).append(
@@ -3472,7 +3781,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
-    if terminal_mode in {"integrity", "retirement", "telemetry"}:
+    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -3589,6 +3898,44 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return FakeFrame()
 
     monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+    if terminal_mode == "puf_tail":
+
+        def fake_load_pool(path, *, expected_manifest_sha256):
+            assert path == pool_manifest
+            assert expected_manifest_sha256 == "a" * 64
+            return (
+                FakeFrame(),
+                {
+                    "publication_run_id": "fixture-publication",
+                    "agreement_gate": {"passed": True, "gates": {}},
+                    "pool_h5": {
+                        "path": str(base_h5),
+                        "sha256": "1" * 64,
+                        "size_bytes": base_h5.stat().st_size,
+                    },
+                    "agreement_diagnostics": {"sha256": "2" * 64},
+                },
+                builder.AuthenticatedPoolH5(
+                    path=base_h5.resolve(),
+                    sha256=__import__("hashlib")
+                    .sha256(base_h5.read_bytes())
+                    .hexdigest(),
+                    size_bytes=base_h5.stat().st_size,
+                    publication_run_id="fixture-publication",
+                    manifest_sha256="a" * 64,
+                ),
+            )
+
+        monkeypatch.setattr(
+            builder,
+            "load_simulation_ready_us_multispine_pool",
+            fake_load_pool,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_person_population",
+            lambda frame: builder.US_BASE_PERSON_POPULATION_BENCHMARK,
+        )
 
     def fake_load_weeks_unemployed_source(path, **kwargs):
         captured["source_stage_events"].append("load_weeks_source")
@@ -4727,6 +5074,43 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return path
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+    if terminal_mode == "puf_tail":
+        ladder_outcome = SimpleNamespace(
+            result=result,
+            support=np.asarray([0, 1], dtype=np.int64),
+            selected_inclusion_probabilities=np.ones(2),
+            selection_receipt={
+                "k": 2,
+                "pi_hi": 0.95,
+                "seed": 17,
+                "certainty_count": 2,
+                "boundary_pool_size": 0,
+                "design": "full-pool",
+            },
+            refit_baseline_diagnostics={"method": "fixture-full-pool"},
+        )
+        monkeypatch.setattr(
+            builder,
+            "calibrate_exact_k_ladder",
+            lambda *args, **kwargs: ladder_outcome,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_exact_k_puf_tail_support_gate",
+            lambda frame, support: builder.GateResult(
+                name="exact_k_puf_capital_gains_tail",
+                passed=False,
+                failures=("fixture PUF own-tail donor missing",),
+                details={"status": "failed"},
+            ),
+        )
+        monkeypatch.setattr(
+            builder,
+            "diagnostics_payload",
+            lambda result, *, target_registry: {
+                "target_surface": {"sha256": "e" * 64, "n_targets": 0}
+            },
+        )
 
     def fake_l0_refit_weights(frame, refit_result):
         captured["export_frame_from_l0_refit"] = True
@@ -4761,6 +5145,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return {}
 
     monkeypatch.setattr(builder, "_with_l0_refit_weights", fake_l0_refit_weights)
+    if terminal_mode == "puf_tail":
+        monkeypatch.setattr(
+            builder,
+            "_with_calibrated_weights",
+            lambda frame, weights: FakeExportFrame(),
+        )
     monkeypatch.setattr(
         builder,
         "us_ssi_take_up_diagnostics",
@@ -4776,7 +5166,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # own early failure. Other modes retain the populace#547 delivery
         # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode in {"integrity", "retirement"}
+        passes = terminal_mode in {"integrity", "retirement", "puf_tail"}
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -4857,7 +5247,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
-        if terminal_mode == "retirement":
+        if terminal_mode == "puf_tail":
+            assert message.startswith(
+                "Release gates failed: Exact-k PUF capital-gains tail failed: "
+                "fixture PUF own-tail donor missing"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "retirement":
             assert message.startswith(
                 "Release gates failed: Retirement-distribution signal failed: "
                 f"{retirement_missing_failure}"
@@ -4904,7 +5300,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
-    if terminal_mode == "retirement":
+    if terminal_mode == "puf_tail":
+        assert (
+            "Exact-k PUF capital-gains tail failed: "
+            "fixture PUF own-tail donor missing"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "retirement":
         assert (
             "Retirement-distribution signal failed: "
             f"{retirement_missing_failure}"
@@ -4992,14 +5394,33 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert not list(release_dir.glob("*manifest*"))
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
-    if terminal_mode in {"integrity", "retirement", "telemetry"}:
+        assert captured["weeks_unemployed_telemetry"] == {
+            "message": (
+                "Restored measured ASEC LKWEEKS before frozen-support "
+                "selection and target materialization."
+            ),
+            "source_path": str(weeks_source.resolve()),
+            "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+            "source_rows": 2,
+        }
+    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
             "qrf_tail_concentration",
         ]
     if terminal_mode != "crash":
-        if terminal_mode == "retirement":
+        if terminal_mode == "puf_tail":
+            expected_gate_failures = [
+                "Exact-k PUF capital-gains tail failed: "
+                "fixture PUF own-tail donor missing",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "Exact-k frozen-register fit failed: Exact-k frozen-register "
+                "comparison has no complete candidate target rows.",
+                "ctc failed",
+            ]
+        elif terminal_mode == "retirement":
             expected_gate_failures = [
                 f"Retirement-distribution signal failed: {retirement_missing_failure}",
                 "Other health insurance signal failed on the export frame: "
@@ -5043,6 +5464,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "ctc failed",
             ]
         assert captured["diagnostics"]["gate_failures"] == expected_gate_failures
+        if terminal_mode == "puf_tail":
+            assert captured["diagnostics"]["exact_k_ladder"]["invariant_battery"][
+                "puf_capital_gains_tail"
+            ] == {
+                "passed": False,
+                "failures": ["fixture PUF own-tail donor missing"],
+                "details": {"status": "failed"},
+            }
+            return
     else:
         # Corridor order: SSI delivery + basis note, health-input crash
         # guard, other-health gate failure, incumbent guard, release-gate
@@ -5462,6 +5892,293 @@ def test_incumbent_diagnostics_must_match_current_target_surface(tmp_path) -> No
             incumbent_payload,
             path=incumbent_path,
         )
+
+
+def test_exact_k_gate_requires_strict_weighted_loss_improvement() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="fixture/one",
+            entity="household",
+            value=100.0,
+            measure="one",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_a",
+        ),
+        TargetSpec(
+            name="fixture/two",
+            entity="household",
+            value=200.0,
+            measure="two",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_b",
+        ),
+    )
+    registry = TargetRegistry(specs, country="us")
+    names = tuple(builder._target_row_name(spec) for spec in specs)
+    loss_weights = np.asarray([1.0, 3.0])
+
+    def result(estimates: tuple[float, float]):
+        targets = np.asarray([100.0, 200.0])
+        final = np.asarray(estimates)
+        return SimpleNamespace(
+            diagnostics=tuple(
+                SimpleNamespace(name=name, target=target, final_estimate=estimate)
+                for name, target, estimate in zip(names, targets, final, strict=True)
+            ),
+            final_loss=builder.relative_error_loss(
+                final,
+                targets,
+                target_loss_weights=loss_weights,
+                target_loss_cap=builder.US_FISCAL_TARGET_LOSS_CAP,
+            ),
+        )
+
+    incumbent = {
+        names[0]: {"target": 100.0, "final_estimate": 120.0},
+        names[1]: {"target": 200.0, "final_estimate": 240.0},
+    }
+    loss_basis = builder._fiscal_target_loss_basis(registry, loss_weights)
+    passing = builder._exact_k_frozen_register_fit_gate(
+        result((110.0, 220.0)),
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
+    )
+    tied = builder._exact_k_frozen_register_fit_gate(
+        result((120.0, 240.0)),
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
+    )
+
+    assert passing.passed
+    assert passing.details["candidate_loss"] < passing.details["incumbent_loss"]
+    assert passing.details["strict_improvement_required"] is True
+    assert not tied.passed
+    assert "did not beat the incumbent" in tied.failures[0]
+
+
+def test_exact_k_gate_rejects_incumbent_weight_swap_that_flips_verdict() -> None:
+    """The r1 [1, 10] versus [10, 1] loss-basis flip must fail closed."""
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="fixture/one",
+            entity="household",
+            value=100.0,
+            measure="one",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_a",
+        ),
+        TargetSpec(
+            name="fixture/two",
+            entity="household",
+            value=100.0,
+            measure="two",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_b",
+        ),
+    )
+    registry = TargetRegistry(specs, country="us")
+    names = tuple(builder._target_row_name(spec) for spec in specs)
+    configured_weights = np.asarray([1.0, 10.0])
+    incumbent_weights = np.asarray([10.0, 1.0])
+    targets = np.asarray([100.0, 100.0])
+    candidate_estimates = np.asarray([120.0, 100.0])
+    candidate = SimpleNamespace(
+        diagnostics=tuple(
+            SimpleNamespace(name=name, target=target, final_estimate=estimate)
+            for name, target, estimate in zip(
+                names,
+                targets,
+                candidate_estimates,
+                strict=True,
+            )
+        ),
+        final_loss=builder.relative_error_loss(
+            candidate_estimates,
+            targets,
+            target_loss_weights=configured_weights,
+            target_loss_cap=builder.US_FISCAL_TARGET_LOSS_CAP,
+        ),
+    )
+    incumbent = {
+        name: {"target": target, "final_estimate": 110.0}
+        for name, target in zip(names, targets, strict=True)
+    }
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=configured_weights,
+        configured_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            configured_weights,
+        ),
+        incumbent_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            incumbent_weights,
+        ),
+    )
+
+    assert candidate.final_loss == pytest.approx(0.01818181818181818)
+    assert not gate.passed
+    assert gate.details["candidate_loss"] is None
+    assert gate.details["incumbent_loss"] is None
+    assert gate.failures[0].startswith("IncumbentLossBasisMismatchError:")
+
+
+def test_exact_k_gate_rejects_different_recorded_loss_basis_metadata() -> None:
+    """A surface-identical incumbent cannot substitute weighting metadata."""
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture_a",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    candidate = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=100.0),),
+        final_loss=0.0,
+    )
+    configured_basis = builder._fiscal_target_loss_basis(
+        registry,
+        np.ones(1),
+    )
+    incumbent_basis = {
+        **configured_basis,
+        "target_loss_weighting": "different_weighting_version",
+        "target_loss_family_multipliers": {"fixture_a": 999.0},
+        "target_loss_cap": 0.01,
+    }
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        {name: {"target": 100.0, "final_estimate": 200.0}},
+        target_registry=registry,
+        target_loss_weights=np.ones(1),
+        configured_loss_basis=configured_basis,
+        incumbent_loss_basis=incumbent_basis,
+    )
+
+    assert not gate.passed
+    assert gate.failures[0].startswith("IncumbentLossBasisMismatchError:")
+
+
+def test_verified_incumbent_bytes_survive_post_verification_replacement(
+    tmp_path: Path,
+) -> None:
+    """The r1 strong-to-weak replacement cannot change the scored incumbent."""
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    loss_weights = np.ones(1)
+    loss_basis = builder._fiscal_target_loss_basis(registry, loss_weights)
+    incumbent_path = tmp_path / "incumbent.json"
+    strong_payload = {
+        "target_surface": {"sha256": "a" * 64},
+        "build": {"target_loss_basis": loss_basis},
+        "targets": [
+            {"name": name, "target": 100.0, "final_estimate": 105.0},
+        ],
+    }
+    incumbent_path.write_text(json.dumps(strong_payload), encoding="utf-8")
+    expected_sha256 = (
+        __import__("hashlib").sha256(incumbent_path.read_bytes()).hexdigest()
+    )
+
+    pinned_payload, observed_sha256 = (
+        builder._load_verified_incumbent_diagnostics_payload(
+            incumbent_path,
+            expected_sha256=expected_sha256,
+        )
+    )
+    weak_payload = {
+        **strong_payload,
+        "targets": [
+            {"name": name, "target": 100.0, "final_estimate": 200.0},
+        ],
+    }
+    incumbent_path.write_text(json.dumps(weak_payload), encoding="utf-8")
+    candidate = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=110.0),),
+        final_loss=0.1,
+    )
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        builder._diagnostics_by_target_name(pinned_payload, path=incumbent_path),
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=pinned_payload["build"]["target_loss_basis"],
+    )
+
+    assert observed_sha256 == expected_sha256
+    assert not gate.passed
+    assert gate.details["incumbent_loss"] == pytest.approx(0.05)
+    assert "did not beat the incumbent" in gate.failures[0]
+
+
+def test_exact_k_frozen_register_gate_fails_closed_on_row_mismatch() -> None:
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    result = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=100.0),),
+        final_loss=0.0,
+    )
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        result,
+        {},
+        target_registry=registry,
+        target_loss_weights=np.ones(1),
+        configured_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            np.ones(1),
+        ),
+        incumbent_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            np.ones(1),
+        ),
+    )
+
+    assert not gate.passed
+    assert "do not equal" in gate.failures[0]
 
 
 def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
@@ -7653,6 +8370,230 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         ),
         default_dataset={"method": "dense_no_l0", "sparse": False},
     )
+
+
+def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-k57240-fixture"
+    dataset_key = "populace_us_2024"
+    calibration_key = "populace_us_2024_calibration"
+    dataset_filename = builder.DATASET_FILENAME
+    calibration_filename = builder.CALIBRATION_FILENAME
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / dataset_filename).write_bytes(b"h5")
+    (artifact_root / calibration_filename).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+    selection_receipt = {
+        "k": 57_240,
+        "pi_hi": 0.95,
+        "seed": 17,
+        "certainty_count": 3,
+        "boundary_pool_size": 100,
+        "design": "sampford",
+    }
+    ladder = {
+        "k": 57_240,
+        "seed": 17,
+        "selection_receipt": selection_receipt,
+        "refit_baseline_diagnostics": {
+            "method": "normalized_horvitz_thompson_w_over_q"
+        },
+        "pool": {
+            "release_id": "fixture-pool",
+            "release_id_source": "pool_manifest.publication_run_id",
+            "manifest_sha256": "c" * 64,
+            "pool_h5_sha256": "d" * 64,
+        },
+        "agreement_gate_reference": {
+            "passed": True,
+            "diagnostics_sha256": "e" * 64,
+        },
+        "frozen_target_register": {
+            "target_surface_sha256": "b" * 64,
+            "incumbent_diagnostics_sha256": "f" * 64,
+            "incumbent_fit": {
+                "passed": True,
+                "failures": [],
+                "details": {
+                    "candidate_loss": 0.1,
+                    "incumbent_loss": 0.2,
+                },
+            },
+        },
+        "invariant_battery": {
+            "puf_capital_gains_tail": {
+                "passed": True,
+                "failures": [],
+                "details": {"status": "retained"},
+            }
+        },
+    }
+
+    builder._build_manifests(
+        dataset_key=dataset_key,
+        dataset_filename=dataset_filename,
+        calibration_key=calibration_key,
+        calibration_filename=calibration_filename,
+        exact_k_ladder=ladder,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["exact_k_ladder"] == ladder
+    assert (
+        build_manifest["gates"]["exact_k_frozen_register_fit"]
+        == (ladder["frozen_target_register"]["incumbent_fit"])
+    )
+    assert (
+        build_manifest["gates"]["exact_k_puf_capital_gains_tail"]
+        == (ladder["invariant_battery"]["puf_capital_gains_tail"])
+    )
+    assert release_manifest["build"]["exact_k_ladder"] == ladder
+    assert (
+        release_manifest["build"]["exact_k_ladder"]["selection_receipt"]
+        == selection_receipt
+    )
+    assert build_manifest["dataset"]["filename"] == dataset_filename
+    assert build_manifest["calibration"]["filename"] == calibration_filename
+    assert release_manifest["default_datasets"] == {"national": dataset_key}
+    assert release_manifest["artifacts"][dataset_key]["path"] == dataset_filename
+    assert (
+        release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
+    )
+
+
+def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> None:
+    """The pool is post-agreement input, so its owned producers run only legacy."""
+    import ast
+
+    from populace.build.us_runtime.multispine_pool import POOL_OPERATOR_CONTRACTS
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+
+    def call_name(call: ast.Call) -> str | None:
+        return getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+
+    all_calls = {
+        name
+        for call in ast.walk(main_fn)
+        if isinstance(call, ast.Call)
+        if (name := call_name(call)) is not None
+    }
+    pool_owned_call_sites = {
+        (name, call.lineno)
+        for call in ast.walk(main_fn)
+        if isinstance(call, ast.Call)
+        if (name := call_name(call)) in POOL_OPERATOR_CONTRACTS
+    }
+    guarded_calls: set[str] = set()
+    guarded_call_sites: set[tuple[str, int]] = set()
+    for node in ast.walk(main_fn):
+        if (
+            not isinstance(node, ast.If)
+            or ast.unparse(node.test) != "pool_frame is None"
+        ):
+            continue
+        guarded_calls.update(
+            name
+            for statement in node.body
+            for call in ast.walk(statement)
+            if isinstance(call, ast.Call)
+            if (name := call_name(call)) is not None
+        )
+        guarded_call_sites.update(
+            (name, call.lineno)
+            for statement in node.body
+            for call in ast.walk(statement)
+            if isinstance(call, ast.Call)
+            if (name := call_name(call)) in POOL_OPERATOR_CONTRACTS
+        )
+
+    pool_owned_fiscal_calls = set(POOL_OPERATOR_CONTRACTS) & all_calls
+    assert pool_owned_fiscal_calls
+    assert pool_owned_fiscal_calls <= guarded_calls
+    assert pool_owned_call_sites == guarded_call_sites
+    assert {
+        "with_us_weeks_unemployed",
+        "with_us_qbi_input_reconciliation",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_immigration_inputs",
+        "with_us_take_up_inputs",
+        "with_us_hours_worked_inputs",
+        "with_us_relationship_inputs",
+        "with_us_medicare_take_up_input",
+        "with_us_retirement_distribution_inputs",
+        "with_us_eligibility_inputs",
+        "with_us_education_inputs",
+        "with_us_pregnancy_inputs",
+        "with_us_wic_claim_input",
+    } <= guarded_calls
+    assert "_with_snap_state_take_up_outputs" in all_calls
+    assert "_with_snap_state_take_up_outputs" not in guarded_calls
+
+
+def test_exact_k_selection_batches_original_puf_tail_failure(monkeypatch) -> None:
+    builder = _load_builder_module()
+    marker = object()
+    monkeypatch.setattr(
+        builder,
+        "_exact_k_original_support_frame",
+        lambda frame, support: marker,
+    )
+
+    def fail_tail(frame, selected, *, require_present):
+        assert frame is marker
+        assert selected is marker
+        assert require_present is True
+        raise ValueError("fixture tail donor missing")
+
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        fail_tail,
+    )
+
+    gate = builder._exact_k_puf_tail_support_gate(marker, np.asarray([0]))
+
+    assert not gate.passed
+    assert gate.failures == ("fixture tail donor missing",)
+    assert gate.details["status"] == "failed"
 
 
 def test_build_manifests_records_selection_source_provenance(

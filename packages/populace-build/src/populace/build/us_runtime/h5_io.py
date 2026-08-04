@@ -13,9 +13,11 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import uuid
 import warnings
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -25,12 +27,15 @@ from populace.frame import Frame, WeightKind, Weights
 from populace.frame.units import US_SCHEMA
 
 __all__ = [
+    "AuthenticatedPoolH5",
+    "AuthenticatedPoolH5MismatchError",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "load_legacy_calibrated_us_h5",
+    "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "read_nullable_us_h5_metadata",
     "write_nullable_us_h5",
@@ -48,6 +53,83 @@ US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+class AuthenticatedPoolH5MismatchError(RuntimeError):
+    """A pool H5 no longer matches the bytes authenticated by its manifest."""
+
+
+@dataclass(frozen=True)
+class AuthenticatedPoolH5:
+    """Immutable identity of the pool H5 authorized by one manifest buffer."""
+
+    path: Path
+    sha256: str
+    size_bytes: int
+    publication_run_id: str
+    manifest_sha256: str
+
+    def verified_digest(self, *, consumer: str) -> str:
+        """Re-verify the pathname and return only the authenticated digest."""
+
+        try:
+            observed_sha256, observed_size_bytes = _file_sha256_and_size(self.path)
+        except OSError as exc:
+            raise AuthenticatedPoolH5MismatchError(
+                "AuthenticatedPoolH5MismatchError: authenticated pool H5 "
+                f"became unreadable at consumer {consumer!r}: {self.path}; "
+                f"expected sha256={self.sha256}, size_bytes={self.size_bytes}."
+            ) from exc
+        if observed_sha256 != self.sha256 or observed_size_bytes != self.size_bytes:
+            self._raise_mismatch(
+                consumer=consumer,
+                observed_sha256=observed_sha256,
+                observed_size_bytes=observed_size_bytes,
+            )
+        return self.sha256
+
+    def copy_verified_to(self, destination: str | Path, *, consumer: str) -> Path:
+        """Atomically copy the authenticated bytes and reject a raced source."""
+
+        destination = Path(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            self.verified_digest(consumer=f"{consumer} source preflight")
+            _copy_file_bytes(self.path, temporary)
+            observed_sha256, observed_size_bytes = _file_sha256_and_size(temporary)
+            if observed_sha256 != self.sha256 or observed_size_bytes != self.size_bytes:
+                self._raise_mismatch(
+                    consumer=f"{consumer} copied bytes",
+                    observed_sha256=observed_sha256,
+                    observed_size_bytes=observed_size_bytes,
+                )
+            os.replace(temporary, destination)
+        except AuthenticatedPoolH5MismatchError:
+            temporary.unlink(missing_ok=True)
+            raise
+        except OSError as exc:
+            temporary.unlink(missing_ok=True)
+            raise AuthenticatedPoolH5MismatchError(
+                "AuthenticatedPoolH5MismatchError: authenticated pool H5 "
+                f"became unreadable at {consumer!r}: {self.path}; expected "
+                f"sha256={self.sha256}, size_bytes={self.size_bytes}."
+            ) from exc
+        return destination
+
+    def _raise_mismatch(
+        self,
+        *,
+        consumer: str,
+        observed_sha256: str,
+        observed_size_bytes: int,
+    ) -> None:
+        raise AuthenticatedPoolH5MismatchError(
+            "AuthenticatedPoolH5MismatchError: authenticated pool H5 changed "
+            f"at consumer {consumer!r}: {self.path}; expected "
+            f"sha256={self.sha256}, size_bytes={self.size_bytes}, observed "
+            f"sha256={observed_sha256}, size_bytes={observed_size_bytes}."
+        )
 
 
 def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
@@ -88,17 +170,39 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
 
 def load_simulation_ready_us_multispine_pool_manifest(
     path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
 ) -> dict[str, object]:
     """Validate and return one ready manifest bound to its H5 and diagnostics.
 
     The manifest is the readiness authority. A caller cannot treat an H5 as
     ready merely because it exists: the manifest, nested artifact receipts,
     H5 metadata, diagnostics, and file digests must all bind the same
-    publication run.
+    publication run. When ``expected_manifest_sha256`` is supplied, this
+    function hashes and parses one byte buffer so a replacement cannot inherit
+    the authenticated manifest identity.
     """
 
+    manifest, _ = _load_authenticated_us_multispine_pool_manifest(
+        path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    return manifest
+
+
+def _load_authenticated_us_multispine_pool_manifest(
+    path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
+) -> tuple[dict[str, object], AuthenticatedPoolH5]:
+    """Return the validated manifest and its authenticated pool-H5 identity."""
+
     manifest_path = Path(path)
-    manifest = _read_json_object(manifest_path, label="pool manifest")
+    manifest, manifest_sha256, _ = _read_json_object_with_identity(
+        manifest_path,
+        label="pool manifest",
+        expected_sha256=expected_manifest_sha256,
+    )
     if (
         manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
         or manifest.get("schema_version") != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
@@ -156,10 +260,11 @@ def load_simulation_ready_us_multispine_pool_manifest(
         pool_receipt,
         label=f"US multispine pool manifest {manifest_path}.pool_h5",
     )
-    _require_matching_sha256(
+    pool_sha256, pool_size_bytes = _require_matching_sha256(
         pool_path,
         pool_receipt,
         label=f"US multispine pool manifest {manifest_path}.pool_h5",
+        require_size=True,
     )
     h5_metadata = read_nullable_us_h5_metadata(pool_path)
     if h5_metadata.get("artifact_kind") != US_MULTISPINE_POOL_H5_ARTIFACT_KIND:
@@ -206,7 +311,136 @@ def load_simulation_ready_us_multispine_pool_manifest(
             f"US multispine pool diagnostics {diagnostics_path} do not match "
             "the ready manifest publication."
         )
-    return manifest
+    manifest_agreement_gate = _mapping(
+        manifest.get("agreement_gate"),
+        label=f"US multispine pool manifest {manifest_path}.agreement_gate",
+    )
+    diagnostics_agreement_gate = _mapping(
+        diagnostics.get("agreement_gate"),
+        label=f"US multispine pool diagnostics {diagnostics_path}.agreement_gate",
+    )
+    if diagnostics_agreement_gate != manifest_agreement_gate:
+        raise ValueError(
+            f"US multispine pool diagnostics {diagnostics_path} agreement-gate "
+            "verdict does not match the ready manifest."
+        )
+    return manifest, AuthenticatedPoolH5(
+        path=pool_path.resolve(),
+        sha256=pool_sha256,
+        size_bytes=pool_size_bytes,
+        publication_run_id=publication_run_id,
+        manifest_sha256=manifest_sha256,
+    )
+
+
+def load_simulation_ready_us_multispine_pool(
+    path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
+) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
+    """Load a manifest-bound multispine pool with its importance weights.
+
+    The companion manifest remains the readiness authority.  This loader first
+    validates the manifest/H5/agreement publication triple, then reads the
+    fixed-format entity tables and checks the H5 digest again after the read so
+    bytes changed concurrently cannot be treated as the validated pool.  The
+    pool's household weights retain their ``IMPORTANCE`` provenance; the
+    legacy US loader deliberately labels historical datasets ``CALIBRATED``
+    and is therefore not a valid consumer for this artifact.
+
+    Returns:
+        The reconstructed pool :class:`~populace.frame.Frame`, the exact
+        manifest object whose artifact receipts authorized the load, and one
+        immutable identity object for every downstream H5 consumer.
+    """
+
+    manifest_path = Path(path)
+    manifest, authenticated_pool_h5 = _load_authenticated_us_multispine_pool_manifest(
+        manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    agreement_gate = _mapping(
+        manifest.get("agreement_gate"),
+        label=f"US multispine pool manifest {manifest_path}.agreement_gate",
+    )
+    if agreement_gate.get("passed") is not True:
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} has no passing "
+            "agreement-gate verdict."
+        )
+
+    pool_path = authenticated_pool_h5.path
+    metadata = read_nullable_us_h5_metadata(pool_path)
+    stored_kind = metadata.get("household_weight_kind")
+    if stored_kind != WeightKind.IMPORTANCE.value:
+        raise ValueError(
+            f"US multispine pool H5 {pool_path} must carry importance weights, "
+            f"got {stored_kind!r}."
+        )
+
+    with pd.HDFStore(pool_path, mode="r") as store:
+        keys = {key.lstrip("/") for key in store.keys()}
+        missing = sorted(set(US_SCHEMA.entities) - keys)
+        if missing:
+            raise ValueError(
+                f"US multispine pool H5 {pool_path} is missing entity table(s): "
+                f"{missing}."
+            )
+        tables = {entity: store[entity] for entity in US_SCHEMA.entities}
+        period = store[_TIME_PERIOD_KEY]
+
+    if len(period) != 1 or period.tolist() != [manifest.get("period")]:
+        raise ValueError(
+            f"US multispine pool H5 {pool_path} period does not match its "
+            f"manifest: H5={period.tolist()!r}, manifest={manifest.get('period')!r}."
+        )
+    household = tables["household"].copy()
+    if "household_weight" not in household:
+        raise ValueError(
+            f"US multispine pool H5 {pool_path} household table has no "
+            "household_weight column."
+        )
+    household_weights = household.pop("household_weight").to_numpy(dtype=np.float64)
+    tables["household"] = household
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                household_weights,
+                WeightKind.IMPORTANCE,
+            )
+        },
+    )
+
+    provenance_counts = _mapping(
+        manifest.get("provenance_counts"),
+        label=f"US multispine pool manifest {manifest_path}.provenance_counts",
+    )
+    household_counts = _mapping(
+        provenance_counts.get("household"),
+        label=(
+            f"US multispine pool manifest {manifest_path}.provenance_counts.household"
+        ),
+    )
+    expected_households = household_counts.get("rows")
+    if (
+        isinstance(expected_households, bool)
+        or not isinstance(expected_households, int)
+        or expected_households != frame.n("household")
+    ):
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} household row count "
+            f"{expected_households!r} does not match H5 count "
+            f"{frame.n('household')}."
+        )
+
+    # Close the validation/read time-of-check-to-time-of-use window.  A file
+    # replacement during the HDF read must not inherit the first digest check.
+    authenticated_pool_h5.verified_digest(
+        consumer="pool loader post-HDF read",
+    )
+    return frame, manifest, authenticated_pool_h5
 
 
 def read_nullable_us_h5_metadata(path: str | Path) -> dict[str, object]:
@@ -418,14 +652,50 @@ def _artifact_metadata(
     return metadata
 
 
-def _read_json_object(path: Path, *, label: str) -> dict[str, object]:
+def _read_json_object(
+    path: Path,
+    *,
+    label: str,
+    expected_sha256: str | None = None,
+) -> dict[str, object]:
+    payload, _, _ = _read_json_object_with_identity(
+        path,
+        label=label,
+        expected_sha256=expected_sha256,
+    )
+    return payload
+
+
+def _read_json_object_with_identity(
+    path: Path,
+    *,
+    label: str,
+    expected_sha256: str | None = None,
+) -> tuple[dict[str, object], str, int]:
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = Path(path).read_bytes()
     except (OSError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} {path} is not readable valid JSON.") from exc
+    observed_sha256 = hashlib.sha256(raw).hexdigest()
+    if expected_sha256 is not None:
+        if not isinstance(expected_sha256, str) or not _LOWERCASE_SHA256.fullmatch(
+            expected_sha256
+        ):
+            raise ValueError(
+                f"Expected {label} SHA-256 must be 64 lowercase hexadecimal characters."
+            )
+        if observed_sha256 != expected_sha256:
+            raise ValueError(
+                f"{label.capitalize()} SHA-256 mismatch for {path}: got "
+                f"{observed_sha256}, expected {expected_sha256}."
+            )
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError) as exc:
         raise ValueError(f"{label} {path} is not readable valid JSON.") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{label} {path} must contain a JSON object.")
-    return payload
+    return payload, observed_sha256, len(raw)
 
 
 def _mapping(value: object, *, label: str) -> Mapping[str, object]:
@@ -465,13 +735,42 @@ def _require_matching_sha256(
     receipt: Mapping[str, object],
     *,
     label: str,
-) -> None:
+    require_size: bool = False,
+) -> tuple[str, int]:
     expected = receipt.get("sha256")
     if not isinstance(expected, str) or not _LOWERCASE_SHA256.fullmatch(expected):
         raise ValueError(f"{label}.sha256 must be a lowercase SHA-256 digest.")
+    expected_size = receipt.get("size_bytes")
+    if require_size and (
+        isinstance(expected_size, bool)
+        or not isinstance(expected_size, int)
+        or expected_size < 0
+    ):
+        raise ValueError(f"{label}.size_bytes must be a non-negative integer.")
+    observed_sha256, observed_size_bytes = _file_sha256_and_size(path)
+    if observed_sha256 != expected:
+        raise ValueError(f"{label} SHA-256 does not match the published artifact.")
+    if require_size and observed_size_bytes != expected_size:
+        raise ValueError(
+            f"{label} size_bytes {observed_size_bytes} does not match the "
+            f"published artifact size {expected_size}."
+        )
+    return observed_sha256, observed_size_bytes
+
+
+def _file_sha256_and_size(path: Path) -> tuple[str, int]:
     digest = hashlib.sha256()
+    size_bytes = 0
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    if digest.hexdigest() != expected:
-        raise ValueError(f"{label} SHA-256 does not match the published artifact.")
+            size_bytes += len(chunk)
+    return digest.hexdigest(), size_bytes
+
+
+def _copy_file_bytes(source: Path, destination: Path) -> None:
+    with (
+        source.open("rb") as source_stream,
+        destination.open("xb") as destination_stream,
+    ):
+        shutil.copyfileobj(source_stream, destination_stream, length=1024 * 1024)

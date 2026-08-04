@@ -186,6 +186,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
+        "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
