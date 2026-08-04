@@ -33,7 +33,7 @@ UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
 UK_TERMINAL_GATE_POLICY_SHA256 = (
-    "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
+    "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
 UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
@@ -54,6 +54,8 @@ UK_ALWAYS_APPLICABLE_GATE_NAMES = (
 UK_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
+    "input_mass_parity": ("input_mass_parity",),
+    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -676,7 +678,7 @@ def _terminal_gate_payload(
         },
     }
     unsigned_attestation = {
-        "schema_version": 4,
+        "schema_version": 5,
         "producer": UK_TERMINAL_GATE_PRODUCER,
         "release_id": release_id,
         "calibration_diagnostics_sha256": calibration_diagnostics_sha256,
@@ -688,7 +690,7 @@ def _terminal_gate_payload(
         "signing_key_sha256": hashlib.sha256(signing_key).hexdigest(),
     }
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "enforced": True,
         "passed": True,
         "gates": gates,

@@ -100,6 +100,19 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fail instead of writing when the committed reference differs.",
     )
+    parser.add_argument(
+        "--emit-weighted-totals",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Also write weighted per-column totals of the pinned artifact's "
+            "effective input surface, in the schema the input_mass_parity "
+            "terminal gate consumes (#609). LICENSING: weighted totals are a "
+            "different UKDS disclosure class than the unweighted shares this "
+            "tool commits — write them outside the repository and do not "
+            "commit or post them until the EUL question on #609 is resolved."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -359,8 +372,79 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
     }
 
 
+def build_weighted_totals(source_h5: Path) -> dict[str, Any]:
+    """Weighted per-column totals of the pinned eFRS effective input surface.
+
+    Emitted in the ``load_uk_input_mass_reference`` schema so the frozen
+    incumbent can serve as the input_mass_parity gate's reference (#609):
+    a candidate cannot move the bar by choosing its own reference. Weights
+    are the artifact's shipped household weights, broadcast to person and
+    benunit rows through the membership columns.
+    """
+
+    _verify_source(source_h5)
+    try:
+        from policyengine_uk import CountryTaxBenefitSystem
+    except ImportError as exc:  # pragma: no cover - CLI dependency diagnostic
+        raise RuntimeError(
+            "policyengine-uk is required to classify exported input leaves."
+        ) from exc
+    from types import SimpleNamespace
+
+    from populace.build.uk_runtime.weighted_integrity import (
+        uk_dataset_input_mass_totals,
+    )
+
+    effective_input_names = set(CountryTaxBenefitSystem().variables)
+    structural = set(STRUCTURAL_COLUMNS)
+    with pd.HDFStore(source_h5, mode="r") as store:
+        tables = {entity: store[entity] for entity in ENTITY_TABLES}
+    requested = {
+        f"{entity}.{column}"
+        for entity, table in tables.items()
+        for column in table.columns
+        if column not in structural and column in effective_input_names
+    }
+    totals = uk_dataset_input_mass_totals(
+        SimpleNamespace(**tables),
+        columns=requested,
+    )
+    return {
+        "schema_version": 1,
+        "description": (
+            "Weighted per-column totals of the pinned enhanced-FRS effective "
+            "input surface, for the UK input_mass_parity terminal gate "
+            "(#609). Derived from licensed UKDS microdata: do not commit or "
+            "post until the EUL disclosure question on #609 is resolved."
+        ),
+        "identity": {
+            "filename": SOURCE_FILENAME,
+            "revision": SOURCE_REVISION,
+            "sha256": SOURCE_SHA256,
+            "vintage": SOURCE_VINTAGE,
+        },
+        "source": {
+            "repo_id": SOURCE_REPO_ID,
+            "repo_type": SOURCE_REPO_TYPE,
+            "filename": SOURCE_FILENAME,
+            "revision": SOURCE_REVISION,
+            "sha256": SOURCE_SHA256,
+            "size_bytes": SOURCE_SIZE_BYTES,
+            "url": SOURCE_URL,
+            "vintage": SOURCE_VINTAGE,
+            "period": SOURCE_PERIOD,
+        },
+        "totals": dict(sorted(totals.items())),
+    }
+
+
 def main() -> int:
     args = _parse_args()
+    if args.check and args.emit_weighted_totals is not None:
+        raise SystemExit(
+            "--check verifies the committed reference only; run "
+            "--emit-weighted-totals in a write pass."
+        )
     source_h5 = resolve_source_h5(args.input_h5)
     reference = build_reference(source_h5)
     rendered = (
@@ -377,6 +461,25 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered, encoding="utf-8")
     print(f"wrote {output} — {len(reference['nonzero_shares'])} populated input layers")
+    if args.emit_weighted_totals is not None:
+        totals_output = args.emit_weighted_totals.resolve()
+        if totals_output.is_relative_to(REPO_ROOT):
+            raise SystemExit(
+                f"{totals_output} is inside the repository; weighted totals "
+                "must stay uncommitted until the #609 UKDS EUL question is "
+                "resolved."
+            )
+        totals_payload = build_weighted_totals(source_h5)
+        totals_output.parent.mkdir(parents=True, exist_ok=True)
+        totals_output.write_text(
+            json.dumps(totals_payload, indent=1, sort_keys=True, ensure_ascii=False)
+            + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"wrote {totals_output} — {len(totals_payload['totals'])} weighted "
+            "input totals (UKDS-derived: keep uncommitted, see #609)"
+        )
     return 0
 
 

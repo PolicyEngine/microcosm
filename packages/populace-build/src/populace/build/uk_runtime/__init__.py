@@ -398,6 +398,17 @@ from populace.build.uk_runtime.terminal_gates import (
     uk_zero_weight_strata_gate,
     write_uk_terminal_gate_report,
 )
+from populace.build.uk_runtime.weighted_integrity import (
+    UKInputMassParityPolicy,
+    UKInputMassReference,
+    UKQRFTailConcentrationPolicy,
+    load_uk_input_mass_reference,
+    load_uk_reviewed_exclusion_register,
+    uk_dataset_input_mass_totals,
+    uk_input_mass_parity_gate,
+    uk_qrf_tail_concentration_columns,
+    uk_qrf_tail_concentration_gate,
+)
 
 __all__ = [
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
@@ -727,10 +738,19 @@ __all__ = [
     "UK_MAX_TO_MEDIAN_WEIGHT_RATIO",
     "UK_MIN_ESS_FRACTION",
     "UK_TERMINAL_GATE_SCHEMA_VERSION",
+    "UKInputMassParityPolicy",
+    "UKInputMassReference",
+    "UKQRFTailConcentrationPolicy",
     "UKReleaseParityEvidence",
     "UKZeroWeightStratumDeclaration",
+    "load_uk_input_mass_reference",
+    "load_uk_reviewed_exclusion_register",
+    "uk_dataset_input_mass_totals",
     "uk_degenerate_release_surface_gate",
     "uk_export_surface_gate",
+    "uk_input_mass_parity_gate",
+    "uk_qrf_tail_concentration_columns",
+    "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
     "uk_terminal_gate_report",

@@ -65,6 +65,7 @@ __all__ = [
     "HMRC_DISTRIBUTIONAL_INPUTS",
     "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
     "assert_uk_hmrc_income_source_contract_current",
+    "uk_hmrc_weighted_qrf_output_columns",
 ]
 
 UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE = "hmrc_income_source_stages.json"
@@ -911,6 +912,68 @@ def assert_uk_hmrc_income_source_contract_current(
     )
 
     _raise_failures(failures)
+
+
+def uk_hmrc_weighted_qrf_output_columns(
+    resource: Any | None = None,
+) -> tuple[str, ...]:
+    """Columns produced by declared ``fit_weighted_qrf_stage*`` operations.
+
+    This is the UK tail-concentration gate's column surface (#609). It is
+    derived from the declarative source manifest rather than a hand list —
+    mirroring the US derivation from ``us/source_stages.json`` — so a new
+    weighted-QRF output is covered by the gate the day the manifest declares
+    it. Declaration order is preserved (stage 1 before stage 2).
+    """
+
+    payload = _load_payload(resource)
+    stages = payload.get("stages")
+    if not isinstance(stages, Sequence) or isinstance(stages, (str, bytes)):
+        raise ValueError("UK HMRC source manifest must declare a stages list.")
+    outputs: dict[str, None] = {}
+    weighted_qrf_operations = 0
+    for stage in stages:
+        if not isinstance(stage, Mapping):
+            raise ValueError("UK HMRC source manifest stages must be objects.")
+        operations = stage.get("operations", ())
+        if not isinstance(operations, Sequence) or isinstance(
+            operations, (str, bytes)
+        ):
+            raise ValueError(
+                "UK HMRC source manifest stage operations must be a list."
+            )
+        for operation in operations:
+            if not isinstance(operation, Mapping):
+                raise ValueError(
+                    "UK HMRC source manifest operations must be objects."
+                )
+            kind = operation.get("kind")
+            if not isinstance(kind, str) or not kind.startswith("fit_weighted_qrf"):
+                continue
+            weighted_qrf_operations += 1
+            declared = operation.get("outputs")
+            if (
+                not isinstance(declared, Sequence)
+                or isinstance(declared, (str, bytes))
+                or not declared
+            ):
+                raise ValueError(
+                    f"UK HMRC source manifest operation {kind!r} must declare a "
+                    "non-empty outputs list."
+                )
+            for output in declared:
+                if not isinstance(output, str) or not output:
+                    raise ValueError(
+                        f"UK HMRC source manifest operation {kind!r} declares a "
+                        "non-string or empty output."
+                    )
+                outputs[output] = None
+    if not weighted_qrf_operations:
+        raise ValueError(
+            "UK HMRC source manifest declares no fit_weighted_qrf operations; "
+            "an empty tail-concentration surface would make the gate vacuous."
+        )
+    return tuple(outputs)
 
 
 def _load_payload(resource: Any | None) -> Mapping[str, Any]:

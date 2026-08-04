@@ -21,6 +21,9 @@ from populace.build.uk_runtime.terminal_gates import (
     UK_TERMINAL_GATE_PRODUCER,
     UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
     UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+    UKInputMassParityPolicy,
+    UKInputMassReference,
+    UKQRFTailConcentrationPolicy,
     UKReleaseParityEvidence,
     UKZeroWeightStratumDeclaration,
     uk_degenerate_release_surface_gate,
@@ -425,7 +428,9 @@ def test_ported_june_parity_gates_reject_empty_evidence() -> None:
     assert "evidence is empty" in " ".join(fit.failures)
 
 
-def test_item_4_and_5_future_gates_are_not_stubbed_as_passes() -> None:
+def test_unevidenced_gates_are_omitted_not_stubbed_as_passes() -> None:
+    """Item-4 gates joined the battery evidence-gated; item 5 remains future."""
+
     names = set(_gates(_report()))
 
     assert {
@@ -435,6 +440,172 @@ def test_item_4_and_5_future_gates_are_not_stubbed_as_passes() -> None:
     }.isdisjoint(names)
 
 
+def _input_mass_reference(totals=None) -> UKInputMassReference:
+    return UKInputMassReference(
+        totals=(
+            {"person.employment_income": 10.0} if totals is None else totals
+        ),
+        filename="enhanced_frs_2023_24.h5",
+        revision="655dd07e4bb9c777b00dac044949611f1feb824f",
+        sha256="a" * 64,
+        vintage="2023_24",
+    )
+
+
+def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
+    fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
+    fields.update(overrides)
+    return UKInputMassParityPolicy(**fields)
+
+
+def _qrf_tail_policy(**overrides) -> UKQRFTailConcentrationPolicy:
+    fields = {"top_k": 1, "max_top_share": 0.5, "min_nonzero_records": 2}
+    fields.update(overrides)
+    return UKQRFTailConcentrationPolicy(**fields)
+
+
+def test_armed_weighted_integrity_gates_join_membership_and_attestation() -> None:
+    """Removing either armed gate from the battery must fail this test."""
+
+    report = _report(
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(),
+        qrf_tail_policy=_qrf_tail_policy(),
+    )
+    gates = _gates(report)
+
+    assert list(gates) == [
+        "uk_release_input_coverage",
+        "degenerate_release_surface",
+        "zero_weight_strata",
+        "weight_ess",
+        "weight_ratio",
+        "input_mass_parity",
+        "qrf_tail_concentration",
+    ]
+    assert gates["input_mass_parity"]["passed"] is True
+    assert set(report.evidence_sha256) == {
+        "release_dataset",
+        "input_mass_parity",
+        "qrf_tail_concentration",
+    }
+    assert report.attestation["evaluated_gates"][-2:] == [
+        "input_mass_parity",
+        "qrf_tail_concentration",
+    ]
+
+
+def test_zeroed_input_column_fails_the_armed_battery_by_name() -> None:
+    report = _report(
+        _dataset(signal=0.0),
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(),
+    )
+    gate = _gates(report)["input_mass_parity"]
+
+    assert not report.passed
+    assert gate["passed"] is False
+    assert "person.employment_income" in gate["failures"][0]
+    assert "mass is zero" in gate["failures"][0]
+    assert gate["details"]["reference_identity"]["filename"] == (
+        "enhanced_frs_2023_24.h5"
+    )
+
+
+def test_999_permille_mass_loss_fails_the_armed_battery_by_name() -> None:
+    report = _report(
+        _dataset(signal=[0.001, 0.002, 0.003, 0.004]),
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(),
+    )
+    gate = _gates(report)["input_mass_parity"]
+
+    assert gate["passed"] is False
+    assert "person.employment_income" in gate["failures"][0]
+    assert "-99.9%" in gate["failures"][0]
+
+
+def test_concentrated_qrf_output_fails_the_armed_battery_by_name() -> None:
+    n = 10
+    values = np.ones(n)
+    values[0] = 1_000.0
+    dataset = _dataset(n=n)
+    dataset.person["self_employment_income"] = values
+
+    report = _report(dataset, qrf_tail_policy=_qrf_tail_policy())
+    gate = _gates(report)["qrf_tail_concentration"]
+
+    assert not report.passed
+    assert gate["passed"] is False
+    assert "self_employment_income" in gate["failures"][0]
+    assert gate["details"]["surface"]["declared_qrf_outputs"] >= 47
+
+
+def test_armed_gate_without_reference_or_thresholds_fails_closed() -> None:
+    missing_reference = _gates(_report(input_mass_policy=_input_mass_policy()))[
+        "input_mass_parity"
+    ]
+    missing_policy = _gates(_report(input_mass_reference=_input_mass_reference()))[
+        "input_mass_parity"
+    ]
+
+    assert missing_reference["passed"] is False
+    assert "no UKInputMassReference" in missing_reference["failures"][0]
+    assert missing_policy["passed"] is False
+    assert "#609 measurement pass" in missing_policy["failures"][0]
+
+
+def test_weighted_integrity_evaluator_crash_does_not_mask_pending_gates() -> None:
+    report = _report(
+        input_mass_reference=object(),
+        input_mass_policy=_input_mass_policy(),
+        qrf_tail_policy=object(),
+    )
+    gates = _gates(report)
+
+    assert gates["input_mass_parity"]["passed"] is False
+    assert "must be UKInputMassReference" in gates["input_mass_parity"]["failures"][0]
+    assert gates["qrf_tail_concentration"]["passed"] is False
+    assert (
+        "must be UKQRFTailConcentrationPolicy"
+        in gates["qrf_tail_concentration"]["failures"][0]
+    )
+    # Pending gates still evaluated and reported (#547).
+    assert gates["weight_ratio"]["passed"] is True
+
+
+def test_weighted_integrity_thresholds_are_bound_into_the_policy_digest() -> None:
+    unarmed = _report()
+    armed = _report(
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(),
+    )
+    retuned = _report(
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(relative_tolerance=0.25),
+    )
+
+    digests = {
+        report.attestation["policy_sha256"] for report in (unarmed, armed, retuned)
+    }
+    assert len(digests) == 3
+
+
+def test_stale_weighted_integrity_exclusions_fail_the_armed_battery() -> None:
+    report = _report(
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(
+            reviewed_exclusions={
+                "person.employment_income": "Seeded stale entry.",
+            }
+        ),
+    )
+    gate = _gates(report)["input_mass_parity"]
+
+    assert gate["passed"] is False
+    assert "Stale reviewed input-mass exclusions" in gate["failures"][0]
+
+
 def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None:
     report = _report()
     output = tmp_path / "terminal_gates.json"
@@ -442,12 +613,12 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
     written = write_uk_terminal_gate_report(report, output)
     payload = json.loads(written.read_text(encoding="utf-8"))
 
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["enforced"] is True
     assert payload["passed"] is True
     assert payload["gates"] == _gates(report)
     attestation = payload["attestation"]
-    assert attestation["schema_version"] == 4
+    assert attestation["schema_version"] == 5
     assert attestation["producer"] == UK_TERMINAL_GATE_PRODUCER
     assert attestation["release_id"] == TEST_UK_RELEASE_ID
     assert (
@@ -590,6 +761,34 @@ def test_private_constructor_cannot_mint_sol_raw_parity_trio() -> None:
         )
 
 
+def test_private_constructor_cannot_drop_evidenced_weighted_integrity_gates() -> None:
+    """An attested report naming increment-4 evidence must carry the gates."""
+
+    from populace.build.uk_runtime import terminal_gates
+
+    healthy = _report(
+        input_mass_reference=_input_mass_reference(),
+        input_mass_policy=_input_mass_policy(),
+        qrf_tail_policy=_qrf_tail_policy(),
+    )
+    trimmed_results = tuple(
+        result
+        for result in healthy.results
+        if result.name not in ("input_mass_parity", "qrf_tail_concentration")
+    )
+
+    with pytest.raises(ValueError, match="membership must follow"):
+        terminal_gates._AttestedUKTerminalGateReport(
+            trimmed_results,
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
+            policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
+            evidence_sha256=dict(healthy.evidence_sha256),
+            attestation={},
+            _signing_error=None,
+        )
+
+
 def test_terminal_report_writer_cannot_resign_aggregator_output(
     monkeypatch,
     tmp_path,
@@ -646,8 +845,10 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     )
     payload = json.loads(output.read_text(encoding="utf-8"))
 
+    # Increment 4 (#609) extended the sealed policy payload with the unarmed
+    # weighted-integrity slots, so the frozen digest moved with it.
     assert UK_TERMINAL_GATE_POLICY_SHA256 == (
-        "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
+        "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
     )
     assert payload["attestation"]["policy_sha256"] == (UK_TERMINAL_GATE_POLICY_SHA256)
     assert payload["attestation"]["evaluated_gates"] == [

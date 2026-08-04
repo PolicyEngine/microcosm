@@ -112,8 +112,8 @@ _UK_LEGACY_RELEASE_IDS = frozenset({_UK_JUNE_RELEASE_ID})
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
 _UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
-_UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 4
+_UK_TERMINAL_GATE_SCHEMA_VERSION = 3
+_UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 5
 _UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
@@ -123,9 +123,13 @@ _UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 # populace.build.uk_runtime.terminal_gates.UK_TERMINAL_GATE_POLICY_SHA256.  The
 # data shard deliberately does not depend on the build shard: publication must
 # independently pin the reviewed gate policy rather than trust a producer's
-# self-description.
+# self-description.  The pinned digest is the certified *default* policy; the
+# increment-4 weighted-integrity slots (#609) are unarmed in it, so a release
+# that arms them with measured thresholds requires a reviewed move of this pin
+# alongside the committed threshold constants — a threshold outside this hash
+# is not attested.
 _UK_TERMINAL_GATE_POLICY_SHA256 = (
-    "7404db805d5fdb8ff389e87a6dcca0378a88636ba62bdb1fb81ba963d2d78cd8"
+    "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 _UK_ALWAYS_APPLICABLE_GATE_NAMES = (
     "uk_release_input_coverage",
@@ -137,6 +141,8 @@ _UK_ALWAYS_APPLICABLE_GATE_NAMES = (
 _UK_TERMINAL_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
+    "input_mass_parity": ("input_mass_parity",),
+    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 _UK_TERMINAL_EVIDENCE_STAGES = frozenset(
     {"release_dataset", *_UK_TERMINAL_EVIDENCE_GATE_NAMES}
@@ -226,6 +232,38 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "targets_checked",
             "max_abs_relative_error",
             "failing_targets",
+        }
+    ),
+    "input_mass_parity": frozenset(
+        {
+            "candidate_name",
+            "reference_name",
+            "relative_tolerance",
+            "minimum_reference_total",
+            "columns_checked",
+            "columns_below_reference_floor",
+            "candidate_only_columns",
+            "worst_drifts",
+            "reviewed_exclusions",
+            "unused_reviewed_exclusions",
+            "stale_exclusions",
+            "dormant_exclusions",
+            "reference_identity",
+        }
+    ),
+    "qrf_tail_concentration": frozenset(
+        {
+            "columns_checked",
+            "top_k",
+            "max_top_share",
+            "min_nonzero_records",
+            "top_share",
+            "carrier_counts",
+            "thin_columns",
+            "reviewed_exclusions",
+            "stale_exclusions",
+            "dormant_exclusions",
+            "surface",
         }
     ),
 }
@@ -1261,6 +1299,32 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing weights_audit details "
                 "must not contain unweighted fits."
             )
+
+    input_mass = _uk_terminal_gate_details(gates, "input_mass_parity")
+    if input_mass is not None:
+        identity = input_mass.get("reference_identity")
+        identity_fields = ("filename", "revision", "sha256", "vintage")
+        if not isinstance(identity, Mapping) or any(
+            not isinstance(identity.get(field), str) or not identity.get(field)
+            for field in identity_fields
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "reference_identity must record the frozen reference's "
+                f"{', '.join(identity_fields)}."
+            )
+        if input_mass.get("stale_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.stale_exclusions to be an empty list."
+            )
+
+    qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
+    if qrf_tail is not None and qrf_tail.get("stale_exclusions") != []:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+            "requires details.stale_exclusions to be an empty list."
+        )
 
     export = _uk_terminal_gate_details(gates, "export_surface")
     if export is not None:
