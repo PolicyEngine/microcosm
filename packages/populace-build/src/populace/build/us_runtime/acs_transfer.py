@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -853,7 +854,10 @@ def transfer_acs_inputs(
     )
     if not requested:
         return AcsTransferResult(
-            frame=recipient,
+            frame=canonicalize_frame_string_dtypes(
+                recipient,
+                boundary="ACS transfer result",
+            ),
             deferred_inputs=deferred_inputs,
         )
 
@@ -865,7 +869,10 @@ def transfer_acs_inputs(
     active = _missing_target_families(requested, recipient=recipient)
     if not active:
         return AcsTransferResult(
-            frame=recipient,
+            frame=canonicalize_frame_string_dtypes(
+                recipient,
+                boundary="ACS transfer result",
+            ),
             deferred_inputs=deferred_inputs,
         )
 
@@ -976,6 +983,11 @@ def transfer_acs_inputs(
         recipient.strata,
         mass_log=recipient.mass_log,
         metadata=recipient.metadata,
+    )
+    frame = canonicalize_frame_string_dtypes(
+        frame,
+        boundary="ACS transfer result",
+        in_place=True,
     )
     return AcsTransferResult(
         frame=frame,

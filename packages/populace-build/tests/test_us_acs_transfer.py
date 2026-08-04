@@ -12,6 +12,7 @@ import pytest
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 import populace.build.us_runtime.acs_transfer_bank as acs_transfer_bank_module
 from populace.build.frame_checkpoint import write_frame_checkpoint
+from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import (
     ACS_DEFERRED_GEOGRAPHY_INPUTS,
     ACS_DONOR_CHANNEL_AUTO,
@@ -1029,6 +1030,12 @@ def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
     warm_bank = _bank_store(bank_root)
     resumed = run(warm_bank)
     _assert_transfer_results_exact(resumed, monolithic)
+    for result in (monolithic, cold, resumed):
+        person = result.frame.table("person")
+        assert all(
+            person[target].dtype == CANONICAL_STRING_DTYPE
+            for target in ("ssn_card_type", "immigration_status_str")
+        )
 
     targets = warm_bank.receipt()["targets"]
     assert set(targets) == {"0"}
@@ -2225,6 +2232,33 @@ def test_no_missing_targets_returns_identical_recipient_object(
     assert result.frame is recipient
     assert result.imputed_inputs == ()
     assert result.fit_records == ()
+
+
+@pytest.mark.parametrize(
+    "families",
+    [
+        {},
+        {"person": {"already_native": ("taxable_interest_income",)}},
+    ],
+)
+def test_no_op_transfer_canonicalizes_object_strings(
+    families: dict[str, dict[str, tuple[str, ...]]],
+) -> None:
+    recipient = _recipient_frame()
+    recipient.table("person")["native_label"] = recipient.table("person")[
+        "native_label"
+    ].astype(object)
+
+    result = transfer_acs_inputs(
+        recipient,
+        _donor_frame(),
+        target_families=families,
+        n_estimators=2,
+    )
+
+    assert result.frame is not recipient
+    assert recipient.table("person")["native_label"].dtype == np.dtype(object)
+    assert result.frame.table("person")["native_label"].dtype == CANONICAL_STRING_DTYPE
 
 
 def test_schedule_d_cgd_derivation_enforces_route_exclusivity() -> None:
