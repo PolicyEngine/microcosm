@@ -23,6 +23,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from populace.build.serialization_dtypes import (
+    canonicalize_frame_string_dtypes,
+    canonicalize_table_string_dtypes,
+)
 from populace.frame import Frame, WeightKind, Weights
 from populace.frame.units import US_SCHEMA
 
@@ -156,7 +160,7 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     household_weights = (
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
-    return Frame(
+    frame = Frame(
         tables,
         US_SCHEMA,
         {
@@ -165,6 +169,10 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
                 WeightKind.CALIBRATED,
             )
         },
+    )
+    return canonicalize_frame_string_dtypes(
+        frame,
+        boundary="legacy calibrated US H5 load",
     )
 
 
@@ -386,7 +394,14 @@ def load_simulation_ready_us_multispine_pool(
                 f"US multispine pool H5 {pool_path} is missing entity table(s): "
                 f"{missing}."
             )
-        tables = {entity: store[entity] for entity in US_SCHEMA.entities}
+        tables = {
+            entity: canonicalize_table_string_dtypes(
+                store[entity],
+                boundary="simulation-ready US pool H5 load",
+                table_name=entity,
+            )
+            for entity in US_SCHEMA.entities
+        }
         period = store[_TIME_PERIOD_KEY]
 
     if len(period) != 1 or period.tolist() != [manifest.get("period")]:
@@ -498,19 +513,24 @@ def write_nullable_us_h5(
     ):
         raise ValueError("publication_run_id must be a non-empty string when set.")
 
+    canonical_frame = canonicalize_frame_string_dtypes(
+        frame,
+        boundary="nullable US H5 export",
+    )
+
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:
         _write_nullable_us_h5_file(
-            frame,
+            canonical_frame,
             temporary,
             period=int(period),
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
         )
         _verify_nullable_us_h5(
-            frame,
+            canonical_frame,
             temporary,
             period=int(period),
             artifact_kind=artifact_kind,
@@ -578,7 +598,11 @@ def _verify_nullable_us_h5(
             if not len(expected):
                 continue
             try:
-                stored = store[entity]
+                stored = canonicalize_table_string_dtypes(
+                    store[entity],
+                    boundary="nullable US H5 verification load",
+                    table_name=entity,
+                )
             except KeyError as exc:
                 raise RuntimeError(
                     f"Nullable US H5 round trip omitted entity {entity!r}."
@@ -628,7 +652,11 @@ def _verify_nullable_us_h5(
 
 
 def _export_table(frame: Frame, entity: str) -> pd.DataFrame:
-    table = frame.table(entity)
+    table = canonicalize_table_string_dtypes(
+        frame.table(entity),
+        boundary="nullable US H5 entity export",
+        table_name=entity,
+    )
     if entity != "household":
         return table
     household = table.copy()

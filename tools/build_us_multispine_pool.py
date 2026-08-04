@@ -37,6 +37,7 @@ from populace.build.frame_checkpoint import (
     write_frame_checkpoint,
 )
 from populace.build.gates import FitWeightRecord, GateReport, weights_audit_gate
+from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from populace.build.us_runtime.acs_inputs import map_acs_native_inputs
 from populace.build.us_runtime.acs_pums import (
     AcsPumsSource,
@@ -858,17 +859,25 @@ class _PoolStageCheckpointStore:
             raise RuntimeError(
                 "Pool checkpoint input receipts must be bound before writing."
             )
-        stored_frame = checkpoint.frame
+        persistent_frame = canonicalize_frame_string_dtypes(
+            checkpoint.frame,
+            boundary=f"pool {stage} checkpoint write",
+        )
+        stored_frame = persistent_frame
         if stage == "simulated":
             if checkpoint.simulation_frame is None:
                 raise ValueError(
                     "The simulated pool checkpoint requires an evaluation frame."
                 )
-            _assert_simulation_checkpoint_pair(
-                checkpoint.frame,
+            simulation_frame = canonicalize_frame_string_dtypes(
                 checkpoint.simulation_frame,
+                boundary="pool simulated evaluation checkpoint write",
             )
-            stored_frame = checkpoint.simulation_frame
+            _assert_simulation_checkpoint_pair(
+                persistent_frame,
+                simulation_frame,
+            )
+            stored_frame = simulation_frame
         elif checkpoint.simulation_frame is not None:
             raise ValueError(
                 f"Pool checkpoint stage {stage!r} cannot carry a simulation frame."
@@ -1196,6 +1205,12 @@ class _PoolStageCheckpointStore:
                 stage=stage,
                 row_counts=metadata.get("row_counts"),
                 frame_schema=metadata.get("frame_schema"),
+            )
+            # Authenticate legacy bytes and their literal sidecar schema before
+            # applying the current in-memory serialization-boundary policy.
+            frame = canonicalize_frame_string_dtypes(
+                frame,
+                boundary=f"pool {stage} checkpoint load",
             )
             assembly_receipt = metadata.get("assembly_receipt")
             stage_receipts = metadata.get("stage_receipts")

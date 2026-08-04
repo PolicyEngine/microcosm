@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import GateResult
+from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from populace.build.us_runtime.acs_transfer import (
     ACS_NATIVE_PERSON_INPUTS,
     TargetFamilies,
@@ -2012,6 +2013,10 @@ def run_multispine_pool_path(
             household_mass_shares=POOL_HOUSEHOLD_MASS_SHARES,
             mass_anchor_channel="asec",
         )
+        assembled = canonicalize_frame_string_dtypes(
+            assembled,
+            boundary="multispine pool assembled checkpoint",
+        )
         assembly_receipt = spine_assembly_receipt(
             assembled,
             boundary="multispine pool assembly",
@@ -2027,7 +2032,10 @@ def run_multispine_pool_path(
         )
     else:
         assembly_receipt, receipts = _validated_resume_checkpoint(resume)
-        assembled = resume.frame
+        assembled = canonicalize_frame_string_dtypes(
+            resume.frame,
+            boundary=f"multispine pool {resume.stage} resume",
+        )
         resume_stage = resume.stage
 
     if resume_stage in {None, "assembled"}:
@@ -2070,7 +2078,10 @@ def run_multispine_pool_path(
                 "Pool impute operator must return PoolStageOutput, got "
                 f"{type(outcome).__name__}."
             )
-        current = outcome.frame
+        current = canonicalize_frame_string_dtypes(
+            outcome.frame,
+            boundary="multispine pool transferred checkpoint",
+        )
         validate_assembly_provenance(
             current,
             boundary="multispine pool impute output",
@@ -2084,7 +2095,10 @@ def run_multispine_pool_path(
             stage_receipts=receipts,
         )
     else:
-        current = resume.frame
+        current = canonicalize_frame_string_dtypes(
+            resume.frame,
+            boundary=f"multispine pool {resume.stage} persistent resume",
+        )
 
     if resume_stage != "simulated":
         for stage_name in ("derive", "seed"):
@@ -2094,7 +2108,10 @@ def run_multispine_pool_path(
                     f"Pool {stage_name} operator must return PoolStageOutput, got "
                     f"{type(outcome).__name__}."
                 )
-            current = outcome.frame
+            current = canonicalize_frame_string_dtypes(
+                outcome.frame,
+                boundary=f"multispine pool {stage_name} output",
+            )
             validate_assembly_provenance(
                 current,
                 boundary=f"multispine pool {stage_name} output",
@@ -2107,12 +2124,15 @@ def run_multispine_pool_path(
                 "Pool simulate operator must return PoolStageOutput, got "
                 f"{type(simulated).__name__}."
             )
-        validate_assembly_provenance(
+        simulation_frame = canonicalize_frame_string_dtypes(
             simulated.frame,
+            boundary="multispine pool simulated checkpoint",
+        )
+        validate_assembly_provenance(
+            simulation_frame,
             boundary="multispine pool simulation output",
         )
         receipts["simulate"] = dict(simulated.receipt)
-        simulation_frame = simulated.frame
         _emit_pool_checkpoint(
             checkpoint,
             stage="simulated",
@@ -2124,7 +2144,10 @@ def run_multispine_pool_path(
     else:
         if resume.simulation_frame is None:  # pragma: no cover - dataclass validates
             raise AssertionError("Simulated resume checkpoint has no evaluation frame.")
-        simulation_frame = resume.simulation_frame
+        simulation_frame = canonicalize_frame_string_dtypes(
+            resume.simulation_frame,
+            boundary="multispine pool simulated evaluation resume",
+        )
 
     counts = spine_provenance_counts(
         current,

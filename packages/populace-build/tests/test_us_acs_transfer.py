@@ -12,6 +12,7 @@ import pytest
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 import populace.build.us_runtime.acs_transfer_bank as acs_transfer_bank_module
 from populace.build.frame_checkpoint import write_frame_checkpoint
+from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import (
     ACS_DEFERRED_GEOGRAPHY_INPUTS,
     ACS_DONOR_CHANNEL_AUTO,
@@ -1029,6 +1030,12 @@ def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
     warm_bank = _bank_store(bank_root)
     resumed = run(warm_bank)
     _assert_transfer_results_exact(resumed, monolithic)
+    for result in (monolithic, cold, resumed):
+        person = result.frame.table("person")
+        assert all(
+            person[target].dtype == CANONICAL_STRING_DTYPE
+            for target in ("ssn_card_type", "immigration_status_str")
+        )
 
     targets = warm_bank.receipt()["targets"]
     assert set(targets) == {"0"}

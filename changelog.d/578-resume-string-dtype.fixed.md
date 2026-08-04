@@ -1,0 +1,1 @@
+Canonicalize semantic strings across every registered pool entity at checkpoint, ACS-target-bank decode, and H5 publication boundaries, so fresh and resumed multispine builds round-trip identically without invalidating banked v2 checkpoint bytes.

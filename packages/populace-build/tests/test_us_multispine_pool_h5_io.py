@@ -13,6 +13,7 @@ from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
+from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -69,7 +70,7 @@ def _pool_frame_with_object_strings_on_every_entity() -> Frame:
         table = frame.table(entity).copy()
         column = "PERIDNUM" if entity == "person" else f"{entity}_source_label"
         table[column] = pd.Series(
-            [f"{entity}-{index}" for index in range(len(table))],
+            [f"{entity}-0", None, f"{entity}-2"],
             index=table.index,
             dtype=object,
         )
@@ -96,10 +97,10 @@ def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
     )
 
 
-def test_object_string_simulated_checkpoint_reproduces_pool_export_failure(
+def test_object_string_simulated_checkpoint_resume_exports_canonical_strings(
     tmp_path: Path,
 ) -> None:
-    """Pin the production failure and prove the checkpoint loader is symmetric."""
+    """Regress the exact production shape while proving loader symmetry."""
 
     pytest.importorskip("h5py")
     pytest.importorskip("tables")
@@ -120,19 +121,52 @@ def test_object_string_simulated_checkpoint_reproduces_pool_export_failure(
             assert resumed.table(entity)[column].dtype == np.dtype(object)
 
     for label, frame in (("fresh", fresh), ("resumed", resumed)):
-        with pytest.raises(RuntimeError) as exc_info:
-            write_nullable_us_h5(
-                frame,
-                tmp_path / f"{label}.pool.h5",
-                period=2024,
-                artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
-                publication_run_id=f"{label}-fixture-publication",
-            )
-        message = str(exc_info.value)
-        assert "round trip changed entity 'person'" in message
-        assert 'column name="PERIDNUM"' in message
-        assert "StringDtype(storage='python', na_value=nan)" in message
-        assert "object" in message
+        output = tmp_path / f"{label}.pool.h5"
+        write_nullable_us_h5(
+            frame,
+            output,
+            period=2024,
+            artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+            publication_run_id=f"{label}-fixture-publication",
+        )
+        with pd.HDFStore(output, mode="r") as store:
+            for entity in US_SCHEMA.entities:
+                stored = store[entity]
+                string_columns = _semantic_string_columns(stored)
+                assert string_columns
+                assert all(
+                    stored[column].dtype == CANONICAL_STRING_DTYPE
+                    for column in string_columns
+                )
+
+
+def test_pool_export_rejects_ambiguous_object_strings_before_replacement(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    frame = _pool_frame_with_object_strings_on_every_entity()
+    frame.table("person")["PERIDNUM"] = pd.Series(
+        ["person-0", 2, None],
+        dtype=object,
+    )
+    output = tmp_path / "existing.pool.h5"
+    output.write_bytes(b"previous-good-pool")
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "nullable US H5 export.*person.PERIDNUM.*"
+            "offending value types.*builtins.int"
+        ),
+    ):
+        write_nullable_us_h5(
+            frame,
+            output,
+            period=2024,
+            artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+        )
+
+    assert output.read_bytes() == b"previous-good-pool"
 
 
 def _write_ready_pool(tmp_path: Path) -> Path:
