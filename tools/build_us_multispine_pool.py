@@ -169,6 +169,7 @@ _POOL_STAGE_CHECKPOINT_FILENAMES: Mapping[str, str] = {
 }
 _POOL_SIMULATION_OUTPUT_COLUMN = "ssi"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_BANK_IDENTITY_SIBLING_SCAN_LIMIT = 64
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 
@@ -353,6 +354,66 @@ def _with_checkpoint_identity(
             outputs.checkpoint_root / "acs-transfer" / base_identity_sha256
         ),
     )
+
+
+def _identity_routed_bank_open_receipt(
+    selected_dir: Path,
+    *,
+    current_base_identity_sha256: str,
+) -> dict[str, object]:
+    """Name bypassed prior-identity siblings without opening their contents."""
+
+    selected = Path(selected_dir)
+    if not _LOWERCASE_SHA256.fullmatch(current_base_identity_sha256):
+        raise ValueError("Current bank base identity must be a lowercase SHA-256.")
+    if selected.name != current_base_identity_sha256:
+        raise ValueError(
+            "Identity-routed bank path does not end in its current base identity: "
+            f"{selected}."
+        )
+    bank_root = selected.parent
+    entries_examined = 0
+    truncated = False
+    mismatches: list[dict[str, object]] = []
+    if bank_root.exists():
+        if not bank_root.is_dir():
+            raise ValueError(
+                f"Identity-routed bank root is not a directory: {bank_root}."
+            )
+        with os.scandir(bank_root) as entries:
+            for entry in entries:
+                if entries_examined == _BANK_IDENTITY_SIBLING_SCAN_LIMIT:
+                    truncated = True
+                    break
+                entries_examined += 1
+                stale_digest = entry.name
+                if (
+                    stale_digest == current_base_identity_sha256
+                    or not _LOWERCASE_SHA256.fullmatch(stale_digest)
+                    or not entry.is_dir(follow_symlinks=False)
+                ):
+                    continue
+                mismatches.append(
+                    {
+                        "load_status": "identity_mismatch",
+                        "stale_base_identity_sha256": stale_digest,
+                        "current_base_identity_sha256": (current_base_identity_sha256),
+                        "disposition": "bypassed",
+                        "path": str((bank_root / stale_digest).resolve()),
+                    }
+                )
+    mismatches.sort(key=lambda record: str(record["stale_base_identity_sha256"]))
+    return {
+        "bank_root": str(bank_root.resolve()),
+        "selected_path": str(selected.resolve()),
+        "current_base_identity_sha256": current_base_identity_sha256,
+        "scan": {
+            "limit": _BANK_IDENTITY_SIBLING_SCAN_LIMIT,
+            "entries_examined": entries_examined,
+            "truncated": truncated,
+        },
+        "identity_mismatches": mismatches,
+    }
 
 
 def _verify_file(role: str, path: Path, expected_sha256: str) -> _VerifiedInput:
@@ -1378,13 +1439,22 @@ def _split_checkpoint_stage_receipts(
         return normalized, {}
     operational_impute: dict[str, object] = {}
     primary_qrf = impute.get("primary_puf_qrf")
-    if isinstance(primary_qrf, dict) and "resume_status" in primary_qrf:
-        resume_status = primary_qrf.pop("resume_status")
-        if not isinstance(resume_status, str) or not resume_status:
-            raise ValueError("Primary QRF resume status must be a non-empty string.")
-        operational_impute["primary_puf_qrf"] = {
-            "resume_status": resume_status,
-        }
+    if isinstance(primary_qrf, dict):
+        operational_primary: dict[str, object] = {}
+        if "resume_status" in primary_qrf:
+            resume_status = primary_qrf.pop("resume_status")
+            if not isinstance(resume_status, str) or not resume_status:
+                raise ValueError(
+                    "Primary QRF resume status must be a non-empty string."
+                )
+            operational_primary["resume_status"] = resume_status
+        if "identity_routing" in primary_qrf:
+            identity_routing = primary_qrf.pop("identity_routing")
+            if not isinstance(identity_routing, Mapping):
+                raise ValueError("Primary QRF identity routing must be an object.")
+            operational_primary["identity_routing"] = dict(identity_routing)
+        if operational_primary:
+            operational_impute["primary_puf_qrf"] = operational_primary
     acs_transfer = impute.get("acs_qrf_transfer")
     if isinstance(acs_transfer, dict) and "target_bank" in acs_transfer:
         target_bank = acs_transfer.pop("target_bank")
@@ -1421,7 +1491,7 @@ def _attach_checkpoint_operational_receipts(
     if not isinstance(canonical_impute, dict):
         raise ValueError("canonical stage receipts have no impute object")
     allowed_fields = {
-        "primary_puf_qrf": frozenset({"resume_status"}),
+        "primary_puf_qrf": frozenset({"resume_status", "identity_routing"}),
         "acs_qrf_transfer": frozenset({"target_bank"}),
     }
     for section, operational_section in operational_impute.items():
@@ -1617,6 +1687,11 @@ def _impute_pool(
     checkpoint_identity: Mapping[str, object],
     checkpoint_input_binding: Mapping[str, object],
 ) -> PoolStageOutput:
+    current_base_identity_sha256 = _pool_checkpoint_identity_sha256(checkpoint_identity)
+    primary_qrf_identity_routing = _identity_routed_bank_open_receipt(
+        primary_qrf_checkpoint_dir,
+        current_base_identity_sha256=current_base_identity_sha256,
+    )
     qrf_resume_status = _initialize_or_resume_primary_qrf(
         frame,
         puf_donor,
@@ -1647,6 +1722,10 @@ def _impute_pool(
         )
     source_completion = complete_multispine_source_inputs(with_tail)
     transfer_families = pool_transfer_target_families()
+    acs_transfer_identity_routing = _identity_routed_bank_open_receipt(
+        acs_transfer_checkpoint_dir,
+        current_base_identity_sha256=current_base_identity_sha256,
+    )
     target_bank = AcsTransferTargetBankStore(
         acs_transfer_checkpoint_dir,
         identity=_pool_checkpoint_stage_identity(
@@ -1678,6 +1757,12 @@ def _impute_pool(
 
     qrf_manifest_path = _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
     qrf_binding_path = _primary_qrf_input_binding_path(primary_qrf_checkpoint_dir)
+    target_bank_receipt = target_bank.receipt()
+    if "identity_routing" in target_bank_receipt:
+        raise ValueError(
+            "ACS transfer target-bank receipt already has identity routing."
+        )
+    target_bank_receipt["identity_routing"] = acs_transfer_identity_routing
     return PoolStageOutput(
         transferred.frame,
         {
@@ -1686,6 +1771,7 @@ def _impute_pool(
             },
             "primary_puf_qrf": {
                 "resume_status": qrf_resume_status,
+                "identity_routing": primary_qrf_identity_routing,
                 "checkpoint_manifest": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
                 "input_binding": _read_json_object(qrf_binding_path),
@@ -1702,7 +1788,7 @@ def _impute_pool(
                 "imputed_inputs": list(transferred.imputed_inputs),
                 "fit_records": list(transferred.fit_records),
                 "deferred_inputs": list(transferred.deferred_inputs),
-                "target_bank": target_bank.receipt(),
+                "target_bank": target_bank_receipt,
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),
         },

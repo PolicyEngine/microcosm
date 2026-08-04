@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import stat
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,10 +29,6 @@ from populace.build.us_runtime.acs_transfer_bank import (
 )
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.spine_assembly import assemble_spines
-from populace.build.us_runtime.take_up_contract import (
-    load_take_up_contract,
-    take_up_contract_identity,
-)
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
@@ -1085,54 +1080,6 @@ def test_target_bank_identity_mismatch_rebuilds_only_stale_target(
     )
     assert targets["1"]["load_status"] == "identity_mismatch"
     assert targets["1"]["ignored_checkpoint"]["reason"] == "identity_mismatch"
-
-
-@pytest.mark.parametrize(
-    "contract_field",
-    (
-        pytest.param("asserted_constraint", id="asserted_constraint_changed"),
-        pytest.param(
-            "inventory_built_against",
-            id="inventory_built_against_changed",
-        ),
-    ),
-)
-def test_target_bank_complete_take_up_identity_mutation_rebuilds_every_target(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    contract_field: str,
-) -> None:
-    _lock_bank_fixture_threads(monkeypatch)
-    contract = load_take_up_contract()
-    original_contract_identity = take_up_contract_identity(contract)
-    changed_contract = replace(
-        contract,
-        **{contract_field: f"{getattr(contract, contract_field)}-changed"},
-    )
-    changed_contract_identity = take_up_contract_identity(changed_contract)
-    assert changed_contract_identity != original_contract_identity
-
-    bank_root = tmp_path / "take-up-contract-identity-bank"
-    cold_bank = AcsTransferTargetBankStore(
-        bank_root,
-        identity={"take_up_contract": original_contract_identity},
-    )
-    baseline = _run_bank_fixture(cold_bank)
-
-    changed_bank = AcsTransferTargetBankStore(
-        bank_root,
-        identity={"take_up_contract": changed_contract_identity},
-    )
-    rebuilt = _run_bank_fixture(changed_bank)
-
-    _assert_transfer_results_exact(rebuilt, baseline)
-    targets = _assert_bank_receipt(
-        changed_bank,
-        sources=("rebuilt",) * len(_BANK_TARGETS),
-        load_statuses=("identity_mismatch",) * len(_BANK_TARGETS),
-    )
-    for record in targets.values():
-        assert record["ignored_checkpoint"]["reason"] == "identity_mismatch"
 
 
 def test_target_bank_torn_files_fail_closed_and_rebuild(
