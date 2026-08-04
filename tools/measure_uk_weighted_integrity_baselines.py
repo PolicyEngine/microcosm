@@ -14,9 +14,17 @@ benunit, household, time_period tables). For the pinned eFRS incumbent use
 ``tools/build_uk_efrs_parity_reference.py --emit-weighted-totals`` instead,
 which verifies the pinned sha before reading.
 
-The output contains weighted aggregates derived from licensed UKDS
-microdata. Treat it under the UKDS End User Licence: post or commit derived
-totals only once that disclosure class is confirmed (#609 open question).
+The output is disclosure-controlled for publication. UKDS End User Licence
+CD137 v16.00 clause 8 requires adherence to the statistical disclosure
+control standards in CD171-ResearchDataHandling for "any outputs I produce
+and publish", and §5.2.1 of that guide sets the rules this tool applies: no
+unit-record values (maxima and minima are named explicitly), and nothing
+reported from fewer cases than the minimum count. Per-column weighted totals
+are population aggregates and pass those rules; the tail statistics are the
+(n, k) dominance measure, so thin columns are suppressed. What the licence
+does *not* waive: citation and acknowledgement (clauses 11 and 12), and each
+study's Special Conditions (clause 3) — check whether a study requires a
+threshold of 30 before posting.
 
 Usage:
 
@@ -46,6 +54,12 @@ from populace.build.uk_runtime.weighted_integrity import (
 )
 
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
+# CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never
+# reportable (minimum threshold of 3), and 10 is advised where several outputs
+# come from the same source — which is exactly this file. Some studies impose
+# 30; raise this with --sdc-minimum-count when a study's Special Conditions
+# (EUL clause 3) require it.
+DEFAULT_SDC_MINIMUM_COUNT = 10
 
 
 def _parse_args() -> argparse.Namespace:
@@ -66,6 +80,18 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Comma-separated tail sizes for the concentration measurement "
             f"(default: {','.join(str(k) for k in DEFAULT_TOP_K_GRID)})."
+        ),
+    )
+    parser.add_argument(
+        "--sdc-minimum-count",
+        type=int,
+        default=DEFAULT_SDC_MINIMUM_COUNT,
+        help=(
+            "Minimum carrier count before a column's concentration "
+            "statistics are reportable, per CD171-ResearchDataHandling "
+            f"§5.2.1 (default: {DEFAULT_SDC_MINIMUM_COUNT}; raise to 30 where "
+            "a study's Special Conditions require it). Columns below it are "
+            "suppressed, and --top-k values below it are refused."
         ),
     )
     parser.add_argument(
@@ -101,33 +127,65 @@ def _tail_measurements(
     values: np.ndarray,
     weights: np.ndarray,
     top_k_grid: tuple[int, ...],
+    *,
+    minimum_count: int = DEFAULT_SDC_MINIMUM_COUNT,
 ) -> dict[str, object]:
+    """Concentration statistics under the UKDS output-disclosure standard.
+
+    `CD171-ResearchDataHandling` §5.2.1 governs what may be published from
+    Safeguarded data: never report cells based on one or two cases (minimum
+    threshold of 3, with 10 advised against secondary disclosure), and "any
+    output that refers to unit records, e.g. a maximum or minimum value, must
+    be avoided".
+
+    A per-column weighted total aggregates every carrier and is a population
+    aggregate, so it is reported unconditionally. Tail concentration is
+    different: it is the `(n, k)` dominance statistic, and at small `k` the
+    share times the total recovers the mean of a handful of records. So a
+    column with fewer than `minimum_count` carriers reports no shares at all,
+    and `top_k` values below `minimum_count` are refused. No maximum,
+    minimum, or other unit-record value is ever emitted.
+    """
+
     finite = np.isfinite(values) & np.isfinite(weights)
     mass = np.abs(values[finite]) * weights[finite]
     mass = mass[mass > 0.0]
     carriers = int(mass.size)
     total = float(mass.sum())
     records = int(values.size)
+    suppressed = carriers > 0 and carriers < minimum_count
     top_shares: dict[str, float | None] = {}
-    for top_k in top_k_grid:
-        if carriers == 0 or total == 0.0:
-            top_shares[str(top_k)] = None
-        elif carriers <= top_k:
-            top_shares[str(top_k)] = 1.0
-        else:
-            tail = float(np.partition(mass, -top_k)[-top_k:].sum())
-            top_shares[str(top_k)] = tail / total
+    if not suppressed:
+        for top_k in top_k_grid:
+            if carriers == 0 or total == 0.0:
+                top_shares[str(top_k)] = None
+            elif carriers <= top_k:
+                # Every carrier is in the tail: the share is 1.0 by
+                # construction and says nothing about individual records.
+                top_shares[str(top_k)] = 1.0
+            else:
+                tail = float(np.partition(mass, -top_k)[-top_k:].sum())
+                top_shares[str(top_k)] = tail / total
     return {
         "records": records,
-        "carriers": carriers,
-        "nonzero_share": (carriers / records) if records else 0.0,
+        # A carrier count below the threshold is itself a small-cell
+        # frequency, so it is withheld rather than reported.
+        "carriers": None if suppressed else carriers,
+        "nonzero_share": (
+            None if suppressed else ((carriers / records) if records else 0.0)
+        ),
         "total_weighted_abs_mass": total,
-        "max_abs_value": float(np.abs(values[finite]).max()) if finite.any() else 0.0,
         "top_shares": top_shares,
+        "disclosure_suppressed": suppressed,
     }
 
 
-def _measure(path: Path, top_k_grid: tuple[int, ...]) -> dict[str, object]:
+def _measure(
+    path: Path,
+    top_k_grid: tuple[int, ...],
+    *,
+    minimum_count: int,
+) -> dict[str, object]:
     dataset = load_uk_national_dataset(path)
     totals = uk_dataset_input_mass_totals(dataset)
     declared = uk_hmrc_weighted_qrf_output_columns()
@@ -136,7 +194,12 @@ def _measure(path: Path, top_k_grid: tuple[int, ...]) -> dict[str, object]:
         output_columns=declared,
     )
     qrf_tail = {
-        column: _tail_measurements(values[column], weights[column], top_k_grid)
+        column: _tail_measurements(
+            values[column],
+            weights[column],
+            top_k_grid,
+            minimum_count=minimum_count,
+        )
         for column in sorted(values)
     }
     return {
@@ -175,8 +238,21 @@ def main() -> int:
         ) from None
     if not top_k_grid or any(k < 1 for k in top_k_grid):
         raise SystemExit("error: --top-k values must be positive integers.")
+    minimum_count = args.sdc_minimum_count
+    if minimum_count < 3:
+        raise SystemExit(
+            "error: --sdc-minimum-count must be at least 3 "
+            "(CD171-ResearchDataHandling §5.2.1 minimum threshold)."
+        )
+    refused = sorted(k for k in top_k_grid if k < minimum_count)
+    if refused:
+        raise SystemExit(
+            f"error: --top-k values {refused} are below --sdc-minimum-count "
+            f"{minimum_count}; a tail that narrow reports on too few records "
+            "to publish (CD171-ResearchDataHandling §5.2.1)."
+        )
     measurements = {
-        label: _measure(path, top_k_grid)
+        label: _measure(path, top_k_grid, minimum_count=minimum_count)
         for label, path in _labelled_paths(args.h5).items()
     }
     payload = {
@@ -187,6 +263,40 @@ def main() -> int:
             "never a gate."
         ),
         "top_k_grid": list(top_k_grid),
+        "disclosure_control": {
+            "standard": (
+                "UK Data Service CD171-ResearchDataHandling §5.2.1 "
+                "(Safeguarded data output rules), applied under End User "
+                "Licence CD137 clause 8."
+            ),
+            "minimum_count": minimum_count,
+            "rules_applied": [
+                "No maximum, minimum, or other unit-record value is emitted.",
+                (
+                    "Columns with fewer than minimum_count weighted carriers "
+                    "report no concentration statistics and no carrier count."
+                ),
+                (
+                    "top_k values below minimum_count are refused, so no "
+                    "reported tail describes fewer records than the threshold."
+                ),
+                (
+                    "Per-column weighted totals are population aggregates over "
+                    "all carriers and are reported unconditionally."
+                ),
+            ],
+            "caller_obligations": [
+                (
+                    "Cite and acknowledge the Data Collection(s) per EUL "
+                    "clauses 11 and 12 wherever these numbers are posted."
+                ),
+                (
+                    "Check each study's Special Conditions (EUL clause 3): a "
+                    "study requiring a threshold of 30 needs "
+                    "--sdc-minimum-count 30."
+                ),
+            ],
+        },
         "artifacts": measurements,
     }
     output = args.output.resolve()
@@ -196,9 +306,12 @@ def main() -> int:
         encoding="utf-8",
     )
     print(
-        "UKDS licensing note: this file contains weighted aggregates derived "
-        "from licensed microdata; confirm the EUL disclosure class before "
-        "posting or committing it (#609).",
+        "UKDS output note: disclosure control applied per "
+        f"CD171-ResearchDataHandling §5.2.1 at minimum count {minimum_count} "
+        "(no unit-record values; thin columns suppressed). Cite and "
+        "acknowledge the Data Collection(s) per EUL clauses 11-12 wherever "
+        "these numbers are posted, and confirm each study's Special "
+        "Conditions first.",
         file=sys.stderr,
     )
     print(f"wrote {output}")

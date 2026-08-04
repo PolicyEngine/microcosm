@@ -29,5 +29,17 @@ which lacked staleness detection). The staging launcher grew the matching
 now runnable: `tools/measure_uk_weighted_integrity_baselines.py` records
 weighted totals and top-k concentration for any national artifact, and
 `tools/build_uk_efrs_parity_reference.py --emit-weighted-totals` extracts the
-pinned eFRS incumbent's totals to an uncommitted file pending the UKDS EUL
-disclosure confirmation.
+pinned eFRS incumbent's totals to a file outside the repository.
+
+The measurement recorder is disclosure-controlled at the source, because its
+output exists to be posted: UKDS End User Licence CD137 v16.00 clause 8 binds
+published outputs to the standards in CD171-ResearchDataHandling §5.2.1, which
+requires that no output refer to unit records (naming maxima and minima) and
+that nothing be reported from one or two cases. So the recorder emits no
+maximum or minimum, suppresses concentration statistics and carrier counts for
+columns with fewer carriers than `--sdc-minimum-count` (default 10, the
+guide's secondary-disclosure advice; raise to 30 where a study's Special
+Conditions require it), refuses a `--top-k` narrower than that count, and
+records the rules it applied alongside the citation obligations under clauses
+11 and 12. Per-column weighted totals aggregate every carrier and are reported
+unconditionally.

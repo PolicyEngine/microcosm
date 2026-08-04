@@ -100,6 +100,18 @@ def test_dataset_totals_fail_closed_on_memberless_benunits() -> None:
         uk_dataset_input_mass_totals(dataset)
 
 
+def test_dataset_totals_fail_closed_on_benunit_split_across_households() -> None:
+    """A split benunit has no single household weight to inherit."""
+
+    dataset = _dataset()
+    # Person 4 keeps household 4 but joins benunit 201, which sits in
+    # household 1: benunit 201 would silently take whichever came first.
+    dataset.person.loc[3, "person_benunit_id"] = 201
+
+    with pytest.raises(ValueError, match="exactly one household"):
+        uk_dataset_input_mass_totals(dataset)
+
+
 def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:
     dataset = _dataset(person_columns={"employment_income": [0.0, 0.0, 0.0, 0.0]})
     reference = _reference({"person.employment_income": 10.0})

@@ -379,12 +379,27 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
             "weight."
         )
 
-    benunit_household = person.drop_duplicates("person_benunit_id").set_index(
-        "person_benunit_id"
-    )["person_household_id"]
-    benunit_weights = (
-        benunit["benunit_id"].map(benunit_household).map(by_household)
-    )
+    # A benunit inherits the weight of the household containing it, so the
+    # nesting must hold before the mapping means anything.  The effective-mass
+    # coverage gate enforces the same invariant, but that is a separate gate in
+    # a batched report: this one has to fail closed on its own evidence rather
+    # than total a split benunit against one of its households.
+    benunit_membership = person[
+        ["person_benunit_id", "person_household_id"]
+    ].drop_duplicates()
+    split = benunit_membership["person_benunit_id"].duplicated()
+    if bool(split.any()):
+        offenders = sorted(
+            benunit_membership.loc[split, "person_benunit_id"].unique().tolist()
+        )[:5]
+        raise ValueError(
+            "UK weighted-integrity totals require each benunit to belong to "
+            f"exactly one household; split benunit id(s): {offenders}."
+        )
+    benunit_household = benunit_membership.set_index("person_benunit_id")[
+        "person_household_id"
+    ]
+    benunit_weights = benunit["benunit_id"].map(benunit_household).map(by_household)
     if benunit_weights.isna().any():
         raise ValueError(
             "UK benunit rows have no member persons to resolve a household "
