@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from populace.data.publish_cli import _reform_validation_skipped, main
 
 
@@ -43,7 +45,9 @@ def _stub_publish(monkeypatch):
     return cli
 
 
-def test_publish_warns_when_build_manifest_has_no_staging(tmp_path, capsys, monkeypatch):
+def test_publish_warns_when_build_manifest_has_no_staging(
+    tmp_path, capsys, monkeypatch
+):
     (tmp_path / "build_manifest.json").write_text(
         json.dumps({"build_id": "x", "staging": None})
     )
@@ -63,3 +67,53 @@ def test_publish_silent_when_staging_recorded(tmp_path, capsys, monkeypatch):
     rc = cli.main([str(tmp_path)])
     assert rc == 0
     assert "no staging telemetry" not in capsys.readouterr().err
+
+
+def test_tag_only_cli_forwards_no_main_publication_mode(tmp_path, monkeypatch):
+    import populace.data.publish_cli as cli
+
+    captured: dict = {}
+
+    def fake_publish(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {"release_id": "r", "updated_at": None}
+
+    monkeypatch.setattr(cli, "publish_release", fake_publish)
+
+    rc = cli.main([str(tmp_path), "--no-latest", "--tag-only"])
+
+    assert rc == 0
+    assert captured["kwargs"]["update_latest"] is False
+    assert captured["kwargs"]["tag_only"] is True
+    assert captured["kwargs"]["create_tag"] is True
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (["--tag-only"], "--tag-only requires --no-latest"),
+        (
+            ["--no-latest", "--tag-only", "--no-create-tag"],
+            "--tag-only requires tag creation",
+        ),
+    ],
+)
+def test_tag_only_cli_rejects_unsafe_flag_combinations_before_publish(
+    tmp_path, capsys, monkeypatch, arguments, message
+):
+    import populace.data.publish_cli as cli
+
+    called = False
+
+    def unexpected_publish(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(cli, "publish_release", unexpected_publish)
+
+    with pytest.raises(SystemExit, match="2"):
+        cli.main([str(tmp_path), *arguments])
+
+    assert message in capsys.readouterr().err
+    assert called is False

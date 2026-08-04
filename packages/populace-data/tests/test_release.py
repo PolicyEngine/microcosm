@@ -748,6 +748,117 @@ def test_publish_no_latest_never_touches_pointer(
     assert final_commit["revision"] == "main"
     assert LATEST_POINTER_PATH not in final_commit["paths"]
     assert final_commit["message"] == f"Publish non-default release {RELEASE_ID}"
+    assert {
+        "populace_us_2024.h5",
+        "populace_us_2024_calibration.npz",
+    }.issubset(final_commit["paths"])
+
+
+def test_exact_k_tag_only_publish_never_mutates_main(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    main_before = hub._refs["main"]
+
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+        update_latest=False,
+        tag_only=True,
+    )
+
+    assert [event for event, _ in hub.events] == [
+        "create_branch",
+        "create_commit",
+        "create_tag",
+        "delete_branch",
+    ]
+    assert hub._refs["main"] == main_before
+
+    canonical_root_paths = {
+        "populace_us_2024.h5",
+        "populace_us_2024_calibration.npz",
+    }
+    main_commit_paths = {
+        path
+        for event, receipt in hub.events
+        if event == "create_commit" and receipt["revision"] == "main"
+        for path in receipt["paths"]
+    }
+    canonical_root_mutation_present = bool(canonical_root_paths & main_commit_paths)
+    assert canonical_root_mutation_present is False
+    assert canonical_root_paths.isdisjoint(main_commit_paths)
+
+    immutable = hub.events[1][1]
+    assert canonical_root_paths.issubset(immutable["paths"])
+    assert {
+        f"releases/{RELEASE_ID}/{filename}"
+        for filename in required_release_files(RELEASE_ID)
+    }.issubset(immutable["paths"])
+    assert hub.tags == [{"tag": RELEASE_ID, "revision": immutable["commit"]}]
+
+    tagged_manifest = Path(
+        hub.hf_hub_download(
+            repo_id="policyengine/populace-us",
+            filename=f"releases/{RELEASE_ID}/release_manifest.json",
+            repo_type="dataset",
+            revision=RELEASE_ID,
+        )
+    )
+    tagged_h5 = Path(
+        hub.hf_hub_download(
+            repo_id="policyengine/populace-us",
+            filename="populace_us_2024.h5",
+            repo_type="dataset",
+            revision=RELEASE_ID,
+        )
+    )
+    assert (
+        tagged_manifest.read_bytes()
+        == (release_dir / "release_manifest.json").read_bytes()
+    )
+    assert (
+        tagged_h5.read_bytes() == (artifact_root / "populace_us_2024.h5").read_bytes()
+    )
+    with pytest.raises(FileNotFoundError, match="populace_us_2024.h5@main"):
+        hub.hf_hub_download(
+            repo_id="policyengine/populace-us",
+            filename="populace_us_2024.h5",
+            repo_type="dataset",
+        )
+
+
+@pytest.mark.parametrize(
+    ("publish_options", "message"),
+    [
+        ({"update_latest": True}, "requires update_latest=False"),
+        (
+            {"update_latest": False, "create_tag": False},
+            "requires create_tag=True",
+        ),
+    ],
+)
+def test_tag_only_rejects_unsafe_modes_before_remote_mutation(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    publish_options: dict,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_only=True,
+            **publish_options,
+        )
+
+    assert hub.events == []
+    assert hub.uploads == []
 
 
 def test_publish_commits_immutable_release_before_root_and_pointer(

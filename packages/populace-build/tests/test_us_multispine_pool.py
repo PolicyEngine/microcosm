@@ -24,6 +24,7 @@ from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_OPERATOR_CONTRACTS,
@@ -33,6 +34,7 @@ from populace.build.us_runtime.multispine_pool import (
     POOL_SOURCE_OPERATOR_CONTRACTS,
     POOL_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    MultispinePoolCheckpoint,
     MultispinePoolResult,
     PoolInputSurfaceEntry,
     PoolStageOutput,
@@ -282,6 +284,10 @@ def _real_pre_clone_source_frame() -> Frame:
             "A_FTPT": [0, 0, 0, 0],
             "VET_VAL": [0.0, 0.0, 0.0, 0.0],
             "SSI_VAL": [0.0, 0.0, 0.0, 0.0],
+            "PAW_VAL": [0.0, 125.0, 0.0, 0.0],
+            "PAW_TYP": [0, 3, 0, 0],
+            "SPM_SNAPSUB": [0.0, 0.0, 900.0, 900.0],
+            "WICYN": [0, 1, 2, 0],
             "SPM_CAPHOUSESUB": [0.0, 0.0, 0.0, 0.0],
             "SPM_TENMORTSTATUS": [3, 3, 3, 3],
         }
@@ -391,6 +397,33 @@ def _operator(
         )
 
     return apply
+
+
+def _fixture_pool_operators(
+    order: list[str],
+) -> dict[str, Callable[[Frame], PoolStageOutput]]:
+    return {
+        "impute": _operator(
+            "impute",
+            order,
+            lambda person: person.__setitem__("transferred", person["age"]),
+        ),
+        "derive": _operator(
+            "derive",
+            order,
+            lambda person: person.__setitem__("derived", person["transferred"] * 2),
+        ),
+        "seed": _operator(
+            "seed",
+            order,
+            lambda person: person.__setitem__("seeded", person["age"] >= 40),
+        ),
+        "simulate": _operator(
+            "simulate",
+            order,
+            lambda person: person.__setitem__("ssi", person["derived"]),
+        ),
+    }
 
 
 def _fixture_registry() -> tuple[SpineAgreementSpec, ...]:
@@ -524,6 +557,111 @@ def test_full_operator_path_is_ordered_and_keeps_simulation_out_of_pool() -> Non
         "seed": {"operator": "seed"},
         "simulate": {"operator": "simulate"},
     }
+
+
+def test_pool_checkpoint_callbacks_capture_each_fixed_boundary() -> None:
+    order: list[str] = []
+    checkpoints: list[MultispinePoolCheckpoint] = []
+
+    result = run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators(order),
+        agreement_gate=lambda _frame: GateResult("fixture", True),
+        checkpoint=checkpoints.append,
+    )
+
+    assert tuple(item.stage for item in checkpoints) == POOL_CHECKPOINT_STAGE_ORDER
+    assert checkpoints[0].stage_receipts == {}
+    assert set(checkpoints[1].stage_receipts) == {"impute"}
+    assert set(checkpoints[2].stage_receipts) == {
+        "impute",
+        "derive",
+        "seed",
+        "simulate",
+    }
+    assert checkpoints[0].simulation_frame is None
+    assert checkpoints[1].simulation_frame is None
+    assert checkpoints[2].simulation_frame is not None
+    assert "transferred" not in checkpoints[0].frame.table("person")
+    assert "transferred" in checkpoints[1].frame.table("person")
+    assert "ssi" not in checkpoints[2].frame.table("person")
+    assert "ssi" in checkpoints[2].simulation_frame.table("person")
+    for checkpoint in checkpoints:
+        assert checkpoint.assembly_receipt == result.assembly_receipt
+
+
+def test_fresh_pool_path_rejects_missing_source_frames() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Fresh multispine pool builds require ASEC and ACS Frames",
+    ):
+        run_multispine_pool_path(
+            None,
+            None,
+            **_fixture_pool_operators([]),
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+        )
+
+
+@pytest.mark.parametrize(
+    ("resume_stage", "expected_order", "expected_checkpoints"),
+    (
+        (
+            "assembled",
+            ["impute", "derive", "seed", "simulate"],
+            ["transferred", "simulated"],
+        ),
+        ("transferred", ["derive", "seed", "simulate"], ["simulated"]),
+        ("simulated", [], []),
+    ),
+)
+def test_pool_resume_skips_completed_stages_and_reruns_gate(
+    resume_stage: str,
+    expected_order: list[str],
+    expected_checkpoints: list[str],
+) -> None:
+    baseline_order: list[str] = []
+    checkpoints: list[MultispinePoolCheckpoint] = []
+    baseline = run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators(baseline_order),
+        agreement_gate=lambda _frame: GateResult("baseline_gate", True),
+        checkpoint=checkpoints.append,
+    )
+    resume = next(item for item in checkpoints if item.stage == resume_stage)
+
+    resumed_order: list[str] = []
+    resumed_checkpoints: list[MultispinePoolCheckpoint] = []
+    gate_frames: list[Frame] = []
+
+    def fresh_gate(frame: Frame) -> GateResult:
+        gate_frames.append(frame)
+        return GateResult("fresh_resume_gate", True)
+
+    resumed = run_multispine_pool_path(
+        _source_frame(offset=1_000.0),
+        _source_frame(offset=2_000.0),
+        **_fixture_pool_operators(resumed_order),
+        agreement_gate=fresh_gate,
+        checkpoint=resumed_checkpoints.append,
+        resume=resume,
+    )
+
+    assert resumed_order == expected_order
+    assert [item.stage for item in resumed_checkpoints] == expected_checkpoints
+    assert len(gate_frames) == 1
+    assert resumed.agreement_gate.name == "fresh_resume_gate"
+    assert resumed.assembly_receipt == baseline.assembly_receipt
+    assert resumed.provenance_counts == baseline.provenance_counts
+    assert resumed.stage_receipts == baseline.stage_receipts
+    for entity in baseline.frame.entities:
+        pd.testing.assert_frame_equal(
+            resumed.frame.table(entity),
+            baseline.frame.table(entity),
+            check_exact=True,
+        )
 
 
 def test_agreement_failures_remain_batched_in_terminal_result() -> None:
@@ -660,6 +798,18 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "person",
         "source_operator_hours_worked",
     )
+    assert owners["is_tanf_enrolled"] == (
+        "spm_unit",
+        "model_required_boolean",
+    )
+    assert owners["receives_snap"] == (
+        "spm_unit",
+        "model_required_boolean",
+    )
+    assert owners["receives_wic"] == (
+        "person",
+        "model_required_boolean",
+    )
     assert owners["strike_benefits"] == (
         "person",
         "source_operator_cps_carried",
@@ -672,10 +822,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 115
+    assert len(target_names) == 118
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "d33a6afdcc6e32f5f38d2de4e7bb0b617b557cadbe601fcdc6019d54bd6d83a7"
+        == "74fd985208c62ee51a96c161ee2766118e4d92020ce2897bf2942e2625db9484"
     )
 
 
@@ -683,13 +833,13 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 136
+    assert len(surface) == len(by_name) == 139
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 115,
+            "pool_transfer_target_families": 118,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
             "load_take_up_contract": 13,
@@ -738,6 +888,19 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
         entity="tax_unit",
         family="take_up_out_of_scope",
         provenance=("load_take_up_contract",),
+    )
+    for variable in ("is_tanf_enrolled", "receives_snap"):
+        assert by_name[variable] == PoolInputSurfaceEntry(
+            variable=variable,
+            entity="spm_unit",
+            family="model_required_boolean",
+            provenance=("pool_transfer_target_families",),
+        )
+    assert by_name["receives_wic"] == PoolInputSurfaceEntry(
+        variable="receives_wic",
+        entity="person",
+        family="model_required_boolean",
+        provenance=("pool_transfer_target_families",),
     )
     assert {
         "has_marketplace_health_coverage",
@@ -1227,7 +1390,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 115
+    assert len(targets) == 118
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1252,7 +1415,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 115
+    assert len(targets) == 118
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
@@ -1269,7 +1432,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 118
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1876,6 +2039,19 @@ def test_real_preclone_prefix_runs_before_physical_clone(
         25.0,
         0.0,
     ]
+    assert prepared_person.loc[prepared_cps, "receives_wic"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert prepared_person.loc[~prepared_cps, "receives_wic"].isna().all()
+
+    prepared_spm_unit = prepared.frame.table("spm_unit")
+    assert prepared_spm_unit["is_tanf_enrolled"].dropna().tolist() == [True, False]
+    assert prepared_spm_unit["receives_snap"].dropna().tolist() == [False, True]
+    assert prepared_spm_unit["is_tanf_enrolled"].isna().sum() == 2
+    assert prepared_spm_unit["receives_snap"].isna().sum() == 2
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
     person = cloned.table("person")
@@ -1889,6 +2065,31 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     parents = cps & person["A_LINENO"].eq(1)
     assert set(person.loc[parents, support_clone_index_column("person")]) == {0, 1}
     assert person.loc[parents, "own_children_in_household"].eq(1.0).all()
+    wic_by_source = person.loc[cps].groupby(source_id)["receives_wic"]
+    assert wic_by_source.nunique(dropna=False).eq(1).all()
+    assert wic_by_source.first().to_dict() == {
+        1: False,
+        2: True,
+        3: False,
+        4: False,
+    }
+
+    spm_unit = cloned.table("spm_unit")
+    spm_source_id = support_source_id_column("spm_unit")
+    spm_clone_index = support_clone_index_column("spm_unit")
+    expected = {
+        "is_tanf_enrolled": {201: True, 202: False},
+        "receives_snap": {201: False, 202: True},
+    }
+    for column, expected_by_source in expected.items():
+        cps_spm_units = spm_unit.loc[spm_unit[column].notna()]
+        assert (
+            cps_spm_units.groupby(spm_source_id)[spm_clone_index].nunique().eq(2).all()
+        )
+        assert cps_spm_units.groupby(spm_source_id)[column].nunique().eq(1).all()
+        assert cps_spm_units.groupby(spm_source_id)[column].first().to_dict() == (
+            expected_by_source
+        )
 
 
 def test_terminal_guard_rejects_stale_weeks_after_real_hours_projection() -> None:

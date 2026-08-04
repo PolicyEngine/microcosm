@@ -507,10 +507,11 @@ def score_frame(
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context=target_materialization_cache_context,
     )
+    target_loss_weights = release._fiscal_target_loss_weights(registry)
     result = score_targets(
         target_frame,
         registry.to_target_set(),
-        target_loss_weights=release._fiscal_target_loss_weights(registry),
+        target_loss_weights=target_loss_weights,
         target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
         options={
             "mass": "existing_weights",
@@ -637,7 +638,12 @@ def main() -> None:
             "base_dataset_sha256": release._sha256(h5),
             "target_compilation": compilation,
             "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "target_loss_family_multipliers": None,
             "target_loss_cap": release.US_FISCAL_TARGET_LOSS_CAP,
+            "target_loss_basis": release._fiscal_target_loss_basis(
+                registry,
+                release._fiscal_target_loss_weights(registry),
+            ),
             "gates": gates,
         },
     )

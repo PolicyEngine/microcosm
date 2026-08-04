@@ -226,7 +226,9 @@ risks, not footnotes:
   mandatory, not optional.
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
-  dividends, interest, retirement income; plus SPM, and the
+  dividends, interest, retirement income; plus the SPM resource-component
+  families (never SPM poverty rates, which are permanent holdouts under
+  the rule below), and the
   benefit-program families) with explicit tolerances. A contribution may not
   worsen any protected family beyond tolerance even if it improves aggregate
   loss. This list is versioned with the population and is the steward's call.
@@ -234,6 +236,21 @@ risks, not footnotes:
   calibration objective, so validity must be scored on held-out targets and
   variables the objective never saw — otherwise "passes calibration" launders
   into "is correct."
+- **Survey-measured tax-benefit quantities are permanent holdouts.** The
+  rule: never calibrate against ANY tax-benefit quantity from a survey —
+  reported or computed — or anything derived from such. Tax-benefit quantities from
+  administrative data are targets (SOI, FNS, SSA, ACF); raw survey
+  quantities are targets (ACS population/structure, income margins); but
+  survey-measured program totals (total SNAP from the CPS) and everything
+  downstream of survey tax-benefit measurement — SPM/OPM poverty above
+  all — may never be fitted. The rebuild replaces the survey's tax-benefit
+  measurement with imputed, computed, and admin-calibrated values; fitting
+  the survey-derived version launders its error back in and destroys the
+  held-out signal the evaluation depends on. Corollary: deviations from
+  official poverty metrics are expected by construction (corrected
+  underreporting should sit below survey-based rates, all else equal) and
+  are never inherently problematic — official numbers are comparators, not
+  truth.
 - **Correlated evidence.** Target standard errors from one survey are
   design-correlated across its published cells; treating them as diagonal
   overweights cell-rich surveys (the standard GREG caveat). Evidence

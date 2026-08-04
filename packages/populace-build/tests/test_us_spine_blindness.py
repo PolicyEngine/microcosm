@@ -174,6 +174,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_multispine.py",
         "acs_pums.py",
         "acs_sources.py",
+        "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_pool.py",
         "base_pool.py",
@@ -188,6 +189,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
+        "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
@@ -202,6 +204,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
+        "public_assistance_type_source.py",
         "puf_aggregate_records.py",
         "puf_capital_gains_tail.py",
         "puf_donor_io.py",  # Bounded donor artifact I/O; no population treatment.
@@ -3246,8 +3250,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 57, (
-            f"{tool.name} must reach the pinned 57-module runtime graph; "
+        assert len(runtime_graph) == 59, (
+            f"{tool.name} must reach the pinned 59-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

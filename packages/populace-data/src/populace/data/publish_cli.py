@@ -64,7 +64,10 @@ def main(argv: list[str] | None = None) -> int:
         "--create-tag",
         action="store_true",
         default=True,
-        help="Create a Hugging Face tag for the release before updating latest.json.",
+        help=(
+            "Create a Hugging Face tag for the immutable release before any "
+            "main-branch update."
+        ),
     )
     parser.add_argument(
         "--no-create-tag",
@@ -83,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         "--extra-file",
         action="append",
         default=[],
-        help="Additional release-dir file to upload before latest.json.",
+        help="Additional release-dir file to include in the immutable release.",
     )
     parser.add_argument(
         "--updated-at",
@@ -98,6 +101,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--tag-only",
+        action="store_true",
+        help=(
+            "Publish only the immutable tag revision, without any main-branch "
+            "commit. Requires --no-latest and tag creation; used by exact-k "
+            "ladder candidates."
+        ),
+    )
+    parser.add_argument(
         "--allow-incomplete-reform-validation",
         action="store_true",
         help=(
@@ -107,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    if args.tag_only and not args.no_latest:
+        parser.error("--tag-only requires --no-latest.")
+    if args.tag_only and not args.create_tag:
+        parser.error("--tag-only requires tag creation; remove --no-create-tag.")
 
     if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
         Path(args.release_dir)
@@ -139,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         extra_files=tuple(args.extra_file),
         updated_at=args.updated_at,
         update_latest=not args.no_latest,
+        tag_only=args.tag_only,
     )
     print(json.dumps(pointer, indent=2))
 

@@ -133,7 +133,7 @@ def _raw_binding(frame: Frame) -> dict[str, object]:
                 "operation": "exact_source_join",
                 "source_pins": [pin],
             }
-            for column in ("ED_VAL", "LKWEEKS")
+            for column in ("ED_VAL", "LKWEEKS", "PAW_TYP")
         },
         "schema_version": ASEC_RAW_STAGE_SCHEMA_VERSION,
         "source_construction_identity": frame_identity(frame).to_payload(),
@@ -164,13 +164,11 @@ def _raw_us_frame(*, id_offset: int = 0) -> Frame:
     ]
     tables["person"]["ED_VAL"] = [0.0, 500.0]
     tables["person"]["LKWEEKS"] = [-1, 12]
+    tables["person"]["PAW_TYP"] = np.asarray([0, 1], dtype=np.int64)
     return Frame(
         tables,
         source.schema,
-        {
-            entity: source.weights_for(entity)
-            for entity in source.weighted_entities
-        },
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
         source.strata,
     )
 
@@ -240,7 +238,10 @@ def test_loads_operator_untouched_raw_stage_checkpoint(tmp_path: Path) -> None:
     assert loaded_metadata["operator_status"] == ASEC_RAW_STAGE_OPERATOR_STATUS
 
 
-@pytest.mark.parametrize("column", ("ED_VAL", "LKWEEKS", "PERIDNUM", "source_year"))
+@pytest.mark.parametrize(
+    "column",
+    ("ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "source_year"),
+)
 def test_raw_loader_rejects_missing_input_complete_source_column(
     tmp_path: Path,
     column: str,
@@ -251,10 +252,7 @@ def test_raw_loader_rejects_missing_input_complete_source_column(
     incomplete = Frame(
         tables,
         source.schema,
-        {
-            entity: source.weights_for(entity)
-            for entity in source.weighted_entities
-        },
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
         source.strata,
     )
     path = tmp_path / f"raw-missing-{column}.checkpoint.h5"
@@ -271,6 +269,7 @@ def test_raw_loader_rejects_missing_input_complete_source_column(
         ("PERIDNUM", ["0000000000000000000001", ""], "PERIDNUM must be complete"),
         ("ED_VAL", [0.0, np.nan], "ED_VAL must be complete"),
         ("LKWEEKS", [-1, 53], "LKWEEKS must be complete"),
+        ("PAW_TYP", [0, 4], "PAW_TYP must be complete integers"),
     ),
 )
 def test_raw_loader_rejects_invalid_input_complete_source_values(
@@ -285,10 +284,7 @@ def test_raw_loader_rejects_invalid_input_complete_source_values(
     invalid = Frame(
         tables,
         source.schema,
-        {
-            entity: source.weights_for(entity)
-            for entity in source.weighted_entities
-        },
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
         source.strata,
     )
     path = tmp_path / f"raw-invalid-{column}.checkpoint.h5"
@@ -385,10 +381,7 @@ def test_operator_boundary_accepts_only_receipted_acs_native_exception() -> None
     acs = Frame(
         tables,
         source.schema,
-        {
-            entity: source.weights_for(entity)
-            for entity in source.weighted_entities
-        },
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
         source.strata,
     )
     receipt = {
@@ -427,10 +420,7 @@ def test_operator_boundary_rejects_forged_native_receipt_for_operator_output() -
     forged = Frame(
         tables,
         source.schema,
-        {
-            entity: source.weights_for(entity)
-            for entity in source.weighted_entities
-        },
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
         source.strata,
     )
     forged_receipt = {

@@ -7,6 +7,51 @@ which variable a fact binds, in what mode, over which universe, whether it
 binds at all — is a consumer decision and lives here. This is the procedure
 for the US pipeline, in the order that avoids the known failure modes.
 
+## What may never become a target
+
+Before minting anything, apply the rule (doctrine, Max 2026-08-02):
+
+**We may not calibrate against tax-benefit quantities from a survey —
+reported or computed, any of them — or anything derived from such.** The
+four quadrants:
+
+| | administrative source | survey source |
+|---|---|---|
+| **tax-benefit quantity** | ✅ target (SOI claims, FNS counts, SSA payments, ACF dollars) | ❌ never (e.g. total SNAP from the CPS) |
+| **raw quantity** | ✅ target | ✅ target (ACS population, demographics, income margins by geography) |
+
+…and the "derived from such" clause extends the prohibition to everything
+downstream of survey tax-benefit measurement: **SPM/OPM poverty rates above
+all** (SPM resources embed survey-measured benefits and calculated
+taxes), and other models' survey-based tax-benefit estimates
+(TRIM3/ATTIS/DYNASIM outputs — comparators or seeds, never targets).
+
+Rationale: populace replaces the survey's tax-benefit measurement with
+imputed, computed, and admin-calibrated values — that is the product.
+Fitting a survey-derived tax-benefit quantity launders the
+measured-with-error version back in and destroys the held-out validation
+signal (the scorecard's win column is held-out-only for the same reason).
+Release gates may *fail* a certification on a held-out poverty regression;
+*fitting* the statistic is categorically different and prohibited.
+
+For raw survey margins, prefer an administrative source when one covers the
+same cell and concept — e.g. congressional-district income binds from
+`irs_soi.congressional_district_2022`, while ACS (the
+`census_acs.acs1_2023` family) supplies population and structure — in
+CD-enabled builds (`include_congressional_district_targets`). Doctrine
+ahead of machinery: the shipped US parity manifest still classifies the
+ACS family `survey_derived` and excludes it even in CD-on mode
+(`tools/build_us_target_parity_manifest.py`); activating ACS frame
+margins under this rule is open work, so this states the rule, not
+current behavior.
+
+**Corollary: deviations from official poverty metrics are never inherently
+problematic.** A model that corrects benefit underreporting should, all
+else equal, sit below survey-based poverty rates; divergence from Census
+numbers is expected by construction. Treat official statistics as
+comparators — direction and composition anomalies are investigation flags,
+not "misses".
+
 ## 0. Mint the fact (ledger repo)
 
 Author the measure in the owning source package

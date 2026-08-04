@@ -104,9 +104,9 @@ normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
 
 ## Releasing & alerts
 
-Publishing uploads the locally built `releases/<id>/` artifacts to the Hugging
-Face dataset, tags the release, and updates `latest.json`. It runs on the build
-machine (it needs the freshly built H5), so it isn't a CI step:
+Standard publication uploads the locally built `releases/<id>/` artifacts to
+the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
+on the build machine (it needs the freshly built H5), so it isn't a CI step:
 
 ```bash
 tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
@@ -116,6 +116,17 @@ tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 (all arguments pass straight through). The moment `latest.json` goes live, the
 publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.
+
+US exact-k ladder candidates use a tag-only lane. Run
+`tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
+recorded in `package_result.json`. That command includes `--create-tag`,
+`--no-latest`, and `--tag-only`: it uploads the immutable release and creates its
+tag without committing candidate artifacts or release copies to the production
+main branch. The launcher also forces `--no-staging`, so the build writes neither
+a production nor a staging pointer. The candidate is therefore available only
+by its explicit release id or tag until a separate promotion updates
+`latest.json`. Because Slack alerts are coupled to that production pointer
+update, tag-only publication sends no release alert.
 
 The alert is a **no-op unless the channel's incoming-webhook URL is set**, so
 configure it once on the build machine:

@@ -99,10 +99,7 @@ def _raw_asec_frame() -> Frame:
     return Frame(
         tables,
         source.schema,
-        {
-            entity: source.weights_for(entity)
-            for entity in source.weighted_entities
-        },
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
         pd.Series(["asec_2022"] * 3, name="stratum"),
     )
 
@@ -136,6 +133,22 @@ def _education_source() -> pd.DataFrame:
     return source
 
 
+def _public_assistance_type_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "source_year": [2022, 2022, 2022],
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "PAW_VAL": [0.0, 250.0, 125.0],
+            "PAW_TYP": [0, 1, 2],
+        }
+    )
+    source.attrs["source_audit"] = {2022: {"rows": 3}}
+    return source
+
+
 def _pooled_source_receipt(tmp_path: Path) -> dict[str, object]:
     return {
         "kind": "pooled_asec",
@@ -160,10 +173,7 @@ def _with_person_column(frame: Frame, column: str, values: np.ndarray) -> Frame:
     return Frame(
         tables,
         frame.schema,
-        {
-            entity: frame.weights_for(entity)
-            for entity in frame.weighted_entities
-        },
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
         metadata=frame.metadata,
@@ -215,6 +225,11 @@ def _patch_raw_stage_sources(
         builder,
         "load_asec_education_assistance_sources",
         lambda _paths, *, income_years: _education_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_public_assistance_type_sources",
+        lambda _paths, *, income_years: _public_assistance_type_source(),
     )
     monkeypatch.setattr(
         builder,
@@ -695,6 +710,11 @@ def test_raw_stage_copy_adds_only_exact_source_mappings(
         "load_asec_education_assistance_sources",
         lambda _paths, *, income_years: _education_source(),
     )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_public_assistance_type_sources",
+        lambda _paths, *, income_years: _public_assistance_type_source(),
+    )
 
     raw, mappings = builder._asec_raw_source_mapping_frame(
         args,
@@ -705,9 +725,11 @@ def test_raw_stage_copy_adds_only_exact_source_mappings(
     assert frame_identity(source) == before
     assert "LKWEEKS" not in source.table("person")
     assert "ED_VAL" not in source.table("person")
+    assert "PAW_TYP" not in source.table("person")
     assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
     assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
-    assert set(mappings) == {"ED_VAL", "LKWEEKS"}
+    assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
+    assert set(mappings) == {"ED_VAL", "LKWEEKS", "PAW_TYP"}
     assert all(
         mapping["operation"] == "exact_source_join"
         and mapping["join_keys"] == ["source_year", "PERIDNUM"]
@@ -790,12 +812,14 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     assert source_checkpoint.path.read_bytes() == baseline_source.path.read_bytes()
     assert "ED_VAL" not in source_checkpoint.frame.table("person")
     assert "LKWEEKS" not in source_checkpoint.frame.table("person")
+    assert "PAW_TYP" not in source_checkpoint.frame.table("person")
 
     raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
     raw, raw_metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
     assert raw_metadata["stage"] == "raw_source_mapping"
     assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
     assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
     assert "age" not in raw.table("person")
     assert [path.name for path in args.checkpoint_dir.glob("*.frame.h5")] == [
         "000_source_construction.frame.h5"
@@ -809,9 +833,8 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     assert enriched.table("person")["age"].tolist() == [31, 29, 50]
     assert "ED_VAL" not in enriched.table("person")
     assert "LKWEEKS" not in enriched.table("person")
-    assert sorted(
-        path.name for path in args.checkpoint_dir.glob("*.frame.h5")
-    ) == [
+    assert "PAW_TYP" not in enriched.table("person")
+    assert sorted(path.name for path in args.checkpoint_dir.glob("*.frame.h5")) == [
         "000_source_construction.frame.h5",
         "001_pre_clone_enrichment.frame.h5",
     ]
@@ -847,6 +870,7 @@ def test_completed_source_stage_repairs_raw_auxiliary_without_rewriting_legacy(
     assert context_path.read_bytes() == expected_context
     repaired, _metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
     assert repaired.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert repaired.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
 
 
 def test_source_and_preclone_stages_round_trip_design_weight_kind(
@@ -1849,7 +1873,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "_load_base_frame_from_args",
         lambda args: ("raw", {"kind": "fixture"}),
     )
-    monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
+    monkeypatch.setattr(
+        builder,
+        "derive_us_cps_carried_inputs",
+        lambda frame, **_kwargs: "cps",
+    )
 
     def fake_prior_year_income(frame, *, seed, time_period):
         prior_year_income_calls.append((frame, seed, time_period))

@@ -73,12 +73,14 @@ from populace.build.us_runtime import (
     fetch_asec_2023_weeks_unemployed_source,
     fill_asec_2022_weeks_unemployed_source,
     fill_asec_education_assistance_source,
+    fill_asec_public_assistance_type_source,
     finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
     load_acs_2022_rent_donor,
     load_asec_2023_weeks_unemployed_source,
     load_asec_education_assistance_sources,
+    load_asec_public_assistance_type_sources,
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
@@ -318,10 +320,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional INCOME_YEAR=PATH mapping to a local copy of the "
             "SHA-pinned official ASEC survey archive (zip or extracted "
-            "pppub member) restoring that pooled income year's ED_VAL "
-            "(income year YYYY maps to the survey-year YYYY+1 archive). "
-            "Years without a mapping are fetched from the official Census "
-            "archive and verified against the same pins."
+            "pppub member) restoring that pooled income year's ED_VAL and "
+            "PAW_TYP (income year YYYY maps to the survey-year YYYY+1 "
+            "archive). Years without a mapping are fetched from the "
+            "official Census archive and verified against the same pins."
         ),
     )
     parser.add_argument(
@@ -913,7 +915,14 @@ def _run_all(
         _asec_education_source_paths(args),
         income_years=_pooled_income_years(args),
     )
-    base = derive_us_cps_carried_inputs(raw_base)
+    public_assistance_type_source = load_asec_public_assistance_type_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
+    base = derive_us_cps_carried_inputs(
+        raw_base,
+        public_assistance_type_source=public_assistance_type_source,
+    )
     base = with_us_prior_year_income_inputs(
         base,
         seed=args.seed,
@@ -1478,6 +1487,10 @@ def _run_all(
             "income_years": [int(year) for year in _pooled_income_years(args)],
             "audit": dict(education_assistance_source.attrs.get("source_audit", {})),
         },
+        "public_assistance_type_source": {
+            "income_years": [int(year) for year in _pooled_income_years(args)],
+            "audit": dict(public_assistance_type_source.attrs.get("source_audit", {})),
+        },
         "output_h5": str(output_h5),
         "output_sha256": _sha256(output_h5),
         "seed": args.seed,
@@ -1883,8 +1896,7 @@ def _frames_exactly_equal(left: Frame, right: Frame) -> bool:
     ):
         return False
     if any(
-        not left.table(entity).equals(right.table(entity))
-        for entity in left.entities
+        not left.table(entity).equals(right.table(entity)) for entity in left.entities
     ):
         return False
     if any(not left.link(name).equals(right.link(name)) for name in left.links):
@@ -1912,6 +1924,10 @@ def _asec_raw_source_mapping_frame(
         _asec_education_source_paths(args),
         income_years=_pooled_income_years(args),
     )
+    public_assistance_type_source = load_asec_public_assistance_type_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
     tables = {
         entity: source_frame.table(entity).copy(deep=True)
         for entity in source_frame.entities
@@ -1921,6 +1937,10 @@ def _asec_raw_source_mapping_frame(
         weeks_source,
     )
     person = fill_asec_education_assistance_source(person, education_source)
+    person = fill_asec_public_assistance_type_source(
+        person,
+        public_assistance_type_source,
+    )
     tables["person"] = person
     raw_frame = Frame(
         tables,
@@ -1977,6 +1997,16 @@ def _asec_raw_source_mapping_frame(
                 }
             ],
         },
+        # PAW_TYP lives in the same pinned survey-year person members as
+        # ED_VAL, so the mapping reuses those archive pins (populace#591).
+        "PAW_TYP": {
+            "audit": dict(public_assistance_type_source.attrs.get("source_audit", {})),
+            "column": "PAW_TYP",
+            "entity": "person",
+            "join_keys": ["source_year", "PERIDNUM"],
+            "operation": "exact_source_join",
+            "source_pins": education_pins,
+        },
     }
 
 
@@ -1987,7 +2017,14 @@ def _pre_clone_enrichment_stage(
 ) -> tuple[Frame, dict[str, object]]:
     weeks_path = Path(str(source_metadata["weeks_unemployed_source_path"]))
     weeks_source = load_asec_2023_weeks_unemployed_source(weeks_path)
-    base = derive_us_cps_carried_inputs(raw_base)
+    public_assistance_type_source = load_asec_public_assistance_type_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
+    base = derive_us_cps_carried_inputs(
+        raw_base,
+        public_assistance_type_source=public_assistance_type_source,
+    )
     base = with_us_prior_year_income_inputs(
         base,
         seed=args.seed,
