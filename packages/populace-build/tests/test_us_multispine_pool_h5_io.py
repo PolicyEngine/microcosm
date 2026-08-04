@@ -169,6 +169,12 @@ def test_object_string_simulated_checkpoint_resume_exports_canonical_strings(
                     stored[column].dtype == CANONICAL_STRING_DTYPE
                     for column in string_columns
                 )
+        for entity in US_SCHEMA.entities:
+            string_columns = _semantic_string_columns(frame.table(entity))
+            assert all(
+                frame.table(entity)[column].dtype == np.dtype(object)
+                for column in string_columns
+            )
 
 
 def test_pool_export_rejects_ambiguous_object_strings_before_replacement(

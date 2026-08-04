@@ -513,13 +513,9 @@ def write_nullable_us_h5(
     ):
         raise ValueError("publication_run_id must be a non-empty string when set.")
 
-    canonical_frame = canonicalize_frame_string_dtypes(
-        frame,
-        boundary="nullable US H5 export",
-    )
     for entity in US_SCHEMA.entities:
         canonicalize_table_string_dtypes(
-            canonical_frame.table(entity),
+            frame.table(entity),
             boundary="nullable US H5 export",
             table_name=entity,
             reject_untyped_all_missing_object=True,
@@ -530,14 +526,14 @@ def write_nullable_us_h5(
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:
         _write_nullable_us_h5_file(
-            canonical_frame,
+            frame,
             temporary,
             period=int(period),
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
         )
         _verify_nullable_us_h5(
-            canonical_frame,
+            frame,
             temporary,
             period=int(period),
             artifact_kind=artifact_kind,
@@ -666,7 +662,7 @@ def _export_table(frame: Frame, entity: str) -> pd.DataFrame:
     )
     if entity != "household":
         return table
-    household = table.copy()
+    household = table.copy(deep=False)
     household["household_weight"] = frame.weights_for("household").values
     return household
 
