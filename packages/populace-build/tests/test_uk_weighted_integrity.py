@@ -370,6 +370,147 @@ def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> Non
         )
 
 
+def test_uk_totals_match_the_shared_frame_helper_on_equivalent_data() -> None:
+    """The UK table-layout helper must not reinvent the US numeric semantics.
+
+    Same records, same weights, one expressed as a populace Frame (the US
+    path) and one as UK national tables: per-column weighted totals must be
+    identical, differing only in the ``entity.`` namespace the UK layout
+    needs because its tables do not enforce globally unique column names.
+    """
+
+    from populace.build.input_mass import input_mass_totals
+    from populace.frame import EntitySchema, Frame, WeightKind, Weights
+
+    person = pd.DataFrame(
+        {
+            "person_id": [101, 102, 103],
+            "person_household_id": [1, 1, 2],
+            "employment_income": [30_000.0, np.nan, 12_000.0],
+            "is_disabled": pd.array([True, False, pd.NA], dtype="boolean"),
+            "occupation": ["a", "b", "c"],  # strings are skipped on both paths
+        }
+    )
+    household = pd.DataFrame({"household_id": [1, 2], "council_tax": [900.0, 1_500.0]})
+    weights = np.array([2.0, 5.0])
+
+    frame_totals = input_mass_totals(
+        Frame(
+            {"person": person, "household": household},
+            EntitySchema(group_entities=("household",)),
+            {"household": Weights(weights, WeightKind.DESIGN)},
+        )
+    )
+    uk_totals = uk_dataset_input_mass_totals(
+        SimpleNamespace(
+            person=person.assign(person_benunit_id=[201, 201, 202]),
+            benunit=pd.DataFrame({"benunit_id": [201, 202]}),
+            household=household.assign(household_weight=weights),
+        )
+    )
+
+    assert frame_totals == {
+        "employment_income": uk_totals["person.employment_income"],
+        "is_disabled": uk_totals["person.is_disabled"],
+        "council_tax": uk_totals["household.council_tax"],
+    }
+    # NaN fills to 0, booleans total weighted True mass, weights broadcast
+    # through membership — asserted against hand computation once, so both
+    # paths are pinned to the same semantics rather than merely to each other.
+    assert frame_totals["employment_income"] == 30_000.0 * 2.0 + 12_000.0 * 5.0
+    assert frame_totals["is_disabled"] == 2.0
+    assert "occupation" not in frame_totals
+    assert "person.occupation" not in uk_totals
+
+
+def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
+    """Without exclusions the UK wrapper must reproduce the US gate verbatim.
+
+    Same failure lines, same verdict, same details — the UK result may only
+    add the reference identity and the (empty) stale/dormant register fields
+    the #609 discipline requires on top of the shared gate.
+    """
+
+    from populace.build.gates import input_mass_parity_gate
+
+    candidate = {
+        "person.employment_income": 0.0,  # the #278 signature
+        "person.pension_income": 4.0,  # -60% drift
+        "person.new_layer": 7.0,  # candidate-only
+    }
+    reference = _reference(
+        {
+            "person.employment_income": 10.0,
+            "person.pension_income": 10.0,
+            "person.tiny": 0.5,  # below the floor
+        }
+    )
+    policy = _policy(relative_tolerance=0.5, minimum_reference_total=1.0)
+
+    shared = input_mass_parity_gate(
+        candidate,
+        reference.totals,
+        candidate_name="uk_release_candidate",
+        reference_name=reference.filename,
+        relative_tolerance=policy.relative_tolerance,
+        minimum_reference_total=policy.minimum_reference_total,
+    )
+    ported = uk_input_mass_parity_gate(candidate, reference, policy=policy)
+
+    assert ported.name == shared.name == "input_mass_parity"
+    assert ported.passed == shared.passed
+    assert ported.failures == shared.failures
+    shared_details = dict(shared.details)
+    assert {
+        key: value
+        for key, value in ported.details.items()
+        if key in shared_details
+    } == shared_details
+    assert set(ported.details) - set(shared_details) == {
+        "stale_exclusions",
+        "dormant_exclusions",
+        "reference_identity",
+    }
+
+
+def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
+    """Exclusion discipline included: the shared US gate already carries it."""
+
+    from populace.build.gates import tail_concentration_gate
+
+    n = 12
+    concentrated = np.ones(n)
+    concentrated[0] = 500.0
+    values = {"self_employment_income": concentrated, "dividend_income": np.ones(n)}
+    weights = {name: np.ones(n) for name in values}
+    exclusions = {"dividend_income": "Seeded stale entry."}
+
+    shared = tail_concentration_gate(
+        values,
+        weights,
+        top_k=1,
+        max_top_share=0.5,
+        min_nonzero_records=2,
+        reviewed_exclusions=exclusions,
+    )
+    ported = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.5,
+            min_nonzero_records=2,
+            reviewed_exclusions=exclusions,
+        ),
+    )
+
+    assert shared.name == "tail_concentration"
+    assert ported.name == "qrf_tail_concentration"
+    assert ported.passed == shared.passed
+    assert ported.failures == shared.failures
+    assert dict(ported.details) == dict(shared.details)
+
+
 def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> None:
     path = tmp_path / "reference.json"
     path.write_text(
