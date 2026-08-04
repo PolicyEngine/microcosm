@@ -154,6 +154,23 @@ def test_in_place_frame_canonicalization_reuses_all_numeric_storage() -> None:
         )
 
 
+def test_in_place_frame_canonicalization_is_atomic_on_ambiguity() -> None:
+    frame = _pool_frame_with_object_strings_on_every_entity()
+    frame.table("household")["household_source_label"] = pd.Series(
+        ["household-0", 2, None],
+        dtype=object,
+    )
+
+    with pytest.raises(TypeError, match="household.household_source_label"):
+        canonicalize_frame_string_dtypes(
+            frame,
+            boundary="fixture checkpoint load",
+            in_place=True,
+        )
+
+    assert frame.table("person")["PERIDNUM"].dtype == np.dtype(object)
+
+
 def test_object_string_simulated_checkpoint_resume_exports_canonical_strings(
     tmp_path: Path,
 ) -> None:

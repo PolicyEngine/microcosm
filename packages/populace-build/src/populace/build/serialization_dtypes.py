@@ -124,14 +124,18 @@ def canonicalize_frame_string_dtypes(
             boundary=boundary,
             table_name=name,
         )
-        if in_place and canonical is not source:
+        tables[name] = canonical
+        changed |= canonical is not source
+    if in_place:
+        for name, canonical in tables.items():
+            source = frame.table(name) if name in frame.entities else frame.link(name)
+            if canonical is source:
+                continue
             for column in source.columns:
                 if canonical[column].dtype != source[column].dtype:
                     source[column] = canonical[column]
-            canonical = source
-        tables[name] = canonical
-        changed |= canonical is not source
-    if in_place or not changed:
+        return frame
+    if not changed:
         return frame
     return Frame(
         tables,

@@ -2036,7 +2036,6 @@ def run_multispine_pool_path(
         assembled = canonicalize_frame_string_dtypes(
             resume.frame,
             boundary=f"multispine pool {resume.stage} resume",
-            in_place=True,
         )
         resume_stage = resume.stage
 
@@ -2101,7 +2100,6 @@ def run_multispine_pool_path(
         current = canonicalize_frame_string_dtypes(
             resume.frame,
             boundary=f"multispine pool {resume.stage} persistent resume",
-            in_place=True,
         )
 
     if resume_stage != "simulated":
@@ -2153,7 +2151,6 @@ def run_multispine_pool_path(
         simulation_frame = canonicalize_frame_string_dtypes(
             resume.simulation_frame,
             boundary="multispine pool simulated evaluation resume",
-            in_place=True,
         )
 
     counts = spine_provenance_counts(
