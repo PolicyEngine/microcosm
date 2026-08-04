@@ -19,6 +19,10 @@ from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
+from populace.build.serialization_dtypes import (
+    canonicalize_frame_string_dtypes,
+    canonicalize_table_string_dtypes,
+)
 from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -54,6 +58,11 @@ from populace.frame import EntitySchema, Frame, WeightKind, Weights
 # v5 (populace#567): the grouped-raw mortgage screen is field-local instead of
 # dropping whole donor rows. A v4 checkpoint would silently retain the
 # whole-row quarantine semantics and its missing capital-gains support.
+# populace#578 does not bump v5: object-backed and canonical StringDtype
+# support-channel columns are two physical encodings of the same identity-only
+# values, never QRF predictors or targets. Loads authenticate the immutable file
+# SHA, metadata, and legacy dtype-sensitive recipient identity before applying
+# the canonical in-memory string policy, so existing bank bytes remain valid.
 PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 5
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
@@ -119,10 +128,15 @@ def initialize_primary_puf_qrf_chain(
     ):
         raise AssertionError("The production primary QRF target order changed.")
 
+    donor_frame = canonicalize_frame_string_dtypes(
+        inputs.donor_frame,
+        boundary="primary PUF QRF donor bank write",
+        in_place=True,
+    )
     donor_path = root / PRIMARY_QRF_DONOR_FILENAME
     write_frame_checkpoint(
         donor_path,
-        inputs.donor_frame,
+        donor_frame,
         metadata={
             "artifact_kind": _ARTIFACT_KIND,
             "role": "donor",
@@ -130,6 +144,11 @@ def initialize_primary_puf_qrf_chain(
         },
     )
     recipient_frame, identity_columns = _recipient_checkpoint_frame(frame, inputs)
+    recipient_frame = canonicalize_frame_string_dtypes(
+        recipient_frame,
+        boundary="primary PUF QRF recipient bank write",
+        in_place=True,
+    )
     recipient_path = root / PRIMARY_QRF_RECIPIENT_FILENAME
     write_frame_checkpoint(
         recipient_path,
@@ -145,7 +164,7 @@ def initialize_primary_puf_qrf_chain(
 
     model = QRF(n_estimators=n_estimators, seed=seed)
     state = model.start_chain(
-        inputs.donor_frame,
+        donor_frame,
         list(inputs.predictors),
         list(target_order),
         weights="design",
@@ -274,10 +293,6 @@ def run_primary_puf_qrf_target(
             role="recipient",
         )
         recipient_table = recipient.table("tax_unit")
-        identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
-        actual_identity = _recipient_identity_sha256(recipient_table, identity_columns)
-        if actual_identity != manifest.get("recipient_identity_sha256"):
-            raise ValueError("Primary QRF recipient identity or row order changed.")
 
         raw_prior = pd.DataFrame(index=recipient_table.index)
         state_payload = manifest.get("initial_state")
@@ -362,7 +377,7 @@ def finalize_primary_puf_qrf_chain(
 
     root = Path(checkpoint_dir).resolve()
     manifest = _load_manifest(root)
-    _assert_live_recipient_identity(frame, manifest)
+    _assert_live_recipient_identity(frame, root, manifest)
     donor_frame = _load_bound_frame(
         root,
         manifest,
@@ -458,11 +473,47 @@ def _load_bound_frame(
             f"{expected_digest}, got {actual_digest}."
         )
     loaded = load_frame_checkpoint(path)
-    if loaded.metadata.get("artifact_kind") != _ARTIFACT_KIND:
-        raise ValueError(f"Primary QRF {role} checkpoint has the wrong artifact kind.")
-    if loaded.metadata.get("role") != role:
-        raise ValueError(f"Primary QRF checkpoint role is not {role!r}.")
-    return loaded.frame
+    expected_metadata: dict[str, object] = {
+        "artifact_kind": _ARTIFACT_KIND,
+        "role": role,
+        "target_order": list(_manifest_strings(manifest, "target_order")),
+    }
+    if role == "recipient":
+        expected_metadata.update(
+            {
+                "identity_columns": list(
+                    _manifest_strings(manifest, "recipient_identity_columns")
+                ),
+                "predictors": list(_manifest_strings(manifest, "predictors")),
+            }
+        )
+    for key, expected in expected_metadata.items():
+        if loaded.metadata.get(key) != expected:
+            raise ValueError(
+                f"Primary QRF {role} checkpoint has invalid {key}: expected "
+                f"{expected!r}, got {loaded.metadata.get(key)!r}."
+            )
+    if role == "recipient":
+        identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
+        recipient_table = loaded.frame.table("tax_unit")
+        expected_rows = _manifest_integer(manifest, "recipient_rows")
+        expected_identity = manifest.get("recipient_identity_sha256")
+        if (
+            len(recipient_table) != expected_rows
+            or not isinstance(expected_identity, str)
+            or _recipient_identity_sha256(recipient_table, identity_columns)
+            != expected_identity
+        ):
+            raise ValueError("Primary QRF recipient identity or row order changed.")
+    # Preserve the authenticated bytes and dtype-sensitive legacy manifest
+    # binding above. Canonicalization is deliberately post-load and in-memory:
+    # v5 object-backed banks remain valid while every active worker sees the
+    # same physical string dtype as a newly initialized bank.
+    return canonicalize_frame_string_dtypes(
+        loaded.frame,
+        boundary=f"primary PUF QRF {role} bank load",
+        in_place=True,
+    )
 
 
 def _write_target_checkpoint(
@@ -636,6 +687,7 @@ def _load_manifest(root: Path) -> dict[str, object]:
 
 def _assert_live_recipient_identity(
     frame: Frame,
+    root: Path,
     manifest: Mapping[str, object],
 ) -> None:
     identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
@@ -653,12 +705,24 @@ def _assert_live_recipient_identity(
         list(identity_columns),
     ]
     expected_rows = _manifest_integer(manifest, "recipient_rows")
-    expected_digest = manifest.get("recipient_identity_sha256")
-    if len(live) != expected_rows or not isinstance(expected_digest, str):
+    if len(live) != expected_rows:
         raise ValueError(
             "Live finalization frame has a different PUF recipient surface."
         )
-    if _recipient_identity_sha256(live, identity_columns) != expected_digest:
+    # The manifest authenticates the raw stored dtype in _load_bound_frame.
+    # Compare the live surface to that authenticated bank under the canonical
+    # logical string policy so pre-policy object-backed banks and new canonical
+    # banks share one finalization identity without a schema/version bump.
+    bank = _load_bound_frame(
+        root,
+        manifest,
+        filename_key="recipient_filename",
+        digest_key="recipient_checkpoint_sha256",
+        role="recipient",
+    ).table("tax_unit")
+    if _canonical_recipient_identity_sha256(
+        live, identity_columns
+    ) != _canonical_recipient_identity_sha256(bank, identity_columns):
         raise ValueError(
             "Live finalization frame changed PUF recipient identity or row order."
         )
@@ -697,6 +761,20 @@ def _recipient_identity_sha256(
         pd.util.hash_pandas_object(identity, index=True).to_numpy(dtype="<u8").tobytes()
     )
     return digest.hexdigest()
+
+
+def _canonical_recipient_identity_sha256(
+    table: pd.DataFrame,
+    identity_columns: Sequence[str],
+) -> str:
+    """Fingerprint recipient identity under the serialization string policy."""
+
+    identity = canonicalize_table_string_dtypes(
+        table.loc[:, list(identity_columns)],
+        boundary="primary PUF QRF logical recipient identity",
+        table_name="tax_unit",
+    )
+    return _recipient_identity_sha256(identity, identity_columns)
 
 
 def _ordered_strings_sha256(values: Sequence[str]) -> str:
