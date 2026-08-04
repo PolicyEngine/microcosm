@@ -82,7 +82,7 @@ operator registries and order, household shares, primary target order, ACS
 target families and fit settings, the complete take-up contract, and simulation
 batch size
 ([build_us_multispine_pool.py](../tools/build_us_multispine_pool.py#L619-L671)).
-The target-bank artifact has its own schema-v1 and materializer-v1 ledger as an
+The target-bank artifact has its own schema-v1 and materializer-v2 ledger as an
 additional fail-closed layer
 ([acs_transfer_bank.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer_bank.py#L25-L35)).
 

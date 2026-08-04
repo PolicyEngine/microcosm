@@ -913,6 +913,45 @@ def test_target_bank_cold_output_matches_unbanked_monolith(
     assert all(path.is_file() for path in _bank_paths(bank))
 
 
+def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "materializer-v1-bank"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            acs_transfer_bank_module,
+            "ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION",
+            1,
+        )
+        legacy_bank = _bank_store(bank_root)
+        baseline = _run_bank_fixture(legacy_bank)
+        legacy_paths = _bank_paths(legacy_bank)
+        assert all(path.is_file() for path in legacy_paths)
+        for path in legacy_paths:
+            metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(path)
+            assert metadata["materializer_version"] == 1
+
+    assert acs_transfer_bank_module.ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION == 2
+    current_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(current_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        current_bank,
+        sources=("rebuilt",) * len(_BANK_TARGETS),
+        load_statuses=("invalid_rebuild",) * len(_BANK_TARGETS),
+    )
+    for record in targets.values():
+        invalid = record["invalid_checkpoint"]
+        assert invalid["reason"] == "checkpoint_validation_failed"
+        assert invalid["message"] == (
+            "ACS transfer target checkpoint has an unsupported binding."
+        )
+
+
 def test_target_bank_fsyncs_file_then_parent_directory_after_each_rename(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

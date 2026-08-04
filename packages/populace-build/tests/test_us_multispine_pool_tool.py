@@ -1906,6 +1906,54 @@ def test_take_up_contract_identity_mutation_rebuilds_every_pool_boundary(
         assert provenance["stages"][stage]["load_status"] == "identity_mismatch"
 
 
+def test_pool_materializer_v1_artifacts_fail_closed_with_named_receipts(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    checkpoint_root = tmp_path / "materializer-v1-checkpoints"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(pool_tool, "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION", 1)
+        legacy_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+        assert legacy_store.base_identity["materializer_version"] == 1
+        legacy_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+        _run_checkpoint_fixture(pool_tool, tmp_path, store=legacy_store)
+        for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+            metadata = pool_tool.load_frame_checkpoint(
+                legacy_store.checkpoint_path(stage)
+            ).metadata
+            manifest = pool_tool._read_json_object(
+                legacy_store.checkpoint_manifest_path(stage)
+            )
+            assert metadata["materializer_version"] == 1
+            assert metadata["identity"]["materializer_version"] == 1
+            assert manifest["materializer_version"] == 1
+            assert manifest["identity"]["materializer_version"] == 1
+    capsys.readouterr()
+
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 2
+    current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    assert current_store.base_identity["materializer_version"] == 2
+    assert current_store.load_deepest() is None
+
+    output = capsys.readouterr().out
+    provenance = current_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert f"Ignored corrupt pool checkpoint '{stage}'" in output
+        receipt = provenance["stages"][stage]
+        assert receipt["source"] == "rebuilt"
+        assert receipt["load_status"] == "invalid_rebuild"
+        invalid = receipt["invalid_checkpoint"]
+        assert invalid["reason"] == "checkpoint_validation_failed"
+        assert invalid["message"] == (
+            f"{stage} checkpoint manifest has an unsupported binding"
+        )
+
+
 @pytest.mark.parametrize(
     ("corrupt_stage", "expected_resume", "expected_order"),
     (
