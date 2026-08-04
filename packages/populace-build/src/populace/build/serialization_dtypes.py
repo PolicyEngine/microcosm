@@ -101,11 +101,19 @@ def canonicalize_frame_string_dtypes(
     frame: Frame,
     *,
     boundary: str,
+    in_place: bool = False,
 ) -> Frame:
-    """Canonicalize string columns across every registered entity and link."""
+    """Canonicalize string columns across every registered entity and link.
+
+    ``in_place`` is reserved for newly produced or freshly loaded frames whose
+    tables are exclusively owned by the active boundary. It avoids duplicating
+    every unchanged numeric block in a wide frame.
+    """
 
     if not isinstance(frame, Frame):
         raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    if not isinstance(in_place, bool):
+        raise TypeError("in_place must be a bool.")
 
     tables: dict[str, pd.DataFrame] = {}
     changed = False
@@ -116,9 +124,14 @@ def canonicalize_frame_string_dtypes(
             boundary=boundary,
             table_name=name,
         )
+        if in_place and canonical is not source:
+            for column in source.columns:
+                if canonical[column].dtype != source[column].dtype:
+                    source[column] = canonical[column]
+            canonical = source
         tables[name] = canonical
         changed |= canonical is not source
-    if not changed:
+    if in_place or not changed:
         return frame
     return Frame(
         tables,

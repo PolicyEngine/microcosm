@@ -981,6 +981,7 @@ def transfer_acs_inputs(
     frame = canonicalize_frame_string_dtypes(
         frame,
         boundary="ACS transfer result",
+        in_place=True,
     )
     return AcsTransferResult(
         frame=frame,

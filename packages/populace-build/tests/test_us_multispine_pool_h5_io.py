@@ -15,6 +15,7 @@ from populace.build.frame_checkpoint import (
 )
 from populace.build.serialization_dtypes import (
     CANONICAL_STRING_DTYPE,
+    canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
 from populace.build.us_runtime.h5_io import (
@@ -125,6 +126,32 @@ def test_string_canonicalization_reuses_unchanged_numeric_storage() -> None:
         canonical["employment_income"].to_numpy(),
         source["employment_income"].to_numpy(),
     )
+
+
+def test_in_place_frame_canonicalization_reuses_all_numeric_storage() -> None:
+    frame = _pool_frame_with_object_strings_on_every_entity()
+    numeric_storage = {
+        entity: frame.table(entity)[US_SCHEMA.entity_id_column(entity)].to_numpy()
+        for entity in US_SCHEMA.entities
+    }
+
+    canonical = canonicalize_frame_string_dtypes(
+        frame,
+        boundary="fixture checkpoint load",
+        in_place=True,
+    )
+
+    assert canonical is frame
+    for entity in US_SCHEMA.entities:
+        table = canonical.table(entity)
+        assert np.shares_memory(
+            table[US_SCHEMA.entity_id_column(entity)].to_numpy(),
+            numeric_storage[entity],
+        )
+        assert all(
+            table[column].dtype == CANONICAL_STRING_DTYPE
+            for column in _semantic_string_columns(table)
+        )
 
 
 def test_object_string_simulated_checkpoint_resume_exports_canonical_strings(

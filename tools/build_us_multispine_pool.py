@@ -1218,6 +1218,7 @@ class _PoolStageCheckpointStore:
             frame = canonicalize_frame_string_dtypes(
                 frame,
                 boundary=f"pool {stage} checkpoint load",
+                in_place=True,
             )
             assembly_receipt = metadata.get("assembly_receipt")
             stage_receipts = metadata.get("stage_receipts")

@@ -2016,6 +2016,7 @@ def run_multispine_pool_path(
         assembled = canonicalize_frame_string_dtypes(
             assembled,
             boundary="multispine pool assembled checkpoint",
+            in_place=True,
         )
         assembly_receipt = spine_assembly_receipt(
             assembled,
@@ -2035,6 +2036,7 @@ def run_multispine_pool_path(
         assembled = canonicalize_frame_string_dtypes(
             resume.frame,
             boundary=f"multispine pool {resume.stage} resume",
+            in_place=True,
         )
         resume_stage = resume.stage
 
@@ -2081,6 +2083,7 @@ def run_multispine_pool_path(
         current = canonicalize_frame_string_dtypes(
             outcome.frame,
             boundary="multispine pool transferred checkpoint",
+            in_place=True,
         )
         validate_assembly_provenance(
             current,
@@ -2098,6 +2101,7 @@ def run_multispine_pool_path(
         current = canonicalize_frame_string_dtypes(
             resume.frame,
             boundary=f"multispine pool {resume.stage} persistent resume",
+            in_place=True,
         )
 
     if resume_stage != "simulated":
@@ -2111,6 +2115,7 @@ def run_multispine_pool_path(
             current = canonicalize_frame_string_dtypes(
                 outcome.frame,
                 boundary=f"multispine pool {stage_name} output",
+                in_place=True,
             )
             validate_assembly_provenance(
                 current,
@@ -2127,6 +2132,7 @@ def run_multispine_pool_path(
         simulation_frame = canonicalize_frame_string_dtypes(
             simulated.frame,
             boundary="multispine pool simulated checkpoint",
+            in_place=True,
         )
         validate_assembly_provenance(
             simulation_frame,
@@ -2147,6 +2153,7 @@ def run_multispine_pool_path(
         simulation_frame = canonicalize_frame_string_dtypes(
             resume.simulation_frame,
             boundary="multispine pool simulated evaluation resume",
+            in_place=True,
         )
 
     counts = spine_provenance_counts(

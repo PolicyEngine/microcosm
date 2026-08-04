@@ -173,6 +173,7 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     return canonicalize_frame_string_dtypes(
         frame,
         boundary="legacy calibrated US H5 load",
+        in_place=True,
     )
 
 
