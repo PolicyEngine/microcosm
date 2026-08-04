@@ -49,7 +49,7 @@ def canonicalize_table_string_dtypes(
         if isinstance(dtype, pd.StringDtype):
             if dtype != CANONICAL_STRING_DTYPE:
                 if result is table:
-                    result = table.copy()
+                    result = table.copy(deep=False)
                 result[column] = series.astype(CANONICAL_STRING_DTYPE)
             continue
         if not pd.api.types.is_object_dtype(dtype):
@@ -92,7 +92,7 @@ def canonicalize_table_string_dtypes(
         if not string_observed.any():
             continue
         if result is table:
-            result = table.copy()
+            result = table.copy(deep=False)
         result[column] = series.astype(CANONICAL_STRING_DTYPE)
     return result
 

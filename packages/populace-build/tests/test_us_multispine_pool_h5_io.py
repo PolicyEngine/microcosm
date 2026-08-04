@@ -13,7 +13,10 @@ from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
-from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from populace.build.serialization_dtypes import (
+    CANONICAL_STRING_DTYPE,
+    canonicalize_table_string_dtypes,
+)
 from populace.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -94,6 +97,29 @@ def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
             pd.api.types.is_object_dtype(table[column].dtype)
             and pd.api.types.infer_dtype(table[column], skipna=True) == "string"
         )
+    )
+
+
+def test_string_canonicalization_reuses_unchanged_numeric_storage() -> None:
+    source = pd.DataFrame(
+        {
+            "PERIDNUM": pd.Series(["1", None, "3"], dtype=object),
+            "employment_income": np.asarray([10.0, 20.0, 30.0]),
+        }
+    )
+
+    canonical = canonicalize_table_string_dtypes(
+        source,
+        boundary="fixture checkpoint load",
+        table_name="person",
+    )
+
+    assert canonical is not source
+    assert source["PERIDNUM"].dtype == np.dtype(object)
+    assert canonical["PERIDNUM"].dtype == CANONICAL_STRING_DTYPE
+    assert np.shares_memory(
+        canonical["employment_income"].to_numpy(),
+        source["employment_income"].to_numpy(),
     )
 
 
