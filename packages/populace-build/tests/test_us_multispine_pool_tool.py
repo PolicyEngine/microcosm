@@ -1646,11 +1646,11 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     }
 
 
-def test_simulated_v2_checkpoint_normalizes_legacy_strings_without_rewrite(
+def test_simulated_v2_checkpoint_accepts_both_string_encodings_without_rewrite(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """Run 7c can load object-string v2 bytes, then normalize in memory."""
+    """V2 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -1660,6 +1660,22 @@ def test_simulated_v2_checkpoint_normalizes_legacy_strings_without_rewrite(
 
     checkpoint_path = cold_store.checkpoint_path("simulated")
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
+    canonical_v2_bytes = checkpoint_path.read_bytes()
+    canonical_identity = loaded.metadata["identity"]
+    assert loaded.metadata["materializer_version"] == 2
+    assert any(
+        column["dtype"] == str(CANONICAL_STRING_DTYPE)
+        for columns in loaded.metadata["frame_schema"]["entities"].values()
+        for column in columns
+    )
+
+    canonical_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    canonical_resume = canonical_store.load_deepest()
+    assert canonical_resume is not None
+    assert canonical_resume.stage == "simulated"
+    assert canonical_resume.simulation_frame is not None
+    assert checkpoint_path.read_bytes() == canonical_v2_bytes
+
     legacy_frame = _with_object_backed_strings(loaded.frame)
     legacy_metadata = dict(loaded.metadata)
     legacy_metadata["frame_schema"] = pool_tool._frame_schema_payload(legacy_frame)
@@ -1675,12 +1691,21 @@ def test_simulated_v2_checkpoint_normalizes_legacy_strings_without_rewrite(
     manifest["frame_schema"] = legacy_metadata["frame_schema"]
     pool_tool._atomic_write_json(manifest_path, manifest)
     banked_v2_bytes = checkpoint_path.read_bytes()
+    assert banked_v2_bytes != canonical_v2_bytes
+    assert legacy_metadata["identity"] == canonical_identity
+    assert legacy_metadata["materializer_version"] == 2
+    assert any(
+        column["dtype"] == "object"
+        for columns in legacy_metadata["frame_schema"]["entities"].values()
+        for column in columns
+    )
 
     warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
     resume = warm_store.load_deepest()
 
     assert resume is not None
     assert resume.stage == "simulated"
+    assert resume.simulation_frame is not None
     assert checkpoint_path.read_bytes() == banked_v2_bytes
     assert (
         warm_store.provenance(
@@ -1689,7 +1714,14 @@ def test_simulated_v2_checkpoint_normalizes_legacy_strings_without_rewrite(
         == "resumed"
     )
     for entity in US_SCHEMA.entities:
+        canonical_table = canonical_resume.frame.table(entity)
         table = resume.frame.table(entity)
+        pd.testing.assert_frame_equal(table, canonical_table, check_exact=True)
+        pd.testing.assert_frame_equal(
+            resume.simulation_frame.table(entity),
+            canonical_resume.simulation_frame.table(entity),
+            check_exact=True,
+        )
         string_columns = _semantic_string_columns(table)
         assert string_columns
         assert all(

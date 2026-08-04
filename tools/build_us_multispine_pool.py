@@ -152,6 +152,13 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # its public registry name stays constant. Correctness takes priority over
 # retaining warm checkpoints (the same rule as TARGET_FRAME_CHECKPOINT's
 # materializer-version ledger in build_us_fiscal_refresh_release.py).
+#
+# Pure-string object columns and canonical pandas string columns are two
+# supported physical encodings of the same v2 logical values. The reader
+# authenticates the literal stored bytes and sidecar schema first, then
+# normalizes that logical view in memory. Moving between those encodings does
+# not change a producer's scalar output and therefore does not advance this
+# ledger; changing string values or the canonical logical dtype policy does.
 POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 2
 
 _PRIMARY_QRF_N_ESTIMATORS = 100

@@ -517,6 +517,13 @@ def write_nullable_us_h5(
         frame,
         boundary="nullable US H5 export",
     )
+    for entity in US_SCHEMA.entities:
+        canonicalize_table_string_dtypes(
+            canonical_frame.table(entity),
+            boundary="nullable US H5 export",
+            table_name=entity,
+            reject_untyped_all_missing_object=True,
+        )
 
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)

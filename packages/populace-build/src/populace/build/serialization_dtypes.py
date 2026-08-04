@@ -22,6 +22,7 @@ def canonicalize_table_string_dtypes(
     *,
     boundary: str,
     table_name: str,
+    reject_untyped_all_missing_object: bool = False,
 ) -> pd.DataFrame:
     """Return ``table`` with every unambiguous string column canonicalized.
 
@@ -38,6 +39,8 @@ def canonicalize_table_string_dtypes(
         raise ValueError("boundary must be a non-empty string.")
     if not isinstance(table_name, str) or not table_name:
         raise ValueError("table_name must be a non-empty string.")
+    if not isinstance(reject_untyped_all_missing_object, bool):
+        raise TypeError("reject_untyped_all_missing_object must be a bool.")
 
     result = table
     for column in table.columns:
@@ -53,6 +56,15 @@ def canonicalize_table_string_dtypes(
             continue
 
         observed = series.dropna().to_numpy(dtype=object, copy=False)
+        if not len(observed):
+            if reject_untyped_all_missing_object and len(series):
+                raise TypeError(
+                    f"String dtype boundary {boundary!r} found ambiguous "
+                    f"all-missing object column {table_name}.{column}: no "
+                    "observed values establish its semantic type; declare an "
+                    "explicit dtype before serialization."
+                )
+            continue
         string_observed = np.fromiter(
             (isinstance(value, (str, np.str_)) for value in observed),
             dtype=bool,

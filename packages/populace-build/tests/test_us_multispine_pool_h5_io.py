@@ -169,6 +169,60 @@ def test_pool_export_rejects_ambiguous_object_strings_before_replacement(
     assert output.read_bytes() == b"previous-good-pool"
 
 
+def test_pool_export_rejects_untyped_all_missing_objects_before_replacement(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    frame = _pool_frame_with_object_strings_on_every_entity()
+    frame.table("household")["household_source_label"] = pd.Series(
+        [None] * len(frame.table("household")),
+        dtype=object,
+    )
+    output = tmp_path / "existing.pool.h5"
+    output.write_bytes(b"previous-good-pool")
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            "nullable US H5 export.*household.household_source_label.*"
+            "no observed values.*declare an explicit dtype"
+        ),
+    ):
+        write_nullable_us_h5(
+            frame,
+            output,
+            period=2024,
+            artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+        )
+
+    assert output.read_bytes() == b"previous-good-pool"
+
+
+def test_pool_export_canonicalizes_explicit_all_missing_strings(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    frame = _pool_frame_with_object_strings_on_every_entity()
+    frame.table("household")["household_source_label"] = pd.Series(
+        pd.NA,
+        index=frame.table("household").index,
+        dtype=pd.StringDtype(storage="python", na_value=pd.NA),
+    )
+    output = tmp_path / "typed-all-missing.pool.h5"
+
+    write_nullable_us_h5(
+        frame,
+        output,
+        period=2024,
+        artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    )
+
+    with pd.HDFStore(output, mode="r") as store:
+        stored = store["household"]["household_source_label"]
+    assert stored.dtype == CANONICAL_STRING_DTYPE
+    assert stored.isna().all()
+
+
 def _write_ready_pool(tmp_path: Path) -> Path:
     run_id = "fixture-publication"
     pool_path = tmp_path / "pool.h5"
