@@ -854,7 +854,10 @@ def transfer_acs_inputs(
     )
     if not requested:
         return AcsTransferResult(
-            frame=recipient,
+            frame=canonicalize_frame_string_dtypes(
+                recipient,
+                boundary="ACS transfer result",
+            ),
             deferred_inputs=deferred_inputs,
         )
 
@@ -866,7 +869,10 @@ def transfer_acs_inputs(
     active = _missing_target_families(requested, recipient=recipient)
     if not active:
         return AcsTransferResult(
-            frame=recipient,
+            frame=canonicalize_frame_string_dtypes(
+                recipient,
+                boundary="ACS transfer result",
+            ),
             deferred_inputs=deferred_inputs,
         )
 

@@ -2234,6 +2234,33 @@ def test_no_missing_targets_returns_identical_recipient_object(
     assert result.fit_records == ()
 
 
+@pytest.mark.parametrize(
+    "families",
+    [
+        {},
+        {"person": {"already_native": ("taxable_interest_income",)}},
+    ],
+)
+def test_no_op_transfer_canonicalizes_object_strings(
+    families: dict[str, dict[str, tuple[str, ...]]],
+) -> None:
+    recipient = _recipient_frame()
+    recipient.table("person")["native_label"] = recipient.table("person")[
+        "native_label"
+    ].astype(object)
+
+    result = transfer_acs_inputs(
+        recipient,
+        _donor_frame(),
+        target_families=families,
+        n_estimators=2,
+    )
+
+    assert result.frame is not recipient
+    assert recipient.table("person")["native_label"].dtype == np.dtype(object)
+    assert result.frame.table("person")["native_label"].dtype == CANONICAL_STRING_DTYPE
+
+
 def test_schedule_d_cgd_derivation_enforces_route_exclusivity() -> None:
     from populace.build.us_runtime.acs_transfer import (
         derive_acs_schedule_d_capital_gain_distributions,
