@@ -17,14 +17,34 @@ synthetic tables only.
 
 Join keys
 ---------
-PolicyEngine-UK single-year person IDs are derived from the same FRS keys:
-``person_id = SERNUM * 100 + BENUNIT * 10 + PERSON`` (with ``benunit_id =
-SERNUM * 10 + BENUNIT`` and ``household_id = SERNUM``). This module rebuilds
-that composite ID from ``adult.tab``'s key columns and joins it against the
-person table's ``person_id`` (the first of
+PolicyEngine-UK single-year person IDs are derived from the FRS keys as
+``person_id = SERNUM * 1000 + PERSON`` (with ``benunit_id = SERNUM * 100 +
+BENUNIT`` and ``household_id = SERNUM``) — the assignment in
+``policyengine_uk_data/datasets/frs.py`` (``sernum`` → ``household_id``,
+then ``person_id = household_id * 1e3 + person_id``; verified against
+policyengine-uk-data 1.55.10, and empirically: every adult.tab row of FRS
+2023-24 and 2024-25 joins its same-vintage single-year H5 1:1 under this
+composite). ``BENUNIT`` does **not** enter the person ID, so the join
+relies on ``PERSON`` being unique within a *household* in ``adult.tab``
+(it is, in both vintages checked); :func:`soc_major_group_for_persons`
+raises loudly if that assumption ever breaks. This module rebuilds the
+composite from ``adult.tab``'s key columns and joins it against the person
+table's ``person_id`` (the first of
 :data:`populace.build.uk_runtime.rowwise_dataset.PERSON_ID_COLUMNS`), the
 same single-year ID surface :mod:`~populace.build.uk_runtime.spi_support`
 clones from.
+
+Single-year datasets only
+-------------------------
+The join targets the *single-year* dataset convention above, and
+:func:`soc_major_group_for_persons` raises (rather than emitting an all-NaN
+column) when nothing matches. Enhanced FRS datasets clone households onto
+offset IDs downstream (``policyengine_uk_data/calibration/clone_and_assign.py``
+appends each clone with ``clone_idx * id_multiplier`` added to every ID),
+so on those datasets only the un-offset base block can match. Run this
+stage on the single-year dataset before any cloning/enhancement; carrying
+``soc_major_group`` through the clone step (or exporting a clone→original
+mapping) is an upstream follow-up.
 
 Missingness contract
 --------------------
@@ -76,7 +96,10 @@ __all__ = [
     "soc_major_group_for_persons",
 ]
 
-#: The ``adult.tab`` columns identifying one adult respondent.
+#: The ``adult.tab`` columns identifying one adult respondent (the UKDS
+#: documented key). Only ``SERNUM`` and ``PERSON`` enter the person ID —
+#: see :func:`frs_person_ids`; ``BENUNIT`` stays in the default read set
+#: because it keys the separate benunit surface and aids debugging.
 FRS_ADULT_KEY_COLUMNS = ("SERNUM", "BENUNIT", "PERSON")
 
 #: The ``adult.tab`` SOC 2020 major-group variable (coded 1000-9000).
@@ -128,25 +151,30 @@ def load_frs_adult_table(
 def frs_person_ids(adult: pd.DataFrame) -> np.ndarray:
     """PolicyEngine-UK single-year person IDs from FRS adult key columns.
 
-    ``person_id = SERNUM * 100 + BENUNIT * 10 + PERSON`` — the composite the
-    PolicyEngine-UK FRS build assigns, and the ``person_id`` the single-year
-    person table carries (see PERSON_ID_COLUMNS in
-    :mod:`populace.build.uk_runtime.rowwise_dataset`).
+    ``person_id = SERNUM * 1000 + PERSON`` — the composite the
+    PolicyEngine-UK FRS build assigns (``policyengine_uk_data/datasets/frs.py``:
+    ``person_id = household_id * 1e3 + person_id`` after renaming ``sernum``
+    to ``household_id``; verified against policyengine-uk-data 1.55.10), and
+    the ``person_id`` the single-year person table carries (see
+    PERSON_ID_COLUMNS in :mod:`populace.build.uk_runtime.rowwise_dataset`).
+    ``BENUNIT`` does not enter the composite, so only ``SERNUM`` and
+    ``PERSON`` are required.
 
     Raises:
         ValueError: On missing key columns or missing/non-numeric key values.
     """
 
-    missing = sorted(set(FRS_ADULT_KEY_COLUMNS) - set(adult.columns))
+    required = ("SERNUM", "PERSON")
+    missing = sorted(set(required) - set(adult.columns))
     if missing:
         raise ValueError(f"adult table is missing key column(s): {missing}.")
     keys = {}
-    for column in FRS_ADULT_KEY_COLUMNS:
+    for column in required:
         values = pd.to_numeric(adult[column], errors="raise")
         if values.isna().any():
             raise ValueError(f"adult.{column} contains missing values.")
         keys[column] = values.astype("int64").to_numpy()
-    return keys["SERNUM"] * 100 + keys["BENUNIT"] * 10 + keys["PERSON"]
+    return keys["SERNUM"] * 1000 + keys["PERSON"]
 
 
 def soc_major_group_for_persons(
@@ -172,7 +200,10 @@ def soc_major_group_for_persons(
         ``adults_missing_soc`` and ``persons_without_adult_row``.
 
     Raises:
-        ValueError: On missing columns or duplicated adult person IDs.
+        ValueError: On missing columns, duplicated adult person IDs, or —
+            when both tables are non-empty — zero matches, which means the
+            person table does not carry the single-year ID convention this
+            join keys on (see the module docstring).
     """
 
     if person_id_column not in person.columns:
@@ -185,8 +216,9 @@ def soc_major_group_for_persons(
         duplicates = pd.Index(adult_ids)
         duplicates = duplicates[duplicates.duplicated()].unique()
         raise ValueError(
-            "adult table has duplicated SERNUM/BENUNIT/PERSON keys; duplicate "
-            f"person ID(s): {list(map(str, duplicates[:5]))}."
+            "adult table has duplicated SERNUM * 1000 + PERSON composite IDs "
+            "(PERSON is expected to be unique within a household in "
+            f"adult.tab); duplicate person ID(s): {list(map(str, duplicates[:5]))}."
         )
 
     soc = pd.to_numeric(adult[FRS_ADULT_SOC_COLUMN], errors="coerce").astype(float)
@@ -198,6 +230,14 @@ def soc_major_group_for_persons(
     values.name = SOC_MAJOR_GROUP_COLUMN
 
     matched = person_ids.isin(lookup.index)
+    if len(adult) and len(person_ids) and not matched.any():
+        raise ValueError(
+            "no adult.tab row matched any person_id: the person table does "
+            "not carry the single-year SERNUM * 1000 + PERSON convention "
+            "this join keys on (enhanced/cloned datasets offset their IDs — "
+            "see the module docstring). Refusing to attach an all-NaN "
+            f"{SOC_MAJOR_GROUP_COLUMN!r} column."
+        )
     report = {
         "n_persons": int(len(person)),
         "adults_matched": int(matched.sum()),
@@ -238,7 +278,9 @@ def attach_soc_major_group(
 
     Raises:
         ValueError: If ``column`` already exists on any entity table (the
-            stage must run exactly once).
+            stage must run exactly once), or — propagated from
+            :func:`soc_major_group_for_persons` — if the join matches zero
+            adults (an ID-convention mismatch).
     """
 
     try:

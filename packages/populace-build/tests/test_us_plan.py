@@ -990,6 +990,13 @@ class TestUsSources:
             # repository the licensed copies were vendored from. Identity
             # strings only — nothing is imported or fetched from it.
             "packages/populace-build/src/populace/build/uk_runtime/hmrc_source_contract.py",
+            # The FRS occupation join (populace #325) must cite the exact
+            # upstream single-year person-ID assignment it rebuilds — a
+            # provenance citation of the upstream data build, never an
+            # import. (Today the file is also skipped by the uk_runtime
+            # scratch carve-out above; it is listed here so narrowing that
+            # carve-out to true scratch cannot silently outlaw the citation.)
+            "packages/populace-build/src/populace/build/uk_runtime/frs_occupation.py",
             "packages/populace-build/tests/test_uk_parity_reference.py",
             # The publication contract's June-grandfather test keeps the
             # three semantic-real JSON artifacts from the frozen df82567

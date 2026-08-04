@@ -3,10 +3,20 @@
 The real FRS adult.tab is UKDS EUL microdata and never committed; every test
 builds a tiny fake adult table plus a matching person table using the
 PolicyEngine-UK single-year composite-ID convention
-(``person_id = SERNUM*100 + BENUNIT*10 + PERSON``).
+(``person_id = SERNUM * 1000 + PERSON``; ``BENUNIT`` does not enter). The
+expected IDs are written as literals taken from the upstream PolicyEngine-UK
+FRS data build's contract (cited precisely in the join-keys section of
+:mod:`populace.build.uk_runtime.frs_occupation`), not recomputed with the
+code under test, so a formula regression cannot hide behind its own fixtures —
+the pre-fix ``SERNUM*100 + BENUNIT*10 + PERSON`` composite passed exactly
+such self-consistent tests while matching zero real adults. The final,
+skipped-by-default test joins the real adult.tab against the same-vintage
+PolicyEngine-UK H5 when both are available locally.
 """
 
 from __future__ import annotations
+
+import os
 
 import numpy as np
 import pandas as pd
@@ -30,12 +40,16 @@ SCHEMA = EntitySchema(group_entities=("household",))
 
 
 def _fake_adult() -> pd.DataFrame:
-    """Three adults in two households; one adult with an invalid SOC."""
+    """Three adults in two households; one adult with an invalid SOC.
+
+    ``BENUNIT`` deliberately varies (household 10 spans two benefit units)
+    to pin that it does not enter the person ID.
+    """
 
     return pd.DataFrame(
         {
             "SERNUM": [10, 10, 20],
-            "BENUNIT": [1, 1, 1],
+            "BENUNIT": [1, 2, 1],
             "PERSON": [1, 2, 1],
             "SOC2020": [2000, 9000, -1],
         }
@@ -47,7 +61,7 @@ def _fake_person() -> pd.DataFrame:
 
     return pd.DataFrame(
         {
-            "person_id": [1011, 1012, 2011, 2012],
+            "person_id": [10001, 10002, 20001, 20002],
             "person_household_id": [10, 10, 20, 20],
             "age": [40, 38, 30, 5],
         }
@@ -66,8 +80,23 @@ def _frame(person: pd.DataFrame) -> Frame:
 
 
 def test_frs_person_ids_composite_convention():
+    """``SERNUM * 1000 + PERSON``, expected values as upstream literals."""
+
     ids = frs_person_ids(_fake_adult())
-    assert ids.tolist() == [1011, 1012, 2011]
+    assert ids.tolist() == [10001, 10002, 20001]
+
+
+def test_frs_person_ids_ignore_benunit():
+    """Same SERNUM/PERSON under different BENUNITs → identical IDs."""
+
+    adult = _fake_adult()
+    rebenunited = adult.assign(BENUNIT=[9, 8, 7])
+    assert frs_person_ids(adult).tolist() == frs_person_ids(rebenunited).tolist()
+
+
+def test_frs_person_ids_does_not_require_benunit():
+    ids = frs_person_ids(pd.DataFrame({"SERNUM": [5], "PERSON": [3]}))
+    assert ids.tolist() == [5003]
 
 
 def test_frs_person_ids_requires_key_columns():
@@ -95,8 +124,42 @@ def test_join_correctness_and_missingness_report():
 
 def test_duplicate_adult_keys_rejected():
     adult = pd.concat([_fake_adult(), _fake_adult().iloc[[0]]], ignore_index=True)
-    with pytest.raises(ValueError, match="duplicated SERNUM/BENUNIT/PERSON"):
+    with pytest.raises(ValueError, match="duplicated SERNUM"):
         soc_major_group_for_persons(_fake_person(), adult)
+
+
+def test_duplicate_person_across_benunits_rejected():
+    """Two adults sharing SERNUM/PERSON collide even in different benunits.
+
+    The composite assumes PERSON is unique within a household; if a vintage
+    ever numbers PERSON within the benefit unit instead, the join must fail
+    loudly rather than silently mis-assigning occupations.
+    """
+
+    adult = pd.DataFrame(
+        {
+            "SERNUM": [10, 10],
+            "BENUNIT": [1, 2],
+            "PERSON": [1, 1],
+            "SOC2020": [2000, 3000],
+        }
+    )
+    with pytest.raises(ValueError, match="duplicated SERNUM"):
+        soc_major_group_for_persons(_fake_person(), adult)
+
+
+def test_zero_match_raises_instead_of_all_nan():
+    """Person IDs on a different convention → loud failure, not silent NaN.
+
+    This is the regression shape of the original bug: an ID-convention
+    mismatch joined 0 of 34,966 real persons and would have produced an
+    all-NaN column. The fixture's IDs are exactly the pre-fix composite
+    (``SERNUM*100 + BENUNIT*10 + PERSON``) for the same fake households.
+    """
+
+    person = _fake_person().assign(person_id=[1011, 1022, 2011, 2012])
+    with pytest.raises(ValueError, match="convention"):
+        soc_major_group_for_persons(person, _fake_adult())
 
 
 def test_load_frs_adult_table_reads_tab_delimited(tmp_path):
@@ -164,3 +227,38 @@ def test_stage_slots_before_exposure_imputation_in_a_plan():
         UK_FRS_OCCUPATION_STAGE_NAME,
         "ai_exposure_imputation",
     ]
+
+
+_REAL_ADULT_TAB = os.environ.get("POPULACE_UK_FRS_ADULT_TAB", "")
+_REAL_FRS_H5 = os.environ.get("POPULACE_UK_FRS_H5", "")
+
+
+@pytest.mark.skipif(
+    not (_REAL_ADULT_TAB and _REAL_FRS_H5),
+    reason=(
+        "requires locally held UKDS EUL FRS microdata: set "
+        "POPULACE_UK_FRS_ADULT_TAB (adult.tab path) and POPULACE_UK_FRS_H5 "
+        "(the same vintage's PolicyEngine-UK single-year H5)"
+    ),
+)
+def test_real_adult_tab_ids_match_policyengine_uk_h5():
+    """Every real adult.tab row joins the same-vintage PE-UK person table.
+
+    The synthetic tests pin the formula but construct both sides of the
+    join, so they cannot catch upstream drift in the PolicyEngine-UK data
+    build's ID assignment — the failure mode that shipped the original bug. This one
+    can: it rebuilds IDs from the raw adult.tab and requires every one to
+    appear in the real H5's person table (verified 1:1 on FRS 2023-24 and
+    2024-25).
+    """
+
+    pytest.importorskip("tables")  # pandas HDF reader for the PE-UK H5
+    adult = load_frs_adult_table(_REAL_ADULT_TAB)
+    ids = frs_person_ids(adult)
+    person_ids = pd.read_hdf(_REAL_FRS_H5, "person")["person_id"].astype("int64")
+    matched = np.isin(ids, person_ids.to_numpy())
+    assert matched.all(), (
+        f"{int((~matched).sum())} of {len(ids)} adult.tab rows failed to "
+        "match the H5 person table; the upstream PolicyEngine-UK data "
+        "build's ID convention has drifted from SERNUM * 1000 + PERSON."
+    )

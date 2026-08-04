@@ -20,8 +20,9 @@ score, never the occupation code.** Two facts drive the design:
    the imputed quantity is the real-valued exposure score, for which the
    QRF's weighted conditional draws are exactly the right object.
 2. The target person's 1-digit major group is *observed*, not modeled: it is
-   merged from the raw FRS ``adult.tab`` (``SOC2020``, linked via
-   SERNUM/BENUNIT/PERSON) in a separate data-prep step upstream of this
+   merged from the raw FRS ``adult.tab`` (``SOC2020``, joined on the
+   single-year person IDs by
+   :mod:`populace.build.uk_runtime.frs_occupation`) upstream of this
    module. The imputer's job is therefore **not** to guess occupation from
    demographics — it is to refine exposure *within* the known major group,
    predicting where in the group's exposure distribution this person sits
@@ -133,8 +134,9 @@ DEFAULT_EXPOSURE_COLUMN = "ai_exposure"
 
 #: The observed 1-digit SOC 2020 major group on the person table. On the FRS
 #: side it is merged from the raw UKDA ``adult.tab`` (``SOC2020``, values
-#: ``1000``-``9000``, linked via SERNUM/BENUNIT/PERSON) in a separate
-#: data-prep step; on the LFS/APS donor side it is derived from the fine SOC.
+#: ``1000``-``9000``, joined on ``SERNUM * 1000 + PERSON`` by
+#: :mod:`populace.build.uk_runtime.frs_occupation`); on the LFS/APS donor
+#: side it is derived from the fine SOC.
 SOC_MAJOR_GROUP_COLUMN = "soc_major_group"
 
 #: Covariates shared by the LFS/APS donor and the FRS target frame, in the
