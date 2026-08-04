@@ -141,9 +141,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 #    pre/post-clone operator registries, physical PUF clone and QRF target
 #    order, tail and ACS transfer producers, derive registry, take-up seeding,
 #    SSI materialization, fixed seeds/period/fit sizes, and PolicyEngine-US.
-# 2: The take-up contract identity now binds every structured contract field,
-#    including its asserted PolicyEngine-US constraint and the exact reviewed
-#    inventory version. Version-1 volume checkpoints are deliberately stale.
+# 2: The take-up contract identity binds the canonical SHA-256 of the entire
+#    parsed resource, plus readable explicit fields. Version-1 volume
+#    checkpoints are deliberately stale.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,

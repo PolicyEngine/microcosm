@@ -10,7 +10,9 @@ prove-it-can-find-something check).
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+from importlib.resources import files
 
 import pytest
 
@@ -47,10 +49,28 @@ class TestContractLoads:
         assert take_up_contract_identity(contract) == {
             "version": contract.version,
             "country": contract.country,
+            "resource_sha256": contract.resource_sha256,
             "asserted_constraint": contract.asserted_constraint,
             "inventory_built_against": contract.inventory_built_against,
             "programs": [dict(program.raw) for program in contract.programs],
         }
+
+    def test_resource_digest_matches_the_complete_canonical_json(self) -> None:
+        resource = json.loads(
+            files("populace.build.us").joinpath("take_up_contract.json").read_text()
+        )
+        canonical = json.dumps(
+            resource,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        expected_sha256 = hashlib.sha256(canonical).hexdigest()
+        contract = load_take_up_contract()
+
+        assert contract.resource_sha256 == expected_sha256
+        assert take_up_contract_identity(contract)["resource_sha256"] == expected_sha256
 
     def test_every_program_has_a_valid_treatment(self) -> None:
         for program in load_take_up_contract().programs:
@@ -185,6 +205,52 @@ class TestAssertionCanFail:
         self._reload_with(monkeypatch, mutated)
         with pytest.raises(AssertionError, match="takes_up_snap_if_eligible"):
             assert_take_up_contract_current()
+
+    @pytest.mark.parametrize(
+        "resource_path",
+        (
+            pytest.param(("policy",), id="policy"),
+            pytest.param(("doctrine", "engine_class"), id="doctrine"),
+            pytest.param(
+                ("asserted_engine", "package"),
+                id="asserted_engine_package",
+            ),
+            pytest.param(
+                ("asserted_engine", "note"),
+                id="asserted_engine_note",
+            ),
+        ),
+    )
+    def test_resource_digest_binds_remaining_structured_fields(
+        self,
+        monkeypatch,
+        base_table,
+        resource_path: tuple[str, ...],
+    ) -> None:
+        load_take_up_contract.cache_clear()
+        baseline_identity = take_up_contract_identity(load_take_up_contract())
+        mutated = copy.deepcopy(base_table)
+        parent = mutated
+        for key in resource_path[:-1]:
+            parent = parent[key]
+        field = resource_path[-1]
+        parent[field] = f"{parent[field]}-identity-mutation"
+        self._reload_with(monkeypatch, mutated)
+
+        changed_identity = take_up_contract_identity(load_take_up_contract())
+
+        assert (
+            changed_identity["resource_sha256"] != baseline_identity["resource_sha256"]
+        )
+        assert {
+            key: value
+            for key, value in changed_identity.items()
+            if key != "resource_sha256"
+        } == {
+            key: value
+            for key, value in baseline_identity.items()
+            if key != "resource_sha256"
+        }
 
     def test_wrong_engine_class_fails(self, monkeypatch, base_table) -> None:
         mutated = copy.deepcopy(base_table)

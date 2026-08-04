@@ -23,6 +23,7 @@ this module is the contract they and the release diagnostics read.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from copy import deepcopy
@@ -107,6 +108,7 @@ class TakeUpContract:
 
     version: int
     country: str
+    resource_sha256: str
     asserted_constraint: str
     inventory_built_against: str
     programs: tuple[TakeUpProgram, ...]
@@ -122,6 +124,19 @@ def _contract_path():
     return files("populace.build.us").joinpath("take_up_contract.json")
 
 
+def _canonical_resource_sha256(resource: Mapping[str, object]) -> str:
+    """Hash the complete parsed contract resource as canonical JSON."""
+
+    canonical = json.dumps(
+        resource,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 @lru_cache(maxsize=1)
 def load_take_up_contract() -> TakeUpContract:
     """Load and validate the checked-in take-up contract inventory.
@@ -131,6 +146,9 @@ def load_take_up_contract() -> TakeUpContract:
             treatment, duplicate program).
     """
     raw = json.loads(_contract_path().read_text())
+    if not isinstance(raw, Mapping):
+        raise ValueError("take-up contract resource must contain a JSON object.")
+    resource_sha256 = _canonical_resource_sha256(raw)
     version = raw.get("version")
     country = raw.get("country")
     if not isinstance(version, int) or version < 1:
@@ -184,6 +202,7 @@ def load_take_up_contract() -> TakeUpContract:
     return TakeUpContract(
         version=version,
         country=country,
+        resource_sha256=resource_sha256,
         asserted_constraint=str(asserted.get("constraint", "")),
         inventory_built_against=str(asserted.get("inventory_built_against", "")),
         programs=tuple(programs),
@@ -196,14 +215,16 @@ def take_up_contract_identity(
     """Return the complete canonical identity surface for the take-up contract.
 
     Cached build artifacts must call this one constructor instead of selecting
-    contract fields independently. Program order and each full checked-in row
-    remain identity-bearing alongside every structured contract-level field.
+    contract fields independently. The resource digest binds the entire parsed
+    checked-in JSON object, including fields not projected onto the dataclass;
+    the explicit fields remain alongside it for readable provenance.
     """
 
     resolved = contract if contract is not None else load_take_up_contract()
     return {
         "version": resolved.version,
         "country": resolved.country,
+        "resource_sha256": resolved.resource_sha256,
         "asserted_constraint": resolved.asserted_constraint,
         "inventory_built_against": resolved.inventory_built_against,
         "programs": [deepcopy(dict(program.raw)) for program in resolved.programs],
