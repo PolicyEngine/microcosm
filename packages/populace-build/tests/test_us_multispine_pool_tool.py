@@ -22,6 +22,9 @@ import pytest
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 from populace.build.gates import GateReport, GateResult
 from populace.build.us_runtime.acs_transfer import transfer_acs_inputs
+from populace.build.us_runtime.acs_transfer_bank import (
+    ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
+)
 from populace.build.us_runtime.multispine_pool import PoolStageOutput
 from populace.build.us_runtime.operator_boundary import (
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
@@ -32,6 +35,10 @@ from populace.build.us_runtime.puf_support import (
 from populace.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
+)
+from populace.build.us_runtime.take_up_contract import (
+    load_take_up_contract,
+    take_up_contract_identity,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -426,7 +433,7 @@ def _target_bank_receipt_after_interruption(
     return {
         "artifact_kind": "populace_us_multispine_acs_transfer_target_bank_provenance",
         "schema_version": 1,
-        "materializer_version": 1,
+        "materializer_version": ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
         "root": "/fixture/acs-transfer",
         "identity": {"fixture": "identity"},
         "identity_sha256": "a" * 64,
@@ -1416,6 +1423,74 @@ def test_pool_checkpoint_input_sha_mismatch_rebuilds_every_stage(
     assert not rebuilt.simulation_ready
     output = capsys.readouterr().out
     assert output.count("Ignored stale pool checkpoint") == 3
+    provenance = changed_store.provenance(
+        primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+    )
+    assert provenance["deepest_resumed_stage"] is None
+    for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
+        assert provenance["stages"][stage]["source"] == "rebuilt"
+        assert provenance["stages"][stage]["load_status"] == "identity_mismatch"
+
+
+@pytest.mark.parametrize(
+    "contract_field",
+    (
+        pytest.param("asserted_constraint", id="asserted_constraint_changed"),
+        pytest.param(
+            "inventory_built_against",
+            id="inventory_built_against_changed",
+        ),
+    ),
+)
+def test_take_up_contract_identity_mutation_rebuilds_every_pool_boundary(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    contract_field: str,
+) -> None:
+    checkpoint_root = tmp_path / "take-up-contract-checkpoints"
+    contract = load_take_up_contract()
+    original_contract_identity = take_up_contract_identity(contract)
+    monkeypatch.setattr(
+        pool_tool,
+        "take_up_contract_identity",
+        lambda: original_contract_identity,
+    )
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    assert (
+        cold_store.base_identity["pool_code"]["take_up_contract"]
+        == original_contract_identity
+    )
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+
+    changed_contract = replace(
+        contract,
+        **{contract_field: f"{getattr(contract, contract_field)}-changed"},
+    )
+    changed_contract_identity = take_up_contract_identity(changed_contract)
+    monkeypatch.setattr(
+        pool_tool,
+        "take_up_contract_identity",
+        lambda: changed_contract_identity,
+    )
+    changed_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+
+    assert (
+        changed_store.base_identity["pool_code"]["take_up_contract"]
+        == changed_contract_identity
+    )
+    assert changed_store.base_identity_sha256 != cold_store.base_identity_sha256
+    assert changed_store.load_deepest() is None
+    changed_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    rebuilt, order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=changed_store,
+    )
+
+    assert order == ["impute", "derive", "seed", "simulate"]
+    assert not rebuilt.simulation_ready
     provenance = changed_store.provenance(
         primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
     )

@@ -112,7 +112,7 @@ from populace.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
     validate_assembly_provenance,
 )
-from populace.build.us_runtime.take_up_contract import load_take_up_contract
+from populace.build.us_runtime.take_up_contract import take_up_contract_identity
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -141,6 +141,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 #    pre/post-clone operator registries, physical PUF clone and QRF target
 #    order, tail and ACS transfer producers, derive registry, take-up seeding,
 #    SSI materialization, fixed seeds/period/fit sizes, and PolicyEngine-US.
+# 2: The take-up contract identity now binds every structured contract field,
+#    including its asserted PolicyEngine-US constraint and the exact reviewed
+#    inventory version. Version-1 volume checkpoints are deliberately stale.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -148,7 +151,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # its public registry name stays constant. Correctness takes priority over
 # retaining warm checkpoints (the same rule as TARGET_FRAME_CHECKPOINT's
 # materializer-version ledger in build_us_fiscal_refresh_release.py).
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 1
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 2
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -626,7 +629,6 @@ def _pool_checkpoint_base_identity(
 ) -> dict[str, object]:
     """Return every input and semantic surface that determines cached stages."""
 
-    take_up_contract = load_take_up_contract()
     return {
         "artifact_kind": "populace_us_multispine_pool_checkpoint_identity",
         "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
@@ -657,13 +659,7 @@ def _pool_checkpoint_base_identity(
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
-            "take_up_contract": {
-                "version": take_up_contract.version,
-                "country": take_up_contract.country,
-                "programs": [
-                    _json_ready(program.raw) for program in take_up_contract.programs
-                ],
-            },
+            "take_up_contract": take_up_contract_identity(),
             "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
             "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
             "acs_transfer_max_targets_per_fit": (

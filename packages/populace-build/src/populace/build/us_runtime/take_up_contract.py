@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib.resources import files
@@ -41,6 +42,7 @@ __all__ = [
     "count_calibrated_take_up_programs",
     "load_take_up_contract",
     "seeded_take_up_programs",
+    "take_up_contract_identity",
 ]
 
 #: Engine-derived fields on each program entry that a test asserts against the
@@ -186,6 +188,26 @@ def load_take_up_contract() -> TakeUpContract:
         inventory_built_against=str(asserted.get("inventory_built_against", "")),
         programs=tuple(programs),
     )
+
+
+def take_up_contract_identity(
+    contract: TakeUpContract | None = None,
+) -> dict[str, object]:
+    """Return the complete canonical identity surface for the take-up contract.
+
+    Cached build artifacts must call this one constructor instead of selecting
+    contract fields independently. Program order and each full checked-in row
+    remain identity-bearing alongside every structured contract-level field.
+    """
+
+    resolved = contract if contract is not None else load_take_up_contract()
+    return {
+        "version": resolved.version,
+        "country": resolved.country,
+        "asserted_constraint": resolved.asserted_constraint,
+        "inventory_built_against": resolved.inventory_built_against,
+        "programs": [deepcopy(dict(program.raw)) for program in resolved.programs],
+    }
 
 
 def _validate_seed_provenance(

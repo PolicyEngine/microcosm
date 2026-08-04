@@ -21,6 +21,7 @@ from populace.build.us_runtime.take_up_contract import (
     count_calibrated_take_up_programs,
     load_take_up_contract,
     seeded_take_up_programs,
+    take_up_contract_identity,
 )
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -39,6 +40,17 @@ class TestContractLoads:
         assert contract.version >= 1
         assert contract.country == "us"
         assert contract.asserted_constraint.startswith(">=")
+
+    def test_canonical_identity_covers_every_structured_field(self) -> None:
+        contract = load_take_up_contract()
+
+        assert take_up_contract_identity(contract) == {
+            "version": contract.version,
+            "country": contract.country,
+            "asserted_constraint": contract.asserted_constraint,
+            "inventory_built_against": contract.inventory_built_against,
+            "programs": [dict(program.raw) for program in contract.programs],
+        }
 
     def test_every_program_has_a_valid_treatment(self) -> None:
         for program in load_take_up_contract().programs:

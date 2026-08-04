@@ -25,8 +25,13 @@ from populace.fit import QRFChainState
 ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION = 1
 """Serialization contract for one ACS-transfer target checkpoint."""
 
-ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION = 1
-"""Semantic-invalidation ledger for ACS-transfer target checkpoints."""
+# ACS-transfer target-bank semantic-invalidation ledger.
+#
+# 1: Initial identity-bound per-target checkpoint format.
+# 2: The inherited pool identity now binds the complete canonical take-up
+#    contract. Version-1 banks are deliberately stale even though the H5
+#    serialization shape is unchanged: correctness takes priority over warmth.
+ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION = 2
 
 ACS_TRANSFER_TARGET_BANK_ARTIFACT_KIND = (
     "populace_us_multispine_acs_transfer_target_checkpoint"
