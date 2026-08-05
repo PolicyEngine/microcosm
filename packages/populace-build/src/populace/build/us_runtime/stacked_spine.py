@@ -847,7 +847,6 @@ def _canonical_donor_series_payload(
         value_payload = _semantic_scalar_sequence_payload(
             semantic_values,
             boundary=f"{boundary} values",
-            reject_mixed_object=pd.api.types.is_object_dtype(canonical.dtype),
         )
     return (
         canonical.shape,
@@ -912,34 +911,18 @@ def _semantic_scalar_payload(
     )
 
 
-def _semantic_scalar_is_missing(value: object) -> bool:
-    if value is None or value is pd.NA or value is pd.NaT:
-        return True
-    missing = pd.isna(value)
-    return isinstance(missing, (bool, np.bool_)) and bool(missing)
-
-
 def _semantic_scalar_sequence_payload(
     values: Sequence[object],
     *,
     boundary: str,
-    reject_mixed_object: bool,
 ) -> tuple[tuple[str, bytes], ...]:
     payloads: list[tuple[str, bytes]] = []
-    observed_types: set[str] = set()
     for position, value in enumerate(values):
         payload = _semantic_scalar_payload(
             value,
             boundary=f"{boundary} position {position}",
         )
         payloads.append(payload)
-        if reject_mixed_object and not _semantic_scalar_is_missing(value):
-            observed_types.add(payload[0])
-    if len(observed_types) > 1:
-        raise TypeError(
-            f"{boundary}: donor byte identity found mixed object scalar types "
-            f"{sorted(observed_types)}."
-        )
     return tuple(payloads)
 
 
@@ -994,7 +977,6 @@ def _index_identity_payload(
         value_payload = _semantic_scalar_sequence_payload(
             semantic_values,
             boundary=f"{boundary} values",
-            reject_mixed_object=False,
         )
     return (index_type, names, dtype_authority, encoding, value_payload)
 

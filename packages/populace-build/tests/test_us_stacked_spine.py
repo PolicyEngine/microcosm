@@ -1081,6 +1081,22 @@ def test_donor_byte_identity_ignores_string_object_alias_topology() -> None:
     )
 
 
+def test_donor_byte_identity_accepts_semantic_boolean_object_scalars() -> None:
+    semantic_booleans = pd.Series(
+        [True, np.bool_(False), None],
+        name="is_disabled",
+        dtype=object,
+    )
+
+    assert stacked_spine_module._canonical_donor_series_payload(
+        semantic_booleans,
+        boundary="semantic-boolean donor identity before",
+    ) == stacked_spine_module._canonical_donor_series_payload(
+        semantic_booleans.copy(deep=True),
+        boundary="semantic-boolean donor identity after",
+    )
+
+
 def test_gap_fill_activation_authority_fails_closed_on_donor_nulls() -> None:
     stacked = _stacked_gap_fixture()
     person = stacked.table("person").copy()
