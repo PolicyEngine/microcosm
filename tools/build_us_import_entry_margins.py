@@ -15,9 +15,17 @@ remains an independent cross-check leg
 Publication is atomic at the directory level: everything is built into a
 hidden staging sibling of ``--out-dir`` and the destination directory is
 replaced only after every artifact, gate, and report has been produced.
-A failed build removes its staging directory and leaves any previously
-published artifact set byte-for-byte untouched — there is no state in
-which old and new artifacts coexist under ``--out-dir``.
+On macOS and Linux the replacement is a single-syscall directory exchange
+(``renamex_np(RENAME_SWAP)`` / ``renameat2(RENAME_EXCHANGE)``), so a
+reader holding the published path never observes it missing and no crash
+point leaves ``--out-dir`` absent. Filesystems without an exchange fall
+back to a two-rename swap guarded by a durable recovery marker: the
+marker records both directory names before the first rename, and the next
+build rolls an interrupted swap forward (staged set intact) or back
+(previous publication restored) before doing anything else. A failed
+build removes its staging directory and leaves any previously published
+artifact set byte-for-byte untouched — there is no state in which old and
+new artifacts coexist under ``--out-dir``.
 
 Publishes under ``--out-dir``:
 
@@ -66,8 +74,11 @@ published in that case).
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
+import os
 import shutil
 import sys
 import urllib.request
@@ -128,9 +139,12 @@ def main() -> int:
 
     out_dir: Path = args.out_dir
     out_dir.parent.mkdir(parents=True, exist_ok=True)
+    recovery = _recover_interrupted_publication(out_dir)
+    if recovery:
+        print(f"[margins] recovered interrupted publication: {recovery}")
     # All work happens in a staging sibling (same filesystem, so the final
-    # rename is atomic); the destination is only ever a complete artifact
-    # set. A failed build leaves any previous publication untouched.
+    # exchange/rename is atomic); the destination is only ever a complete
+    # artifact set. A failed build leaves any previous publication untouched.
     staging = out_dir.parent / f".{out_dir.name}.staging-{uuid.uuid4().hex}"
     staging.mkdir(parents=True)
     try:
@@ -234,13 +248,15 @@ def _build(args: argparse.Namespace, staging: Path) -> int:
 
     cbp_facts = 0
     if not args.skip_cbp:
-        raw_html, cbp_entry = _archive_cbp_page(staging, extracted_at)
+        raw_html, cbp_entry = _archive_cbp_page(staging)
         retrievals.append(cbp_entry)
         stats = parse_cbp_trade_stats(raw_html)
         cbp_rows = build_cbp_entry_fact_rows(
             stats,
             page_sha256=str(cbp_entry["sha256"]),
-            retrieved_at=extracted_at,
+            # The facts carry the manifest's own retrieval moment — captured
+            # at the HTTP read, not the build start.
+            retrieved_at=str(cbp_entry["retrieved_at"]),
             source_file=str(cbp_entry["filename"]),
         )
         cbp_facts = len(cbp_rows)
@@ -323,24 +339,150 @@ def _publish_atomically(staging: Path, out_dir: Path) -> None:
     """Replace ``out_dir`` with the staged artifact set in one transition.
 
     Consumers only ever observe the previous complete publication or the
-    new complete publication, never a mixture. The previous publication is
-    moved aside before the staged directory takes its name and is deleted
-    only after the new set is in place; if the final rename fails, the
-    previous publication is restored.
+    new complete publication, never a mixture. Where the OS offers an
+    atomic directory exchange the swap is a single syscall — there is no
+    instant at which ``out_dir`` does not exist, so a reader can never see
+    ``ENOENT`` and no crash point strands either artifact set. Filesystems
+    without an exchange fall back to a marker-guarded two-rename swap
+    whose interruption states are all recovered by
+    :func:`_recover_interrupted_publication` at the next build.
+    """
+    _recover_interrupted_publication(out_dir)
+    if not out_dir.exists():
+        # First publication: nothing can be reading the path yet and a
+        # plain same-directory rename is atomic on its own.
+        staging.rename(out_dir)
+        return
+    if _exchange_directories(staging, out_dir):
+        # Single-syscall swap succeeded; ``staging`` now holds the
+        # previous publication.
+        shutil.rmtree(staging)
+        return
+    _publish_with_recovery_marker(staging, out_dir)
+
+
+#: macOS <sys/stdio.h> RENAME_SWAP and Linux <linux/fs.h> RENAME_EXCHANGE:
+#: both request "exchange the two names atomically" from rename-with-flags.
+_RENAME_SWAP_DARWIN = 0x00000002
+_RENAME_EXCHANGE_LINUX = 2
+_AT_FDCWD_LINUX = -100
+
+
+def _exchange_directories(staging: Path, out_dir: Path) -> bool:
+    """Atomically exchange two sibling directories in one syscall.
+
+    Uses macOS ``renamex_np(RENAME_SWAP)`` or Linux
+    ``renameat2(RENAME_EXCHANGE)``. Returns ``False`` when the platform,
+    libc, or filesystem cannot exchange (the caller then uses the
+    marker-guarded fallback); real failures on a supporting filesystem
+    raise.
+    """
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+    except OSError:
+        return False
+    source = os.fsencode(staging)
+    target = os.fsencode(out_dir)
+    if sys.platform == "darwin":
+        exchange = getattr(libc, "renamex_np", None)
+        if exchange is None:
+            return False
+        result = exchange(source, target, _RENAME_SWAP_DARWIN)
+    elif sys.platform.startswith("linux"):
+        exchange = getattr(libc, "renameat2", None)
+        if exchange is None:
+            return False
+        result = exchange(
+            _AT_FDCWD_LINUX, source, _AT_FDCWD_LINUX, target, _RENAME_EXCHANGE_LINUX
+        )
+    else:
+        return False
+    if result == 0:
+        return True
+    error = ctypes.get_errno()
+    if error in (errno.ENOTSUP, errno.EINVAL, errno.ENOSYS):
+        return False
+    raise OSError(error, os.strerror(error), str(out_dir))
+
+
+def _publish_marker_path(out_dir: Path) -> Path:
+    return out_dir.parent / f".{out_dir.name}.publish-recovery.json"
+
+
+def _publish_with_recovery_marker(staging: Path, out_dir: Path) -> None:
+    """Two-rename swap guarded by a durable recovery marker.
+
+    Without an atomic exchange there is a window between the two renames
+    in which ``out_dir`` does not exist, and a crash inside it strands the
+    previous publication under its ``.previous-*`` name. The marker
+    records all three directory names before the first rename and is
+    removed only after the swap completes, so
+    :func:`_recover_interrupted_publication` can roll any interruption
+    forward or back; an in-process failure of the second rename restores
+    the previous publication immediately.
     """
     previous = out_dir.parent / f".{out_dir.name}.previous-{uuid.uuid4().hex}"
-    replaced = False
-    if out_dir.exists():
-        out_dir.rename(previous)
-        replaced = True
+    marker = _publish_marker_path(out_dir)
+    marker.write_text(
+        json.dumps(
+            {
+                "out": out_dir.name,
+                "staging": staging.name,
+                "previous": previous.name,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    out_dir.rename(previous)
     try:
         staging.rename(out_dir)
     except BaseException:
-        if replaced:
-            previous.rename(out_dir)
+        previous.rename(out_dir)
+        marker.unlink()
         raise
-    if replaced:
-        shutil.rmtree(previous)
+    shutil.rmtree(previous)
+    marker.unlink()
+
+
+def _recover_interrupted_publication(out_dir: Path) -> str | None:
+    """Complete or roll back a marker-guarded swap that was interrupted.
+
+    Returns a description of the action taken, or ``None`` when there is
+    no marker. The staged set was complete before the swap began (nothing
+    is ever swapped in earlier), so an interruption with the staged set
+    still on disk rolls *forward*; only when the staged set is gone is the
+    previous publication restored.
+    """
+    marker = _publish_marker_path(out_dir)
+    if not marker.exists():
+        return None
+    names = json.loads(marker.read_text())
+    staging = out_dir.parent / str(names["staging"])
+    previous = out_dir.parent / str(names["previous"])
+    if out_dir.exists():
+        # Interrupted after the swap completed but before cleanup.
+        if previous.exists():
+            shutil.rmtree(previous)
+        if staging.exists():
+            shutil.rmtree(staging)
+        action = "removed leftover swap directories"
+    elif staging.exists():
+        staging.rename(out_dir)
+        if previous.exists():
+            shutil.rmtree(previous)
+        action = "completed the interrupted publication from staging"
+    elif previous.exists():
+        previous.rename(out_dir)
+        action = "restored the previous publication"
+    else:
+        raise RuntimeError(
+            f"Publication marker {marker} names directories that no longer "
+            "exist; the publication cannot be recovered automatically."
+        )
+    marker.unlink()
+    return action
 
 
 def _load_download_manifest(path: Path | None) -> dict[tuple[str, str], str]:
@@ -365,7 +507,7 @@ def _load_download_manifest(path: Path | None) -> dict[tuple[str, str], str]:
     return timestamps
 
 
-def _archive_cbp_page(staging: Path, extracted_at: str) -> tuple[bytes, dict]:
+def _archive_cbp_page(staging: Path) -> tuple[bytes, dict]:
     request = urllib.request.Request(
         CBP_TRADE_STATS_URL,
         headers={
@@ -377,13 +519,16 @@ def _archive_cbp_page(staging: Path, extracted_at: str) -> tuple[bytes, dict]:
     )
     with urllib.request.urlopen(request, timeout=120) as response:
         raw = response.read()
+        # Retrieval provenance is the moment the bytes were read, not the
+        # build start; the same value flows into the facts.
+        retrieved_at = datetime.now(UTC).isoformat(timespec="seconds")
     archive_path = staging / "cbp_newsroom_stats_trade.html"
     archive_path.write_bytes(raw)
     entry = {
         "source_name": "cbp_trade_stats",
         "endpoint": CBP_TRADE_STATS_URL,
         "url": CBP_TRADE_STATS_URL,
-        "retrieved_at": extracted_at,
+        "retrieved_at": retrieved_at,
         "http_status": 200,
         "filename": archive_path.name,
         "sha256": hashlib.sha256(raw).hexdigest(),

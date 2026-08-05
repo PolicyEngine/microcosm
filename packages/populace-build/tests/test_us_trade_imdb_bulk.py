@@ -1155,3 +1155,209 @@ def test_adopted_archive_provenance_is_honest(tmp_path):
     assert "retrieved_at" not in entry2
     assert entry2["verified_at"]
     assert "retrieval time is unknown" in str(entry2["retrieval_note"])
+
+
+def _build_cli_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "build_us_import_entry_margins", BUILD_CLI
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _populate(directory: Path, files: dict[str, bytes]) -> None:
+    for name, payload in files.items():
+        path = directory / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+
+_OLD_SET = {"build_report.json": b'{"old": true}\n', "detail/a.parquet": b"old-detail"}
+_NEW_SET = {"build_report.json": b'{"new": true}\n', "detail/b.parquet": b"new-detail"}
+
+
+def _read_set(directory: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(directory)): path.read_bytes()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_publish_atomically_replaces_and_leaves_no_residue(tmp_path):
+    """End-to-end replacement through whichever swap path this filesystem
+    offers: the new set is live, and no staging, previous, or recovery
+    marker survives beside it."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-test"
+    out_dir.mkdir()
+    staging.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    build_cli._publish_atomically(staging, out_dir)
+    assert _read_set(out_dir) == _NEW_SET
+    assert not staging.exists()
+    siblings = [path.name for path in tmp_path.iterdir()]
+    assert siblings == ["out"]
+
+
+def test_exchange_directories_swaps_in_a_single_syscall(tmp_path):
+    """macOS and Linux dev/CI filesystems must take the exchange path —
+    the one with no instant at which the published path is missing."""
+
+    build_cli = _build_cli_module()
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "who.txt").write_bytes(b"first")
+    (second / "who.txt").write_bytes(b"second")
+    exchanged = build_cli._exchange_directories(first, second)
+    if not exchanged:
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    assert (first / "who.txt").read_bytes() == b"second"
+    assert (second / "who.txt").read_bytes() == b"first"
+
+
+def test_marker_swap_interrupted_between_renames_recovers_forward(tmp_path):
+    """Kill the fallback swap between its two renames — the window sol's
+    review flagged — then prove the next build's recovery pass republishes
+    the staged set and removes every intermediate."""
+
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-interrupted"
+    out_dir.mkdir()
+    staging.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    script = f"""
+import importlib.util, os
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+original_rename = Path.rename
+
+def dying_rename(self, target):
+    if self.name.startswith(".out.staging-"):
+        os._exit(9)  # the process dies between the two renames
+    return original_rename(self, target)
+
+Path.rename = dying_rename
+module._publish_with_recovery_marker(
+    Path({str(staging)!r}), Path({str(out_dir)!r})
+)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 9, result.stderr
+    # The stranded state sol described: no publication under the public
+    # name, the previous set under .previous-*, the staged set intact.
+    assert not out_dir.exists()
+    assert staging.exists()
+    marker = tmp_path / ".out.publish-recovery.json"
+    assert marker.exists()
+
+    build_cli = _build_cli_module()
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "completed the interrupted publication from staging"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not marker.exists()
+    assert [path.name for path in tmp_path.iterdir()] == ["out"]
+
+
+def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
+    """With the staged set gone, recovery must restore the previous
+    publication byte-for-byte rather than leaving the path missing."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    previous = tmp_path / ".out.previous-deadbeef"
+    previous.mkdir()
+    _populate(previous, _OLD_SET)
+    marker = tmp_path / ".out.publish-recovery.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "out": "out",
+                "staging": ".out.staging-gone",
+                "previous": ".out.previous-deadbeef",
+            }
+        )
+        + "\n"
+    )
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "restored the previous publication"
+    assert _read_set(out_dir) == _OLD_SET
+    assert not marker.exists()
+    assert [path.name for path in tmp_path.iterdir()] == ["out"]
+
+
+def test_marker_swap_in_process_failure_restores_previous(tmp_path, monkeypatch):
+    """A second-rename failure inside the process rolls straight back:
+    the previous publication returns under the public name and the marker
+    is removed."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-fails"
+    out_dir.mkdir()
+    staging.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    original_rename = Path.rename
+
+    def failing_rename(self, target):
+        if self.name.startswith(".out.staging-"):
+            raise OSError("simulated rename failure")
+        return original_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", failing_rename)
+    with pytest.raises(OSError, match="simulated rename failure"):
+        build_cli._publish_with_recovery_marker(staging, out_dir)
+    monkeypatch.undo()
+    assert _read_set(out_dir) == _OLD_SET
+    assert staging.exists()
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
+def test_cbp_page_retrieval_timestamp_is_captured_at_the_request(tmp_path, monkeypatch):
+    """The CBP manifest entry's retrieved_at is the HTTP read moment, not
+    a build-start timestamp threaded in from outside — the signature no
+    longer even accepts one, and the same entry value feeds the facts."""
+
+    from datetime import UTC, datetime
+
+    build_cli = _build_cli_module()
+
+    class _FakeResponse:
+        def read(self):
+            return b"<html>cbp page</html>"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        build_cli.urllib.request,
+        "urlopen",
+        lambda request, timeout: _FakeResponse(),
+    )
+    before = datetime.now(UTC).isoformat(timespec="seconds")
+    raw, entry = build_cli._archive_cbp_page(tmp_path)
+    after = datetime.now(UTC).isoformat(timespec="seconds")
+    assert before <= entry["retrieved_at"] <= after
+    import hashlib as hashlib_module
+
+    assert entry["sha256"] == hashlib_module.sha256(raw).hexdigest()
+    assert (tmp_path / "cbp_newsroom_stats_trade.html").read_bytes() == raw
