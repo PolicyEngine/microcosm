@@ -9,12 +9,15 @@ per-family declared metrics.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
 import populace.build.us_runtime.puf_support as puf_support_module
+import populace.build.us_runtime.stacked_spine as stacked_spine_module
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -864,6 +867,48 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     assert native_predictor_used
 
 
+def test_gap_fill_outcome_rejects_forged_residual_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transfer cannot receipt unmodeled rows after filling every hole."""
+
+    transfer = stacked_spine_module.transfer_acs_inputs
+
+    def forge_unmodeled_rows(*args: object, **kwargs: object) -> object:
+        result = transfer(*args, **kwargs)
+        return replace(
+            result,
+            imputed_inputs=tuple(
+                replace(record, unmodeled_recipient_rows=1)
+                if record.column == "unemployment_compensation"
+                else record
+                for record in result.imputed_inputs
+            ),
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "transfer_acs_inputs",
+        forge_unmodeled_rows,
+    )
+    with pytest.raises(
+        ValueError,
+        match=(
+            "residual-null equation failed: residual_null_rows=0 != unmodeled_rows=1"
+        ),
+    ) as error:
+        gap_fill_stacked_spine(
+            _stacked_gap_fixture(),
+            plan=_GAP_FILL_TEST_PLAN,
+            seed=578,
+            n_estimators=10,
+        )
+    assert (
+        "activation accounting equation failed: authorized_null_rows=11 "
+        "!= imputed_rows=11 + unmodeled_rows=1" in str(error.value)
+    )
+
+
 def test_gap_fill_activation_authority_fails_closed_on_donor_nulls() -> None:
     stacked = _stacked_gap_fixture()
     person = stacked.table("person").copy()
@@ -883,6 +928,35 @@ def test_gap_fill_activation_authority_fails_closed_on_donor_nulls() -> None:
 
     with pytest.raises(ValueError, match="donors must observe"):
         gap_fill_stacked_spine(poked, plan=_GAP_FILL_TEST_PLAN, seed=578)
+
+
+@pytest.mark.parametrize(
+    ("recipient_channel", "donor_channel", "role", "missing_channel"),
+    (
+        ("acx_typo", "asec", "recipient", "acx_typo"),
+        ("acs", "asec_typo", "donor", "asec_typo"),
+    ),
+)
+def test_gap_fill_activation_authority_rejects_nonlive_declared_channel(
+    recipient_channel: str,
+    donor_channel: str,
+    role: str,
+    missing_channel: str,
+) -> None:
+    plan = (
+        GapFillDirection(
+            name="nonlive_channel",
+            recipient_channel=recipient_channel,
+            donor_channel=donor_channel,
+            target_families={"person": {"complete": ("age",)}},
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"declared {role} channel {missing_channel!r} has no live rows",
+    ):
+        gap_fill_stacked_spine(_stacked_gap_fixture(), plan=plan, seed=578)
 
 
 def test_gap_fill_fails_closed_on_missing_target_column() -> None:
@@ -1165,7 +1239,11 @@ def test_completeness_gate_passes_on_filled_and_proven_surface() -> None:
             "housing": ("pre_subsidy_rent",),
         }
     }
-    result = stacked_completeness_gate(gap_filled, declared_surface=surface)
+    result = stacked_completeness_gate(
+        gap_filled,
+        declared_surface=surface,
+        declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
+    )
     assert result.passed
     assert result.details["declared_targets"] == 3
     statuses = {
@@ -1198,7 +1276,11 @@ def test_completeness_gate_names_a_silently_missing_family() -> None:
         metadata=stacked.metadata,
     )
 
-    result = stacked_completeness_gate(dropped, declared_surface=surface)
+    result = stacked_completeness_gate(
+        dropped,
+        declared_surface=surface,
+        declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
+    )
     assert not result.passed
     missing = [
         failure
@@ -1219,7 +1301,11 @@ def test_completeness_gate_requires_source_role_proofs_for_nulls() -> None:
     stacked = _stacked_gap_fixture()
     surface = {"person": {"puf_tax_itemization": ("taxable_interest_income",)}}
 
-    unproven = stacked_completeness_gate(stacked, declared_surface=surface)
+    unproven = stacked_completeness_gate(
+        stacked,
+        declared_surface=surface,
+        declared_gap_fill_plan=(),
+    )
     assert not unproven.passed
     assert any(
         "acs/clone_0" in failure and "authority proof" in failure
@@ -1229,6 +1315,7 @@ def test_completeness_gate_requires_source_role_proofs_for_nulls() -> None:
     proven = stacked_completeness_gate(
         stacked,
         declared_surface=surface,
+        declared_gap_fill_plan=(),
         absence_proofs=(
             AbsenceProof(
                 entity="person",
@@ -1247,6 +1334,46 @@ def test_completeness_gate_requires_source_role_proofs_for_nulls() -> None:
     assert receipt["proven"]["acs/clone_0"]["reason"] == (
         "pending asec_survey_to_acs gap-fill"
     )
+
+
+def test_completeness_gate_rejects_wildcard_for_declared_donor_hole() -> None:
+    stacked = _stacked_gap_fixture()
+    surface = {"person": {"model_required_numeric": ("unemployment_compensation",)}}
+    wildcard = AbsenceProof(
+        entity="person",
+        column="unemployment_compensation",
+        channel="*",
+        clone_index=0,
+        reason="WILDCARD LAUNDER",
+    )
+
+    laundered = stacked_completeness_gate(
+        stacked,
+        declared_surface=surface,
+        declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
+        absence_proofs=(wildcard,),
+    )
+    assert not laundered.passed
+    assert any(
+        "origin-exact authority proof" in failure
+        and "asec_survey_to_acs" in failure
+        and "donor 'asec'" in failure
+        for failure in laundered.failures
+    )
+
+    exact = stacked_completeness_gate(
+        stacked,
+        declared_surface=surface,
+        declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
+        absence_proofs=(replace(wildcard, channel="acs", reason="DECLARED EXACT"),),
+    )
+    assert exact.passed
+    proof = exact.details["targets"][
+        "person/model_required_numeric/unemployment_compensation"
+    ]["proven"]["acs/clone_0"]
+    assert proof["authority_form"] == "origin_exact"
+    assert proof["declared_direction"] == "asec_survey_to_acs"
+    assert proof["declared_donor_channel"] == "asec"
 
 
 def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
@@ -1275,12 +1402,17 @@ def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
         }
     }
 
-    unproven = stacked_completeness_gate(frame, declared_surface=surface)
+    unproven = stacked_completeness_gate(
+        frame,
+        declared_surface=surface,
+        declared_gap_fill_plan=(),
+    )
     assert not unproven.passed
 
     proven = stacked_completeness_gate(
         frame,
         declared_surface=surface,
+        declared_gap_fill_plan=(),
         absence_proofs=(
             AbsenceProof(
                 entity="person",
@@ -1292,6 +1424,10 @@ def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
         ),
     )
     assert proven.passed
+    wildcard_receipt = proven.details["targets"][
+        "person/puf_tax_itemization/health_savings_account_ald_person_carrier"
+    ]["proven"]["asec/clone_0"]
+    assert wildcard_receipt["authority_form"] == "wildcard_no_declared_donor_plan"
 
 
 def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
@@ -1741,6 +1877,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
     completeness = stacked_completeness_gate(
         passed.frame,
         declared_surface=declared_surface,
+        declared_gap_fill_plan=_E2E_GAP_FILL_PLAN,
         absence_proofs=(
             AbsenceProof(
                 entity="tax_unit",
@@ -1767,6 +1904,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
     mutated = stacked_completeness_gate(
         passed.frame,
         declared_surface=mutated_surface,
+        declared_gap_fill_plan=_E2E_GAP_FILL_PLAN,
     )
     assert not mutated.passed
     assert any(

@@ -785,6 +785,18 @@ def _verify_gap_fill_activation_authority(
         channel = table[support_channel_column(entity)].astype(str)
         recipient_rows = channel.eq(direction.recipient_channel)
         donor_rows = channel.eq(direction.donor_channel)
+        recipient_count = int(recipient_rows.sum())
+        donor_count = int(donor_rows.sum())
+        if recipient_count == 0:
+            failures.append(
+                f"{direction.name}/{entity}: declared recipient channel "
+                f"{direction.recipient_channel!r} has no live rows."
+            )
+        if donor_count == 0:
+            failures.append(
+                f"{direction.name}/{entity}: declared donor channel "
+                f"{direction.donor_channel!r} has no live rows."
+            )
         for family, targets in families.items():
             for target in targets:
                 label = f"{direction.name}/{entity}/{family}/{target}"
@@ -872,17 +884,25 @@ def _verify_gap_fill_outcome(
                         "transfer."
                     )
                 record = imputed_by_target.get((entity, target))
+                imputed = record.imputed_recipient_rows if record else 0
                 unmodeled = record.unmodeled_recipient_rows if record else 0
-                if residual_nulls > unmodeled:
-                    failures.append(
-                        f"{label}: {residual_nulls} recipient null cell(s) "
-                        "remain but the transfer only receipted "
-                        f"{unmodeled} unmodeled row(s)."
-                    )
                 pre = pre_counts[(entity, target)]
+                authorized = pre["authorized_null_rows"]
+                if residual_nulls != unmodeled:
+                    failures.append(
+                        f"{label}: residual-null equation failed: "
+                        f"residual_null_rows={residual_nulls} != "
+                        f"unmodeled_rows={unmodeled}."
+                    )
+                if authorized != imputed + unmodeled:
+                    failures.append(
+                        f"{label}: activation accounting equation failed: "
+                        f"authorized_null_rows={authorized} != "
+                        f"imputed_rows={imputed} + unmodeled_rows={unmodeled}."
+                    )
                 target_receipts[f"{entity}/{family}/{target}"] = {
-                    "authorized_null_rows": pre["authorized_null_rows"],
-                    "imputed_rows": record.imputed_recipient_rows if record else 0,
+                    "authorized_null_rows": authorized,
+                    "imputed_rows": imputed,
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
@@ -1013,10 +1033,11 @@ class AbsenceProof:
     """An explicit source-by-role authority proof for permitted null cells.
 
     A declared target's cells may be null only where a proof names the exact
-    origin channel (or ``"*"`` for every origin) and clone role, with the
-    reason recorded.  This is the audit's item-5 contract: a target is
-    banked/imputed, or its absence carries an explicit source-by-role proof —
-    silence is never authority.
+    origin channel and clone role, with the reason recorded.  ``"*"`` may
+    cover every origin only when no gap-fill direction declares a donor for
+    that target.  This is the audit's item-5 contract: a target is banked or
+    imputed, or its absence carries an explicit source-by-role proof — silence
+    is never authority.
     """
 
     entity: str
@@ -1046,6 +1067,7 @@ def stacked_completeness_gate(
     frame: Frame,
     *,
     declared_surface: TargetFamilies,
+    declared_gap_fill_plan: Sequence[GapFillDirection],
     absence_proofs: Sequence[AbsenceProof] = (),
 ) -> GateResult:
     """Prove every declared target is filled or carries absence authority.
@@ -1055,8 +1077,28 @@ def stacked_completeness_gate(
     again — this is the check that would have caught run 7's 58-target skip);
     a null cell is permitted only where an :class:`AbsenceProof` names its
     origin channel and clone role, and every unproven null fails by name with
-    its per-origin, per-role counts.
+    its per-origin, per-role counts.  ``declared_gap_fill_plan`` is required
+    authority: its donor direction disables wildcard proofs for that target.
     """
+
+    declared_directions: dict[tuple[str, str], GapFillDirection] = {}
+    for direction in declared_gap_fill_plan:
+        if not isinstance(direction, GapFillDirection):
+            raise ValueError(
+                "declared_gap_fill_plan must contain GapFillDirection values, got "
+                f"{type(direction).__name__}."
+            )
+        for entity, targets in _direction_entity_targets(direction).items():
+            for target in targets:
+                key = (entity, target)
+                previous = declared_directions.get(key)
+                if previous is not None and previous != direction:
+                    raise ValueError(
+                        "declared_gap_fill_plan assigns conflicting directions "
+                        f"to {entity}/{target}: {previous.name!r} and "
+                        f"{direction.name!r}."
+                    )
+                declared_directions[key] = direction
 
     proof_index: dict[tuple[str, str], dict[tuple[str, int], str]] = {}
     for proof in absence_proofs:
@@ -1100,6 +1142,7 @@ def stacked_completeness_gate(
                     target_receipts[label] = {"status": "complete", "null_rows": 0}
                     continue
                 proofs = proof_index.get((entity, target), {})
+                declared_direction = declared_directions.get((entity, target))
                 null_channels = channel.loc[null_mask]
                 null_clones = clone_index.loc[null_mask]
                 unproven: dict[str, int] = {}
@@ -1111,13 +1154,41 @@ def stacked_completeness_gate(
                 )
                 for (cell_channel, cell_clone), count in grouped.items():
                     reason = proofs.get((str(cell_channel), int(cell_clone)))
-                    if reason is None:
+                    authority_form = "origin_exact"
+                    if reason is None and declared_direction is None:
                         reason = proofs.get((_ANY_CHANNEL, int(cell_clone)))
+                        authority_form = "wildcard_no_declared_donor_plan"
                     key = f"{cell_channel}/clone_{int(cell_clone)}"
                     if reason is None:
                         unproven[key] = int(count)
+                        if declared_direction is not None:
+                            failures.append(
+                                f"{label}: {int(count)} null cell(s) on {key} "
+                                "require an origin-exact authority proof because "
+                                "declared gap-fill direction "
+                                f"{declared_direction.name!r} names donor "
+                                f"{declared_direction.donor_channel!r}; wildcard "
+                                "authority is forbidden."
+                            )
                     else:
-                        proven[key] = {"null_rows": int(count), "reason": reason}
+                        proof_receipt: dict[str, object] = {
+                            "null_rows": int(count),
+                            "reason": reason,
+                            "authority_form": authority_form,
+                        }
+                        if declared_direction is not None:
+                            proof_receipt.update(
+                                {
+                                    "declared_direction": declared_direction.name,
+                                    "declared_donor_channel": (
+                                        declared_direction.donor_channel
+                                    ),
+                                    "declared_recipient_channel": (
+                                        declared_direction.recipient_channel
+                                    ),
+                                }
+                            )
+                        proven[key] = proof_receipt
                 if unproven:
                     failures.append(
                         f"{label}: {sum(unproven.values())} null cell(s) have "
