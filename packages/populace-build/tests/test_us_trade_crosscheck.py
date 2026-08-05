@@ -212,6 +212,187 @@ def _api_payload_row(cty: str) -> list[str]:
     ]
 
 
+def test_api_ytd_union_zero_rows_are_agreement_by_absence(tmp_path):
+    # After January the API returns YTD-union rows whose every month
+    # measure is zero; the bulk detail omits pairs with no activity that
+    # month. Zero on one channel and silence on the other is agreement —
+    # counted, not gated.
+    rows = [
+        _HEADER,
+        _api_payload_row("1220"),
+        ["1330", "DET", "0", "0", "0", "0", "0", "0", "NO", "0101210010", "2026-01"],
+        [
+            "-",
+            "DET",
+            "1000",
+            "1000",
+            "25",
+            "400",
+            "3",
+            "3",
+            "NO",
+            "0101210010",
+            "2026-01",
+        ],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        _totals(),
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["cells_compared"] == 1
+    assert report["dollar_mismatch_cells"] == 0
+    assert report["total_mismatches"] == 0
+    assert report["api_reconciliation_failures"] == 0
+    assert report["api_only_cells"] == 0
+    assert report["api_zero_union_cells"] == 1
+    assert report["bulk_zero_union_cells"] == 0
+
+
+def test_api_zero_union_totals_are_agreement_by_absence(tmp_path):
+    # The API's '-' rows echo the same YTD zero carriers the bulk control
+    # file holds. Zero-vs-zero (and zero-vs-absent) on the totals leg is
+    # agreement — counted per side, never gated.
+    rows = [
+        _HEADER,
+        _api_payload_row("1220"),
+        [
+            "-",
+            "DET",
+            "1000",
+            "1000",
+            "25",
+            "400",
+            "3",
+            "3",
+            "NO",
+            "0101210010",
+            "2026-01",
+        ],
+        ["-", "DET", "0", "0", "0", "0", "0", "0", "NO", "0101999999", "2026-01"],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        _totals(),
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["total_mismatches"] == 0
+    assert report["api_reconciliation_failures"] == 0
+    assert report["api_zero_union_totals"] == 1
+    assert report["bulk_zero_union_totals"] == 1
+
+
+def test_api_only_nonzero_total_still_gates(tmp_path):
+    # A commodity whose API total carries value but which the bulk totals
+    # lack entirely is genuine one-sided divergence on both legs.
+    rows = [
+        _HEADER,
+        _api_payload_row("1220"),
+        [
+            "1330",
+            "DET",
+            "700",
+            "700",
+            "7",
+            "70",
+            "1",
+            "1",
+            "NO",
+            "0102000000",
+            "2026-01",
+        ],
+        [
+            "-",
+            "DET",
+            "1000",
+            "1000",
+            "25",
+            "400",
+            "3",
+            "3",
+            "NO",
+            "0101210010",
+            "2026-01",
+        ],
+        ["-", "DET", "700", "700", "7", "70", "1", "1", "NO", "0102000000", "2026-01"],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        _totals(),
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["total_mismatches"] == 1
+    assert report["dollar_mismatch_cells"] == 1
+    assert report["api_only_cells"] == 1
+    assert report["api_zero_union_totals"] == 0
+
+
+def test_api_only_active_cell_still_gates(tmp_path):
+    # A one-sided API cell carrying a nonzero measure is genuine
+    # divergence — the bulk channel is missing published activity — and
+    # must keep gating on both the cell and totals legs.
+    rows = [
+        _HEADER,
+        _api_payload_row("1220"),
+        [
+            "1330",
+            "DET",
+            "500",
+            "500",
+            "10",
+            "200",
+            "1",
+            "1",
+            "NO",
+            "0101210010",
+            "2026-01",
+        ],
+        [
+            "-",
+            "DET",
+            "1500",
+            "1500",
+            "35",
+            "600",
+            "4",
+            "4",
+            "NO",
+            "0101210010",
+            "2026-01",
+        ],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        _totals(),
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["dollar_mismatch_cells"] == 1
+    assert report["total_mismatches"] == 4  # 4 dollar measures diverge on the total
+    assert report["api_only_cells"] == 1
+    assert report["api_zero_union_cells"] == 0
+    assert any(detail["measure"] == "api_only" for detail in report["mismatches"])
+
+
 def test_main_gates_on_zero_cells_and_absent_totals(tmp_path, monkeypatch):
     margins_path = tmp_path / "margins.parquet"
     totals_path = tmp_path / "totals.parquet"
@@ -230,6 +411,10 @@ def test_main_gates_on_zero_cells_and_absent_totals(tmp_path, monkeypatch):
             "api_totals_absent": 0,
             "api_only_cells": 0,
             "bulk_only_cells": 0,
+            "api_zero_union_cells": 0,
+            "bulk_zero_union_cells": 0,
+            "api_zero_union_totals": 0,
+            "bulk_zero_union_totals": 0,
             "quantity_diff_cells": 0,
             "api_null_quantity_cells": 0,
             "api_retrievals": [],
