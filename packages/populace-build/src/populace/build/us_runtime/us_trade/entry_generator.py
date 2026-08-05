@@ -37,7 +37,9 @@ so the same margins and anchors reproduce the same bytes.
 Schema is the composed tariff spine's input surface (rulespec-us
 ``us:policies/cbp/us-tariff-duty/composition``): dotted ``hts_number``,
 ISO-2 ``country_of_origin``, integer ``customs_value``,
-``is_postal_shipment`` (``False`` — no public postal/mode margin exists;
+``is_postal_shipment`` (``False`` — the bulk source's transport splits are
+air/vessel/containerized only and its rate-provision codes classify duty
+status, not entry type, so no public series grounds a postal flag;
 documented gap), and a mid-month ``entry_date`` (sub-monthly timing is not
 calibrated). ``shipment_value`` is set equal to customs value — the margins
 carry no separate shipment-value series (documented assumption).
@@ -123,9 +125,14 @@ class EntrySizeAssumption:
             ),
             "known_gaps": {
                 "is_postal_shipment": (
-                    "No public postal/mode split exists at this grain; all "
-                    "entries carry False. Postal de minimis analyses need "
-                    "a source before this flag is meaningful."
+                    "All entries carry False. The bulk IMDB margins carry "
+                    "air/vessel/containerized transport splits but no "
+                    "postal marker, and Census rate-provision codes "
+                    "classify free-vs-dutiable status only (verified "
+                    "against census.gov/foreign-trade/reference/"
+                    "rpcodes.html) — no public series grounds a postal "
+                    "flag at any margin grain. Postal de minimis analyses "
+                    "need a source before this flag is meaningful."
                 ),
                 "shipment_value": (
                     "Set equal to customs_value; no separate shipment-value "
@@ -138,9 +145,12 @@ class EntrySizeAssumption:
                 "entry_counts": (
                     "Per-cell counts derive from the national mean entry "
                     "value; no public HTS- or country-level entry-count "
-                    "split exists. Cells smaller than the mean are floored "
-                    "at one entry, so the total weighted entry count "
-                    "exceeds the value-implied count."
+                    "split exists. The bulk IMDB detail's cards_mo column "
+                    "is labeled only 'Card Count' with no published "
+                    "definition, so it is not admitted as an entry-count "
+                    "anchor. Cells smaller than the mean are floored at "
+                    "one entry, so the total weighted entry count exceeds "
+                    "the value-implied count."
                 ),
             },
         }
