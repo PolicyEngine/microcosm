@@ -18,8 +18,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+import populace.build.uk_runtime.national_frame as _national_frame
 import populace.build.uk_runtime.release_input_coverage as _release_input_coverage
 from populace.build.gates import GateReport, GateResult
+from populace.build.uk_runtime.national_frame import (
+    UKStagingProvenance,
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
+    validate_uk_national_frame,
+)
 from populace.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
     assert_uk_release_input_coverage_build_stages,
@@ -33,7 +41,7 @@ from populace.build.uk_runtime.terminal_gates import (
     uk_terminal_gate_report,
     write_uk_terminal_gate_report,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 
 # Retained as the existing library-test monkeypatch seam. Production terminal
 # evaluation resolves the same function inside terminal_gates so its policy
@@ -44,10 +52,17 @@ __all__ = [
     "UKNationalBuildResult",
     "UKNationalDataset",
     "UKNationalStage",
+    "UKStagingProvenance",
     "build_uk_national_dataset",
     "load_uk_national_dataset",
+    "load_uk_national_frame",
+    "uk_household_weight_kind",
+    "uk_national_frame",
+    "uk_time_period",
     "validate_uk_national_dataset",
+    "validate_uk_national_frame",
     "write_uk_national_dataset",
+    "write_uk_national_frame",
 ]
 
 UK_NATIONAL_H5_TABLES = ("person", "benunit", "household", "time_period")
@@ -55,26 +70,11 @@ UK_HOUSEHOLD_WEIGHT_KIND_ATTR = "populace_household_weight_kind"
 UK_MASS_LOG_ATTR = "populace_mass_log_json"
 
 
-@dataclass(frozen=True)
-class _UKSourceFileFingerprint:
-    """Cheap stable-file identity used to bind a prior hash to an H5 load."""
-
-    device: int
-    inode: int
-    size_bytes: int
-    modified_ns: int
-    changed_ns: int
-
-
-def _uk_source_file_fingerprint(path: Path) -> _UKSourceFileFingerprint:
-    stat = path.stat()
-    return _UKSourceFileFingerprint(
-        device=stat.st_dev,
-        inode=stat.st_ino,
-        size_bytes=stat.st_size,
-        modified_ns=stat.st_mtime_ns,
-        changed_ns=stat.st_ctime_ns,
-    )
+# The fingerprint pair moved to national_frame with the Frame carrier; the
+# re-import keeps this module's existing consumers (hmrc_restoration binds
+# certified candidates to it) on their current import path.
+_UKSourceFileFingerprint = _national_frame._UKSourceFileFingerprint
+_uk_source_file_fingerprint = _national_frame._uk_source_file_fingerprint
 
 
 @dataclass(frozen=True)
@@ -198,8 +198,15 @@ class UKNationalBuildResult:
         return self.terminal_gate_path
 
 
-def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
-    """Load and validate a compact UK single-year H5."""
+def _read_uk_national_tables(
+    path: str | Path,
+) -> tuple[dict[str, Any], _UKSourceFileFingerprint, Path]:
+    """Read a compact UK single-year H5's payload with the race guard.
+
+    Shared body of both loaders: suffix check, symlink resolution, and the
+    fingerprint-before/after guard binding the returned tables to one stable
+    set of bytes.
+    """
 
     requested_path = Path(path).expanduser()
     if requested_path.suffix != ".h5":
@@ -224,24 +231,64 @@ def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
             raise ValueError(
                 "UK national dataset time_period must contain exactly one value."
             )
-        dataset = UKNationalDataset(
-            person=store["person"],
-            benunit=store["benunit"],
-            household=store["household"],
-            time_period=str(raw_period.iloc[0]),
-            household_weight_kind=_weight_kind_from_stored(stored_kind),
-            mass_log=_mass_log_from_stored(stored_mass_log),
-        )
+        payload = {
+            "person": store["person"],
+            "benunit": store["benunit"],
+            "household": store["household"],
+            "time_period": str(raw_period.iloc[0]),
+            "household_weight_kind": _weight_kind_from_stored(stored_kind),
+            "mass_log": _mass_log_from_stored(stored_mass_log),
+        }
     fingerprint_after = _uk_source_file_fingerprint(input_path)
     if fingerprint_after != fingerprint_before:
         raise RuntimeError(
             "UK national source H5 changed while it was being loaded; refusing "
             "to bind mixed or stale bytes to build stages."
         )
+    return payload, fingerprint_after, input_path
+
+
+def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
+    """Load and validate a compact UK single-year H5."""
+
+    payload, fingerprint, input_path = _read_uk_national_tables(path)
+    dataset = UKNationalDataset(
+        person=payload["person"],
+        benunit=payload["benunit"],
+        household=payload["household"],
+        time_period=payload["time_period"],
+        household_weight_kind=payload["household_weight_kind"],
+        mass_log=payload["mass_log"],
+    )
     object.__setattr__(dataset, "_source_h5", input_path)
-    object.__setattr__(dataset, "_source_file_fingerprint", fingerprint_after)
+    object.__setattr__(dataset, "_source_file_fingerprint", fingerprint)
     validate_uk_national_dataset(dataset)
     return dataset
+
+
+def load_uk_national_frame(
+    path: str | Path,
+) -> tuple[Frame, UKStagingProvenance]:
+    """Load a compact UK single-year H5 as a validated Frame plus provenance.
+
+    Frame construction is where the structural invariants are enforced
+    (linkage in both directions, sorted group ids, column uniqueness, weight
+    health); :func:`validate_uk_national_frame` adds the UK residue. The
+    provenance record travels beside the frame — it is the same source-path
+    and fingerprint identity the shadow carrier smuggled in private fields.
+    """
+
+    payload, fingerprint, input_path = _read_uk_national_tables(path)
+    frame = uk_national_frame(
+        person=payload["person"],
+        benunit=payload["benunit"],
+        household=payload["household"],
+        time_period=payload["time_period"],
+        weight_kind=payload["household_weight_kind"],
+        mass_log=payload["mass_log"],
+    )
+    validate_uk_national_frame(frame)
+    return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
 
 
 def validate_uk_national_dataset(dataset: UKNationalDataset) -> None:
@@ -324,6 +371,46 @@ def validate_uk_national_dataset(dataset: UKNationalDataset) -> None:
         )
 
 
+def _write_uk_single_year_tables(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    time_period: str,
+    weight_kind: WeightKind,
+    mass_log: tuple[MassChangeRecord, ...],
+    path: Path,
+) -> Path:
+    """The one physical writer for every UK single-year H5.
+
+    Tables and the weight-kind/mass-log attrs must land together: writing
+    them into a temporary file and renaming keeps a metadata failure from
+    leaving a complete-looking attr-less H5 that would silently default to
+    DESIGN semantics on the next read.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
+    try:
+        with pd.HDFStore(temporary_path) as store:
+            store.put("person", person, format="table", data_columns=True)
+            store.put("benunit", benunit, format="table", data_columns=True)
+            store.put("household", household, format="table", data_columns=True)
+            store.put(
+                "time_period",
+                pd.Series([time_period]),
+                format="table",
+                data_columns=True,
+            )
+        _write_weight_metadata(
+            temporary_path, weight_kind=weight_kind, mass_log=mass_log
+        )
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return path
+
+
 def write_uk_national_dataset(
     dataset: UKNationalDataset,
     path: str | Path,
@@ -334,26 +421,41 @@ def write_uk_national_dataset(
     output_path = Path(path)
     if output_path.suffix != ".h5":
         raise ValueError("UK national staging path must end with '.h5'.")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_name(
-        f".{output_path.name}.{uuid.uuid4().hex}.tmp.h5"
+    return _write_uk_single_year_tables(
+        person=dataset.person,
+        benunit=dataset.benunit,
+        household=dataset.household,
+        time_period=dataset.time_period,
+        weight_kind=dataset.household_weight_kind,
+        mass_log=dataset.mass_log,
+        path=output_path,
     )
-    try:
-        with pd.HDFStore(temporary_path) as store:
-            store.put("person", dataset.person, format="table", data_columns=True)
-            store.put("benunit", dataset.benunit, format="table", data_columns=True)
-            store.put("household", dataset.household, format="table", data_columns=True)
-            store.put(
-                "time_period",
-                pd.Series([dataset.time_period]),
-                format="table",
-                data_columns=True,
-            )
-        _write_weight_metadata(temporary_path, dataset)
-        temporary_path.replace(output_path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-    return output_path
+
+
+def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:
+    """Atomically write a validated UK national Frame as a staging H5.
+
+    The engine-facing payload is materialized through the shared
+    :func:`populace.frame.engine_tables`, so the typed weights are
+    authoritative and the ``household_weight`` column is overwritten in
+    place (preserving its position, and therefore the artifact's column
+    order).
+    """
+
+    validate_uk_national_frame(frame)
+    output_path = Path(path)
+    if output_path.suffix != ".h5":
+        raise ValueError("UK national staging path must end with '.h5'.")
+    tables = engine_tables(frame)
+    return _write_uk_single_year_tables(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+        path=output_path,
+    )
 
 
 def build_uk_national_dataset(
@@ -561,15 +663,20 @@ def _read_weight_metadata(path: Path) -> tuple[object, object]:
         )
 
 
-def _write_weight_metadata(path: Path, dataset: UKNationalDataset) -> None:
+def _write_weight_metadata(
+    path: Path,
+    *,
+    weight_kind: WeightKind,
+    mass_log: tuple[MassChangeRecord, ...],
+) -> None:
     try:
         import h5py
     except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
         raise RuntimeError("h5py is required to write UK national metadata.") from exc
     with h5py.File(path, mode="r+") as file:
-        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = dataset.household_weight_kind.value
+        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = weight_kind.value
         file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
-            [_mass_change_record_payload(record) for record in dataset.mass_log],
+            [_mass_change_record_payload(record) for record in mass_log],
             sort_keys=True,
         )
 

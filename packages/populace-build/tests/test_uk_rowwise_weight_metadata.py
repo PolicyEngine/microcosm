@@ -339,7 +339,9 @@ def test_write_is_atomic_when_metadata_write_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     pytest.importorskip("tables")
-    from populace.build.uk_runtime import rowwise_dataset as module
+    # The rowwise writer routes through the national seam's shared physical
+    # writer, so the metadata-failure seam now lives there.
+    from populace.build.uk_runtime import national_build as module
 
     result = clone_uk_dataset_tables_with_rowwise_geography(
         person=person_frame(),
@@ -350,7 +352,7 @@ def test_write_is_atomic_when_metadata_write_fails(
         time_period="2023",
     )
 
-    def broken_metadata_write(path, dataset) -> None:
+    def broken_metadata_write(path, *, weight_kind, mass_log) -> None:
         raise RuntimeError("simulated metadata failure")
 
     monkeypatch.setattr(module, "_write_weight_metadata", broken_metadata_write)
