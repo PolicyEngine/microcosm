@@ -528,6 +528,38 @@ def test_register_loader_rejects_malformed_or_coerced_entries(
         )
 
 
+def test_uk_totals_handle_shuffled_ids_benunits_and_entity_name_collisions() -> None:
+    dataset = SimpleNamespace(
+        person=pd.DataFrame(
+            {
+                "person_id": [3, 1, 2],
+                "person_household_id": [20, 10, 20],
+                "person_benunit_id": [200, 100, 200],
+                "shared": [11.0, 5.0, 7.0],
+            }
+        ),
+        benunit=pd.DataFrame(
+            {
+                "benunit_id": [200, 100],
+                "shared": [13.0, 17.0],
+            }
+        ),
+        household=pd.DataFrame(
+            {
+                "household_id": [20, 10],
+                "household_weight": [3.0, 2.0],
+                "shared": [19.0, 23.0],
+            }
+        ),
+    )
+
+    totals = uk_dataset_input_mass_totals(dataset)
+
+    assert totals["person.shared"] == 64.0
+    assert totals["benunit.shared"] == 73.0
+    assert totals["household.shared"] == 103.0
+
+
 def test_uk_totals_match_the_shared_frame_helper_on_equivalent_data() -> None:
     """The UK table-layout helper must not reinvent the US numeric semantics.
 
