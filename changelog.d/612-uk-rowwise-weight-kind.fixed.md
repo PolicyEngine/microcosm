@@ -1,0 +1,1 @@
+The UK rowwise clone path no longer defaults a missing `household_weight_kind` on in-memory datasets to design — an absent kind now raises instead of silently downgrading importance or calibrated weights; H5 inputs keep their documented attribute-less design default.

@@ -720,7 +720,14 @@ def _dataset_tables(
     if missing:
         raise ValueError(f"dataset is missing table attribute(s): {missing}.")
     time_period = getattr(dataset, "time_period", None)
-    weight_kind = getattr(dataset, "household_weight_kind", WeightKind.DESIGN)
+    if not hasattr(dataset, "household_weight_kind"):
+        raise TypeError(
+            "dataset.household_weight_kind is required on in-memory datasets; "
+            "defaulting an absent kind would silently downgrade importance or "
+            "calibrated weights to design. Declare the kind explicitly "
+            "(H5 paths keep their documented attribute-less design default)."
+        )
+    weight_kind = dataset.household_weight_kind
     mass_log = getattr(dataset, "mass_log", ())
     if mass_log is None:
         raise TypeError(

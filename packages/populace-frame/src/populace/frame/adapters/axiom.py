@@ -58,6 +58,7 @@ import numpy as np
 import pandas as pd
 
 from populace.frame.bundle import Frame
+from populace.frame.materialize import engine_tables
 from populace.frame.rules import ExportContract
 from populace.frame.schema import EntitySchema, VariableMetadata
 
@@ -470,18 +471,13 @@ class AxiomEngine:
     def _engine_tables(self, bundle: Frame) -> dict[str, pd.DataFrame]:
         """Copy the bundle's tables and materialize typed weights as columns.
 
-        The bundle's typed weights are authoritative: any existing
-        ``{entity}_weight`` column is overwritten (never trusted), so a
-        stale or leftover column can never override calibrated weights on
-        export.
+        Delegates to the shared :func:`populace.frame.materialize.engine_tables`
+        (typed weights authoritative, any existing ``{entity}_weight`` column
+        overwritten, never trusted), keyed to this adapter's schema order.
         """
         self._require_schema(bundle)
-        tables = {name: bundle.table(name).copy() for name in self._schema.entities}
-        for entity in bundle.weighted_entities:
-            tables[entity][f"{entity}{_WEIGHT_COLUMN_SUFFIX}"] = bundle.weights_for(
-                entity
-            ).values
-        return tables
+        tables = engine_tables(bundle)
+        return {name: tables[name] for name in self._schema.entities}
 
     def _default_entity(self, column: str) -> str:
         """Owning table for a defaulted column, from the module's metadata.

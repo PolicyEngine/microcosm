@@ -15,6 +15,11 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.puf_qrf_chain as puf_qrf_chain_module
+from populace.build.frame_checkpoint import load_frame_checkpoint
+from populace.build.serialization_dtypes import (
+    CANONICAL_STRING_DTYPE,
+    canonicalize_frame_string_dtypes,
+)
 from populace.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_TARGET_ORDER,
@@ -193,6 +198,137 @@ def test_primary_qrf_manifest_fsyncs_file_then_parent_directory_after_rename(
         ("replace", manifest_path.name),
         ("fsync", "directory"),
     ]
+
+
+def test_primary_qrf_frame_bank_writes_canonical_string_dtypes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _expanded_frame()
+    support_channel = "tax_unit_support_channel"
+    frame.table("tax_unit")[support_channel] = frame.table("tax_unit")[
+        support_channel
+    ].astype(object)
+    assert pd.api.types.is_object_dtype(frame.table("tax_unit")[support_channel].dtype)
+
+    real_prepare = puf_qrf_chain_module.prepare_us_puf_tax_detail_chain_inputs
+
+    def prepare_with_object_donor_label(*args, **kwargs):
+        inputs = real_prepare(*args, **kwargs)
+        donor = inputs.donor_frame.table("tax_unit")
+        donor["bank_fixture_label"] = pd.Series(
+            np.asarray(["PUF"] * len(donor), dtype=object),
+            index=donor.index,
+        )
+        return inputs
+
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "prepare_us_puf_tax_detail_chain_inputs",
+        prepare_with_object_donor_label,
+    )
+    checkpoint_dir = tmp_path / "primary_qrf"
+    manifest = initialize_primary_puf_qrf_chain(
+        frame,
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+    )
+
+    donor = load_frame_checkpoint(
+        checkpoint_dir / puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME
+    ).frame
+    recipient = load_frame_checkpoint(
+        checkpoint_dir / puf_qrf_chain_module.PRIMARY_QRF_RECIPIENT_FILENAME
+    ).frame
+    assert donor.table("tax_unit")["bank_fixture_label"].dtype == (
+        CANONICAL_STRING_DTYPE
+    )
+    assert recipient.table("tax_unit")[support_channel].dtype == (
+        CANONICAL_STRING_DTYPE
+    )
+    identity_columns = tuple(manifest["recipient_identity_columns"])
+    assert (
+        puf_qrf_chain_module._recipient_identity_sha256(
+            recipient.table("tax_unit"), identity_columns
+        )
+        == manifest["recipient_identity_sha256"]
+    )
+
+
+def test_primary_qrf_legacy_object_bank_loads_without_rewrite_or_identity_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    support_channel = "tax_unit_support_channel"
+    frame.table("tax_unit")[support_channel] = frame.table("tax_unit")[
+        support_channel
+    ].astype(object)
+    checkpoint_dir = tmp_path / "legacy_primary_qrf"
+    with monkeypatch.context() as legacy_policy:
+        legacy_policy.setattr(
+            puf_qrf_chain_module,
+            "canonicalize_frame_string_dtypes",
+            lambda frame, **_kwargs: frame,
+        )
+        manifest = initialize_primary_puf_qrf_chain(
+            frame,
+            _donor(),
+            checkpoint_dir,
+            predictors=_PREDICTORS,
+            person_outputs=_PERSON_OUTPUTS,
+            tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+            n_estimators=2,
+            seed=3,
+        )
+
+    donor_path = checkpoint_dir / puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME
+    recipient_path = (
+        checkpoint_dir / puf_qrf_chain_module.PRIMARY_QRF_RECIPIENT_FILENAME
+    )
+    bank_digests = {
+        donor_path: puf_qrf_chain_module._file_sha256(donor_path),
+        recipient_path: puf_qrf_chain_module._file_sha256(recipient_path),
+    }
+    raw_recipient = load_frame_checkpoint(recipient_path).frame.table("tax_unit")
+    assert pd.api.types.is_object_dtype(raw_recipient[support_channel].dtype)
+    identity_columns = tuple(manifest["recipient_identity_columns"])
+    assert (
+        puf_qrf_chain_module._recipient_identity_sha256(raw_recipient, identity_columns)
+        == manifest["recipient_identity_sha256"]
+    )
+    loaded_recipient = puf_qrf_chain_module._load_bound_frame(
+        checkpoint_dir,
+        manifest,
+        filename_key="recipient_filename",
+        digest_key="recipient_checkpoint_sha256",
+        role="recipient",
+    )
+    assert (
+        loaded_recipient.table("tax_unit")[support_channel].dtype
+        == CANONICAL_STRING_DTYPE
+    )
+
+    live = canonicalize_frame_string_dtypes(
+        frame,
+        boundary="primary QRF legacy-bank test live frame",
+    )
+    assert live.table("tax_unit")[support_channel].dtype == CANONICAL_STRING_DTYPE
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(checkpoint_dir, target_index)
+    _finalized, weight_kind = finalize_primary_puf_qrf_chain(live, checkpoint_dir)
+
+    assert weight_kind == "design"
+    assert {
+        path: puf_qrf_chain_module._file_sha256(path) for path in bank_digests
+    } == bank_digests
 
 
 def test_primary_qrf_target_fsyncs_file_then_parent_directory_after_rename(

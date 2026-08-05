@@ -22,6 +22,7 @@ import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 from populace.build.gates import GateReport, GateResult
+from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import transfer_acs_inputs
 from populace.build.us_runtime.acs_transfer_bank import (
     ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
@@ -59,23 +60,27 @@ def pool_tool() -> ModuleType:
     return module
 
 
-def _source_frame(*, measured_offset: float = 0.0) -> Frame:
+def _source_frame(
+    *,
+    measured_offset: float = 0.0,
+    include_peridnum: bool = True,
+) -> Frame:
     ids = np.asarray([1, 2], dtype=np.int64)
-    person = pd.DataFrame(
-        {
-            "person_id": ids,
-            "person_household_id": ids,
-            "person_tax_unit_id": ids,
-            "person_spm_unit_id": ids,
-            "person_family_id": ids,
-            "person_marital_unit_id": ids,
-            "A_AGE": np.asarray([30.0, 50.0]),
-            "A_SEX": np.asarray([1, 2], dtype=np.int64),
-            "PERIDNUM": np.asarray(["1", "2"], dtype=object),
-            "source_year": np.asarray([2024, 2024], dtype=np.int64),
-            "measured": np.asarray([1.0, 2.0]) + measured_offset,
-        }
-    )
+    person_data = {
+        "person_id": ids,
+        "person_household_id": ids,
+        "person_tax_unit_id": ids,
+        "person_spm_unit_id": ids,
+        "person_family_id": ids,
+        "person_marital_unit_id": ids,
+        "A_AGE": np.asarray([30.0, 50.0]),
+        "A_SEX": np.asarray([1, 2], dtype=np.int64),
+        "source_year": np.asarray([2024, 2024], dtype=np.int64),
+        "measured": np.asarray([1.0, 2.0]) + measured_offset,
+    }
+    if include_peridnum:
+        person_data["PERIDNUM"] = np.asarray(["1", "2"], dtype=object)
+    person = pd.DataFrame(person_data)
     tables = {
         "person": person,
         **{
@@ -111,6 +116,36 @@ def _replace_person(
         frame.strata,
         mass_log=frame.mass_log,
         metadata=frame.metadata if preserve_metadata else None,
+    )
+
+
+def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
+    return tuple(
+        column
+        for column in table.columns
+        if isinstance(table[column].dtype, pd.StringDtype)
+        or (
+            pd.api.types.is_object_dtype(table[column].dtype)
+            and pd.api.types.infer_dtype(table[column], skipna=True) == "string"
+        )
+    )
+
+
+def _with_object_backed_strings(frame: Frame) -> Frame:
+    tables = {}
+    for entity in frame.entities:
+        table = frame.table(entity).copy()
+        for column in _semantic_string_columns(table):
+            table[column] = table[column].astype(object)
+        tables[entity] = table
+    tables.update({link: frame.link(link) for link in frame.links})
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -365,7 +400,11 @@ def _run_checkpoint_fixture(
 
     result = pool_tool.build_multispine_pool(
         _source_frame() if resume is None else None,
-        _source_frame(measured_offset=99.0) if resume is None else None,
+        (
+            _source_frame(measured_offset=99.0, include_peridnum=False)
+            if resume is None
+            else None
+        ),
         puf_donor=pd.DataFrame(),
         primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
         impute=stage(
@@ -1516,6 +1555,12 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
             check_dtype=True,
             check_exact=True,
         )
+        string_columns = _semantic_string_columns(uninterrupted.frame.table(entity))
+        assert string_columns
+        assert all(
+            uninterrupted.frame.table(entity)[column].dtype == CANONICAL_STRING_DTYPE
+            for column in string_columns
+        )
 
     uninterrupted_pool_path = tmp_path / f"{resume_stage}.uninterrupted.pool.h5"
     resumed_pool_path = tmp_path / f"{resume_stage}.resumed.pool.h5"
@@ -1599,6 +1644,89 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
         "cached": False,
         "terminal_verdict_persisted": False,
     }
+
+
+def test_simulated_v2_checkpoint_accepts_both_string_encodings_without_rewrite(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """V2 authenticates both physical string encodings as one logical frame."""
+
+    pytest.importorskip("h5py")
+    checkpoint_root = tmp_path / "checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+
+    checkpoint_path = cold_store.checkpoint_path("simulated")
+    loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
+    canonical_v2_bytes = checkpoint_path.read_bytes()
+    canonical_identity = loaded.metadata["identity"]
+    assert loaded.metadata["materializer_version"] == 2
+    assert any(
+        column["dtype"] == str(CANONICAL_STRING_DTYPE)
+        for columns in loaded.metadata["frame_schema"]["entities"].values()
+        for column in columns
+    )
+
+    canonical_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    canonical_resume = canonical_store.load_deepest()
+    assert canonical_resume is not None
+    assert canonical_resume.stage == "simulated"
+    assert canonical_resume.simulation_frame is not None
+    assert checkpoint_path.read_bytes() == canonical_v2_bytes
+
+    legacy_frame = _with_object_backed_strings(loaded.frame)
+    legacy_metadata = dict(loaded.metadata)
+    legacy_metadata["frame_schema"] = pool_tool._frame_schema_payload(legacy_frame)
+    pool_tool.write_frame_checkpoint(
+        checkpoint_path,
+        legacy_frame,
+        metadata=legacy_metadata,
+    )
+    manifest_path = cold_store.checkpoint_manifest_path("simulated")
+    manifest = pool_tool._read_json_object(manifest_path)
+    manifest["checkpoint"]["sha256"] = pool_tool._file_sha256(checkpoint_path)
+    manifest["checkpoint"]["size_bytes"] = checkpoint_path.stat().st_size
+    manifest["frame_schema"] = legacy_metadata["frame_schema"]
+    pool_tool._atomic_write_json(manifest_path, manifest)
+    banked_v2_bytes = checkpoint_path.read_bytes()
+    assert banked_v2_bytes != canonical_v2_bytes
+    assert legacy_metadata["identity"] == canonical_identity
+    assert legacy_metadata["materializer_version"] == 2
+    assert any(
+        column["dtype"] == "object"
+        for columns in legacy_metadata["frame_schema"]["entities"].values()
+        for column in columns
+    )
+
+    warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    resume = warm_store.load_deepest()
+
+    assert resume is not None
+    assert resume.stage == "simulated"
+    assert resume.simulation_frame is not None
+    assert checkpoint_path.read_bytes() == banked_v2_bytes
+    assert (
+        warm_store.provenance(
+            primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+        )["stages"]["simulated"]["load_status"]
+        == "resumed"
+    )
+    for entity in US_SCHEMA.entities:
+        canonical_table = canonical_resume.frame.table(entity)
+        table = resume.frame.table(entity)
+        pd.testing.assert_frame_equal(table, canonical_table, check_exact=True)
+        pd.testing.assert_frame_equal(
+            resume.simulation_frame.table(entity),
+            canonical_resume.simulation_frame.table(entity),
+            check_exact=True,
+        )
+        string_columns = _semantic_string_columns(table)
+        assert string_columns
+        assert all(
+            table[column].dtype == CANONICAL_STRING_DTYPE for column in string_columns
+        )
 
 
 def test_resumed_checkpoint_provenance_is_published_in_final_manifest(

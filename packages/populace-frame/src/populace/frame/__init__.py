@@ -16,6 +16,7 @@ from populace.frame.accounting import (
     wsum,
 )
 from populace.frame.bundle import CONSERVE_MASS, DEFAULT_STRATUM, Frame
+from populace.frame.materialize import engine_tables
 from populace.frame.rules import ExportContract, RulesEngine
 from populace.frame.schema import EntitySchema, LinkSpec, VariableMetadata
 from populace.frame.units import (
@@ -54,6 +55,7 @@ __all__ = [
     "Weights",
     "assert_kind_transition",
     "assign_us_unit_structure",
+    "engine_tables",
     "gini",
     "groupby_wsum",
     "wmean",
