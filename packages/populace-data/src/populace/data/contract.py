@@ -171,6 +171,14 @@ _UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
     "vintage": "2023_24",
 }
+# Independent publication pin for the canonical
+# {"reference": {"identity": ..., "totals": ...}} evidence emitted from the
+# reviewed 131-column enhanced-FRS reference. The totals remain uncommitted
+# under the UKDS EUL; keep this in lockstep with
+# UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 in the build shard.
+_UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
+    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+)
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
         {
@@ -1635,6 +1643,15 @@ def _check_uk_terminal_gate_report(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evidence_sha256 "
                 "must exactly match build_manifest.json terminal_gate_evidence."
+            )
+        if (
+            "input_mass_parity" in build_evidence
+            and evidence.get("input_mass_parity")
+            != _UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity evidence "
+                "digest must bind the reviewed enhanced-FRS incumbent totals."
             )
         diagnostic_weights: Mapping | None = None
         if calibration_diagnostics is not None:

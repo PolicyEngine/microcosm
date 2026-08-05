@@ -63,6 +63,9 @@ UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
     "vintage": "2023_24",
 }
+UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
+    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+)
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -715,7 +718,11 @@ def _terminal_gate_payload(
     evidence = {
         "release_dataset": _canonical_sha256({"weights": _terminal_weight_summary()}),
         **{
-            stage: _canonical_sha256({"fixture_evidence_stage": stage})
+            stage: (
+                UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
+                if stage == "input_mass_parity"
+                else _canonical_sha256({"fixture_evidence_stage": stage})
+            )
             for stage in evidence_stages
         },
     }
@@ -1996,6 +2003,44 @@ def test_exact_k_uk_terminal_rejects_unreviewed_input_mass_identity(
 
     failures = "\n".join(excinfo.value.failures)
     assert "reference_identity must match the reviewed" in failures
+
+
+def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, _evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=("input_mass_parity",),
+    )
+    substituted = _canonical_sha256(
+        {
+            "reference": {
+                "identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
+                "totals": {"person.employment_income": 1.0},
+            }
+        }
+    )
+    payload["attestation"]["evidence_sha256"]["input_mass_parity"] = substituted
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "must bind the reviewed enhanced-FRS incumbent totals" in failures
 
 
 def test_exact_k_uk_terminal_rejects_vacuous_qrf_surface(

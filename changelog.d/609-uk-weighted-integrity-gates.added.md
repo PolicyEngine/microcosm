@@ -64,7 +64,8 @@ The #610 review hardened every output and publication seam around those gates.
 The legacy `--input-coverage-json` alias now runs through the signed terminal
 writer before its compatibility projection, so missing credentials persist an
 unsigned failed receipt and stop staging. Input-mass references must match the
-committed enhanced-FRS source identity at load, gate, and publication time.
+committed enhanced-FRS source identity and the reviewed canonical digest of
+all 131 weighted totals at load, gate, and publication time.
 Exclusion JSON now rejects duplicate keys, malformed shapes, nulls, and
 non-string names or reasons; thin exclusions are always classified as dormant.
 Publication independently rejects absent, nonnumeric, or vacuous QRF evidence,

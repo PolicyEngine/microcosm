@@ -8,6 +8,7 @@ import hmac
 import json
 import math
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -91,14 +92,20 @@ def _coverage(*, passed: bool = True) -> GateResult:
 
 
 def _report(dataset=None, **kwargs):
-    return uk_terminal_gate_report(
-        _dataset() if dataset is None else dataset,
-        object(),
-        release_id=TEST_UK_RELEASE_ID,
-        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-        input_coverage_evaluator=lambda: _coverage(),
-        **kwargs,
-    )
+    # Small synthetic totals exercise battery behavior without disclosing the
+    # licensed 131-column reference; trust-anchor behavior has dedicated tests.
+    with patch(
+        "populace.build.uk_runtime.weighted_integrity._validate_input_mass_reference",
+        return_value=None,
+    ):
+        return uk_terminal_gate_report(
+            _dataset() if dataset is None else dataset,
+            object(),
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
+            input_coverage_evaluator=lambda: _coverage(),
+            **kwargs,
+        )
 
 
 def _gates(report) -> dict[str, dict[str, object]]:

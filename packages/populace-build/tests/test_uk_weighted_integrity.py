@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from populace.build.uk_runtime import weighted_integrity
 from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
@@ -80,6 +82,17 @@ def _policy(**overrides) -> UKInputMassParityPolicy:
     return UKInputMassParityPolicy(**fields)
 
 
+def _synthetic_input_mass_gate(*args, **kwargs):
+    """Exercise gate semantics with small totals, outside the licensed pin."""
+
+    with patch.object(
+        weighted_integrity,
+        "_validate_input_mass_reference",
+        return_value=None,
+    ):
+        return uk_input_mass_parity_gate(*args, **kwargs)
+
+
 def test_dataset_totals_broadcast_household_weights_by_membership() -> None:
     dataset = _dataset(weights=[2.0, 1.0, 1.0, 1.0])
 
@@ -116,7 +129,7 @@ def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:
     dataset = _dataset(person_columns={"employment_income": [0.0, 0.0, 0.0, 0.0]})
     reference = _reference({"person.employment_income": 10.0})
 
-    gate = uk_input_mass_parity_gate(
+    gate = _synthetic_input_mass_gate(
         uk_dataset_input_mass_totals(dataset),
         reference,
         policy=_policy(relative_tolerance=1e9),
@@ -130,12 +143,12 @@ def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:
 
 def test_material_mass_loss_fails_and_within_tolerance_passes() -> None:
     reference = _reference({"person.employment_income": 10.0})
-    lost = uk_input_mass_parity_gate(
+    lost = _synthetic_input_mass_gate(
         {"person.employment_income": 0.01},
         reference,
         policy=_policy(),
     )
-    kept = uk_input_mass_parity_gate(
+    kept = _synthetic_input_mass_gate(
         {"person.employment_income": 9.0, "person.pension_income": 5.0},
         reference,
         policy=_policy(),
@@ -151,7 +164,7 @@ def test_material_mass_loss_fails_and_within_tolerance_passes() -> None:
 def test_input_mass_reference_identity_is_recorded() -> None:
     reference = _reference({"person.employment_income": 10.0})
 
-    gate = uk_input_mass_parity_gate(
+    gate = _synthetic_input_mass_gate(
         {"person.employment_income": 10.0},
         reference,
         policy=_policy(),
@@ -165,25 +178,70 @@ def test_input_mass_reference_identity_is_recorded() -> None:
     }
 
 
-def test_input_mass_reference_rejects_caller_self_reference() -> None:
-    reviewed = uk_input_mass_parity_gate(
-        {"person.employment_income": 1.0},
-        _reference({"person.employment_income": 100.0}),
-        policy=_policy(),
-    )
+def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
+    tmp_path,
+) -> None:
     caller_self_reference = _reference(
         {"person.employment_income": 1.0},
-        filename="caller-selected.h5",
-        revision="caller-selected",
-        sha256="b" * 64,
-        vintage="caller-selected",
     )
 
-    assert not reviewed.passed
-    with pytest.raises(ValueError, match="reviewed enhanced-FRS incumbent"):
+    with pytest.raises(ValueError, match="reference totals must match the reviewed"):
         uk_input_mass_parity_gate(
             {"person.employment_income": 1.0},
             caller_self_reference,
+            policy=_policy(),
+        )
+    path = tmp_path / "self-reference.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "identity": caller_self_reference.identity,
+                "totals": dict(caller_self_reference.totals),
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="reference totals must match the reviewed"):
+        load_uk_input_mass_reference(path)
+
+
+def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    shadow = {
+        "schema_version": 3,
+        "source": {
+            "repo_id": "caller/repo",
+            "repo_type": "model",
+            "filename": "caller.h5",
+            "revision": "caller",
+            "sha256": "b" * 64,
+            "url": "https://example.invalid/caller.h5",
+            "vintage": "caller",
+            "period": "2023",
+            "size_bytes": 1,
+        },
+        "nonzero_shares": {"employment_income": 1.0},
+        "input_entities": {"employment_income": "person"},
+    }
+    (tmp_path / "efrs_parity_reference.json").write_text(
+        json.dumps(shadow), encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    caller_reference = _reference(
+        {"person.employment_income": 1.0},
+        filename="caller.h5",
+        revision="caller",
+        sha256="b" * 64,
+        vintage="caller",
+    )
+
+    with pytest.raises(ValueError, match="identity must match the reviewed"):
+        uk_input_mass_parity_gate(
+            {"person.employment_income": 1.0},
+            caller_reference,
             policy=_policy(),
         )
 
@@ -200,12 +258,12 @@ def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
         },
     )
 
-    live = uk_input_mass_parity_gate(
+    live = _synthetic_input_mass_gate(
         {"person.employment_income": 0.0},
         reference,
         policy=policy,
     )
-    stale = uk_input_mass_parity_gate(
+    stale = _synthetic_input_mass_gate(
         {"person.employment_income": 10.0},
         reference,
         policy=policy,
@@ -645,7 +703,7 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         relative_tolerance=policy.relative_tolerance,
         minimum_reference_total=policy.minimum_reference_total,
     )
-    ported = uk_input_mass_parity_gate(candidate, reference, policy=policy)
+    ported = _synthetic_input_mass_gate(candidate, reference, policy=policy)
 
     assert ported.name == shared.name == "input_mass_parity"
     assert ported.passed == shared.passed
@@ -718,7 +776,14 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
         )
     )
 
-    reference = load_uk_input_mass_reference(path)
+    # The licensed 131-column totals are intentionally unavailable to CI;
+    # bypass only the reviewed digest while checking the measurement schema.
+    with patch.object(
+        weighted_integrity,
+        "_validate_input_mass_reference",
+        return_value=None,
+    ):
+        reference = load_uk_input_mass_reference(path)
 
     assert reference.filename == "enhanced_frs_2023_24.h5"
     assert dict(reference.totals) == {"person.employment_income": 10.5}

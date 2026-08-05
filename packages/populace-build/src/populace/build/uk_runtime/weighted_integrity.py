@@ -104,6 +104,7 @@ before reading) shows:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from collections.abc import Iterable, Mapping
@@ -121,11 +122,11 @@ from populace.build.gates import (
     input_mass_parity_gate,
     tail_concentration_gate,
 )
-from populace.build.uk_runtime.parity_reference import load_efrs_parity_reference
 
 __all__ = [
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
+    "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
     "UK_QRF_TAIL_CONCENTRATION_GATE_NAME",
     "UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
@@ -143,6 +144,23 @@ UK_INPUT_MASS_PARITY_GATE_NAME = "input_mass_parity"
 UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
 UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
+
+# Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
+# the 131-column weighted input surface emitted from the pinned enhanced-FRS
+# artifact (sha 584ae33d...) by build_uk_efrs_parity_reference.py. The totals
+# remain uncommitted under the UKDS EUL; this reviewed digest lets the gate and
+# publication contract bind them without disclosing them (PR #610 review).
+UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
+    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+)
+_UK_INPUT_MASS_REFERENCE_IDENTITY = MappingProxyType(
+    {
+        "filename": "enhanced_frs_2023_24.h5",
+        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
+        "vintage": "2023_24",
+    }
+)
 
 # TODO(PR #610 review): María to define approval identity, receipt metadata,
 # and expiry semantics before the column -> reason exclusion schema changes.
@@ -286,7 +304,7 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
         sha256=str(identity.get("sha256", "")),
         vintage=str(identity.get("vintage", "")),
     )
-    _validate_input_mass_reference_identity(reference)
+    _validate_input_mass_reference(reference)
     return reference
 
 
@@ -350,21 +368,38 @@ class UKInputMassReference:
         }
 
 
-def _validate_input_mass_reference_identity(
+def _input_mass_reference_evidence_sha256(
     reference: UKInputMassReference,
-) -> None:
-    source = load_efrs_parity_reference().source
-    expected = {
-        "filename": source.filename,
-        "revision": source.revision,
-        "sha256": source.sha256,
-        "vintage": source.vintage,
+) -> str:
+    payload = {
+        "reference": {
+            "identity": reference.identity,
+            "totals": {name: float(total) for name, total in reference.totals.items()},
+        }
     }
-    if reference.identity != expected:
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _validate_input_mass_reference(reference: UKInputMassReference) -> None:
+    expected_identity = dict(_UK_INPUT_MASS_REFERENCE_IDENTITY)
+    if reference.identity != expected_identity:
         raise ValueError(
             "UK input-mass reference identity must match the reviewed "
-            f"enhanced-FRS incumbent; expected {expected}, got "
+            f"enhanced-FRS incumbent; expected {expected_identity}, got "
             f"{reference.identity}."
+        )
+    observed_digest = _input_mass_reference_evidence_sha256(reference)
+    if observed_digest != UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256:
+        raise ValueError(
+            "UK input-mass reference totals must match the reviewed "
+            "enhanced-FRS incumbent; expected canonical evidence sha256 "
+            f"{UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}, got {observed_digest}."
         )
 
 
@@ -625,7 +660,7 @@ def uk_input_mass_parity_gate(
         raise TypeError("reference must be UKInputMassReference.")
     if not isinstance(policy, UKInputMassParityPolicy):
         raise TypeError("policy must be UKInputMassParityPolicy.")
-    _validate_input_mass_reference_identity(reference)
+    _validate_input_mass_reference(reference)
     exclusions = dict(policy.reviewed_exclusions)
     base = input_mass_parity_gate(
         candidate_totals,

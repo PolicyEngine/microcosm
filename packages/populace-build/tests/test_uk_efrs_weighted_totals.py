@@ -140,9 +140,14 @@ def test_payload_pins_the_reference_identity_the_gate_records(
     }
 
 
-def test_payload_loads_as_a_gate_reference(synthetic_efrs, tmp_path) -> None:
+def test_payload_loads_as_a_gate_reference(
+    synthetic_efrs,
+    tmp_path,
+    monkeypatch,
+) -> None:
     """The emitted file is exactly what the gate's loader accepts."""
 
+    from populace.build.uk_runtime import weighted_integrity
     from populace.build.uk_runtime.weighted_integrity import (
         UKInputMassParityPolicy,
         load_uk_input_mass_reference,
@@ -153,6 +158,13 @@ def test_payload_loads_as_a_gate_reference(synthetic_efrs, tmp_path) -> None:
     path = tmp_path / "efrs_weighted_totals.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
 
+    # This synthetic source deliberately stubs the licensed artifact sha.
+    # The reviewed 131-column digest is covered by the runtime regressions.
+    monkeypatch.setattr(
+        weighted_integrity,
+        "_validate_input_mass_reference",
+        lambda _reference: None,
+    )
     reference = load_uk_input_mass_reference(path)
     identical = uk_input_mass_parity_gate(
         dict(reference.totals),
