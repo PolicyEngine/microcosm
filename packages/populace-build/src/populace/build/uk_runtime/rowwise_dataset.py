@@ -27,6 +27,10 @@ from populace.build.uk_runtime.national_build import (
     _weight_kind_from_stored,
     _write_uk_single_year_tables,
 )
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_time_period,
+)
 from populace.build.uk_runtime.rowwise_geography import (
     ROWWISE_GEOGRAPHY_COLUMNS,
     RowwiseGeographyAssignment,
@@ -35,7 +39,7 @@ from populace.build.uk_runtime.rowwise_geography import (
     clone_entity_frame,
     id_multiplier_for_values,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 
 #: Declared bound for the clone operator's exact mass conservation: dividing
 #: each household weight by ``n_clones`` and duplicating rows changes the
@@ -694,6 +698,22 @@ def _dataset_tables(
 ) -> dict[str, Any]:
     if isinstance(dataset, str | Path):
         return _read_uk_single_year_h5(dataset)
+    if isinstance(dataset, Frame):
+        # The #612 carrier: tables through the shared materializer (typed
+        # weights authoritative), the weight kind from the typed weights
+        # themselves, and the mass log from the frame — nothing here can be
+        # absent or silently defaulted.
+        tables = engine_tables(dataset)
+        return {
+            "person": tables["person"],
+            "benunit": tables["benunit"],
+            "household": tables["household"],
+            "time_period": _normalise_time_period(
+                uk_time_period(dataset), source_year=source_year
+            ),
+            "household_weight_kind": uk_household_weight_kind(dataset),
+            "mass_log": dataset.mass_log,
+        }
     missing = [
         name
         for name in ("person", "benunit", "household")
