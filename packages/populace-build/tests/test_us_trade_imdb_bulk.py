@@ -20,6 +20,7 @@ from populace.build.us_trade.imdb_bulk import (
     imdb_archive_url,
     latest_available_imdb_month,
     load_imdb_month,
+    summarize_imdb_month,
 )
 from populace.build.us_trade.import_entry_facts import (
     IMDB_BULK_SOURCE_LEG,
@@ -119,6 +120,8 @@ def _cty_line(
         "ves_wgt_mo": (236, 250),
         "ves_cha_mo": (251, 265),
         "cnt_val_mo": (266, 280),
+        "cnt_wgt_mo": (281, 295),
+        "cnt_cha_mo": (296, 310),
     }
     for name_, (start, end) in spans.items():
         _field(line, start, end, str(values.get(name_, 0)), align="right")
@@ -153,6 +156,17 @@ def _comm_line(
         "gen_qy1_mo": (193, 207),
         "gen_qy2_mo": (208, 222),
         "gen_val_mo": (223, 237),
+        "gen_cha_mo": (238, 252),
+        "gen_cif_mo": (253, 267),
+        "air_val_mo": (268, 282),
+        "air_wgt_mo": (283, 297),
+        "air_cha_mo": (298, 312),
+        "ves_val_mo": (313, 327),
+        "ves_wgt_mo": (328, 342),
+        "ves_cha_mo": (343, 357),
+        "cnt_val_mo": (358, 372),
+        "cnt_wgt_mo": (373, 387),
+        "cnt_cha_mo": (388, 402),
     }
     for name_, (start, end) in spans.items():
         _field(line, start, end, str(values.get(name_, 0)), align="right")
@@ -184,6 +198,8 @@ def _de_line(
         "ves_wgt_mo": (234, 248),
         "ves_cha_mo": (249, 263),
         "cnt_val_mo": (264, 278),
+        "cnt_wgt_mo": (279, 293),
+        "cnt_cha_mo": (294, 308),
     }
     for name_, (start, end) in spans.items():
         _field(line, start, end, str(values.get(name_, 0)), align="right")
@@ -269,11 +285,48 @@ _DETAIL_ROWS = (
             "cnt_val_mo": 5000,
         },
     ),
+    # Full-width measures (Japan/semiconductors): every 15-character slice
+    # is fully occupied, so a one-character colspec shift in any direction
+    # corrupts at least one parsed value and must fail reconciliation.
+    (
+        "8542310045",
+        "5880",
+        "00",
+        "55",
+        "55",
+        "61",
+        {
+            "cards_mo": 999999999999999,
+            "con_qy1_mo": 999999999999999,
+            "con_qy2_mo": 999999999999999,
+            "con_val_mo": 123456789012345,
+            "dut_val_mo": 123456789012345,
+            "cal_dut_mo": 987654321098765,
+            "con_cha_mo": 111111111111111,
+            "con_cif_mo": 222222222222222,
+            "gen_qy1_mo": 999999999999999,
+            "gen_qy2_mo": 999999999999999,
+            "gen_val_mo": 123456789012345,
+            "gen_cha_mo": 333333333333333,
+            "gen_cif_mo": 444444444444444,
+            "air_val_mo": 555555555555555,
+            "air_wgt_mo": 666666666666666,
+            "air_cha_mo": 777777777777777,
+            "ves_val_mo": 888888888888888,
+            "ves_wgt_mo": 999999999999999,
+            "ves_cha_mo": 123123123123123,
+            "cnt_val_mo": 456456456456456,
+            "cnt_wgt_mo": 789789789789789,
+            "cnt_cha_mo": 987987987987987,
+        },
+    ),
     # Year-to-date carrier cell: active earlier in the statistical year,
     # all-zero monthly measures — present in the published union, excluded
     # from the margins table.
     ("8471300100", "1220", "00", "07", "07", "10", {}),
 )
+
+_FULL_WIDTH = _DETAIL_ROWS[4][6]
 
 
 def _fixture_zip_bytes(
@@ -310,12 +363,20 @@ def _fixture_zip_bytes(
             "cnt_val_mo": 5000,
             "cards_mo": 4,
         },
+        "5880": dict(_FULL_WIDTH),
     }
     for code, overrides in (cty_overrides or {}).items():
         cty_values[code].update(overrides)
     cty_lines = [
         _cty_line("1220", "Canada", year, month, cty_values["1220"]),
         _cty_line("5700", "China", year, month, cty_values["5700"]),
+        _cty_line(
+            "5880",
+            "Japan",
+            year,
+            month,
+            {k: v for k, v in cty_values["5880"].items() if "qy" not in k},
+        ),
     ]
     comm_lines = [
         _comm_line(
@@ -333,6 +394,9 @@ def _fixture_zip_bytes(
                 "cal_dut_mo": 25,
                 "gen_qy1_mo": 5,
                 "gen_val_mo": 1300,
+                "air_val_mo": 400,
+                "ves_val_mo": 900,
+                "cnt_val_mo": 400,
             },
         ),
         _comm_line(
@@ -350,7 +414,18 @@ def _fixture_zip_bytes(
                 "cal_dut_mo": 250,
                 "gen_qy1_mo": 10,
                 "gen_val_mo": 5000,
+                "ves_val_mo": 5000,
+                "cnt_val_mo": 5000,
             },
+        ),
+        _comm_line(
+            "8542310045",
+            "ELECTRONIC INTEGRATED CIRCUITS, PROCESSORS",
+            "NO",
+            "",
+            year,
+            month,
+            dict(_FULL_WIDTH),
         ),
     ]
     de_lines = [
@@ -384,6 +459,13 @@ def _fixture_zip_bytes(
                 "ves_val_mo": 5400,
                 "cnt_val_mo": 5000,
             },
+        ),
+        _de_line(
+            "55",
+            "DULUTH, MN",
+            year,
+            month,
+            {k: v for k, v in _FULL_WIDTH.items() if "qy" not in k},
         ),
     ]
     buffer = io.BytesIO()
@@ -423,20 +505,22 @@ def test_archive_naming_matches_published_pattern():
 def test_load_parses_detail_and_reconciles_exactly(tmp_path):
     month = _fixture_month(tmp_path)
     assert month.reconciliation_failures == ()
-    assert len(month.detail) == 5
+    assert len(month.detail) == 6
     assert set(month.detail["rate_prov"]) == {"10", "61"}
-    assert month.detail["con_val_mo"].sum() == 6250
-    assert len(month.control_cty) == 2
-    assert len(month.control_comm) == 2
-    assert len(month.control_de) == 2
+    assert month.detail["con_val_mo"].sum() == 6250 + 123_456_789_012_345
+    assert len(month.control_cty) == 3
+    assert len(month.control_comm) == 3
+    assert len(month.control_de) == 3
 
 
 def test_assembly_aggregates_margins_and_joins_units(tmp_path):
     month = _fixture_month(tmp_path)
-    assembly = assemble_bulk_margins((month,), load_census_country_bridge())
+    assembly = assemble_bulk_margins(
+        (summarize_imdb_month(month),), load_census_country_bridge()
+    )
     margins = assembly.margins
     # The YTD-carrier cell (8471300100 x 1220) is excluded: no monthly activity.
-    assert len(margins) == 3
+    assert len(margins) == 4
     assert not (
         (margins["hts10"] == "8471300100") & (margins["cty_code"] == "1220")
     ).any()
@@ -558,11 +642,13 @@ def test_ensure_archive_downloads_verifies_and_adopts(tmp_path):
     assert entry["sha256"] == hashlib.sha256(payload).hexdigest()
 
     # Second call adopts the existing file without fetching; a supplied
-    # download-manifest timestamp is carried into the entry.
+    # download-manifest timestamp is carried when its hash matches.
     path2, entry2 = ensure_imdb_archive(
         "2026-01",
         tmp_path / "archives",
-        retrieved_at_by_name={"IMDB2601.ZIP": "2026-08-05T11:41:00Z"},
+        retrieved_at_by_sha={
+            ("IMDB2601.ZIP", str(entry["sha256"])): "2026-08-05T11:41:00Z"
+        },
         fetch=fake_fetch,
     )
     assert path2 == path
@@ -570,6 +656,8 @@ def test_ensure_archive_downloads_verifies_and_adopts(tmp_path):
     assert entry2["retrieved_at"] == "2026-08-05T11:41:00Z"
     assert "download manifest" in str(entry2["retrieval_note"])
     assert entry2["sha256"] == entry["sha256"]
+    assert "http_status" not in entry2
+    assert entry["http_status"] == 200
 
 
 def test_ensure_archive_rejects_junk_downloads(tmp_path, monkeypatch):
@@ -598,7 +686,9 @@ def test_latest_available_month_probes_backward():
 
 def test_bulk_fact_rows_carry_archive_identity_and_stable_record_sets(tmp_path):
     month = _fixture_month(tmp_path)
-    assembly = assemble_bulk_margins((month,), load_census_country_bridge())
+    assembly = assemble_bulk_margins(
+        (summarize_imdb_month(month),), load_census_country_bridge()
+    )
     rows = build_import_entry_fact_rows(
         assembly.margins,
         retrieval_manifest=assembly.manifest_entries,
@@ -608,7 +698,7 @@ def test_bulk_fact_rows_carry_archive_identity_and_stable_record_sets(tmp_path):
     national = by_id[
         "census_intltrade.imports_hs10.month_2026_01.national.all.con_val_mo"
     ]
-    assert national["value"] == 6250
+    assert national["value"] == 6250 + 123_456_789_012_345
     assert national["source"]["source_file"] == "IMDB2601.ZIP"
     assert national["source"]["source_sha256"] == "ab" * 32
     assert national["lineage"]["source_file_sha256s"] == ["ab" * 32]
@@ -624,7 +714,9 @@ def test_bulk_fact_rows_carry_archive_identity_and_stable_record_sets(tmp_path):
 
 def test_district_facts_round_trip_with_margin_facts(tmp_path):
     month = _fixture_month(tmp_path)
-    assembly = assemble_bulk_margins((month,), load_census_country_bridge())
+    assembly = assemble_bulk_margins(
+        (summarize_imdb_month(month),), load_census_country_bridge()
+    )
     rows = build_import_entry_fact_rows(
         assembly.margins,
         retrieval_manifest=assembly.manifest_entries,
@@ -640,10 +732,8 @@ def test_district_facts_round_trip_with_margin_facts(tmp_path):
         "census_intltrade.imports_district_entry.month_2026_01.de07.con_val_mo"
     ]
     assert portland["value"] == 850
-    assert portland["dimensions"] == {
-        "district_of_entry": "07",
-        "district_name": "OGDENSBURG, NY",
-    }
+    assert portland["dimensions"] == {"district_of_entry": "07"}
+    assert "OGDENSBURG, NY" in portland["label"]
     assert portland["concept_alignment"]["relation"] == "exact"
     duty = by_id[
         "census_intltrade.imports_district_entry.month_2026_01.de20.cal_dut_mo"
@@ -674,9 +764,18 @@ def test_build_cli_end_to_end_offline(tmp_path):
     archive_dir = tmp_path / "archives"
     archive_dir.mkdir()
     (archive_dir / "IMDB2601.ZIP").write_bytes(_fixture_zip_bytes())
+    import hashlib
+
+    payload = (archive_dir / "IMDB2601.ZIP").read_bytes()
     download_manifest = tmp_path / "download-manifest.jsonl"
     download_manifest.write_text(
-        json.dumps({"file": "IMDB2601.ZIP", "retrieved_at_utc": "2026-08-05T11:41:00Z"})
+        json.dumps(
+            {
+                "file": "IMDB2601.ZIP",
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "retrieved_at_utc": "2026-08-05T11:41:00Z",
+            }
+        )
         + "\n"
     )
     out_dir = tmp_path / "out"
@@ -703,8 +802,8 @@ def test_build_cli_end_to_end_offline(tmp_path):
     assert result.returncode == 0, result.stderr
     report = json.loads((out_dir / "build_report.json").read_text())
     assert report["source"] == "census_imdb_bulk"
-    assert report["margin_rows"] == 3
-    assert report["district_rows"] == 2
+    assert report["margin_rows"] == 4
+    assert report["district_rows"] == 3
     assert report["reconciliation_failures"] == 0
     assert (out_dir / "margins_hts10_country_month.parquet").exists()
     assert (out_dir / "district_entry_month.parquet").exists()
@@ -746,3 +845,138 @@ def test_build_cli_fails_on_control_mismatch(tmp_path):
     )
     assert result.returncode == 1
     assert "RECONCILIATION FAIL" in result.stderr
+
+
+def test_commodity_and_district_control_drift_fail_the_ingest(tmp_path):
+    """Every control axis has teeth, not just the country file."""
+    payload = _fixture_zip_bytes()
+    import io as io_module
+    import zipfile as zipfile_module
+
+    def mutate(member: str, transform) -> bytes:
+        source = zipfile_module.ZipFile(io_module.BytesIO(payload))
+        buffer = io_module.BytesIO()
+        with zipfile_module.ZipFile(buffer, "w") as bundle:
+            for name in source.namelist():
+                data = source.read(name)
+                if name == member:
+                    data = transform(data)
+                bundle.writestr(name, data)
+        return buffer.getvalue()
+
+    # Commodity control drift: corrupt one digit of the horses con_val.
+    comm_mutated = mutate(
+        "IMP_COMM.txt", lambda data: data.replace(b"1250", b"1251", 1)
+    )
+    archive = tmp_path / "IMDB2601.ZIP"
+    archive.write_bytes(comm_mutated)
+    month = load_imdb_month(archive, "2026-01", {})
+    assert any(
+        "IMP_COMM.txt hts10=0101210010 con_val_mo" in failure
+        for failure in month.reconciliation_failures
+    )
+
+    # District control drift.
+    de_mutated = mutate("IMP_DE.txt", lambda data: data.replace(b"275", b"276", 1))
+    archive.write_bytes(de_mutated)
+    month = load_imdb_month(archive, "2026-01", {})
+    assert any(
+        "IMP_DE.txt dist_entry=20 cal_dut_mo" in failure
+        for failure in month.reconciliation_failures
+    )
+
+
+def test_key_sets_must_match_in_both_directions(tmp_path):
+    """A key on either side only is named, never zero-compared away."""
+    extra_control = _cty_line(
+        "3010", "Brazil", "2026", "01", {"con_val_mo": 0, "cards_mo": 0}
+    )
+    payload = _fixture_zip_bytes()
+    import io as io_module
+    import zipfile as zipfile_module
+
+    source = zipfile_module.ZipFile(io_module.BytesIO(payload))
+    buffer = io_module.BytesIO()
+    with zipfile_module.ZipFile(buffer, "w") as bundle:
+        for name in source.namelist():
+            data = source.read(name)
+            if name == "imp_CTY.txt":
+                data = data + extra_control.encode("latin-1") + b"\r\n"
+            bundle.writestr(name, data)
+    archive = tmp_path / "IMDB2601.ZIP"
+    archive.write_bytes(buffer.getvalue())
+    month = load_imdb_month(archive, "2026-01", {})
+    assert any(
+        "cty_code=3010: present in the control file but absent from the "
+        "detail" in failure
+        for failure in month.reconciliation_failures
+    )
+
+    stray_detail = _detail_line(
+        "0101210010", "3070", "00", "07", "07", "10", "2026", "01", {"con_val_mo": 5}
+    )
+    month = _fixture_month(tmp_path, extra_detail_lines=(stray_detail,))
+    assert any(
+        "cty_code=3070: present in the detail but absent from the control" in failure
+        for failure in month.reconciliation_failures
+    )
+
+
+def test_shifted_detail_colspecs_fail_reconciliation(tmp_path, monkeypatch):
+    """A one-character parse shift cannot survive the control gates.
+
+    The fixture's full-width row occupies every character of each measure
+    slice, so shifting the detail colspecs by one column in either
+    direction changes at least one parsed value while the control files
+    (parsed with correct positions) keep the published totals.
+    """
+    import populace.build.us_trade.imdb_bulk as module
+
+    for delta in (-1, 1):
+        shifted = tuple(
+            (name, start + delta, end + delta)
+            for name, start, end in module._DETAIL_MEASURES
+        )
+        monkeypatch.setattr(module, "_DETAIL_MEASURES", shifted)
+        archive = tmp_path / f"IMDB2601_{delta}.ZIP"
+        archive.write_bytes(_fixture_zip_bytes())
+        renamed = tmp_path / f"shift{delta}" / "IMDB2601.ZIP"
+        renamed.parent.mkdir()
+        archive.rename(renamed)
+        try:
+            month = load_imdb_month(renamed, "2026-01", {})
+            assert month.reconciliation_failures, (
+                f"colspec shift {delta:+d} produced no reconciliation failure"
+            )
+        except ValueError:
+            pass  # blank-measure refusal is an equally loud failure
+        monkeypatch.undo()
+
+
+def test_adopted_archive_provenance_is_honest(tmp_path):
+    """Adoption records no http_status and binds timestamps to the hash."""
+    payload = _fixture_zip_bytes()
+    archive_dir = tmp_path / "archives"
+    archive_dir.mkdir()
+    (archive_dir / "IMDB2601.ZIP").write_bytes(payload)
+    import hashlib
+
+    sha = hashlib.sha256(payload).hexdigest()
+
+    _, entry = ensure_imdb_archive(
+        "2026-01",
+        archive_dir,
+        retrieved_at_by_sha={("IMDB2601.ZIP", sha): "2026-08-05T11:41:00Z"},
+    )
+    assert "http_status" not in entry
+    assert entry["retrieved_at"] == "2026-08-05T11:41:00Z"
+    assert "sha-matched" in str(entry["retrieval_note"])
+
+    # A wrong recorded hash must not lend its timestamp.
+    _, entry2 = ensure_imdb_archive(
+        "2026-01",
+        archive_dir,
+        retrieved_at_by_sha={("IMDB2601.ZIP", "00" * 32): "2026-08-05T11:41:00Z"},
+    )
+    assert entry2["retrieved_at"] != "2026-08-05T11:41:00Z"
+    assert "verification time" in str(entry2["retrieval_note"])

@@ -70,6 +70,7 @@ from populace.build.us_trade import (  # noqa: E402
     load_imdb_month,
     month_range,
     parse_cbp_trade_stats,
+    summarize_imdb_month,
     write_consumer_artifact,
 )
 from populace.build.us_trade.imdb_bulk import assemble_bulk_margins  # noqa: E402
@@ -110,30 +111,44 @@ def main() -> int:
     months = month_range(args.start, end)
     print(f"[margins] window {months[0]} .. {months[-1]} ({len(months)} months)")
 
-    retrieved_at_by_name = _load_download_manifest(args.download_manifest)
+    retrieved_at_by_sha = _load_download_manifest(args.download_manifest)
     bridge = load_census_country_bridge()
 
+    # A rerun must never leave artifacts from an earlier window or a prior
+    # failed pass beside fresh outputs: stale detail partitions and a stale
+    # success report would misrepresent this build.
     detail_dir = out_dir / "detail"
+    if detail_dir.exists():
+        for stale in detail_dir.glob("period=*.parquet"):
+            stale.unlink()
     detail_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "build_report.json").unlink(missing_ok=True)
+
     parsed = []
+    detail_row_count = 0
     detail_paths: dict[str, Path] = {}
     for month in months:
         archive_path, manifest_entry = ensure_imdb_archive(
             month,
             args.archive_dir,
-            retrieved_at_by_name=retrieved_at_by_name,
+            retrieved_at_by_sha=retrieved_at_by_sha,
         )
         month_data = load_imdb_month(archive_path, month, manifest_entry)
-        parsed.append(month_data)
         detail_path = detail_dir / f"period={month}.parquet"
         month_data.detail.to_parquet(detail_path, index=False)
         detail_paths[month] = detail_path
+        detail_row_count += len(month_data.detail)
         print(
             f"[margins] {month}: {len(month_data.detail)} detail rows, "
             f"{len(month_data.control_cty)} country controls, "
             f"{len(month_data.control_comm)} commodity controls, "
             f"{len(month_data.reconciliation_failures)} reconciliation failures"
         )
+        # Keep only the assembly-grain summary; the full detail (3.5M rows
+        # in late-year archives) is on disk and must not accumulate in
+        # memory across 18 months.
+        parsed.append(summarize_imdb_month(month_data))
+        del month_data
 
     failures = [
         failure for month in parsed for failure in month.reconciliation_failures
@@ -185,17 +200,23 @@ def main() -> int:
         cbp_facts = len(cbp_rows)
         fact_rows.extend(cbp_rows)
 
+    generator = {
+        **default_generator_block(months=months),
+        # The Schedule C -> ISO-2 bridge determines the country dimensions
+        # and therefore fact identity; pin the exact table used.
+        "reference_inputs": {"census_iso_bridge_sha256": bridge.sha256},
+    }
     manifest = write_consumer_artifact(
         out_dir / "consumer_artifact",
         fact_rows,
         retrieval_manifest=retrievals,
-        generator=default_generator_block(months=months),
+        generator=generator,
     )
 
     report = {
         "source": "census_imdb_bulk",
         "window": {"start": months[0], "end": months[-1], "months": len(months)},
-        "detail_rows": int(sum(len(month.detail) for month in parsed)),
+        "detail_rows": int(detail_row_count),
         "margin_rows": int(len(assembly.margins)),
         "census_total_rows": int(len(assembly.census_totals)),
         "district_rows": int(len(assembly.district_entry)),
@@ -228,19 +249,25 @@ def main() -> int:
     return 0
 
 
-def _load_download_manifest(path: Path | None) -> dict[str, str]:
+def _load_download_manifest(path: Path | None) -> dict[tuple[str, str], str]:
+    """Retrieval timestamps keyed by (filename, sha256) from the download loop.
+
+    Binding the timestamp to the recorded hash means a file swapped after
+    download can never inherit the original retrieval provenance.
+    """
     if path is None or not path.exists():
         return {}
-    timestamps: dict[str, str] = {}
+    timestamps: dict[tuple[str, str], str] = {}
     for line in path.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
         row = json.loads(line)
         name = row.get("file")
+        sha256 = row.get("sha256")
         retrieved = row.get("retrieved_at_utc") or row.get("retrieved_at")
-        if name and retrieved:
-            timestamps[str(name)] = str(retrieved)
+        if name and sha256 and retrieved:
+            timestamps[(str(name), str(sha256))] = str(retrieved)
     return timestamps
 
 

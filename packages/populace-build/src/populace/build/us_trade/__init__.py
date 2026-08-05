@@ -47,12 +47,14 @@ from populace.build.us_trade.imdb_bulk import (
     IMDB_URL_TEMPLATE,
     ImdbBulkAssembly,
     ImdbMonth,
+    ImdbMonthSummary,
     assemble_bulk_margins,
     ensure_imdb_archive,
     imdb_archive_name,
     imdb_archive_url,
     latest_available_imdb_month,
     load_imdb_month,
+    summarize_imdb_month,
 )
 from populace.build.us_trade.import_entry_facts import (
     IMDB_BULK_SOURCE_LEG,
@@ -78,6 +80,7 @@ __all__ = [
     "IMPORT_ENTRY_FACT_GRAINS",
     "ImdbBulkAssembly",
     "ImdbMonth",
+    "ImdbMonthSummary",
     "assemble_bulk_margins",
     "assemble_margins_table",
     "build_cbp_entry_fact_rows",
@@ -95,5 +98,6 @@ __all__ = [
     "month_range",
     "parse_cbp_trade_stats",
     "parse_imports_response",
+    "summarize_imdb_month",
     "write_consumer_artifact",
 ]

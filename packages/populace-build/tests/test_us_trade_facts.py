@@ -301,7 +301,9 @@ def test_cbp_fact_rows_from_fixture():
     assert entries["period"] == {"type": "fiscal_year", "value": 2026}
     assert entries["observed_measure"]["unit"] == "count"
     assert entries["source"]["source_sha256"] == "dd" * 32
-    assert "publisher_as_of_note" in entries["dimensions"]
+    # The volatile "as of" note is provenance, never identity.
+    assert entries["dimensions"] == {}
+    assert "updated as of" in entries["source"]["publisher_as_of_note"]
 
 
 def test_cbp_parse_fails_closed_on_layout_change():
@@ -316,3 +318,123 @@ def test_grain_catalog_is_the_documented_set():
         "country",
         "chapter_country",
     )
+
+
+def test_facts_refuse_months_without_manifest_coverage():
+    with pytest.raises(ValueError, match="No retrieval-manifest entry covers"):
+        build_import_entry_fact_rows(
+            _margins(),
+            retrieval_manifest=[
+                entry for entry in _manifest_entries() if entry["month"] != "2026-02"
+            ],
+            extracted_at="2026-08-05T00:00:00+00:00",
+        )
+
+
+def test_artifact_refuses_empty_retrieval_manifest(tmp_path):
+    rows = build_import_entry_fact_rows(
+        _margins(),
+        retrieval_manifest=_manifest_entries(),
+        extracted_at="2026-08-05T00:00:00+00:00",
+    )
+    with pytest.raises(ValueError, match="empty retrieval manifest"):
+        write_consumer_artifact(
+            tmp_path / "artifact",
+            rows,
+            retrieval_manifest=(),
+            generator={},
+        )
+
+
+def test_cbp_semantic_keys_are_fiscal_year_invariant():
+    stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    rows = build_cbp_entry_fact_rows(
+        stats,
+        page_sha256="dd" * 32,
+        retrieved_at="2026-08-05T00:00:00+00:00",
+    )
+    entries = next(
+        row for row in rows if row["layout"]["measure_id"] == "total_entry_summaries"
+    )
+    # Semantic identity must survive the fiscal year rolling over: rebuild
+    # the identity with a different record set year and compare.
+    from populace.build.us_trade.import_entry_facts import (
+        _period_invariant_record_set,
+    )
+
+    family = _period_invariant_record_set(entries["layout"]["record_set_id"])
+    assert "fy2026" not in family
+    assert family == "cbp_trade_stats.imports_revenue_collection"
+
+
+def test_cbp_and_district_facts_compile_into_ledger_targets(tmp_path):
+    stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    cbp_rows = build_cbp_entry_fact_rows(
+        stats,
+        page_sha256="dd" * 32,
+        retrieved_at="2026-08-05T00:00:00+00:00",
+    )
+    district = pd.DataFrame(
+        [
+            {
+                "period": "2026-01",
+                "dist_entry": "70",
+                "dist_name": "Low Value",
+                "con_val_mo": 2_000_000,
+                "gen_val_mo": 2_100_000,
+                "cal_dut_mo": 0,
+                "dut_val_mo": 0,
+                "air_val_mo": 0,
+                "ves_val_mo": 0,
+                "cnt_val_mo": 0,
+            }
+        ]
+    )
+    from populace.build.us_trade.import_entry_facts import (
+        build_district_entry_fact_rows,
+    )
+
+    district_rows = build_district_entry_fact_rows(
+        district,
+        retrieval_manifest=_manifest_entries(),
+        extracted_at="2026-08-05T00:00:00+00:00",
+    )
+    assert all(
+        row["dimensions"] == {"district_of_entry": "70"} for row in district_rows
+    )
+    assert all("Low Value" in row["label"] for row in district_rows)
+
+    references = [
+        LedgerTargetReference(
+            name="cbp_total_entry_summaries_fy2026",
+            ledger_selector={
+                "source_record_id": (
+                    "cbp_trade_stats.imports_revenue_collection.fy2026"
+                    ".total_entry_summaries"
+                ),
+            },
+            entity="import_entry",
+            measure="entry_summaries",
+            period="2026",
+            family="trade_imports",
+        ),
+        LedgerTargetReference(
+            name="district70_customs_value_2026_01",
+            ledger_selector={
+                "source_record_id": (
+                    "census_intltrade.imports_district_entry.month_2026_01"
+                    ".de70.con_val_mo"
+                ),
+            },
+            entity="import_entry",
+            measure="customs_value",
+            period="2026-01",
+            family="trade_imports",
+        ),
+    ]
+    registry = compile_ledger_target_references(
+        cbp_rows + district_rows, references, country="us"
+    )
+    by_name = {spec.name: spec for spec in registry.specs}
+    assert by_name["cbp_total_entry_summaries_fy2026"].value == 83_133_856
+    assert by_name["district70_customs_value_2026_01"].value == 2_000_000

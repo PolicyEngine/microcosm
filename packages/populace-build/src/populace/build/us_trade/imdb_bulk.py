@@ -23,17 +23,25 @@ same fixed-width geometry is parsed by Yale Budget Lab's tariff model
 (``src/io/build_import_weights.R``), whose six parsed positions (hs10,
 cty_code, year, month, con_val_mo, gen_val_mo) match these layouts exactly.
 
-Semantics honesty notes (all source-verified, none inferred):
+Semantics notes (all source-verified, none inferred):
 
 - Rate-provision codes classify free vs dutiable status only
   (census.gov/foreign-trade/reference/rpcodes.html); they carry **no**
   informal/mail/postal marker, so the files cannot ground a postal or
   entry-type split.
-- ``cty_subco`` has no published code enumeration (the Census layout-change
-  notice documents only its width); it is carried opaquely and aggregated
-  over for the margins table.
-- ``cards_mo`` is labeled only "Card Count" in the layouts; it has no
-  published definition and is never used as an entry-count anchor.
+- ``cty_subco`` is the Country SubCode: the special trade-agreement /
+  preference-program claim under which the records entered ("0" = no
+  program; e.g. "A" = GSP, "S" = USMCA — enumerated at
+  census.gov/foreign-trade/reference/codes/csc.html). It is carried
+  through to the detail artifact and aggregated over for the margins
+  table.
+- ``cards_mo`` is defined by the published file structure as "Number of
+  Detailed Records, Current Month" — a count of detail records, **not**
+  of entry summaries — and is therefore never used as an entry-count
+  anchor.
+- District of entry ``70`` is Schedule D "LOW-VALUED IMPORTS AND EXPORTS"
+  (census.gov/foreign-trade/schedules/d/distcode.html): the publisher's
+  own low-valued-shipments aggregation rides the district margins.
 
 Every archive byte-stream is recorded in a retrieval manifest (URL, sha256,
 size, retrieval timestamp). Reconciliation is exact-integer against the
@@ -61,12 +69,14 @@ __all__ = [
     "IMDB_MARGIN_MEASURES",
     "ImdbBulkAssembly",
     "ImdbMonth",
+    "ImdbMonthSummary",
     "assemble_bulk_margins",
     "ensure_imdb_archive",
     "imdb_archive_name",
     "imdb_archive_url",
     "latest_available_imdb_month",
     "load_imdb_month",
+    "summarize_imdb_month",
 ]
 
 IMDB_URL_TEMPLATE = (
@@ -118,62 +128,96 @@ _DETAIL_MEASURES = (
     ("cnt_cha_mo", 344, 358),
 )
 
-#: ``IMP_CTY.lay`` (country control totals), monthly dollar measures used
-#: for reconciliation.
+#: ``IMP_CTY.lay`` (country control totals): every monthly measure the
+#: country file publishes (all detail measures except unit quantities).
 _CTY_FIELDS = (
     ("cty_code", 1, 4),
     ("year", 35, 38),
     ("month", 39, 40),
+    ("cards_mo", 41, 55),
     ("con_val_mo", 56, 70),
     ("dut_val_mo", 71, 85),
     ("cal_dut_mo", 86, 100),
+    ("con_cha_mo", 101, 115),
+    ("con_cif_mo", 116, 130),
     ("gen_val_mo", 131, 145),
+    ("gen_cha_mo", 146, 160),
+    ("gen_cif_mo", 161, 175),
     ("air_val_mo", 176, 190),
+    ("air_wgt_mo", 191, 205),
+    ("air_cha_mo", 206, 220),
     ("ves_val_mo", 221, 235),
+    ("ves_wgt_mo", 236, 250),
+    ("ves_cha_mo", 251, 265),
     ("cnt_val_mo", 266, 280),
+    ("cnt_wgt_mo", 281, 295),
+    ("cnt_cha_mo", 296, 310),
 )
 
-#: ``IMP_COMM.lay`` (commodity control totals + units of quantity).
+#: ``IMP_COMM.lay`` (commodity control totals + units of quantity): every
+#: monthly measure the detail carries.
 _COMM_FIELDS = (
     ("hts10", 1, 10),
     ("unit_qy1", 61, 63),
     ("unit_qy2", 64, 66),
     ("year", 67, 70),
     ("month", 71, 72),
+    ("cards_mo", 73, 87),
     ("con_qy1_mo", 88, 102),
+    ("con_qy2_mo", 103, 117),
     ("con_val_mo", 118, 132),
     ("dut_val_mo", 133, 147),
     ("cal_dut_mo", 148, 162),
+    ("con_cha_mo", 163, 177),
+    ("con_cif_mo", 178, 192),
     ("gen_qy1_mo", 193, 207),
+    ("gen_qy2_mo", 208, 222),
     ("gen_val_mo", 223, 237),
+    ("gen_cha_mo", 238, 252),
+    ("gen_cif_mo", 253, 267),
+    ("air_val_mo", 268, 282),
+    ("air_wgt_mo", 283, 297),
+    ("air_cha_mo", 298, 312),
+    ("ves_val_mo", 313, 327),
+    ("ves_wgt_mo", 328, 342),
+    ("ves_cha_mo", 343, 357),
+    ("cnt_val_mo", 358, 372),
+    ("cnt_wgt_mo", 373, 387),
+    ("cnt_cha_mo", 388, 402),
 )
 
-#: ``IMP_DE.lay`` (district-of-entry control totals).
+#: ``IMP_DE.lay`` (district-of-entry control totals): every monthly
+#: measure the district file publishes.
 _DE_FIELDS = (
     ("dist_entry", 1, 2),
     ("dist_name", 3, 32),
     ("year", 33, 36),
     ("month", 37, 38),
+    ("cards_mo", 39, 53),
     ("con_val_mo", 54, 68),
     ("dut_val_mo", 69, 83),
     ("cal_dut_mo", 84, 98),
+    ("con_cha_mo", 99, 113),
+    ("con_cif_mo", 114, 128),
     ("gen_val_mo", 129, 143),
+    ("gen_cha_mo", 144, 158),
+    ("gen_cif_mo", 159, 173),
     ("air_val_mo", 174, 188),
+    ("air_wgt_mo", 189, 203),
+    ("air_cha_mo", 204, 218),
     ("ves_val_mo", 219, 233),
+    ("ves_wgt_mo", 234, 248),
+    ("ves_cha_mo", 249, 263),
     ("cnt_val_mo", 264, 278),
+    ("cnt_wgt_mo", 279, 293),
+    ("cnt_cha_mo", 294, 308),
 )
 
-#: Measures reconciled exactly against every control file that carries them.
-_RECONCILE_CTY = ("con_val_mo", "dut_val_mo", "cal_dut_mo", "gen_val_mo")
-_RECONCILE_COMM = (
-    "con_val_mo",
-    "dut_val_mo",
-    "cal_dut_mo",
-    "gen_val_mo",
-    "con_qy1_mo",
-    "gen_qy1_mo",
-)
-_RECONCILE_DE = ("con_val_mo", "dut_val_mo", "cal_dut_mo", "gen_val_mo")
+#: Every measure a control file carries is reconciled — a silent
+#: corruption of any admitted measure must fail some gate.
+_RECONCILE_CTY = tuple(name for name, _, _ in _CTY_FIELDS if name.endswith("_mo"))
+_RECONCILE_COMM = tuple(name for name, _, _ in _COMM_FIELDS if name.endswith("_mo"))
+_RECONCILE_DE = tuple(name for name, _, _ in _DE_FIELDS if name.endswith("_mo"))
 
 #: Margin-table dollar/quantity measure columns emitted at the
 #: HTS10 × country grain (the API-compatible core four first).
@@ -223,10 +267,44 @@ class ImdbMonth:
 
 
 @dataclass(frozen=True)
+class ImdbMonthSummary:
+    """A month reduced to what assembly needs, detail released.
+
+    A December detail table is ~3.5M rows × 22 int64 measures; holding all
+    18 months costs multiple GB. The summary keeps the (hts10, cty_code)
+    margin cells (already an order of magnitude smaller) and the control
+    tables, so the caller can write the detail artifact and free the full
+    table before parsing the next month.
+    """
+
+    month: str
+    margin_cells: pd.DataFrame
+    control_comm: pd.DataFrame
+    control_de: pd.DataFrame
+    manifest_entry: dict[str, object]
+    reconciliation_failures: tuple[str, ...]
+
+
+def summarize_imdb_month(month: ImdbMonth) -> ImdbMonthSummary:
+    """Reduce a parsed month to its assembly inputs (drops the detail)."""
+    margin_cells = month.detail.groupby(["hts10", "cty_code"], as_index=False)[
+        list(IMDB_MARGIN_MEASURES)
+    ].sum()
+    return ImdbMonthSummary(
+        month=month.month,
+        margin_cells=margin_cells,
+        control_comm=month.control_comm,
+        control_de=month.control_de,
+        manifest_entry=dict(month.manifest_entry),
+        reconciliation_failures=month.reconciliation_failures,
+    )
+
+
+@dataclass(frozen=True)
 class ImdbBulkAssembly:
     """Assembled multi-month bulk ingest, mirroring the API pull's shape."""
 
-    months: tuple[ImdbMonth, ...]
+    months: tuple[ImdbMonthSummary, ...]
     margins: pd.DataFrame
     census_totals: pd.DataFrame
     district_entry: pd.DataFrame
@@ -303,7 +381,7 @@ def ensure_imdb_archive(
     month: str,
     archive_dir: str | Path,
     *,
-    retrieved_at_by_name: dict[str, str] | None = None,
+    retrieved_at_by_sha: dict[tuple[str, str], str] | None = None,
     fetch: object | None = None,
 ) -> tuple[Path, dict[str, object]]:
     """Return the verified archive path + manifest entry, downloading if absent.
@@ -311,27 +389,33 @@ def ensure_imdb_archive(
     A pre-downloaded archive is adopted after a ZIP-integrity check (its
     central directory must parse and list the detail member); the sha256 is
     always recomputed from the bytes on disk, never trusted from a sidecar.
-    ``retrieved_at_by_name`` optionally supplies the original retrieval
-    timestamp for adopted files (e.g. from the download loop's manifest);
-    without one, the verification time is recorded with an explicit note.
+    ``retrieved_at_by_sha`` optionally supplies original retrieval
+    timestamps for adopted files keyed by ``(filename, sha256)`` — the
+    timestamp is used only when the recorded hash matches the bytes on
+    disk, so a swapped file can never inherit another download's
+    provenance. ``http_status`` is recorded only for downloads this call
+    actually performed.
     """
     archive_path = Path(archive_dir) / imdb_archive_name(month)
     url = imdb_archive_url(month)
-    if not archive_path.exists():
+    downloaded = not archive_path.exists()
+    if downloaded:
         _download_archive(url, archive_path, fetch=fetch)
+    _verify_zip_lists_detail(archive_path, month)
+    raw = archive_path.read_bytes()
+    sha256 = hashlib.sha256(raw).hexdigest()
+    if downloaded:
         retrieved_at = datetime.now(UTC).isoformat(timespec="seconds")
         retrieval_note = "downloaded by this build"
     else:
-        supplied = (retrieved_at_by_name or {}).get(archive_path.name)
+        supplied = (retrieved_at_by_sha or {}).get((archive_path.name, sha256))
         retrieved_at = supplied or datetime.now(UTC).isoformat(timespec="seconds")
         retrieval_note = (
             "pre-downloaded archive adopted; retrieval timestamp from the "
-            "download manifest"
+            "download manifest (sha-matched)"
             if supplied
             else "pre-downloaded archive adopted; timestamp is verification time"
         )
-    _verify_zip_lists_detail(archive_path, month)
-    raw = archive_path.read_bytes()
     entry: dict[str, object] = {
         "source_name": "census_imdb_bulk",
         "dataset": "US Imports of Merchandise monthly database (IMDB)",
@@ -339,12 +423,13 @@ def ensure_imdb_archive(
         "url": url,
         "month": month,
         "filename": archive_path.name,
-        "sha256": hashlib.sha256(raw).hexdigest(),
+        "sha256": sha256,
         "size_bytes": len(raw),
         "retrieved_at": retrieved_at,
         "retrieval_note": retrieval_note,
-        "http_status": 200,
     }
+    if downloaded:
+        entry["http_status"] = 200
     return archive_path, entry
 
 
@@ -432,10 +517,10 @@ def load_imdb_month(
 
 
 def assemble_bulk_margins(
-    months: tuple[ImdbMonth, ...],
+    months: tuple[ImdbMonthSummary, ...],
     bridge: CensusCountryBridge,
 ) -> ImdbBulkAssembly:
-    """Aggregate parsed months into the HTS10 × country × month margins table.
+    """Aggregate month summaries into the HTS10 × country × month margins table.
 
     The margins table carries the API-compatible core columns (period,
     hts10, chapter, cty_code, iso2, country_name, the four dollar measures,
@@ -450,17 +535,14 @@ def assemble_bulk_margins(
     totals_frames: list[pd.DataFrame] = []
     district_frames: list[pd.DataFrame] = []
     for month in months:
-        grouped = month.detail.groupby(["hts10", "cty_code"], as_index=False)[
-            list(IMDB_MARGIN_MEASURES)
-        ].sum()
         # The monthly archives are year-to-date cell unions: a cell active
         # in any earlier month of the statistical year persists with
         # all-zero monthly measures (verified on the 2025-12 archive —
         # 3.5M rows, ~0.8M with monthly activity). Margins keep one row
         # per cell with monthly activity, matching the API leg; the full
         # union stays in the per-month detail artifact as published.
-        grouped = grouped.loc[
-            grouped[list(IMDB_MARGIN_MEASURES)].any(axis="columns")
+        grouped = month.margin_cells.loc[
+            month.margin_cells[list(IMDB_MARGIN_MEASURES)].any(axis="columns")
         ].reset_index(drop=True)
         units = month.control_comm.set_index("hts10")[["unit_qy1", "unit_qy2"]]
         grouped["unit_qy1"] = grouped["hts10"].map(units["unit_qy1"]).fillna("")
@@ -587,12 +669,28 @@ def _reconcile_month(
     control_comm: pd.DataFrame,
     control_de: pd.DataFrame,
 ) -> list[str]:
-    """Exact-integer detail-vs-control comparison on every shared measure.
+    """Exact-integer detail-vs-control comparison on every published measure.
 
-    The dollar and quantity measures are published as integers, so detail
-    sums must equal the publisher's own control rows exactly on the outer
-    join of keys (a key missing from one side compares against zero); any
-    difference means dropped, duplicated, or misparsed detail.
+    Two independent gates per axis (country, commodity, district of entry):
+
+    - **Key-set equality**: the detail's key set must equal the control
+      file's key set exactly — a key on either side only is reported by
+      name, never silently compared against zero.
+    - **Value equality on every measure the control file publishes** (all
+      22 detail measures on the commodity axis; everything but unit
+      quantities on the country and district axes). Measures are published
+      as explicit integers, so any difference means dropped, duplicated,
+      or misparsed detail.
+
+    Certification limit, stated honestly: a detail row that is all-zero on
+    every monthly measure (a year-to-date union carrier) contributes
+    nothing to any control total — including ``cards_mo``, which counts
+    *current-month* records — so its presence cannot be certified against
+    the control files. Such rows carry no monthly information; they are
+    preserved verbatim in the detail artifact and excluded from margins.
+    Any row with any current-month activity is protected by the value
+    gates (``cards_mo`` reconciliation counts the active records
+    themselves).
     """
     failures: list[str] = []
     comparisons = (
@@ -601,11 +699,23 @@ def _reconcile_month(
         ("dist_entry", control_de, _RECONCILE_DE, _CONTROL_DE_MEMBER),
     )
     for key, control, measures, label in comparisons:
+        detail_keys = set(detail[key].unique())
+        control_keys = set(control[key].unique())
+        for missing in sorted(control_keys - detail_keys):
+            failures.append(
+                f"{month} {label} {key}={missing}: present in the control "
+                "file but absent from the detail."
+            )
+        for extra in sorted(detail_keys - control_keys):
+            failures.append(
+                f"{month} {label} {key}={extra}: present in the detail but "
+                "absent from the control file."
+            )
         summed = detail.groupby(key)[list(measures)].sum()
         published = control.set_index(key)[list(measures)]
         joined = summed.join(
-            published, how="outer", lsuffix="_detail", rsuffix="_published"
-        ).fillna(0)
+            published, how="inner", lsuffix="_detail", rsuffix="_published"
+        )
         for measure in measures:
             detail_column = f"{measure}_detail"
             published_column = f"{measure}_published"

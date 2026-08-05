@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -280,7 +281,12 @@ def build_district_entry_fact_rows(
     rows: list[dict[str, Any]] = []
     for record in district_entry.itertuples(index=False):
         month = str(record.period)
-        source_file, source_sha256, sha_list = month_identities.get(month, ("", "", []))
+        if month not in month_identities:
+            raise ValueError(
+                f"No retrieval-manifest entry covers month {month}; refusing "
+                "to mint district facts without raw-source provenance."
+            )
+        source_file, source_sha256, sha_list = month_identities[month]
         for measure in ("con_val_mo", "cal_dut_mo"):
             catalog = MEASURE_CATALOG[measure]
             record_set_id = (
@@ -302,10 +308,7 @@ def build_district_entry_fact_rows(
                     "name": "United States",
                 },
                 "entity": {"name": "import_entry", "role": "customs_entry"},
-                "dimensions": {
-                    "district_of_entry": str(record.dist_entry),
-                    "district_name": str(record.dist_name),
-                },
+                "dimensions": {"district_of_entry": str(record.dist_entry)},
                 "universe_constraints": {"domain": catalog["domain"]},
                 "provenance_class": "administrative",
                 "observed_measure": {
@@ -340,7 +343,7 @@ def build_district_entry_fact_rows(
                 },
                 "label": (
                     f"United States {month} {catalog['label']} "
-                    f"(district_of_entry={value_id}) "
+                    f"(district_of_entry={value_id} {record.dist_name}) "
                     f"[{source_leg.source_name}]"
                 ),
             }
@@ -373,9 +376,9 @@ def build_cbp_entry_fact_rows(
             f"cbp_trade_stats.imports_revenue_collection.fy{cell.fiscal_year}"
         )
         source_record_id = f"{record_set_id}.{cell.measure_id}"
-        dimensions: dict[str, str] = {}
-        if stats.as_of_note:
-            dimensions["publisher_as_of_note"] = stats.as_of_note
+        # The page's "as of" note is provenance, never identity: it changes
+        # with every CBP refresh and must not rotate fact keys or become a
+        # selector-demanded dimension filter.
         source = {
             "source_name": "cbp_trade_stats",
             "source_table": "CBP Trade Statistics: Imports and Revenue Collection",
@@ -391,6 +394,8 @@ def build_cbp_entry_fact_rows(
                 "build)."
             ),
         }
+        if stats.as_of_note:
+            source["publisher_as_of_note"] = stats.as_of_note
         row = {
             "schema_version": _FACT_SCHEMA_VERSION,
             "assertion": "observation",
@@ -404,7 +409,7 @@ def build_cbp_entry_fact_rows(
                 "name": "United States",
             },
             "entity": {"name": "import_entry", "role": "customs_entry"},
-            "dimensions": dimensions,
+            "dimensions": {},
             "universe_constraints": {"domain": "all_import_entry_summaries"},
             "provenance_class": "administrative",
             "observed_measure": {
@@ -450,6 +455,12 @@ def write_consumer_artifact(
     """
     if not fact_rows:
         raise ValueError("Refusing to write an empty consumer artifact.")
+    retrieval_entries = [dict(entry) for entry in retrieval_manifest]
+    if not retrieval_entries:
+        raise ValueError(
+            "Refusing to write a consumer artifact with an empty retrieval "
+            "manifest; every fact feed must carry its raw-source retrievals."
+        )
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     facts_path = out_path / "consumer_facts.jsonl"
@@ -458,7 +469,7 @@ def write_consumer_artifact(
         for row in fact_rows
     ).encode("utf-8")
     facts_path.write_bytes(payload)
-    retrievals = [dict(entry) for entry in retrieval_manifest]
+    retrievals = retrieval_entries
     manifest = {
         "schema_version": CONSUMER_ARTIFACT_SCHEMA_VERSION,
         "facts_sha256": hashlib.sha256(payload).hexdigest(),
@@ -521,7 +532,12 @@ def _fact_row(
     )
     source_record_id = f"{record_set_id}.{value_id}.{measure}"
     lineage: dict[str, Any] = {"source_record_id": source_record_id}
-    month_file, month_sha, month_shas = month_identities.get(month, ("", "", []))
+    if month not in month_identities:
+        raise ValueError(
+            f"No retrieval-manifest entry covers month {month}; refusing to "
+            "mint facts without raw-source provenance."
+        )
+    month_file, month_sha, month_shas = month_identities[month]
     source_sha256 = month_sha
     source_file = month_file
     if grain in ("chapter", "chapter_country"):
@@ -655,8 +671,11 @@ def _stamp_keys(row: dict[str, Any]) -> None:
 
 
 def _period_invariant_record_set(record_set_id: str) -> str:
+    """Drop period-carrying segments (monthly and fiscal-year alike)."""
     return ".".join(
-        part for part in record_set_id.split(".") if not part.startswith("month_")
+        part
+        for part in record_set_id.split(".")
+        if not (part.startswith("month_") or re.fullmatch(r"fy\d{4}", part))
     )
 
 

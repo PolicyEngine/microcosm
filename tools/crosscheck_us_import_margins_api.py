@@ -90,25 +90,30 @@ def main() -> int:
     totals = pd.read_parquet(args.totals)
 
     pair_reports: list[dict[str, object]] = []
-    dollar_mismatches = 0
     for month, chapters in sample:
         for chapter in chapters:
             pair_reports.append(
                 _compare_pair(month, chapter, margins, totals, api_key, args.cache_dir)
             )
-            dollar_mismatches += int(pair_reports[-1]["dollar_mismatch_cells"])  # type: ignore[arg-type]
 
+    def _total(field: str) -> int:
+        return int(sum(int(pair[field]) for pair in pair_reports))  # type: ignore[arg-type]
+
+    gating_failures = (
+        _total("dollar_mismatch_cells")
+        + _total("total_mismatches")
+        + _total("api_reconciliation_failures")
+    )
     report = {
         "checked_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "sample_pairs": len(pair_reports),
-        "cells_compared": int(
-            sum(int(pair["cells_compared"]) for pair in pair_reports)  # type: ignore[arg-type]
-        ),
+        "cells_compared": _total("cells_compared"),
         "dollar_measures": list(_DOLLAR_MEASURES),
-        "dollar_mismatch_cells": dollar_mismatches,
-        "publisher_total_mismatches": int(
-            sum(int(pair["total_mismatches"]) for pair in pair_reports)  # type: ignore[arg-type]
-        ),
+        "dollar_mismatch_cells": _total("dollar_mismatch_cells"),
+        "publisher_total_mismatches": _total("total_mismatches"),
+        "api_reconciliation_failures": _total("api_reconciliation_failures"),
+        "api_totals_absent_pairs": _total("api_totals_absent"),
+        "gating_failures": gating_failures,
         "pairs": pair_reports,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -126,9 +131,11 @@ def main() -> int:
             f"{pair['cells_compared']} cells, "
             f"{pair['dollar_mismatch_cells']} dollar mismatches, "
             f"{pair['total_mismatches']} publisher-total mismatches, "
-            f"api_only={pair['api_only_cells']} bulk_only={pair['bulk_only_cells']}"
+            f"{pair['api_reconciliation_failures']} API reconciliation "
+            f"failures, api_only={pair['api_only_cells']} "
+            f"bulk_only={pair['bulk_only_cells']}"
         )
-    return 1 if dollar_mismatches else 0
+    return 1 if gating_failures else 0
 
 
 def _compare_pair(
@@ -138,10 +145,21 @@ def _compare_pair(
     totals: pd.DataFrame,
     api_key: str,
     cache_dir: Path,
+    *,
+    fetch: object | None = None,
 ) -> dict[str, object]:
     pulled = fetch_imports_month(
-        month, api_key, cache_dir=cache_dir, chapters=(chapter,), max_workers=1
+        month,
+        api_key,
+        cache_dir=cache_dir,
+        chapters=(chapter,),
+        max_workers=1,
+        fetch=fetch,
     )
+    # The API leg runs its own exact reconciliation against the publisher's
+    # '-' totals; a pair whose API pull is internally inconsistent must
+    # never count as agreement.
+    api_reconciliation_failures = len(pulled.reconciliation_failures)
     api_cells = pd.DataFrame(list(pulled.country_rows))
     api_totals = pd.DataFrame(list(pulled.total_rows))
 
@@ -152,13 +170,22 @@ def _compare_pair(
         (totals["period"] == month) & (totals["hts10"].str.startswith(chapter))
     ]
 
+    # Publisher per-commodity totals: the bulk control file is a YTD union
+    # (all-zero rows for commodities inactive this month); the API only
+    # publishes totals for active commodities. Compare on active rows.
+    active_bulk_totals = bulk_totals.loc[
+        bulk_totals[list(_DOLLAR_MEASURES)].any(axis="columns")
+    ]
+
     if api_cells.empty:
         return {
             "month": month,
             "chapter": chapter,
             "cells_compared": 0,
             "dollar_mismatch_cells": int(len(bulk_cells)),
-            "total_mismatches": int(len(bulk_totals)),
+            "total_mismatches": int(len(active_bulk_totals)),
+            "api_reconciliation_failures": api_reconciliation_failures,
+            "api_totals_absent": 1,
             "api_only_cells": 0,
             "bulk_only_cells": int(len(bulk_cells)),
             "quantity_diff_cells": 0,
@@ -226,15 +253,26 @@ def _compare_pair(
         )
 
     total_mismatches = 0
-    if not api_totals.empty:
+    api_totals_absent = 0
+    if api_totals.empty:
+        # An active chapter with no API '-' rows means the totals leg has
+        # no counterparty; report it rather than silently skipping.
+        api_totals_absent = 1 if len(active_bulk_totals) else 0
+    else:
         api_total_indexed = api_totals.set_index("hts10")
-        bulk_total_indexed = bulk_totals.set_index("hts10")
+        bulk_total_indexed = active_bulk_totals.set_index("hts10")
         total_joined = api_total_indexed.join(
             bulk_total_indexed, how="outer", lsuffix="_api", rsuffix="_bulk"
         )
+        one_sided = (
+            total_joined[f"{_DOLLAR_MEASURES[0]}_api"].isna()
+            | total_joined[f"{_DOLLAR_MEASURES[0]}_bulk"].isna()
+        )
+        total_mismatches += int(one_sided.sum())
+        matched = total_joined[~one_sided]
         for measure in _DOLLAR_MEASURES:
-            api_side = total_joined[f"{measure}_api"].fillna(-1).astype("int64")
-            bulk_side = total_joined[f"{measure}_bulk"].fillna(-1).astype("int64")
+            api_side = matched[f"{measure}_api"].astype("int64")
+            bulk_side = matched[f"{measure}_bulk"].astype("int64")
             total_mismatches += int((api_side != bulk_side).sum())
 
     return {
@@ -243,6 +281,8 @@ def _compare_pair(
         "cells_compared": int(len(both)),
         "dollar_mismatch_cells": dollar_mismatch_cells,
         "total_mismatches": total_mismatches,
+        "api_reconciliation_failures": api_reconciliation_failures,
+        "api_totals_absent": api_totals_absent,
         "api_only_cells": int(len(api_only)),
         "bulk_only_cells": int(len(bulk_only)),
         "quantity_diff_cells": quantity_diff,
