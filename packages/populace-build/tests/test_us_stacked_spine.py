@@ -9,6 +9,7 @@ per-family declared metrics.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 
 import numpy as np
@@ -365,6 +366,49 @@ def test_weight_harmonization_matches_share_math() -> None:
         incoming * harmonization["acs"]["scale_factor"],
         rtol=1e-9,
     )
+
+
+def test_weight_harmonization_receipts_use_the_live_selected_anchor() -> None:
+    result = assemble_stacked_spine(
+        _asec_source(),
+        _acs_source(),
+        acs_sample_fraction=1.0,
+        acs_sample_seed=0,
+        mass_anchor_channel="acs",
+    )
+
+    assert result.frame.weights_for("household").total == 550.0
+    harmonization = result.receipt["weight_harmonization"]
+    for channel in ("asec", "acs"):
+        assert harmonization[channel]["declared_allocation"] == 275.0
+        assert harmonization[channel]["allocated_mass"] == 275.0
+
+    metadata = {
+        **result.frame.metadata,
+        STACKED_SPINE_MANIFEST_KEY: deepcopy(result.receipt),
+    }
+    metadata[STACKED_SPINE_MANIFEST_KEY]["weight_harmonization"]["asec"][
+        "declared_allocation"
+    ] = 200.0
+    forged = Frame(
+        {entity: result.frame.table(entity) for entity in result.frame.entities},
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata=metadata,
+    )
+    with pytest.raises(
+        ValueError,
+        match=(
+            "declared 'asec' allocation 200.0 differs from share 0.5 times "
+            "live anchor mass 550.0"
+        ),
+    ):
+        validate_stacked_spine_frame(forged, boundary="forged allocation")
 
 
 def test_fraction_one_matches_plain_assembly() -> None:
@@ -1430,25 +1474,84 @@ def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
     assert wildcard_receipt["authority_form"] == "wildcard_no_declared_donor_plan"
 
 
+def _declared_battery_metric(family: str) -> str:
+    if family in {"benefit_participation", "model_required_boolean"}:
+        return "boolean_incidence"
+    if family == "model_required_discrete":
+        return "categorical_tvd"
+    return "monetary_sign_separated"
+
+
+def _complete_battery_registry(
+    *extras: OriginBatterySpec,
+) -> tuple[OriginBatterySpec, ...]:
+    metrics: dict[tuple[str, str, int], dict[str, str]] = {}
+    for direction in stacked_gap_fill_plan():
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                bucket = metrics.setdefault((entity, family, 0), {})
+                bucket.update(
+                    {target: _declared_battery_metric(family) for target in targets}
+                )
+    for spec in extras:
+        metrics.setdefault((spec.entity, spec.family, spec.clone_index), {}).update(
+            spec.column_metrics
+        )
+    return tuple(
+        OriginBatterySpec(
+            entity=entity,
+            family=family,
+            clone_index=clone_index,
+            column_metrics=column_metrics,
+        )
+        for (entity, family, clone_index), column_metrics in sorted(metrics.items())
+    )
+
+
+def _with_declared_battery_defaults(
+    frame: Frame,
+    *,
+    preserve: frozenset[tuple[str, str]] = frozenset(),
+) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for direction in stacked_gap_fill_plan():
+        for entity, families in direction.target_families.items():
+            for targets in families.values():
+                for target in targets:
+                    if (entity, target) not in preserve:
+                        tables[entity][target] = 1.0
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
 def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
     """A stacked frame with hand-set asec/acs person columns.
 
-    ``columns`` maps a column name to its (asec values, acs values) pair;
-    the asec arm has 8 persons and the acs arm 11.
+    ``columns`` maps a column name to its (asec values, acs values) pair.
     """
 
+    first_asec, first_acs = next(iter(columns.values()))
+    asec_count = len(first_asec)
+    acs_count = len(first_acs)
     asec = _source_frame(
-        household_ids=list(range(11, 19)),
-        weights=[100.0] * 8,
+        household_ids=list(range(11, 11 + asec_count)),
+        weights=[100.0] * asec_count,
         stratum="asec_2024",
     )
     acs = _source_frame(
-        household_ids=list(range(101, 112)),
-        weights=[100.0] * 11,
+        household_ids=list(range(101, 101 + acs_count)),
+        weights=[100.0] * acs_count,
         stratum="acs_2024_1yr",
     )
 
     def with_columns(frame: Frame, position: int) -> Frame:
+        frame = _with_declared_battery_defaults(frame)
         person = frame.table("person").copy()
         for column, values in columns.items():
             person[column] = values[position]
@@ -1494,7 +1597,7 @@ def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:
             },
         ),
     )
-    result = by_origin_battery(frame, registry=registry)
+    result = by_origin_battery(frame, registry=_complete_battery_registry(*registry))
 
     assert not result.passed
     matched = result.details["comparisons"][
@@ -1505,6 +1608,42 @@ def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:
     assert any(
         "object_backed_flag" in failure and "incidence ratio" in failure
         for failure in result.failures
+    )
+
+
+def test_battery_rejects_registry_omitting_declared_champva_before_comparisons() -> (
+    None
+):
+    champva = "has_champva_health_coverage_at_interview"
+    frame = _battery_frame(
+        {
+            champva: (np.ones(8), np.zeros(11)),
+            "healthy_control": (
+                np.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]),
+                np.asarray([1.0] * 7 + [0.0] * 4),
+            ),
+        }
+    )
+    result = by_origin_battery(
+        frame,
+        registry=(
+            OriginBatterySpec(
+                entity="person",
+                family="healthy_control",
+                column_metrics={"healthy_control": "boolean_incidence"},
+            ),
+        ),
+    )
+
+    assert not result.passed
+    assert result.details["tested_comparisons"] == 0
+    assert any(
+        f"missing declared battery target person/model_required_boolean/{champva}"
+        in failure
+        for failure in result.failures
+    )
+    assert any(
+        champva in target for target in result.details["missing_declared_targets"]
     )
 
 
@@ -1526,7 +1665,7 @@ def test_battery_sign_separated_catches_the_one_sided_hole() -> None:
             column_metrics={"sentinel_amount": "monetary_sign_separated"},
         ),
     )
-    result = by_origin_battery(frame, registry=registry)
+    result = by_origin_battery(frame, registry=_complete_battery_registry(*registry))
 
     assert not result.passed
     assert any(
@@ -1540,21 +1679,35 @@ def test_battery_sign_separated_passes_matching_legs() -> None:
         {
             "signed_amount": (
                 np.asarray(
-                    [900.0, -300.0, 1_050.0, -380.0, -420.0, 1_500.0, 0.0, 700.0]
+                    [
+                        100.0,
+                        -100.0,
+                        200.0,
+                        -200.0,
+                        300.0,
+                        -300.0,
+                        400.0,
+                        -400.0,
+                        500.0,
+                        -500.0,
+                        600.0,
+                        -600.0,
+                    ]
                 ),
                 np.asarray(
                     [
-                        980.0,
-                        -350.0,
-                        1_100.0,
-                        -330.0,
-                        -400.0,
-                        1_450.0,
-                        820.0,
-                        0.0,
-                        -310.0,
-                        690.0,
-                        1_200.0,
+                        105.0,
+                        -105.0,
+                        210.0,
+                        -210.0,
+                        315.0,
+                        -315.0,
+                        420.0,
+                        -420.0,
+                        525.0,
+                        -525.0,
+                        630.0,
+                        -630.0,
                     ]
                 ),
             ),
@@ -1565,10 +1718,9 @@ def test_battery_sign_separated_passes_matching_legs() -> None:
             entity="person",
             family="puf_tax_itemization",
             column_metrics={"signed_amount": "monetary_sign_separated"},
-            min_effective_support=3,
         ),
     )
-    result = by_origin_battery(frame, registry=registry)
+    result = by_origin_battery(frame, registry=_complete_battery_registry(*registry))
     assert result.passed, result.failures
     record = result.details["comparisons"][
         "person/puf_tax_itemization/signed_amount[clone_0]"
@@ -1588,7 +1740,7 @@ def test_battery_support_awareness_and_dead_comparisons() -> None:
     )
     dead = by_origin_battery(
         frame,
-        registry=(
+        registry=_complete_battery_registry(
             OriginBatterySpec(
                 entity="person",
                 family="take_up",
@@ -1598,24 +1750,21 @@ def test_battery_support_awareness_and_dead_comparisons() -> None:
     )
     assert not dead.passed
     assert any("dead" in failure for failure in dead.failures)
-
-    under_supported = by_origin_battery(
-        frame,
-        registry=(
-            OriginBatterySpec(
-                entity="person",
-                family="take_up",
-                column_metrics={"rare_flag": "rare_incidence"},
-                min_effective_support=50,
-            ),
-        ),
+    assert dead.details["support_profile"]["profile_id"] == (
+        "us_stacked_origin_battery_support"
     )
-    assert under_supported.passed
-    assert under_supported.details["untestable_comparisons"] == [
-        "person/take_up/rare_flag[clone_0]"
-    ]
-    record = under_supported.details["comparisons"]["person/take_up/rare_flag[clone_0]"]
-    assert record["status"] == "insufficient_support"
+    assert dead.details["support_profile"]["min_effective_support"] == 5
+    assert len(dead.details["support_profile"]["sha256"]) == 64
+
+
+def test_battery_rejects_caller_controlled_support_threshold() -> None:
+    with pytest.raises(TypeError, match="min_effective_support"):
+        OriginBatterySpec(
+            entity="person",
+            family="take_up",
+            column_metrics={"rare_flag": "rare_incidence"},
+            min_effective_support=50,
+        )
 
 
 def test_battery_categorical_tvd_and_null_scope() -> None:
@@ -1636,7 +1785,7 @@ def test_battery_categorical_tvd_and_null_scope() -> None:
     )
     result = by_origin_battery(
         frame,
-        registry=(
+        registry=_complete_battery_registry(
             OriginBatterySpec(
                 entity="person",
                 family="model_required_discrete",
@@ -1644,7 +1793,7 @@ def test_battery_categorical_tvd_and_null_scope() -> None:
                     "category_field": "categorical_tvd",
                     "leaky_field": "monetary_sign_separated",
                 },
-            ),
+            )
         ),
     )
     assert not result.passed
@@ -1934,7 +2083,20 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
             column_metrics={"pre_subsidy_rent": "monetary_sign_separated"},
         ),
     )
-    battery = by_origin_battery(passed.frame, registry=registry)
+    battery = by_origin_battery(
+        _with_declared_battery_defaults(
+            passed.frame,
+            preserve=frozenset(
+                {
+                    ("person", "taxable_interest_income"),
+                    ("person", "unemployment_compensation"),
+                    ("person", "is_disabled"),
+                    ("person", "pre_subsidy_rent"),
+                }
+            ),
+        ),
+        registry=_complete_battery_registry(*registry),
+    )
     assert battery.passed, battery.failures
 
     sentinel = battery.details["comparisons"][

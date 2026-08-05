@@ -253,6 +253,10 @@ def assemble_stacked_spine(
         seed=acs_sample_seed,
     )
     asec_incoming_mass = float(asec.weights_for("household").total)
+    incoming_masses = {
+        BASE_ASEC_SUPPORT_CHANNEL: asec_incoming_mass,
+        ACS_STACKED_SUPPORT_CHANNEL: float(sample_receipt["sampled_household_mass"]),
+    }
     assembled = assemble_spines(
         {
             BASE_ASEC_SUPPORT_CHANNEL: asec,
@@ -265,13 +269,8 @@ def assemble_stacked_spine(
     harmonization = _harmonization_receipt(
         assembled,
         shares=shares,
-        anchor_mass=asec_incoming_mass,
-        incoming_masses={
-            BASE_ASEC_SUPPORT_CHANNEL: asec_incoming_mass,
-            ACS_STACKED_SUPPORT_CHANNEL: float(
-                sample_receipt["sampled_household_mass"]
-            ),
-        },
+        anchor_mass=incoming_masses[mass_anchor_channel],
+        incoming_masses=incoming_masses,
     )
     manifest: dict[str, object] = {
         "version": _STACKED_SPINE_MANIFEST_VERSION,
@@ -433,16 +432,60 @@ def validate_stacked_spine_frame(
         raise ValueError(
             f"{boundary}: stacked spine weight-harmonization receipt is absent."
         )
+    mass_anchor_channel = manifest.get("mass_anchor_channel")
+    if mass_anchor_channel != channels[0]:
+        raise ValueError(
+            f"{boundary}: stacked spine mass_anchor_channel "
+            f"{mass_anchor_channel!r} differs from the assembly anchor "
+            f"channel {channels[0]!r}."
+        )
+    live_anchor_mass = float(frame.weights_for("household").total)
+    anchor_arm = harmonization.get(mass_anchor_channel)
+    if not isinstance(anchor_arm, Mapping) or "incoming_mass" not in anchor_arm:
+        raise ValueError(
+            f"{boundary}: stacked spine weight-harmonization receipt for "
+            f"anchor {mass_anchor_channel!r} is malformed."
+        )
+    anchor_incoming = float(anchor_arm["incoming_mass"])
+    if not np.isclose(
+        anchor_incoming,
+        live_anchor_mass,
+        rtol=_MASS_RTOL,
+        atol=0.0,
+    ):
+        raise ValueError(
+            f"{boundary}: selected anchor {mass_anchor_channel!r} incoming "
+            f"mass {anchor_incoming!r} differs from live anchor mass "
+            f"{live_anchor_mass!r}."
+        )
+
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     for channel in expected_channels:
         arm = harmonization.get(channel)
-        if not isinstance(arm, Mapping) or "allocated_mass" not in arm:
+        if not isinstance(arm, Mapping) or not {
+            "allocated_mass",
+            "declared_allocation",
+        }.issubset(arm):
             raise ValueError(
                 f"{boundary}: stacked spine weight-harmonization receipt for "
                 f"{channel!r} is malformed."
             )
         live_mass = float(weights[channel_values.eq(channel).to_numpy()].sum())
         allocated = float(arm["allocated_mass"])
+        declared_allocation = float(arm["declared_allocation"])
+        expected_allocation = float(shares[channel]) * live_anchor_mass
+        if not np.isclose(
+            declared_allocation,
+            expected_allocation,
+            rtol=_MASS_RTOL,
+            atol=0.0,
+        ):
+            raise ValueError(
+                f"{boundary}: declared {channel!r} allocation "
+                f"{declared_allocation!r} differs from share "
+                f"{float(shares[channel])!r} times live anchor mass "
+                f"{live_anchor_mass!r}."
+            )
         if not np.isclose(live_mass, allocated, rtol=_MASS_RTOL, atol=0.0):
             raise ValueError(
                 f"{boundary}: live {channel!r} household mass {live_mass!r} "
@@ -1227,7 +1270,66 @@ _BATTERY_INCIDENCE_RATIO_BOUNDS = (0.8, 1.25)
 _BATTERY_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
 _BATTERY_QUANTILE_ENVELOPE_TOLERANCE = 0.25
 _BATTERY_CATEGORICAL_TVD_TOLERANCE = 0.25
-_BATTERY_DEFAULT_MIN_EFFECTIVE_SUPPORT = 5
+
+
+@dataclass(frozen=True)
+class _BatterySupportProfile:
+    profile_id: str
+    version: int
+    min_effective_support: int
+
+
+_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
+    profile_id="us_stacked_origin_battery_support",
+    version=1,
+    min_effective_support=5,
+)
+_BATTERY_SUPPORT_PROFILE_SHA256 = hashlib.sha256(
+    json.dumps(
+        {
+            "min_effective_support": (_BATTERY_SUPPORT_PROFILE.min_effective_support),
+            "profile_id": _BATTERY_SUPPORT_PROFILE.profile_id,
+            "version": _BATTERY_SUPPORT_PROFILE.version,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+).hexdigest()
+
+_BATTERY_DECLARED_PLAN_ID = "stacked_gap_fill_plan"
+_BATTERY_DECLARED_PLAN_VERSION = 1
+_BATTERY_DECLARED_TARGETS = tuple(
+    sorted(
+        (
+            entity,
+            family,
+            target,
+            0,
+        )
+        for direction in stacked_gap_fill_plan()
+        for entity, families in direction.target_families.items()
+        for family, targets in families.items()
+        for target in targets
+    )
+)
+_BATTERY_DECLARED_TARGET_SET = frozenset(_BATTERY_DECLARED_TARGETS)
+_BATTERY_DECLARED_PLAN_SHA256 = hashlib.sha256(
+    json.dumps(
+        [
+            f"{entity}/{family}/{column}[clone_{clone_index}]"
+            for entity, family, column, clone_index in _BATTERY_DECLARED_TARGETS
+        ],
+        separators=(",", ":"),
+    ).encode()
+).hexdigest()
+_BATTERY_AUTHORITATIVE_METRICS = {
+    (
+        "person",
+        "model_required_boolean",
+        "has_champva_health_coverage_at_interview",
+        0,
+    ): "boolean_incidence",
+}
 
 
 @dataclass(frozen=True)
@@ -1246,7 +1348,6 @@ class OriginBatterySpec:
     family: str
     column_metrics: Mapping[str, str]
     clone_index: int = 0
-    min_effective_support: int = _BATTERY_DEFAULT_MIN_EFFECTIVE_SUPPORT
 
     def __post_init__(self) -> None:
         if not isinstance(self.entity, str) or not self.entity.strip():
@@ -1278,14 +1379,6 @@ class OriginBatterySpec:
         ):
             raise ValueError(
                 "OriginBatterySpec.clone_index must be a non-negative integer."
-            )
-        if (
-            isinstance(self.min_effective_support, bool)
-            or not isinstance(self.min_effective_support, int)
-            or self.min_effective_support < 1
-        ):
-            raise ValueError(
-                "OriginBatterySpec.min_effective_support must be a positive integer."
             )
 
 
@@ -1319,6 +1412,63 @@ def by_origin_battery(
     duplicates = sorted({key for key in keys if keys.count(key) > 1})
     if duplicates:
         raise ValueError(f"By-origin battery repeats family specs: {duplicates}.")
+    registered_targets = {
+        (spec.entity, spec.family, column, spec.clone_index)
+        for spec in specs
+        for column in spec.column_metrics
+    }
+    missing_targets = tuple(sorted(_BATTERY_DECLARED_TARGET_SET - registered_targets))
+    registration_failures = [
+        f"missing declared battery target {_battery_target_label(target)}."
+        for target in missing_targets
+    ]
+    for target, required_metric in _BATTERY_AUTHORITATIVE_METRICS.items():
+        supplied_metric = next(
+            (
+                spec.column_metrics[target[2]]
+                for spec in specs
+                if (spec.entity, spec.family, spec.clone_index)
+                == (target[0], target[1], target[3])
+                and target[2] in spec.column_metrics
+            ),
+            None,
+        )
+        if supplied_metric is not None and supplied_metric != required_metric:
+            registration_failures.append(
+                f"declared battery target {_battery_target_label(target)} must "
+                f"use authoritative metric {required_metric!r}, got "
+                f"{supplied_metric!r}."
+            )
+    coverage_details = {
+        "declared_target_count": len(_BATTERY_DECLARED_TARGETS),
+        "registered_target_count": len(registered_targets),
+        "missing_declared_targets": [
+            _battery_target_label(target) for target in missing_targets
+        ],
+        "extra_registered_targets": [
+            _battery_target_label(target)
+            for target in sorted(registered_targets - _BATTERY_DECLARED_TARGET_SET)
+        ],
+        "declared_plan": {
+            "plan_id": _BATTERY_DECLARED_PLAN_ID,
+            "version": _BATTERY_DECLARED_PLAN_VERSION,
+            "sha256": _BATTERY_DECLARED_PLAN_SHA256,
+        },
+        "support_profile": _battery_support_profile_receipt(),
+    }
+    if registration_failures:
+        return GateResult(
+            name=_BATTERY_GATE_NAME,
+            passed=False,
+            failures=tuple(registration_failures),
+            details={
+                **coverage_details,
+                "registered_specs": len(specs),
+                "tested_comparisons": 0,
+                "untestable_comparisons": [],
+                "comparisons": {},
+            },
+        )
     validate_stacked_spine_frame(frame, boundary="by-origin battery")
 
     failures: list[str] = []
@@ -1357,7 +1507,7 @@ def by_origin_battery(
                 "asec": int(left_rows.sum()),
                 "acs": int(right_rows.sum()),
             }
-            if min(support.values()) < spec.min_effective_support:
+            if min(support.values()) < _BATTERY_SUPPORT_PROFILE.min_effective_support:
                 comparisons[label] = {
                     "status": "insufficient_support",
                     "metric": metric,
@@ -1403,7 +1553,6 @@ def by_origin_battery(
                     left_rows=left_rows,
                     right_rows=right_rows,
                     weights=weights,
-                    min_effective_support=spec.min_effective_support,
                     failures=failures,
                     comparisons=comparisons,
                 )
@@ -1412,6 +1561,7 @@ def by_origin_battery(
         passed=not failures,
         failures=tuple(failures),
         details={
+            **coverage_details,
             "tolerances": {
                 "incidence_ratio_bounds": list(_BATTERY_INCIDENCE_RATIO_BOUNDS),
                 "max_quantile_envelope_distance": (
@@ -1427,6 +1577,20 @@ def by_origin_battery(
             "comparisons": comparisons,
         },
     )
+
+
+def _battery_target_label(target: tuple[str, str, str, int]) -> str:
+    entity, family, column, clone_index = target
+    return f"{entity}/{family}/{column}[clone_{clone_index}]"
+
+
+def _battery_support_profile_receipt() -> dict[str, object]:
+    return {
+        "profile_id": _BATTERY_SUPPORT_PROFILE.profile_id,
+        "version": _BATTERY_SUPPORT_PROFILE.version,
+        "min_effective_support": _BATTERY_SUPPORT_PROFILE.min_effective_support,
+        "sha256": _BATTERY_SUPPORT_PROFILE_SHA256,
+    }
 
 
 def _battery_numeric_values(
@@ -1500,7 +1664,6 @@ def _battery_sign_separated_comparison(
     left_rows: np.ndarray,
     right_rows: np.ndarray,
     weights: np.ndarray,
-    min_effective_support: int,
     failures: list[str],
     comparisons: dict[str, object],
 ) -> None:
@@ -1546,8 +1709,8 @@ def _battery_sign_separated_comparison(
                 f"(asec={left_incidence:.6g}, acs={right_incidence:.6g})."
             )
         if (
-            int(left_leg.sum()) < min_effective_support
-            or int(right_leg.sum()) < min_effective_support
+            int(left_leg.sum()) < _BATTERY_SUPPORT_PROFILE.min_effective_support
+            or int(right_leg.sum()) < _BATTERY_SUPPORT_PROFILE.min_effective_support
         ):
             leg_record["quantile_envelope"] = "leg_insufficient_support"
             continue
