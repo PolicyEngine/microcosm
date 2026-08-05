@@ -98,6 +98,8 @@ def test_sdc_count_masks_small_nonzero_counts_only() -> None:
 
 
 def test_clean_artifact_constructs_a_frame(tmp_path: Path) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
     path = tmp_path / "clean.h5"
     _write_artifact(path, _clean_tables())
 
@@ -123,6 +125,8 @@ def test_clean_artifact_constructs_a_frame(tmp_path: Path) -> None:
 def test_violations_are_classified_masked_and_never_leak_ids(
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
     path = tmp_path / "violating.h5"
     _write_artifact(path, _violating_tables())
 
@@ -147,6 +151,8 @@ def test_violations_are_classified_masked_and_never_leak_ids(
 def test_main_reports_both_artifacts_and_exits_nonzero_on_failure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
     clean = tmp_path / "clean.h5"
     violating = tmp_path / "violating.h5"
     json_out = tmp_path / "report.json"
@@ -176,6 +182,8 @@ def test_main_reports_both_artifacts_and_exits_nonzero_on_failure(
 def test_main_exits_zero_when_every_artifact_constructs(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
     clean = tmp_path / "clean.h5"
     _write_artifact(clean, _clean_tables())
 
