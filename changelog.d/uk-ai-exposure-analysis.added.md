@@ -1,0 +1,1 @@
+UK AI-exposure analysis stack: SOC2020 AI-exposure crosswalk with checked-in builders, ASHE/APS occupation calibration targets, FRS occupation-merge and exposure-imputation stages, and ESRI JR16-style AI shock scenarios with an end-to-end PolicyEngine-UK runner.

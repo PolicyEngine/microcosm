@@ -1,0 +1,413 @@
+soc2020_code,soc_title,c_aioe,complementarity_theta,felten_aioe,eloundou_beta,dsit_aioe,dsit_llm,mapping_quality,n_isco_links
+1111,Chief executives and senior officials,0.596223,0.700744,0.960908,0.415035,1.062646,1.064345,chained,4
+1112,Elected officers and representatives,0.596223,0.700744,0.960908,0.516667,1.062646,1.064345,direct,1
+1121,Production managers and directors in manufacturing,0.514544,0.677025,0.745515,0.388176,0.683651,0.593709,chained,2
+1122,Production managers and directors in construction,0.361098,0.725006,0.562807,0.342207,0.663920,0.462822,chained,3
+1123,Production managers and directors in mining and energy,0.084565,0.691844,0.131533,0.256830,0.440265,0.280070,chained,3
+1131,Financial managers and directors,0.777740,0.661944,1.115860,0.448825,1.269735,1.200352,chained,3
+1132,"Marketing, sales and advertising directors",0.864207,0.644145,1.222384,0.493798,1.257397,1.185543,chained,3
+1133,Public relations and communications directors,0.918386,0.638889,1.294038,0.542006,1.222017,1.118437,chained,1
+1134,Purchasing managers and directors,0.603388,0.671042,0.890792,0.472971,1.442071,1.326547,direct,1
+1135,Charitable organisation managers and directors,0.697683,0.664447,1.067714,0.457921,0.962517,1.005113,chained,3
+1136,Human resource managers and directors,0.933394,0.630671,1.301025,0.462600,1.300896,1.393290,chained,1
+1137,Information technology directors,0.728667,0.586895,0.957630,0.560658,1.297814,1.155107,chained,3
+1139,Functional managers and directors n.e.c.,0.722027,0.658079,1.055871,0.441132,1.222955,1.182672,chained,9
+1140,"Directors in logistics, warehousing and transport",0.603388,0.671042,0.890792,0.472971,1.100874,1.037275,direct,1
+1150,Managers and directors in retail and wholesale,0.474485,0.729349,0.764719,0.380823,0.706437,0.785590,chained,2
+1161,Officers in armed forces,0.549084,0.681318,0.809239,0.396001,-0.025391,-0.019518,imputed-from-parent,1
+1162,Senior police officers,0.433322,0.703416,0.653790,0.398714,-0.311725,-0.321001,chained,3
+1163,"Senior officers in fire, ambulance, prison and related services",0.664847,0.659219,0.964687,0.393289,0.260944,0.281966,direct,1
+1171,Health services and public health managers and directors,0.769591,0.668490,0.938033,0.455940,1.251801,1.309382,chained,3
+1172,Social services managers and directors,0.643243,0.708854,0.997080,0.481027,0.931423,1.044722,chained,2
+1211,Managers and proprietors in agriculture and horticulture,0.065202,0.658484,0.128266,0.223333,0.115861,0.065649,chained,3
+1212,"Managers and proprietors in forestry, fishing and related services",-0.380449,0.668281,-0.516793,0.178385,0.044627,-0.039301,chained,5
+1221,Hotel and accommodation managers and proprietors,0.166315,0.660179,0.260482,0.342942,0.328336,0.390834,chained,3
+1222,Restaurant and catering establishment managers and proprietors,-0.086375,0.636389,-0.121311,0.395833,-0.234877,-0.043301,direct,1
+1223,Publicans and managers of licensed premises,0.601947,0.664615,0.863378,0.450152,-0.082135,0.086727,chained,3
+1224,Leisure and sports managers and proprietors,0.394845,0.685952,0.572541,0.359159,0.211585,0.252430,chained,3
+1225,Travel agency managers and proprietors,0.664847,0.659219,0.964687,0.393289,1.115373,1.268396,direct,1
+1231,Health care practice managers,0.924133,0.539896,1.140286,0.421627,0.979119,1.047486,chained,1
+1232,"Residential, day and domiciliary care managers and proprietors",0.641817,0.697095,0.970576,0.446692,0.931423,1.044722,chained,3
+1233,Early education and childcare services proprietors,0.673264,0.686250,0.993818,0.395798,0.850094,0.887074,chained,2
+1241,Managers in transport and distribution,0.495530,0.658329,0.688347,0.414481,0.832416,0.835429,chained,4
+1242,Managers in storage and warehousing,0.457662,0.703113,0.699740,0.401287,0.864872,0.783866,chained,2
+1243,Managers in logistics,0.603388,0.671042,0.890792,0.472971,1.244082,1.150285,direct,1
+1251,"Property, housing and estate managers",0.670957,0.648292,0.967729,0.452678,0.763951,0.820174,chained,7
+1252,Garage managers and proprietors,0.664847,0.659219,0.964687,0.393289,-0.639264,-0.735793,direct,1
+1253,Hairdressing and beauty salon managers and proprietors,0.664847,0.659219,0.964687,0.393289,-0.085255,0.102104,direct,1
+1254,Waste disposal and environmental services managers,-0.005884,0.655982,0.063334,0.318345,0.962517,1.005113,chained,3
+1255,Managers and directors in the creative industries,0.709359,0.647685,1.008729,0.435270,0.635626,0.648302,chained,4
+1256,Betting shop and gambling establishment managers,0.637027,0.664761,0.930996,0.416290,0.443483,0.473458,chained,2
+1257,Hire services managers and proprietors,0.637027,0.664761,0.930996,0.416290,0.556640,0.480649,chained,2
+1258,Directors in consultancy services,0.824512,0.645472,1.169158,0.425827,1.052894,0.970800,chained,4
+1259,Managers and proprietors in other services n.e.c.,0.606678,0.699858,0.893008,0.409166,0.727692,0.649528,chained,6
+2111,Chemical scientists,0.347636,0.607807,0.482833,0.448171,0.486788,0.321953,chained,2
+2112,Biological scientists,0.324754,0.710747,0.458987,0.442547,0.640197,0.570855,chained,5
+2113,Biochemists and biomedical scientists,0.352278,0.665556,0.489856,0.332997,0.424060,0.285457,chained,3
+2114,Physical scientists,0.686804,0.649609,0.973802,0.511225,1.076097,0.955436,chained,6
+2115,Social and humanities scientists,0.765524,0.627595,1.069692,0.501075,1.236546,1.353337,chained,7
+2119,Natural and social science professionals n.e.c.,0.628951,0.607956,0.846609,0.553553,0.448010,0.259742,chained,3
+2121,Civil engineers,0.859418,0.646424,1.224529,0.447881,1.357744,1.023084,chained,2
+2122,Mechanical engineers (professional),0.679156,0.626900,0.945506,0.423419,1.067056,0.820072,chained,6
+2123,Electrical engineers,0.664486,0.603299,0.896091,0.427040,0.994896,0.796731,chained,2
+2124,Electronics engineers (professional),0.604497,0.581510,0.784546,0.415417,0.994950,0.775633,chained,2
+2125,Production and process engineers,0.786900,0.630569,1.101219,0.429521,1.066374,0.809225,chained,4
+2126,Aerospace engineers,0.693657,0.606727,0.930771,0.410936,0.981833,0.737346,chained,2
+2127,Engineering project managers and project engineers,0.703559,0.634271,0.989892,0.463367,1.148883,0.914107,chained,5
+2129,Engineering professionals n.e.c.,0.740861,0.650880,1.057184,0.475545,1.031699,0.795313,chained,9
+2131,IT project managers,0.812375,0.569484,1.040893,0.569330,1.297814,1.155107,chained,5
+2132,IT managers,0.788184,0.578539,1.019932,0.559365,1.123480,0.955475,chained,6
+2133,"IT business analysts, architects and systems designers",0.874541,0.555392,1.100819,0.588434,1.090212,0.841516,chained,7
+2134,Programmers and software development professionals,0.786451,0.555454,0.982681,0.580077,1.116764,0.880324,chained,10
+2135,Cyber security professionals,0.976554,0.558917,1.237065,0.569420,1.150989,1.007082,chained,2
+2136,IT quality and testing professionals,0.976554,0.558917,1.237065,0.569420,1.172144,0.950847,chained,2
+2137,IT network professionals,0.451328,0.570694,0.580331,0.543301,1.210687,0.999369,direct,1
+2139,Information technology professionals n.e.c.,0.809611,0.572101,1.039157,0.598531,1.054320,0.814624,chained,11
+2141,Web design professionals,0.833118,0.551387,1.042912,0.551869,1.014493,0.756412,chained,5
+2142,Graphic and multimedia designers,0.251010,0.537922,0.329566,0.403051,0.814540,0.561601,chained,6
+2151,Conservation professionals,0.383363,0.668652,0.541572,0.594972,0.472417,0.415049,chained,1
+2152,Environment professionals,0.524722,0.653435,0.752228,0.458176,0.364801,0.263008,chained,4
+2161,Research and development (R&D) managers,0.851502,0.621775,1.165020,0.497357,0.973429,0.885871,chained,5
+2162,"Other researchers, unspecified discipline",0.724750,0.675196,1.070665,0.501957,1.040185,1.049122,chained,2
+2211,Generalist medical practitioners,0.487286,0.748424,0.734526,0.351547,0.798116,0.777987,chained,2
+2212,Specialist medical practitioners and consultants,0.348317,0.726203,0.500237,0.343188,0.681321,0.655432,chained,5
+2221,Physiotherapists,-0.113694,0.723472,-0.195691,0.340213,-0.310199,0.010028,chained,1
+2222,Occupational therapists,0.333958,0.710813,0.501590,0.380005,0.472913,0.623271,chained,1
+2223,Speech and language therapists,0.575397,0.699896,0.889587,0.422395,0.904202,1.035292,chained,1
+2224,Psychotherapists and cognitive behaviour therapists,0.664414,0.681882,0.958910,0.425970,0.552500,0.604036,chained,2
+2225,Clinical psychologists,0.994870,0.652951,1.416230,0.471935,1.455629,1.556178,chained,1
+2226,Other psychologists,0.994870,0.652951,1.416230,0.471935,1.455629,1.556178,chained,1
+2229,Therapy professionals n.e.c.,0.355149,0.678408,0.528098,0.328215,0.178079,0.335466,chained,11
+2231,Midwifery nurses,0.134050,0.722049,0.213092,0.283086,0.136594,0.217538,chained,2
+2232,Registered community nurses,0.134541,0.737537,0.220262,0.258266,0.249086,0.249312,chained,1
+2233,Registered specialist nurses,0.134541,0.737537,0.220262,0.258266,0.249086,0.249312,chained,1
+2234,Registered nurse practitioners,0.134541,0.737537,0.220262,0.258266,0.192840,0.233425,chained,1
+2235,Registered mental health nurses,0.134541,0.737537,0.220262,0.258266,0.249086,0.249312,chained,1
+2236,Registered children's nurses,0.134541,0.737537,0.220262,0.258266,0.249086,0.249312,chained,1
+2237,Other registered nursing professionals,0.100474,0.663561,0.165303,0.299710,-0.010657,0.162103,chained,5
+2240,Veterinarians,-0.043086,0.773889,-0.074996,0.229730,-0.144768,-0.124057,direct,1
+2251,Pharmacists,0.461396,0.676892,0.686406,0.429310,0.701469,0.590811,chained,2
+2252,Optometrists,0.317707,0.718056,0.504019,0.050000,0.519369,0.400848,direct,1
+2253,Dental practitioners,-0.055931,0.798802,-0.103694,0.148977,-0.208682,-0.343165,chained,1
+2254,Medical radiographers,-0.137122,0.615028,-0.186662,0.231494,-0.194185,-0.261882,chained,2
+2255,Paramedics,0.063420,0.749618,-0.290215,0.155220,-0.297613,-0.290933,chained,2
+2256,Podiatrists,0.333958,0.710813,0.501590,0.380005,0.572031,0.487749,chained,1
+2259,Other health professionals n.e.c.,0.236680,0.673511,0.354031,0.307994,0.504215,0.464512,chained,12
+2311,Higher education teaching professionals,0.805522,0.707427,1.097268,0.465582,1.233384,1.482924,chained,2
+2312,Further education teaching professionals,0.502295,0.713657,0.653279,0.419332,1.242276,1.542836,chained,2
+2313,Secondary education teaching professionals,0.787929,0.687014,1.191325,0.341270,0.998843,1.084499,direct,1
+2314,Primary education teaching professionals,0.420908,0.669444,0.642109,0.314129,0.663105,0.835133,chained,2
+2315,Nursery education teaching professionals,0.567737,0.675208,0.862024,0.384420,0.663105,0.835133,chained,3
+2316,Special and additional needs education teaching professionals,0.679201,0.676962,0.997318,0.367471,0.570358,0.766269,chained,3
+2317,Teachers of English as a foreign language,0.794708,0.602361,1.066878,0.344617,1.143549,1.293499,chained,1
+2319,Teaching professionals n.e.c.,0.659440,0.646100,0.896730,0.381135,1.143549,1.293499,chained,7
+2321,Head teachers and principals,0.685913,0.731536,0.954629,0.421054,1.116114,1.283711,chained,2
+2322,Education managers,0.642576,0.693288,0.912809,0.362562,1.048602,1.109127,chained,5
+2323,Education advisers and school inspectors,0.861394,0.686736,1.301855,0.525000,1.248525,1.347094,direct,1
+2324,Early education and childcare services managers,0.557926,0.707062,0.867655,0.477458,0.666453,0.755530,chained,2
+2329,Other educational professionals n.e.c,0.771060,0.656602,1.036852,0.446927,1.142133,1.277586,chained,5
+2411,Barristers and judges,0.898323,0.629242,1.257385,0.382426,1.174695,1.246181,chained,4
+2412,Solicitors and lawyers,0.854943,0.705000,1.328783,0.475000,1.318113,1.446088,direct,1
+2419,Legal professionals n.e.c.,0.818645,0.617429,1.121262,0.418782,1.216614,1.155360,chained,5
+2421,Chartered and certified accountants,1.149431,0.540278,1.426218,0.595000,1.456983,1.245348,chained,1
+2422,Finance and investment analysts and advisers,0.840212,0.562144,1.076805,0.534147,1.127519,1.095816,chained,6
+2423,Taxation experts,1.156658,0.518576,1.396519,0.636210,1.220044,1.084746,chained,2
+2431,Management consultants and business analysts,1.095700,0.573285,1.407263,0.597018,1.485114,1.453020,chained,3
+2432,Marketing and commercial managers,0.960239,0.577474,1.248999,0.594559,1.239327,1.187197,chained,2
+2433,"Actuaries, economists and statisticians",0.966040,0.589229,1.260165,0.601049,1.327720,1.309960,chained,6
+2434,Business and related research professionals,0.661523,0.603339,0.866159,0.496935,1.002750,0.946389,chained,8
+2435,Professional/Chartered company secretaries,0.918826,0.607512,1.246959,0.461563,1.404545,1.271316,chained,2
+2439,"Business, research and administrative professionals n.e.c.",0.669261,0.619947,0.922384,0.455712,1.369555,1.246408,chained,6
+2440,Business and financial project management professionals,0.816494,0.627463,1.126904,0.464257,1.335104,1.273105,chained,7
+2451,Architects,0.720655,0.655868,1.040765,0.399327,0.979650,0.659780,chained,2
+2452,"Chartered architectural technologists, planning officers and consultants",0.568631,0.661794,0.809776,0.473964,0.943274,0.658302,chained,3
+2453,Quantity surveyors,0.420513,0.648784,0.579186,0.414441,1.174271,0.915188,chained,2
+2454,Chartered surveyors,0.252284,0.638854,0.318100,0.426005,0.230037,-0.016138,chained,2
+2455,Construction project managers and related professionals,0.625403,0.680530,0.923548,0.461551,0.708515,0.474397,chained,4
+2461,Social workers,0.658152,0.659991,0.949970,0.352816,0.773343,0.988263,chained,1
+2462,Probation officers,0.658152,0.659991,0.949970,0.352816,0.147681,0.498935,chained,1
+2463,Clergy,0.807983,0.699792,1.246741,0.346320,1.134349,1.346421,chained,2
+2464,Youth work professionals,0.658152,0.659991,0.949970,0.352816,0.931469,1.171531,chained,1
+2469,Welfare professionals n.e.c.,0.194987,0.656554,0.292641,0.309929,0.931469,1.171531,chained,3
+2471,Librarians,0.528621,0.637847,0.743955,0.500000,0.888748,0.736199,chained,1
+2472,"Archivists, conservators and curators",0.182299,0.619483,0.281428,0.400416,0.389318,0.358944,chained,3
+2481,Quality control and planning engineers,0.669145,0.649635,0.949060,0.448938,0.480017,0.278634,chained,5
+2482,Quality assurance and regulatory professionals,0.790058,0.614412,1.069604,0.509582,1.343690,1.309008,chained,6
+2483,Environmental health professionals,0.289472,0.685593,0.448279,0.371094,0.680341,0.591213,chained,2
+2491,"Newspaper, periodical and broadcast editors",0.836525,0.625347,1.157450,0.640196,1.155081,1.300637,chained,1
+2492,Newspaper and periodical broadcast journalists and reporters,0.836525,0.625347,1.157450,0.640196,1.155081,1.300637,chained,1
+2493,Public relations professionals,0.932117,0.625590,1.289483,0.664942,1.290159,1.461133,chained,2
+2494,Advertising accounts managers and creative directors,0.951291,0.585668,1.250690,0.600197,1.222017,1.118437,chained,2
+3111,Laboratory technicians,0.108107,0.619035,0.136963,0.331078,0.434823,0.210988,chained,6
+3112,Electrical and electronics technicians,0.046791,0.614204,0.097041,0.268207,0.065292,-0.254300,chained,5
+3113,Engineering technicians,0.229180,0.616948,0.317063,0.331106,0.065965,-0.188392,chained,7
+3114,Building and civil engineering technicians,-0.114587,0.659878,-0.177924,0.280775,0.398731,0.022040,chained,2
+3115,Quality assurance technicians,0.248898,0.664723,0.338955,0.477487,-0.173569,-0.345059,chained,2
+3116,"Planning, process and production technicians",0.064740,0.571840,0.084973,0.310276,0.156661,-0.109040,chained,2
+3119,"Science, engineering and production technicians n.e.c.",0.111144,0.602780,0.193333,0.320786,0.219372,-0.010075,chained,6
+3120,"CAD, drawing and architectural technicians",0.305919,0.599039,0.387526,0.432951,0.822391,0.558558,chained,3
+3131,IT technicians,0.747371,0.562191,0.948879,0.560254,1.118770,0.846233,chained,6
+3132,IT user support technicians,0.449983,0.596528,0.596485,0.600697,0.514899,0.448050,chained,3
+3133,Database administrators and web content technicians,0.773441,0.559922,0.974776,0.563855,1.049268,0.896881,chained,6
+3211,Dispensing opticians,0.075724,0.601597,0.101397,0.238095,0.003985,-0.079728,direct,1
+3212,Pharmaceutical technicians,0.005455,0.571944,0.007026,0.426471,-0.096619,-0.134710,direct,1
+3213,Medical and dental technicians,-0.099642,0.637219,-0.134717,0.187236,-0.300066,-0.304287,chained,8
+3214,Complementary health associate professionals,0.158811,0.667025,0.258029,0.310396,0.486396,0.589498,chained,6
+3219,Health associate professionals n.e.c.,-0.086718,0.648129,-0.110771,0.249782,0.118743,0.130999,chained,4
+3221,Youth and community workers,0.316321,0.668472,0.465226,0.375000,0.697215,0.871328,chained,2
+3222,Child and early years officers,0.316321,0.668472,0.458445,0.320833,0.577215,0.811538,chained,2
+3223,Housing officers,0.316321,0.668472,0.465226,0.375000,1.137369,1.255724,direct,1
+3224,Counsellors,0.604785,0.652381,0.854942,0.334596,1.124001,1.293630,chained,3
+3229,Welfare and housing associate professionals n.e.c.,0.624818,0.615971,0.854728,0.417683,1.015860,1.085550,chained,7
+3231,Higher level teaching assistants,0.002100,0.638993,0.451664,0.266667,0.382332,0.697323,direct,1
+3232,Early education and childcare practitioners,0.002100,0.638993,0.237539,0.303442,0.299170,0.492443,chained,2
+3240,Veterinary nurses,-0.422912,0.608715,-0.567950,0.147845,-0.494757,-0.417664,chained,1
+3311,Non-commissioned officers and other ranks,-0.445868,0.594041,-0.607480,0.177859,-0.797797,-0.600852,chained,3
+3312,Police officers (sergeant and below),-0.165116,0.682789,-0.271806,0.319451,-0.725955,-0.686317,chained,3
+3313,Fire service officers (watch manager and below),0.081584,0.701047,0.054244,0.350697,-0.990830,-1.026606,chained,3
+3314,Prison service officers (below principal officer),-0.474346,0.704549,-0.722982,0.260623,-0.894971,-0.652007,chained,1
+3319,Protective service associate professionals n.e.c.,0.589339,0.562841,0.696499,0.430252,0.593200,0.523680,chained,8
+3411,Artists,-0.172643,0.527760,-0.183020,0.291764,0.103751,-0.061083,chained,6
+3412,"Authors, writers and translators",0.882387,0.584555,1.151252,0.642242,0.536154,0.503896,chained,8
+3413,"Actors, entertainers and presenters",0.123760,0.572601,0.203505,0.347034,0.689516,0.817351,chained,8
+3414,Dancers and choreographers,-0.233338,0.623380,-0.348619,0.224983,-1.462740,-0.807686,chained,3
+3415,Musicians,0.630568,0.586605,0.840624,0.446098,0.485614,0.652375,chained,3
+3416,"Arts officers, producers and directors",0.318316,0.592534,0.477784,0.322985,1.019911,0.997991,chained,5
+3417,"Photographers, audio-visual and broadcasting equipment operators",0.038627,0.573087,0.087370,0.272585,-0.031491,-0.255392,chained,7
+3421,Interior designers,0.268295,0.598385,0.373187,0.362041,0.606762,0.414584,chained,2
+3422,"Clothing, fashion and accessories designers",0.268295,0.598385,0.373187,0.362041,0.606762,0.414584,chained,2
+3429,Design occupations n.e.c.,0.443038,0.575302,0.578861,0.393904,-0.021947,-0.072312,chained,7
+3431,Sports players,-1.302668,0.630417,-1.814336,0.000000,-2.056279,-1.498609,direct,1
+3432,"Sports coaches, instructors and officials",0.263536,0.633100,0.346728,0.362048,-0.145422,0.098952,chained,3
+3433,Fitness and wellbeing instructors,-0.053963,0.648652,-0.084027,0.285468,-0.515354,-0.081576,chained,2
+3511,Aircraft pilots and air traffic controllers,0.223789,0.668472,0.284494,0.280460,0.286919,-0.071460,chained,2
+3512,Ship and hovercraft officers,0.378227,0.638802,0.480987,0.370131,-0.820722,-1.002488,chained,5
+3520,Legal associate professionals,0.732484,0.640014,1.042344,0.417982,1.004006,1.012315,chained,3
+3531,Brokers,0.946928,0.627654,1.313417,0.479195,1.313480,1.304061,chained,3
+3532,Insurance underwriters,0.928414,0.581262,1.213292,0.554885,1.299381,1.313286,chained,3
+3533,Financial and accounting technicians,1.009172,0.526493,1.232984,0.454477,1.301494,1.136863,chained,2
+3534,Financial accounts managers,0.948794,0.590910,1.248840,0.503923,1.211635,1.081061,chained,9
+3541,"Estimators, valuers and assessors",0.385822,0.625167,0.526565,0.380451,0.898685,0.706539,chained,6
+3542,Importers and exporters,0.260417,0.563559,0.329547,0.392980,1.006527,0.967975,chained,1
+3543,Project support officers,0.998050,0.541593,1.240031,0.555691,1.145464,1.105210,chained,3
+3544,Data analysts,1.007510,0.560845,1.282170,0.633001,1.388826,1.272407,chained,4
+3549,Business associate professionals n.e.c.,0.731951,0.602672,0.940045,0.502074,1.388826,1.272407,chained,22
+3551,Buyers and procurement officers,0.788945,0.646759,1.152236,0.419506,1.042770,1.011764,chained,3
+3552,Business sales executives,0.732339,0.629627,1.026785,0.505037,1.195432,1.226144,chained,9
+3553,Merchandisers,0.545841,0.568883,0.700558,0.473041,0.665827,0.717807,chained,5
+3554,Advertising and marketing associate professionals,0.757279,0.569413,0.982855,0.565503,0.919270,0.920311,chained,8
+3555,Estate agents and auctioneers,0.753275,0.681019,1.124643,0.447474,0.364800,0.354329,chained,3
+3556,Sales accounts and business development managers,0.755790,0.646889,1.074212,0.479961,1.135048,1.122698,chained,11
+3557,Events managers and organisers,0.543618,0.653713,0.773684,0.401634,0.274898,0.377918,chained,3
+3560,Public services associate professionals,0.548047,0.612871,0.707417,0.475065,0.758647,0.668339,chained,16
+3571,Human resources and industrial relations officers,0.787599,0.610052,1.030957,0.405865,1.231475,1.334640,chained,3
+3572,Careers advisers and vocational guidance specialists,0.698339,0.643015,0.963134,0.342683,1.052144,1.120594,chained,3
+3573,Information technology trainers,0.860607,0.630278,1.198409,0.592105,1.220675,1.329152,chained,2
+3574,Other vocational and industrial trainers,0.674160,0.668594,0.980853,0.510338,1.297802,1.364805,chained,2
+3581,Inspectors of standards and regulations,0.274471,0.618197,0.338439,0.394038,-0.151279,-0.272797,chained,11
+3582,Health and safety managers and officers,0.369954,0.665929,0.529048,0.396079,0.938867,0.814285,chained,6
+4111,National government administrative occupations,0.711392,0.561111,0.879304,0.499126,1.046242,1.028073,chained,13
+4112,Local government administrative occupations,0.848386,0.531200,1.033654,0.537055,1.166003,1.252415,chained,12
+4113,Officers of non-governmental organisations,0.886459,0.515577,1.058173,0.558275,1.110913,1.152207,chained,6
+4121,Credit controllers,1.048098,0.554931,1.321419,0.564966,1.386253,1.493785,chained,2
+4122,"Book-keepers, payroll managers and wages clerks",1.042910,0.503844,1.236631,0.471626,1.342601,1.180267,chained,5
+4123,Bank and post office clerks,0.676777,0.568920,0.881585,0.511590,0.846962,0.877297,chained,4
+4124,Finance officers,1.044780,0.522198,1.265116,0.528429,0.917439,0.759380,chained,2
+4129,Financial administrative occupations n.e.c.,0.598795,0.526325,0.737523,0.463625,0.952567,0.929717,chained,11
+4131,Records clerks and assistants,0.562424,0.548059,0.696399,0.453982,0.809192,0.710217,chained,26
+4132,Pensions and insurance clerks and assistants,0.993966,0.536895,1.220458,0.588550,1.229559,1.197351,chained,3
+4133,Stock control clerks and assistants,0.276983,0.583930,0.342193,0.437505,-0.522134,-0.428258,chained,5
+4134,Transport and distribution clerks and assistants,0.449390,0.564755,0.585817,0.446327,0.936311,0.862968,chained,4
+4135,Library clerks and assistants,0.218952,0.536898,0.262553,0.493421,0.028565,0.141163,chained,3
+4136,Human resources administrative occupations,1.107661,0.529792,1.353098,0.465517,1.351710,1.489420,direct,1
+4141,Office managers,0.581446,0.656608,0.840937,0.451685,0.996048,1.044701,chained,6
+4142,Office supervisors,0.911562,0.557465,1.009468,0.515174,1.012533,1.113101,chained,4
+4143,Customer service managers,0.790485,0.587361,1.038688,0.531250,1.131081,1.214532,direct,1
+4151,Sales administrators,0.409870,0.540104,0.489365,0.507566,0.423132,0.418940,chained,2
+4152,Data entry administrators,0.675898,0.522677,0.789796,0.563885,0.483168,0.403698,chained,7
+4159,Other administrative occupations n.e.c.,0.735903,0.506686,0.876564,0.537635,0.902101,0.938013,chained,14
+4211,Medical secretaries,0.923636,0.577899,1.200273,0.396528,1.206307,1.288453,chained,2
+4212,Legal secretaries,0.765995,0.531071,0.924051,0.573264,0.987464,1.131258,chained,2
+4213,School secretaries,0.932900,0.500156,1.097906,0.555305,0.859721,1.054667,chained,2
+4214,Company secretaries and administrators,0.918361,0.572691,1.201838,0.543084,1.072984,1.167823,chained,2
+4215,Personal assistants and other secretaries,0.858188,0.506343,1.016941,0.621806,0.943984,1.081685,chained,3
+4216,Receptionists,0.709703,0.541076,0.872129,0.566026,0.638318,0.768631,chained,2
+4217,Typists and related keyboard occupations,0.672265,0.505465,0.805591,0.543416,0.483168,0.403698,chained,5
+5111,Farmers,-0.283200,0.622736,-0.361269,0.208626,-0.580824,-0.661976,chained,10
+5112,Horticultural trades,-0.693377,0.606937,-0.908001,0.113781,-0.900545,-0.861618,chained,6
+5113,Gardeners and landscape gardeners,-1.133886,0.569977,-1.427590,0.075026,-1.554993,-1.439157,chained,2
+5114,Groundsmen and greenkeepers,-0.821707,0.636204,-1.142359,0.102143,-1.329744,-1.339606,chained,1
+5119,Agricultural and fishing trades n.e.c.,-0.434348,0.638881,-0.596608,0.198072,-0.744175,-0.820281,chained,14
+5211,Sheet metal workers,-0.155223,0.532718,-0.222150,0.210884,-1.324247,-1.381543,chained,5
+5212,"Metal plate workers, smiths, moulders and related occupations",-0.741285,0.561395,-0.954311,0.068307,-1.364706,-1.399080,chained,8
+5213,Welding trades,-0.607508,0.528260,-0.751412,0.081943,-1.311061,-1.404629,chained,3
+5214,Pipe fitters,-0.763084,0.697726,-1.173415,0.032182,-1.359573,-1.373570,chained,1
+5221,Metal machining setters and setter-operators,-0.589943,0.544586,-0.724069,0.148671,-0.965098,-1.120640,chained,5
+5222,"Tool makers, tool fitters and markers-out",-0.442090,0.584572,-0.583198,0.154317,-0.721390,-0.926919,chained,1
+5223,Metal working production and maintenance fitters and technicians,-0.239190,0.618429,-0.300219,0.195485,-1.188610,-1.226573,chained,24
+5224,Precision instrument makers and repairers,-0.090857,0.565660,-0.113790,0.187156,-0.346009,-0.648839,chained,1
+5225,Air-conditioning and refrigeration installers and repairers,0.142326,0.643452,0.187846,0.299945,-0.695983,-0.779124,chained,3
+5231,"Vehicle technicians, mechanics and electricians",-0.182627,0.636792,-0.247175,0.209864,-1.102127,-1.144256,chained,3
+5232,Vehicle body builders and repairers,-0.380497,0.593496,-0.475147,0.160257,-1.247088,-1.343680,chained,4
+5233,Vehicle paint technicians,-0.797716,0.511701,-0.956559,0.048266,-1.133540,-1.251568,chained,4
+5234,Aircraft maintenance and related trades,-0.106349,0.645081,-0.148589,0.230859,-0.466599,-0.612549,chained,4
+5235,Boat and ship builders and repairers,-0.517777,0.610265,-0.702943,0.146661,-1.058217,-1.122029,chained,7
+5236,Rail and rolling stock builders and repairers,-0.194573,0.619490,-0.261819,0.216905,-1.260120,-1.367088,chained,4
+5241,Electricians and electrical fitters,-0.221746,0.639935,-0.325661,0.203650,-0.481898,-0.712030,chained,6
+5242,Telecoms and related network installers and repairers,-0.157926,0.647546,-0.265435,0.218856,-0.357824,-0.493158,chained,5
+5243,"TV, video and audio servicers and repairers",0.084717,0.605105,0.152356,0.285252,-0.536425,-0.690388,chained,4
+5244,Computer system and equipment installers and servicers,0.126154,0.596947,0.141926,0.266236,-0.792678,-0.885204,chained,2
+5245,Security system installers and repairers,0.294622,0.599304,0.371762,0.340772,-0.861559,-0.970066,chained,3
+5246,Electrical service and maintenance mechanics and repairers,-0.327484,0.642591,-0.484414,0.174865,-0.739673,-0.872644,chained,7
+5249,Electrical and electronic trades n.e.c.,0.079640,0.626645,0.082770,0.271432,-0.861559,-0.970066,chained,8
+5250,"Skilled metal, electrical and electronic trades supervisors",0.142702,0.705260,0.191585,0.283874,-0.421241,-0.460741,chained,3
+5311,Steel erectors,-0.096796,0.657512,-0.163128,0.231061,-1.861326,-1.777627,chained,2
+5312,Stonemasons and related trades,-0.983267,0.589630,-1.312442,0.036174,-1.539772,-1.489358,chained,3
+5313,Bricklayers,-0.950581,0.631498,-1.336344,0.046108,-1.539772,-1.489358,chained,3
+5314,"Roofers, roof tilers and slaters",-0.876317,0.593275,-1.177907,0.047137,-1.990227,-1.781385,chained,3
+5315,Plumbers and heating and ventilating installers and repairers,0.124273,0.654461,0.153388,0.279268,-0.998234,-1.069726,chained,4
+5316,Carpenters and joiners,-0.732497,0.604597,-0.994860,0.127022,-1.359765,-1.345317,chained,3
+5317,"Glaziers, window fabricators and fitters",-0.938488,0.574080,-1.240770,0.029338,-1.358998,-1.293978,chained,2
+5319,Construction and building trades n.e.c.,-0.545262,0.661905,-0.766499,0.149688,-1.361569,-1.323342,chained,11
+5321,Plasterers,-1.314157,0.550949,-1.648111,0.019765,-1.618616,-1.522564,chained,1
+5322,Floorers and wall tilers,-1.127317,0.590340,-1.489302,0.017514,-1.864359,-1.691052,chained,3
+5323,Painters and decorators,-1.167025,0.554826,-1.471101,0.012578,-1.639715,-1.412932,chained,2
+5330,Construction and building trades supervisors,-0.118370,0.728281,-0.194966,0.229167,-0.227171,-0.266829,chained,2
+5411,Upholsterers,-0.592221,0.596771,-0.699132,0.156618,-1.348594,-1.405584,chained,2
+5412,Footwear and leather working trades,-0.801851,0.520701,-0.946254,0.098471,-1.172688,-1.181424,chained,12
+5413,Tailors and dressmakers,-0.541345,0.536065,-0.635628,0.119554,-0.871603,-0.967225,chained,6
+5419,"Textiles, garments and related trades n.e.c.",-0.650344,0.500921,-0.731789,0.131690,-0.788567,-1.083108,chained,15
+5421,Pre-press technicians,0.307057,0.574080,0.382479,0.352831,-0.570299,-0.788152,chained,4
+5422,Printers,-0.152763,0.560243,-0.194553,0.204156,-0.938560,-1.064630,chained,4
+5423,Print finishing and binding workers,-0.196929,0.559717,-0.214505,0.181619,-0.524361,-0.644516,chained,7
+5431,Butchers,-0.540456,0.585650,-0.663796,0.107267,-1.088827,-1.049975,chained,3
+5432,Bakers and flour confectioners,-0.185887,0.614965,-0.234914,0.171324,-0.519567,-0.622332,chained,2
+5433,Fishmongers and poultry dressers,-0.963737,0.516354,-1.167537,0.023246,-1.389356,-1.287077,chained,1
+5434,Chefs,-0.176024,0.677812,-0.262596,0.258730,-0.382169,-0.278559,chained,1
+5435,Cooks,-0.324915,0.589683,-0.417004,0.175018,-0.695846,-0.592443,chained,3
+5436,Catering and bar managers,-0.370518,0.559310,-0.434050,0.205010,-0.364112,-0.176087,chained,5
+5441,"Glass and ceramics makers, decorators and finishers",-0.561198,0.545282,-0.663082,0.142596,-0.044507,-0.249720,chained,12
+5442,Furniture makers and other craft woodworkers,-0.683643,0.585636,-0.880624,0.109958,-1.259874,-1.339451,chained,9
+5443,Florists,-0.360811,0.544201,-0.434261,0.164583,-0.397831,-0.345463,chained,1
+5449,Other skilled trades n.e.c.,-0.645063,0.545023,-0.792201,0.103910,-1.183812,-1.189005,chained,28
+6111,Early education and childcare assistants,0.067655,0.642222,0.224200,0.303149,-0.145522,0.060582,chained,3
+6112,Teaching assistants,0.018489,0.639800,0.451664,0.266667,0.382332,0.697323,direct,1
+6113,Educational support assistants,0.018489,0.639800,0.451664,0.266667,0.382332,0.697323,direct,1
+6114,Childminders,0.002100,0.638993,0.023414,0.340218,-0.488411,-0.249403,chained,1
+6116,Nannies and au pairs,0.002100,0.638993,0.023414,0.340218,-0.488411,-0.249403,chained,1
+6117,Playworkers,0.002100,0.638993,0.023414,0.340218,-0.247325,-0.061294,chained,1
+6121,Pest controllers,-0.515878,0.642708,-0.721739,0.176726,-0.789192,-0.759387,chained,1
+6129,Animal care services occupations n.e.c.,-0.581643,0.615802,-0.773477,0.125620,-0.936853,-0.799018,chained,5
+6131,Nursing auxiliaries and assistants,-0.115437,0.602789,-0.189167,0.230744,0.232138,0.415287,chained,6
+6132,Ambulance staff (excluding paramedics),-0.564460,0.644236,-0.747311,0.178649,-0.789933,-0.798541,chained,3
+6133,Dental nurses,-0.397371,0.605291,-0.539586,0.096220,-0.602693,-0.479129,chained,2
+6134,Houseparents and residential wardens,-0.366535,0.608501,-0.481549,0.183779,-0.270401,0.074893,chained,2
+6135,Care workers and home carers,-0.172103,0.625857,-0.216387,0.235668,0.191017,0.431785,chained,5
+6136,Senior care workers,-0.221274,0.602593,-0.262804,0.237261,-0.290329,0.033874,chained,1
+6137,Care escorts,-0.076397,0.611316,-0.075347,0.242429,-0.397718,-0.003932,chained,3
+6138,"Undertakers, mortuary and crematorium assistants",-0.295134,0.629444,-0.408139,0.226030,-0.596539,-0.426632,chained,2
+6211,Sports and leisure assistants,-0.283210,0.597149,-0.382674,0.213564,-0.325083,-0.269417,chained,8
+6212,Travel agents,0.778030,0.596508,1.050303,0.513524,0.827626,0.907749,chained,2
+6213,Air travel assistants,0.216809,0.617176,0.281064,0.355330,-0.361381,0.007918,chained,2
+6214,Rail travel assistants,-0.527559,0.620903,-0.717463,0.195297,-0.820721,-0.671616,chained,3
+6219,Leisure and travel service occupations n.e.c.,-0.118110,0.599522,-0.139971,0.263768,0.277478,0.449077,chained,8
+6221,Hairdressers and barbers,-0.254504,0.626898,-0.327202,0.155383,-0.611426,-0.363162,chained,1
+6222,Beauticians and related occupations,-0.284904,0.591076,-0.362769,0.177690,-0.475559,-0.448633,chained,3
+6231,Housekeepers and related occupations,-0.536828,0.600101,-0.695115,0.171987,-0.995462,-0.630588,chained,5
+6232,Caretakers,-0.596535,0.592022,-0.761473,0.173380,-0.339213,-0.018990,chained,3
+6240,Cleaning and housekeeping managers and supervisors,-0.077515,0.628624,-0.078225,0.306297,-0.673412,-0.440891,chained,3
+6250,Bed and breakfast and guest house owners and proprietors,-0.082951,0.660660,-0.091620,0.285243,0.328336,0.390834,chained,2
+6311,Police community support officers,-0.161193,0.620992,-0.247868,0.269963,-0.913611,-0.877600,chained,1
+6312,Parking and civil enforcement occupations,-0.274123,0.560767,-0.356554,0.226112,-0.723563,-0.901236,chained,2
+7111,Sales and retail assistants,0.130369,0.504935,0.150494,0.330347,-0.456498,-0.140498,chained,5
+7112,Retail cashiers and check-out operators,-0.250282,0.574896,-0.343261,0.261737,-0.371147,-0.225160,chained,2
+7113,Telephone salespersons,0.917715,0.482517,1.056226,0.596925,1.101573,1.966413,chained,2
+7114,Pharmacy and optical dispensing assistants,0.027250,0.573935,0.035232,0.299558,-0.271074,-0.139931,chained,3
+7115,Vehicle and parts salespersons and advisers,-0.070758,0.523872,-0.082341,0.342027,-0.316943,-0.098232,chained,2
+7121,Collector salespersons and credit agents,0.909109,0.575101,1.193887,0.511422,1.254113,1.419171,chained,5
+7122,"Debt, rent and other cash collectors",0.098261,0.521641,0.125724,0.327538,-0.391963,-0.346098,chained,6
+7123,Roundspersons and van salespersons,-0.240819,0.524896,-0.329788,0.271717,-0.984919,-0.895287,chained,3
+7124,Market and street traders and assistants,0.948647,0.491528,1.107101,0.521739,1.087906,1.522033,chained,2
+7125,Visual merchandisers and related occupations,0.199707,0.582650,0.274937,0.467167,-0.071406,0.093473,chained,3
+7129,Sales related occupations n.e.c.,0.605460,0.581207,0.796374,0.504158,1.097178,1.181531,chained,18
+7131,Shopkeepers and owners - retail and wholesale,0.672724,0.601536,0.873296,0.456554,0.093316,0.126600,chained,9
+7132,Sales supervisors - retail and wholesale,0.458065,0.590000,0.570730,0.439266,-0.149595,0.002132,chained,3
+7211,Call and contact centre occupations,0.931224,0.484063,1.081240,0.569852,0.955437,1.229360,chained,4
+7212,Telephonists,0.890311,0.452274,0.993104,0.581095,0.983582,1.334419,chained,2
+7213,Communication operators,0.255890,0.543944,0.310827,0.347995,0.043358,-0.135396,chained,5
+7214,Market research interviewers,0.987185,0.587292,1.297031,0.431034,1.291962,1.451002,direct,1
+7219,Customer service occupations n.e.c.,0.609092,0.585297,0.794422,0.521641,0.835745,0.895722,chained,7
+7220,Customer service supervisors,0.790485,0.587361,1.038688,0.531250,1.131081,1.214532,direct,1
+8111,"Food, drink and tobacco process operatives",-0.729257,0.528671,-0.884460,0.072140,-1.002777,-1.100550,chained,8
+8112,Textile process operatives,-0.858112,0.518017,-1.028037,0.084558,-1.477617,-1.489753,chained,17
+8113,Chemical and related process operatives,-0.610049,0.553733,-0.752694,0.121908,-1.065505,-1.187028,chained,22
+8114,Plastics process operatives,-0.839096,0.524583,-1.017296,0.050248,-1.155429,-1.289644,chained,1
+8115,Metal making and treating process operatives,-0.725009,0.551079,-0.903043,0.086024,-1.225537,-1.304831,chained,21
+8119,Process operatives n.e.c.,-0.863383,0.523389,-1.047239,0.072718,-1.331774,-1.381164,chained,18
+8120,Metal working machine operatives,-0.579590,0.565382,-0.736401,0.103299,-1.036557,-1.188575,chained,12
+8131,Paper and wood machine operatives,-0.791306,0.528001,-0.956023,0.085977,-1.279321,-1.344430,chained,17
+8132,Mining and quarry workers and related operatives,-0.613111,0.628285,-0.835320,0.126907,-1.177599,-1.314137,chained,14
+8133,Energy plant operatives,-0.090550,0.630740,-0.107175,0.190088,-0.292999,-0.521266,chained,6
+8134,Water and sewerage plant operatives,0.129691,0.681736,0.170577,0.323721,-1.040783,-1.147964,chained,4
+8135,Printing machine assistants,-0.528624,0.519764,-0.625214,0.132899,-1.070649,-1.158230,chained,12
+8139,Plant and machine operatives n.e.c.,-0.645006,0.558914,-0.805423,0.110141,-1.239361,-1.312273,chained,48
+8141,Assemblers (electrical and electronic products),-0.658544,0.533196,-0.800615,0.080865,-1.011079,-1.068971,chained,6
+8142,Assemblers (vehicles and metal goods),-0.569577,0.561965,-0.705716,0.084566,-0.928136,-1.001906,chained,6
+8143,Routine inspectors and testers,-0.183244,0.614182,-0.223635,0.209357,-0.340496,-0.451531,chained,4
+8144,"Weighers, graders and sorters",-0.797678,0.523903,-0.949384,0.121801,-0.261197,-0.424089,chained,18
+8145,"Tyre, exhaust and windscreen fitters",-0.797345,0.660788,-1.163846,0.046676,-1.523370,-1.453395,chained,2
+8146,Sewing machinists,-0.769693,0.461351,-0.848605,0.096261,-1.383510,-1.503968,chained,10
+8149,Assemblers and routine operatives n.e.c.,-0.690835,0.549120,-0.847777,0.091053,-1.200152,-1.261250,chained,13
+8151,"Scaffolders, stagers and riggers",-0.728016,0.657627,-1.044385,0.090156,-1.412360,-1.440863,chained,5
+8152,Road construction operatives,-1.040517,0.625693,-1.433568,0.011263,-1.527677,-1.533671,chained,5
+8153,Rail construction and maintenance operatives,-0.055008,0.661594,-0.103492,0.263476,-1.312481,-1.528146,chained,4
+8159,Construction operatives n.e.c.,-0.576142,0.650281,-0.774301,0.134439,-1.211892,-1.146012,chained,22
+8160,"Production, factory and assembly supervisors",-0.724202,0.520505,-0.847122,0.082782,-1.077679,-1.159141,chained,16
+8211,Heavy and large goods vehicle drivers,-0.474989,0.629721,-0.644562,0.158077,-1.431423,-1.507835,chained,3
+8212,Bus and coach drivers,-0.286833,0.599005,-0.343019,0.214432,-0.589618,-1.070454,chained,1
+8213,Taxi and cab drivers and chauffeurs,-0.478271,0.621910,-0.633063,0.191525,-0.785609,-1.122001,chained,1
+8214,Delivery drivers and couriers,-0.539563,0.619062,-0.718290,0.213819,-1.064743,-1.154663,chained,3
+8215,Driving instructors,0.394362,0.599167,0.526352,0.380000,0.880152,1.073438,direct,1
+8219,Road transport drivers n.e.c.,-0.499213,0.615000,-0.673340,0.147709,-0.848833,-0.906938,chained,4
+8221,Crane drivers,-0.715829,0.600193,-0.934532,0.123642,-0.890077,-1.053312,chained,2
+8222,Fork-lift truck drivers,-0.413077,0.646910,-0.563624,0.206952,-1.609311,-1.808822,chained,2
+8229,Mobile machine drivers and operatives n.e.c.,-0.451982,0.641926,-0.633052,0.203425,-1.284335,-1.444911,chained,10
+8231,Train and tram drivers,-0.383880,0.615995,-0.498328,0.184575,-0.785062,-1.123684,chained,2
+8232,Marine and waterways transport operatives,-0.581327,0.640401,-0.805107,0.113572,-1.060713,-1.280269,chained,6
+8233,Air transport operatives,-0.215947,0.648556,-0.284189,0.262840,0.238968,0.106856,chained,4
+8234,Rail transport operatives,-0.401212,0.639290,-0.556439,0.148872,-0.938225,-1.077527,chained,3
+8239,Other drivers and transport operatives n.e.c.,-0.169743,0.643167,-0.240758,0.229991,-0.564743,-0.650408,chained,18
+9111,Farm workers,-0.970475,0.562335,-1.206602,0.085289,-1.470034,-1.427154,chained,4
+9112,Forestry and related workers,-0.617700,0.610547,-0.798782,0.151810,-0.725773,-0.787430,chained,8
+9119,Fishing and other elementary agriculture occupations n.e.c.,-0.806774,0.602014,-1.048158,0.088040,-1.383333,-1.349289,chained,14
+9121,Groundworkers,-1.097309,0.639390,-1.535208,0.001786,-1.909924,-1.731158,chained,2
+9129,Elementary construction occupations n.e.c.,-0.745045,0.638427,-1.027346,0.115940,-1.909924,-1.731158,chained,14
+9131,Industrial cleaning process occupations,-0.791988,0.620105,-1.068034,0.093906,-1.515767,-1.511079,chained,9
+9132,"Packers, bottlers, canners and fillers",-0.841324,0.606615,-1.097773,0.100000,-1.561286,-1.418529,chained,4
+9139,Elementary process plant occupations n.e.c.,-0.730181,0.617719,-0.975930,0.113475,-1.526799,-1.507060,chained,17
+9211,"Postal workers, mail sorters and messengers",-0.080638,0.562623,-0.138563,0.302321,-1.098220,-0.938727,chained,7
+9219,Elementary administration occupations n.e.c.,0.132810,0.534306,0.141722,0.380954,-0.818272,-0.798447,chained,8
+9221,Window cleaners,-1.142079,0.553194,-1.436201,0.027778,-1.648635,-1.286594,direct,1
+9222,Street cleaners,-1.002583,0.545514,-1.222928,0.099047,-1.480778,-1.491440,direct,1
+9223,Cleaners and domestics,-1.024118,0.516096,-1.193885,0.114264,-1.743035,-1.234860,chained,3
+9224,"Launderers, dry cleaners and pressers",-1.111354,0.479809,-1.268996,0.070751,-1.711704,-1.586496,chained,4
+9225,Refuse and salvage occupations,-0.450285,0.620245,-0.572829,0.272567,-1.251657,-1.299442,chained,4
+9226,Vehicle valeters and cleaners,-1.219589,0.533104,-1.502566,0.047615,-1.685921,-1.637117,chained,3
+9229,Elementary cleaning occupations n.e.c.,-1.068072,0.570637,-1.363088,0.061309,-1.407207,-1.468459,chained,3
+9231,Security guards and related occupations,-0.150267,0.608599,-0.246337,0.267213,-0.158760,-0.153056,chained,6
+9232,School midday and crossing patrol occupations,-0.161193,0.620992,0.101898,0.268315,-0.539271,-0.623683,chained,2
+9233,Exam invigilators,-0.155730,0.614795,0.451664,0.266667,0.902101,0.938013,direct,1
+9241,Shelf fillers,-0.650565,0.524167,-0.789295,0.190909,-0.975867,-0.608622,direct,1
+9249,Elementary sales occupations n.e.c.,-0.781718,0.535896,-0.971421,0.148702,-1.291688,-1.127109,chained,5
+9251,Elementary storage supervisors,-0.073722,0.610745,-0.087300,0.356971,-0.671358,-0.667145,chained,3
+9252,Warehouse operatives,-0.829567,0.552684,-1.032704,0.150498,-0.671358,-0.667145,chained,5
+9253,Delivery operatives,-0.737103,0.636771,-1.019044,0.180288,-0.671358,-0.667145,chained,2
+9259,Elementary storage occupations n.e.c.,-0.745152,0.672153,-1.093387,0.071312,-0.671358,-0.667145,chained,3
+9261,Bar and catering supervisors,-0.792364,0.508581,-0.933653,0.109547,-1.012211,-0.689404,chained,5
+9262,Hospital porters,-1.265695,0.511898,-1.515585,0.028867,-1.816307,-1.242406,chained,1
+9263,Kitchen and catering assistants,-0.832635,0.492543,-0.970218,0.061104,-1.012128,-0.766902,chained,4
+9264,Waiters and waitresses,-0.772986,0.556088,-0.932834,0.127351,-0.829287,-0.514621,chained,3
+9265,Bar staff,-0.611430,0.565127,-0.799835,0.133592,-1.378058,-1.038972,chained,2
+9266,Coffee shop workers,-0.692733,0.475660,-0.798444,0.107913,-1.012128,-0.766902,chained,2
+9267,Leisure and theme park attendants,-0.539486,0.587441,-0.724330,0.190334,-0.483446,-0.354409,chained,5
+9269,Other elementary services occupations n.e.c.,-0.477301,0.600217,-0.664118,0.201248,-0.509424,-0.331660,chained,15

@@ -1,0 +1,10 @@
+soc2020_major_group,major_group_title,c_aioe,complementarity_theta,felten_aioe,eloundou_beta,dsit_aioe,dsit_llm,weighting,employment_jobs_thousands,n_unit_groups,n_unit_groups_weighted
+1,"Managers, Directors And Senior Officials",0.618755,0.673570,0.900740,0.424035,0.942716,0.916797,ashe_2025_table14_jobs,2793.000000,42,29
+2,Professional Occupations,0.603795,0.645011,0.831678,0.429347,0.854552,0.845572,ashe_2025_table14_jobs,6981.000000,97,88
+3,Associate Professional Occupations,0.472267,0.624543,0.648432,0.427903,0.649218,0.627159,ashe_2025_table14_jobs,3754.000000,68,57
+4,Administrative And Secretarial Occupations,0.743671,0.538352,0.910434,0.514191,0.920936,0.941705,ashe_2025_table14_jobs,2585.000000,27,26
+5,Skilled Trades Occupations,-0.333348,0.625646,-0.443506,0.187874,-0.912533,-0.938844,ashe_2025_table14_jobs,1392.000000,57,38
+6,"Caring, Leisure And Other Service Occupations",-0.140396,0.619238,-0.105225,0.239852,0.022371,0.255044,ashe_2025_table14_jobs,2177.000000,29,26
+7,Sales And Customer Service Occupations,0.268931,0.532488,0.332671,0.384477,-0.079670,0.152617,ashe_2025_table14_jobs,1506.000000,19,14
+8,"Process, Plant And Machine Operatives",-0.539356,0.596294,-0.693827,0.145015,-1.074432,-1.183658,ashe_2025_table14_jobs,1231.000000,39,32
+9,Elementary Occupations,-0.729302,0.549713,-0.878454,0.146167,-1.069290,-0.869221,ashe_2025_table14_jobs,2156.000000,34,30
