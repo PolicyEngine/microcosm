@@ -1371,6 +1371,55 @@ def _check_uk_terminal_gate_observables(
                         f"concentration requires details.surface.{field} to "
                         "be empty."
                     )
+            declared_count = surface.get("declared_qrf_outputs")
+            classified = {
+                field: surface.get(field)
+                for field in (
+                    "checked_columns",
+                    "absent_columns",
+                    "non_numeric_columns",
+                )
+            }
+            thin_columns = qrf_tail.get("thin_columns")
+            if (
+                isinstance(declared_count, bool)
+                or not isinstance(declared_count, int)
+                or declared_count <= 0
+                or not isinstance(thin_columns, Mapping)
+                or any(
+                    not isinstance(names, list)
+                    or any(not isinstance(name, str) or not name for name in names)
+                    for names in classified.values()
+                )
+            ):
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
+                    "concentration must carry a positive declared output "
+                    "count, thin-columns object, and three column-name lists."
+                )
+            elif isinstance(top_share, Mapping):
+                checked = set(classified["checked_columns"])
+                absent = set(classified["absent_columns"])
+                non_numeric = set(classified["non_numeric_columns"])
+                all_lists = [
+                    *classified["checked_columns"],
+                    *classified["absent_columns"],
+                    *classified["non_numeric_columns"],
+                ]
+                accounted = checked | absent | non_numeric
+                gate_accounted = set(top_share) | set(thin_columns)
+                if (
+                    len(all_lists) != len(accounted)
+                    or declared_count != len(accounted)
+                    or set(top_share) & set(thin_columns)
+                    or accounted != gate_accounted
+                    or checked != gate_accounted - absent - non_numeric
+                ):
+                    failures.append(
+                        f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
+                        "concentration must reconcile declared, checked, "
+                        "absent, nonnumeric, checked-tail, and thin outputs."
+                    )
         if qrf_tail.get("stale_exclusions") != []:
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "

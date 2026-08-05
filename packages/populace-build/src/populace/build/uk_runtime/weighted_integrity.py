@@ -815,6 +815,52 @@ def uk_qrf_tail_concentration_gate(
             f"{column}: declared QRF output is not numeric in the person table."
             for column in surface.get("non_numeric_columns", ())
         )
+        declared_count = surface.get("declared_qrf_outputs")
+        classified = {
+            field: surface.get(field)
+            for field in (
+                "checked_columns",
+                "absent_columns",
+                "non_numeric_columns",
+            )
+        }
+        if (
+            isinstance(declared_count, bool)
+            or not isinstance(declared_count, int)
+            or declared_count <= 0
+            or any(
+                not isinstance(names, list)
+                or any(not isinstance(name, str) or not name for name in names)
+                for names in classified.values()
+            )
+        ):
+            failures.append(
+                "QRF surface must declare a positive output count and three "
+                "lists of non-empty column names."
+            )
+        else:
+            checked = set(classified["checked_columns"])
+            absent = set(classified["absent_columns"])
+            non_numeric = set(classified["non_numeric_columns"])
+            all_lists = [
+                *classified["checked_columns"],
+                *classified["absent_columns"],
+                *classified["non_numeric_columns"],
+            ]
+            accounted = checked | absent | non_numeric
+            gate_accounted = set(details["top_share"]) | set(details["thin_columns"])
+            if (
+                len(all_lists) != len(accounted)
+                or declared_count != len(accounted)
+                or set(details["top_share"]) & set(details["thin_columns"])
+                or accounted != gate_accounted
+                or checked != gate_accounted - absent - non_numeric
+            ):
+                failures.append(
+                    "QRF surface declarations must reconcile exactly across "
+                    "declared, checked, absent, nonnumeric, checked-tail, and "
+                    "thin outputs."
+                )
     if details["columns_checked"] == 0:
         failures.append(
             "No declared QRF output had enough weighted carriers for the "

@@ -2079,6 +2079,38 @@ def test_exact_k_uk_terminal_rejects_vacuous_qrf_surface(
     assert "requires details.surface.absent_columns to be empty" in failures
 
 
+def test_exact_k_uk_terminal_rejects_partially_omitted_qrf_surface(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, _evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=("qrf_tail_concentration",),
+    )
+    payload["gates"]["qrf_tail_concentration"]["details"]["surface"][
+        "declared_qrf_outputs"
+    ] = 2
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "must reconcile declared, checked, absent, nonnumeric" in failures
+
+
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
     tmp_path: Path,
 ) -> None:

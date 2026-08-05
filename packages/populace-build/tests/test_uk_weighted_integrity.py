@@ -387,6 +387,28 @@ def test_declared_nonnumeric_qrf_output_is_a_named_gate_failure() -> None:
     assert "not numeric" in gate.failures[0]
 
 
+def test_qrf_surface_rejects_partially_omitted_declared_outputs() -> None:
+    gate = uk_qrf_tail_concentration_gate(
+        {"self_employment_income": np.ones(4)},
+        {"self_employment_income": np.ones(4)},
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.75,
+            min_nonzero_records=2,
+        ),
+        surface={
+            "declared_qrf_outputs": 2,
+            "checked_columns": ["self_employment_income"],
+            "absent_columns": [],
+            "non_numeric_columns": [],
+            "density_filter": "none: every declared output is checked (#609)",
+        },
+    )
+
+    assert not gate.passed
+    assert "QRF surface declarations must reconcile exactly" in gate.failures[0]
+
+
 def test_concentrated_qrf_column_fails_by_name() -> None:
     n = 10
     concentrated = np.ones(n)

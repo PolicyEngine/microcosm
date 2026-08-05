@@ -68,8 +68,10 @@ committed enhanced-FRS source identity and the reviewed canonical digest of
 all 131 weighted totals at load, gate, and publication time.
 Exclusion JSON now rejects duplicate keys, malformed shapes, nulls, and
 non-string names or reasons; thin exclusions are always classified as dormant.
-Publication independently rejects absent, nonnumeric, or vacuous QRF evidence,
-and the launcher collision-checks the reference and both exclusion inputs
-against every source and output path before unlinking anything. Approval
-identity, receipt metadata, and expiry semantics for exclusions remain an
-author-owned follow-up rather than an invented schema change in this review.
+Publication independently rejects absent, nonnumeric, vacuous, or partially
+omitted QRF evidence and reconciles every declared output across the checked
+and thin maps. The launcher collision-checks the reference and both exclusion
+inputs against every source and output path before unlinking anything.
+Approval identity, receipt metadata, and expiry semantics for exclusions
+remain an author-owned follow-up rather than an invented schema change in this
+review.
