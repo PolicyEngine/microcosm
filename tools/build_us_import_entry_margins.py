@@ -1,33 +1,47 @@
 """Build the US import-entry margin artifacts (populace#615 P1).
 
-Pulls official Census monthly import statistics (HS10 × country: customs
-value, calculated duty, dutiable value, quantities) from 2025-01 through the
-latest published month, archives every response byte-for-byte with a
-retrieval manifest, archives the CBP trade-statistics page for the
-fiscal-year entry-summary anchors, and emits:
+Primary source: the Census monthly bulk *U.S. Imports of Merchandise*
+database (IMDB) archives — one public no-auth ZIP per month carrying the
+full HTS10 × country × district × rate-provision detail (customs value,
+dutiable value, calculated duty, charges, CIF, quantities, and air/vessel/
+containerized transport splits) plus the publisher's own control-total
+files. Each archive is verified, hashed into the retrieval manifest, parsed
+per the archives' own record layouts, and reconciled exact-integer against
+the in-archive control totals (by country, by commodity, and by district of
+entry). The Census International Trade API is not used by this build; it
+remains an independent cross-check leg
+(``tools/crosscheck_us_import_margins_api.py``).
 
-- ``margins_hts10_country_month.parquet`` — the full-grain tidy margins
-  table (the P2 generator input),
-- ``census_totals_hts10_month.parquet`` — the publisher's own ``-`` total
-  rows (reconciliation oracle),
-- ``consumer_artifact/`` — the ledger-contract fact feed
-  (``manifest.json`` + ``consumer_facts.jsonl``) at the national, chapter,
-  country, and chapter × country grains,
-- ``build_report.json`` — counts, months, reconciliation status, and the
-  artifact hashes.
+Emits under ``--out-dir``:
 
-The pull is resumable: response bytes cache under ``--cache-dir`` and cached
-chapters are never re-fetched. The Census API key comes from
-``--census-key`` or ``CENSUS_API_KEY`` and is never written to disk.
+- ``margins_hts10_country_month.parquet`` — the tidy HTS10 × country ×
+  month margins table (the P2 generator input; API-compatible core columns
+  plus the bulk-only measures),
+- ``census_totals_hts10_month.parquet`` — the publisher's per-commodity
+  control totals (reconciliation oracle),
+- ``district_entry_month.parquet`` — the publisher's district-of-entry
+  totals with names,
+- ``detail/period=YYYY-MM.parquet`` — the complete monthly detail at
+  publication grain (HTS10 × country × subcode × districts × rate
+  provision, all monthly measures),
+- ``consumer_artifact/`` — the ledger-contract fact feed at the national,
+  chapter, country, chapter × country, and district-of-entry grains,
+- ``build_report.json`` — window, counts, reconciliation status, artifact
+  hashes.
+
+Archives cache under ``--archive-dir`` and are never re-downloaded once
+present and valid. ``--download-manifest`` optionally points at a JSONL
+manifest (rows with ``file``/``retrieved_at_utc``) recording when
+pre-downloaded archives were actually retrieved.
 
 Example::
 
-    CENSUS_API_KEY=... uv run python tools/build_us_import_entry_margins.py \
-        --start 2025-01 \
-        --cache-dir ~/.cache/populace/us-trade/census-imports-hs \
+    uv run python tools/build_us_import_entry_margins.py \
+        --start 2025-01 --end 2026-06 \
+        --archive-dir ~/.cache/populace/us-trade/imdb \
         --out-dir out/us-import-entry-margins
 
-Exit code: 1 on any reconciliation failure or empty pull.
+Exit code: 1 on any reconciliation failure or empty result.
 """
 
 from __future__ import annotations
@@ -35,7 +49,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import sys
 import urllib.request
 from datetime import UTC, datetime
@@ -48,16 +61,18 @@ sys.path.insert(
 from populace.build.us_trade import (  # noqa: E402
     CBP_TRADE_STATS_URL,
     build_cbp_entry_fact_rows,
+    build_district_entry_fact_rows,
     build_import_entry_fact_rows,
     default_generator_block,
-    fetch_imports_month,
-    latest_published_month,
+    ensure_imdb_archive,
+    latest_available_imdb_month,
     load_census_country_bridge,
+    load_imdb_month,
     month_range,
     parse_cbp_trade_stats,
     write_consumer_artifact,
 )
-from populace.build.us_trade.census_imports import assemble_margins_table  # noqa: E402
+from populace.build.us_trade.imdb_bulk import assemble_bulk_margins  # noqa: E402
 
 
 def main() -> int:
@@ -66,68 +81,63 @@ def main() -> int:
     parser.add_argument(
         "--end",
         default=None,
-        help="Last month (YYYY-MM); default = latest published month, probed.",
+        help="Last month (YYYY-MM); default = latest published archive, probed.",
     )
-    parser.add_argument("--cache-dir", required=True, type=Path)
+    parser.add_argument("--archive-dir", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument(
-        "--census-key",
+        "--download-manifest",
         default=None,
-        help="Census API key; default $CENSUS_API_KEY.",
+        type=Path,
+        help=(
+            "JSONL manifest from the download loop (rows with file/"
+            "retrieved_at_utc) supplying retrieval timestamps for "
+            "pre-downloaded archives."
+        ),
     )
     parser.add_argument(
         "--skip-cbp",
         action="store_true",
         help="Skip the CBP page archive (facts then omit the entry anchors).",
     )
-    parser.add_argument(
-        "--throttle-seconds",
-        type=float,
-        default=0.2,
-        help="Pause between uncached API calls.",
-    )
-    parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=4,
-        help="Concurrent chapter requests per month.",
-    )
     args = parser.parse_args()
-
-    api_key = args.census_key or os.environ.get("CENSUS_API_KEY")
-    if not api_key:
-        parser.error("A Census API key is required (--census-key or CENSUS_API_KEY).")
 
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     extracted_at = datetime.now(UTC).isoformat(timespec="seconds")
 
-    end = args.end or latest_published_month(api_key)
+    end = args.end or latest_available_imdb_month()
     months = month_range(args.start, end)
     print(f"[margins] window {months[0]} .. {months[-1]} ({len(months)} months)")
 
+    retrieved_at_by_name = _load_download_manifest(args.download_manifest)
     bridge = load_census_country_bridge()
-    pulled = []
-    for month in months:
-        pulled_month = fetch_imports_month(
-            month,
-            api_key,
-            cache_dir=args.cache_dir,
-            throttle_seconds=args.throttle_seconds,
-            max_workers=args.max_workers,
-        )
-        pulled.append(pulled_month)
-        print(
-            f"[margins] {month}: {len(pulled_month.country_rows)} country rows, "
-            f"{len(pulled_month.total_rows)} census totals, "
-            f"{len(pulled_month.reconciliation_failures)} reconciliation failures"
-        )
-    pull = assemble_margins_table(tuple(pulled), bridge)
 
-    if pull.margins.empty:
-        print("[margins] FATAL: empty margins table", file=sys.stderr)
-        return 1
-    failures = pull.reconciliation_failures
+    detail_dir = out_dir / "detail"
+    detail_dir.mkdir(parents=True, exist_ok=True)
+    parsed = []
+    detail_paths: dict[str, Path] = {}
+    for month in months:
+        archive_path, manifest_entry = ensure_imdb_archive(
+            month,
+            args.archive_dir,
+            retrieved_at_by_name=retrieved_at_by_name,
+        )
+        month_data = load_imdb_month(archive_path, month, manifest_entry)
+        parsed.append(month_data)
+        detail_path = detail_dir / f"period={month}.parquet"
+        month_data.detail.to_parquet(detail_path, index=False)
+        detail_paths[month] = detail_path
+        print(
+            f"[margins] {month}: {len(month_data.detail)} detail rows, "
+            f"{len(month_data.control_cty)} country controls, "
+            f"{len(month_data.control_comm)} commodity controls, "
+            f"{len(month_data.reconciliation_failures)} reconciliation failures"
+        )
+
+    failures = [
+        failure for month in parsed for failure in month.reconciliation_failures
+    ]
     if failures:
         for failure in failures[:20]:
             print(f"[margins] RECONCILIATION FAIL: {failure}", file=sys.stderr)
@@ -137,17 +147,30 @@ def main() -> int:
         )
         return 1
 
+    assembly = assemble_bulk_margins(tuple(parsed), bridge)
+    if assembly.margins.empty:
+        print("[margins] FATAL: empty margins table", file=sys.stderr)
+        return 1
+
     margins_path = out_dir / "margins_hts10_country_month.parquet"
     totals_path = out_dir / "census_totals_hts10_month.parquet"
-    pull.margins.to_parquet(margins_path, index=False)
-    pull.census_totals.to_parquet(totals_path, index=False)
+    district_path = out_dir / "district_entry_month.parquet"
+    assembly.margins.to_parquet(margins_path, index=False)
+    assembly.census_totals.to_parquet(totals_path, index=False)
+    assembly.district_entry.to_parquet(district_path, index=False)
 
+    retrievals = list(assembly.manifest_entries)
     fact_rows = build_import_entry_fact_rows(
-        pull.margins,
-        retrieval_manifest=pull.manifest_entries,
+        assembly.margins,
+        retrieval_manifest=retrievals,
         extracted_at=extracted_at,
     )
-    retrievals = list(pull.manifest_entries)
+    district_rows = build_district_entry_fact_rows(
+        assembly.district_entry,
+        retrieval_manifest=retrievals,
+        extracted_at=extracted_at,
+    )
+    fact_rows.extend(district_rows)
 
     cbp_facts = 0
     if not args.skip_cbp:
@@ -170,24 +193,55 @@ def main() -> int:
     )
 
     report = {
+        "source": "census_imdb_bulk",
         "window": {"start": months[0], "end": months[-1], "months": len(months)},
-        "margin_rows": int(len(pull.margins)),
-        "census_total_rows": int(len(pull.census_totals)),
-        "distinct_hts10": int(pull.margins["hts10"].nunique()),
-        "distinct_countries": int(pull.margins["iso2"].nunique()),
+        "detail_rows": int(sum(len(month.detail) for month in parsed)),
+        "margin_rows": int(len(assembly.margins)),
+        "census_total_rows": int(len(assembly.census_totals)),
+        "district_rows": int(len(assembly.district_entry)),
+        "distinct_hts10": int(assembly.margins["hts10"].nunique()),
+        "distinct_countries": int(assembly.margins["iso2"].nunique()),
+        "distinct_districts": int(assembly.district_entry["dist_entry"].nunique()),
         "fact_rows": len(fact_rows),
+        "district_fact_rows": len(district_rows),
         "cbp_fact_rows": cbp_facts,
         "facts_sha256": manifest["facts_sha256"],
         "margins_parquet_sha256": _sha256(margins_path),
         "census_totals_parquet_sha256": _sha256(totals_path),
+        "district_parquet_sha256": _sha256(district_path),
+        "detail_parquet_sha256": {
+            month: _sha256(path) for month, path in sorted(detail_paths.items())
+        },
         "reconciliation_failures": 0,
         "extracted_at": extracted_at,
     }
     (out_dir / "build_report.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n"
     )
-    print(json.dumps(report, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {k: v for k, v in report.items() if k != "detail_parquet_sha256"},
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
+
+
+def _load_download_manifest(path: Path | None) -> dict[str, str]:
+    if path is None or not path.exists():
+        return {}
+    timestamps: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        name = row.get("file")
+        retrieved = row.get("retrieved_at_utc") or row.get("retrieved_at")
+        if name and retrieved:
+            timestamps[str(name)] = str(retrieved)
+    return timestamps
 
 
 def _archive_cbp_page(out_dir: Path, extracted_at: str) -> tuple[bytes, dict]:

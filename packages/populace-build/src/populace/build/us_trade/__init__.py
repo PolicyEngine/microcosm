@@ -9,9 +9,13 @@ margins is explicit, documented, and labeled synthetic.
 
 Modules:
 
+- :mod:`populace.build.us_trade.imdb_bulk` — the primary ingest: Census
+  monthly bulk IMDB archives (full HTS-10 × country × district × rate-
+  provision detail with transport splits), parsed per the archives' own
+  record layouts and reconciled exactly against their control totals.
 - :mod:`populace.build.us_trade.census_imports` — Census International Trade
-  API ingest: HTS-10 × country × month customs value, calculated duty,
-  dutiable value, and quantities, with retrieval manifests.
+  API ingest, retained as the independent cross-check leg: the same margin
+  series fetched over a second official channel.
 - :mod:`populace.build.us_trade.census_country_bridge` — the vendored Census
   Schedule C → ISO-2 bridge (fail-closed).
 - :mod:`populace.build.us_trade.cbp_entry_stats` — CBP fiscal-year entry
@@ -39,9 +43,23 @@ from populace.build.us_trade.census_imports import (
     month_range,
     parse_imports_response,
 )
+from populace.build.us_trade.imdb_bulk import (
+    IMDB_URL_TEMPLATE,
+    ImdbBulkAssembly,
+    ImdbMonth,
+    assemble_bulk_margins,
+    ensure_imdb_archive,
+    imdb_archive_name,
+    imdb_archive_url,
+    latest_available_imdb_month,
+    load_imdb_month,
+)
 from populace.build.us_trade.import_entry_facts import (
+    IMDB_BULK_SOURCE_LEG,
     IMPORT_ENTRY_FACT_GRAINS,
+    FactSourceLeg,
     build_cbp_entry_fact_rows,
+    build_district_entry_fact_rows,
     build_import_entry_fact_rows,
     default_generator_block,
     write_consumer_artifact,
@@ -54,14 +72,26 @@ __all__ = [
     "CensusCountryBridge",
     "CensusImportsMonth",
     "CensusImportsPull",
+    "FactSourceLeg",
+    "IMDB_BULK_SOURCE_LEG",
+    "IMDB_URL_TEMPLATE",
     "IMPORT_ENTRY_FACT_GRAINS",
+    "ImdbBulkAssembly",
+    "ImdbMonth",
+    "assemble_bulk_margins",
     "assemble_margins_table",
     "build_cbp_entry_fact_rows",
+    "build_district_entry_fact_rows",
     "build_import_entry_fact_rows",
     "default_generator_block",
+    "ensure_imdb_archive",
     "fetch_imports_month",
+    "imdb_archive_name",
+    "imdb_archive_url",
+    "latest_available_imdb_month",
     "latest_published_month",
     "load_census_country_bridge",
+    "load_imdb_month",
     "month_range",
     "parse_cbp_trade_stats",
     "parse_imports_response",

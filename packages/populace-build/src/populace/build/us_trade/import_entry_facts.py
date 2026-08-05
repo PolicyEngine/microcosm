@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,16 +43,72 @@ from populace.build.us_trade.cbp_entry_stats import (
     CbpEntryStats,
 )
 from populace.build.us_trade.census_imports import CENSUS_IMPORTS_HS_ENDPOINT
+from populace.build.us_trade.imdb_bulk import IMDB_URL_TEMPLATE
 
 __all__ = [
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
+    "IMDB_BULK_SOURCE_LEG",
     "IMPORT_ENTRY_FACT_GRAINS",
     "MEASURE_CATALOG",
+    "FactSourceLeg",
     "build_cbp_entry_fact_rows",
+    "build_district_entry_fact_rows",
     "build_import_entry_fact_rows",
     "default_generator_block",
     "write_consumer_artifact",
 ]
+
+
+@dataclass(frozen=True)
+class FactSourceLeg:
+    """Retrieval-channel identity stamped into every emitted fact's source.
+
+    The statistical series is the same official Census monthly import
+    publication either way; the leg records *how the bytes were obtained*
+    (monthly bulk IMDB archives vs the International Trade API), so fact
+    identity (``record_set_id``, fact keys) never varies by channel while
+    provenance stays honest.
+    """
+
+    source_name: str
+    source_table: str
+    url: str
+    extraction_method: str
+
+
+#: The primary retrieval channel: the monthly bulk database archives.
+IMDB_BULK_SOURCE_LEG = FactSourceLeg(
+    source_name="census_intltrade",
+    source_table=(
+        "US Imports of Merchandise monthly database (IMDB), IMP_DETL fixed-width detail"
+    ),
+    url=IMDB_URL_TEMPLATE,
+    extraction_method=(
+        "populace us_trade imdb_bulk ingest: Census monthly bulk IMDB "
+        "archives parsed per the archives' own record layouts, detail "
+        "summed to the {grain} grain and reconciled exactly against the "
+        "publisher's in-archive control totals (IMP_CTY/IMP_COMM/IMP_DE); "
+        "populace-minted to the ledger consumer contract (not a "
+        "PolicyEngine/ledger build)."
+    ),
+)
+
+#: The cross-check channel (kept for provenance parity with lane-G pulls).
+CENSUS_API_SOURCE_LEG = FactSourceLeg(
+    source_name="census_intltrade",
+    source_table=(
+        "US International Trade monthly imports, HS10 by country "
+        "(timeseries/intltrade/imports/hs)"
+    ),
+    url=CENSUS_IMPORTS_HS_ENDPOINT,
+    extraction_method=(
+        "populace us_trade census_imports ingest: Census International "
+        "Trade API monthly HS10 chapter pulls, DET country detail summed "
+        "to the {grain} grain and reconciled exactly against the "
+        "publisher's '-' totals; populace-minted to the ledger consumer "
+        "contract (not a PolicyEngine/ledger build)."
+    ),
+)
 
 CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v1"
 _FACT_SCHEMA_VERSION = "ledger.consumer_fact.v1"
@@ -159,21 +216,25 @@ def build_import_entry_fact_rows(
     *,
     retrieval_manifest: Iterable[Mapping[str, Any]],
     extracted_at: str,
+    source_leg: FactSourceLeg = IMDB_BULK_SOURCE_LEG,
     grains: tuple[str, ...] = IMPORT_ENTRY_FACT_GRAINS,
 ) -> list[dict[str, Any]]:
     """Aggregate the tidy margins table into consumer fact rows.
 
     ``margins`` is the ingest's HTS10 × country × month table (one row per
     nonzero detail cell). Every emitted grain is an exact integer sum of
-    those detail rows.
+    those detail rows. ``source_leg`` names the retrieval channel; fact
+    identity is channel-invariant (same record sets and keys from the bulk
+    archives or the API), only the ``source`` provenance block varies.
     """
     unknown = sorted(set(grains) - set(IMPORT_ENTRY_FACT_GRAINS))
     if unknown:
         raise ValueError(f"Unknown import-entry fact grain(s): {unknown}.")
     if margins.empty:
         raise ValueError("Cannot emit import-entry facts from an empty margins table.")
-    manifest_by_month_chapter = _manifest_index(retrieval_manifest)
-    month_digests = _month_set_digests(retrieval_manifest)
+    entries = [dict(entry) for entry in retrieval_manifest]
+    manifest_by_month_chapter = _manifest_index(entries)
+    month_identities = _month_file_identities(entries)
     rows: list[dict[str, Any]] = []
     for grain in grains:
         grouped = _aggregate(margins, grain)
@@ -186,10 +247,115 @@ def build_import_entry_fact_rows(
                         measure=measure,
                         value=int(getattr(record, measure)),
                         extracted_at=extracted_at,
+                        source_leg=source_leg,
                         manifest_by_month_chapter=manifest_by_month_chapter,
-                        month_digests=month_digests,
+                        month_identities=month_identities,
                     )
                 )
+    rows.sort(key=lambda row: row["lineage"]["source_record_id"])
+    return rows
+
+
+def build_district_entry_fact_rows(
+    district_entry: pd.DataFrame,
+    *,
+    retrieval_manifest: Iterable[Mapping[str, Any]],
+    extracted_at: str,
+    source_leg: FactSourceLeg = IMDB_BULK_SOURCE_LEG,
+) -> list[dict[str, Any]]:
+    """Mint district-of-entry margin facts from the publisher's own table.
+
+    ``district_entry`` is the per-month district control table (already
+    reconciled exactly against the detail by the ingest); the emitted
+    measures are the duty-relevant pair, mirroring the chapter × country
+    feed grain. District facts carry their own record-set family
+    (``census_intltrade.imports_district_entry``).
+    """
+    if district_entry.empty:
+        raise ValueError(
+            "Cannot emit district-entry facts from an empty district table."
+        )
+    entries = [dict(entry) for entry in retrieval_manifest]
+    month_identities = _month_file_identities(entries)
+    rows: list[dict[str, Any]] = []
+    for record in district_entry.itertuples(index=False):
+        month = str(record.period)
+        source_file, source_sha256, sha_list = month_identities.get(month, ("", "", []))
+        for measure in ("con_val_mo", "cal_dut_mo"):
+            catalog = MEASURE_CATALOG[measure]
+            record_set_id = (
+                "census_intltrade.imports_district_entry."
+                f"month_{month.replace('-', '_')}"
+            )
+            value_id = f"de{record.dist_entry}"
+            source_record_id = f"{record_set_id}.{value_id}.{measure}"
+            row: dict[str, Any] = {
+                "schema_version": _FACT_SCHEMA_VERSION,
+                "assertion": "observation",
+                "aggregation": {"method": "sum"},
+                "value": int(getattr(record, measure)),
+                "value_type": "integer",
+                "period": {"type": "month", "value": month},
+                "geography": {
+                    "id": "0100000US",
+                    "level": "country",
+                    "name": "United States",
+                },
+                "entity": {"name": "import_entry", "role": "customs_entry"},
+                "dimensions": {
+                    "district_of_entry": str(record.dist_entry),
+                    "district_name": str(record.dist_name),
+                },
+                "universe_constraints": {"domain": catalog["domain"]},
+                "provenance_class": "administrative",
+                "observed_measure": {
+                    "source_name": source_leg.source_name,
+                    "source_table": source_leg.source_table,
+                    "source_measure_id": catalog["source_measure_id"],
+                    "source_concept": catalog["source_concept"],
+                    "unit": catalog["unit"],
+                },
+                "layout": {
+                    "record_set_id": record_set_id,
+                    "groupby_dimension": "district_of_entry",
+                    "groupby_value_id": value_id,
+                    "measure_id": measure,
+                    "measure_label": catalog["label"],
+                },
+                "lineage": {
+                    "source_record_id": source_record_id,
+                    "source_file_sha256s": sha_list,
+                },
+                "source": {
+                    "source_name": source_leg.source_name,
+                    "source_table": source_leg.source_table,
+                    "source_file": source_file,
+                    "source_sha256": source_sha256,
+                    "url": source_leg.url,
+                    "vintage": f"monthly_revision_as_retrieved_{extracted_at[:10]}",
+                    "extracted_at": extracted_at,
+                    "extraction_method": source_leg.extraction_method.format(
+                        grain="district_entry"
+                    ),
+                },
+                "label": (
+                    f"United States {month} {catalog['label']} "
+                    f"(district_of_entry={value_id}) "
+                    f"[{source_leg.source_name}]"
+                ),
+            }
+            if catalog["canonical_concept"]:
+                row["concept_alignment"] = {
+                    "authority": "populace-us-trade",
+                    "canonical_concept": catalog["canonical_concept"],
+                    "relation": catalog["concept_relation"],
+                    "evidence_notes": catalog["concept_evidence"],
+                    "evidence_url": _CUSTOMS_VALUE_DEFINITION_URL,
+                    "legal_vintage": month,
+                    "source_concept": catalog["source_concept"],
+                }
+            _stamp_keys(row)
+            rows.append(row)
     rows.sort(key=lambda row: row["lineage"]["source_record_id"])
     return rows
 
@@ -337,8 +503,9 @@ def _fact_row(
     measure: str,
     value: int,
     extracted_at: str,
+    source_leg: FactSourceLeg,
     manifest_by_month_chapter: Mapping[tuple[str, str], list[Mapping[str, Any]]],
-    month_digests: Mapping[str, str],
+    month_identities: Mapping[str, tuple[str, str, list[str]]],
 ) -> dict[str, Any]:
     month = str(record.period)
     catalog = MEASURE_CATALOG[measure]
@@ -354,12 +521,15 @@ def _fact_row(
     )
     source_record_id = f"{record_set_id}.{value_id}.{measure}"
     lineage: dict[str, Any] = {"source_record_id": source_record_id}
-    source_sha256 = month_digests.get(month, "")
-    source_file = ""
+    month_file, month_sha, month_shas = month_identities.get(month, ("", "", []))
+    source_sha256 = month_sha
+    source_file = month_file
     if grain in ("chapter", "chapter_country"):
-        # A chapter served in one response has one file; a chapter the API
-        # split into sub-prefixes has several, and the fact's source hash
-        # is then the sorted-hash set digest over all of them.
+        # An API chapter served in one response has one file; a chapter the
+        # API split into sub-prefixes has several, and the fact's source
+        # hash is then the sorted-hash set digest over all of them. Bulk
+        # months have no per-chapter files, so chapter facts carry the
+        # month archive's identity.
         chapter_entries = manifest_by_month_chapter.get(
             (month, str(record.chapter)), ()
         )
@@ -371,27 +541,20 @@ def _fact_row(
         elif shas:
             source_sha256 = hashlib.sha256("\n".join(shas).encode("utf-8")).hexdigest()
             source_file = f"{len(shas)} prefix files (set digest)"
+        else:
+            shas = month_shas
         lineage["source_file_sha256s"] = shas
     else:
-        lineage["source_month_set_digest"] = source_sha256
+        lineage["source_file_sha256s"] = month_shas
     source = {
-        "source_name": "census_intltrade",
-        "source_table": (
-            "US International Trade monthly imports, HS10 by country "
-            "(timeseries/intltrade/imports/hs)"
-        ),
+        "source_name": source_leg.source_name,
+        "source_table": source_leg.source_table,
         "source_file": source_file,
         "source_sha256": source_sha256,
-        "url": CENSUS_IMPORTS_HS_ENDPOINT,
+        "url": source_leg.url,
         "vintage": f"monthly_revision_as_retrieved_{extracted_at[:10]}",
         "extracted_at": extracted_at,
-        "extraction_method": (
-            "populace us_trade census_imports ingest: Census International "
-            "Trade API monthly HS10 chapter pulls, DET country detail summed "
-            f"to the {grain} grain and reconciled exactly against the "
-            "publisher's '-' totals; populace-minted to the ledger consumer "
-            "contract (not a PolicyEngine/ledger build)."
-        ),
+        "extraction_method": source_leg.extraction_method.format(grain=grain),
     }
     row: dict[str, Any] = {
         "schema_version": _FACT_SCHEMA_VERSION,
@@ -517,19 +680,39 @@ def _manifest_index(
     return index
 
 
-def _month_set_digests(
+def _month_file_identities(
     retrieval_manifest: Iterable[Mapping[str, Any]],
-) -> dict[str, str]:
-    by_month: dict[str, list[str]] = {}
+) -> dict[str, tuple[str, str, list[str]]]:
+    """Per-month source-file identity: ``(file, sha256, sha_list)``.
+
+    A month retrieved as one archive (the bulk leg) is identified by that
+    file and its hash directly. A month assembled from many responses (the
+    API leg) is identified by the sorted-hash set digest; the per-row sha
+    list is left empty there to keep the feed lean (chapter-grain rows
+    carry their own chapter-level sha lists).
+    """
+    by_month: dict[str, list[tuple[str, str]]] = {}
     for entry in retrieval_manifest:
         month = str(entry.get("month") or "")
         sha = entry.get("sha256")
         if month and sha:
-            by_month.setdefault(month, []).append(str(sha))
-    return {
-        month: hashlib.sha256("\n".join(sorted(shas)).encode("utf-8")).hexdigest()
-        for month, shas in by_month.items()
-    }
+            by_month.setdefault(month, []).append(
+                (str(entry.get("filename") or ""), str(sha))
+            )
+    identities: dict[str, tuple[str, str, list[str]]] = {}
+    for month, pairs in by_month.items():
+        if len(pairs) == 1:
+            filename, sha = pairs[0]
+            identities[month] = (filename, sha, [sha])
+        else:
+            shas = sorted(sha for _, sha in pairs)
+            digest = hashlib.sha256("\n".join(shas).encode("utf-8")).hexdigest()
+            identities[month] = (
+                f"{len(shas)} response files (set digest)",
+                digest,
+                [],
+            )
+    return identities
 
 
 def _retrieval_set_digest(retrievals: list[dict[str, Any]]) -> str:
