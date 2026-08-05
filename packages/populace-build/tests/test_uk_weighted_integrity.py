@@ -167,9 +167,7 @@ def test_input_mass_reference_identity_is_recorded() -> None:
 
 def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
     reason = "Seeded reviewed loss for the fixture."
-    reference = _reference(
-        {"person.employment_income": 10.0, "person.tiny_layer": 0.5}
-    )
+    reference = _reference({"person.employment_income": 10.0, "person.tiny_layer": 0.5})
     policy = _policy(
         minimum_reference_total=1.0,
         reviewed_exclusions={
@@ -192,9 +190,7 @@ def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
 
     # A live exclusion suppresses the zeroed-column failure and is recorded.
     assert live.passed
-    assert (
-        live.details["reviewed_exclusions"]["person.employment_income"] == reason
-    )
+    assert live.details["reviewed_exclusions"]["person.employment_income"] == reason
     # Below-floor and absent-from-reference entries are dormant, not failing.
     assert live.details["dormant_exclusions"] == [
         "person.never_shipped",
@@ -254,6 +250,58 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert surface["declared_qrf_outputs"] >= 47
 
 
+def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
+    values, weights, surface = uk_qrf_tail_concentration_columns(
+        _dataset(),
+        output_columns=("declared_but_absent",),
+    )
+
+    assert set(values) == {"declared_but_absent"}
+    assert set(weights) == {"declared_but_absent"}
+    gate = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.5,
+            min_nonzero_records=2,
+        ),
+        surface=surface,
+    )
+
+    assert not gate.passed
+    assert gate.details["columns_checked"] == 0
+    assert gate.details["surface"]["absent_columns"] == ["declared_but_absent"]
+    assert "declared_but_absent" in gate.failures[0]
+    assert "absent" in gate.failures[0]
+
+
+def test_declared_nonnumeric_qrf_output_is_a_named_gate_failure() -> None:
+    values, weights, surface = uk_qrf_tail_concentration_columns(
+        _dataset(person_columns={"declared_nonnumeric": ["x"] * 4}),
+        output_columns=("declared_nonnumeric",),
+    )
+
+    assert set(values) == {"declared_nonnumeric"}
+    assert set(weights) == {"declared_nonnumeric"}
+    gate = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.5,
+            min_nonzero_records=2,
+        ),
+        surface=surface,
+    )
+
+    assert not gate.passed
+    assert gate.details["columns_checked"] == 0
+    assert gate.details["surface"]["non_numeric_columns"] == ["declared_nonnumeric"]
+    assert "declared_nonnumeric" in gate.failures[0]
+    assert "not numeric" in gate.failures[0]
+
+
 def test_concentrated_qrf_column_fails_by_name() -> None:
     n = 10
     concentrated = np.ones(n)
@@ -293,8 +341,31 @@ def test_thin_qrf_column_is_reported_not_checked() -> None:
         ),
     )
 
-    assert gate.passed
-    assert gate.details["thin_columns"] == {"self_employment_income": 4}
+    assert not gate.passed
+    assert gate.details["thin_columns"]["self_employment_income"] == 4
+    assert "No declared QRF output" in gate.failures[0]
+
+
+def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
+    values = {"person.x": np.ones(4)}
+    weights = {"person.x": np.ones(4)}
+
+    gate = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=10,
+            max_top_share=0.5,
+            min_nonzero_records=100,
+            reviewed_exclusions={"person.x": "Seeded thin entry."},
+        ),
+    )
+
+    assert not gate.passed
+    assert gate.details["thin_columns"] == {"person.x": 4}
+    assert gate.details["reviewed_exclusions"] == {}
+    assert gate.details["stale_exclusions"] == []
+    assert gate.details["dormant_exclusions"] == ["person.x"]
 
 
 def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
@@ -324,7 +395,9 @@ def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
 
 def test_qrf_policy_validation() -> None:
     with pytest.raises(ValueError, match="strict subset"):
-        UKQRFTailConcentrationPolicy(top_k=10, max_top_share=0.5, min_nonzero_records=10)
+        UKQRFTailConcentrationPolicy(
+            top_k=10, max_top_share=0.5, min_nonzero_records=10
+        )
     with pytest.raises(ValueError, match=r"in \(0, 1\)"):
         UKQRFTailConcentrationPolicy(top_k=1, max_top_share=1.0, min_nonzero_records=2)
     with pytest.raises(ValueError, match="need reasons"):
@@ -462,9 +535,7 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
     assert ported.failures == shared.failures
     shared_details = dict(shared.details)
     assert {
-        key: value
-        for key, value in ported.details.items()
-        if key in shared_details
+        key: value for key, value in ported.details.items() if key in shared_details
     } == shared_details
     assert set(ported.details) - set(shared_details) == {
         "stale_exclusions",

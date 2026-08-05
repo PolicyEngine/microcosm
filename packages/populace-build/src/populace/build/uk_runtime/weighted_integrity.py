@@ -359,9 +359,13 @@ class UKQRFTailConcentrationPolicy:
 
     def __post_init__(self) -> None:
         if isinstance(self.top_k, bool) or not isinstance(self.top_k, int):
-            raise ValueError(f"UK QRF tail top_k must be an integer, got {self.top_k!r}.")
+            raise ValueError(
+                f"UK QRF tail top_k must be an integer, got {self.top_k!r}."
+            )
         if self.top_k < 1:
-            raise ValueError(f"UK QRF tail top_k must be at least 1, got {self.top_k!r}.")
+            raise ValueError(
+                f"UK QRF tail top_k must be at least 1, got {self.top_k!r}."
+            )
         share = float(self.max_top_share)
         if not math.isfinite(share) or not 0.0 < share < 1.0:
             raise ValueError(
@@ -407,9 +411,7 @@ def _entity_table(dataset: Any, entity: str) -> pd.DataFrame:
         else getattr(dataset, entity, None)
     )
     if not isinstance(table, pd.DataFrame):
-        raise TypeError(
-            f"UK weighted-integrity gates require a {entity} DataFrame."
-        )
+        raise TypeError(f"UK weighted-integrity gates require a {entity} DataFrame.")
     return table
 
 
@@ -436,9 +438,10 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
     household_weights = pd.to_numeric(
         household["household_weight"], errors="coerce"
     ).astype(np.float64)
-    if household_weights.isna().any() or not np.isfinite(
-        household_weights.to_numpy()
-    ).all():
+    if (
+        household_weights.isna().any()
+        or not np.isfinite(household_weights.to_numpy()).all()
+    ):
         raise ValueError("UK household weights must be finite numbers.")
     by_household = pd.Series(
         household_weights.to_numpy(), index=household["household_id"]
@@ -449,8 +452,7 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
     person_weights = person["person_household_id"].map(by_household)
     if person_weights.isna().any():
         raise ValueError(
-            "UK person rows reference household_id values with no resolvable "
-            "weight."
+            "UK person rows reference household_id values with no resolvable weight."
         )
 
     # A benunit inherits the weight of the household containing it, so the
@@ -476,8 +478,7 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
     benunit_weights = benunit["benunit_id"].map(benunit_household).map(by_household)
     if benunit_weights.isna().any():
         raise ValueError(
-            "UK benunit rows have no member persons to resolve a household "
-            "weight from."
+            "UK benunit rows have no member persons to resolve a household weight from."
         )
     return {
         "person": person_weights.to_numpy(dtype=np.float64),
@@ -572,11 +573,7 @@ def uk_input_mass_parity_gate(
         # Re-check the single excluded column without its exclusion, reusing
         # the shared gate's exact semantics (zero-fail, drift, absence).
         probe = input_mass_parity_gate(
-            (
-                {column: candidate_totals[column]}
-                if column in candidate_totals
-                else {}
-            ),
+            ({column: candidate_totals[column]} if column in candidate_totals else {}),
             {column: reference.totals[column]},
             candidate_name=candidate_name,
             reference_name=reference.filename,
@@ -639,24 +636,30 @@ def uk_qrf_tail_concentration_columns(
     person_weights = _uk_entity_weights(dataset)["person"]
     values: dict[str, np.ndarray] = {}
     weights: dict[str, np.ndarray] = {}
+    checked: list[str] = []
     absent: list[str] = []
     non_numeric: list[str] = []
     for column in declared:
         if column not in person.columns:
             absent.append(column)
+            values[column] = np.array([], dtype=np.float64)
+            weights[column] = np.array([], dtype=np.float64)
             continue
         series = person[column]
         if pd.api.types.is_bool_dtype(series) or not pd.api.types.is_numeric_dtype(
             series
         ):
             non_numeric.append(column)
+            values[column] = np.array([], dtype=np.float64)
+            weights[column] = np.array([], dtype=np.float64)
             continue
         numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
         values[column] = numeric.to_numpy(dtype=np.float64)
         weights[column] = person_weights
+        checked.append(column)
     surface: dict[str, object] = {
         "declared_qrf_outputs": len(declared),
-        "checked_columns": sorted(values),
+        "checked_columns": sorted(checked),
         "absent_columns": absent,
         "non_numeric_columns": non_numeric,
         "density_filter": "none: every declared output is checked (#609)",
@@ -690,11 +693,25 @@ def uk_qrf_tail_concentration_gate(
         reviewed_exclusions=dict(policy.reviewed_exclusions),
     )
     details = dict(base.details)
+    failures = list(base.failures)
     if surface is not None:
         details["surface"] = dict(surface)
+        failures.extend(
+            f"{column}: declared QRF output is absent from the person table."
+            for column in surface.get("absent_columns", ())
+        )
+        failures.extend(
+            f"{column}: declared QRF output is not numeric in the person table."
+            for column in surface.get("non_numeric_columns", ())
+        )
+    if details["columns_checked"] == 0:
+        failures.append(
+            "No declared QRF output had enough weighted carriers for the "
+            "tail-concentration check."
+        )
     return GateResult(
         name=UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
-        passed=base.passed,
-        failures=base.failures,
+        passed=not failures,
+        failures=tuple(failures),
         details=details,
     )

@@ -1841,6 +1841,18 @@ class TestTailConcentrationGate:
         assert result.passed
         assert result.details["thin_columns"] == {"thin": 10}
 
+    def test_thin_reviewed_exclusion_is_dormant(self) -> None:
+        result = tail_concentration_gate(
+            {"thin": np.ones(10)},
+            {"thin": np.ones(10)},
+            reviewed_exclusions={"thin": "Documented while inactive."},
+        )
+
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {}
+        assert result.details["stale_exclusions"] == []
+        assert result.details["dormant_exclusions"] == ["thin"]
+
     def test_all_zero_column_is_thin_not_failing(self) -> None:
         result = tail_concentration_gate(
             {"empty": np.zeros(1_000)},
