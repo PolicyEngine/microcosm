@@ -417,7 +417,7 @@ def test_clone_entity_frame_refuses_int64_overflow() -> None:
         )
 
 
-def test_dataset_object_metadata_carried_and_defaulted() -> None:
+def test_dataset_object_metadata_carried_and_required() -> None:
     class SeamLike:
         time_period = "2023"
         household_weight_kind = WeightKind.IMPORTANCE
@@ -436,8 +436,17 @@ def test_dataset_object_metadata_carried_and_defaulted() -> None:
             self.benunit = benunit_frame()
             self.household = household_frame()
 
-    class Legacy:
+    class MissingKind:
         time_period = "2023"
+
+        def __init__(self) -> None:
+            self.person = person_frame()
+            self.benunit = benunit_frame()
+            self.household = household_frame()
+
+    class NoMassLog:
+        time_period = "2023"
+        household_weight_kind = WeightKind.DESIGN
 
         def __init__(self) -> None:
             self.person = person_frame()
@@ -446,6 +455,7 @@ def test_dataset_object_metadata_carried_and_defaulted() -> None:
 
     class NoneLog:
         time_period = "2023"
+        household_weight_kind = WeightKind.DESIGN
         mass_log = None
 
         def __init__(self) -> None:
@@ -459,11 +469,20 @@ def test_dataset_object_metadata_carried_and_defaulted() -> None:
     assert carried.household_weight_kind is WeightKind.IMPORTANCE
     assert len(carried.mass_log) == 2
 
-    defaulted = clone_uk_dataset_with_rowwise_geography(
-        Legacy(), crosswalk_frame(), n_clones=1, seed=3
+    # An in-memory dataset without a declared kind hard-fails: defaulting
+    # here would silently downgrade importance/calibrated weights to design.
+    with pytest.raises(TypeError, match="household_weight_kind"):
+        clone_uk_dataset_with_rowwise_geography(
+            MissingKind(), crosswalk_frame(), n_clones=1, seed=3
+        )
+
+    # An absent mass_log still defaults to an empty history once the kind
+    # is declared; only an explicit None is rejected.
+    no_history = clone_uk_dataset_with_rowwise_geography(
+        NoMassLog(), crosswalk_frame(), n_clones=1, seed=3
     )
-    assert defaulted.household_weight_kind is WeightKind.DESIGN
-    assert len(defaulted.mass_log) == 1
+    assert no_history.household_weight_kind is WeightKind.DESIGN
+    assert len(no_history.mass_log) == 1
 
     with pytest.raises(TypeError, match="mass_log"):
         clone_uk_dataset_with_rowwise_geography(

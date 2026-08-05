@@ -10,10 +10,14 @@ from populace.build.uk_runtime import (
     validate_uk_rowwise_dataset_tables,
     write_uk_rowwise_dataset,
 )
+from populace.frame import WeightKind
 
 
 class FakeUKDataset:
     time_period = "2023"
+    # In-memory datasets must declare their weight kind explicitly; only H5
+    # inputs keep the attribute-less design default.
+    household_weight_kind = WeightKind.DESIGN
 
     def __init__(
         self,
@@ -28,6 +32,8 @@ class FakeUKDataset:
 
 
 class FakeUKDatasetWithoutPeriod:
+    household_weight_kind = WeightKind.DESIGN
+
     def __init__(
         self,
         *,
