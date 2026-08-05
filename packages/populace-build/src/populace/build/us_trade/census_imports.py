@@ -11,6 +11,16 @@ quantities (``CON_QY1_MO``/``GEN_QY1_MO`` with ``UNIT_QY1``).
 
 Pull geometry: the API returns 204 for an unconstrained full-month HS10
 query, so the ingest iterates HS chapters (``I_COMMODITY=<NN>*``) per month.
+The server cannot always materialize a full chapter in one response — the
+largest chapters (vehicles, machinery, electronics) time out server-side
+with HTTP 500 after ~150 seconds — so a chapter that stalls or returns a
+compute-timeout status is split into its ten 3-digit prefixes (and 4-digit
+if ever needed). Prefixes partition the HTS10 space, so the split changes
+request geometry only, never coverage; every fetched prefix gets its own
+cache file and manifest entry, and the aborted chapter attempt is recorded
+with ``superseded_by_split`` so a resumed pull skips straight to the
+sub-prefixes.
+
 Response rows carry a ``SUMMARY_LVL`` marker: ``DET`` rows are the detail
 atoms (Schedule C countries plus the ``-`` all-country total row) and
 ``CGP`` rows are published country-group rollups. The ingest keeps DET
@@ -92,9 +102,27 @@ _TOTAL_COUNTRY_CODE = "-"
 _DETAIL_SUMMARY_LEVEL = "DET"
 _MIN_COUNTRY_CODE = "1000"
 _MAX_COUNTRY_CODE = "7999"
-_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_RETRY_STATUSES = frozenset({429, 502, 503})
+_TERMINAL_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+#: Statuses the server emits when a prefix is too large to materialize
+#: (observed: HTTP 500 after ~150s on the biggest chapters).
+_SPLIT_STATUSES = frozenset({500, 504})
 _MAX_ATTEMPTS = 5
 _BACKOFF_BASE_SECONDS = 5.0
+#: A chapter that has not answered in this long is almost certainly headed
+#: for a server-side compute timeout; abort and split instead of waiting.
+_CHAPTER_STALL_SECONDS = 75.0
+_DEEP_TIMEOUT_SECONDS = 300.0
+_MAX_PREFIX_LENGTH = 4
+
+
+class _ServerOverloadError(Exception):
+    """The server cannot materialize this prefix; split it finer."""
+
+    def __init__(self, prefix: str, reason: str):
+        super().__init__(f"Prefix {prefix}* overloads the imports API: {reason}")
+        self.prefix = prefix
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -208,8 +236,8 @@ def fetch_imports_month(
     cache_path = Path(cache_dir)
     cache_path.mkdir(parents=True, exist_ok=True)
 
-    def fetch_one(chapter: str) -> tuple[bytes | None, dict[str, object]]:
-        return _fetch_chapter_with_cache(
+    def fetch_one(chapter: str) -> list[tuple[bytes | None, dict[str, object]]]:
+        return _fetch_prefix_tree(
             month,
             chapter,
             api_key,
@@ -227,13 +255,16 @@ def fetch_imports_month(
     country_rows: list[dict[str, object]] = []
     total_rows: list[dict[str, object]] = []
     manifest_entries: list[dict[str, object]] = []
-    for chapter, (raw, entry) in zip(chapters, fetched, strict=True):
-        manifest_entries.append(entry)
-        if raw is None:
-            continue
-        parsed_countries, parsed_totals = parse_imports_response(raw, month, chapter)
-        country_rows.extend(parsed_countries)
-        total_rows.extend(parsed_totals)
+    for results in fetched:
+        for raw, entry in results:
+            manifest_entries.append(entry)
+            if raw is None:
+                continue
+            parsed_countries, parsed_totals = parse_imports_response(
+                raw, month, str(entry["prefix"])
+            )
+            country_rows.extend(parsed_countries)
+            total_rows.extend(parsed_totals)
     failures = _reconcile_against_census_totals(country_rows, total_rows, month)
     return CensusImportsMonth(
         month=month,
@@ -247,19 +278,21 @@ def fetch_imports_month(
 def parse_imports_response(
     raw: bytes,
     month: str,
-    chapter: str,
+    prefix: str,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Parse one API response into country detail rows and ``-`` total rows.
 
-    Returns ``(country_rows, total_rows)``. CGP country-group rollups are
-    dropped. Rows echo their constraint columns; the parse validates the
-    echoed month and chapter against the request so a mislabeled cache file
-    cannot silently cross wires.
+    ``prefix`` is the commodity constraint the response answered — a whole
+    chapter (``"87"``) or a split sub-prefix (``"870"``). Returns
+    ``(country_rows, total_rows)``. CGP country-group rollups are dropped.
+    Rows echo their constraint columns; the parse validates the echoed
+    month and commodity prefix against the request so a mislabeled cache
+    file cannot silently cross wires.
     """
     table = json.loads(raw.decode("utf-8"))
     if not isinstance(table, list) or not table or not isinstance(table[0], list):
         raise ValueError(
-            f"Census imports response for {month} chapter {chapter} is not "
+            f"Census imports response for {month} prefix {prefix} is not "
             "a JSON row table."
         )
     header = table[0]
@@ -268,7 +301,7 @@ def parse_imports_response(
     missing = sorted(required - set(index))
     if missing:
         raise ValueError(
-            f"Census imports response for {month} chapter {chapter} is "
+            f"Census imports response for {month} prefix {prefix} is "
             f"missing expected columns {missing}; header was {header}."
         )
     country_rows: list[dict[str, object]] = []
@@ -278,13 +311,13 @@ def parse_imports_response(
         if row_time != month:
             raise ValueError(
                 f"Census imports response row echoes month {row_time!r} for "
-                f"a {month} request (chapter {chapter})."
+                f"a {month} request (prefix {prefix})."
             )
         hts10 = values[index["I_COMMODITY"]]
-        if len(hts10) != 10 or not hts10.isdigit() or not hts10.startswith(chapter):
+        if len(hts10) != 10 or not hts10.isdigit() or not hts10.startswith(prefix):
             raise ValueError(
                 f"Census imports response row echoes commodity {hts10!r} for "
-                f"a chapter {chapter} HS10 request ({month})."
+                f"a prefix {prefix} HS10 request ({month})."
             )
         if values[index["SUMMARY_LVL"]] != _DETAIL_SUMMARY_LEVEL:
             continue
@@ -411,19 +444,103 @@ def _reconcile_against_census_totals(
     return tuple(failures)
 
 
-def _fetch_chapter_with_cache(
+def _fetch_prefix_tree(
     month: str,
-    chapter: str,
+    prefix: str,
+    api_key: str,
+    cache_dir: Path,
+    *,
+    fetch: object | None,
+    throttle_seconds: float,
+) -> list[tuple[bytes | None, dict[str, object]]]:
+    """Fetch one commodity prefix, splitting finer when the server cannot.
+
+    Returns ``(raw, manifest_entry)`` pairs for every request made in the
+    subtree, including the ``superseded_by_split`` marker for an aborted
+    prefix attempt (recorded so resumes skip the doomed request and the
+    manifest keeps the full retrieval story).
+    """
+    try:
+        return [
+            _fetch_prefix_with_cache(
+                month,
+                prefix,
+                api_key,
+                cache_dir,
+                fetch=fetch,
+                throttle_seconds=throttle_seconds,
+            )
+        ]
+    except _ServerOverloadError as overload:
+        if len(prefix) >= _MAX_PREFIX_LENGTH:
+            raise RuntimeError(
+                f"Census imports API cannot materialize {month} prefix "
+                f"{prefix}* even at the maximum split depth: {overload.reason}"
+            ) from overload
+        marker = _split_marker(month, prefix, overload.reason, cache_dir)
+        results: list[tuple[bytes | None, dict[str, object]]] = [(None, marker)]
+        for digit in "0123456789":
+            results.extend(
+                _fetch_prefix_tree(
+                    month,
+                    prefix + digit,
+                    api_key,
+                    cache_dir,
+                    fetch=fetch,
+                    throttle_seconds=throttle_seconds,
+                )
+            )
+        return results
+
+
+def _cache_paths(cache_dir: Path, month: str, prefix: str) -> tuple[Path, Path]:
+    stem = f"ch{prefix}" if len(prefix) == 2 else f"p{prefix}"
+    data_path = cache_dir / f"imports_hs10_{month}_{stem}.json"
+    return data_path, data_path.with_suffix(".meta.json")
+
+
+def _split_marker(
+    month: str, prefix: str, reason: str, cache_dir: Path
+) -> dict[str, object]:
+    """Record (and cache) that a prefix attempt was superseded by a split."""
+    _, meta_path = _cache_paths(cache_dir, month, prefix)
+    marker: dict[str, object] = {
+        "source_name": "census_intltrade",
+        "dataset": "timeseries/intltrade/imports/hs",
+        "endpoint": CENSUS_IMPORTS_HS_ENDPOINT,
+        "month": month,
+        "prefix": prefix,
+        "chapter": prefix[:2],
+        "retrieved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "http_status": None,
+        "sha256": None,
+        "size_bytes": 0,
+        "row_count": 0,
+        "superseded_by_split": True,
+        "split_reason": reason,
+        "filename": None,
+    }
+    meta_path.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n")
+    return marker
+
+
+def _fetch_prefix_with_cache(
+    month: str,
+    prefix: str,
     api_key: str,
     cache_dir: Path,
     *,
     fetch: object | None,
     throttle_seconds: float,
 ) -> tuple[bytes | None, dict[str, object]]:
-    data_path = cache_dir / f"imports_hs10_{month}_ch{chapter}.json"
-    meta_path = data_path.with_suffix(".meta.json")
+    data_path, meta_path = _cache_paths(cache_dir, month, prefix)
     if meta_path.exists():
         entry = json.loads(meta_path.read_text())
+        # Chapter-level caches written before prefix splitting existed
+        # carry only the "chapter" key.
+        entry.setdefault("prefix", entry.get("chapter", prefix))
+        if entry.get("superseded_by_split"):
+            raise _ServerOverloadError(prefix, str(entry.get("split_reason", "cached")))
         if entry.get("http_status") == 204:
             return None, entry
         raw = data_path.read_bytes()
@@ -434,17 +551,24 @@ def _fetch_chapter_with_cache(
                 f"hash; delete the pair to re-fetch."
             )
         return raw, entry
-    url = _build_url(month, chapter, api_key)
+    url = _build_url(month, prefix, api_key)
     if throttle_seconds:
         time_module.sleep(throttle_seconds)
-    result = _request(url, allow_no_content=True, fetch=fetch)
+    result = _request(
+        url,
+        allow_no_content=True,
+        fetch=fetch,
+        splittable=len(prefix) < _MAX_PREFIX_LENGTH,
+        prefix=prefix,
+    )
     entry: dict[str, object] = {
         "source_name": "census_intltrade",
         "dataset": "timeseries/intltrade/imports/hs",
         "endpoint": CENSUS_IMPORTS_HS_ENDPOINT,
         "url": _elide_key(result.url),
         "month": month,
-        "chapter": chapter,
+        "prefix": prefix,
+        "chapter": prefix[:2],
         "retrieved_at": result.retrieved_at,
         "http_status": result.status,
         "filename": data_path.name,
@@ -467,12 +591,12 @@ def _fetch_chapter_with_cache(
     return raw, entry
 
 
-def _build_url(month: str, chapter: str, api_key: str) -> str:
+def _build_url(month: str, prefix: str, api_key: str) -> str:
     query = urllib.parse.urlencode(
         {
             "get": ",".join(_GET_VARIABLES),
             "COMM_LVL": "HS10",
-            "I_COMMODITY": f"{chapter}*",
+            "I_COMMODITY": f"{prefix}*",
             "time": month,
             "key": api_key,
         }
@@ -507,16 +631,29 @@ def _request(
     *,
     allow_no_content: bool,
     fetch: object | None,
+    splittable: bool = False,
+    prefix: str = "",
 ) -> _FetchResult:
-    """GET with bounded retries; ``fetch`` is a test seam for canned bytes."""
+    """GET with bounded retries; ``fetch`` is a test seam for canned bytes.
+
+    On a splittable request, a compute-timeout status (500/504) or a stalled
+    connection raises :class:`_ServerOverloadError` immediately — those failures
+    are a property of the response size, and splitting the prefix is both
+    faster and kinder to the API than retrying the doomed request. At the
+    maximum split depth they retry with backoff like any transient error.
+    """
     if fetch is not None:
         status, raw = fetch(url)  # type: ignore[operator]
+        if splittable and status in _SPLIT_STATUSES:
+            raise _ServerOverloadError(prefix, f"HTTP {status}")
         return _FetchResult(
             raw=raw,
             url=url,
             status=status,
             retrieved_at=datetime.now(UTC).isoformat(timespec="seconds"),
         )
+    timeout = _CHAPTER_STALL_SECONDS if splittable else _DEEP_TIMEOUT_SECONDS
+    retry_statuses = _RETRY_STATUSES if splittable else _TERMINAL_RETRY_STATUSES
     last_error: Exception | None = None
     for attempt in range(_MAX_ATTEMPTS):
         if attempt:
@@ -525,15 +662,28 @@ def _request(
             request = urllib.request.Request(
                 url, headers={"User-Agent": "populace-us-trade-ingest"}
             )
-            with urllib.request.urlopen(request, timeout=300) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 status = response.status
                 raw = response.read()
         except urllib.error.HTTPError as error:
-            if error.code in _RETRY_STATUSES:
+            if splittable and error.code in _SPLIT_STATUSES:
+                raise _ServerOverloadError(prefix, f"HTTP {error.code}") from None
+            if error.code in retry_statuses:
                 last_error = error
                 continue
             raise
+        except TimeoutError as error:
+            if splittable:
+                raise _ServerOverloadError(
+                    prefix, f"no response within {timeout:.0f}s"
+                ) from None
+            last_error = error
+            continue
         except urllib.error.URLError as error:
+            if splittable and isinstance(error.reason, TimeoutError):
+                raise _ServerOverloadError(
+                    prefix, f"no response within {timeout:.0f}s"
+                ) from None
             last_error = error
             continue
         if status == 204 and allow_no_content:

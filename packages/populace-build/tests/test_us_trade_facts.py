@@ -159,6 +159,41 @@ def test_customs_value_facts_align_to_the_composition_input():
     assert all("concept_alignment" not in row for row in general)
 
 
+def test_split_chapter_facts_carry_the_full_file_set():
+    """A chapter served as several prefix files hashes the whole set."""
+    manifest = _manifest_entries() + [
+        {
+            "month": "2026-01",
+            "chapter": "84",
+            "prefix": "847",
+            "sha256": "ee" * 32,
+            "filename": "imports_hs10_2026-01_p847.json",
+        },
+        {
+            "month": "2026-01",
+            "chapter": "84",
+            "prefix": "84",
+            "sha256": None,
+            "superseded_by_split": True,
+        },
+    ]
+    rows = build_import_entry_fact_rows(
+        _margins(),
+        retrieval_manifest=manifest,
+        extracted_at="2026-08-05T00:00:00+00:00",
+    )
+    by_id = {row["lineage"]["source_record_id"]: row for row in rows}
+    split = by_id["census_intltrade.imports_hs10.month_2026_01.chapter.ch84.con_val_mo"]
+    assert split["lineage"]["source_file_sha256s"] == sorted(["bb" * 32, "ee" * 32])
+    assert split["source"]["source_file"] == "2 prefix files (set digest)"
+    assert split["source"]["source_sha256"] not in ("bb" * 32, "ee" * 32)
+    single = by_id[
+        "census_intltrade.imports_hs10.month_2026_01.chapter.ch01.con_val_mo"
+    ]
+    assert single["lineage"]["source_file_sha256s"] == ["aa" * 32]
+    assert single["source"]["source_sha256"] == "aa" * 32
+
+
 def test_unknown_grain_and_empty_margins_are_refused():
     with pytest.raises(ValueError, match="Unknown import-entry fact grain"):
         build_import_entry_fact_rows(

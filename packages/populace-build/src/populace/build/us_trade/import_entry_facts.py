@@ -337,7 +337,7 @@ def _fact_row(
     measure: str,
     value: int,
     extracted_at: str,
-    manifest_by_month_chapter: Mapping[tuple[str, str], Mapping[str, Any]],
+    manifest_by_month_chapter: Mapping[tuple[str, str], list[Mapping[str, Any]]],
     month_digests: Mapping[str, str],
 ) -> dict[str, Any]:
     month = str(record.period)
@@ -357,11 +357,21 @@ def _fact_row(
     source_sha256 = month_digests.get(month, "")
     source_file = ""
     if grain in ("chapter", "chapter_country"):
-        entry = manifest_by_month_chapter.get((month, str(record.chapter)))
-        if entry is not None:
-            source_sha256 = str(entry.get("sha256") or "")
-            source_file = str(entry.get("filename") or "")
-            lineage["source_file_sha256s"] = [source_sha256]
+        # A chapter served in one response has one file; a chapter the API
+        # split into sub-prefixes has several, and the fact's source hash
+        # is then the sorted-hash set digest over all of them.
+        chapter_entries = manifest_by_month_chapter.get(
+            (month, str(record.chapter)), ()
+        )
+        shas = sorted(str(entry["sha256"]) for entry in chapter_entries)
+        files = [str(entry.get("filename") or "") for entry in chapter_entries]
+        if len(shas) == 1:
+            source_sha256 = shas[0]
+            source_file = files[0]
+        elif shas:
+            source_sha256 = hashlib.sha256("\n".join(shas).encode("utf-8")).hexdigest()
+            source_file = f"{len(shas)} prefix files (set digest)"
+        lineage["source_file_sha256s"] = shas
     else:
         lineage["source_month_set_digest"] = source_sha256
     source = {
@@ -496,13 +506,14 @@ def _key(kind: str, identity: Mapping[str, Any]) -> str:
 
 def _manifest_index(
     retrieval_manifest: Iterable[Mapping[str, Any]],
-) -> dict[tuple[str, str], Mapping[str, Any]]:
-    index: dict[tuple[str, str], Mapping[str, Any]] = {}
+) -> dict[tuple[str, str], list[Mapping[str, Any]]]:
+    """All sha-bearing retrievals per (month, chapter), split files included."""
+    index: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
     for entry in retrieval_manifest:
         month = str(entry.get("month") or "")
         chapter = str(entry.get("chapter") or "")
-        if month and chapter:
-            index[(month, chapter)] = entry
+        if month and chapter and entry.get("sha256"):
+            index.setdefault((month, chapter), []).append(entry)
     return index
 
 

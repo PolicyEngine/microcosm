@@ -51,11 +51,13 @@ def test_parse_real_response_splits_detail_and_totals():
         assert isinstance(totals[0][measure], int)
 
 
-def test_parse_rejects_wrong_month_and_chapter():
+def test_parse_rejects_wrong_month_and_prefix():
     with pytest.raises(ValueError, match="echoes month"):
         parse_imports_response(_fixture_bytes(), "2026-04", "31")
-    with pytest.raises(ValueError, match="chapter 32"):
+    with pytest.raises(ValueError, match="prefix 32"):
         parse_imports_response(_fixture_bytes(), "2026-03", "32")
+    with pytest.raises(ValueError, match="prefix 3104"):
+        parse_imports_response(_fixture_bytes(), "2026-03", "3104")
 
 
 def test_parse_rejects_unexpected_detail_country_code():
@@ -163,6 +165,50 @@ def test_fetch_caches_bytes_and_manifest(tmp_path):
             fetch=fake_fetch,
             throttle_seconds=0.0,
         )
+
+
+def test_overloaded_chapter_splits_into_prefixes_and_resumes(tmp_path):
+    """A chapter the server cannot materialize fans out to 3-digit prefixes."""
+    calls: list[str] = []
+
+    def fake_fetch(url: str):
+        calls.append(url)
+        commodity = url.split("I_COMMODITY=")[1].split("&")[0]
+        if commodity in ("31%2A", "31*"):
+            return 500, b""
+        if commodity in ("310%2A", "310*"):
+            return 200, _fixture_bytes()
+        return 204, b""
+
+    month = fetch_imports_month(
+        "2026-03",
+        "test-key",
+        cache_dir=tmp_path,
+        chapters=("31",),
+        fetch=fake_fetch,
+        throttle_seconds=0.0,
+    )
+    assert len(calls) == 11  # the doomed chapter probe + ten sub-prefixes
+    assert len(month.country_rows) == 3
+    assert month.reconciliation_failures == ()
+    by_prefix = {entry["prefix"]: entry for entry in month.manifest_entries}
+    assert set(by_prefix) == {"31"} | {f"31{digit}" for digit in "0123456789"}
+    assert by_prefix["31"]["superseded_by_split"] is True
+    assert by_prefix["31"]["sha256"] is None
+    assert by_prefix["310"]["http_status"] == 200
+    assert by_prefix["310"]["filename"] == "imports_hs10_2026-03_p310.json"
+    assert by_prefix["314"]["http_status"] == 204
+
+    resumed = fetch_imports_month(
+        "2026-03",
+        "test-key",
+        cache_dir=tmp_path,
+        chapters=("31",),
+        fetch=fake_fetch,
+        throttle_seconds=0.0,
+    )
+    assert len(calls) == 11  # marker + caches make the resume network-free
+    assert resumed.country_rows == month.country_rows
 
 
 def test_month_range_and_key_elision():
