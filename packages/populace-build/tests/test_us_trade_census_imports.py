@@ -40,6 +40,38 @@ def test_bridge_loads_and_is_fail_closed():
         bridge.iso2("9999")
 
 
+def test_bridge_provenance_is_vendored_pinned_and_cross_bound():
+    """The vendored provenance record must hash to its pin, declare exactly
+    the vendored CSV's hash and row count, and the upstream URL must cite an
+    immutable commit rather than a branch."""
+
+    import hashlib
+    import json
+    import re
+    from importlib.resources import files
+
+    from populace.build.us_runtime.us_trade.census_country_bridge import (
+        BRIDGE_PROVENANCE_RESOURCE_NAME,
+        BRIDGE_PROVENANCE_SHA256,
+        BRIDGE_UPSTREAM,
+        BRIDGE_UPSTREAM_COMMIT,
+    )
+
+    raw = (
+        files("populace.build.us_runtime.us_trade")
+        .joinpath(BRIDGE_PROVENANCE_RESOURCE_NAME)
+        .read_bytes()
+    )
+    assert hashlib.sha256(raw).hexdigest() == BRIDGE_PROVENANCE_SHA256
+    provenance = json.loads(raw)
+    assert provenance["bridge_sha256"] == BRIDGE_SHA256
+    assert provenance["bridge_rows"] == len(load_census_country_bridge())
+    assert provenance["snapshot_sha256"]
+    assert re.fullmatch(r"[0-9a-f]{40}", BRIDGE_UPSTREAM_COMMIT)
+    assert BRIDGE_UPSTREAM_COMMIT in BRIDGE_UPSTREAM
+    assert "/blob/main/" not in BRIDGE_UPSTREAM
+
+
 def test_parse_real_response_splits_detail_and_totals():
     countries, totals = parse_imports_response(_fixture_bytes(), "2026-03", "31")
     assert len(totals) == 1

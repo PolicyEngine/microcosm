@@ -1,0 +1,87 @@
+
+	                     
+FILENAME: IMP_DE.TXT
+
+*************************************************
+
+FIELD NO 	FIELD NAME     	DESCRIPTION
+
+ 01-02     	dist_entry    	2-Digit District of Entry, Code
+
+ 03-32     	dist_name      	30-Digit District of Entry, Name
+ 
+ 33-36     	year         	4-Digit Statistical Year
+
+ 37-38     	month         	2-Digit Statistical Month
+ 
+ 39-53     	cards_mo       	15-Digit Card Count
+
+ 54-68     	con_val_mo      15-Digit Imports for Consumption, Total Value
+
+ 69-83     	dut_val_mo      15-Digit Imports for Consumption, Dutiable Value
+
+ 84-98     	cal_dut_mo      15-Digit Imports for Consumption, Calculated Duty
+
+ 99-113     	con_cha_mo      15-Digit Imports for Consumption, Charges
+ 
+ 114-128     	con_cif_mo      15-Digit Imports for Consumption, CIF Value
+
+ 129-143     	gen_val_mo      15-Digit General Imports, Total Value
+
+ 144-158     	gen_cha_mo      15-Digit General Imports, Charges
+ 
+ 159-173     	gen_cif_mo      15-Digit General Imports, CIF Value
+
+ 174-188     	air_val_mo      15-Digit Air Value
+
+ 189-203     	air_wgt_mo 	15-Digit Air Shipping Weight 
+
+ 204-218	air_cha_mo 	15-Digit Air Charges 
+
+ 219-233    	ves_val_mo 	15-Digit Vessel Value 
+
+ 234-248    	ves_wgt_mo 	15-Digit Vessel Shipping Weight 
+ 
+ 249-263	ves_cha_mo 	15-Digit Vessel Charges
+
+ 264-278    	cnt_val_mo 	15-Digit Containerized Vessel Value
+
+ 279-293 	cnt_wgt_mo 	15-Digit Containerized Vessel Shipping Weight 
+ 
+ 294-308 	cnt_cha_mo 	15-Digit Containerized Vessel Charges 
+ 
+ 309-323 	cards_yr 	15-Digit Year-to-Date Card Count 
+
+ 324-338 	con_val_yr 	15-Digit Year-to-Date Imports for Consumption, Total Value 
+
+ 339-353 	dut_val_yr 	15-Digit Year-to-Date Imports for Consumption, Dutiable Value 
+	
+ 354-368 	cal_dut_yr 	15-Digit Year-to-Date Imports for Consumption, Calculated Duty 
+
+ 369-383 	con_cha_yr 	15-Digit Year-to-Date Imports for Consumption, Charges  
+
+ 384-398 	con_cif_yr 	15-Digit Year-to-Date Imports for Consumption, CIF Value 
+
+ 399-413 	gen_val_yr 	15-Digit Year-to-Date General Imports, Total Value 
+
+ 414-428 	gen_cha_yr 	15-Digit Year-to-Date General Imports, Charges 
+
+ 429-443 	gen_cif_yr 	15-Digit Year-to-Date General Imports, CIF Value 
+
+ 444-458 	air_val_yr 	15-Digit Year-to-Date Air Value 
+
+ 459-473 	air_wgt_yr 	15-Digit Year-to-Date Air Shipping Weight 
+
+ 474-488 	air_cha_yr 	15-Digit Year-to-Date Air Charges 
+
+ 489-503 	ves_val_yr 	15-Digit Year-to-Date Vessel Value 
+
+ 504-518 	ves_wgt_yr 	15-Digit Year-to-Date Vessel Shipping Weight 
+
+ 519-533 	ves_cha_yr 	15-Digit Year-to-Date Vessel Charges 
+
+ 534-548 	cnt_val_yr 	15-Digit Year-to-Date Containerized Vessel Value 
+
+ 549-563 	cnt_wgt_yr 	15-Digit Year-to-Date Containerized Vessel Shipping Weight 
+
+ 564-578 	cnt_cha_yr 	15-Digit Year-to-Date Containerized Vessel Charges 
