@@ -143,6 +143,9 @@ UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
 UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
 
+# TODO(PR #610 review): María to define approval identity, receipt metadata,
+# and expiry semantics before the column -> reason exclusion schema changes.
+
 # Mirrors terminal_gates._STRUCTURAL_COLUMNS for the national table layout;
 # ids and the weight vector are plumbing, not input mass.
 _UK_ENTITY_STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
@@ -157,7 +160,22 @@ def _reviewed_reason_mapping(values: object, *, label: str) -> dict[str, str]:
         return {}
     if not isinstance(values, Mapping):
         raise TypeError(f"{label} reviewed exclusions must be a mapping.")
-    normalized = {str(name): str(reason) for name, reason in values.items()}
+    if any(
+        not isinstance(name, str) or not isinstance(reason, str)
+        for name, reason in values.items()
+    ):
+        raise TypeError(
+            f"{label} reviewed exclusion names and reasons must be strings."
+        )
+    normalized = dict(values)
+    invalid_names = sorted(
+        repr(name) for name in normalized if not name.strip() or name != name.strip()
+    )
+    if invalid_names:
+        raise ValueError(
+            f"{label} reviewed exclusions need non-empty, trimmed column names: "
+            f"{invalid_names}."
+        )
     missing = sorted(name for name, reason in normalized.items() if not reason.strip())
     if missing:
         raise ValueError(f"{label} reviewed exclusions need reasons: {missing}.")
@@ -184,13 +202,49 @@ def load_uk_reviewed_exclusion_register(
     else:
         raw = Path(source).read_text(encoding="utf-8")
         label = str(source)
-    payload = json.loads(raw)
+
+    def strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        duplicates: set[str] = set()
+        for name, value in pairs:
+            if name in result:
+                duplicates.add(name)
+            result[name] = value
+        if duplicates:
+            raise ValueError(f"{label}: duplicate JSON key(s): {sorted(duplicates)}.")
+        return result
+
+    def reject_nonfinite_json(value: str) -> object:
+        raise ValueError(f"{label}: non-finite JSON value {value!r} is invalid.")
+
+    try:
+        payload = json.loads(
+            raw,
+            object_pairs_hook=strict_object,
+            parse_constant=reject_nonfinite_json,
+        )
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label}: malformed JSON: {exc.msg}.") from exc
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label}: exclusion register must be a JSON object.")
-    if payload.get("schema_version") != 1:
+    expected_fields = {"schema_version", "description", "exclusions"}
+    if set(payload) != expected_fields:
+        raise ValueError(
+            f"{label}: exclusion register fields must be exactly "
+            f"{sorted(expected_fields)}, got {sorted(payload)}."
+        )
+    if (
+        type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != 1
+    ):
         raise ValueError(
             f"{label}: exclusion register schema_version must be 1, got "
             f"{payload.get('schema_version')!r}."
+        )
+    description = payload.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(
+            f"{label}: exclusion register description must be a non-empty string."
         )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, Mapping):

@@ -213,6 +213,10 @@ def test_input_mass_policy_and_reference_validation() -> None:
         _reference({})
     with pytest.raises(ValueError, match="finite"):
         _reference({"person.employment_income": float("nan")})
+    with pytest.raises(TypeError, match="names and reasons must be strings"):
+        _policy(reviewed_exclusions={1: "Seeded invalid name."})
+    with pytest.raises(TypeError, match="names and reasons must be strings"):
+        _policy(reviewed_exclusions={"person.employment_income": None})
 
 
 def test_qrf_surface_is_derived_from_the_source_manifest() -> None:
@@ -426,10 +430,24 @@ def test_committed_exclusion_registers_load_and_are_empty() -> None:
 def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> None:
     bad_reason = tmp_path / "register.json"
     bad_reason.write_text(
-        json.dumps({"schema_version": 1, "exclusions": {"person.x": ""}})
+        json.dumps(
+            {
+                "schema_version": 1,
+                "description": "Seeded register.",
+                "exclusions": {"person.x": ""},
+            }
+        )
     )
     bad_schema = tmp_path / "schema.json"
-    bad_schema.write_text(json.dumps({"schema_version": 2, "exclusions": {}}))
+    bad_schema.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "description": "Seeded register.",
+                "exclusions": {},
+            }
+        )
+    )
 
     with pytest.raises(ValueError, match="need reasons"):
         load_uk_reviewed_exclusion_register(
@@ -439,6 +457,50 @@ def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> Non
     with pytest.raises(ValueError, match="schema_version"):
         load_uk_reviewed_exclusion_register(
             bad_schema,
+            resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        )
+
+
+@pytest.mark.parametrize(
+    ("raw", "match"),
+    [
+        (
+            '{"schema_version":1,"description":"x","exclusions":'
+            '{"person.x":"first","person.x":null}}',
+            "duplicate JSON key",
+        ),
+        (
+            '{"schema_version":1,"description":"x","exclusions":{"person.x":null}}',
+            "names and reasons must be strings",
+        ),
+        (
+            '{"schema_version":1,"description":"x",'
+            '"exclusions":{"person.x":{"ticket":"610"}}}',
+            "names and reasons must be strings",
+        ),
+        (
+            '{"schema_version":1,"description":"x","exclusions":{"person.x":7}}',
+            "names and reasons must be strings",
+        ),
+        (
+            '{"schema_version":1,"description":"x","exclusions":[[1,"reason"]]}',
+            "'exclusions' object",
+        ),
+        ("null", "JSON object"),
+        ('{"schema_version":1', "malformed JSON"),
+    ],
+)
+def test_register_loader_rejects_malformed_or_coerced_entries(
+    tmp_path,
+    raw: str,
+    match: str,
+) -> None:
+    path = tmp_path / "register.json"
+    path.write_text(raw, encoding="utf-8")
+
+    with pytest.raises((TypeError, ValueError), match=match):
+        load_uk_reviewed_exclusion_register(
+            path,
             resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
         )
 
