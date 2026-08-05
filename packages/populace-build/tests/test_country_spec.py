@@ -45,10 +45,12 @@ def _minimal_package(**overrides) -> dict[str, dict]:
             "version": 1,
             "country": "xx",
             "policy": "test gates",
+            "phases": ["terminal"],
             "gates": [
                 {
                     "id": "fit",
                     "gate": "per_family_fit",
+                    "phase": "terminal",
                     "criticality": "release_blocking",
                 }
             ],
@@ -143,6 +145,10 @@ class TestBelgianPackage:
         assert contract.dataset_filename_template == "populace_be_{year}.h5"
         assert "source_coverage.json" in contract.required_release_files
         assert "reform_validation.json" in contract.required_release_files
+
+    def test_gates_declare_their_phase_order(self, spec) -> None:
+        assert spec.gates.phases == ("terminal",)
+        assert {gate.phase for gate in spec.gates.gates} == {"terminal"}
 
     def test_fingerprint_is_stable_across_loads(self, spec) -> None:
         assert load_country_spec("be").fingerprint == spec.fingerprint
@@ -282,6 +288,60 @@ class TestRefusals:
         files["gates.json"]["gates"][0]["criticality"] = "diagnostic"
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="release_blocking"):
+            load_country_spec(package_dir)
+
+    def test_gate_without_a_phase_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        del files["gates.json"]["gates"][0]["phase"]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="phase must be a non-empty string"):
+            load_country_spec(package_dir)
+
+    def test_unknown_gate_phase_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["phase"] = "someday"
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="unknown phase 'someday'"):
+            load_country_spec(package_dir)
+
+    def test_missing_phase_order_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        del files["gates.json"]["phases"]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="phases must be a non-empty list"):
+            load_country_spec(package_dir)
+
+    def test_gate_phase_outside_the_declared_order_is_refused(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["phase"] = "preflight"
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="not in the declared phase order"):
+            load_country_spec(package_dir)
+
+    def test_duplicate_phases_are_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["phases"] = ["terminal", "terminal"]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="duplicate phase"):
+            load_country_spec(package_dir)
+
+    def test_not_applicable_with_parameters_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["not_applicable"] = "no surface yet"
+        files["gates.json"]["gates"][0]["parameters"] = {"within": 0.1}
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            load_country_spec(package_dir)
+
+    def test_empty_not_applicable_reason_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["not_applicable"] = "  "
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(
+            ValueError, match="not_applicable must be a non-empty string"
+        ):
             load_country_spec(package_dir)
 
     def test_target_reference_carrying_a_value_is_refused(self, tmp_path) -> None:

@@ -52,6 +52,7 @@ from populace.frame import Frame
 __all__ = [
     "ALLOWED_GATE_FUNCTIONS",
     "ALLOWED_GATE_CRITICALITIES",
+    "ALLOWED_GATE_PHASES",
     "ALLOWED_GEOGRAPHY_SPINE_METHODS",
     "CountrySpec",
     "GateSelectionSpec",
@@ -72,23 +73,45 @@ __all__ = [
 ALLOWED_GATE_FUNCTIONS = frozenset(
     {
         "aggregate_admin",
+        "degenerate_release_surface",
         "enum_domain",
         "export_surface",
         "exported_nonzero",
         "formula_owned_export",
+        "input_mass_parity",
         "macro_realism",
         "nonconstant_columns",
         "nonnegative_columns",
         "parity",
         "per_family_fit",
+        "release_input_coverage",
         "source_coverage",
+        "spine_agreement",
         "support",
+        "tail_concentration",
+        "target_fit",
         "target_profile_coverage",
         "target_surface",
+        "weight_ess",
+        "weight_ratio",
+        "weights_audit",
+        "zero_weight_strata",
     }
 )
 
 ALLOWED_GATE_CRITICALITIES = frozenset({"release_blocking", "diagnostic"})
+
+#: Build phases a gate selection may bind to — the shared vocabulary that
+#: keeps gate reports comparable across countries. The *order* phases run in
+#: is country data (the ``phases`` header of ``gates.json``), never a global
+#: constant: the UK national build gates at ``preflight`` and ``terminal``,
+#: while the US pool builder gates at its checkpoint boundaries
+#: (``assembled``/``transferred``/``simulated``). Same shape as
+#: ``SourceOperatorContract.phases`` in the pool builder, applied to gates
+#: instead of operators (populace#611).
+ALLOWED_GATE_PHASES = frozenset(
+    {"preflight", "assembled", "transferred", "simulated", "terminal"}
+)
 
 #: Geography-spine construction methods shared runtimes implement. One today:
 #: uniform clone-and-assign over the declared geography level (the UK OA
@@ -307,23 +330,38 @@ class GeographySpineManifest:
 
 @dataclass(frozen=True)
 class GateSelectionSpec:
-    """One selected release gate with its criticality tier.
+    """One selected release gate with its phase and criticality tier.
 
     Attributes:
         id: Unique id of this selection (one gate function may be selected
             more than once with different parameters, e.g. an admin gate per
             target family).
         gate: The gate function, from :data:`ALLOWED_GATE_FUNCTIONS`.
+        phase: The build phase the gate evaluates in, from
+            :data:`ALLOWED_GATE_PHASES` and a member of the country's
+            declared phase order. Gates batch within a phase and the build
+            fails closed at the phase boundary, so a gate sits where its
+            evidence appears without giving up the single batched report.
         criticality: ``"release_blocking"`` or ``"diagnostic"``.
         parameters: Declarative parameters the gate runner interprets
-            (tolerances, surfaces, exemption lists). Pure data.
+            (tolerances, surfaces, exemption lists). Pure data. Thresholds
+            live here — per country by construction, covered by the
+            battery's policy hash — never in runner code.
+        not_applicable: Reviewed reason this gate deliberately does not run
+            for this country yet (e.g. no take-up assignment surface), or
+            ``None``. A declared entry turns a silent gap into a receipt:
+            it appears in every report as ``not_applicable`` and never
+            evaluates. Mutually exclusive with ``parameters`` — an excused
+            gate with tuned thresholds is a contradiction.
         notes: Free-text rationale.
     """
 
     id: str
     gate: str
+    phase: str
     criticality: str
     parameters: Mapping[str, Any] = field(default_factory=dict)
+    not_applicable: str | None = None
     notes: str = ""
 
     @classmethod
@@ -340,6 +378,14 @@ class GateSelectionSpec:
                 f"gate {gate_id!r}: unknown gate function {gate!r}; allowed: "
                 f"{sorted(ALLOWED_GATE_FUNCTIONS)}."
             )
+        phase = _require_non_empty_string(
+            raw.get("phase"), field_name="phase", context=f"gate {gate_id!r}"
+        )
+        if phase not in ALLOWED_GATE_PHASES:
+            raise ValueError(
+                f"gate {gate_id!r}: unknown phase {phase!r}; allowed: "
+                f"{sorted(ALLOWED_GATE_PHASES)}."
+            )
         criticality = _require_non_empty_string(
             raw.get("criticality"), field_name="criticality", context=f"gate {gate_id!r}"
         )
@@ -351,11 +397,26 @@ class GateSelectionSpec:
         parameters = raw.get("parameters", {})
         if not isinstance(parameters, Mapping):
             raise ValueError(f"gate {gate_id!r}: parameters must be a JSON object.")
+        not_applicable = raw.get("not_applicable")
+        if not_applicable is not None:
+            not_applicable = _require_non_empty_string(
+                not_applicable,
+                field_name="not_applicable",
+                context=f"gate {gate_id!r}",
+            )
+            if parameters:
+                raise ValueError(
+                    f"gate {gate_id!r}: not_applicable and parameters are "
+                    "mutually exclusive — an excused gate with tuned "
+                    "thresholds is a contradiction."
+                )
         return cls(
             id=gate_id,
             gate=gate,
+            phase=phase,
             criticality=criticality,
             parameters=dict(parameters),
+            not_applicable=not_applicable,
             notes=str(raw.get("notes", "")),
         )
 
@@ -364,14 +425,24 @@ class GateSelectionSpec:
 class GatesManifest:
     """Country gate selection (``gates.json``).
 
+    Attributes:
+        phases: The country's phase order, first to last. Declared per
+            country because build boundaries differ (the UK national build
+            has two, the US pool builder three); the ``unreached`` outcome
+            in a gate battery report is only computable because the report
+            knows this declared order.
+
     Raises:
-        ValueError: On duplicate selection ids or no release-blocking gate —
-            a country whose every gate is diagnostic has no release contract.
+        ValueError: On duplicate selection ids, no release-blocking gate —
+            a country whose every gate is diagnostic has no release
+            contract — or a gate bound to a phase outside the declared
+            order.
     """
 
     country: str
     version: int
     policy: str
+    phases: tuple[str, ...]
     gates: tuple[GateSelectionSpec, ...]
 
     @classmethod
@@ -382,6 +453,27 @@ class GatesManifest:
         declared, version, policy = _require_header(
             raw, resource="gates.json", country=country
         )
+        phases_field = raw.get("phases")
+        if not isinstance(phases_field, list) or not phases_field:
+            raise ValueError(
+                "gates.json: phases must be a non-empty list declaring the "
+                "country's phase order."
+            )
+        phases = tuple(
+            _require_non_empty_string(
+                phase, field_name="phases entry", context="gates.json"
+            )
+            for phase in phases_field
+        )
+        unknown_phases = sorted(set(phases) - ALLOWED_GATE_PHASES)
+        if unknown_phases:
+            raise ValueError(
+                f"gates.json: unknown phase(s) {unknown_phases}; allowed: "
+                f"{sorted(ALLOWED_GATE_PHASES)}."
+            )
+        if len(set(phases)) != len(phases):
+            duplicated = sorted({name for name in phases if phases.count(name) > 1})
+            raise ValueError(f"gates.json: duplicate phase(s) {duplicated}.")
         entries = raw.get("gates")
         if not isinstance(entries, list) or not entries:
             raise ValueError("gates.json: gates must be a non-empty list.")
@@ -390,12 +482,26 @@ class GatesManifest:
         if len(set(ids)) != len(ids):
             duplicated = sorted({name for name in ids if ids.count(name) > 1})
             raise ValueError(f"gates.json: duplicate gate id(s) {duplicated}.")
+        undeclared = sorted(
+            {gate.phase for gate in gates if gate.phase not in phases}
+        )
+        if undeclared:
+            raise ValueError(
+                f"gates.json: gate phase(s) {undeclared} are not in the "
+                f"declared phase order {list(phases)}."
+            )
         if not any(gate.criticality == "release_blocking" for gate in gates):
             raise ValueError(
                 "gates.json: at least one gate must be release_blocking; a "
                 "country with only diagnostic gates has no release contract."
             )
-        return cls(country=declared, version=version, policy=policy, gates=gates)
+        return cls(
+            country=declared,
+            version=version,
+            policy=policy,
+            phases=phases,
+            gates=gates,
+        )
 
 
 # ---------------------------------------------------------------------------
