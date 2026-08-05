@@ -57,6 +57,23 @@ def us_bundle() -> Frame:
     return Frame(tables, US_SCHEMA, weights)
 
 
+@pytest.fixture
+def us_bundle_with_person_and_household_weights(us_bundle: Frame) -> Frame:
+    """US Frame whose two typed weight vectors test the household export pin."""
+
+    return Frame(
+        {name: us_bundle.table(name) for name in us_bundle.entities},
+        US_SCHEMA,
+        {
+            "person": Weights(
+                values=np.array([1500.0, 1500.0, 900.0]),
+                kind=WeightKind.DESIGN,
+            ),
+            "household": us_bundle.weights_for("household"),
+        },
+    )
+
+
 class TestVariableMetadata:
     def test_entity_dtype_period(self, adapter) -> None:
         meta = adapter.variable_metadata("employment_income")
@@ -158,6 +175,22 @@ class TestVariableMetadata:
 
 
 class TestMaterialize:
+    def test_engine_tables_materializes_only_pinned_household_weights(
+        self,
+        adapter,
+        us_bundle_with_person_and_household_weights,
+    ) -> None:
+        bundle = us_bundle_with_person_and_household_weights
+
+        tables = adapter._engine_tables(bundle)
+
+        assert "person" in bundle.weighted_entities
+        assert "person_weight" not in tables["person"].columns
+        np.testing.assert_array_equal(
+            tables["household"]["household_weight"].to_numpy(),
+            bundle.weights_for("household").values,
+        )
+
     def test_materializes_row_aligned_arrays(self, adapter, us_bundle) -> None:
         results = adapter.materialize(
             us_bundle,
