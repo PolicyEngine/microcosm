@@ -91,10 +91,7 @@ class TestBelgianPackage:
         ]
         assert offsets == [-1]  # SILC year N carries year N-1 incomes
         assert "belgium_pit_article_23_worker_remuneration" in stage.outputs
-        assert (
-            "belgium_pit_article_23_worker_remuneration"
-            in stage.nonnegative_outputs
-        )
+        assert "belgium_pit_article_23_worker_remuneration" in stage.nonnegative_outputs
 
     def test_geography_spine_is_vintage_aware(self, spec) -> None:
         spine = spec.geography_spine.geography_spine
@@ -183,7 +180,7 @@ class TestGoldenBelgianSpec:
         rendered = canonical_json_bytes(summary)
         assert GOLDEN.exists(), (
             "Golden file missing. Generate it after reviewing the spec:\n"
-            f"  python -c \"...\" > {GOLDEN}"
+            f'  python -c "..." > {GOLDEN}'
         )
         assert rendered == GOLDEN.read_bytes(), (
             "The Belgian country spec changed. If intentional, regenerate "
@@ -198,9 +195,7 @@ class TestCountryStagePlan:
         names = [stage.stage for stage in spec.sources.stages] + [
             spec.geography_spine.geography_spine.stage
         ]
-        plan = country_stage_plan(
-            spec, {name: (lambda frame: frame) for name in names}
-        )
+        plan = country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
         assert [stage.name for stage in plan.stages] == [
             "silc_load",
             "clone_assign_communes",
@@ -221,9 +216,7 @@ class TestCountryStagePlan:
             "silc_load_fallback",
         ]
         with pytest.raises(ValueError, match="Unknown stage implementation"):
-            country_stage_plan(
-                spec, {name: (lambda frame: frame) for name in names}
-            )
+            country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
 
 
 class TestExistingPackagesGeneralize:
@@ -311,9 +304,7 @@ class TestRefusals:
         with pytest.raises(ValueError, match="phases must be a non-empty list"):
             load_country_spec(package_dir)
 
-    def test_gate_phase_outside_the_declared_order_is_refused(
-        self, tmp_path
-    ) -> None:
+    def test_gate_phase_outside_the_declared_order_is_refused(self, tmp_path) -> None:
         files = _minimal_package()
         files["gates.json"]["gates"][0]["phase"] = "preflight"
         package_dir = _write_package(tmp_path, files)
@@ -363,7 +354,9 @@ class TestRefusals:
         with pytest.raises(ValueError, match="values live in Ledger"):
             load_country_spec(package_dir)
 
-    def test_target_reference_carrying_a_nested_value_is_refused(self, tmp_path) -> None:
+    def test_target_reference_carrying_a_nested_value_is_refused(
+        self, tmp_path
+    ) -> None:
         files = _minimal_package()
         files["country_package.json"]["resources"].append("target_references.json")
         files["target_references.json"] = {
@@ -447,7 +440,9 @@ class TestRefusals:
         with pytest.raises(ValueError, match="ordinal version token"):
             load_country_spec(package_dir)
 
-    def test_version_like_substrings_without_ordinal_tokens_load(self, tmp_path) -> None:
+    def test_version_like_substrings_without_ordinal_tokens_load(
+        self, tmp_path
+    ) -> None:
         # "sha-v2x" is not an ordinal token: the digits run into a letter.
         files = _minimal_package()
         files["country_package.json"]["resources"].append("release_contract.json")
