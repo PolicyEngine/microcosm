@@ -256,3 +256,54 @@ def test_month_range_and_key_elision():
     elided = _elide_key(url)
     assert "SECRET" not in elided
     assert "time=2026-01" in elided
+
+
+def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(tmp_path):
+    """Reuse is not retrieval: resuming over a warm cache must reuse the
+    split marker verbatim — original retrieved_at, no sidecar rewrite —
+    and must succeed against a read-only cache directory."""
+
+    def fake_fetch(url: str):
+        commodity = url.split("I_COMMODITY=")[1].split("&")[0]
+        if commodity in ("31%2A", "31*"):
+            return 500, b""
+        if commodity in ("310%2A", "310*"):
+            return 200, _fixture_bytes()
+        return 204, b""
+
+    warm = fetch_imports_month(
+        "2026-03",
+        "test-key",
+        cache_dir=tmp_path,
+        chapters=("31",),
+        fetch=fake_fetch,
+        throttle_seconds=0.0,
+    )
+    warm_marker = next(
+        entry for entry in warm.manifest_entries if entry.get("superseded_by_split")
+    )
+    snapshot = {path.name: path.read_bytes() for path in sorted(tmp_path.iterdir())}
+
+    def refusing_fetch(url: str):
+        raise AssertionError(f"resume must not fetch, asked for {url}")
+
+    tmp_path.chmod(0o555)
+    try:
+        resumed = fetch_imports_month(
+            "2026-03",
+            "test-key",
+            cache_dir=tmp_path,
+            chapters=("31",),
+            fetch=refusing_fetch,
+            throttle_seconds=0.0,
+        )
+    finally:
+        tmp_path.chmod(0o755)
+    assert resumed.country_rows == warm.country_rows
+    resumed_marker = next(
+        entry for entry in resumed.manifest_entries if entry.get("superseded_by_split")
+    )
+    assert resumed_marker["retrieved_at"] == warm_marker["retrieved_at"]
+    assert {
+        path.name: path.read_bytes() for path in sorted(tmp_path.iterdir())
+    } == snapshot

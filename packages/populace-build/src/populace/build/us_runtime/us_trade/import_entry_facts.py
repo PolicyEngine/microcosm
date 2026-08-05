@@ -52,6 +52,7 @@ __all__ = [
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "DISTRICT_ENTRY_FACT_GRAIN",
     "IMDB_BULK_SOURCE_LEG",
+    "IMDB_DISTRICT_SOURCE_LEG",
     "IMPORT_ENTRY_FACT_GRAINS",
     "MEASURE_CATALOG",
     "FactSourceLeg",
@@ -94,6 +95,27 @@ IMDB_BULK_SOURCE_LEG = FactSourceLeg(
         "publisher's in-archive control totals (IMP_CTY/IMP_COMM/IMP_DE); "
         "populace-minted to the ledger consumer contract (not a "
         "PolicyEngine/ledger build)."
+    ),
+)
+
+#: District facts come straight from the archives' IMP_DE district-of-entry
+#: control file — the publisher's own totals, admitted after the IMP_DETL
+#: detail reconciled exactly against them — so their provenance names
+#: IMP_DE, not the detail file.
+IMDB_DISTRICT_SOURCE_LEG = FactSourceLeg(
+    source_name="census_intltrade",
+    source_table=(
+        "US Imports of Merchandise monthly database (IMDB), IMP_DE "
+        "district-of-entry control totals"
+    ),
+    url=IMDB_URL_TEMPLATE,
+    extraction_method=(
+        "populace us_trade imdb_bulk ingest: Census monthly bulk IMDB "
+        "archives parsed per the archives' own record layouts; the "
+        "publisher's IMP_DE district-of-entry control totals admitted at "
+        "the {grain} grain after the IMP_DETL detail reconciled exactly "
+        "against them; populace-minted to the ledger consumer contract "
+        "(not a PolicyEngine/ledger build)."
     ),
 )
 
@@ -278,15 +300,17 @@ def build_district_entry_fact_rows(
     *,
     retrieval_manifest: Iterable[Mapping[str, Any]],
     extracted_at: str,
-    source_leg: FactSourceLeg = IMDB_BULK_SOURCE_LEG,
+    source_leg: FactSourceLeg = IMDB_DISTRICT_SOURCE_LEG,
 ) -> list[dict[str, Any]]:
     """Mint district-of-entry margin facts from the publisher's own table.
 
-    ``district_entry`` is the per-month district control table (already
-    reconciled exactly against the detail by the ingest); the emitted
-    measures are the duty-relevant pair, mirroring the chapter × country
-    feed grain. District facts carry their own record-set family
-    (``census_intltrade.imports_district_entry``).
+    ``district_entry`` is the per-month IMP_DE district control table
+    (already reconciled exactly against the detail by the ingest); the
+    emitted measures are the duty-relevant pair, mirroring the
+    chapter × country feed grain. District facts carry their own
+    record-set family (``census_intltrade.imports_district_entry``) and
+    the IMP_DE source leg — their values come from the control file
+    itself, never the IMP_DETL detail.
     """
     if district_entry.empty:
         raise ValueError(

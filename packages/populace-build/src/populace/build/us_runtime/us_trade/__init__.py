@@ -58,6 +58,7 @@ from populace.build.us_runtime.us_trade.imdb_bulk import (
 )
 from populace.build.us_runtime.us_trade.import_entry_facts import (
     IMDB_BULK_SOURCE_LEG,
+    IMDB_DISTRICT_SOURCE_LEG,
     IMPORT_ENTRY_FACT_GRAINS,
     FactSourceLeg,
     build_cbp_entry_fact_rows,
@@ -76,6 +77,7 @@ __all__ = [
     "CensusImportsPull",
     "FactSourceLeg",
     "IMDB_BULK_SOURCE_LEG",
+    "IMDB_DISTRICT_SOURCE_LEG",
     "IMDB_URL_TEMPLATE",
     "IMPORT_ENTRY_FACT_GRAINS",
     "ImdbBulkAssembly",

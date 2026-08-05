@@ -117,12 +117,25 @@ _MAX_PREFIX_LENGTH = 4
 
 
 class _ServerOverloadError(Exception):
-    """The server cannot materialize this prefix; split it finer."""
+    """The server cannot materialize this prefix; split it finer.
 
-    def __init__(self, prefix: str, reason: str):
+    ``cached_entry`` carries the on-disk split marker when the overload
+    verdict came from the cache rather than a live request, so resumes
+    reuse the original marker — its ``retrieved_at`` is the moment the
+    live overload was actually observed, and reusing a cache must never
+    rewrite it.
+    """
+
+    def __init__(
+        self,
+        prefix: str,
+        reason: str,
+        cached_entry: dict[str, object] | None = None,
+    ):
         super().__init__(f"Prefix {prefix}* overloads the imports API: {reason}")
         self.prefix = prefix
         self.reason = reason
+        self.cached_entry = cached_entry
 
 
 @dataclass(frozen=True)
@@ -477,7 +490,13 @@ def _fetch_prefix_tree(
                 f"Census imports API cannot materialize {month} prefix "
                 f"{prefix}* even at the maximum split depth: {overload.reason}"
             ) from overload
-        marker = _split_marker(month, prefix, overload.reason, cache_dir)
+        # A cached overload verdict reuses its on-disk marker verbatim —
+        # reuse is not retrieval, so no fresh timestamp and no sidecar
+        # rewrite (a read-only cache must resume cleanly). Only a live
+        # overload mints and records a new marker.
+        marker = overload.cached_entry or _split_marker(
+            month, prefix, overload.reason, cache_dir
+        )
         results: list[tuple[bytes | None, dict[str, object]]] = [(None, marker)]
         for digit in "0123456789":
             results.extend(
@@ -540,7 +559,11 @@ def _fetch_prefix_with_cache(
         # carry only the "chapter" key.
         entry.setdefault("prefix", entry.get("chapter", prefix))
         if entry.get("superseded_by_split"):
-            raise _ServerOverloadError(prefix, str(entry.get("split_reason", "cached")))
+            raise _ServerOverloadError(
+                prefix,
+                str(entry.get("split_reason", "cached")),
+                cached_entry=entry,
+            )
         if entry.get("http_status") == 204:
             return None, entry
         raw = data_path.read_bytes()

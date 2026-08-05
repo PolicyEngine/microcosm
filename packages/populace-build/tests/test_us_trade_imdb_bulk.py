@@ -26,6 +26,7 @@ from populace.build.us_runtime.us_trade.imdb_bulk import (
 )
 from populace.build.us_runtime.us_trade.import_entry_facts import (
     IMDB_BULK_SOURCE_LEG,
+    IMDB_DISTRICT_SOURCE_LEG,
     build_district_entry_fact_rows,
     build_import_entry_fact_rows,
     default_generator_block,
@@ -742,6 +743,22 @@ def test_district_facts_round_trip_with_margin_facts(tmp_path):
     ]
     assert duty["value"] == 275
     assert "concept_alignment" in duty
+    # District values come from the IMP_DE control file, and both source
+    # members must say so; the margins feed keeps its IMP_DETL identity.
+    for row in district_rows:
+        assert (
+            "IMP_DE district-of-entry control totals"
+            in (row["observed_measure"]["source_table"])
+        )
+        assert (
+            row["source"]["source_table"] == (row["observed_measure"]["source_table"])
+        )
+        assert "IMP_DETL" not in row["observed_measure"]["source_table"]
+        assert "district_entry grain" in row["source"]["extraction_method"]
+    assert all(
+        "IMP_DETL fixed-width detail" in row["observed_measure"]["source_table"]
+        for row in rows
+    )
 
     manifest = write_consumer_artifact(
         tmp_path / "artifact",
@@ -760,6 +777,10 @@ def test_source_leg_formats_grain_into_extraction_method():
     formatted = IMDB_BULK_SOURCE_LEG.extraction_method.format(grain="chapter")
     assert "chapter grain" in formatted
     assert "populace-minted" in formatted
+    assert "{grain}" in IMDB_DISTRICT_SOURCE_LEG.extraction_method
+    district = IMDB_DISTRICT_SOURCE_LEG.extraction_method.format(grain="district_entry")
+    assert "district_entry grain" in district
+    assert "IMP_DE" in IMDB_DISTRICT_SOURCE_LEG.source_table
 
 
 def test_build_cli_end_to_end_offline(tmp_path):
