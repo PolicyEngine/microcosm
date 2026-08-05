@@ -9,8 +9,10 @@ per-family declared metrics.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import pickle
+from collections import Counter
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 
@@ -21,6 +23,7 @@ from pandas.testing import assert_frame_equal
 
 import populace.build.us_runtime.puf_support as puf_support_module
 import populace.build.us_runtime.stacked_spine as stacked_spine_module
+from populace.build.gates import GateReport, GateResult
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
@@ -599,55 +602,11 @@ def test_finalize_legacy_zero_fill_matches_run_7_protocol_5_byte_pin() -> None:
         finalized.table("person")["taxable_interest_income"].to_numpy(copy=True),
         finalized.table("tax_unit")["health_savings_account_ald"].to_numpy(copy=True),
     )
-    expected = (
-        np.asarray(
-            [
-                100,
-                0,
-                200,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                100,
-                0,
-                100,
-                100,
-                100,
-                100,
-                0,
-                0,
-                100,
-                100,
-                100,
-                100,
-                0,
-                100,
-                100,
-                100,
-            ],
-            dtype=np.float64,
-        ),
-        np.concatenate(
-            (
-                np.zeros(12, dtype=np.float64),
-                np.full(12, 750, dtype=np.float64),
-            )
-        ),
-    )
     actual_bytes = pickle.dumps(actual, protocol=5)
-    expected_bytes = pickle.dumps(expected, protocol=5)
     assert actual_bytes[:2] == b"\x80\x05"
-    assert actual_bytes == expected_bytes
+    assert hashlib.sha256(actual_bytes).hexdigest() == (
+        "f2dc86f630a41c7b0eb060d7cd630bfadda423ae26c4311403116e3e6cb7720e"
+    )
 
 
 def test_preserve_nulls_sparsification_never_rewrites_native_rows() -> None:
@@ -921,6 +880,125 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         profile.min_effective_support = 50
 
 
+def test_canonical_metric_registry_covers_the_declared_90_target_split() -> None:
+    surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    surface_targets = {
+        (entity, family, target, 0)
+        for entity, families in surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+
+    assert len(surface_targets) == 90
+    assert set(registry) == surface_targets
+    assert Counter(registry.values()) == {
+        "monetary_sign_separated": 62,
+        "boolean_incidence": 26,
+        "categorical_tvd": 2,
+    }
+    assert (
+        registry[("person", "puf_tax_itemization", "taxable_interest_income", 0)]
+        == "monetary_sign_separated"
+    )
+
+
+def test_explicit_test_seams_reject_the_canonical_authority() -> None:
+    authority = stacked_spine_module._production_stacked_authority()
+    frame = _stacked_gap_fixture()
+
+    with pytest.raises(ValueError, match="NON-CANONICAL test authority"):
+        stacked_spine_module._gap_fill_stacked_spine_with_test_authority(
+            frame,
+            authority=authority,
+        )
+    with pytest.raises(ValueError, match="NON-CANONICAL test authority"):
+        stacked_spine_module._stacked_completeness_gate_with_test_authority(
+            frame,
+            authority=authority,
+        )
+    with pytest.raises(ValueError, match="NON-CANONICAL test authority"):
+        stacked_spine_module._by_origin_battery_with_test_authority(
+            frame,
+            authority=authority,
+        )
+
+
+def _surface_from_gap_fill_plan(
+    plan: tuple[GapFillDirection, ...],
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    surface: dict[str, dict[str, tuple[str, ...]]] = {}
+    for direction in plan:
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                surface.setdefault(entity, {})[family] = tuple(targets)
+    return surface
+
+
+def _gap_fill_with_test_authority(
+    frame: Frame,
+    *,
+    plan: tuple[GapFillDirection, ...],
+    **kwargs: object,
+):
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=_surface_from_gap_fill_plan(plan),
+        gap_fill_plan=plan,
+    )
+    return stacked_spine_module._gap_fill_stacked_spine_with_test_authority(
+        frame,
+        authority=authority,
+        **kwargs,
+    )
+
+
+def _completeness_with_test_authority(
+    frame: Frame,
+    *,
+    declared_surface: dict[str, dict[str, tuple[str, ...]]],
+    declared_gap_fill_plan: tuple[GapFillDirection, ...],
+    absence_proofs: tuple[AbsenceProof, ...] = (),
+):
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=declared_surface,
+        gap_fill_plan=declared_gap_fill_plan,
+    )
+    return stacked_spine_module._stacked_completeness_gate_with_test_authority(
+        frame,
+        authority=authority,
+        absence_proofs=absence_proofs,
+    )
+
+
+def _battery_with_test_authority(
+    frame: Frame,
+    *,
+    registry: tuple[OriginBatterySpec, ...],
+):
+    surface = {
+        entity: {family: tuple(targets) for family, targets in families.items()}
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE.items()
+        )
+    }
+    metrics: dict[tuple[str, str, str, int], str] = {}
+    for spec in registry:
+        family_targets = list(surface.setdefault(spec.entity, {}).get(spec.family, ()))
+        for column, metric in spec.column_metrics.items():
+            if column not in family_targets:
+                family_targets.append(column)
+            metrics[(spec.entity, spec.family, column, spec.clone_index)] = metric
+        surface[spec.entity][spec.family] = tuple(family_targets)
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        metric_registry=metrics,
+    )
+    return stacked_spine_module._by_origin_battery_with_test_authority(
+        frame,
+        authority=authority,
+    )
+
+
 def _stacked_gap_fixture() -> Frame:
     return assemble_stacked_spine(
         _asec_gap_source(),
@@ -958,7 +1036,7 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
 
 def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     stacked = _stacked_gap_fixture()
-    result = gap_fill_stacked_spine(
+    result = _gap_fill_with_test_authority(
         stacked,
         plan=_GAP_FILL_TEST_PLAN,
         seed=578,
@@ -1041,7 +1119,7 @@ def test_gap_fill_outcome_rejects_forged_residual_receipt(
             "residual-null equation failed: residual_null_rows=0 != unmodeled_rows=1"
         ),
     ) as error:
-        gap_fill_stacked_spine(
+        _gap_fill_with_test_authority(
             _stacked_gap_fixture(),
             plan=_GAP_FILL_TEST_PLAN,
             seed=578,
@@ -1105,7 +1183,7 @@ def test_gap_fill_rejects_signed_zero_donor_byte_change(
             r"canonical donor payload changed"
         ),
     ):
-        gap_fill_stacked_spine(
+        _gap_fill_with_test_authority(
             stacked,
             plan=(_GAP_FILL_TEST_PLAN[0],),
             seed=578,
@@ -1214,7 +1292,7 @@ def test_gap_fill_activation_authority_fails_closed_on_donor_nulls() -> None:
     )
 
     with pytest.raises(ValueError, match="donors must observe"):
-        gap_fill_stacked_spine(poked, plan=_GAP_FILL_TEST_PLAN, seed=578)
+        _gap_fill_with_test_authority(poked, plan=_GAP_FILL_TEST_PLAN, seed=578)
 
 
 @pytest.mark.parametrize(
@@ -1243,7 +1321,7 @@ def test_gap_fill_activation_authority_rejects_nonlive_declared_channel(
         ValueError,
         match=f"declared {role} channel {missing_channel!r} has no live rows",
     ):
-        gap_fill_stacked_spine(_stacked_gap_fixture(), plan=plan, seed=578)
+        _gap_fill_with_test_authority(_stacked_gap_fixture(), plan=plan, seed=578)
 
 
 def test_gap_fill_fails_closed_on_missing_target_column() -> None:
@@ -1259,13 +1337,13 @@ def test_gap_fill_fails_closed_on_missing_target_column() -> None:
         ),
     )
     with pytest.raises(ValueError, match="veterans_benefits.*absent"):
-        gap_fill_stacked_spine(stacked, plan=plan, seed=578)
+        _gap_fill_with_test_authority(stacked, plan=plan, seed=578)
 
 
 def test_gap_fill_rejects_cloned_frames() -> None:
     cloned = clone_us_frame_for_puf_support(_stacked_gap_fixture())
     with pytest.raises(ValueError, match="before clone operators"):
-        gap_fill_stacked_spine(cloned, plan=_GAP_FILL_TEST_PLAN, seed=578)
+        _gap_fill_with_test_authority(cloned, plan=_GAP_FILL_TEST_PLAN, seed=578)
 
 
 def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
@@ -1280,7 +1358,7 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
             identity=identity,
         ),
     }
-    first = gap_fill_stacked_spine(
+    first = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
         plan=_GAP_FILL_TEST_PLAN,
         seed=578,
@@ -1302,7 +1380,7 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
             identity=identity,
         ),
     }
-    second = gap_fill_stacked_spine(
+    second = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
         plan=_GAP_FILL_TEST_PLAN,
         seed=578,
@@ -1543,7 +1621,7 @@ def test_clone_attachment_manifest_mutation_fails_closed() -> None:
 
 
 def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
-    gap_filled = gap_fill_stacked_spine(
+    gap_filled = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
         plan=_GAP_FILL_TEST_PLAN,
         seed=578,
@@ -1592,7 +1670,7 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
 
 
 def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> None:
-    gap_filled = gap_fill_stacked_spine(
+    gap_filled = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
         plan=_GAP_FILL_TEST_PLAN,
         seed=578,
@@ -1638,7 +1716,7 @@ def _completed_stacked_frame() -> Frame:
 
 
 def test_completeness_gate_passes_on_filled_and_proven_surface() -> None:
-    gap_filled = gap_fill_stacked_spine(
+    gap_filled = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
         plan=_GAP_FILL_TEST_PLAN,
         seed=578,
@@ -1651,7 +1729,7 @@ def test_completeness_gate_passes_on_filled_and_proven_surface() -> None:
             "housing": ("pre_subsidy_rent",),
         }
     }
-    result = stacked_completeness_gate(
+    result = _completeness_with_test_authority(
         gap_filled,
         declared_surface=surface,
         declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
@@ -1688,7 +1766,7 @@ def test_completeness_gate_names_a_silently_missing_family() -> None:
         metadata=stacked.metadata,
     )
 
-    result = stacked_completeness_gate(
+    result = _completeness_with_test_authority(
         dropped,
         declared_surface=surface,
         declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
@@ -1713,7 +1791,7 @@ def test_completeness_gate_requires_source_role_proofs_for_nulls() -> None:
     stacked = _stacked_gap_fixture()
     surface = {"person": {"puf_tax_itemization": ("taxable_interest_income",)}}
 
-    unproven = stacked_completeness_gate(
+    unproven = _completeness_with_test_authority(
         stacked,
         declared_surface=surface,
         declared_gap_fill_plan=(),
@@ -1724,7 +1802,7 @@ def test_completeness_gate_requires_source_role_proofs_for_nulls() -> None:
         for failure in unproven.failures
     )
 
-    proven = stacked_completeness_gate(
+    proven = _completeness_with_test_authority(
         stacked,
         declared_surface=surface,
         declared_gap_fill_plan=(),
@@ -1759,7 +1837,7 @@ def test_completeness_gate_rejects_wildcard_for_declared_donor_hole() -> None:
         reason="WILDCARD LAUNDER",
     )
 
-    laundered = stacked_completeness_gate(
+    laundered = _completeness_with_test_authority(
         stacked,
         declared_surface=surface,
         declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
@@ -1773,7 +1851,7 @@ def test_completeness_gate_rejects_wildcard_for_declared_donor_hole() -> None:
         for failure in laundered.failures
     )
 
-    exact = stacked_completeness_gate(
+    exact = _completeness_with_test_authority(
         stacked,
         declared_surface=surface,
         declared_gap_fill_plan=_GAP_FILL_TEST_PLAN,
@@ -1783,7 +1861,7 @@ def test_completeness_gate_rejects_wildcard_for_declared_donor_hole() -> None:
     proof = exact.details["targets"][
         "person/model_required_numeric/unemployment_compensation"
     ]["proven"]["acs/clone_0"]
-    assert proof["authority_form"] == "origin_exact"
+    assert proof["authority_form"] == "origin_exact_recipient"
     assert proof["declared_direction"] == "asec_survey_to_acs"
     assert proof["declared_donor_channel"] == "asec"
 
@@ -1909,6 +1987,17 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     authority = canonical.details["authority"]
     assert authority["authority_form"] == "CANONICAL"
     assert authority["canonical"] is True
+    battery = by_origin_battery(frame)
+    assert battery.passed, battery.failures
+    assert battery.details["authority"] == authority
+    canonical_manifest = GateReport((canonical, battery)).to_manifest()
+    assert canonical_manifest["passed"] is True
+    assert (
+        stacked_spine_module._authority_receipt(
+            stacked_spine_module._production_stacked_authority()
+        )
+        == authority
+    )
     plan_sha256 = authority["components"]["gap_fill_plan"]["sha256"]
     surface_sha256 = authority["components"]["declared_surface"]["sha256"]
     for receipt in canonical.details["targets"].values():
@@ -1959,6 +2048,376 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
         custom_target["surface_sha256"]
         == custom_top["components"]["declared_surface"]["sha256"]
     )
+    with pytest.raises(
+        ValueError,
+        match="non-canonical stacked authority is forbidden",
+    ):
+        stacked_spine_module._validate_production_authority_receipt(
+            custom_top,
+            boundary="test production artifact",
+        )
+    with pytest.raises(ValueError, match="production manifest emission is forbidden"):
+        GateReport((custom,)).to_manifest()
+    custom.details["authority"]["production_manifest_permitted"] = True
+    with pytest.raises(ValueError, match="production manifest emission is forbidden"):
+        GateReport((custom,)).to_manifest()
+    forged_receipt = deepcopy(custom_top)
+    forged_receipt.update(
+        {
+            "authority_id": "us_stacked_spine_authority",
+            "authority_form": "CANONICAL",
+            "declared_authority_form": "CANONICAL",
+            "canonical": True,
+            "canonical_identity": True,
+            "canonical_content": True,
+            "integrity_valid": True,
+            "digest_matches_declared": True,
+            "production_manifest_permitted": True,
+            "declared_sha256": forged_receipt["sha256"],
+        }
+    )
+    for component in forged_receipt["components"].values():
+        component["declared_sha256"] = component["sha256"]
+        component["digest_matches_declared"] = True
+    forged_result = replace(custom, details={"authority": forged_receipt})
+    with pytest.raises(ValueError, match="production manifest emission is forbidden"):
+        GateReport((forged_result,)).to_manifest()
+
+
+def test_self_digested_partial_authority_cannot_forge_production_identity() -> None:
+    surface = {"person": {"test_only": ("unemployment_compensation",)}}
+    forged = stacked_spine_module._make_stacked_authority(
+        authority_id="us_stacked_spine_authority",
+        version=1,
+        gap_fill_plan=(),
+        declared_surface=surface,
+        metric_registry={
+            ("person", "test_only", "unemployment_compensation", 0): (
+                "monetary_sign_separated"
+            )
+        },
+        support_profile=(stacked_spine_module.CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE),
+        declared_form="CANONICAL",
+    )
+    result = stacked_spine_module._stacked_completeness_gate_evaluate(
+        _stacked_gap_fixture(),
+        authority=forged,
+        production=True,
+        absence_proofs=(),
+    )
+
+    assert not result.passed
+    assert result.details["authority"]["canonical_identity"] is False
+    assert result.details["authority"]["canonical_content"] is False
+    assert any(
+        "canonical stacked authority identity mismatch" in failure
+        for failure in result.failures
+    )
+    with pytest.raises(ValueError, match="production manifest emission is forbidden"):
+        GateReport((result,)).to_manifest()
+
+
+def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    surface = {"person": {"test_only": ("unemployment_compensation",)}}
+    forged = stacked_spine_module._make_stacked_authority(
+        authority_id="us_stacked_spine_authority",
+        version=1,
+        gap_fill_plan=(),
+        declared_surface=surface,
+        metric_registry={
+            ("person", "test_only", "unemployment_compensation", 0): (
+                "monetary_sign_separated"
+            )
+        },
+        support_profile=(stacked_spine_module.CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE),
+        declared_form="CANONICAL",
+    )
+    rebound = {
+        "_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR": forged.declared_surface,
+        "_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR": forged.gap_fill_plan,
+        "_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR": forged.metric_registry,
+        "_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR": (forged.support_profile),
+        "_CANONICAL_STACKED_AUTHORITY_ANCHOR": forged,
+        "_STACKED_DECLARED_SURFACE": forged.declared_surface,
+        "_STACKED_GAP_FILL_PLAN": forged.gap_fill_plan,
+        "_BATTERY_METRIC_REGISTRY": forged.metric_registry,
+        "_BATTERY_SUPPORT_PROFILE": forged.support_profile,
+    }
+    for name, value in rebound.items():
+        monkeypatch.setattr(stacked_spine_module, name, value)
+
+    result = stacked_completeness_gate(_stacked_gap_fixture())
+
+    assert not result.passed
+    assert result.details["authority"]["canonical"] is False
+    assert result.details["authority"]["canonical_identity"] is False
+    assert any(
+        "canonical stacked authority identity mismatch" in failure
+        for failure in result.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "support_threshold",
+        "surface_count",
+        "direction_count",
+        "target_binding",
+    ),
+)
+def test_stacked_manifest_rejects_pre_emission_nested_receipt_mutation(
+    mutation: str,
+) -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    result = stacked_completeness_gate(frame)
+    assert result.passed, result.failures
+    authority = result.details["authority"]
+    if mutation == "support_threshold":
+        authority["components"]["support_profile"]["min_effective_support"] = 50
+    elif mutation == "surface_count":
+        authority["components"]["declared_surface"]["target_count"] = 0
+    elif mutation == "direction_count":
+        authority["components"]["gap_fill_plan"]["direction_count"] = 0
+    else:
+        target = next(iter(result.details["targets"].values()))
+        target["authority_form"] = "wildcard_no_declared_donor_plan"
+        target["plan_sha256"] = "0" * 64
+
+    with pytest.raises(
+        ValueError,
+        match="details changed after evaluation.*manifest emission is forbidden",
+    ):
+        GateReport((result,)).to_manifest()
+
+
+@pytest.mark.parametrize("replacement", ({}, None))
+def test_stacked_manifest_requires_the_authority_receipt(
+    replacement: object,
+) -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = stacked_completeness_gate(frame)
+    details = deepcopy(dict(canonical.details))
+    if replacement is None:
+        details["authority"] = None
+    else:
+        details.pop("authority")
+    missing = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="no stacked authority receipt.*manifest emission is forbidden",
+    ):
+        GateReport((missing,)).to_manifest()
+
+
+def test_fresh_gate_result_cannot_graft_canonical_authority_onto_test_surface() -> None:
+    frame = _stacked_gap_fixture()
+    person = frame.table("person").copy()
+    person["test_unplanned_absence"] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    custom_frame = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    test_authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface={"person": {"test_only": ("test_unplanned_absence",)}},
+        gap_fill_plan=(),
+    )
+    custom = stacked_spine_module._stacked_completeness_gate_with_test_authority(
+        custom_frame,
+        authority=test_authority,
+        absence_proofs=(
+            AbsenceProof(
+                entity="person",
+                column="test_unplanned_absence",
+                channel="*",
+                clone_index=0,
+                reason="test-only wildcard",
+            ),
+        ),
+    )
+    canonical = stacked_completeness_gate(
+        _battery_frame(
+            {
+                "taxable_interest_income": (
+                    np.asarray([100.0] * 8),
+                    np.asarray([100.0] * 11),
+                )
+            }
+        )
+    )
+    grafted_details = deepcopy(dict(custom.details))
+    grafted_details["authority"] = deepcopy(canonical.details["authority"])
+    grafted = replace(custom, details=grafted_details)
+
+    with pytest.raises(
+        ValueError,
+        match="must declare exactly 90 targets.*manifest emission is forbidden",
+    ):
+        GateReport((grafted,)).to_manifest()
+
+
+def test_fresh_gate_result_cannot_forge_a_donor_origin_proof() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = stacked_completeness_gate(frame)
+    details = deepcopy(dict(canonical.details))
+    authority = details["authority"]
+    binding = {
+        "authority_sha256": authority["sha256"],
+        "plan_sha256": authority["components"]["gap_fill_plan"]["sha256"],
+        "surface_sha256": authority["components"]["declared_surface"]["sha256"],
+    }
+    label = "person/puf_tax_itemization/taxable_interest_income"
+    details["targets"][label] = {
+        "status": "proven_absent",
+        "null_rows": 1,
+        "authority_form": "origin_exact_recipient",
+        **binding,
+        "proven": {
+            "asec/clone_0": {
+                "null_rows": 1,
+                "reason": "DONOR-ORIGIN FORGERY",
+                "authority_form": "origin_exact_recipient",
+                **binding,
+                "declared_direction": "asec_survey_to_acs",
+                "declared_donor_channel": "asec",
+                "declared_recipient_channel": "acs",
+            }
+        },
+        "unproven": {},
+    }
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="asec/clone_0 proof is not recipient-exact.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = by_origin_battery(frame)
+    details = deepcopy(dict(canonical.details))
+    details["declared_target_count"] = 1
+    details["registered_target_count"] = 1
+    details["comparisons"] = {
+        "person/test_only/fake[clone_0]": {
+            "status": "tested",
+            "metric": "rare_incidence",
+        }
+    }
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="coverage receipt must bind all 90 targets.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_fresh_battery_result_cannot_relabel_a_canonical_metric() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = by_origin_battery(frame)
+    details = deepcopy(dict(canonical.details))
+    label = "person/puf_tax_itemization/taxable_interest_income[clone_0]"
+    details["comparisons"][label]["metric"] = "rare_incidence"
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "taxable_interest_income.*canonical metric "
+            "'monetary_sign_separated'.*emission is forbidden"
+        ),
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_noncanonical_stacked_receipt_cannot_escape_under_a_renamed_gate() -> None:
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface={"person": {"test_only": ("unemployment_compensation",)}},
+        gap_fill_plan=(),
+    )
+    custom = stacked_spine_module._stacked_completeness_gate_with_test_authority(
+        _stacked_gap_fixture(),
+        authority=authority,
+    )
+    renamed = replace(custom, name="renamed_stacked_completeness")
+
+    with pytest.raises(
+        ValueError,
+        match="unrecognized gate name.*manifest emission is forbidden",
+    ):
+        GateReport((renamed,)).to_manifest()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("authority_form", "NON-CANONICAL"),
+        ("declared_authority_form", "NON-CANONICAL"),
+        ("digest_matches_declared", False),
+    ),
+)
+def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
+    field: str,
+    value: object,
+) -> None:
+    stripped = GateResult(
+        name="renamed_stacked_completeness",
+        passed=True,
+        details={"authority": {field: value}},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="unrecognized gate name.*manifest emission is forbidden",
+    ):
+        GateReport((stripped,)).to_manifest()
 
 
 def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
@@ -1987,14 +2446,14 @@ def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
         }
     }
 
-    unproven = stacked_completeness_gate(
+    unproven = _completeness_with_test_authority(
         frame,
         declared_surface=surface,
         declared_gap_fill_plan=(),
     )
     assert not unproven.passed
 
-    proven = stacked_completeness_gate(
+    proven = _completeness_with_test_authority(
         frame,
         declared_surface=surface,
         declared_gap_fill_plan=(),
@@ -2015,7 +2474,12 @@ def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
     assert wildcard_receipt["authority_form"] == "wildcard_no_declared_donor_plan"
 
 
-def _declared_battery_metric(family: str) -> str:
+def _declared_battery_metric(entity: str, family: str, target: str) -> str:
+    canonical = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.get(
+        (entity, family, target, 0)
+    )
+    if canonical is not None:
+        return canonical
     if family in {"benefit_participation", "model_required_boolean"}:
         return "boolean_incidence"
     if family == "model_required_discrete":
@@ -2032,7 +2496,10 @@ def _complete_battery_registry(
             for family, targets in families.items():
                 bucket = metrics.setdefault((entity, family, 0), {})
                 bucket.update(
-                    {target: _declared_battery_metric(family) for target in targets}
+                    {
+                        target: _declared_battery_metric(entity, family, target)
+                        for target in targets
+                    }
                 )
     for spec in extras:
         metrics.setdefault((spec.entity, spec.family, spec.clone_index), {}).update(
@@ -2138,7 +2605,9 @@ def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:
             },
         ),
     )
-    result = by_origin_battery(frame, registry=_complete_battery_registry(*registry))
+    result = _battery_with_test_authority(
+        frame, registry=_complete_battery_registry(*registry)
+    )
 
     assert not result.passed
     matched = result.details["comparisons"][
@@ -2165,7 +2634,7 @@ def test_battery_rejects_registry_omitting_declared_champva_before_comparisons()
             ),
         }
     )
-    result = by_origin_battery(
+    result = _battery_with_test_authority(
         frame,
         registry=(
             OriginBatterySpec(
@@ -2276,7 +2745,9 @@ def test_battery_sign_separated_catches_the_one_sided_hole() -> None:
             column_metrics={"sentinel_amount": "monetary_sign_separated"},
         ),
     )
-    result = by_origin_battery(frame, registry=_complete_battery_registry(*registry))
+    result = _battery_with_test_authority(
+        frame, registry=_complete_battery_registry(*registry)
+    )
 
     assert not result.passed
     assert any(
@@ -2331,7 +2802,9 @@ def test_battery_sign_separated_passes_matching_legs() -> None:
             column_metrics={"signed_amount": "monetary_sign_separated"},
         ),
     )
-    result = by_origin_battery(frame, registry=_complete_battery_registry(*registry))
+    result = _battery_with_test_authority(
+        frame, registry=_complete_battery_registry(*registry)
+    )
     assert result.passed, result.failures
     record = result.details["comparisons"][
         "person/puf_tax_itemization/signed_amount[clone_0]"
@@ -2349,7 +2822,7 @@ def test_battery_support_awareness_and_dead_comparisons() -> None:
             ),
         }
     )
-    dead = by_origin_battery(
+    dead = _battery_with_test_authority(
         frame,
         registry=_complete_battery_registry(
             OriginBatterySpec(
@@ -2425,7 +2898,7 @@ def test_battery_categorical_tvd_and_null_scope() -> None:
             ),
         }
     )
-    result = by_origin_battery(
+    result = _battery_with_test_authority(
         frame,
         registry=_complete_battery_registry(
             OriginBatterySpec(
@@ -2499,6 +2972,13 @@ def _asec_e2e_source() -> Frame:
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
     tables["household"] = household
+    tax_unit = tables["tax_unit"].copy()
+    tax_unit["health_savings_account_ald"] = np.where(
+        np.arange(len(tax_unit)) % 3 == 0,
+        750.0,
+        0.0,
+    )
+    tables["tax_unit"] = tax_unit
     return Frame(
         tables,
         US_SCHEMA,
@@ -2531,6 +3011,9 @@ def _acs_e2e_source() -> Frame:
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
     tables["household"] = household
+    tax_unit = tables["tax_unit"].copy()
+    tax_unit["health_savings_account_ald"] = np.nan
+    tables["tax_unit"] = tax_unit
     return Frame(
         tables,
         US_SCHEMA,
@@ -2549,7 +3032,10 @@ _E2E_GAP_FILL_PLAN = (
                 "puf_tax_itemization": ("taxable_interest_income",),
                 "model_required_numeric": ("unemployment_compensation",),
                 "model_required_boolean": ("is_disabled",),
-            }
+            },
+            "tax_unit": {
+                "puf_tax_itemization": ("health_savings_account_ald",),
+            },
         },
     ),
     GapFillDirection(
@@ -2587,7 +3073,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
         )
         for direction in _E2E_GAP_FILL_PLAN
     }
-    gap_filled = gap_fill_stacked_spine(
+    gap_filled = _gap_fill_with_test_authority(
         stacked,
         plan=_E2E_GAP_FILL_PLAN,
         seed=578,
@@ -2665,19 +3151,10 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
             "puf_tax_itemization": ("health_savings_account_ald",),
         },
     }
-    completeness = stacked_completeness_gate(
+    completeness = _completeness_with_test_authority(
         passed.frame,
         declared_surface=declared_surface,
         declared_gap_fill_plan=_E2E_GAP_FILL_PLAN,
-        absence_proofs=(
-            AbsenceProof(
-                entity="tax_unit",
-                column="health_savings_account_ald",
-                channel="*",
-                clone_index=0,
-                reason="base arm carries no PUF detail; engine default applies",
-            ),
-        ),
     )
     assert completeness.passed, completeness.failures
 
@@ -2692,7 +3169,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
         },
         "tax_unit": declared_surface["tax_unit"],
     }
-    mutated = stacked_completeness_gate(
+    mutated = _completeness_with_test_authority(
         passed.frame,
         declared_surface=mutated_surface,
         declared_gap_fill_plan=_E2E_GAP_FILL_PLAN,
@@ -2725,7 +3202,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
             column_metrics={"pre_subsidy_rent": "monetary_sign_separated"},
         ),
     )
-    battery = by_origin_battery(
+    battery = _battery_with_test_authority(
         _with_declared_battery_defaults(
             passed.frame,
             preserve=frozenset(

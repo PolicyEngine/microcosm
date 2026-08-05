@@ -38,8 +38,10 @@ import hashlib
 import json
 import math
 import pickle
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -73,6 +75,10 @@ from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
+    "CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY",
+    "CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE",
+    "CANONICAL_STACKED_DECLARED_SURFACE",
+    "CANONICAL_STACKED_GAP_FILL_PLAN",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "ORIGIN_BATTERY_METRIC_KINDS",
     "STACKED_PILOT_ACS_SAMPLE_FRACTION",
@@ -571,6 +577,38 @@ def _json_ready(value: object) -> dict[str, object]:
 _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
 _GAP_FILL_HOUSING_FAMILY = "housing"
+_STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
+_STACKED_AUTHORITY_VERSION = 1
+_CANONICAL_AUTHORITY_FORM = "CANONICAL"
+_NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
+
+
+def _freeze_target_families(target_families: TargetFamilies) -> TargetFamilies:
+    """Recursively freeze an entity/family/target declaration."""
+
+    if not isinstance(target_families, Mapping):
+        raise TypeError("Target families must be a mapping.")
+    frozen_entities: dict[str, Mapping[str, tuple[str, ...]]] = {}
+    for entity, families in target_families.items():
+        if not isinstance(entity, str) or not entity.strip():
+            raise ValueError("Target-family entity names must be non-empty strings.")
+        if not isinstance(families, Mapping):
+            raise TypeError(f"Target families for {entity!r} must be a mapping.")
+        frozen_families: dict[str, tuple[str, ...]] = {}
+        for family, targets in families.items():
+            if not isinstance(family, str) or not family.strip():
+                raise ValueError("Target-family names must be non-empty strings.")
+            frozen_targets = tuple(targets)
+            if any(
+                not isinstance(target, str) or not target.strip()
+                for target in frozen_targets
+            ):
+                raise ValueError(
+                    f"Target family {entity}/{family} contains an invalid target name."
+                )
+            frozen_families[family] = frozen_targets
+        frozen_entities[entity] = MappingProxyType(frozen_families)
+    return MappingProxyType(frozen_entities)
 
 
 @dataclass(frozen=True)
@@ -612,6 +650,11 @@ class GapFillDirection:
             raise ValueError(
                 f"GapFillDirection {self.name!r} declares no target families."
             )
+        object.__setattr__(
+            self,
+            "target_families",
+            _freeze_target_families(self.target_families),
+        )
 
 
 @dataclass(frozen=True)
@@ -623,23 +666,11 @@ class GapFillResult:
     transfer_results: Mapping[str, AcsTransferResult] = field(default_factory=dict)
 
 
-def stacked_gap_fill_plan(
-    target_families: TargetFamilies | None = None,
+def _build_stacked_gap_fill_plan(
+    families: TargetFamilies,
 ) -> tuple[GapFillDirection, ...]:
-    """Return the declared two-direction gap-fill plan for the stacked spine.
+    """Build a deeply frozen direction plan from a declared surface."""
 
-    ACS-origin rows receive every declared ASEC-survey transfer family except
-    housing; ASEC-origin rows receive the ACS-native housing family.  The
-    declaration reuses the reviewed ACS-transfer family registry unchanged so
-    the gap-fill, the completeness gate, and the by-origin battery all consume
-    one plan.
-    """
-
-    families = (
-        declared_acs_transfer_target_families()
-        if target_families is None
-        else target_families
-    )
     survey_families: dict[str, dict[str, tuple[str, ...]]] = {}
     housing_families: dict[str, dict[str, tuple[str, ...]]] = {}
     for entity, entity_families in families.items():
@@ -672,14 +703,859 @@ def stacked_gap_fill_plan(
     return tuple(directions)
 
 
+ORIGIN_BATTERY_METRIC_KINDS = (
+    "boolean_incidence",
+    "rare_incidence",
+    "monetary_sign_separated",
+    "categorical_tvd",
+)
+
+
+@dataclass(frozen=True)
+class _BatterySupportProfile:
+    profile_id: str
+    version: int
+    min_effective_support: int
+
+
+@dataclass(frozen=True)
+class _StackedAuthority:
+    """One digest-carrying, deeply immutable stacked-spine authority bundle."""
+
+    authority_id: str
+    version: int
+    gap_fill_plan: tuple[GapFillDirection, ...]
+    declared_surface: TargetFamilies
+    metric_registry: Mapping[tuple[str, str, str, int], str]
+    support_profile: _BatterySupportProfile
+    declared_component_sha256: Mapping[str, str]
+    declared_sha256: str
+    declared_form: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.authority_id, str) or not self.authority_id.strip():
+            raise ValueError("Stacked authority_id must be a non-empty string.")
+        if isinstance(self.version, bool) or not isinstance(self.version, int):
+            raise ValueError("Stacked authority version must be an integer.")
+        plan = tuple(self.gap_fill_plan)
+        if any(not isinstance(direction, GapFillDirection) for direction in plan):
+            raise TypeError("Stacked authority plans require GapFillDirection values.")
+        object.__setattr__(self, "gap_fill_plan", plan)
+        object.__setattr__(
+            self,
+            "declared_surface",
+            _freeze_target_families(self.declared_surface),
+        )
+        object.__setattr__(
+            self,
+            "metric_registry",
+            _freeze_metric_registry(self.metric_registry),
+        )
+        if not isinstance(self.support_profile, _BatterySupportProfile):
+            raise TypeError(
+                "Stacked authority support_profile must be a _BatterySupportProfile."
+            )
+        component_digests = dict(self.declared_component_sha256)
+        if set(component_digests) != {
+            "gap_fill_plan",
+            "declared_surface",
+            "metric_registry",
+            "support_profile",
+        }:
+            raise ValueError(
+                "Stacked authority must carry every component's declared digest."
+            )
+        for name, digest in component_digests.items():
+            _validate_sha256(digest, boundary=f"Stacked authority {name}")
+        object.__setattr__(
+            self,
+            "declared_component_sha256",
+            MappingProxyType(component_digests),
+        )
+        _validate_sha256(self.declared_sha256, boundary="Stacked authority")
+        if self.declared_form not in {
+            _CANONICAL_AUTHORITY_FORM,
+            _NONCANONICAL_AUTHORITY_FORM,
+        }:
+            raise ValueError(f"Unknown stacked authority form {self.declared_form!r}.")
+
+
+def _validate_sha256(value: object, *, boundary: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"{boundary} digest must be a lowercase sha256.")
+
+
+def _freeze_metric_registry(
+    registry: Mapping[tuple[str, str, str, int], str],
+) -> Mapping[tuple[str, str, str, int], str]:
+    if not isinstance(registry, Mapping):
+        raise TypeError("The origin-battery metric registry must be a mapping.")
+    frozen: dict[tuple[str, str, str, int], str] = {}
+    for key, metric in registry.items():
+        if (
+            not isinstance(key, tuple)
+            or len(key) != 4
+            or any(not isinstance(value, str) or not value for value in key[:3])
+            or isinstance(key[3], bool)
+            or not isinstance(key[3], int)
+            or key[3] < 0
+        ):
+            raise ValueError(f"Invalid origin-battery metric key {key!r}.")
+        if metric not in ORIGIN_BATTERY_METRIC_KINDS:
+            raise ValueError(
+                f"Origin-battery target {_battery_target_label(key)} declares "
+                f"unknown metric {metric!r}."
+            )
+        frozen[key] = metric
+    return MappingProxyType(frozen)
+
+
+def _surface_target_keys(
+    surface: TargetFamilies,
+) -> tuple[tuple[str, str, str, int], ...]:
+    return tuple(
+        sorted(
+            (entity, family, target, 0)
+            for entity, families in surface.items()
+            for family, targets in families.items()
+            for target in targets
+        )
+    )
+
+
+def _plan_target_keys(
+    plan: Sequence[GapFillDirection],
+) -> tuple[tuple[str, str, str, int], ...]:
+    return tuple(
+        sorted(
+            (entity, family, target, 0)
+            for direction in plan
+            for entity, families in direction.target_families.items()
+            for family, targets in families.items()
+            for target in targets
+        )
+    )
+
+
+def _surface_payload(surface: TargetFamilies) -> dict[str, object]:
+    return {
+        entity: {family: list(targets) for family, targets in families.items()}
+        for entity, families in surface.items()
+    }
+
+
+def _plan_payload(plan: Sequence[GapFillDirection]) -> list[dict[str, object]]:
+    return [
+        {
+            "name": direction.name,
+            "recipient_channel": direction.recipient_channel,
+            "donor_channel": direction.donor_channel,
+            "target_families": _surface_payload(direction.target_families),
+        }
+        for direction in plan
+    ]
+
+
+def _metric_registry_payload(
+    registry: Mapping[tuple[str, str, str, int], str],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "entity": entity,
+            "family": family,
+            "column": column,
+            "clone_index": clone_index,
+            "metric": registry[(entity, family, column, clone_index)],
+        }
+        for entity, family, column, clone_index in sorted(registry)
+    ]
+
+
+def _support_profile_payload(profile: _BatterySupportProfile) -> dict[str, object]:
+    return {
+        "min_effective_support": profile.min_effective_support,
+        "profile_id": profile.profile_id,
+        "version": profile.version,
+    }
+
+
+def _authority_component_payloads(
+    *,
+    gap_fill_plan: Sequence[GapFillDirection],
+    declared_surface: TargetFamilies,
+    metric_registry: Mapping[tuple[str, str, str, int], str],
+    support_profile: _BatterySupportProfile,
+) -> dict[str, object]:
+    return {
+        "gap_fill_plan": _plan_payload(gap_fill_plan),
+        "declared_surface": _surface_payload(declared_surface),
+        "metric_registry": _metric_registry_payload(metric_registry),
+        "support_profile": _support_profile_payload(support_profile),
+    }
+
+
+def _canonical_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _authority_live_digests(
+    authority: _StackedAuthority,
+) -> tuple[dict[str, str], str]:
+    payloads = _authority_component_payloads(
+        gap_fill_plan=authority.gap_fill_plan,
+        declared_surface=authority.declared_surface,
+        metric_registry=authority.metric_registry,
+        support_profile=authority.support_profile,
+    )
+    component_digests = {
+        name: _canonical_sha256(payload) for name, payload in payloads.items()
+    }
+    bundle_digest = _canonical_sha256(
+        {
+            "authority_id": authority.authority_id,
+            "version": authority.version,
+            "components": payloads,
+        }
+    )
+    return component_digests, bundle_digest
+
+
+def _make_stacked_authority(
+    *,
+    authority_id: str,
+    version: int,
+    gap_fill_plan: Sequence[GapFillDirection],
+    declared_surface: TargetFamilies,
+    metric_registry: Mapping[tuple[str, str, str, int], str],
+    support_profile: _BatterySupportProfile,
+    declared_form: str,
+    declared_component_sha256: Mapping[str, str] | None = None,
+    declared_sha256: str | None = None,
+) -> _StackedAuthority:
+    frozen_plan = tuple(gap_fill_plan)
+    frozen_surface = _freeze_target_families(declared_surface)
+    frozen_registry = _freeze_metric_registry(metric_registry)
+    component_payloads = _authority_component_payloads(
+        gap_fill_plan=frozen_plan,
+        declared_surface=frozen_surface,
+        metric_registry=frozen_registry,
+        support_profile=support_profile,
+    )
+    live_components = {
+        name: _canonical_sha256(payload) for name, payload in component_payloads.items()
+    }
+    live_bundle = _canonical_sha256(
+        {
+            "authority_id": authority_id,
+            "version": version,
+            "components": component_payloads,
+        }
+    )
+    return _StackedAuthority(
+        authority_id=authority_id,
+        version=version,
+        gap_fill_plan=frozen_plan,
+        declared_surface=frozen_surface,
+        metric_registry=frozen_registry,
+        support_profile=support_profile,
+        declared_component_sha256=(
+            live_components
+            if declared_component_sha256 is None
+            else declared_component_sha256
+        ),
+        declared_sha256=live_bundle if declared_sha256 is None else declared_sha256,
+        declared_form=declared_form,
+    )
+
+
+def _canonical_metric_registry(
+    surface: TargetFamilies,
+) -> Mapping[tuple[str, str, str, int], str]:
+    boolean_columns = {
+        "estate_income_would_be_qualified",
+        "farm_operations_income_would_be_qualified",
+        "farm_rent_income_would_be_qualified",
+        "partnership_s_corp_income_would_be_qualified",
+        "rental_income_would_be_qualified",
+        "self_employment_income_would_be_qualified",
+        "sstb_self_employment_income_would_be_qualified",
+        "business_is_sstb",
+        "is_incapable_of_self_care",
+    }
+    registry: dict[tuple[str, str, str, int], str] = {}
+    for key in _surface_target_keys(surface):
+        _entity, family, column, _clone_index = key
+        if (
+            family in {"model_required_boolean", "benefit_participation"}
+            or column in boolean_columns
+        ):
+            metric = "boolean_incidence"
+        elif (
+            family == "model_required_discrete"
+            or column == "first_home_mortgage_origination_year"
+        ):
+            metric = "categorical_tvd"
+        else:
+            metric = "monetary_sign_separated"
+        registry[key] = metric
+    return MappingProxyType(registry)
+
+
+CANONICAL_STACKED_DECLARED_SURFACE = _freeze_target_families(
+    declared_acs_transfer_target_families()
+)
+CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
+    CANONICAL_STACKED_DECLARED_SURFACE
+)
+CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _canonical_metric_registry(
+    CANONICAL_STACKED_DECLARED_SURFACE
+)
+CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
+    profile_id="us_stacked_origin_battery_support",
+    version=1,
+    min_effective_support=5,
+)
+
+_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR = CANONICAL_STACKED_DECLARED_SURFACE
+_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR = CANONICAL_STACKED_GAP_FILL_PLAN
+_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR = (
+    CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+)
+_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
+    CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
+)
+
+# Active module-level authority references are intentionally separate from the
+# immutable anchors. Rebinding any active reference is detected at evaluation,
+# and the live content digest is receipted rather than trusting a stale hash.
+_STACKED_DECLARED_SURFACE = CANONICAL_STACKED_DECLARED_SURFACE
+_STACKED_GAP_FILL_PLAN = CANONICAL_STACKED_GAP_FILL_PLAN
+_BATTERY_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+_BATTERY_SUPPORT_PROFILE = CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
+
+_CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
+    authority_id=_STACKED_AUTHORITY_ID,
+    version=_STACKED_AUTHORITY_VERSION,
+    gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
+    declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
+    metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+    support_profile=_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR,
+    declared_form=_CANONICAL_AUTHORITY_FORM,
+)
+_CANONICAL_STACKED_AUTHORITY_ANCHOR = _CANONICAL_STACKED_AUTHORITY
+
+
+def _production_stacked_authority(
+    *,
+    _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
+    _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
+    _canonical_registry: Mapping[
+        tuple[str, str, str, int], str
+    ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_profile: _BatterySupportProfile = (
+        CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
+    ),
+) -> _StackedAuthority:
+    identity = (
+        _STACKED_GAP_FILL_PLAN is _canonical_plan
+        and _STACKED_DECLARED_SURFACE is _canonical_surface
+        and _BATTERY_METRIC_REGISTRY is _canonical_registry
+        and _BATTERY_SUPPORT_PROFILE is _canonical_profile
+    )
+    if identity:
+        return _canonical_authority
+    return _make_stacked_authority(
+        authority_id=_STACKED_AUTHORITY_ID,
+        version=_STACKED_AUTHORITY_VERSION,
+        gap_fill_plan=_STACKED_GAP_FILL_PLAN,
+        declared_surface=_STACKED_DECLARED_SURFACE,
+        metric_registry=_BATTERY_METRIC_REGISTRY,
+        support_profile=_BATTERY_SUPPORT_PROFILE,
+        declared_form=_CANONICAL_AUTHORITY_FORM,
+        declared_component_sha256=_canonical_authority.declared_component_sha256,
+        declared_sha256=_canonical_authority.declared_sha256,
+    )
+
+
+def _metric_registry_for_surface(
+    surface: TargetFamilies,
+) -> Mapping[tuple[str, str, str, int], str]:
+    inferred = _canonical_metric_registry(surface)
+    return MappingProxyType(
+        {
+            key: CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.get(
+                key,
+                inferred[key],
+            )
+            for key in _surface_target_keys(surface)
+        }
+    )
+
+
+def _make_test_stacked_authority(
+    *,
+    declared_surface: TargetFamilies | None = None,
+    gap_fill_plan: Sequence[GapFillDirection] | None = None,
+    metric_registry: Mapping[tuple[str, str, str, int], str] | None = None,
+    support_profile: _BatterySupportProfile | None = None,
+) -> _StackedAuthority:
+    """Explicit test-only seam; every receipt is marked non-canonical."""
+
+    surface = (
+        CANONICAL_STACKED_DECLARED_SURFACE
+        if declared_surface is None
+        else declared_surface
+    )
+    plan = CANONICAL_STACKED_GAP_FILL_PLAN if gap_fill_plan is None else gap_fill_plan
+    registry = (
+        _metric_registry_for_surface(surface)
+        if metric_registry is None
+        else metric_registry
+    )
+    return _make_stacked_authority(
+        authority_id=f"{_STACKED_AUTHORITY_ID}.test",
+        version=_STACKED_AUTHORITY_VERSION,
+        gap_fill_plan=plan,
+        declared_surface=surface,
+        metric_registry=registry,
+        support_profile=(
+            CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
+            if support_profile is None
+            else support_profile
+        ),
+        declared_form=_NONCANONICAL_AUTHORITY_FORM,
+    )
+
+
+def stacked_gap_fill_plan() -> tuple[GapFillDirection, ...]:
+    """Return the immutable canonical two-direction stacked gap-fill plan."""
+
+    return _STACKED_GAP_FILL_PLAN
+
+
+def _direction_target_index(
+    plan: Sequence[GapFillDirection],
+) -> dict[tuple[str, str, str, int], GapFillDirection]:
+    index: dict[tuple[str, str, str, int], GapFillDirection] = {}
+    for direction in plan:
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                for target in targets:
+                    index[(entity, family, target, 0)] = direction
+    return index
+
+
+def _direction_signature(direction: GapFillDirection) -> tuple[str, str, str]:
+    return (
+        direction.name,
+        direction.recipient_channel,
+        direction.donor_channel,
+    )
+
+
+def _authority_receipt(
+    authority: _StackedAuthority,
+    *,
+    _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
+) -> dict[str, object]:
+    """Receipt live content, claimed digests, identity, and component counts."""
+
+    live_components, live_bundle = _authority_live_digests(authority)
+    component_integrity = {
+        name: digest == authority.declared_component_sha256[name]
+        for name, digest in live_components.items()
+    }
+    integrity = all(component_integrity.values()) and (
+        live_bundle == authority.declared_sha256
+    )
+    canonical_identity = authority is _canonical_authority
+    canonical_content = (
+        authority.authority_id == _STACKED_AUTHORITY_ID
+        and authority.version == _STACKED_AUTHORITY_VERSION
+        and live_components == dict(_canonical_authority.declared_component_sha256)
+        and live_bundle == _canonical_authority.declared_sha256
+    )
+    canonical = (
+        authority.declared_form == _CANONICAL_AUTHORITY_FORM
+        and canonical_identity
+        and canonical_content
+        and integrity
+    )
+    support = _support_profile_payload(authority.support_profile)
+    components: dict[str, dict[str, object]] = {
+        "gap_fill_plan": {
+            "sha256": live_components["gap_fill_plan"],
+            "declared_sha256": authority.declared_component_sha256["gap_fill_plan"],
+            "target_count": len(_plan_target_keys(authority.gap_fill_plan)),
+            "direction_count": len(authority.gap_fill_plan),
+            "digest_matches_declared": component_integrity["gap_fill_plan"],
+        },
+        "declared_surface": {
+            "sha256": live_components["declared_surface"],
+            "declared_sha256": authority.declared_component_sha256["declared_surface"],
+            "target_count": len(_surface_target_keys(authority.declared_surface)),
+            "entity_count": len(authority.declared_surface),
+            "digest_matches_declared": component_integrity["declared_surface"],
+        },
+        "metric_registry": {
+            "sha256": live_components["metric_registry"],
+            "declared_sha256": authority.declared_component_sha256["metric_registry"],
+            "target_count": len(authority.metric_registry),
+            "digest_matches_declared": component_integrity["metric_registry"],
+        },
+        "support_profile": {
+            **support,
+            "sha256": live_components["support_profile"],
+            "declared_sha256": authority.declared_component_sha256["support_profile"],
+            "digest_matches_declared": component_integrity["support_profile"],
+        },
+    }
+    return {
+        "authority_id": authority.authority_id,
+        "version": authority.version,
+        "authority_form": (
+            _CANONICAL_AUTHORITY_FORM if canonical else _NONCANONICAL_AUTHORITY_FORM
+        ),
+        "declared_authority_form": authority.declared_form,
+        "canonical": canonical,
+        "production_manifest_permitted": canonical,
+        "canonical_identity": canonical_identity,
+        "canonical_content": canonical_content,
+        "integrity_valid": integrity,
+        "sha256": live_bundle,
+        "declared_sha256": authority.declared_sha256,
+        "digest_matches_declared": live_bundle == authority.declared_sha256,
+        "components": components,
+    }
+
+
+def _authority_validation_failures(
+    authority: _StackedAuthority,
+    *,
+    production: bool,
+    _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_registry: Mapping[
+        tuple[str, str, str, int], str
+    ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_profile: _BatterySupportProfile = (
+        CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
+    ),
+) -> list[str]:
+    receipt = _authority_receipt(authority)
+    failures: list[str] = []
+    surface_targets = _surface_target_keys(authority.declared_surface)
+    plan_targets = _plan_target_keys(authority.gap_fill_plan)
+    duplicate_surface_targets = sorted(
+        target for target, count in Counter(surface_targets).items() if count > 1
+    )
+    duplicate_plan_targets = sorted(
+        target for target, count in Counter(plan_targets).items() if count > 1
+    )
+    if duplicate_surface_targets:
+        failures.append(
+            "declared surface repeats target(s): "
+            + ", ".join(
+                _battery_target_label(target) for target in duplicate_surface_targets
+            )
+            + "."
+        )
+    if duplicate_plan_targets:
+        failures.append(
+            "gap-fill plan repeats target(s): "
+            + ", ".join(
+                _battery_target_label(target) for target in duplicate_plan_targets
+            )
+            + "."
+        )
+    for name, label in (
+        ("gap_fill_plan", "gap-fill plan"),
+        ("declared_surface", "declared surface"),
+        ("metric_registry", "metric registry"),
+        ("support_profile", "support profile"),
+    ):
+        component = receipt["components"][name]
+        if not component["digest_matches_declared"]:
+            failures.append(
+                f"{label} live-content digest mismatch: declared "
+                f"{component['declared_sha256']}, computed {component['sha256']}."
+            )
+    if not receipt["digest_matches_declared"]:
+        failures.append(
+            "stacked authority live-content digest mismatch: declared "
+            f"{receipt['declared_sha256']}, computed {receipt['sha256']}."
+        )
+
+    canonical_directions = _direction_target_index(_canonical_plan)
+    for target, direction in _direction_target_index(authority.gap_fill_plan).items():
+        canonical_direction = canonical_directions.get(target)
+        if canonical_direction is not None and _direction_signature(
+            direction
+        ) != _direction_signature(canonical_direction):
+            failures.append(
+                f"canonical gap-fill direction mismatch for "
+                f"{_battery_target_label(target)}: authoritative "
+                f"{_direction_signature(canonical_direction)!r}, got "
+                f"{_direction_signature(direction)!r}."
+            )
+    for target, metric in authority.metric_registry.items():
+        canonical_metric = _canonical_registry.get(target)
+        if canonical_metric is not None and metric != canonical_metric:
+            failures.append(
+                f"declared battery target {_battery_target_label(target)} must "
+                f"use authoritative metric {canonical_metric!r}, got {metric!r}."
+            )
+    if authority.support_profile != _canonical_profile:
+        failures.append(
+            "support profile differs from the canonical stacked battery profile."
+        )
+    if production and receipt["canonical_identity"] is not True:
+        failures.append("canonical stacked authority identity mismatch.")
+    if production and receipt["canonical_content"] is not True:
+        failures.append("canonical stacked authority live content mismatch.")
+    if production and not receipt["canonical"]:
+        failures.append(
+            "non-canonical stacked authority is forbidden in production manifests."
+        )
+    return failures
+
+
+def _validate_production_authority_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
+) -> None:
+    """Terminally reject any non-canonical authority at artifact emission."""
+
+    expected = _authority_receipt(_canonical_authority)
+    if dict(receipt) != expected:
+        raise ValueError(
+            f"{boundary}: non-canonical stacked authority is forbidden; "
+            "production manifest emission is forbidden."
+        )
+
+
+def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> None:
+    """Keep the explicit fixture seam visibly and terminally non-production."""
+
+    receipt = _authority_receipt(authority)
+    if (
+        authority.declared_form != _NONCANONICAL_AUTHORITY_FORM
+        or receipt["authority_form"] != _NONCANONICAL_AUTHORITY_FORM
+        or receipt["canonical_identity"] is not False
+    ):
+        raise ValueError(f"{boundary} requires a NON-CANONICAL test authority.")
+
+
+def _validate_stacked_gate_manifest_details(
+    gate_name: str,
+    details: Mapping[str, object],
+    *,
+    _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
+    _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_registry: Mapping[
+        tuple[str, str, str, int], str
+    ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+) -> None:
+    """Validate gate-specific receipts against the captured canonical doctrine."""
+
+    boundary = f"Gate {gate_name!r} manifest emission"
+    authority = details.get("authority")
+    if not isinstance(authority, Mapping):
+        raise ValueError(
+            f"{boundary}: no stacked authority receipt; production manifest "
+            "emission is forbidden."
+        )
+    _validate_production_authority_receipt(authority, boundary=boundary)
+    authority_sha256 = authority["sha256"]
+    plan_sha256 = authority["components"]["gap_fill_plan"]["sha256"]
+    surface_sha256 = authority["components"]["declared_surface"]["sha256"]
+    expected_keys = _surface_target_keys(_canonical_surface)
+
+    def reject(reason: str) -> None:
+        raise ValueError(
+            f"{boundary}: {reason}; production manifest emission is forbidden."
+        )
+
+    if gate_name == _COMPLETENESS_GATE_NAME:
+        expected_labels = {
+            f"{entity}/{family}/{column}"
+            for entity, family, column, _clone_index in expected_keys
+        }
+        direction_by_label = {
+            f"{entity}/{family}/{column}": direction
+            for direction in _canonical_plan
+            for entity, families in direction.target_families.items()
+            for family, columns in families.items()
+            for column in columns
+        }
+        targets = details.get("targets")
+        if details.get("declared_targets") != 90:
+            reject("canonical completeness receipt must declare exactly 90 targets")
+        if not isinstance(targets, Mapping) or set(targets) != expected_labels:
+            reject("canonical completeness receipt target surface mismatch")
+        allowed_target_forms = {
+            "observed_complete",
+            "missing_declared_entity",
+            "missing_declared_target",
+            "origin_exact_recipient",
+            "mixed_proven_absence",
+            "unproven",
+        }
+        for label, target_receipt in targets.items():
+            if not isinstance(target_receipt, Mapping):
+                reject(f"{label} target receipt is not a mapping")
+            if (
+                target_receipt.get("authority_sha256") != authority_sha256
+                or target_receipt.get("plan_sha256") != plan_sha256
+                or target_receipt.get("surface_sha256") != surface_sha256
+            ):
+                reject(f"{label} target receipt is not bound to canonical authority")
+            authority_form = target_receipt.get("authority_form")
+            if authority_form not in allowed_target_forms:
+                reject(f"{label} declares invalid authority form {authority_form!r}")
+            proven = target_receipt.get("proven", {})
+            if not isinstance(proven, Mapping):
+                reject(f"{label} proven-absence receipts are not a mapping")
+            for cell, proof_receipt in proven.items():
+                if not isinstance(proof_receipt, Mapping):
+                    reject(f"{label} {cell} proof receipt is not a mapping")
+                direction = direction_by_label[label]
+                cell_channel, separator, _clone_role = str(cell).partition("/clone_")
+                if (
+                    not separator
+                    or cell_channel != direction.recipient_channel
+                    or proof_receipt.get("authority_form") != "origin_exact_recipient"
+                    or proof_receipt.get("authority_sha256") != authority_sha256
+                    or proof_receipt.get("plan_sha256") != plan_sha256
+                    or proof_receipt.get("surface_sha256") != surface_sha256
+                    or proof_receipt.get("declared_direction") != direction.name
+                    or proof_receipt.get("declared_donor_channel")
+                    != direction.donor_channel
+                    or proof_receipt.get("declared_recipient_channel")
+                    != direction.recipient_channel
+                ):
+                    reject(
+                        f"{label} {cell} proof is not recipient-exact canonical authority"
+                    )
+        return
+
+    if gate_name == _BATTERY_GATE_NAME:
+        expected_labels = {_battery_target_label(target) for target in expected_keys}
+        expected_plan = {
+            "plan_id": "stacked_gap_fill_plan",
+            "version": authority["version"],
+            "sha256": plan_sha256,
+        }
+        comparisons = details.get("comparisons")
+        if (
+            details.get("declared_target_count") != 90
+            or details.get("registered_target_count") != 90
+            or details.get("missing_declared_targets") != []
+            or details.get("extra_registered_targets") != []
+        ):
+            reject("canonical battery coverage receipt must bind all 90 targets")
+        if details.get("declared_plan") != expected_plan:
+            reject("canonical battery plan receipt mismatch")
+        if details.get("support_profile") != authority["components"]["support_profile"]:
+            reject("canonical battery support-profile receipt mismatch")
+        if not isinstance(comparisons, Mapping) or set(comparisons) != expected_labels:
+            reject("canonical battery comparison surface mismatch")
+        for target, metric in _canonical_registry.items():
+            label = _battery_target_label(target)
+            comparison = comparisons[label]
+            if (
+                not isinstance(comparison, Mapping)
+                or comparison.get("metric") != metric
+            ):
+                reject(f"{label} comparison must use canonical metric {metric!r}")
+        return
+
+    reject("unknown stacked authority gate")
+
+
+_canonical_surface_keys = _surface_target_keys(
+    _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
+)
+if (
+    len(_canonical_surface_keys) != 90
+    or len(set(_canonical_surface_keys)) != 90
+    or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
+    != set(_canonical_surface_keys)
+    or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
+    != set(_canonical_surface_keys)
+):
+    raise RuntimeError(
+        "Canonical stacked authority must bind one plan, surface, and metric "
+        "for exactly 90 unique targets."
+    )
+
+
 def gap_fill_stacked_spine(
     frame: Frame,
     *,
-    plan: Sequence[GapFillDirection] | None = None,
     seed: int = 0,
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_banks: Mapping[str, AcsTransferTargetBank] | None = None,
+) -> GapFillResult:
+    """Run the canonical stacked gap-fill plan with no caller authority."""
+
+    return _gap_fill_stacked_spine_evaluate(
+        frame,
+        authority=_production_stacked_authority(),
+        production=True,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_banks=target_banks,
+    )
+
+
+def _gap_fill_stacked_spine_with_test_authority(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_banks: Mapping[str, AcsTransferTargetBank] | None = None,
+) -> GapFillResult:
+    """Explicit non-production seam for fixture-sized authority surfaces."""
+
+    _validate_test_authority(authority, boundary="stacked gap-fill test seam")
+    return _gap_fill_stacked_spine_evaluate(
+        frame,
+        authority=authority,
+        production=False,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_banks=target_banks,
+    )
+
+
+def _gap_fill_stacked_spine_evaluate(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    production: bool,
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+    target_banks: Mapping[str, AcsTransferTargetBank] | None,
 ) -> GapFillResult:
     """Gap-fill survey-specific fields cross-origin on the stacked spine.
 
@@ -709,8 +1585,23 @@ def gap_fill_stacked_spine(
     counts alongside the transfer's fit provenance.
     """
 
+    authority_receipt = _authority_receipt(authority)
+    authority_failures = _authority_validation_failures(
+        authority,
+        production=production,
+    )
+    if authority_failures:
+        raise ValueError(
+            "Stacked gap-fill authority validation failed:\n  "
+            + "\n  ".join(authority_failures)
+        )
+    if production:
+        _validate_production_authority_receipt(
+            authority_receipt,
+            boundary="stacked gap-fill entry",
+        )
     validate_stacked_spine_frame(frame, boundary="stacked gap-fill entry")
-    directions = tuple(stacked_gap_fill_plan() if plan is None else plan)
+    directions = authority.gap_fill_plan
     if not directions:
         raise ValueError("Stacked gap-fill requires at least one direction.")
     names = [direction.name for direction in directions]
@@ -771,7 +1662,7 @@ def gap_fill_stacked_spine(
     validate_stacked_spine_frame(current, boundary="stacked gap-fill output")
     return GapFillResult(
         frame=current,
-        receipt={"directions": receipts},
+        receipt={"authority": authority_receipt, "directions": receipts},
         transfer_results=transfer_results,
     )
 
@@ -1294,9 +2185,44 @@ class AbsenceProof:
 def stacked_completeness_gate(
     frame: Frame,
     *,
-    declared_surface: TargetFamilies,
-    declared_gap_fill_plan: Sequence[GapFillDirection],
     absence_proofs: Sequence[AbsenceProof] = (),
+) -> GateResult:
+    """Evaluate the canonical declared surface with no caller authority."""
+
+    return _stacked_completeness_gate_evaluate(
+        frame,
+        authority=_production_stacked_authority(),
+        production=True,
+        absence_proofs=absence_proofs,
+    )
+
+
+def _stacked_completeness_gate_with_test_authority(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    absence_proofs: Sequence[AbsenceProof] = (),
+) -> GateResult:
+    """Explicit test-only completeness seam for a digested authority bundle."""
+
+    _validate_test_authority(authority, boundary="stacked completeness test seam")
+    return _stacked_completeness_gate_evaluate(
+        frame,
+        authority=authority,
+        production=False,
+        absence_proofs=absence_proofs,
+    )
+
+
+def _stacked_completeness_gate_evaluate(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    production: bool,
+    absence_proofs: Sequence[AbsenceProof],
+    _canonical_gap_fill_plan: tuple[
+        GapFillDirection, ...
+    ] = CANONICAL_STACKED_GAP_FILL_PLAN,
 ) -> GateResult:
     """Prove every declared target is filled or carries absence authority.
 
@@ -1305,27 +2231,48 @@ def stacked_completeness_gate(
     again — this is the check that would have caught run 7's 58-target skip);
     a null cell is permitted only where an :class:`AbsenceProof` names its
     origin channel and clone role, and every unproven null fails by name with
-    its per-origin, per-role counts.  ``declared_gap_fill_plan`` is required
-    authority: its donor direction disables wildcard proofs for that target.
+    its per-origin, per-role counts. The canonical bundle's live gap-fill plan
+    is required authority: its donor direction disables wildcard proofs for
+    that target even at the explicitly non-canonical fixture seam.
     """
 
+    authority_receipt = _authority_receipt(authority)
+    declared_surface = authority.declared_surface
+    declared_count = len(_surface_target_keys(declared_surface))
+    failures = _authority_validation_failures(authority, production=production)
+    if declared_count == 0:
+        failures.append("declared stacked surface contains zero targets.")
+    if failures:
+        return GateResult(
+            name=_COMPLETENESS_GATE_NAME,
+            passed=False,
+            failures=tuple(failures),
+            details={
+                "authority": authority_receipt,
+                "declared_targets": declared_count,
+                "targets": {},
+            },
+        )
+
     declared_directions: dict[tuple[str, str], GapFillDirection] = {}
-    for direction in declared_gap_fill_plan:
-        if not isinstance(direction, GapFillDirection):
-            raise ValueError(
-                "declared_gap_fill_plan must contain GapFillDirection values, got "
-                f"{type(direction).__name__}."
-            )
+    for direction in authority.gap_fill_plan:
         for entity, targets in _direction_entity_targets(direction).items():
             for target in targets:
                 key = (entity, target)
                 previous = declared_directions.get(key)
                 if previous is not None and previous != direction:
                     raise ValueError(
-                        "declared_gap_fill_plan assigns conflicting directions "
+                        "stacked authority plan assigns conflicting directions "
                         f"to {entity}/{target}: {previous.name!r} and "
                         f"{direction.name!r}."
                     )
+                declared_directions[key] = direction
+    canonical_direction_keys: set[tuple[str, str]] = set()
+    for direction in _canonical_gap_fill_plan:
+        for entity, targets in _direction_entity_targets(direction).items():
+            for target in targets:
+                key = (entity, target)
+                canonical_direction_keys.add(key)
                 declared_directions[key] = direction
 
     proof_index: dict[tuple[str, str], dict[tuple[str, int], str]] = {}
@@ -1339,14 +2286,31 @@ def stacked_completeness_gate(
             (proof.channel, proof.clone_index)
         ] = proof.reason
 
-    failures: list[str] = []
     target_receipts: dict[str, dict[str, object]] = {}
-    declared_count = 0
+    authority_sha256 = authority_receipt["sha256"]
+    plan_sha256 = authority_receipt["components"]["gap_fill_plan"]["sha256"]
+    surface_sha256 = authority_receipt["components"]["declared_surface"]["sha256"]
+
+    def authority_binding(authority_form: str) -> dict[str, object]:
+        return {
+            "authority_form": authority_form,
+            "authority_sha256": authority_sha256,
+            "plan_sha256": plan_sha256,
+            "surface_sha256": surface_sha256,
+        }
+
     for entity, families in declared_surface.items():
         if entity not in frame.entities:
             failures.append(
                 f"{entity}: declared entity is absent from the stacked frame."
             )
+            for family, targets in families.items():
+                for target in targets:
+                    target_receipts[f"{entity}/{family}/{target}"] = {
+                        "status": "missing_entity",
+                        "null_rows": None,
+                        **authority_binding("missing_declared_entity"),
+                    }
             continue
         table = frame.table(entity)
         channel = table[support_channel_column(entity)].astype(str)
@@ -1356,7 +2320,6 @@ def stacked_completeness_gate(
         ).astype("int64")
         for family, targets in families.items():
             for target in targets:
-                declared_count += 1
                 label = f"{entity}/{family}/{target}"
                 if target not in table.columns:
                     failures.append(
@@ -1364,10 +2327,19 @@ def stacked_completeness_gate(
                         "pre-simulation pool; the registered family must "
                         "never silently vanish from the active bank."
                     )
+                    target_receipts[label] = {
+                        "status": "missing",
+                        "null_rows": None,
+                        **authority_binding("missing_declared_target"),
+                    }
                     continue
                 null_mask = table[target].isna()
                 if not null_mask.any():
-                    target_receipts[label] = {"status": "complete", "null_rows": 0}
+                    target_receipts[label] = {
+                        "status": "complete",
+                        "null_rows": 0,
+                        **authority_binding("observed_complete"),
+                    }
                     continue
                 proofs = proof_index.get((entity, target), {})
                 declared_direction = declared_directions.get((entity, target))
@@ -1380,29 +2352,46 @@ def stacked_completeness_gate(
                     .groupby(["channel", "clone_index"], sort=True)
                     .size()
                 )
+                target_authority_forms: set[str] = set()
                 for (cell_channel, cell_clone), count in grouped.items():
-                    reason = proofs.get((str(cell_channel), int(cell_clone)))
+                    cell_channel = str(cell_channel)
+                    cell_clone = int(cell_clone)
+                    reason = proofs.get((cell_channel, cell_clone))
                     authority_form = "origin_exact"
+                    if declared_direction is not None and reason is not None:
+                        if cell_channel != declared_direction.recipient_channel:
+                            failures.append(
+                                f"{label}: origin-exact authority proof is valid "
+                                "only for declared recipient "
+                                f"{declared_direction.recipient_channel!r}; "
+                                f"{cell_channel!r} is declared donor "
+                                f"{declared_direction.donor_channel!r}."
+                            )
+                            reason = None
+                        else:
+                            authority_form = "origin_exact_recipient"
                     if reason is None and declared_direction is None:
-                        reason = proofs.get((_ANY_CHANNEL, int(cell_clone)))
+                        reason = proofs.get((_ANY_CHANNEL, cell_clone))
                         authority_form = "wildcard_no_declared_donor_plan"
-                    key = f"{cell_channel}/clone_{int(cell_clone)}"
+                    key = f"{cell_channel}/clone_{cell_clone}"
                     if reason is None:
                         unproven[key] = int(count)
                         if declared_direction is not None:
+                            canonical = (entity, target) in canonical_direction_keys
                             failures.append(
                                 f"{label}: {int(count)} null cell(s) on {key} "
                                 "require an origin-exact authority proof because "
-                                "declared gap-fill direction "
+                                f"{'canonical ' if canonical else ''}gap-fill plan "
                                 f"{declared_direction.name!r} names donor "
-                                f"{declared_direction.donor_channel!r}; wildcard "
+                                f"{declared_direction.donor_channel!r} and recipient "
+                                f"{declared_direction.recipient_channel!r}; wildcard "
                                 "authority is forbidden."
                             )
                     else:
                         proof_receipt: dict[str, object] = {
                             "null_rows": int(count),
                             "reason": reason,
-                            "authority_form": authority_form,
+                            **authority_binding(authority_form),
                         }
                         if declared_direction is not None:
                             proof_receipt.update(
@@ -1417,23 +2406,32 @@ def stacked_completeness_gate(
                                 }
                             )
                         proven[key] = proof_receipt
+                        target_authority_forms.add(authority_form)
                 if unproven:
                     failures.append(
                         f"{label}: {sum(unproven.values())} null cell(s) have "
                         "no source-by-role authority proof "
                         f"(by origin/role: {unproven})."
                     )
+                if unproven:
+                    target_authority_form = "unproven"
+                elif len(target_authority_forms) == 1:
+                    target_authority_form = next(iter(target_authority_forms))
+                else:
+                    target_authority_form = "mixed_proven_absence"
                 target_receipts[label] = {
                     "status": "proven_absent" if not unproven else "unproven",
                     "null_rows": int(null_mask.sum()),
                     "proven": proven,
                     "unproven": unproven,
+                    **authority_binding(target_authority_form),
                 }
     return GateResult(
         name=_COMPLETENESS_GATE_NAME,
         passed=not failures,
         failures=tuple(failures),
         details={
+            "authority": authority_receipt,
             "declared_targets": declared_count,
             "targets": target_receipts,
         },
@@ -1445,12 +2443,6 @@ def stacked_completeness_gate(
 # ---------------------------------------------------------------------------
 
 _BATTERY_GATE_NAME = "us_by_origin_battery"
-ORIGIN_BATTERY_METRIC_KINDS = (
-    "boolean_incidence",
-    "rare_incidence",
-    "monetary_sign_separated",
-    "categorical_tvd",
-)
 _BATTERY_INCIDENCE_RATIO_BOUNDS = (0.8, 1.25)
 _BATTERY_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
 _BATTERY_QUANTILE_ENVELOPE_TOLERANCE = 0.25
@@ -1458,75 +2450,14 @@ _BATTERY_CATEGORICAL_TVD_TOLERANCE = 0.25
 
 
 @dataclass(frozen=True)
-class _BatterySupportProfile:
-    profile_id: str
-    version: int
-    min_effective_support: int
-
-
-_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
-    profile_id="us_stacked_origin_battery_support",
-    version=1,
-    min_effective_support=5,
-)
-_BATTERY_SUPPORT_PROFILE_SHA256 = hashlib.sha256(
-    json.dumps(
-        {
-            "min_effective_support": (_BATTERY_SUPPORT_PROFILE.min_effective_support),
-            "profile_id": _BATTERY_SUPPORT_PROFILE.profile_id,
-            "version": _BATTERY_SUPPORT_PROFILE.version,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-).hexdigest()
-
-_BATTERY_DECLARED_PLAN_ID = "stacked_gap_fill_plan"
-_BATTERY_DECLARED_PLAN_VERSION = 1
-_BATTERY_DECLARED_TARGETS = tuple(
-    sorted(
-        (
-            entity,
-            family,
-            target,
-            0,
-        )
-        for direction in stacked_gap_fill_plan()
-        for entity, families in direction.target_families.items()
-        for family, targets in families.items()
-        for target in targets
-    )
-)
-_BATTERY_DECLARED_TARGET_SET = frozenset(_BATTERY_DECLARED_TARGETS)
-_BATTERY_DECLARED_PLAN_SHA256 = hashlib.sha256(
-    json.dumps(
-        [
-            f"{entity}/{family}/{column}[clone_{clone_index}]"
-            for entity, family, column, clone_index in _BATTERY_DECLARED_TARGETS
-        ],
-        separators=(",", ":"),
-    ).encode()
-).hexdigest()
-_BATTERY_AUTHORITATIVE_METRICS = {
-    (
-        "person",
-        "model_required_boolean",
-        "has_champva_health_coverage_at_interview",
-        0,
-    ): "boolean_incidence",
-}
-
-
-@dataclass(frozen=True)
 class OriginBatterySpec:
-    """Declared per-column metrics for one gap-filled family's comparison.
+    """Test-seam grouping for per-column battery metrics.
 
-    The metric is DECLARED per column at registration — never dispatched
-    from a physical dtype (the audit's registry defect: semantically equal
-    boolean take-up fields received different contracts because one was
-    object-backed).  ``clone_index`` scopes the comparison to one clone role:
-    0 compares gap-filled native rows across origins, 1 compares the PUF
-    arm's imputed rows across origins.
+    Production never accepts these specs from a caller: it consumes the
+    immutable 90-column canonical registry. The explicit test-authority seam
+    groups its digested registry into specs so the comparison engine can reuse
+    the same loop. ``clone_index`` scopes a fixture comparison to one clone
+    role: 0 compares native rows and 1 compares a PUF arm.
     """
 
     entity: str
@@ -1557,6 +2488,11 @@ class OriginBatterySpec:
                 f"unknown metric kind(s) {unknown}; expected one of "
                 f"{list(ORIGIN_BATTERY_METRIC_KINDS)}."
             )
+        object.__setattr__(
+            self,
+            "column_metrics",
+            MappingProxyType(dict(self.column_metrics)),
+        )
         if (
             isinstance(self.clone_index, bool)
             or not isinstance(self.clone_index, int)
@@ -1569,8 +2505,53 @@ class OriginBatterySpec:
 
 def by_origin_battery(
     frame: Frame,
+) -> GateResult:
+    """Run the canonical 90-target by-origin battery."""
+
+    return _by_origin_battery_evaluate(
+        frame,
+        authority=_production_stacked_authority(),
+        production=True,
+    )
+
+
+def _by_origin_battery_with_test_authority(
+    frame: Frame,
     *,
-    registry: Sequence[OriginBatterySpec],
+    authority: _StackedAuthority,
+) -> GateResult:
+    """Explicit test-only battery seam for a digested authority bundle."""
+
+    _validate_test_authority(authority, boundary="by-origin battery test seam")
+    return _by_origin_battery_evaluate(
+        frame,
+        authority=authority,
+        production=False,
+    )
+
+
+def _battery_specs_from_metric_registry(
+    registry: Mapping[tuple[str, str, str, int], str],
+) -> tuple[OriginBatterySpec, ...]:
+    grouped: dict[tuple[str, str, int], dict[str, str]] = {}
+    for (entity, family, column, clone_index), metric in registry.items():
+        grouped.setdefault((entity, family, clone_index), {})[column] = metric
+    return tuple(
+        OriginBatterySpec(
+            entity=entity,
+            family=family,
+            clone_index=clone_index,
+            column_metrics=column_metrics,
+        )
+        for (entity, family, clone_index), column_metrics in sorted(grouped.items())
+    )
+
+
+def _by_origin_battery_evaluate(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    production: bool,
 ) -> GateResult:
     """Compare declared statistics between origins within the one spine.
 
@@ -1590,56 +2571,46 @@ def by_origin_battery(
     both origins carry ample support.
     """
 
-    specs = tuple(registry)
-    if not specs:
-        raise ValueError("The by-origin battery requires at least one spec.")
-    keys = [(spec.entity, spec.family, spec.clone_index) for spec in specs]
-    duplicates = sorted({key for key in keys if keys.count(key) > 1})
-    if duplicates:
-        raise ValueError(f"By-origin battery repeats family specs: {duplicates}.")
-    registered_targets = {
-        (spec.entity, spec.family, column, spec.clone_index)
-        for spec in specs
-        for column in spec.column_metrics
-    }
-    missing_targets = tuple(sorted(_BATTERY_DECLARED_TARGET_SET - registered_targets))
-    registration_failures = [
+    authority_receipt = _authority_receipt(authority)
+    specs = _battery_specs_from_metric_registry(authority.metric_registry)
+    registered_targets = set(authority.metric_registry)
+    declared_target_set = set(_surface_target_keys(authority.declared_surface))
+    missing_targets = tuple(sorted(declared_target_set - registered_targets))
+    extra_targets = tuple(sorted(registered_targets - declared_target_set))
+    registration_failures = _authority_validation_failures(
+        authority,
+        production=production,
+    )
+    registration_failures.extend(
         f"missing declared battery target {_battery_target_label(target)}."
         for target in missing_targets
-    ]
-    for target, required_metric in _BATTERY_AUTHORITATIVE_METRICS.items():
-        supplied_metric = next(
-            (
-                spec.column_metrics[target[2]]
-                for spec in specs
-                if (spec.entity, spec.family, spec.clone_index)
-                == (target[0], target[1], target[3])
-                and target[2] in spec.column_metrics
-            ),
-            None,
+    )
+    registration_failures.extend(
+        f"metric registry target {_battery_target_label(target)} is outside the "
+        "declared surface."
+        for target in extra_targets
+    )
+    if not specs:
+        registration_failures.append(
+            "The by-origin battery requires at least one declared metric."
         )
-        if supplied_metric is not None and supplied_metric != required_metric:
-            registration_failures.append(
-                f"declared battery target {_battery_target_label(target)} must "
-                f"use authoritative metric {required_metric!r}, got "
-                f"{supplied_metric!r}."
-            )
+    support_profile_receipt = authority_receipt["components"]["support_profile"]
     coverage_details = {
-        "declared_target_count": len(_BATTERY_DECLARED_TARGETS),
+        "authority": authority_receipt,
+        "declared_target_count": len(declared_target_set),
         "registered_target_count": len(registered_targets),
         "missing_declared_targets": [
             _battery_target_label(target) for target in missing_targets
         ],
         "extra_registered_targets": [
-            _battery_target_label(target)
-            for target in sorted(registered_targets - _BATTERY_DECLARED_TARGET_SET)
+            _battery_target_label(target) for target in extra_targets
         ],
         "declared_plan": {
-            "plan_id": _BATTERY_DECLARED_PLAN_ID,
-            "version": _BATTERY_DECLARED_PLAN_VERSION,
-            "sha256": _BATTERY_DECLARED_PLAN_SHA256,
+            "plan_id": "stacked_gap_fill_plan",
+            "version": authority.version,
+            "sha256": authority_receipt["components"]["gap_fill_plan"]["sha256"],
         },
-        "support_profile": _battery_support_profile_receipt(),
+        "support_profile": support_profile_receipt,
     }
     if registration_failures:
         return GateResult(
@@ -1678,6 +2649,10 @@ def by_origin_battery(
             label = f"{spec.entity}/{spec.family}/{column}[clone_{spec.clone_index}]"
             if column not in table.columns:
                 failures.append(f"{label}: registered column is absent from the frame.")
+                comparisons[label] = {
+                    "status": "missing_column",
+                    "metric": metric,
+                }
                 continue
             series = table[column]
             scoped_nulls = int(series.isna().to_numpy(dtype=bool)[scope].sum())
@@ -1687,12 +2662,17 @@ def by_origin_battery(
                     "comparison scope; the battery runs only on completed "
                     "surfaces."
                 )
+                comparisons[label] = {
+                    "status": "null_in_scope",
+                    "metric": metric,
+                    "null_rows": scoped_nulls,
+                }
                 continue
             support = {
                 "asec": int(left_rows.sum()),
                 "acs": int(right_rows.sum()),
             }
-            if min(support.values()) < _BATTERY_SUPPORT_PROFILE.min_effective_support:
+            if min(support.values()) < authority.support_profile.min_effective_support:
                 comparisons[label] = {
                     "status": "insufficient_support",
                     "metric": metric,
@@ -1719,6 +2699,10 @@ def by_origin_battery(
                 failures=failures,
             )
             if values is None:
+                comparisons[label] = {
+                    "status": "invalid_values",
+                    "metric": metric,
+                }
                 continue
             if metric in {"boolean_incidence", "rare_incidence"}:
                 _battery_incidence_comparison(
@@ -1740,6 +2724,9 @@ def by_origin_battery(
                     weights=weights,
                     failures=failures,
                     comparisons=comparisons,
+                    min_effective_support=(
+                        authority.support_profile.min_effective_support
+                    ),
                 )
     return GateResult(
         name=_BATTERY_GATE_NAME,
@@ -1767,15 +2754,6 @@ def by_origin_battery(
 def _battery_target_label(target: tuple[str, str, str, int]) -> str:
     entity, family, column, clone_index = target
     return f"{entity}/{family}/{column}[clone_{clone_index}]"
-
-
-def _battery_support_profile_receipt() -> dict[str, object]:
-    return {
-        "profile_id": _BATTERY_SUPPORT_PROFILE.profile_id,
-        "version": _BATTERY_SUPPORT_PROFILE.version,
-        "min_effective_support": _BATTERY_SUPPORT_PROFILE.min_effective_support,
-        "sha256": _BATTERY_SUPPORT_PROFILE_SHA256,
-    }
 
 
 def _battery_numeric_values(
@@ -1851,6 +2829,7 @@ def _battery_sign_separated_comparison(
     weights: np.ndarray,
     failures: list[str],
     comparisons: dict[str, object],
+    min_effective_support: int,
 ) -> None:
     record: dict[str, object] = {
         "status": "tested",
@@ -1894,8 +2873,8 @@ def _battery_sign_separated_comparison(
                 f"(asec={left_incidence:.6g}, acs={right_incidence:.6g})."
             )
         if (
-            int(left_leg.sum()) < _BATTERY_SUPPORT_PROFILE.min_effective_support
-            or int(right_leg.sum()) < _BATTERY_SUPPORT_PROFILE.min_effective_support
+            int(left_leg.sum()) < min_effective_support
+            or int(right_leg.sum()) < min_effective_support
         ):
             leg_record["quantile_envelope"] = "leg_insufficient_support"
             continue
