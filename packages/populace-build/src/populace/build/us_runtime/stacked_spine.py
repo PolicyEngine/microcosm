@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from populace.build.gates import FitWeightRecord
+from populace.build.gates import FitWeightRecord, GateResult
 from populace.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
@@ -72,15 +72,22 @@ from populace.frame import US_SCHEMA, Frame
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
+    "ORIGIN_BATTERY_METRIC_KINDS",
+    "STACKED_PILOT_ACS_SAMPLE_FRACTION",
+    "STACKED_PILOT_ACS_SAMPLE_SEED",
     "STACKED_SPINE_MANIFEST_KEY",
+    "AbsenceProof",
     "GapFillDirection",
     "GapFillResult",
+    "OriginBatterySpec",
     "StackedPufPassResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
+    "by_origin_battery",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
     "sample_acs_households",
+    "stacked_completeness_gate",
     "stacked_gap_fill_plan",
     "validate_stacked_spine_frame",
 ]
@@ -100,6 +107,12 @@ STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
 _STACKED_SPINE_MANIFEST_VERSION = 1
 _EXACT_COUNT_RULE = "floor(fraction * eligible)"
 _MASS_RTOL = 1e-9
+
+#: The ratified pilot stack configuration (#578 revision): a seeded 10% ACS
+#: household sample enters the spine.  Scale-up beyond the pilot changes this
+#: declared fraction, never an implicit default.
+STACKED_PILOT_ACS_SAMPLE_FRACTION = 0.10
+STACKED_PILOT_ACS_SAMPLE_SEED = 578
 
 
 @dataclass(frozen=True)
@@ -985,3 +998,584 @@ def run_stacked_puf_pass(
             "recipient_person_rows_by_origin": recipients_by_origin,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Pre-simulation completeness gate (charter item 4)
+# ---------------------------------------------------------------------------
+
+_COMPLETENESS_GATE_NAME = "us_stacked_completeness"
+_ANY_CHANNEL = "*"
+
+
+@dataclass(frozen=True)
+class AbsenceProof:
+    """An explicit source-by-role authority proof for permitted null cells.
+
+    A declared target's cells may be null only where a proof names the exact
+    origin channel (or ``"*"`` for every origin) and clone role, with the
+    reason recorded.  This is the audit's item-5 contract: a target is
+    banked/imputed, or its absence carries an explicit source-by-role proof —
+    silence is never authority.
+    """
+
+    entity: str
+    column: str
+    channel: str
+    clone_index: int
+    reason: str
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("entity", self.entity),
+            ("column", self.column),
+            ("channel", self.channel),
+            ("reason", self.reason),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"AbsenceProof.{label} must be a non-empty string.")
+        if (
+            isinstance(self.clone_index, bool)
+            or not isinstance(self.clone_index, int)
+            or self.clone_index < 0
+        ):
+            raise ValueError("AbsenceProof.clone_index must be a non-negative integer.")
+
+
+def stacked_completeness_gate(
+    frame: Frame,
+    *,
+    declared_surface: TargetFamilies,
+    absence_proofs: Sequence[AbsenceProof] = (),
+) -> GateResult:
+    """Prove every declared target is filled or carries absence authority.
+
+    For every declared ``entity/family/target``: a missing column is a named
+    terminal failure (a whole registered family can never silently vanish
+    again — this is the check that would have caught run 7's 58-target skip);
+    a null cell is permitted only where an :class:`AbsenceProof` names its
+    origin channel and clone role, and every unproven null fails by name with
+    its per-origin, per-role counts.
+    """
+
+    proof_index: dict[tuple[str, str], dict[tuple[str, int], str]] = {}
+    for proof in absence_proofs:
+        if not isinstance(proof, AbsenceProof):
+            raise ValueError(
+                "absence_proofs must contain AbsenceProof values, got "
+                f"{type(proof).__name__}."
+            )
+        proof_index.setdefault((proof.entity, proof.column), {})[
+            (proof.channel, proof.clone_index)
+        ] = proof.reason
+
+    failures: list[str] = []
+    target_receipts: dict[str, dict[str, object]] = {}
+    declared_count = 0
+    for entity, families in declared_surface.items():
+        if entity not in frame.entities:
+            failures.append(
+                f"{entity}: declared entity is absent from the stacked frame."
+            )
+            continue
+        table = frame.table(entity)
+        channel = table[support_channel_column(entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).astype("int64")
+        for family, targets in families.items():
+            for target in targets:
+                declared_count += 1
+                label = f"{entity}/{family}/{target}"
+                if target not in table.columns:
+                    failures.append(
+                        f"{label}: declared target column is missing from the "
+                        "pre-simulation pool; the registered family must "
+                        "never silently vanish from the active bank."
+                    )
+                    continue
+                null_mask = table[target].isna()
+                if not null_mask.any():
+                    target_receipts[label] = {"status": "complete", "null_rows": 0}
+                    continue
+                proofs = proof_index.get((entity, target), {})
+                null_channels = channel.loc[null_mask]
+                null_clones = clone_index.loc[null_mask]
+                unproven: dict[str, int] = {}
+                proven: dict[str, dict[str, object]] = {}
+                grouped = (
+                    pd.DataFrame({"channel": null_channels, "clone_index": null_clones})
+                    .groupby(["channel", "clone_index"], sort=True)
+                    .size()
+                )
+                for (cell_channel, cell_clone), count in grouped.items():
+                    reason = proofs.get((str(cell_channel), int(cell_clone)))
+                    if reason is None:
+                        reason = proofs.get((_ANY_CHANNEL, int(cell_clone)))
+                    key = f"{cell_channel}/clone_{int(cell_clone)}"
+                    if reason is None:
+                        unproven[key] = int(count)
+                    else:
+                        proven[key] = {"null_rows": int(count), "reason": reason}
+                if unproven:
+                    failures.append(
+                        f"{label}: {sum(unproven.values())} null cell(s) have "
+                        "no source-by-role authority proof "
+                        f"(by origin/role: {unproven})."
+                    )
+                target_receipts[label] = {
+                    "status": "proven_absent" if not unproven else "unproven",
+                    "null_rows": int(null_mask.sum()),
+                    "proven": proven,
+                    "unproven": unproven,
+                }
+    return GateResult(
+        name=_COMPLETENESS_GATE_NAME,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "declared_targets": declared_count,
+            "targets": target_receipts,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# By-origin battery (charter item 5)
+# ---------------------------------------------------------------------------
+
+_BATTERY_GATE_NAME = "us_by_origin_battery"
+ORIGIN_BATTERY_METRIC_KINDS = (
+    "boolean_incidence",
+    "rare_incidence",
+    "monetary_sign_separated",
+    "categorical_tvd",
+)
+_BATTERY_INCIDENCE_RATIO_BOUNDS = (0.8, 1.25)
+_BATTERY_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
+_BATTERY_QUANTILE_ENVELOPE_TOLERANCE = 0.25
+_BATTERY_CATEGORICAL_TVD_TOLERANCE = 0.25
+_BATTERY_DEFAULT_MIN_EFFECTIVE_SUPPORT = 5
+
+
+@dataclass(frozen=True)
+class OriginBatterySpec:
+    """Declared per-column metrics for one gap-filled family's comparison.
+
+    The metric is DECLARED per column at registration — never dispatched
+    from a physical dtype (the audit's registry defect: semantically equal
+    boolean take-up fields received different contracts because one was
+    object-backed).  ``clone_index`` scopes the comparison to one clone role:
+    0 compares gap-filled native rows across origins, 1 compares the PUF
+    arm's imputed rows across origins.
+    """
+
+    entity: str
+    family: str
+    column_metrics: Mapping[str, str]
+    clone_index: int = 0
+    min_effective_support: int = _BATTERY_DEFAULT_MIN_EFFECTIVE_SUPPORT
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.entity, str) or not self.entity.strip():
+            raise ValueError("OriginBatterySpec.entity must be a non-empty string.")
+        if not isinstance(self.family, str) or not self.family.strip():
+            raise ValueError("OriginBatterySpec.family must be a non-empty string.")
+        if not isinstance(self.column_metrics, Mapping) or not self.column_metrics:
+            raise ValueError(
+                f"OriginBatterySpec {self.entity}/{self.family} declares no "
+                "column metrics."
+            )
+        unknown = sorted(
+            {
+                metric
+                for metric in self.column_metrics.values()
+                if metric not in ORIGIN_BATTERY_METRIC_KINDS
+            }
+        )
+        if unknown:
+            raise ValueError(
+                f"OriginBatterySpec {self.entity}/{self.family} declares "
+                f"unknown metric kind(s) {unknown}; expected one of "
+                f"{list(ORIGIN_BATTERY_METRIC_KINDS)}."
+            )
+        if (
+            isinstance(self.clone_index, bool)
+            or not isinstance(self.clone_index, int)
+            or self.clone_index < 0
+        ):
+            raise ValueError(
+                "OriginBatterySpec.clone_index must be a non-negative integer."
+            )
+        if (
+            isinstance(self.min_effective_support, bool)
+            or not isinstance(self.min_effective_support, int)
+            or self.min_effective_support < 1
+        ):
+            raise ValueError(
+                "OriginBatterySpec.min_effective_support must be a positive integer."
+            )
+
+
+def by_origin_battery(
+    frame: Frame,
+    *,
+    registry: Sequence[OriginBatterySpec],
+) -> GateResult:
+    """Compare declared statistics between origins within the one spine.
+
+    Replaces the retired spine-vs-spine agreement: the same comparisons,
+    scoped to gap-filled families, with per-family DECLARED metrics.  The
+    tolerances are the chartered ones — incidence ratios within
+    ``[0.8, 1.25]``, conditional-quantile envelopes within ``0.25``,
+    categorical total-variation within ``0.25`` — deliberately NOT widened.
+
+    Support-awareness is a validity domain, not a tolerance: a comparison
+    whose scope rows on either origin fall below the spec's minimum
+    effective support is receipted ``insufficient_support`` instead of
+    producing a fake confident verdict, and a quantile envelope is evaluated
+    only when both origins carry at least that many nonzero rows on the
+    compared leg.  A tested rare comparison still fails on any one-sided
+    hole — the run-7 ``160,667x`` class fails under every profile because
+    both origins carry ample support.
+    """
+
+    specs = tuple(registry)
+    if not specs:
+        raise ValueError("The by-origin battery requires at least one spec.")
+    keys = [(spec.entity, spec.family, spec.clone_index) for spec in specs]
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicates:
+        raise ValueError(f"By-origin battery repeats family specs: {duplicates}.")
+    validate_stacked_spine_frame(frame, boundary="by-origin battery")
+
+    failures: list[str] = []
+    comparisons: dict[str, object] = {}
+    untestable: list[str] = []
+    tested = 0
+    for spec in specs:
+        table = frame.table(spec.entity)
+        channel = table[support_channel_column(spec.entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(spec.entity)],
+            errors="raise",
+        ).astype("int64")
+        weights = np.asarray(
+            frame.resolve_weights(spec.entity).values,
+            dtype=np.float64,
+        )
+        scope = (clone_index.eq(spec.clone_index)).to_numpy() & (weights > 0.0)
+        left_rows = scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+        right_rows = scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
+        for column, metric in spec.column_metrics.items():
+            label = f"{spec.entity}/{spec.family}/{column}[clone_{spec.clone_index}]"
+            if column not in table.columns:
+                failures.append(f"{label}: registered column is absent from the frame.")
+                continue
+            series = table[column]
+            scoped_nulls = int(series.isna().to_numpy(dtype=bool)[scope].sum())
+            if scoped_nulls:
+                failures.append(
+                    f"{label}: {scoped_nulls} null value(s) inside the "
+                    "comparison scope; the battery runs only on completed "
+                    "surfaces."
+                )
+                continue
+            support = {
+                "asec": int(left_rows.sum()),
+                "acs": int(right_rows.sum()),
+            }
+            if min(support.values()) < spec.min_effective_support:
+                comparisons[label] = {
+                    "status": "insufficient_support",
+                    "metric": metric,
+                    "scope_rows": support,
+                }
+                untestable.append(label)
+                continue
+            tested += 1
+            if metric == "categorical_tvd":
+                _battery_categorical_comparison(
+                    label=label,
+                    series=series,
+                    left_rows=left_rows,
+                    right_rows=right_rows,
+                    weights=weights,
+                    failures=failures,
+                    comparisons=comparisons,
+                )
+                continue
+            values = _battery_numeric_values(
+                label,
+                series,
+                metric=metric,
+                failures=failures,
+            )
+            if values is None:
+                continue
+            if metric in {"boolean_incidence", "rare_incidence"}:
+                _battery_incidence_comparison(
+                    label=label,
+                    metric=metric,
+                    values=values,
+                    left_rows=left_rows,
+                    right_rows=right_rows,
+                    weights=weights,
+                    failures=failures,
+                    comparisons=comparisons,
+                )
+            else:
+                _battery_sign_separated_comparison(
+                    label=label,
+                    values=values,
+                    left_rows=left_rows,
+                    right_rows=right_rows,
+                    weights=weights,
+                    min_effective_support=spec.min_effective_support,
+                    failures=failures,
+                    comparisons=comparisons,
+                )
+    return GateResult(
+        name=_BATTERY_GATE_NAME,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tolerances": {
+                "incidence_ratio_bounds": list(_BATTERY_INCIDENCE_RATIO_BOUNDS),
+                "max_quantile_envelope_distance": (
+                    _BATTERY_QUANTILE_ENVELOPE_TOLERANCE
+                ),
+                "max_categorical_total_variation_distance": (
+                    _BATTERY_CATEGORICAL_TVD_TOLERANCE
+                ),
+            },
+            "registered_specs": len(specs),
+            "tested_comparisons": tested,
+            "untestable_comparisons": sorted(untestable),
+            "comparisons": comparisons,
+        },
+    )
+
+
+def _battery_numeric_values(
+    label: str,
+    series: pd.Series,
+    *,
+    metric: str,
+    failures: list[str],
+) -> np.ndarray | None:
+    try:
+        values = pd.to_numeric(series, errors="raise").to_numpy(dtype=np.float64)
+    except (TypeError, ValueError):
+        failures.append(f"{label}: declared {metric} metric requires numeric values.")
+        return None
+    if metric == "boolean_incidence":
+        invalid = ~np.isin(values, (0.0, 1.0))
+        if invalid.any():
+            failures.append(
+                f"{label}: declared boolean incidence requires values in "
+                f"{{0, 1}}; found {int(invalid.sum())} other value(s)."
+            )
+            return None
+    return values
+
+
+def _battery_incidence_comparison(
+    *,
+    label: str,
+    metric: str,
+    values: np.ndarray,
+    left_rows: np.ndarray,
+    right_rows: np.ndarray,
+    weights: np.ndarray,
+    failures: list[str],
+    comparisons: dict[str, object],
+) -> None:
+    left = _weighted_nonzero_incidence(values[left_rows], weights[left_rows])
+    right = _weighted_nonzero_incidence(values[right_rows], weights[right_rows])
+    record: dict[str, object] = {
+        "status": "tested",
+        "metric": metric,
+        "asec_incidence": left,
+        "acs_incidence": right,
+        "nonzero_rows": {
+            "asec": int((values[left_rows] != 0.0).sum()),
+            "acs": int((values[right_rows] != 0.0).sum()),
+        },
+    }
+    comparisons[label] = record
+    if left == 0.0 and right == 0.0:
+        failures.append(
+            f"{label}: zero weighted incidence on both origins with adequate "
+            "support; the registered comparison is dead."
+        )
+        record["status"] = "dead_comparison"
+        return
+    ratio = math.inf if left == 0.0 else right / left
+    record["incidence_ratio_acs_over_asec"] = ratio if math.isfinite(ratio) else "inf"
+    lower, upper = _BATTERY_INCIDENCE_RATIO_BOUNDS
+    if not lower <= ratio <= upper:
+        failures.append(
+            f"{label}: weighted incidence ratio {ratio:.6g} is outside "
+            f"[{lower:.6g}, {upper:.6g}] (asec={left:.6g}, acs={right:.6g})."
+        )
+
+
+def _battery_sign_separated_comparison(
+    *,
+    label: str,
+    values: np.ndarray,
+    left_rows: np.ndarray,
+    right_rows: np.ndarray,
+    weights: np.ndarray,
+    min_effective_support: int,
+    failures: list[str],
+    comparisons: dict[str, object],
+) -> None:
+    record: dict[str, object] = {
+        "status": "tested",
+        "metric": "monetary_sign_separated",
+        "legs": {},
+    }
+    comparisons[label] = record
+    lower, upper = _BATTERY_INCIDENCE_RATIO_BOUNDS
+    for leg_name, leg_mask in (
+        ("positive", values > 0.0),
+        ("negative", values < 0.0),
+    ):
+        left_leg = leg_mask & left_rows
+        right_leg = leg_mask & right_rows
+        left_incidence = _weighted_mask_incidence(
+            left_leg[left_rows], weights[left_rows]
+        )
+        right_incidence = _weighted_mask_incidence(
+            right_leg[right_rows], weights[right_rows]
+        )
+        leg_record: dict[str, object] = {
+            "asec_incidence": left_incidence,
+            "acs_incidence": right_incidence,
+            "nonzero_rows": {
+                "asec": int(left_leg.sum()),
+                "acs": int(right_leg.sum()),
+            },
+        }
+        record["legs"][leg_name] = leg_record
+        if left_incidence == 0.0 and right_incidence == 0.0:
+            leg_record["status"] = "absent_on_both_origins"
+            continue
+        ratio = math.inf if left_incidence == 0.0 else right_incidence / left_incidence
+        leg_record["incidence_ratio_acs_over_asec"] = (
+            ratio if math.isfinite(ratio) else "inf"
+        )
+        if not lower <= ratio <= upper:
+            failures.append(
+                f"{label}/{leg_name}: weighted {leg_name}-leg incidence ratio "
+                f"{ratio:.6g} is outside [{lower:.6g}, {upper:.6g}] "
+                f"(asec={left_incidence:.6g}, acs={right_incidence:.6g})."
+            )
+        if (
+            int(left_leg.sum()) < min_effective_support
+            or int(right_leg.sum()) < min_effective_support
+        ):
+            leg_record["quantile_envelope"] = "leg_insufficient_support"
+            continue
+        left_quantiles = _battery_conditional_quantiles(
+            np.abs(values[left_leg]), weights[left_leg]
+        )
+        right_quantiles = _battery_conditional_quantiles(
+            np.abs(values[right_leg]), weights[right_leg]
+        )
+        distance = _battery_quantile_envelope_distance(left_quantiles, right_quantiles)
+        leg_record["quantile_envelope_distance"] = distance
+        if distance > _BATTERY_QUANTILE_ENVELOPE_TOLERANCE:
+            failures.append(
+                f"{label}/{leg_name}: conditional-quantile envelope distance "
+                f"{distance:.6g} exceeds "
+                f"{_BATTERY_QUANTILE_ENVELOPE_TOLERANCE:.6g}."
+            )
+
+
+def _battery_categorical_comparison(
+    *,
+    label: str,
+    series: pd.Series,
+    left_rows: np.ndarray,
+    right_rows: np.ndarray,
+    weights: np.ndarray,
+    failures: list[str],
+    comparisons: dict[str, object],
+) -> None:
+    values = series.to_numpy(dtype=object)
+    distributions: dict[str, dict[str, float]] = {}
+    for origin, rows in (("asec", left_rows), ("acs", right_rows)):
+        origin_weights = weights[rows]
+        total = float(origin_weights.sum())
+        shares: dict[str, float] = {}
+        for value, weight in zip(values[rows], origin_weights, strict=True):
+            shares[str(value)] = shares.get(str(value), 0.0) + float(weight)
+        distributions[origin] = {
+            category: share / total for category, share in shares.items()
+        }
+    categories = sorted(set(distributions["asec"]) | set(distributions["acs"]))
+    distance = 0.5 * sum(
+        abs(
+            distributions["asec"].get(category, 0.0)
+            - distributions["acs"].get(category, 0.0)
+        )
+        for category in categories
+    )
+    comparisons[label] = {
+        "status": "tested",
+        "metric": "categorical_tvd",
+        "total_variation_distance": distance,
+        "category_shares": distributions,
+    }
+    if distance > _BATTERY_CATEGORICAL_TVD_TOLERANCE:
+        failures.append(
+            f"{label}: categorical total-variation distance {distance:.6g} "
+            f"exceeds {_BATTERY_CATEGORICAL_TVD_TOLERANCE:.6g}."
+        )
+
+
+def _weighted_nonzero_incidence(values: np.ndarray, weights: np.ndarray) -> float:
+    total = float(weights.sum())
+    if total <= 0.0:
+        return 0.0
+    return float(weights[values != 0.0].sum() / total)
+
+
+def _weighted_mask_incidence(mask: np.ndarray, weights: np.ndarray) -> float:
+    total = float(weights.sum())
+    if total <= 0.0:
+        return 0.0
+    return float(weights[mask].sum() / total)
+
+
+def _battery_conditional_quantiles(
+    values: np.ndarray,
+    weights: np.ndarray,
+) -> np.ndarray:
+    order = np.argsort(values, kind="stable")
+    sorted_values = values[order]
+    cumulative = np.cumsum(weights[order])
+    cumulative /= cumulative[-1]
+    positions = np.minimum(
+        np.searchsorted(cumulative, np.asarray(_BATTERY_QUANTILES), side="left"),
+        len(sorted_values) - 1,
+    )
+    return sorted_values[positions]
+
+
+def _battery_quantile_envelope_distance(
+    left: np.ndarray,
+    right: np.ndarray,
+) -> float:
+    denominator = np.abs(left) + np.abs(right)
+    distances = np.divide(
+        2.0 * np.abs(left - right),
+        denominator,
+        out=np.zeros_like(denominator),
+        where=denominator > 0.0,
+    )
+    return float(np.max(distances))

@@ -29,12 +29,18 @@ from populace.build.us_runtime.puf_support import (
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.stacked_spine import (
     DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES,
+    STACKED_PILOT_ACS_SAMPLE_FRACTION,
+    STACKED_PILOT_ACS_SAMPLE_SEED,
     STACKED_SPINE_MANIFEST_KEY,
+    AbsenceProof,
     GapFillDirection,
+    OriginBatterySpec,
     assemble_stacked_spine,
+    by_origin_battery,
     gap_fill_stacked_spine,
     run_stacked_puf_pass,
     sample_acs_households,
+    stacked_completeness_gate,
     stacked_gap_fill_plan,
     validate_stacked_spine_frame,
 )
@@ -1091,3 +1097,681 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
             clone_attachment_fraction=0.5,
             clone_attachment_seed=578,
         )
+
+
+def _completed_stacked_frame() -> Frame:
+    """A stacked fixture whose declared surface is fully observed."""
+
+    return assemble_stacked_spine(
+        _asec_gap_source(),
+        _acs_gap_source(),
+        acs_sample_fraction=1.0,
+        acs_sample_seed=578,
+    ).frame
+
+
+def test_completeness_gate_passes_on_filled_and_proven_surface() -> None:
+    gap_filled = gap_fill_stacked_spine(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    surface = {
+        "person": {
+            "model_required_numeric": ("unemployment_compensation",),
+            "model_required_boolean": ("is_disabled",),
+            "housing": ("pre_subsidy_rent",),
+        }
+    }
+    result = stacked_completeness_gate(gap_filled, declared_surface=surface)
+    assert result.passed
+    assert result.details["declared_targets"] == 3
+    statuses = {
+        label: receipt["status"] for label, receipt in result.details["targets"].items()
+    }
+    assert set(statuses.values()) == {"complete"}
+
+
+def test_completeness_gate_names_a_silently_missing_family() -> None:
+    """The run-7 catcher: a declared family with no columns fails by name."""
+
+    surface = {
+        "person": {
+            "puf_tax_itemization": (
+                "taxable_interest_income",
+                "qualified_dividend_income",
+            ),
+        }
+    }
+    stacked = _stacked_gap_fixture()
+    tables = {entity: stacked.table(entity) for entity in stacked.entities}
+    person = tables["person"].drop(columns=["taxable_interest_income"])
+    tables["person"] = person
+    dropped = Frame(
+        tables,
+        stacked.schema,
+        {entity: stacked.weights_for(entity) for entity in stacked.weighted_entities},
+        stacked.strata,
+        mass_log=stacked.mass_log,
+        metadata=stacked.metadata,
+    )
+
+    result = stacked_completeness_gate(dropped, declared_surface=surface)
+    assert not result.passed
+    missing = [
+        failure
+        for failure in result.failures
+        if "puf_tax_itemization/taxable_interest_income" in failure
+        and "missing" in failure
+    ]
+    assert missing
+    unproven = [
+        failure
+        for failure in result.failures
+        if "qualified_dividend_income" in failure and "authority proof" in failure
+    ]
+    assert unproven
+
+
+def test_completeness_gate_requires_source_role_proofs_for_nulls() -> None:
+    stacked = _stacked_gap_fixture()
+    surface = {"person": {"puf_tax_itemization": ("taxable_interest_income",)}}
+
+    unproven = stacked_completeness_gate(stacked, declared_surface=surface)
+    assert not unproven.passed
+    assert any(
+        "acs/clone_0" in failure and "authority proof" in failure
+        for failure in unproven.failures
+    )
+
+    proven = stacked_completeness_gate(
+        stacked,
+        declared_surface=surface,
+        absence_proofs=(
+            AbsenceProof(
+                entity="person",
+                column="taxable_interest_income",
+                channel="acs",
+                clone_index=0,
+                reason="pending asec_survey_to_acs gap-fill",
+            ),
+        ),
+    )
+    assert proven.passed
+    receipt = proven.details["targets"][
+        "person/puf_tax_itemization/taxable_interest_income"
+    ]
+    assert receipt["status"] == "proven_absent"
+    assert receipt["proven"]["acs/clone_0"]["reason"] == (
+        "pending asec_survey_to_acs gap-fill"
+    )
+
+
+def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=0,
+    )
+    person = attached.table("person").copy()
+    person["health_savings_account_ald_person_carrier"] = np.nan
+    clone_mask = person[support_clone_index_column("person")].eq(1)
+    person.loc[clone_mask, "health_savings_account_ald_person_carrier"] = 100.0
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["person"] = person
+    frame = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+    surface = {
+        "person": {
+            "puf_tax_itemization": ("health_savings_account_ald_person_carrier",)
+        }
+    }
+
+    unproven = stacked_completeness_gate(frame, declared_surface=surface)
+    assert not unproven.passed
+
+    proven = stacked_completeness_gate(
+        frame,
+        declared_surface=surface,
+        absence_proofs=(
+            AbsenceProof(
+                entity="person",
+                column="health_savings_account_ald_person_carrier",
+                channel="*",
+                clone_index=0,
+                reason="base arm carries no PUF detail; engine default applies",
+            ),
+        ),
+    )
+    assert proven.passed
+
+
+def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
+    """A stacked frame with hand-set asec/acs person columns.
+
+    ``columns`` maps a column name to its (asec values, acs values) pair;
+    the asec arm has 8 persons and the acs arm 11.
+    """
+
+    asec = _source_frame(
+        household_ids=list(range(11, 19)),
+        weights=[100.0] * 8,
+        stratum="asec_2024",
+    )
+    acs = _source_frame(
+        household_ids=list(range(101, 112)),
+        weights=[100.0] * 11,
+        stratum="acs_2024_1yr",
+    )
+
+    def with_columns(frame: Frame, position: int) -> Frame:
+        person = frame.table("person").copy()
+        for column, values in columns.items():
+            person[column] = values[position]
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["person"] = person
+        return Frame(
+            tables,
+            US_SCHEMA,
+            {"household": frame.weights_for("household")},
+            frame.strata,
+        )
+
+    return assemble_stacked_spine(
+        with_columns(asec, 0),
+        with_columns(acs, 1),
+        acs_sample_fraction=1.0,
+        acs_sample_seed=0,
+    ).frame
+
+
+def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:
+    frame = _battery_frame(
+        {
+            "matched_flag": (
+                np.asarray([1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+                np.asarray([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]),
+            ),
+            "object_backed_flag": (
+                np.asarray(
+                    [True, True, True, False, False, False, False, False], dtype=object
+                ),
+                np.asarray([True] + [False] * 10, dtype=object),
+            ),
+        }
+    )
+    registry = (
+        OriginBatterySpec(
+            entity="person",
+            family="model_required_boolean",
+            column_metrics={
+                "matched_flag": "boolean_incidence",
+                "object_backed_flag": "boolean_incidence",
+            },
+        ),
+    )
+    result = by_origin_battery(frame, registry=registry)
+
+    assert not result.passed
+    matched = result.details["comparisons"][
+        "person/model_required_boolean/matched_flag[clone_0]"
+    ]
+    assert matched["status"] == "tested"
+    assert not any("matched_flag" in failure for failure in result.failures)
+    assert any(
+        "object_backed_flag" in failure and "incidence ratio" in failure
+        for failure in result.failures
+    )
+
+
+def test_battery_sign_separated_catches_the_one_sided_hole() -> None:
+    """The run-7 signature: ample support, hollow ACS leg -> terminal."""
+
+    frame = _battery_frame(
+        {
+            "sentinel_amount": (
+                np.asarray([500.0, 0.0, 1_200.0, 0.0, 800.0, 0.0, 2_000.0, 650.0]),
+                np.zeros(11),
+            ),
+        }
+    )
+    registry = (
+        OriginBatterySpec(
+            entity="person",
+            family="puf_tax_itemization",
+            column_metrics={"sentinel_amount": "monetary_sign_separated"},
+        ),
+    )
+    result = by_origin_battery(frame, registry=registry)
+
+    assert not result.passed
+    assert any(
+        "sentinel_amount" in failure and "positive-leg incidence ratio" in failure
+        for failure in result.failures
+    )
+
+
+def test_battery_sign_separated_passes_matching_legs() -> None:
+    frame = _battery_frame(
+        {
+            "signed_amount": (
+                np.asarray(
+                    [900.0, -300.0, 1_050.0, -380.0, -420.0, 1_500.0, 0.0, 700.0]
+                ),
+                np.asarray(
+                    [
+                        980.0,
+                        -350.0,
+                        1_100.0,
+                        -330.0,
+                        -400.0,
+                        1_450.0,
+                        820.0,
+                        0.0,
+                        -310.0,
+                        690.0,
+                        1_200.0,
+                    ]
+                ),
+            ),
+        }
+    )
+    registry = (
+        OriginBatterySpec(
+            entity="person",
+            family="puf_tax_itemization",
+            column_metrics={"signed_amount": "monetary_sign_separated"},
+            min_effective_support=3,
+        ),
+    )
+    result = by_origin_battery(frame, registry=registry)
+    assert result.passed, result.failures
+    record = result.details["comparisons"][
+        "person/puf_tax_itemization/signed_amount[clone_0]"
+    ]
+    assert record["legs"]["positive"]["quantile_envelope_distance"] <= 0.25
+    assert record["legs"]["negative"]["quantile_envelope_distance"] <= 0.25
+
+
+def test_battery_support_awareness_and_dead_comparisons() -> None:
+    frame = _battery_frame(
+        {
+            "rare_flag": (
+                np.asarray([0.0] * 8),
+                np.asarray([0.0] * 11),
+            ),
+        }
+    )
+    dead = by_origin_battery(
+        frame,
+        registry=(
+            OriginBatterySpec(
+                entity="person",
+                family="take_up",
+                column_metrics={"rare_flag": "rare_incidence"},
+            ),
+        ),
+    )
+    assert not dead.passed
+    assert any("dead" in failure for failure in dead.failures)
+
+    under_supported = by_origin_battery(
+        frame,
+        registry=(
+            OriginBatterySpec(
+                entity="person",
+                family="take_up",
+                column_metrics={"rare_flag": "rare_incidence"},
+                min_effective_support=50,
+            ),
+        ),
+    )
+    assert under_supported.passed
+    assert under_supported.details["untestable_comparisons"] == [
+        "person/take_up/rare_flag[clone_0]"
+    ]
+    record = under_supported.details["comparisons"]["person/take_up/rare_flag[clone_0]"]
+    assert record["status"] == "insufficient_support"
+
+
+def test_battery_categorical_tvd_and_null_scope() -> None:
+    frame = _battery_frame(
+        {
+            "category_field": (
+                np.asarray(["A", "A", "A", "B", "B", "B", "A", "B"], dtype=object),
+                np.asarray(
+                    ["A", "B", "A", "B", "A", "B", "A", "B", "A", "B", "A"],
+                    dtype=object,
+                ),
+            ),
+            "leaky_field": (
+                np.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
+                np.asarray([1.0, np.nan, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 1.0, 2.0]),
+            ),
+        }
+    )
+    result = by_origin_battery(
+        frame,
+        registry=(
+            OriginBatterySpec(
+                entity="person",
+                family="model_required_discrete",
+                column_metrics={
+                    "category_field": "categorical_tvd",
+                    "leaky_field": "monetary_sign_separated",
+                },
+            ),
+        ),
+    )
+    assert not result.passed
+    assert any(
+        "leaky_field" in failure and "null value(s)" in failure
+        for failure in result.failures
+    )
+    category = result.details["comparisons"][
+        "person/model_required_discrete/category_field[clone_0]"
+    ]
+    assert category["total_variation_distance"] <= 0.25
+    assert not any("category_field" in failure for failure in result.failures)
+
+
+def test_battery_spec_rejects_undeclared_metric_kinds() -> None:
+    with pytest.raises(ValueError, match="unknown metric kind"):
+        OriginBatterySpec(
+            entity="person",
+            family="take_up",
+            column_metrics={"anything": "dtype_dispatch"},
+        )
+
+
+def test_pilot_configuration_is_the_ratified_ten_percent() -> None:
+    assert STACKED_PILOT_ACS_SAMPLE_FRACTION == 0.10
+    assert STACKED_PILOT_ACS_SAMPLE_SEED == 578
+
+
+def _asec_e2e_source() -> Frame:
+    frame = _source_frame(
+        household_ids=list(range(1_001, 1_041)),
+        weights=[100.0] * 40,
+        stratum="asec_2024",
+    )
+    person = frame.table("person").copy()
+    count = len(person)
+    index = np.arange(count)
+    person["is_female"] = index % 2 == 0
+    person["is_household_head"] = True
+    person["employment_income_before_lsr"] = 20_000.0 + 1_500.0 * index
+    person["unemployment_compensation"] = np.where(index % 4 == 0, 2_400.0, 0.0)
+    # Structurally learnable from a REQUIRED predictor with a stable share
+    # under any household subsample, so the gap-fill QRF reproduces the
+    # incidence on the seeded ACS sample without sampling-skew noise.
+    person["is_disabled"] = person["is_female"].to_numpy()
+    interest = np.where(index % 2 == 0, 1_200.0 + 40.0 * index, 0.0)
+    person["taxable_interest_income"] = interest
+    for column in (
+        "tax_exempt_interest_income",
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+        "rental_income",
+        "estate_income",
+    ):
+        person[column] = 0.0
+    household = frame.table("household").copy()
+    household["tenure_type"] = pd.Series(
+        ["RENTED" if position % 2 else "OWNED_WITH_MORTGAGE" for position in range(40)],
+        dtype=object,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    tables["household"] = household
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+def _acs_e2e_source() -> Frame:
+    frame = _source_frame(
+        household_ids=list(range(5_001, 5_041)),
+        weights=[100.0] * 40,
+        stratum="acs_2024_1yr",
+    )
+    person = frame.table("person").copy()
+    count = len(person)
+    index = np.arange(count)
+    person["is_female"] = index % 2 == 1
+    person["is_household_head"] = True
+    person["employment_income_before_lsr"] = 21_000.0 + 1_450.0 * index
+    person["acs_interest_dividend_rental_income"] = np.where(
+        index % 2 == 0, 1_250.0 + 42.0 * index, 0.0
+    )
+    person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
+    household = frame.table("household").copy()
+    household["tenure_type"] = pd.Series(
+        ["RENTED" if position % 2 else "OWNED_OUTRIGHT" for position in range(40)],
+        dtype=object,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    tables["household"] = household
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+_E2E_GAP_FILL_PLAN = (
+    GapFillDirection(
+        name="asec_survey_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
+        target_families={
+            "person": {
+                "puf_tax_itemization": ("taxable_interest_income",),
+                "model_required_numeric": ("unemployment_compensation",),
+                "model_required_boolean": ("is_disabled",),
+            }
+        },
+    ),
+    GapFillDirection(
+        name="acs_housing_to_asec",
+        recipient_channel="asec",
+        donor_channel="acs",
+        target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+    ),
+)
+
+
+def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
+    """The pilot pipeline end to end: the ACS tax-detail hole is closed.
+
+    Run 7's failure signature was a hollow ACS income surface: the ACS spine
+    carried ~zero taxable-interest incidence against ASEC's 45% because the
+    PUF family silently skipped.  This walks the revised architecture at
+    fixture scale — stack, banked cross-origin gap-fill with native ACS
+    predictors, seeded clone attachment, one doctrine-mode PUF pass, the
+    completeness gate, and the terminal by-origin battery — and proves the
+    sentinel is healthy on ACS-origin rows.
+    """
+
+    stacked = assemble_stacked_spine(
+        _asec_e2e_source(),
+        _acs_e2e_source(),
+        acs_sample_fraction=0.5,
+        acs_sample_seed=578,
+    ).frame
+
+    banks = {
+        direction.name: AcsTransferTargetBankStore(
+            tmp_path / direction.name,
+            identity={"lane": "stacked-e2e", "direction": direction.name},
+        )
+        for direction in _E2E_GAP_FILL_PLAN
+    }
+    gap_filled = gap_fill_stacked_spine(
+        stacked,
+        plan=_E2E_GAP_FILL_PLAN,
+        seed=578,
+        n_estimators=12,
+        target_banks=banks,
+    )
+
+    donor = pd.DataFrame(
+        {
+            "employment_income": 25_000.0 + 6_000.0 * np.arange(8),
+            "taxable_interest_income": [
+                1_300.0,
+                0.0,
+                1_500.0,
+                1_800.0,
+                0.0,
+                2_100.0,
+                1_650.0,
+                1_950.0,
+            ],
+            "health_savings_account_ald": [
+                500.0,
+                0.0,
+                750.0,
+                1_000.0,
+                250.0,
+                0.0,
+                800.0,
+                600.0,
+            ],
+            "weight": [1.0] * 8,
+        }
+    )
+    passed = run_stacked_puf_pass(
+        gap_filled.frame,
+        donor,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_taxable_interest_income",
+        ),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=("health_savings_account_ald",),
+        seed=578,
+        n_estimators=12,
+    )
+
+    # The audit's failure mode is now a named terminal error, not a silent
+    # zero-fill: without gap-fill the strict doctrine refuses the PUF pass.
+    with pytest.raises(ValueError, match="puf_predictor_taxable_interest_income"):
+        run_stacked_puf_pass(
+            stacked,
+            donor,
+            clone_attachment_fraction=0.5,
+            clone_attachment_seed=578,
+            predictors=(
+                "puf_predictor_employment_income",
+                "puf_predictor_taxable_interest_income",
+            ),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=("health_savings_account_ald",),
+            seed=578,
+            n_estimators=12,
+        )
+
+    declared_surface = {
+        "person": {
+            "puf_tax_itemization": ("taxable_interest_income",),
+            "model_required_numeric": ("unemployment_compensation",),
+            "model_required_boolean": ("is_disabled",),
+            "housing": ("pre_subsidy_rent",),
+        },
+        "tax_unit": {
+            "puf_tax_itemization": ("health_savings_account_ald",),
+        },
+    }
+    completeness = stacked_completeness_gate(
+        passed.frame,
+        declared_surface=declared_surface,
+        absence_proofs=(
+            AbsenceProof(
+                entity="tax_unit",
+                column="health_savings_account_ald",
+                channel="*",
+                clone_index=0,
+                reason="base arm carries no PUF detail; engine default applies",
+            ),
+        ),
+    )
+    assert completeness.passed, completeness.failures
+
+    # Drop-a-family mutation: the gate names the vanished family.
+    mutated_surface = {
+        "person": {
+            **declared_surface["person"],
+            "puf_tax_itemization": (
+                "taxable_interest_income",
+                "salt_refund_income",
+            ),
+        },
+        "tax_unit": declared_surface["tax_unit"],
+    }
+    mutated = stacked_completeness_gate(
+        passed.frame,
+        declared_surface=mutated_surface,
+    )
+    assert not mutated.passed
+    assert any(
+        "salt_refund_income" in failure and "missing" in failure
+        for failure in mutated.failures
+    )
+
+    registry = (
+        OriginBatterySpec(
+            entity="person",
+            family="puf_tax_itemization",
+            column_metrics={"taxable_interest_income": "monetary_sign_separated"},
+        ),
+        OriginBatterySpec(
+            entity="person",
+            family="model_required_numeric",
+            column_metrics={"unemployment_compensation": "monetary_sign_separated"},
+        ),
+        OriginBatterySpec(
+            entity="person",
+            family="model_required_boolean",
+            column_metrics={"is_disabled": "boolean_incidence"},
+        ),
+        OriginBatterySpec(
+            entity="person",
+            family="housing",
+            column_metrics={"pre_subsidy_rent": "monetary_sign_separated"},
+        ),
+    )
+    battery = by_origin_battery(passed.frame, registry=registry)
+    assert battery.passed, battery.failures
+
+    sentinel = battery.details["comparisons"][
+        "person/puf_tax_itemization/taxable_interest_income[clone_0]"
+    ]
+    assert sentinel["status"] == "tested"
+    positive = sentinel["legs"]["positive"]
+    assert positive["acs_incidence"] > 0.0
+    assert 0.8 <= positive["incidence_ratio_acs_over_asec"] <= 1.25
+    detail = passed.frame.table("person")
+    detail_clone = detail[support_clone_index_column("person")].eq(1)
+    detail_channel = detail[support_channel_column("person")].astype(str)
+    for origin in ("asec", "acs"):
+        origin_detail = detail.loc[
+            detail_clone & detail_channel.eq(origin),
+            "taxable_interest_income",
+        ]
+        assert origin_detail.notna().all()
+        assert (origin_detail > 0.0).any()
