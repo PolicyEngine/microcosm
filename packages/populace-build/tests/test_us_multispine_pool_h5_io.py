@@ -204,15 +204,37 @@ def test_object_string_simulated_checkpoint_resume_exports_canonical_strings(
             artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
             publication_run_id=f"{label}-fixture-publication",
         )
+        # Fixed-format HDF persists the logical ``str`` dtype but not the
+        # pandas storage backend; a raw read resolves storage from the
+        # environment (python without pyarrow installed, pyarrow with).  Pin
+        # the persisted logical dtype, then prove the load boundary restores
+        # the exact canonical dtype in either environment.
         with pd.HDFStore(output, mode="r") as store:
             for entity in US_SCHEMA.entities:
                 stored = store[entity]
                 string_columns = _semantic_string_columns(stored)
                 assert string_columns
+                for column in string_columns:
+                    dtype = stored[column].dtype
+                    assert isinstance(dtype, pd.StringDtype)
+                    assert dtype.na_value is np.nan
+                canonical = canonicalize_table_string_dtypes(
+                    stored,
+                    boundary="raw pool store load",
+                    table_name=entity,
+                )
                 assert all(
-                    stored[column].dtype == CANONICAL_STRING_DTYPE
+                    canonical[column].dtype == CANONICAL_STRING_DTYPE
                     for column in string_columns
                 )
+        with pd.option_context("mode.string_storage", "python"):
+            with pd.HDFStore(output, mode="r") as store:
+                for entity in US_SCHEMA.entities:
+                    stored = store[entity]
+                    assert all(
+                        stored[column].dtype == CANONICAL_STRING_DTYPE
+                        for column in _semantic_string_columns(stored)
+                    )
         for entity in US_SCHEMA.entities:
             string_columns = _semantic_string_columns(frame.table(entity))
             assert all(
@@ -300,8 +322,44 @@ def test_pool_export_canonicalizes_explicit_all_missing_strings(
 
     with pd.HDFStore(output, mode="r") as store:
         stored = store["household"]["household_source_label"]
-    assert stored.dtype == CANONICAL_STRING_DTYPE
+    assert isinstance(stored.dtype, pd.StringDtype)
+    assert stored.dtype.na_value is np.nan
     assert stored.isna().all()
+    with pd.option_context("mode.string_storage", "python"):
+        with pd.HDFStore(output, mode="r") as store:
+            repinned = store["household"]["household_source_label"]
+    assert repinned.dtype == CANONICAL_STRING_DTYPE
+    assert repinned.isna().all()
+
+
+def test_pool_h5_load_boundary_canonicalizes_under_pyarrow_default(
+    tmp_path: Path,
+) -> None:
+    """Raw read-back storage is environment-resolved; the load boundary owns
+    the exact canonical dtype even under a pyarrow string-storage default."""
+
+    pytest.importorskip("tables")
+    pytest.importorskip("pyarrow")
+    frame = _pool_frame_with_object_strings_on_every_entity()
+    output = tmp_path / "pyarrow-default.pool.h5"
+    write_nullable_us_h5(
+        frame,
+        output,
+        period=2024,
+        artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    )
+    with pd.option_context("mode.string_storage", "pyarrow"):
+        with pd.HDFStore(output, mode="r") as store:
+            stored = store["person"]
+        assert stored["PERIDNUM"].dtype != CANONICAL_STRING_DTYPE
+        canonical = canonicalize_table_string_dtypes(
+            stored,
+            boundary="pyarrow-default pool load",
+            table_name="person",
+        )
+    assert canonical["PERIDNUM"].dtype == CANONICAL_STRING_DTYPE
+    assert canonical["PERIDNUM"].iloc[0] == "person-0"
+    assert pd.isna(canonical["PERIDNUM"].iloc[1])
 
 
 def _write_ready_pool(tmp_path: Path) -> Path:
