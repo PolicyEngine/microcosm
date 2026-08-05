@@ -162,6 +162,15 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
+# Independent publication pin for the reviewed reference source. The data
+# shard cannot import the build shard, so keep this in lockstep with
+# populace.build.uk_runtime.parity_reference.load_efrs_parity_reference().source.
+_UK_INPUT_MASS_REFERENCE_IDENTITY = {
+    "filename": "enhanced_frs_2023_24.h5",
+    "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+    "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+    "vintage": "2023_24",
+}
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
         {
@@ -1303,15 +1312,11 @@ def _check_uk_terminal_gate_observables(
     input_mass = _uk_terminal_gate_details(gates, "input_mass_parity")
     if input_mass is not None:
         identity = input_mass.get("reference_identity")
-        identity_fields = ("filename", "revision", "sha256", "vintage")
-        if not isinstance(identity, Mapping) or any(
-            not isinstance(identity.get(field), str) or not identity.get(field)
-            for field in identity_fields
-        ):
+        if identity != _UK_INPUT_MASS_REFERENCE_IDENTITY:
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
-                "reference_identity must record the frozen reference's "
-                f"{', '.join(identity_fields)}."
+                "reference_identity must match the reviewed enhanced-FRS "
+                f"incumbent {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
             )
         if input_mass.get("stale_exclusions") != []:
             failures.append(
@@ -1320,11 +1325,49 @@ def _check_uk_terminal_gate_observables(
             )
 
     qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
-    if qrf_tail is not None and qrf_tail.get("stale_exclusions") != []:
-        failures.append(
-            f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-            "requires details.stale_exclusions to be an empty list."
-        )
+    if qrf_tail is not None:
+        columns_checked = qrf_tail.get("columns_checked")
+        if (
+            isinstance(columns_checked, bool)
+            or not isinstance(columns_checked, int)
+            or columns_checked <= 0
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.columns_checked to be positive."
+            )
+        top_share = qrf_tail.get("top_share")
+        carrier_counts = qrf_tail.get("carrier_counts")
+        if (
+            not isinstance(top_share, Mapping)
+            or not isinstance(carrier_counts, Mapping)
+            or set(top_share) != set(carrier_counts)
+            or len(top_share) != columns_checked
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "must reconcile details.columns_checked, top_share, and "
+                "carrier_counts."
+            )
+        surface = qrf_tail.get("surface")
+        if not isinstance(surface, Mapping):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.surface to be an object."
+            )
+        else:
+            for field in ("absent_columns", "non_numeric_columns"):
+                if surface.get(field) != []:
+                    failures.append(
+                        f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
+                        f"concentration requires details.surface.{field} to "
+                        "be empty."
+                    )
+        if qrf_tail.get("stale_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.stale_exclusions to be an empty list."
+            )
 
     export = _uk_terminal_gate_details(gates, "export_surface")
     if export is not None:

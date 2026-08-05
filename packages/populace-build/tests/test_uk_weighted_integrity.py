@@ -67,7 +67,7 @@ def _reference(totals, **overrides) -> UKInputMassReference:
     fields = {
         "filename": "enhanced_frs_2023_24.h5",
         "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": "a" * 64,
+        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
         "vintage": "2023_24",
     }
     fields.update(overrides)
@@ -160,9 +160,32 @@ def test_input_mass_reference_identity_is_recorded() -> None:
     assert gate.details["reference_identity"] == {
         "filename": "enhanced_frs_2023_24.h5",
         "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": "a" * 64,
+        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
         "vintage": "2023_24",
     }
+
+
+def test_input_mass_reference_rejects_caller_self_reference() -> None:
+    reviewed = uk_input_mass_parity_gate(
+        {"person.employment_income": 1.0},
+        _reference({"person.employment_income": 100.0}),
+        policy=_policy(),
+    )
+    caller_self_reference = _reference(
+        {"person.employment_income": 1.0},
+        filename="caller-selected.h5",
+        revision="caller-selected",
+        sha256="b" * 64,
+        vintage="caller-selected",
+    )
+
+    assert not reviewed.passed
+    with pytest.raises(ValueError, match="reviewed enhanced-FRS incumbent"):
+        uk_input_mass_parity_gate(
+            {"person.employment_income": 1.0},
+            caller_self_reference,
+            policy=_policy(),
+        )
 
 
 def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
@@ -653,7 +676,9 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
                 "identity": {
                     "filename": "enhanced_frs_2023_24.h5",
                     "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-                    "sha256": "a" * 64,
+                    "sha256": (
+                        "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"
+                    ),
                     "vintage": "2023_24",
                 },
                 "totals": {"person.employment_income": 10.5},

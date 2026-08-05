@@ -57,6 +57,12 @@ UK_EVIDENCE_GATE_NAMES = {
     "input_mass_parity": ("input_mass_parity",),
     "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
+UK_INPUT_MASS_REFERENCE_IDENTITY = {
+    "filename": "enhanced_frs_2023_24.h5",
+    "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+    "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+    "vintage": "2023_24",
+}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -647,6 +653,42 @@ def _terminal_gate_details(name: str) -> dict:
             "targets_checked": TARGET_COUNT,
             "max_abs_relative_error": 0.25,
             "failing_targets": {},
+        }
+    if name == "input_mass_parity":
+        return {
+            "candidate_name": "uk_release_candidate",
+            "reference_name": UK_INPUT_MASS_REFERENCE_IDENTITY["filename"],
+            "relative_tolerance": 0.5,
+            "minimum_reference_total": 0.0,
+            "columns_checked": 1,
+            "columns_below_reference_floor": 0,
+            "candidate_only_columns": [],
+            "worst_drifts": {"person.employment_income": 0.0},
+            "reviewed_exclusions": {},
+            "unused_reviewed_exclusions": [],
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+            "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
+        }
+    if name == "qrf_tail_concentration":
+        return {
+            "columns_checked": 1,
+            "top_k": 1,
+            "max_top_share": 0.75,
+            "min_nonzero_records": 2,
+            "top_share": {"self_employment_income": 0.5},
+            "carrier_counts": {"self_employment_income": 10},
+            "thin_columns": {},
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+            "surface": {
+                "declared_qrf_outputs": 1,
+                "checked_columns": ["self_employment_income"],
+                "absent_columns": [],
+                "non_numeric_columns": [],
+                "density_filter": "none: every declared output is checked (#609)",
+            },
         }
     raise AssertionError(f"No terminal fixture details for {name!r}")
 
@@ -1885,6 +1927,15 @@ def test_exact_k_uk_release_rejects_rehashed_weight_observable_mutation(
         ("hmrc_spi_income",),
         ("release_parity",),
         ("hmrc_spi_income", "release_parity"),
+        ("input_mass_parity",),
+        ("qrf_tail_concentration",),
+        ("input_mass_parity", "qrf_tail_concentration"),
+        (
+            "hmrc_spi_income",
+            "release_parity",
+            "input_mass_parity",
+            "qrf_tail_concentration",
+        ),
     ],
 )
 def test_exact_k_uk_terminal_membership_tracks_build_evidence_stages(
@@ -1910,6 +1961,77 @@ def test_exact_k_uk_terminal_membership_tracks_build_evidence_stages(
     _write_terminal_and_refresh_manifest_hashes(directory, payload)
 
     validate_release_dir(directory)
+
+
+def test_exact_k_uk_terminal_rejects_unreviewed_input_mass_identity(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=("input_mass_parity",),
+    )
+    payload["gates"]["input_mass_parity"]["details"]["reference_identity"] = {
+        "filename": "caller-selected.h5",
+        "revision": "caller-selected",
+        "sha256": "b" * 64,
+        "vintage": "caller-selected",
+    }
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = evidence
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "reference_identity must match the reviewed" in failures
+
+
+def test_exact_k_uk_terminal_rejects_vacuous_qrf_surface(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=("qrf_tail_concentration",),
+    )
+    details = payload["gates"]["qrf_tail_concentration"]["details"]
+    details["columns_checked"] = 0
+    details["top_share"] = {}
+    details["carrier_counts"] = {}
+    details["surface"]["checked_columns"] = []
+    details["surface"]["absent_columns"] = ["declared_but_absent"]
+    _refresh_terminal_gate_attestation(payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = evidence
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "requires details.columns_checked to be positive" in failures
+    assert "requires details.surface.absent_columns to be empty" in failures
 
 
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(

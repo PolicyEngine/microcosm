@@ -445,7 +445,7 @@ def _input_mass_reference(totals=None) -> UKInputMassReference:
         totals=({"person.employment_income": 10.0} if totals is None else totals),
         filename="enhanced_frs_2023_24.h5",
         revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-        sha256="a" * 64,
+        sha256=("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
         vintage="2023_24",
     )
 

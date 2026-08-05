@@ -121,6 +121,7 @@ from populace.build.gates import (
     input_mass_parity_gate,
     tail_concentration_gate,
 )
+from populace.build.uk_runtime.parity_reference import load_efrs_parity_reference
 
 __all__ = [
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
@@ -278,13 +279,15 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
     totals = payload.get("totals")
     if not isinstance(totals, Mapping):
         raise ValueError(f"{path}: input-mass reference needs a 'totals' object.")
-    return UKInputMassReference(
+    reference = UKInputMassReference(
         totals=dict(totals),
         filename=str(identity.get("filename", "")),
         revision=str(identity.get("revision", "")),
         sha256=str(identity.get("sha256", "")),
         vintage=str(identity.get("vintage", "")),
     )
+    _validate_input_mass_reference_identity(reference)
+    return reference
 
 
 @dataclass(frozen=True)
@@ -345,6 +348,24 @@ class UKInputMassReference:
             "sha256": self.sha256,
             "vintage": self.vintage,
         }
+
+
+def _validate_input_mass_reference_identity(
+    reference: UKInputMassReference,
+) -> None:
+    source = load_efrs_parity_reference().source
+    expected = {
+        "filename": source.filename,
+        "revision": source.revision,
+        "sha256": source.sha256,
+        "vintage": source.vintage,
+    }
+    if reference.identity != expected:
+        raise ValueError(
+            "UK input-mass reference identity must match the reviewed "
+            f"enhanced-FRS incumbent; expected {expected}, got "
+            f"{reference.identity}."
+        )
 
 
 @dataclass(frozen=True)
@@ -604,6 +625,7 @@ def uk_input_mass_parity_gate(
         raise TypeError("reference must be UKInputMassReference.")
     if not isinstance(policy, UKInputMassParityPolicy):
         raise TypeError("policy must be UKInputMassParityPolicy.")
+    _validate_input_mass_reference_identity(reference)
     exclusions = dict(policy.reviewed_exclusions)
     base = input_mass_parity_gate(
         candidate_totals,
