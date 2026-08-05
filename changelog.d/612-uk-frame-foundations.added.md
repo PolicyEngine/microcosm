@@ -1,0 +1,1 @@
+Promote the engine-tables materializer out of the two engine adapters into a shared `populace.frame.engine_tables` (typed weights authoritative, any existing `{entity}_weight` column overwritten in place), and add `tools/preflight_uk_frame_linkage.py`, an SDC-safe, read-only classifier that checks UK H5 artifacts against Frame's linkage invariants ahead of the #612 carrier swap.
