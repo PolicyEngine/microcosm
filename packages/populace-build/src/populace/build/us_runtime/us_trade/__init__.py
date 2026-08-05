@@ -22,6 +22,9 @@ Modules:
   summary counts from the archived public statistics page.
 - :mod:`populace.build.us_runtime.us_trade.import_entry_facts` — ledger
   consumer-artifact emission for the margin series.
+- :mod:`populace.build.us_trade.entry_generator` — synthetic weighted
+  entries reproducing the value margins exactly (deterministic; every
+  distributional assumption documented in the emitted register).
 """
 
 from populace.build.us_runtime.us_trade.cbp_entry_stats import (
@@ -42,6 +45,13 @@ from populace.build.us_runtime.us_trade.census_imports import (
     latest_published_month,
     month_range,
     parse_imports_response,
+)
+from populace.build.us_runtime.us_trade.entry_generator import (
+    EntrySizeAssumption,
+    dotted_hts,
+    generate_entries,
+    solve_size_assumption,
+    validate_entries_against_margins,
 )
 from populace.build.us_runtime.us_trade.imdb_bulk import (
     IMDB_URL_TEMPLATE,
@@ -75,6 +85,7 @@ __all__ = [
     "CensusCountryBridge",
     "CensusImportsMonth",
     "CensusImportsPull",
+    "EntrySizeAssumption",
     "FactSourceLeg",
     "IMDB_BULK_SOURCE_LEG",
     "IMDB_DISTRICT_SOURCE_LEG",
@@ -89,8 +100,10 @@ __all__ = [
     "build_district_entry_fact_rows",
     "build_import_entry_fact_rows",
     "default_generator_block",
+    "dotted_hts",
     "ensure_imdb_archive",
     "fetch_imports_month",
+    "generate_entries",
     "imdb_archive_name",
     "imdb_archive_url",
     "latest_available_imdb_month",
@@ -100,6 +113,8 @@ __all__ = [
     "month_range",
     "parse_cbp_trade_stats",
     "parse_imports_response",
+    "solve_size_assumption",
     "summarize_imdb_month",
+    "validate_entries_against_margins",
     "write_consumer_artifact",
 ]
