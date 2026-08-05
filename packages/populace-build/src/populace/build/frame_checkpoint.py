@@ -412,7 +412,16 @@ def _series_spec(series: pd.Series, *, label: str) -> dict[str, str]:
             )
         encoding = _ENCODING_OBJECT
     elif isinstance(dtype, pd.StringDtype):
-        encoding = _ENCODING_OBJECT
+        # ``str(dtype)`` collapses to "str"/"string", which pandas resolves
+        # to the *environment-default* storage on restore (pyarrow when
+        # installed). Record storage and NA marker explicitly so a
+        # checkpoint restores one physical dtype everywhere.
+        return {
+            "dtype": str(dtype),
+            "encoding": _ENCODING_OBJECT,
+            "string_storage": dtype.storage,
+            "string_na_marker": "pd_na" if dtype.na_value is pd.NA else "nan",
+        }
     elif pd.api.types.is_datetime64_dtype(dtype):
         encoding = _ENCODING_DATETIME
     elif pd.api.types.is_timedelta64_dtype(dtype):
@@ -489,7 +498,7 @@ def _read_index(group: Any, spec: Mapping[str, Any], path: Path) -> pd.Index:
         raise ValueError(f"Frame checkpoint {path} has unknown index kind {kind!r}.")
     index_group = _require_h5_group(group, "index", path)
     series = _read_series(index_group, spec, path, label="index")
-    dtype = _require_string(spec, "dtype", label="index")
+    dtype = _declared_dtype(spec, path=path, label="index")
     try:
         return pd.Index(series.array, dtype=dtype, name=name)
     except (TypeError, ValueError) as exc:
@@ -525,6 +534,7 @@ def _read_series(
     label: str,
 ) -> pd.Series:
     dtype = _require_string(spec, "dtype", label=label)
+    restore_dtype = _declared_dtype(spec, path=path, label=label)
     encoding = _require_string(spec, "encoding", label=label)
     if encoding == _ENCODING_NUMPY:
         values = _read_numpy_dataset(group, "values", path)
@@ -541,25 +551,66 @@ def _read_series(
         offsets = _read_numpy_dataset(group, "offsets", path)
         payload = _read_bytes_dataset(group, "payload", path)
         values = _decode_object_values(offsets, payload, path=path, label=label)
-        series = pd.Series(values, dtype=dtype, copy=False)
+        series = pd.Series(values, dtype=restore_dtype, copy=False)
     else:
         raise ValueError(
             f"Frame checkpoint {path} has unknown encoding {encoding!r} for {label!r}."
         )
-    if str(series.dtype) != dtype:
+    if not _dtype_matches(series.dtype, restore_dtype):
         try:
-            series = series.astype(dtype)
+            series = series.astype(restore_dtype)
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"Frame checkpoint {path} cannot restore dtype {dtype!r} for "
                 f"{label!r}; stored dtype is {series.dtype!s}."
             ) from exc
-    if str(series.dtype) != dtype:
+    if not _dtype_matches(series.dtype, restore_dtype):
         raise ValueError(
             f"Frame checkpoint {path} restored {label!r} as {series.dtype!s}, "
             f"not declared dtype {dtype!r}."
         )
     return series
+
+
+def _declared_dtype(
+    spec: Mapping[str, Any], *, path: Path, label: str
+) -> str | pd.StringDtype:
+    """The concrete dtype a spec restores to, environment-independently.
+
+    String dtypes resolve through the recorded storage and NA marker — the
+    pandas string forms ("str"/"string") pick the *environment-default*
+    storage, which flips to pyarrow wherever pyarrow is installed and would
+    make a checkpoint restore to different physical dtypes on different
+    machines. Legacy specs (written before storage was recorded) restore to
+    python storage: that is what every environment those checkpoints were
+    verified in produced, and it is the build's canonical string policy.
+    """
+    dtype = _require_string(spec, "dtype", label=label)
+    if dtype not in ("str", "string"):
+        return dtype
+    storage = spec.get("string_storage", "python")
+    if storage not in ("python", "pyarrow"):
+        raise ValueError(
+            f"Frame checkpoint {path} {label!r} has unknown string storage {storage!r}."
+        )
+    na_marker = spec.get("string_na_marker", "nan" if dtype == "str" else "pd_na")
+    if na_marker not in ("nan", "pd_na"):
+        raise ValueError(
+            f"Frame checkpoint {path} {label!r} has unknown string NA marker "
+            f"{na_marker!r}."
+        )
+    return pd.StringDtype(
+        storage=storage,
+        na_value=np.nan if na_marker == "nan" else pd.NA,
+    )
+
+
+def _dtype_matches(actual: Any, expected: str | pd.StringDtype) -> bool:
+    if isinstance(expected, pd.StringDtype):
+        return actual == expected and getattr(actual, "storage", None) == (
+            expected.storage
+        )
+    return str(actual) == expected
 
 
 def _encode_object_values(values: np.ndarray) -> tuple[np.ndarray, bytes]:
