@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -162,7 +163,7 @@ class GateReport:
                 result.name: {
                     "passed": result.passed,
                     "failures": list(result.failures),
-                    "details": dict(result.details),
+                    "details": deepcopy(dict(result.details)),
                 }
                 for result in self.results
             },
