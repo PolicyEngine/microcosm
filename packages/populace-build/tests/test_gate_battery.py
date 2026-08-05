@@ -16,7 +16,7 @@ import json
 import pytest
 
 from populace.build import FitWeightRecord, GateResult, load_country_spec
-from populace.build.country_spec import GatesManifest
+from populace.build.country_spec import GateSelectionSpec, GatesManifest
 from populace.build.gate_battery import (
     DEFAULT_REGISTRY,
     BlockingMode,
@@ -552,4 +552,61 @@ class TestDerivedManifestProvenance:
             assert report[field] != canonical[field]
         assert report["spec_fingerprint"] == compute_composition_fingerprint(
             (report["gates_manifest_sha256"],)
+        )
+
+
+class TestFrozenGateParameters:
+    def test_source_mutation_after_evaluation_cannot_rewrite_report(
+        self, tmp_path, signing_env
+    ) -> None:
+        source_parameters = {
+            "relative_tolerance": 0.5,
+            "reviewed_exclusions": {"unused": "reviewed before evaluation"},
+        }
+        entry = GateSelectionSpec(
+            id="mass",
+            gate="input_mass_parity",
+            phase="terminal",
+            criticality="release_blocking",
+            parameters=source_parameters,
+        )
+        manifest = GatesManifest(
+            country="xx",
+            version=1,
+            policy="frozen parameter regression",
+            phases=("terminal",),
+            gates=(entry,),
+        )
+        run = GateBatteryRun(
+            manifest,
+            release_id="xx-frozen-policy",
+            report_path=tmp_path / "terminal_gates.json",
+            release_candidate=True,
+        )
+        context = EvidenceContext(
+            artifacts={
+                "candidate_input_mass_totals": {"employment_income": 95.0},
+                "reference_input_mass_totals": {"employment_income": 100.0},
+            }
+        )
+
+        run.run_phase("terminal", context)
+        rendered_before = run.report_path.read_text()
+        payload_before = json.loads(rendered_before)
+        assert payload_before["gates"]["mass"]["status"] == "passed"
+        assert payload_before["gates"]["mass"]["details"]["relative_tolerance"] == 0.5
+
+        source_parameters["relative_tolerance"] = 0.01
+        source_parameters["reviewed_exclusions"]["unused"] = "forged after evaluation"
+        payload_after = run.report_payload()
+        rendered_after = (
+            json.dumps(payload_after, indent=2, sort_keys=True, allow_nan=False) + "\n"
+        )
+
+        assert payload_after == payload_before
+        assert rendered_after == rendered_before
+        assert entry.parameters["relative_tolerance"] == 0.5
+        assert (
+            entry.parameters["reviewed_exclusions"]["unused"]
+            == "reviewed before evaluation"
         )

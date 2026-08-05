@@ -38,6 +38,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib import resources as importlib_resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from populace.build.ledger_targets import LedgerTargetReference
@@ -133,6 +134,7 @@ _ORDINAL_VERSION_PATTERN = re.compile(r"[-_]v\d+(?=[-_.]|$)")
 #: the top level.
 _FORBIDDEN_VALUE_KEYS = frozenset({"value", "values", "observed", "observed_value"})
 
+
 def _carried_value_keys(node: Any) -> set[str]:
     carried: set[str] = set()
     if isinstance(node, Mapping):
@@ -144,6 +146,7 @@ def _carried_value_keys(node: Any) -> set[str]:
             carried.update(_carried_value_keys(child))
     return carried
 
+
 def _require_non_empty_string(value: Any, *, field_name: str, context: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{context}: {field_name} must be a non-empty string.")
@@ -154,6 +157,33 @@ def _require_mapping(value: Any, *, context: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{context}: expected a JSON object.")
     return value
+
+
+def _freeze_gate_parameter(value: Any, *, path: str) -> Any:
+    """Return a recursively immutable copy of one gate parameter value."""
+
+    if isinstance(value, Mapping):
+        frozen: dict[str, Any] = {}
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{path} keys must be strings, got {key!r}.")
+            frozen[key] = _freeze_gate_parameter(child, path=f"{path}.{key}")
+        return MappingProxyType(frozen)
+    if isinstance(value, (list, tuple)):
+        return tuple(
+            _freeze_gate_parameter(child, path=f"{path}[{index}]")
+            for index, child in enumerate(value)
+        )
+    if isinstance(value, (set, frozenset)):
+        return frozenset(
+            _freeze_gate_parameter(child, path=f"{path}[]") for child in value
+        )
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(
+        f"{path} must contain only mappings, sequences, sets, and JSON scalar "
+        f"values; got {type(value).__name__}."
+    )
 
 
 def _require_header(
@@ -364,6 +394,20 @@ class GateSelectionSpec:
     not_applicable: str | None = None
     notes: str = ""
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.parameters, Mapping):
+            raise TypeError(
+                "GateSelectionSpec parameters must be a mapping, got "
+                f"{type(self.parameters).__name__}."
+            )
+        object.__setattr__(
+            self,
+            "parameters",
+            _freeze_gate_parameter(
+                self.parameters, path=f"gate {self.id!r}.parameters"
+            ),
+        )
+
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> GateSelectionSpec:
         raw = _require_mapping(raw, context="gates.json gate entry")
@@ -387,7 +431,9 @@ class GateSelectionSpec:
                 f"{sorted(ALLOWED_GATE_PHASES)}."
             )
         criticality = _require_non_empty_string(
-            raw.get("criticality"), field_name="criticality", context=f"gate {gate_id!r}"
+            raw.get("criticality"),
+            field_name="criticality",
+            context=f"gate {gate_id!r}",
         )
         if criticality not in ALLOWED_GATE_CRITICALITIES:
             raise ValueError(
@@ -482,9 +528,7 @@ class GatesManifest:
         if len(set(ids)) != len(ids):
             duplicated = sorted({name for name in ids if ids.count(name) > 1})
             raise ValueError(f"gates.json: duplicate gate id(s) {duplicated}.")
-        undeclared = sorted(
-            {gate.phase for gate in gates if gate.phase not in phases}
-        )
+        undeclared = sorted({gate.phase for gate in gates if gate.phase not in phases})
         if undeclared:
             raise ValueError(
                 f"gates.json: gate phase(s) {undeclared} are not in the "
@@ -604,9 +648,7 @@ class ReleaseContractManifest:
             raise ValueError(
                 f"{context}: required_release_files must be a non-empty list."
             )
-        boundary = _require_mapping(
-            raw.get("boundary"), context=f"{context}: boundary"
-        )
+        boundary = _require_mapping(raw.get("boundary"), context=f"{context}: boundary")
         public = tuple(str(name) for name in boundary.get("public", ()))
         private_artifacts = tuple(str(name) for name in boundary.get("private", ()))
         if restricted and not private_artifacts:
@@ -749,9 +791,7 @@ def load_country_spec(country: str | Path) -> CountrySpec:
     if isinstance(country, Path):
         root = country
     else:
-        root = Path(
-            str(importlib_resources.files("populace.build").joinpath(country))
-        )
+        root = Path(str(importlib_resources.files("populace.build").joinpath(country)))
     package_path = root / "country_package.json"
     if not package_path.exists():
         raise FileNotFoundError(f"No country package at {package_path}.")
