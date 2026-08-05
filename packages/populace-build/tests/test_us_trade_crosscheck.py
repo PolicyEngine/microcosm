@@ -460,3 +460,121 @@ def test_main_gates_on_zero_cells_and_absent_totals(tmp_path, monkeypatch):
     assert report["empty_evidence"] is False
     assert report["api_totals_absent_pairs"] == 1
     assert report["gating_failures"] == 1
+
+
+def test_zero_dollar_quantity_bearing_total_is_active_not_zero_union(tmp_path):
+    # The r2 probe: a bulk total with zero dollars and quantity 7 is
+    # published activity under the dollars-or-published-quantities
+    # predicate. With no API totals slice at all it must surface as an
+    # absent totals counterparty — never be reclassified as a YTD zero
+    # carrier with every gate at zero.
+    rows = [_HEADER, _api_payload_row("1220")]
+    payload = json.dumps(rows).encode("utf-8")
+    totals = pd.DataFrame(
+        [
+            {
+                "period": "2026-01",
+                "hts10": "0101999999",
+                "con_val_mo": 0,
+                "gen_val_mo": 0,
+                "cal_dut_mo": 0,
+                "dut_val_mo": 0,
+                "con_qy1_mo": 7,
+                "gen_qy1_mo": 0,
+            }
+        ]
+    )
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        totals,
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["bulk_zero_union_totals"] == 0
+    assert report["api_totals_absent"] == 1
+
+
+def test_zero_dollar_quantity_bearing_total_gates_one_sided(tmp_path):
+    # The same quantity-bearing total against a present API totals slice
+    # that lacks the commodity is one-sided divergence on the totals leg.
+    rows = [
+        _HEADER,
+        _api_payload_row("1220"),
+        [
+            "-",
+            "DET",
+            "1000",
+            "1000",
+            "25",
+            "400",
+            "3",
+            "3",
+            "NO",
+            "0101210010",
+            "2026-01",
+        ],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    totals = _totals()
+    totals.loc[totals["hts10"] == "0101999999", "con_qy1_mo"] = 7
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        totals,
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["bulk_zero_union_totals"] == 0
+    assert report["total_mismatches"] == 1
+
+
+def test_active_pair_with_no_totals_evidence_on_either_side_gates(tmp_path):
+    # The r2 probe: matching dollar-active detail with BOTH totals slices
+    # empty compared one cell and passed. An active pair whose totals leg
+    # compared nothing has absent evidence — the API totals absence must
+    # gate even when the bulk totals slice is empty too.
+    rows = [_HEADER, _api_payload_row("1220")]
+    payload = json.dumps(rows).encode("utf-8")
+    other_chapter_totals = _totals()
+    other_chapter_totals["hts10"] = "0201000000"
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        other_chapter_totals,
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["cells_compared"] == 1
+    assert report["dollar_mismatch_cells"] == 0
+    assert report["api_totals_absent"] == 1
+
+
+def test_inactive_pair_with_no_totals_anywhere_does_not_false_gate(tmp_path):
+    # A pair with no detail activity and no active totals on either side
+    # has nothing to certify; the absent-totals gate must not fire (the
+    # run-level empty-evidence gate covers all-empty runs).
+    rows = [
+        _HEADER,
+        ["1330", "DET", "0", "0", "0", "0", "0", "0", "NO", "0101210010", "2026-01"],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    empty_margins = _margins().iloc[:0]
+    empty_totals = _totals().iloc[:0]
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        empty_margins,
+        empty_totals,
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["api_totals_absent"] == 0
+    assert report["cells_compared"] == 0
