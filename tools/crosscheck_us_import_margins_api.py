@@ -35,6 +35,7 @@ full agreement.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -51,12 +52,13 @@ from populace.build.us_runtime.us_trade import fetch_imports_month  # noqa: E402
 
 #: Stratified default sample: (month, chapters). Giants 84/85/87 exercise
 #: the prefix-split path; 01/02/41 are small; 30/61/90/94/98 mid-size; both
-#: statistical years and window endpoints are covered.
+#: statistical years and both window endpoints (2025-01, 2026-06) are
+#: covered.
 DEFAULT_SAMPLE: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("2025-01", ("01", "30", "85", "87")),
     ("2025-08", ("41", "61", "84", "98")),
     ("2026-01", ("02", "44", "85", "90")),
-    ("2026-05", ("03", "84", "87", "94")),
+    ("2026-06", ("03", "84", "87", "94")),
 )
 
 _DOLLAR_MEASURES = ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo")
@@ -99,20 +101,33 @@ def main() -> int:
     def _total(field: str) -> int:
         return int(sum(int(pair[field]) for pair in pair_reports))  # type: ignore[arg-type]
 
+    cells_compared = _total("cells_compared")
+    # Every detected defect gates, including a missing totals counterparty;
+    # and a run that compared zero cells is an evidence failure, not a pass
+    # — the tool must never exit 0 with nothing checked on either side.
     gating_failures = (
         _total("dollar_mismatch_cells")
         + _total("total_mismatches")
         + _total("api_reconciliation_failures")
+        + _total("api_totals_absent")
     )
+    empty_evidence = cells_compared == 0
     report = {
         "checked_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "inputs": {
+            "margins_parquet": str(args.margins),
+            "margins_parquet_sha256": _sha256(args.margins),
+            "census_totals_parquet": str(args.totals),
+            "census_totals_parquet_sha256": _sha256(args.totals),
+        },
         "sample_pairs": len(pair_reports),
-        "cells_compared": _total("cells_compared"),
+        "cells_compared": cells_compared,
         "dollar_measures": list(_DOLLAR_MEASURES),
         "dollar_mismatch_cells": _total("dollar_mismatch_cells"),
         "publisher_total_mismatches": _total("total_mismatches"),
         "api_reconciliation_failures": _total("api_reconciliation_failures"),
         "api_totals_absent_pairs": _total("api_totals_absent"),
+        "empty_evidence": empty_evidence,
         "gating_failures": gating_failures,
         "pairs": pair_reports,
     }
@@ -135,7 +150,13 @@ def main() -> int:
             f"failures, api_only={pair['api_only_cells']} "
             f"bulk_only={pair['bulk_only_cells']}"
         )
-    return 1 if gating_failures else 0
+    if empty_evidence:
+        print(
+            "[crosscheck] FATAL: zero cells compared across the sample; "
+            "an empty comparison is not agreement.",
+            file=sys.stderr,
+        )
+    return 1 if (gating_failures or empty_evidence) else 0
 
 
 def _compare_pair(
@@ -190,6 +211,7 @@ def _compare_pair(
             "bulk_only_cells": int(len(bulk_cells)),
             "quantity_diff_cells": 0,
             "api_null_quantity_cells": 0,
+            "api_retrievals": [dict(entry) for entry in pulled.manifest_entries],
             "note": "API returned no rows for this pair; bulk has rows.",
             "mismatches": [],
         }
@@ -287,8 +309,13 @@ def _compare_pair(
         "bulk_only_cells": int(len(bulk_only)),
         "quantity_diff_cells": quantity_diff,
         "api_null_quantity_cells": api_null_quantity,
+        "api_retrievals": [dict(entry) for entry in pulled.manifest_entries],
         "mismatches": mismatch_details[:40],
     }
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _parse_sample(

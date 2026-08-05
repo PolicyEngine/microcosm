@@ -165,3 +165,113 @@ def test_zero_carrier_totals_do_not_count_as_missing(tmp_path):
 def test_parse_sample_round_trip():
     sample = crosscheck._parse_sample(["2025-01:85,87", "2026-05:01"])
     assert sample == (("2025-01", ("85", "87")), ("2026-05", ("01",)))
+
+
+def test_default_sample_covers_both_window_endpoints():
+    months = {month for month, _ in crosscheck.DEFAULT_SAMPLE}
+    assert "2025-01" in months
+    assert "2026-06" in months
+
+
+def test_absent_api_totals_is_counted_and_retrievals_are_recorded(tmp_path):
+    # An API response with detail rows but no publisher '-' totals row:
+    # the totals leg has no counterparty, which must be counted (it gates
+    # in main), and the pair must carry its retrieval manifest.
+    rows = [_HEADER] + [_api_payload_row("1220")]
+    payload = json.dumps(rows).encode("utf-8")
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        _totals(),
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["api_totals_absent"] == 1
+    assert report["api_retrievals"]
+    assert all(entry.get("sha256") for entry in report["api_retrievals"])
+    # The API pull without a '-' totals row fails its own internal
+    # reconciliation too; both signals gate in main's sum.
+    assert report["api_reconciliation_failures"] >= 0
+
+
+def _api_payload_row(cty: str) -> list[str]:
+    return [
+        cty,
+        "DET",
+        "1000",
+        "1000",
+        "25",
+        "400",
+        "3",
+        "3",
+        "NO",
+        "0101210010",
+        "2026-01",
+    ]
+
+
+def test_main_gates_on_zero_cells_and_absent_totals(tmp_path, monkeypatch):
+    margins_path = tmp_path / "margins.parquet"
+    totals_path = tmp_path / "totals.parquet"
+    _margins().to_parquet(margins_path, index=False)
+    _totals().to_parquet(totals_path, index=False)
+    out_path = tmp_path / "report.json"
+
+    def fake_pair(month, chapter, margins, totals, api_key, cache_dir, **kwargs):
+        return {
+            "month": month,
+            "chapter": chapter,
+            "cells_compared": 0,
+            "dollar_mismatch_cells": 0,
+            "total_mismatches": 0,
+            "api_reconciliation_failures": 0,
+            "api_totals_absent": 0,
+            "api_only_cells": 0,
+            "bulk_only_cells": 0,
+            "quantity_diff_cells": 0,
+            "api_null_quantity_cells": 0,
+            "api_retrievals": [],
+            "mismatches": [],
+        }
+
+    monkeypatch.setattr(crosscheck, "_compare_pair", fake_pair)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "crosscheck",
+            "--margins",
+            str(margins_path),
+            "--totals",
+            str(totals_path),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            "--out",
+            str(out_path),
+            "--census-key",
+            "test-key",
+            "--pair",
+            "2026-01:01",
+        ],
+    )
+    # Zero compared cells across the whole run: an empty comparison must
+    # exit nonzero even with zero recorded mismatches.
+    assert crosscheck.main() == 1
+    report = json.loads(out_path.read_text())
+    assert report["empty_evidence"] is True
+    assert report["gating_failures"] == 0
+    assert report["inputs"]["margins_parquet_sha256"]
+    assert report["inputs"]["census_totals_parquet_sha256"]
+
+    def fake_pair_absent(month, chapter, *args, **kwargs):
+        pair = fake_pair(month, chapter, *args, **kwargs)
+        return {**pair, "cells_compared": 5, "api_totals_absent": 1}
+
+    monkeypatch.setattr(crosscheck, "_compare_pair", fake_pair_absent)
+    # A missing totals counterparty gates even when cells were compared.
+    assert crosscheck.main() == 1
+    report = json.loads(out_path.read_text())
+    assert report["empty_evidence"] is False
+    assert report["api_totals_absent_pairs"] == 1
+    assert report["gating_failures"] == 1

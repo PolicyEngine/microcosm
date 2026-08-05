@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
-from populace.build.us_runtime.us_trade.census_country_bridge import load_census_country_bridge
+from populace.build.us_runtime.us_trade.census_country_bridge import (
+    load_census_country_bridge,
+)
 from populace.build.us_runtime.us_trade.imdb_bulk import (
     assemble_bulk_margins,
     ensure_imdb_archive,
@@ -813,10 +815,142 @@ def test_build_cli_end_to_end_offline(tmp_path):
         expected_facts_sha256=report["facts_sha256"],
     )
     assert artifact.fact_row_count == report["fact_rows"]
-    manifest = json.loads((out_dir / "consumer_artifact" / "manifest.json").read_text())
+    manifest_path = out_dir / "consumer_artifact" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
     retrieved = manifest["source_manifest"]["retrievals"][0]
     assert retrieved["filename"] == "IMDB2601.ZIP"
     assert retrieved["retrieved_at"] == "2026-08-05T11:41:00Z"
+    # The build report pins the consumer manifest's own bytes, and the
+    # machine-readable reconciliation evidence + source manifest publish
+    # beside the artifacts they certify.
+    import hashlib as hashlib_module
+
+    assert report["consumer_manifest_sha256"] == (
+        hashlib_module.sha256(manifest_path.read_bytes()).hexdigest()
+    )
+    evidence = json.loads(
+        (out_dir / "reconciliation" / "period=2026-01.json").read_text()
+    )
+    assert evidence["failure_count"] == 0
+    comm_axis = evidence["axes"]["IMP_COMM.txt"]
+    assert comm_axis["duplicate_control_key_count"] == 0
+    assert comm_axis["measures"]["con_val_mo"]["cells_compared"] > 0
+    assert (
+        comm_axis["measures"]["con_val_mo"]["detail_total"]
+        == (comm_axis["measures"]["con_val_mo"]["published_total"])
+    )
+    source_manifest_lines = (out_dir / "source_manifest.jsonl").read_text().splitlines()
+    assert any("IMDB2601.ZIP" in line for line in source_manifest_lines)
+    # Nothing from the build process leaks beside the publication.
+    siblings = [path.name for path in out_dir.parent.iterdir()]
+    assert not any(".staging-" in name or ".previous-" in name for name in siblings)
+
+
+def test_build_cli_failure_leaves_prior_publication_untouched(tmp_path):
+    """A failed rerun must never disturb a previously published artifact
+    set: no partial writes, no deletions, no stale staging residue."""
+
+    archive_dir = tmp_path / "archives"
+    archive_dir.mkdir()
+    (archive_dir / "IMDB2601.ZIP").write_bytes(
+        _fixture_zip_bytes(cty_overrides={"5700": {"cal_dut_mo": 9}})
+    )
+    out_dir = tmp_path / "out"
+    prior_files = {
+        "build_report.json": b'{"prior": true}\n',
+        "margins_hts10_country_month.parquet": b"prior-margins-bytes",
+        "detail/period=2020-01.parquet": b"prior-detail-bytes",
+        "consumer_artifact/manifest.json": b'{"prior_manifest": true}\n',
+    }
+    for name, payload in prior_files.items():
+        path = out_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(BUILD_CLI),
+            "--start",
+            "2026-01",
+            "--end",
+            "2026-01",
+            "--archive-dir",
+            str(archive_dir),
+            "--out-dir",
+            str(out_dir),
+            "--skip-cbp",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 1
+    assert "nothing was published" in result.stderr
+    published = {
+        str(path.relative_to(out_dir)): path.read_bytes()
+        for path in sorted(out_dir.rglob("*"))
+        if path.is_file()
+    }
+    assert published == prior_files
+    siblings = [path.name for path in tmp_path.iterdir()]
+    assert not any(".staging-" in name or ".previous-" in name for name in siblings)
+
+
+def test_build_cli_success_replaces_prior_publication_completely(tmp_path):
+    """A successful rerun publishes the complete new set: nothing stale
+    survives beside it."""
+
+    archive_dir = tmp_path / "archives"
+    archive_dir.mkdir()
+    (archive_dir / "IMDB2601.ZIP").write_bytes(_fixture_zip_bytes())
+    import hashlib as hashlib_module
+
+    payload = (archive_dir / "IMDB2601.ZIP").read_bytes()
+    download_manifest = tmp_path / "download-manifest.jsonl"
+    download_manifest.write_text(
+        json.dumps(
+            {
+                "file": "IMDB2601.ZIP",
+                "sha256": hashlib_module.sha256(payload).hexdigest(),
+                "retrieved_at_utc": "2026-08-05T11:41:00Z",
+            }
+        )
+        + "\n"
+    )
+    out_dir = tmp_path / "out"
+    stale = out_dir / "detail" / "period=2019-12.parquet"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"stale-detail")
+    (out_dir / "unrelated-note.txt").write_bytes(b"stale-note")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(BUILD_CLI),
+            "--start",
+            "2026-01",
+            "--end",
+            "2026-01",
+            "--archive-dir",
+            str(archive_dir),
+            "--out-dir",
+            str(out_dir),
+            "--download-manifest",
+            str(download_manifest),
+            "--skip-cbp",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not stale.exists()
+    assert not (out_dir / "unrelated-note.txt").exists()
+    assert (out_dir / "build_report.json").exists()
+    assert (out_dir / "detail" / "period=2026-01.parquet").exists()
+    assert (out_dir / "reconciliation" / "period=2026-01.json").exists()
+    assert (out_dir / "source_manifest.jsonl").exists()
+    siblings = [path.name for path in tmp_path.iterdir()]
+    assert not any(".staging-" in name or ".previous-" in name for name in siblings)
 
 
 def test_build_cli_fails_on_control_mismatch(tmp_path):
@@ -884,6 +1018,44 @@ def test_commodity_and_district_control_drift_fail_the_ingest(tmp_path):
         "IMP_DE.txt dist_entry=20 cal_dut_mo" in failure
         for failure in month.reconciliation_failures
     )
+
+
+def test_duplicate_control_keys_fail_the_ingest(tmp_path):
+    """A byte-identical duplicated control row must fail, not pass: sets
+    dedupe and index joins replicate, so without an explicit uniqueness
+    gate a duplicate-keyed control table reconciles to zero failures."""
+
+    payload = _fixture_zip_bytes()
+    import io as io_module
+    import zipfile as zipfile_module
+
+    def duplicate_first_line(member: str) -> bytes:
+        source = zipfile_module.ZipFile(io_module.BytesIO(payload))
+        buffer = io_module.BytesIO()
+        with zipfile_module.ZipFile(buffer, "w") as bundle:
+            for name in source.namelist():
+                data = source.read(name)
+                if name == member:
+                    first_line = data.split(b"\r\n", 1)[0]
+                    data = data + first_line + b"\r\n"
+                bundle.writestr(name, data)
+        return buffer.getvalue()
+
+    for member, key in (
+        ("IMP_COMM.txt", "hts10"),
+        ("imp_CTY.txt", "cty_code"),
+        ("IMP_DE.txt", "dist_entry"),
+    ):
+        archive = tmp_path / "IMDB2601.ZIP"
+        archive.write_bytes(duplicate_first_line(member))
+        month = load_imdb_month(archive, "2026-01", {})
+        assert any(
+            f"duplicated control key(s) for {key}" in failure
+            for failure in month.reconciliation_failures
+        ), (member, month.reconciliation_failures)
+        axis = month.reconciliation_evidence["axes"][member.replace("imp_", "IMP_")]
+        assert axis["duplicate_control_key_count"] == 1
+        assert axis["value_comparison"] == "skipped_duplicate_control_keys"
 
 
 def test_key_sets_must_match_in_both_directions(tmp_path):
@@ -972,11 +1144,14 @@ def test_adopted_archive_provenance_is_honest(tmp_path):
     assert entry["retrieved_at"] == "2026-08-05T11:41:00Z"
     assert "sha-matched" in str(entry["retrieval_note"])
 
-    # A wrong recorded hash must not lend its timestamp.
+    # A wrong recorded hash must not lend its timestamp — and an adopted
+    # archive with no manifest match records no retrieval time at all:
+    # verified_at covers only this build's byte verification.
     _, entry2 = ensure_imdb_archive(
         "2026-01",
         archive_dir,
         retrieved_at_by_sha={("IMDB2601.ZIP", "00" * 32): "2026-08-05T11:41:00Z"},
     )
-    assert entry2["retrieved_at"] != "2026-08-05T11:41:00Z"
-    assert "verification time" in str(entry2["retrieval_note"])
+    assert "retrieved_at" not in entry2
+    assert entry2["verified_at"]
+    assert "retrieval time is unknown" in str(entry2["retrieval_note"])

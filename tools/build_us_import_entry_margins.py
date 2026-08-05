@@ -12,7 +12,14 @@ entry). The Census International Trade API is not used by this build; it
 remains an independent cross-check leg
 (``tools/crosscheck_us_import_margins_api.py``).
 
-Emits under ``--out-dir``:
+Publication is atomic at the directory level: everything is built into a
+hidden staging sibling of ``--out-dir`` and the destination directory is
+replaced only after every artifact, gate, and report has been produced.
+A failed build removes its staging directory and leaves any previously
+published artifact set byte-for-byte untouched — there is no state in
+which old and new artifacts coexist under ``--out-dir``.
+
+Publishes under ``--out-dir``:
 
 - ``margins_hts10_country_month.parquet`` — the tidy HTS10 × country ×
   month margins table (the P2 generator input; API-compatible core columns
@@ -24,15 +31,26 @@ Emits under ``--out-dir``:
 - ``detail/period=YYYY-MM.parquet`` — the complete monthly detail at
   publication grain (HTS10 × country × subcode × districts × rate
   provision, all monthly measures),
+- ``reconciliation/period=YYYY-MM.json`` — the machine-readable record of
+  every reconciliation comparison run for the month (key-set sizes,
+  duplicate-key verdicts, per-measure compared/matched cell counts with
+  both sides' integer totals),
+- ``source_manifest.jsonl`` — one retrieval row per source byte-stream
+  (archives + the CBP page): URL, sha256, size, retrieval provenance,
 - ``consumer_artifact/`` — the ledger-contract fact feed at the national,
   chapter, country, chapter × country, and district-of-entry grains,
-- ``build_report.json`` — window, counts, reconciliation status, artifact
-  hashes.
+- ``cbp_newsroom_stats_trade.html`` — the archived CBP page bytes,
+- ``build_report.json`` — window, counts, reconciliation totals, artifact
+  hashes (including the consumer manifest's own sha256).
 
 Archives cache under ``--archive-dir`` and are never re-downloaded once
 present and valid. ``--download-manifest`` optionally points at a JSONL
-manifest (rows with ``file``/``retrieved_at_utc``) recording when
-pre-downloaded archives were actually retrieved.
+manifest (rows with ``file``/``sha256``/``retrieved_at_utc``) recording
+when pre-downloaded archives were actually retrieved; adopted archives
+without a manifest match carry no ``retrieved_at`` at all, and the
+consumer-artifact writer refuses to publish facts without retrieval
+provenance, so supplying the manifest is required in practice for
+pre-downloaded archives.
 
 Example::
 
@@ -41,7 +59,8 @@ Example::
         --archive-dir ~/.cache/populace/us-trade/imdb \
         --out-dir out/us-import-entry-margins
 
-Exit code: 1 on any reconciliation failure or empty result.
+Exit code: 1 on any reconciliation failure or empty result (nothing is
+published in that case).
 """
 
 from __future__ import annotations
@@ -49,8 +68,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import sys
 import urllib.request
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -73,7 +94,9 @@ from populace.build.us_runtime.us_trade import (  # noqa: E402
     summarize_imdb_month,
     write_consumer_artifact,
 )
-from populace.build.us_runtime.us_trade.imdb_bulk import assemble_bulk_margins  # noqa: E402
+from populace.build.us_runtime.us_trade.imdb_bulk import (  # noqa: E402
+    assemble_bulk_margins,
+)
 
 
 def main() -> int:
@@ -92,7 +115,7 @@ def main() -> int:
         type=Path,
         help=(
             "JSONL manifest from the download loop (rows with file/"
-            "retrieved_at_utc) supplying retrieval timestamps for "
+            "sha256/retrieved_at_utc) supplying retrieval timestamps for "
             "pre-downloaded archives."
         ),
     )
@@ -104,7 +127,23 @@ def main() -> int:
     args = parser.parse_args()
 
     out_dir: Path = args.out_dir
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    # All work happens in a staging sibling (same filesystem, so the final
+    # rename is atomic); the destination is only ever a complete artifact
+    # set. A failed build leaves any previous publication untouched.
+    staging = out_dir.parent / f".{out_dir.name}.staging-{uuid.uuid4().hex}"
+    staging.mkdir(parents=True)
+    try:
+        exit_code = _build(args, staging)
+        if exit_code == 0:
+            _publish_atomically(staging, out_dir)
+            print(f"[margins] published atomically to {out_dir}")
+        return exit_code
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _build(args: argparse.Namespace, staging: Path) -> int:
     extracted_at = datetime.now(UTC).isoformat(timespec="seconds")
 
     end = args.end or latest_available_imdb_month()
@@ -114,19 +153,15 @@ def main() -> int:
     retrieved_at_by_sha = _load_download_manifest(args.download_manifest)
     bridge = load_census_country_bridge()
 
-    # A rerun must never leave artifacts from an earlier window or a prior
-    # failed pass beside fresh outputs: stale detail partitions and a stale
-    # success report would misrepresent this build.
-    detail_dir = out_dir / "detail"
-    if detail_dir.exists():
-        for stale in detail_dir.glob("period=*.parquet"):
-            stale.unlink()
-    detail_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "build_report.json").unlink(missing_ok=True)
+    detail_dir = staging / "detail"
+    detail_dir.mkdir(parents=True)
+    reconciliation_dir = staging / "reconciliation"
+    reconciliation_dir.mkdir(parents=True)
 
     parsed = []
     detail_row_count = 0
     detail_paths: dict[str, Path] = {}
+    reconciliation_paths: dict[str, Path] = {}
     for month in months:
         archive_path, manifest_entry = ensure_imdb_archive(
             month,
@@ -138,6 +173,12 @@ def main() -> int:
         month_data.detail.to_parquet(detail_path, index=False)
         detail_paths[month] = detail_path
         detail_row_count += len(month_data.detail)
+        reconciliation_path = reconciliation_dir / f"period={month}.json"
+        reconciliation_path.write_text(
+            json.dumps(month_data.reconciliation_evidence, indent=2, sort_keys=True)
+            + "\n"
+        )
+        reconciliation_paths[month] = reconciliation_path
         print(
             f"[margins] {month}: {len(month_data.detail)} detail rows, "
             f"{len(month_data.control_cty)} country controls, "
@@ -157,19 +198,23 @@ def main() -> int:
         for failure in failures[:20]:
             print(f"[margins] RECONCILIATION FAIL: {failure}", file=sys.stderr)
         print(
-            f"[margins] FATAL: {len(failures)} reconciliation failures",
+            f"[margins] FATAL: {len(failures)} reconciliation failures; "
+            "nothing was published",
             file=sys.stderr,
         )
         return 1
 
     assembly = assemble_bulk_margins(tuple(parsed), bridge)
     if assembly.margins.empty:
-        print("[margins] FATAL: empty margins table", file=sys.stderr)
+        print(
+            "[margins] FATAL: empty margins table; nothing was published",
+            file=sys.stderr,
+        )
         return 1
 
-    margins_path = out_dir / "margins_hts10_country_month.parquet"
-    totals_path = out_dir / "census_totals_hts10_month.parquet"
-    district_path = out_dir / "district_entry_month.parquet"
+    margins_path = staging / "margins_hts10_country_month.parquet"
+    totals_path = staging / "census_totals_hts10_month.parquet"
+    district_path = staging / "district_entry_month.parquet"
     assembly.margins.to_parquet(margins_path, index=False)
     assembly.census_totals.to_parquet(totals_path, index=False)
     assembly.district_entry.to_parquet(district_path, index=False)
@@ -189,16 +234,25 @@ def main() -> int:
 
     cbp_facts = 0
     if not args.skip_cbp:
-        raw_html, cbp_entry = _archive_cbp_page(out_dir, extracted_at)
+        raw_html, cbp_entry = _archive_cbp_page(staging, extracted_at)
         retrievals.append(cbp_entry)
         stats = parse_cbp_trade_stats(raw_html)
         cbp_rows = build_cbp_entry_fact_rows(
             stats,
             page_sha256=str(cbp_entry["sha256"]),
             retrieved_at=extracted_at,
+            source_file=str(cbp_entry["filename"]),
         )
         cbp_facts = len(cbp_rows)
         fact_rows.extend(cbp_rows)
+
+    source_manifest_path = staging / "source_manifest.jsonl"
+    source_manifest_path.write_text(
+        "".join(
+            json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n"
+            for entry in retrievals
+        )
+    )
 
     generator = {
         **default_generator_block(months=months),
@@ -207,12 +261,16 @@ def main() -> int:
         "reference_inputs": {"census_iso_bridge_sha256": bridge.sha256},
     }
     manifest = write_consumer_artifact(
-        out_dir / "consumer_artifact",
+        staging / "consumer_artifact",
         fact_rows,
         retrieval_manifest=retrievals,
         generator=generator,
     )
 
+    reconciliation_totals = {
+        month.month: month.reconciliation_evidence.get("failure_count", 0)
+        for month in parsed
+    }
     report = {
         "source": "census_imdb_bulk",
         "window": {"start": months[0], "end": months[-1], "months": len(months)},
@@ -227,26 +285,62 @@ def main() -> int:
         "district_fact_rows": len(district_rows),
         "cbp_fact_rows": cbp_facts,
         "facts_sha256": manifest["facts_sha256"],
+        "consumer_manifest_sha256": _sha256(
+            staging / "consumer_artifact" / "manifest.json"
+        ),
         "margins_parquet_sha256": _sha256(margins_path),
         "census_totals_parquet_sha256": _sha256(totals_path),
         "district_parquet_sha256": _sha256(district_path),
         "detail_parquet_sha256": {
             month: _sha256(path) for month, path in sorted(detail_paths.items())
         },
+        "reconciliation_evidence_sha256": {
+            month: _sha256(path) for month, path in sorted(reconciliation_paths.items())
+        },
+        "source_manifest_sha256": _sha256(source_manifest_path),
         "reconciliation_failures": 0,
+        "reconciliation_failures_by_month": reconciliation_totals,
         "extracted_at": extracted_at,
     }
-    (out_dir / "build_report.json").write_text(
+    (staging / "build_report.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n"
     )
     print(
         json.dumps(
-            {k: v for k, v in report.items() if k != "detail_parquet_sha256"},
+            {
+                k: v
+                for k, v in report.items()
+                if k not in ("detail_parquet_sha256", "reconciliation_evidence_sha256")
+            },
             indent=2,
             sort_keys=True,
         )
     )
     return 0
+
+
+def _publish_atomically(staging: Path, out_dir: Path) -> None:
+    """Replace ``out_dir`` with the staged artifact set in one transition.
+
+    Consumers only ever observe the previous complete publication or the
+    new complete publication, never a mixture. The previous publication is
+    moved aside before the staged directory takes its name and is deleted
+    only after the new set is in place; if the final rename fails, the
+    previous publication is restored.
+    """
+    previous = out_dir.parent / f".{out_dir.name}.previous-{uuid.uuid4().hex}"
+    replaced = False
+    if out_dir.exists():
+        out_dir.rename(previous)
+        replaced = True
+    try:
+        staging.rename(out_dir)
+    except BaseException:
+        if replaced:
+            previous.rename(out_dir)
+        raise
+    if replaced:
+        shutil.rmtree(previous)
 
 
 def _load_download_manifest(path: Path | None) -> dict[tuple[str, str], str]:
@@ -271,7 +365,7 @@ def _load_download_manifest(path: Path | None) -> dict[tuple[str, str], str]:
     return timestamps
 
 
-def _archive_cbp_page(out_dir: Path, extracted_at: str) -> tuple[bytes, dict]:
+def _archive_cbp_page(staging: Path, extracted_at: str) -> tuple[bytes, dict]:
     request = urllib.request.Request(
         CBP_TRADE_STATS_URL,
         headers={
@@ -283,7 +377,7 @@ def _archive_cbp_page(out_dir: Path, extracted_at: str) -> tuple[bytes, dict]:
     )
     with urllib.request.urlopen(request, timeout=120) as response:
         raw = response.read()
-    archive_path = out_dir / "cbp_newsroom_stats_trade.html"
+    archive_path = staging / "cbp_newsroom_stats_trade.html"
     archive_path.write_bytes(raw)
     entry = {
         "source_name": "cbp_trade_stats",

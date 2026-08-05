@@ -255,7 +255,14 @@ _DOWNLOAD_BACKOFF_SECONDS = 15.0
 
 @dataclass(frozen=True)
 class ImdbMonth:
-    """One parsed monthly archive: detail plus reconciliation report."""
+    """One parsed monthly archive: detail plus reconciliation report.
+
+    ``reconciliation_evidence`` is the machine-readable record of every
+    comparison the gate ran — per axis: key-set sizes, duplicate-key
+    verdicts, and per-measure compared/matched cell counts with the exact
+    integer totals on both sides — so a build's "zero failures" claim is
+    recomputable and auditable, not prose.
+    """
 
     month: str
     detail: pd.DataFrame
@@ -264,6 +271,7 @@ class ImdbMonth:
     control_de: pd.DataFrame
     manifest_entry: dict[str, object]
     reconciliation_failures: tuple[str, ...]
+    reconciliation_evidence: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -283,6 +291,7 @@ class ImdbMonthSummary:
     control_de: pd.DataFrame
     manifest_entry: dict[str, object]
     reconciliation_failures: tuple[str, ...]
+    reconciliation_evidence: dict[str, object]
 
 
 def summarize_imdb_month(month: ImdbMonth) -> ImdbMonthSummary:
@@ -297,6 +306,7 @@ def summarize_imdb_month(month: ImdbMonth) -> ImdbMonthSummary:
         control_de=month.control_de,
         manifest_entry=dict(month.manifest_entry),
         reconciliation_failures=month.reconciliation_failures,
+        reconciliation_evidence=dict(month.reconciliation_evidence),
     )
 
 
@@ -404,17 +414,24 @@ def ensure_imdb_archive(
     _verify_zip_lists_detail(archive_path, month)
     raw = archive_path.read_bytes()
     sha256 = hashlib.sha256(raw).hexdigest()
+    verified_at = datetime.now(UTC).isoformat(timespec="seconds")
+    retrieved_at: str | None
     if downloaded:
-        retrieved_at = datetime.now(UTC).isoformat(timespec="seconds")
+        retrieved_at = verified_at
         retrieval_note = "downloaded by this build"
     else:
         supplied = (retrieved_at_by_sha or {}).get((archive_path.name, sha256))
-        retrieved_at = supplied or datetime.now(UTC).isoformat(timespec="seconds")
+        retrieved_at = supplied
         retrieval_note = (
             "pre-downloaded archive adopted; retrieval timestamp from the "
             "download manifest (sha-matched)"
             if supplied
-            else "pre-downloaded archive adopted; timestamp is verification time"
+            else (
+                "pre-downloaded archive adopted with no download-manifest "
+                "match; the retrieval time is unknown and deliberately not "
+                "recorded (verified_at records only this build's "
+                "verification of the bytes)"
+            )
         )
     entry: dict[str, object] = {
         "source_name": "census_imdb_bulk",
@@ -425,9 +442,11 @@ def ensure_imdb_archive(
         "filename": archive_path.name,
         "sha256": sha256,
         "size_bytes": len(raw),
-        "retrieved_at": retrieved_at,
+        "verified_at": verified_at,
         "retrieval_note": retrieval_note,
     }
+    if retrieved_at is not None:
+        entry["retrieved_at"] = retrieved_at
     if downloaded:
         entry["http_status"] = 200
     return archive_path, entry
@@ -502,9 +521,25 @@ def load_imdb_month(
             f"country codes outside Schedule C {_MIN_COUNTRY_CODE}–"
             f"{_MAX_COUNTRY_CODE} (first: {bad_codes.iloc[0]['cty_code']!r})."
         )
-    failures.extend(
-        _reconcile_month(month, detail, control_cty, control_comm, control_de)
+    for frame, label, column, pattern in (
+        (detail, IMDB_DETAIL_MEMBER, "hts10", r"\d{10}"),
+        (detail, IMDB_DETAIL_MEMBER, "cty_code", r"\d{4}"),
+        (detail, IMDB_DETAIL_MEMBER, "dist_entry", r"\d{2}"),
+        (control_comm, _CONTROL_COMM_MEMBER, "hts10", r"\d{10}"),
+        (control_cty, _CONTROL_CTY_MEMBER, "cty_code", r"\d{4}"),
+        (control_de, _CONTROL_DE_MEMBER, "dist_entry", r"\d{2}"),
+    ):
+        malformed = frame[~frame[column].str.fullmatch(pattern)]
+        if len(malformed):
+            failures.append(
+                f"{month} {label}: {len(malformed)} rows carry a malformed "
+                f"{column} (expected /{pattern}/; first: "
+                f"{malformed.iloc[0][column]!r})."
+            )
+    reconcile_failures, evidence = _reconcile_month(
+        month, detail, control_cty, control_comm, control_de
     )
+    failures.extend(reconcile_failures)
     return ImdbMonth(
         month=month,
         detail=detail,
@@ -513,6 +548,7 @@ def load_imdb_month(
         control_de=control_de,
         manifest_entry=dict(manifest_entry),
         reconciliation_failures=tuple(failures),
+        reconciliation_evidence=evidence,
     )
 
 
@@ -668,11 +704,17 @@ def _reconcile_month(
     control_cty: pd.DataFrame,
     control_comm: pd.DataFrame,
     control_de: pd.DataFrame,
-) -> list[str]:
+) -> tuple[list[str], dict[str, object]]:
     """Exact-integer detail-vs-control comparison on every published measure.
 
-    Two independent gates per axis (country, commodity, district of entry):
+    Three independent gates per axis (country, commodity, district of
+    entry):
 
+    - **Control-key uniqueness**: a control file must publish exactly one
+      row per key. A duplicated control row — even a byte-identical one —
+      fails the gate outright, because a duplicate-keyed control table
+      cannot serve as a reconciliation oracle (a set comparison and an
+      index join would both accept it silently).
     - **Key-set equality**: the detail's key set must equal the control
       file's key set exactly — a key on either side only is reported by
       name, never silently compared against zero.
@@ -681,6 +723,11 @@ def _reconcile_month(
       quantities on the country and district axes). Measures are published
       as explicit integers, so any difference means dropped, duplicated,
       or misparsed detail.
+
+    Returns the failure list plus the machine-readable evidence of every
+    comparison run: per axis, the key-set sizes, duplicate verdict, and
+    per-measure compared/matched cell counts with both sides' integer
+    totals.
 
     Certification limit, stated honestly: a detail row that is all-zero on
     every monthly measure (a year-to-date union carrier) contributes
@@ -693,20 +740,47 @@ def _reconcile_month(
     themselves).
     """
     failures: list[str] = []
+    evidence: dict[str, object] = {"month": month, "axes": {}}
     comparisons = (
         ("cty_code", control_cty, _RECONCILE_CTY, _CONTROL_CTY_MEMBER),
         ("hts10", control_comm, _RECONCILE_COMM, _CONTROL_COMM_MEMBER),
         ("dist_entry", control_de, _RECONCILE_DE, _CONTROL_DE_MEMBER),
     )
     for key, control, measures, label in comparisons:
+        axis_evidence: dict[str, object] = {"key": key, "control_member": label}
+        duplicated = control.loc[control[key].duplicated(), key]
+        duplicate_keys = sorted(set(duplicated))
+        axis_evidence["control_rows"] = int(len(control))
+        axis_evidence["duplicate_control_keys"] = duplicate_keys[:20]
+        axis_evidence["duplicate_control_key_count"] = len(duplicate_keys)
+        if duplicate_keys:
+            failures.append(
+                f"{month} {label}: {len(duplicate_keys)} duplicated control "
+                f"key(s) for {key} (first: {duplicate_keys[0]!r}); a "
+                "control table with duplicate keys cannot serve as a "
+                "reconciliation oracle, so value reconciliation on this "
+                "axis was not attempted."
+            )
+            axis_evidence["value_comparison"] = "skipped_duplicate_control_keys"
+            evidence["axes"][label] = axis_evidence
+            continue
         detail_keys = set(detail[key].unique())
         control_keys = set(control[key].unique())
-        for missing in sorted(control_keys - detail_keys):
+        missing_keys = sorted(control_keys - detail_keys)
+        extra_keys = sorted(detail_keys - control_keys)
+        axis_evidence["detail_key_count"] = len(detail_keys)
+        axis_evidence["control_key_count"] = len(control_keys)
+        axis_evidence["keys_matched"] = len(detail_keys & control_keys)
+        axis_evidence["control_only_keys"] = missing_keys[:20]
+        axis_evidence["control_only_key_count"] = len(missing_keys)
+        axis_evidence["detail_only_keys"] = extra_keys[:20]
+        axis_evidence["detail_only_key_count"] = len(extra_keys)
+        for missing in missing_keys:
             failures.append(
                 f"{month} {label} {key}={missing}: present in the control "
                 "file but absent from the detail."
             )
-        for extra in sorted(detail_keys - control_keys):
+        for extra in extra_keys:
             failures.append(
                 f"{month} {label} {key}={extra}: present in the detail but "
                 "absent from the control file."
@@ -716,20 +790,30 @@ def _reconcile_month(
         joined = summed.join(
             published, how="inner", lsuffix="_detail", rsuffix="_published"
         )
+        measures_evidence: dict[str, object] = {}
         for measure in measures:
             detail_column = f"{measure}_detail"
             published_column = f"{measure}_published"
-            mismatched = joined[
-                joined[detail_column].astype("int64")
-                != joined[published_column].astype("int64")
-            ]
+            detail_values = joined[detail_column].astype("int64")
+            published_values = joined[published_column].astype("int64")
+            mismatched = joined[detail_values != published_values]
+            measures_evidence[measure] = {
+                "cells_compared": int(len(joined)),
+                "cells_matched": int(len(joined) - len(mismatched)),
+                "detail_total": int(detail_values.sum()),
+                "published_total": int(published_values.sum()),
+            }
             for key_value, row in mismatched.iterrows():
                 failures.append(
                     f"{month} {label} {key}={key_value} {measure}: detail "
                     f"sums to {int(row[detail_column])}, published control "
                     f"total is {int(row[published_column])}."
                 )
-    return failures
+        axis_evidence["measures"] = measures_evidence
+        evidence["axes"][label] = axis_evidence
+    evidence["failure_count"] = len(failures)
+    evidence["failures"] = list(failures[:50])
+    return failures, evidence
 
 
 def _read_fixed_width(
