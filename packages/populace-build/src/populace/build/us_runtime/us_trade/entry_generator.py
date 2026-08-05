@@ -63,6 +63,7 @@ carry no separate shipment-value series (documented assumption).
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import date
 from typing import Any
@@ -126,18 +127,61 @@ class EntrySizeAssumption:
     total_weighted_entries: int
     anchor_provenance: dict[str, Any]
 
+    def _anchor_clause(self, kind: str) -> str:
+        """The statement's wording for one anchor, from its recorded source.
+
+        ``mean_source``/``share_source`` in the anchor provenance record
+        where each anchor actually came from; only ``cbp_published`` earns
+        the CBP claim. Overridden and unspecified anchors are described as
+        such, so a sensitivity run can never emit a register claiming CBP
+        anchors it did not use.
+        """
+        source = str(self.anchor_provenance.get(f"{kind}_source", ""))
+        if kind == "mean":
+            names = {
+                "cbp_published": "CBP's published national mean entry value",
+                "override": (
+                    "an explicitly overridden mean entry value (not a "
+                    "CBP-published anchor; see anchor_provenance)"
+                ),
+            }
+            fallback = (
+                "the supplied mean entry value anchor (source unspecified; "
+                "see anchor_provenance)"
+            )
+        else:
+            names = {
+                "cbp_published": "CBP's published informal-entry count share",
+                "override": (
+                    "an explicitly overridden informal count share (not a "
+                    "CBP-published anchor; see anchor_provenance)"
+                ),
+            }
+            fallback = (
+                "the supplied informal count share anchor (source "
+                "unspecified; see anchor_provenance)"
+            )
+        return names.get(source, fallback)
+
     def register(self) -> dict[str, Any]:
-        """The assumptions register, written beside every generated file."""
+        """The assumptions register, written beside every generated file.
+
+        Every anchor claim in the statement derives from the recorded
+        anchor provenance, and the informal threshold is the solved
+        field's own value — an override build documents its overrides
+        instead of inheriting the CBP-anchored wording.
+        """
         return {
             "synthetic": True,
             "statement": (
                 "Synthetic entries; only the (HTS-10 x country x month) "
                 "customs-value margins are calibrated truth. Entry counts "
                 "and sizes are an assumption: within-cell lognormal sizes, "
-                "with per-cell counts pinned by CBP's published national "
-                "mean entry value and the shape sigma proxy-calibrated so "
-                "the share of entries at or below $2,500 of customs value "
-                "matches CBP's published informal-entry count share. The "
+                f"with per-cell counts pinned by {self._anchor_clause('mean')} "
+                "and the shape sigma proxy-calibrated so the share of "
+                "entries at or below "
+                f"${self.informal_value_threshold:,} of customs value "
+                f"matches {self._anchor_clause('share')}. The "
                 "informal share is an approximate size-distribution moment, "
                 "not a statutory identification — see "
                 "known_gaps.informal_share_proxy."
@@ -156,11 +200,12 @@ class EntrySizeAssumption:
             ),
             "known_gaps": {
                 "informal_share_proxy": (
-                    "Sigma equates CBP's 'Total Informal Entry Summaries' "
-                    "count share with the share of entries at or below "
-                    "$2,500 of customs value. 19 CFR 143.21 defines "
-                    "informal entry by entry-type rules beyond that value "
-                    "clause — installment shipments and portions of "
+                    "Sigma equates the informal-count-share anchor with "
+                    "the share of entries at or below "
+                    f"${self.informal_value_threshold:,} of customs "
+                    "value. 19 CFR 143.21 defines informal entry by "
+                    "entry-type rules beyond the $2,500 value clause "
+                    "— installment shipments and portions of "
                     "consignments, personal and household effects, certain "
                     "institutional imports, some returned US products up "
                     "to $10,000 — with Chapter 99 exclusions, so the "
@@ -239,8 +284,8 @@ def solve_size_assumption(
 
     def share(sigma: float) -> float:
         weights, entry_values, _, _ = _stratify(values, counts, sigma, strata)
-        informal = weights[entry_values <= informal_value_threshold].sum()
-        return float(informal) / float(weights.sum())
+        informal = _exact_sum(weights[entry_values <= informal_value_threshold])
+        return informal / _exact_sum(weights)
 
     low, high = _SIGMA_BOUNDS
     share_low, share_high = share(low), share(high)
@@ -260,7 +305,10 @@ def solve_size_assumption(
             else:
                 high = sigma
     achieved = share(sigma)
-    total_entries = int(counts.sum())
+    # Aggregate moments in Python integers: per-cell values are bounded by
+    # MAX_EXACT_CELL_VALUE, but sums across cells are not bounded by int64
+    # (1,024 cells of 2**53 wrap a fixed-width accumulator negative).
+    total_entries = _exact_sum(counts)
     return EntrySizeAssumption(
         mean_entry_value=float(mean_entry_value),
         informal_count_share_target=float(informal_count_share),
@@ -268,7 +316,7 @@ def solve_size_assumption(
         strata=int(strata),
         sigma=float(sigma),
         achieved_informal_count_share=float(achieved),
-        achieved_mean_entry_value=float(values.sum()) / float(total_entries),
+        achieved_mean_entry_value=_exact_sum(values) / total_entries,
         total_weighted_entries=total_entries,
         anchor_provenance=dict(anchor_provenance or {}),
     )
@@ -411,6 +459,18 @@ def validate_entries_against_margins(
             if len(mismatched) > 20:
                 failures.append(f"...and {len(mismatched) - 20} more cell mismatches.")
 
+    # Pandas boolean reductions skip NA by default, so a null marker would
+    # sail through every .all()/.any() check below; nulls are rejected
+    # outright before any of those reductions run.
+    null_columns = sorted(
+        column for column in entries.columns if entries[column].isna().any()
+    )
+    if null_columns:
+        failures.append(
+            f"Entries carry null values in column(s) {null_columns}; "
+            "every column must be fully populated — a null is never "
+            "treated as a passing value."
+        )
     if (entries["customs_value"] <= 0).any():
         failures.append("Entries include non-positive customs values.")
     if (entries["weight"] <= 0).any():
@@ -419,8 +479,15 @@ def validate_entries_against_margins(
         failures.append("shipment_value must equal customs_value (documented rule).")
     if entries["is_postal_shipment"].any():
         failures.append("is_postal_shipment must be uniformly False (documented gap).")
-    if "is_synthetic" not in entries.columns or not entries["is_synthetic"].all():
+    if "is_synthetic" not in entries.columns:
         failures.append("Every row must carry is_synthetic=True.")
+    else:
+        synthetic = entries["is_synthetic"]
+        if synthetic.isna().any() or not bool(synthetic.eq(True).all()):
+            failures.append(
+                "Every row must carry is_synthetic=True (null markers are "
+                "rejected, not skipped)."
+            )
     if not entries["entry_id"].str.startswith("synthetic-").all():
         failures.append("Every entry_id must carry the synthetic- prefix.")
     dotted = entries["hts_number"].str.fullmatch(r"\d{4}\.\d{2}\.\d{2}\.\d{2}")
@@ -445,6 +512,17 @@ def validate_entries_against_margins(
         "weighted_customs_value": total_value,
         "exact": True,
     }
+
+
+def _exact_sum(values: np.ndarray) -> int:
+    """Overflow-immune integer sum for aggregates across cells.
+
+    Object-dtype accumulation keeps Python integers end to end, so window
+    totals never route through fixed-width arithmetic.
+    """
+    if len(values) == 0:
+        return 0
+    return int(values.astype(object).sum())
 
 
 def _checked_cell_values(cell_values: np.ndarray) -> np.ndarray:
@@ -580,6 +658,19 @@ def _stratify(
     )
 
 
-def assumption_to_json(assumption: EntrySizeAssumption) -> str:
-    """Serialized assumptions register (stable key order)."""
-    return json.dumps(assumption.register(), indent=2, sort_keys=True) + "\n"
+def assumption_to_json(
+    assumption: EntrySizeAssumption,
+    *,
+    p1_build: Mapping[str, Any] | None = None,
+) -> str:
+    """Serialized assumptions register (stable key order).
+
+    ``p1_build`` embeds the P1 authentication block (build-report,
+    margins, manifest, and page pins), so a detached register still names
+    the exact margins publication it was solved against — the same block
+    the parquet metadata and validation report carry.
+    """
+    register = assumption.register()
+    if p1_build is not None:
+        register["p1_build"] = dict(p1_build)
+    return json.dumps(register, indent=2, sort_keys=True) + "\n"

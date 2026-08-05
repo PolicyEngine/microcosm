@@ -132,7 +132,7 @@ def test_sigma_solver_hits_reachable_informal_share():
     # cross the threshold, so the reachable precision scales with the
     # fixture's ~80k weighted entries; the solver's 1e-4 stopping tolerance
     # is demonstrated within one order of magnitude here and to 2.6e-5 on
-    # the real pilot (validation report).
+    # the real pilot (assumptions register, size_model achieved moments).
     assert abs(assumption.achieved_informal_count_share - 0.65) < 1e-3
     assert 0.05 <= assumption.sigma <= 6.0
     assert assumption.total_weighted_entries > 0
@@ -282,3 +282,95 @@ def test_row_level_synthetic_marker_is_present_and_enforced():
     unmarked["is_synthetic"] = False
     with pytest.raises(ValueError, match="is_synthetic"):
         validate_entries_against_margins(unmarked, margins)
+
+
+def test_aggregate_moments_survive_int64_overflow():
+    """The r2 probe: 1,024 cells of exactly 2**53 sum past int64 (the
+    wrapped mean came out as about -30,000). Aggregate moments must stay
+    exact-positive Python integers end to end."""
+
+    values = np.full(1024, 2**53, dtype=np.int64)
+    assumption = solve_size_assumption(
+        values,
+        mean_entry_value=30_000.0,
+        informal_count_share=0.6,
+    )
+    total_value = 1024 * 2**53
+    assert assumption.total_weighted_entries > 0
+    assert assumption.achieved_mean_entry_value > 0
+    assert assumption.achieved_mean_entry_value == (
+        total_value / assumption.total_weighted_entries
+    )
+    assert 0.0 <= assumption.achieved_informal_count_share <= 1.0
+
+
+def test_register_statement_derives_from_anchor_sources():
+    """A register may claim CBP anchors only when the provenance says the
+    anchors came from the CBP page; override and unspecified anchors are
+    described as such, and the threshold wording follows the field."""
+
+    cbp = _assumption(
+        anchor_provenance={
+            "basis": "CBP Trade Statistics ...",
+            "mean_source": "cbp_published",
+            "share_source": "cbp_published",
+        }
+    ).register()
+    assert "CBP's published national mean entry value" in cbp["statement"]
+    assert "CBP's published informal-entry count share" in cbp["statement"]
+
+    overridden = _assumption(
+        anchor_provenance={
+            "basis": "explicit overrides",
+            "mean_source": "override",
+            "share_source": "override",
+        }
+    ).register()
+    assert "CBP's published" not in overridden["statement"]
+    assert "explicitly overridden mean entry value" in overridden["statement"]
+    assert "explicitly overridden informal count share" in overridden["statement"]
+
+    partial = _assumption(
+        anchor_provenance={
+            "basis": "CBP ...; mean overridden",
+            "mean_source": "override",
+            "share_source": "cbp_published",
+        }
+    ).register()
+    assert "explicitly overridden mean entry value" in partial["statement"]
+    assert "CBP's published informal-entry count share" in partial["statement"]
+
+    unspecified = _assumption().register()
+    assert "CBP's published" not in unspecified["statement"]
+    assert "source unspecified" in unspecified["statement"]
+
+    rethresholded = _assumption(informal_value_threshold=5_000).register()
+    assert "$5,000" in rethresholded["statement"]
+    assert "$5,000" in rethresholded["known_gaps"]["informal_share_proxy"]
+    # The statutory 19 CFR 143.21 discussion keeps its own $2,500 clause.
+    assert (
+        "$2,500 value clause" in (rethresholded["known_gaps"]["informal_share_proxy"])
+    )
+
+
+def test_validation_rejects_null_synthetic_markers():
+    """The r2 probe: a nullable pd.NA marker passed .all() via skipna.
+    Nulls anywhere — and non-True synthetic markers specifically — must
+    fail validation explicitly."""
+
+    margins = _margins([("2026-01", "0101210010", "1220", "CA", 10_000)])
+    assumption = _assumption()
+    entries = generate_entries(margins, assumption)
+    validate_entries_against_margins(entries, margins)
+
+    nulled = entries.copy()
+    nulled["is_synthetic"] = nulled["is_synthetic"].astype("boolean")
+    nulled.loc[nulled.index[0], "is_synthetic"] = pd.NA
+    with pytest.raises(ValueError, match="null"):
+        validate_entries_against_margins(nulled, margins)
+
+    falsed = entries.copy()
+    falsed["is_synthetic"] = falsed["is_synthetic"].astype("boolean")
+    falsed.loc[falsed.index[0], "is_synthetic"] = False
+    with pytest.raises(ValueError, match="is_synthetic=True"):
+        validate_entries_against_margins(falsed, margins)

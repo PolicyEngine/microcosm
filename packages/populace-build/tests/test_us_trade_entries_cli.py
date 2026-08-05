@@ -116,8 +116,18 @@ def test_cli_builds_labeled_validated_entries(tmp_path):
     assert register["synthetic"] is True
     assert register["known_gaps"]["informal_share_proxy"]
     assert register["size_model"]["sigma_calibration_class"] == "proxy_moment_match"
+    # The detached register authenticates its margins publication exactly
+    # like the parquet metadata and the validation report do.
+    assert register["p1_build"] == report["p1_build"]
+    assert register["p1_build"]["margins_parquet_sha256"]
+    assert register["p1_build"]["build_report_sha256"]
+    # The CBP-anchored default build earns the CBP wording.
+    assert "CBP's published national mean entry value" in register["statement"]
+    assert "CBP's published informal-entry count share" in register["statement"]
     anchors = register["size_model"]["anchor_provenance"]
     assert anchors["fiscal_year"] == 2026
+    assert anchors["mean_source"] == "cbp_published"
+    assert anchors["share_source"] == "cbp_published"
     assert anchors["total_entry_summaries"] == 83_133_856
     assert 0.68 < anchors["informal_count_share"] < 0.69
     assert 30_000 < anchors["mean_entry_value"] < 36_000
@@ -130,6 +140,10 @@ def test_cli_builds_labeled_validated_entries(tmp_path):
     table = pq.read_table(out_dir / "synthetic_import_entries.parquet")
     metadata = table.schema.metadata
     assert metadata[b"populace_us_trade.synthetic"] == b"true"
+    # The embedded register and the standalone file are the same bytes.
+    assert metadata[b"populace_us_trade.assumptions"] == (
+        (out_dir / "assumptions.json").read_bytes()
+    )
     generator = json.loads(metadata[b"populace_us_trade.generator"])
     assert generator["issue"] == "PolicyEngine/populace#615"
     assert generator["synthetic"] is True
@@ -203,6 +217,44 @@ def test_missing_p1_report_is_refused(tmp_path):
     assert "build report" in result.stderr
 
 
+def _assert_contract_types(contract: dict, entries: pd.DataFrame) -> None:
+    """Enforce every declared contract type, not just column presence.
+
+    Fails closed on contract types this helper does not know, so a
+    contract change can never silently drop enforcement.
+    """
+    for name, field in contract["inputs"].items():
+        column = field["entries_column"]
+        assert column in entries.columns, f"contract input {name} missing"
+        series = entries[column]
+        declared = field["type"]
+        if declared == "positive integer dollars":
+            assert pd.api.types.is_integer_dtype(series), (
+                f"{name}: contract declares integer dollars, dtype is {series.dtype}"
+            )
+            assert (series > 0).all(), f"{name}: values must be positive"
+        elif declared == "string":
+            assert pd.api.types.is_string_dtype(series), (
+                f"{name}: contract declares string, dtype is {series.dtype}"
+            )
+        elif declared == "bool":
+            assert pd.api.types.is_bool_dtype(series), (
+                f"{name}: contract declares bool, dtype is {series.dtype}"
+            )
+        elif declared == "date":
+            parsed = pd.to_datetime(
+                series.astype(str), format="%Y-%m-%d", errors="coerce"
+            )
+            assert parsed.notna().all(), (
+                f"{name}: every value must parse as an ISO date"
+            )
+        else:
+            raise AssertionError(
+                f"contract declares unhandled type {declared!r} for {name}; "
+                "extend _assert_contract_types before accepting it"
+            )
+
+
 def test_generated_entries_satisfy_the_pinned_engine_contract(tmp_path):
     contract = json.loads(CONTRACT.read_text())
     assert contract["source"]["commit"] == ("8b580e778a0ad134b93d563b5f8ae17980a29008")
@@ -210,10 +262,7 @@ def test_generated_entries_satisfy_the_pinned_engine_contract(tmp_path):
     result = _run(margins_dir, tmp_path / "out")
     assert result.returncode == 0, result.stderr
     entries = pd.read_parquet(tmp_path / "out" / "synthetic_import_entries.parquet")
-    for name, field in contract["inputs"].items():
-        assert field["entries_column"] in entries.columns, (
-            f"contract input {name} missing"
-        )
+    _assert_contract_types(contract, entries)
     assert (entries["customs_value"] > 0).all()
     assert (entries["shipment_value"] == entries["customs_value"]).all()
     assert entries["hts_number"].str.fullmatch(r"\d{4}\.\d{2}\.\d{2}\.\d{2}").all()
@@ -222,6 +271,27 @@ def test_generated_entries_satisfy_the_pinned_engine_contract(tmp_path):
     assert not entries["is_postal_shipment"].any()
     engine_dates = entries.loc[entries["period"] >= "2026-02", "entry_date"]
     assert all(str(day)[:10] >= "2026-02-15" for day in engine_dates)
+
+
+def test_contract_type_enforcement_rejects_floats_and_bad_dates(tmp_path):
+    """The r2 probes: float monetary columns and an unparseable
+    entry_date must fail the contract check, not pass on presence."""
+
+    contract = json.loads(CONTRACT.read_text())
+    margins_dir = _margins_dir(tmp_path)
+    result = _run(margins_dir, tmp_path / "out")
+    assert result.returncode == 0, result.stderr
+    entries = pd.read_parquet(tmp_path / "out" / "synthetic_import_entries.parquet")
+
+    floated = entries.assign(customs_value=entries["customs_value"].astype("float64"))
+    with pytest.raises(AssertionError, match="integer dollars"):
+        _assert_contract_types(contract, floated)
+
+    bad_dates = entries.copy()
+    bad_dates["entry_date"] = bad_dates["entry_date"].astype(str)
+    bad_dates.loc[bad_dates.index[0], "entry_date"] = "not-a-date"
+    with pytest.raises(AssertionError, match="parse as an ISO date"):
+        _assert_contract_types(contract, bad_dates)
 
 
 @pytest.mark.skipif(not CONTRACT.is_file(), reason="contract fixture missing")
@@ -248,3 +318,42 @@ def test_cli_fails_when_margins_missing_from_window(tmp_path):
     result = _run(margins_dir, tmp_path / "entries", start="2027-01")
     assert result.returncode == 1
     assert "no margin cells" in result.stdout
+
+
+def test_override_build_registers_override_basis(tmp_path):
+    """The r2 probe: a supported override build must emit a register that
+    describes its overrides — never the CBP-anchored claims — while still
+    carrying the P1 authentication block."""
+
+    margins_dir = _margins_dir(tmp_path)
+    out_dir = tmp_path / "out"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "--margins-dir",
+            str(margins_dir),
+            "--out-dir",
+            str(out_dir),
+            "--start",
+            "2026-01",
+            "--mean-entry-value",
+            "1000",
+            "--informal-share",
+            "0.5",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    register = json.loads((out_dir / "assumptions.json").read_text())
+    anchors = register["size_model"]["anchor_provenance"]
+    assert anchors["basis"] == "explicit overrides"
+    assert anchors["mean_source"] == "override"
+    assert anchors["share_source"] == "override"
+    assert "CBP's published" not in register["statement"]
+    assert "explicitly overridden mean entry value" in register["statement"]
+    assert "explicitly overridden informal count share" in register["statement"]
+    assert register["p1_build"]["margins_parquet_sha256"]

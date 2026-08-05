@@ -8,9 +8,11 @@ HTS-10 x country x month customs-value margin exactly. Emits:
 - ``synthetic_import_entries.parquet`` — the entries + weights table, with
   dataset-level synthetic/provenance metadata on the parquet schema,
 - ``assumptions.json`` — the assumptions register (size model, anchors,
-  solved sigma, achieved statistics, known gaps),
-- ``validation_report.json`` — exact-margin check results plus context
-  statistics (achieved vs anchor moments, weighted entry counts).
+  solved sigma, achieved-vs-anchor moments, known gaps) with the same
+  ``p1_build`` authentication block the other outputs carry,
+- ``validation_report.json`` — exact-margin check results plus window,
+  weighted-total, and engine-domain statistics (the achieved-vs-anchor
+  moments live in the assumptions register).
 
 Inputs are authenticated against the P1 publication, not merely hashed:
 the margins parquet must hash to the P1 ``build_report.json``'s recorded
@@ -167,10 +169,15 @@ def main() -> int:
         "p1_build": p1,
         "engine_domain_start": ENGINE_DOMAIN_START,
     }
+    # One serialized register for the standalone file and the parquet
+    # metadata alike, carrying the P1 authentication block: a detached
+    # assumptions.json still names the exact margins publication it was
+    # solved against.
+    register_json = assumption_to_json(assumption, p1_build=p1)
     entries_path = out_dir / "synthetic_import_entries.parquet"
-    _write_labeled_parquet(entries, entries_path, assumption, generator_block)
+    _write_labeled_parquet(entries, entries_path, register_json, generator_block)
 
-    (out_dir / "assumptions.json").write_text(assumption_to_json(assumption))
+    (out_dir / "assumptions.json").write_text(register_json)
     report.update(
         {
             "window": {"start": months[0], "end": months[-1], "months": len(months)},
@@ -277,8 +284,13 @@ def _anchors(
     recorded in the anchor provenance.
     """
     if mean_override is not None and share_override is not None:
+        # The source flags drive the register statement's anchor wording
+        # (entry_generator._anchor_clause): an override build must never
+        # inherit the CBP-anchored claims.
         return {
             "basis": "explicit overrides",
+            "mean_source": "override",
+            "share_source": "override",
             "mean_entry_value": float(mean_override),
             "informal_count_share": float(share_override),
         }
@@ -327,6 +339,8 @@ def _anchors(
             "mean entry value and informal count share are ratios over "
             "that coverage window."
         ),
+        "mean_source": "cbp_published",
+        "share_source": "cbp_published",
         "source_url": "https://www.cbp.gov/newsroom/stats/trade",
         "source_sha256": page_sha,
         "publisher_as_of_note": stats.as_of_note,
@@ -341,9 +355,11 @@ def _anchors(
     }
     if mean_override is not None:
         anchors["mean_entry_value"] = float(mean_override)
+        anchors["mean_source"] = "override"
         anchors["basis"] += "; mean overridden"
     if share_override is not None:
         anchors["informal_count_share"] = float(share_override)
+        anchors["share_source"] = "override"
         anchors["basis"] += "; informal share overridden"
     return anchors
 
@@ -385,7 +401,7 @@ def _chapter_country_cross_check(entries: pd.DataFrame, margins: pd.DataFrame) -
 def _write_labeled_parquet(
     entries: pd.DataFrame,
     path: Path,
-    assumption,
+    register_json: str,
     generator_block: dict,
 ) -> None:
     table = pa.Table.from_pandas(entries, preserve_index=False)
@@ -397,9 +413,7 @@ def _write_labeled_parquet(
             b"populace_us_trade.generator": json.dumps(
                 generator_block, sort_keys=True
             ).encode("utf-8"),
-            b"populace_us_trade.assumptions": assumption_to_json(assumption).encode(
-                "utf-8"
-            ),
+            b"populace_us_trade.assumptions": register_json.encode("utf-8"),
         }
     )
     # Serialization is pinned explicitly (codec, level, format versions) so
