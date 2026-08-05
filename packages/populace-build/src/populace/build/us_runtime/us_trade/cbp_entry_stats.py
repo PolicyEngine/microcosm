@@ -26,6 +26,7 @@ __all__ = [
     "CBP_ENTRY_MEASURES",
     "CbpEntryStats",
     "CbpFiscalYearCell",
+    "fiscal_year_end",
     "parse_cbp_trade_stats",
 ]
 
@@ -48,8 +49,28 @@ _EXACT_VALUE_PATTERN = re.compile(r"^\$?[0-9][0-9,]*$")
 _FISCAL_YEAR_PATTERN = re.compile(r"FY\s*(\d{4})")
 _AS_OF_PATTERN = re.compile(
     r"FY\s*\d{4}\s*(?:and|,)\s*FY\s*\d{4}\s*(?:is|are)\s*updated\s*as\s*of"
-    r"\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})",
+    r"\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})",
 )
+
+_MONTH_NUMBERS = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
+
+def fiscal_year_end(fiscal_year: int) -> str:
+    """ISO date the federal fiscal year ends: September 30 of its name year."""
+    return f"{fiscal_year:04d}-09-30"
 
 
 @dataclass(frozen=True)
@@ -69,10 +90,18 @@ class CbpFiscalYearCell:
 
 @dataclass(frozen=True)
 class CbpEntryStats:
-    """Parsed "Imports and Revenue Collection" table plus its as-of note."""
+    """Parsed "Imports and Revenue Collection" table plus its as-of note.
+
+    ``as_of_date`` is the publisher's update endpoint from the as-of note in
+    ISO form (empty when the page carries no note). A fiscal year whose
+    September 30 end postdates that endpoint is only covered *to* the
+    endpoint — its cells are fiscal-year-to-date observations, not completed
+    annual totals — and consumers must label them accordingly.
+    """
 
     cells: tuple[CbpFiscalYearCell, ...]
     as_of_note: str
+    as_of_date: str = ""
 
     def exact_cells(self) -> tuple[CbpFiscalYearCell, ...]:
         return tuple(cell for cell in self.cells if cell.is_exact)
@@ -125,7 +154,8 @@ def parse_cbp_trade_stats(raw_html: bytes) -> CbpEntryStats:
         raise ValueError(
             f"CBP entry-summaries table is missing expected row(s): {missing}."
         )
-    return CbpEntryStats(cells=tuple(cells), as_of_note=_as_of_note(html))
+    note, note_date = _as_of_note(html)
+    return CbpEntryStats(cells=tuple(cells), as_of_note=note, as_of_date=note_date)
 
 
 def _entry_summaries_table(html: str) -> str:
@@ -166,11 +196,23 @@ def _exact_value(text: str) -> int | None:
     return None
 
 
-def _as_of_note(html: str) -> str:
+def _as_of_note(html: str) -> tuple[str, str]:
+    """The verbatim as-of note and its date in ISO form (both may be empty)."""
     text = _TAG_PATTERN.sub(" ", html)
     text = re.sub(r"\s+", " ", text)
     match = _AS_OF_PATTERN.search(text)
-    return match.group(0) if match else ""
+    if match is None:
+        return "", ""
+    month_name, day, year = match.group(1), match.group(2), match.group(3)
+    month_number = _MONTH_NUMBERS.get(month_name.lower())
+    if month_number is None:
+        raise ValueError(
+            f"CBP as-of note carries an unrecognized month {month_name!r}."
+        )
+    return (
+        match.group(0),
+        f"{int(year):04d}-{month_number:02d}-{int(day):02d}",
+    )
 
 
 def _clean(cell_html: str) -> str:

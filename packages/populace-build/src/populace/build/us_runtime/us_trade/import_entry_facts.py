@@ -42,12 +42,15 @@ import pandas as pd
 from populace.build.us_runtime.us_trade.cbp_entry_stats import (
     CBP_TRADE_STATS_URL,
     CbpEntryStats,
+    fiscal_year_end,
 )
 from populace.build.us_runtime.us_trade.census_imports import CENSUS_IMPORTS_HS_ENDPOINT
 from populace.build.us_runtime.us_trade.imdb_bulk import IMDB_URL_TEMPLATE
 
 __all__ = [
+    "ALL_IMPORT_ENTRY_FACT_GRAINS",
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
+    "DISTRICT_ENTRY_FACT_GRAIN",
     "IMDB_BULK_SOURCE_LEG",
     "IMPORT_ENTRY_FACT_GRAINS",
     "MEASURE_CATALOG",
@@ -115,10 +118,23 @@ CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v1"
 _FACT_SCHEMA_VERSION = "ledger.consumer_fact.v1"
 _KEY_NAMESPACE = "populace_us_trade"
 
-#: Feed grains. ``chapter_country`` is the P3 dashboard axis
-#: (populace#615) and carries the duty-relevant measures only to bound the
-#: feed size; coarser grains carry all four dollar measures.
+#: Margins-feed grains (the aggregations of the HTS10 × country margins
+#: table that :func:`build_import_entry_fact_rows` emits).
+#: ``chapter_country`` is the P3 dashboard axis (populace#615) and carries
+#: the duty-relevant measures only to bound the feed size; coarser grains
+#: carry all four dollar measures.
 IMPORT_ENTRY_FACT_GRAINS = ("national", "chapter", "country", "chapter_country")
+
+#: The district-of-entry grain is emitted from the publisher's own district
+#: control table by :func:`build_district_entry_fact_rows`, not from the
+#: margins table, so it is not a member of ``IMPORT_ENTRY_FACT_GRAINS``.
+DISTRICT_ENTRY_FACT_GRAIN = "district_entry"
+
+#: Every grain the ingest CLI emits into the consumer feed.
+ALL_IMPORT_ENTRY_FACT_GRAINS = (
+    *IMPORT_ENTRY_FACT_GRAINS,
+    DISTRICT_ENTRY_FACT_GRAIN,
+)
 
 _GRAIN_MEASURES = {
     "national": ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo"),
@@ -368,24 +384,57 @@ def build_cbp_entry_fact_rows(
     *,
     page_sha256: str,
     retrieved_at: str,
+    source_file: str = "cbp_newsroom_stats_trade.html",
 ) -> list[dict[str, Any]]:
-    """Mint the CBP fiscal-year entry anchors (exact published cells only)."""
+    """Mint the CBP entry anchors (exact published cells only).
+
+    A fiscal year is emitted as a completed annual observation only when its
+    September 30 end predates the page's coverage endpoint (the publisher's
+    as-of note when present, else the retrieval date). A fiscal year still
+    in progress at that endpoint is a *fiscal-year-to-date* observation: its
+    period carries the explicit ``as_of`` endpoint, its record set lives in
+    a separate ``…fytd…`` family, and both feed into the fact keys — so a
+    partial-year count can never be selected, summed, or compared as a
+    completed annual total.
+    """
+    coverage_endpoint = stats.as_of_date or retrieved_at[:10]
+    coverage_basis = "publisher_as_of_note" if stats.as_of_date else "retrieval_date"
     rows: list[dict[str, Any]] = []
     for cell in stats.exact_cells():
-        record_set_id = (
-            f"cbp_trade_stats.imports_revenue_collection.fy{cell.fiscal_year}"
-        )
+        complete = fiscal_year_end(cell.fiscal_year) <= coverage_endpoint
+        if complete:
+            period: dict[str, Any] = {
+                "type": "fiscal_year",
+                "value": cell.fiscal_year,
+            }
+            record_set_id = (
+                f"cbp_trade_stats.imports_revenue_collection.fy{cell.fiscal_year}"
+            )
+            vintage = f"fiscal_year_{cell.fiscal_year}"
+            label_period = f"FY{cell.fiscal_year}"
+        else:
+            endpoint_segment = coverage_endpoint.replace("-", "_")
+            period = {
+                "type": "fiscal_year_to_date",
+                "value": cell.fiscal_year,
+                "start": f"{cell.fiscal_year - 1:04d}-10-01",
+                "as_of": coverage_endpoint,
+                "as_of_basis": coverage_basis,
+            }
+            record_set_id = (
+                "cbp_trade_stats.imports_revenue_collection.fytd."
+                f"fy{cell.fiscal_year}_as_of_{endpoint_segment}"
+            )
+            vintage = f"fiscal_year_to_date_{cell.fiscal_year}_as_of_{endpoint_segment}"
+            label_period = f"FYTD {cell.fiscal_year} (through {coverage_endpoint})"
         source_record_id = f"{record_set_id}.{cell.measure_id}"
-        # The page's "as of" note is provenance, never identity: it changes
-        # with every CBP refresh and must not rotate fact keys or become a
-        # selector-demanded dimension filter.
         source = {
             "source_name": "cbp_trade_stats",
             "source_table": "CBP Trade Statistics: Imports and Revenue Collection",
-            "source_file": "newsroom-stats-trade.html",
+            "source_file": source_file,
             "source_sha256": page_sha256,
             "url": CBP_TRADE_STATS_URL,
-            "vintage": f"fiscal_year_{cell.fiscal_year}",
+            "vintage": vintage,
             "extracted_at": retrieved_at,
             "extraction_method": (
                 "populace us_trade cbp_entry_stats ingest: archived public "
@@ -402,7 +451,7 @@ def build_cbp_entry_fact_rows(
             "aggregation": {"method": "sum"},
             "value": cell.exact_value,
             "value_type": "integer",
-            "period": {"type": "fiscal_year", "value": cell.fiscal_year},
+            "period": period,
             "geography": {
                 "id": "0100000US",
                 "level": "country",
@@ -430,7 +479,7 @@ def build_cbp_entry_fact_rows(
             "lineage": {"source_record_id": source_record_id},
             "source": source,
             "label": (
-                f"United States FY{cell.fiscal_year} {cell.measure_id} "
+                f"United States {label_period} {cell.measure_id} "
                 f"[cbp_trade_stats {cell.text}]"
             ),
         }
@@ -460,6 +509,19 @@ def write_consumer_artifact(
         raise ValueError(
             "Refusing to write a consumer artifact with an empty retrieval "
             "manifest; every fact feed must carry its raw-source retrievals."
+        )
+    missing_retrieval_times = [
+        str(entry.get("filename") or entry.get("url") or index)
+        for index, entry in enumerate(retrieval_entries)
+        if not entry.get("retrieved_at")
+    ]
+    if missing_retrieval_times:
+        raise ValueError(
+            "Refusing to write a consumer artifact: retrieval entries "
+            f"{missing_retrieval_times[:5]} carry no retrieved_at timestamp. "
+            "Adopted archives take their retrieval provenance from the "
+            "download manifest; supply it rather than publishing facts "
+            "with unknown retrieval times."
         )
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -589,8 +651,8 @@ def _fact_row(
         "universe_constraints": {"domain": catalog["domain"]},
         "provenance_class": "administrative",
         "observed_measure": {
-            "source_name": "census_intltrade",
-            "source_table": ("US International Trade monthly imports, HS10 by country"),
+            "source_name": source_leg.source_name,
+            "source_table": source_leg.source_table,
             "source_measure_id": catalog["source_measure_id"],
             "source_concept": catalog["source_concept"],
             "unit": catalog["unit"],
@@ -646,8 +708,16 @@ def _stamp_keys(row: dict[str, Any]) -> None:
 
     The aggregate key covers the full identity including period; the
     semantic key drops the period so ledger-target selectors can resolve
-    "the same series, latest eligible period" across feed versions.
+    "the same series, latest eligible period" across feed versions. A
+    period carrying an ``as_of`` endpoint (a fiscal-year-to-date snapshot)
+    embeds that endpoint in the period identity: two snapshots of the same
+    in-progress year are distinct observations and must never share an
+    aggregate key.
     """
+    period = row["period"]
+    period_identity = str(period["value"])
+    if "as_of" in period:
+        period_identity = f"{period_identity}@as_of={period['as_of']}"
     identity = {
         "record_set_id": row["layout"]["record_set_id"],
         "groupby_value_id": row["layout"]["groupby_value_id"],
@@ -656,7 +726,7 @@ def _stamp_keys(row: dict[str, Any]) -> None:
         "geography": row["geography"]["id"],
         "domain": row["universe_constraints"]["domain"],
         "dimensions": dict(row["dimensions"]),
-        "period": str(row["period"]["value"]),
+        "period": period_identity,
     }
     semantic_identity = {
         key: value
@@ -671,11 +741,20 @@ def _stamp_keys(row: dict[str, Any]) -> None:
 
 
 def _period_invariant_record_set(record_set_id: str) -> str:
-    """Drop period-carrying segments (monthly and fiscal-year alike)."""
+    """Drop period-carrying segments (monthly, fiscal-year, and FYTD-as-of).
+
+    The literal ``fytd`` marker segment survives, so fiscal-year-to-date
+    snapshots form their own record-set family and a "latest eligible
+    period" selector over completed fiscal years can never resolve to a
+    partial-year snapshot.
+    """
     return ".".join(
         part
         for part in record_set_id.split(".")
-        if not (part.startswith("month_") or re.fullmatch(r"fy\d{4}", part))
+        if not (
+            part.startswith("month_")
+            or re.fullmatch(r"fy\d{4}(_as_of_\d{4}_\d{2}_\d{2})?", part)
+        )
     )
 
 

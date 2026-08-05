@@ -12,7 +12,11 @@ from populace.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
 )
-from populace.build.us_runtime.us_trade.cbp_entry_stats import parse_cbp_trade_stats
+from populace.build.us_runtime.us_trade.cbp_entry_stats import (
+    CbpEntryStats,
+    CbpFiscalYearCell,
+    parse_cbp_trade_stats,
+)
 from populace.build.us_runtime.us_trade.import_entry_facts import (
     IMPORT_ENTRY_FACT_GRAINS,
     build_cbp_entry_fact_rows,
@@ -60,18 +64,21 @@ def _manifest_entries() -> list[dict]:
             "chapter": "01",
             "sha256": "aa" * 32,
             "filename": "imports_hs10_2026-01_ch01.json",
+            "retrieved_at": "2026-08-05T00:00:00+00:00",
         },
         {
             "month": "2026-01",
             "chapter": "84",
             "sha256": "bb" * 32,
             "filename": "imports_hs10_2026-01_ch84.json",
+            "retrieved_at": "2026-08-05T00:00:00+00:00",
         },
         {
             "month": "2026-02",
             "chapter": "84",
             "sha256": "cc" * 32,
             "filename": "imports_hs10_2026-02_ch84.json",
+            "retrieved_at": "2026-08-05T00:00:00+00:00",
         },
     ]
 
@@ -229,7 +236,10 @@ def test_artifact_round_trips_through_the_populace_loader(tmp_path):
     assert artifact.fact_row_count == len(rows)
     provenance = artifact.provenance()
     assert provenance["schema_version"] == ("policyengine_ledger.consumer_artifact.v1")
-    assert artifact.manifest["generator"]["producer"] == "populace.build.us_runtime.us_trade"
+    assert (
+        artifact.manifest["generator"]["producer"]
+        == "populace.build.us_runtime.us_trade"
+    )
     assert artifact.manifest["source_manifest"]["set_digest"]
 
     with pytest.raises(ValueError, match="empty consumer artifact"):
@@ -287,8 +297,13 @@ def test_cbp_fixture_parses_exact_cells_only():
     assert "updated as of July 27, 2026" in stats.as_of_note
 
 
-def test_cbp_fact_rows_from_fixture():
+def test_cbp_fact_rows_from_fixture_are_fytd_snapshots():
+    """FY2026 was in progress at the page's as-of endpoint: every exact cell
+    must publish as a fiscal-year-to-date observation, never as a completed
+    annual total (the archived count covers October 2025 – July 27, 2026)."""
+
     stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    assert stats.as_of_date == "2026-07-27"
     rows = build_cbp_entry_fact_rows(
         stats,
         page_sha256="dd" * 32,
@@ -298,12 +313,95 @@ def test_cbp_fact_rows_from_fixture():
     by_measure = {row["layout"]["measure_id"]: row for row in rows}
     entries = by_measure["total_entry_summaries"]
     assert entries["value"] == 83_133_856
-    assert entries["period"] == {"type": "fiscal_year", "value": 2026}
+    assert entries["period"] == {
+        "type": "fiscal_year_to_date",
+        "value": 2026,
+        "start": "2025-10-01",
+        "as_of": "2026-07-27",
+        "as_of_basis": "publisher_as_of_note",
+    }
+    assert entries["source"]["vintage"] == ("fiscal_year_to_date_2026_as_of_2026_07_27")
+    assert entries["layout"]["record_set_id"] == (
+        "cbp_trade_stats.imports_revenue_collection.fytd.fy2026_as_of_2026_07_27"
+    )
+    assert "FYTD 2026 (through 2026-07-27)" in entries["label"]
     assert entries["observed_measure"]["unit"] == "count"
     assert entries["source"]["source_sha256"] == "dd" * 32
-    # The volatile "as of" note is provenance, never identity.
+    assert entries["source"]["source_file"] == "cbp_newsroom_stats_trade.html"
     assert entries["dimensions"] == {}
     assert "updated as of" in entries["source"]["publisher_as_of_note"]
+
+
+def _fy2025_complete_stats(as_of_date: str = "2026-07-27") -> CbpEntryStats:
+    return CbpEntryStats(
+        cells=(
+            CbpFiscalYearCell(
+                measure_id="total_entry_summaries",
+                unit="count",
+                fiscal_year=2025,
+                text="99,000,000",
+                exact_value=99_000_000,
+            ),
+        ),
+        as_of_note=f"FY 2026 and FY 2025 are updated as of {as_of_date}.",
+        as_of_date=as_of_date,
+    )
+
+
+def test_cbp_completed_fiscal_year_still_publishes_as_fiscal_year():
+    """A fiscal year whose September 30 end predates the as-of endpoint is a
+    completed annual observation and keeps the plain fiscal-year encoding."""
+
+    rows = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(),
+        page_sha256="dd" * 32,
+        retrieved_at="2026-08-05T00:00:00+00:00",
+    )
+    (row,) = rows
+    assert row["period"] == {"type": "fiscal_year", "value": 2025}
+    assert row["source"]["vintage"] == "fiscal_year_2025"
+    assert row["layout"]["record_set_id"] == (
+        "cbp_trade_stats.imports_revenue_collection.fy2025"
+    )
+    assert "FY2025" in row["label"]
+
+
+def test_cbp_fytd_snapshots_never_collide_across_as_of_endpoints():
+    """Two snapshots of the same in-progress year are distinct observations:
+    their aggregate keys must differ, and the retrieval date is the honest
+    fallback endpoint when the page carries no as-of note."""
+
+    stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    early = build_cbp_entry_fact_rows(
+        stats,
+        page_sha256="dd" * 32,
+        retrieved_at="2026-08-05T00:00:00+00:00",
+    )
+    later_stats = CbpEntryStats(
+        cells=stats.cells, as_of_note=stats.as_of_note, as_of_date="2026-08-24"
+    )
+    later = build_cbp_entry_fact_rows(
+        later_stats,
+        page_sha256="ee" * 32,
+        retrieved_at="2026-09-01T00:00:00+00:00",
+    )
+    early_keys = {row["aggregate_fact_key"] for row in early}
+    later_keys = {row["aggregate_fact_key"] for row in later}
+    assert early_keys.isdisjoint(later_keys)
+
+    noteless = CbpEntryStats(cells=stats.cells, as_of_note="", as_of_date="")
+    fallback = build_cbp_entry_fact_rows(
+        noteless,
+        page_sha256="ff" * 32,
+        retrieved_at="2026-08-05T00:00:00+00:00",
+    )
+    entry = next(
+        row
+        for row in fallback
+        if row["layout"]["measure_id"] == "total_entry_summaries"
+    )
+    assert entry["period"]["as_of"] == "2026-08-05"
+    assert entry["period"]["as_of_basis"] == "retrieval_date"
 
 
 def test_cbp_parse_fails_closed_on_layout_change():
@@ -347,6 +445,13 @@ def test_artifact_refuses_empty_retrieval_manifest(tmp_path):
 
 
 def test_cbp_semantic_keys_are_fiscal_year_invariant():
+    from populace.build.us_runtime.us_trade.import_entry_facts import (
+        _period_invariant_record_set,
+    )
+
+    # FYTD snapshots: the family must drop the year and as-of endpoint but
+    # keep the fytd marker, so "latest eligible period" selectors over
+    # completed fiscal years can never resolve to a partial-year snapshot.
     stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
     rows = build_cbp_entry_fact_rows(
         stats,
@@ -356,15 +461,18 @@ def test_cbp_semantic_keys_are_fiscal_year_invariant():
     entries = next(
         row for row in rows if row["layout"]["measure_id"] == "total_entry_summaries"
     )
-    # Semantic identity must survive the fiscal year rolling over: rebuild
-    # the identity with a different record set year and compare.
-    from populace.build.us_runtime.us_trade.import_entry_facts import (
-        _period_invariant_record_set,
-    )
+    fytd_family = _period_invariant_record_set(entries["layout"]["record_set_id"])
+    assert fytd_family == "cbp_trade_stats.imports_revenue_collection.fytd"
 
-    family = _period_invariant_record_set(entries["layout"]["record_set_id"])
-    assert "fy2026" not in family
-    assert family == "cbp_trade_stats.imports_revenue_collection"
+    # Completed fiscal years: identity must survive the year rolling over.
+    (complete,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(),
+        page_sha256="dd" * 32,
+        retrieved_at="2026-08-05T00:00:00+00:00",
+    )
+    complete_family = _period_invariant_record_set(complete["layout"]["record_set_id"])
+    assert complete_family == "cbp_trade_stats.imports_revenue_collection"
+    assert complete_family != fytd_family
 
 
 def test_cbp_and_district_facts_compile_into_ledger_targets(tmp_path):
@@ -406,11 +514,11 @@ def test_cbp_and_district_facts_compile_into_ledger_targets(tmp_path):
 
     references = [
         LedgerTargetReference(
-            name="cbp_total_entry_summaries_fy2026",
+            name="cbp_total_entry_summaries_fytd2026",
             ledger_selector={
                 "source_record_id": (
-                    "cbp_trade_stats.imports_revenue_collection.fy2026"
-                    ".total_entry_summaries"
+                    "cbp_trade_stats.imports_revenue_collection.fytd"
+                    ".fy2026_as_of_2026_07_27.total_entry_summaries"
                 ),
             },
             entity="import_entry",
@@ -436,5 +544,5 @@ def test_cbp_and_district_facts_compile_into_ledger_targets(tmp_path):
         cbp_rows + district_rows, references, country="us"
     )
     by_name = {spec.name: spec for spec in registry.specs}
-    assert by_name["cbp_total_entry_summaries_fy2026"].value == 83_133_856
+    assert by_name["cbp_total_entry_summaries_fytd2026"].value == 83_133_856
     assert by_name["district70_customs_value_2026_01"].value == 2_000_000
