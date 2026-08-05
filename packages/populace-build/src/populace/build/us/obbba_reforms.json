@@ -61,6 +61,7 @@
         "gov.irs.income.bracket.thresholds.6.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 611750 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -147679000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -85,6 +86,7 @@
         "gov.irs.deductions.standard.amount.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 16600 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -92124000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -106,6 +108,7 @@
         "gov.irs.deductions.senior_deduction.amount": { "2026-01-01.2026-12-31": 0 }
       },
       "jct": {
+        "publisher": "jct",
         "score": 110625000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -135,6 +138,7 @@
         "gov.irs.credits.ctc.adult_ssn_requirement_applies": { "2026-01-01.2026-12-31": false }
       },
       "jct": {
+        "publisher": "jct",
         "score": -48769000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -160,6 +164,7 @@
         "gov.irs.deductions.qbi.deduction_floor.amount[1].amount": { "2026-01-01.2026-12-31": 0 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -44331000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -180,6 +185,7 @@
         "gov.irs.credits.estate.base": { "2026-01-01.2026-12-31": 6790000 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -3672000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -211,6 +217,7 @@
         "gov.irs.income.amt.exemption.separate_limit": { "2026-01-01.2026-12-31": 913900 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -76835000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -235,6 +242,7 @@
         "gov.irs.deductions.itemized.interest.mortgage.cap.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 1000000 }
       },
       "jct": {
+        "publisher": "jct",
         "score": 1639000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -255,6 +263,7 @@
         "gov.irs.deductions.itemized.casualty.active": { "2026-01-01.2026-12-31": true }
       },
       "jct": {
+        "publisher": "jct",
         "score": 86000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -275,6 +284,7 @@
         "gov.irs.deductions.itemized.misc.applies": { "2026-01-01.2026-12-31": true }
       },
       "jct": {
+        "publisher": "jct",
         "score": 13419000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -295,6 +305,7 @@
         "gov.irs.deductions.itemized.limitation.obbb.applies": { "2026-01-01.2026-12-31": false }
       },
       "jct": {
+        "publisher": "jct",
         "score": -16040000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -321,6 +332,7 @@
         "gov.irs.deductions.itemized.salt_and_real_estate.phase_out.floor.applies": { "2026-01-01.2026-12-31": false }
       },
       "jct": {
+        "publisher": "jct",
         "score": 31617000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -341,6 +353,7 @@
         "gov.irs.deductions.tip_income.cap": { "2026-01-01.2026-12-31": 0 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -10121000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -365,6 +378,7 @@
         "gov.irs.deductions.overtime_income.cap.SEPARATE": { "2026-01-01.2026-12-31": 0 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -32806000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -385,6 +399,7 @@
         "gov.irs.deductions.auto_loan_interest.cap": { "2026-01-01.2026-12-31": 0 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -5400000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -407,6 +422,7 @@
         "gov.irs.credits.cdcc.phase_out.amended_structure.applies": { "2026-01-01.2026-12-31": false }
       },
       "jct": {
+        "publisher": "jct",
         "score": -409000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -431,6 +447,7 @@
         "gov.irs.deductions.itemized.charity.non_itemizers_amount.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 0 }
       },
       "jct": {
+        "publisher": "jct",
         "score": -1543000000,
         "score_type": "conventional",
         "window": "FY2026",
@@ -451,6 +468,7 @@
         "gov.irs.deductions.itemized.charity.floor.applies": { "2026-01-01.2026-12-31": false }
       },
       "jct": {
+        "publisher": "jct",
         "score": 1346000000,
         "score_type": "conventional",
         "window": "FY2026",

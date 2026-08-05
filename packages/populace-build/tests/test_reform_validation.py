@@ -893,14 +893,12 @@ def test_state_reform_specs_shipped_config_loads():
     )
     # Federal rows score federal income tax against JCT/CBO published figures.
     assert all(
-        spec.budget_measure == "income_tax"
-        for spec in by_category["Federal reform"]
+        spec.budget_measure == "income_tax" for spec in by_category["Federal reform"]
     )
     # Mechanical rows measure the reform's own spending variable, so the
     # benchmark is an exact external anchor (population x amount).
     assert all(
-        spec.jct_score_type == "mechanical"
-        for spec in by_category["Mechanical check"]
+        spec.jct_score_type == "mechanical" for spec in by_category["Mechanical check"]
     )
 
 
@@ -1272,6 +1270,196 @@ def test_rate_spec_validation_errors():
             cap_variable="income_tax",
             **common,
         )
+
+
+def test_reform_rows_emit_executable_reform_block():
+    # populace#606: each reform row carries the exact policy world it scored,
+    # so a consumer (the scorecard) keys claim identity on the reform itself
+    # instead of the row id.
+    parametric = _oos_spec(score=-1.0)
+    repeal = ReformValidationSpec(
+        id="state_repeal_md_eitc",
+        name="Repeal Maryland EITC",
+        category="State program",
+        in_sample=False,
+        period=2024,
+        jct_score=1.0,
+        jct_window="TY2024",
+        jct_source="MD",
+        jct_source_url="",
+        neutralized_variable=["md_refundable_eitc", "md_non_refundable_eitc"],
+    )
+    payload = reform_validation_payload(
+        [parametric, repeal], period=2024, simulate=None
+    )
+    rows = {row["id"]: row for row in payload["reforms"]}
+    block = rows["obbba_salt"]["reform"]
+    assert block["framework"] == "policyengine_us"
+    assert block["parameter_changes"] == parametric.parameter_changes
+    assert block["neutralized_variables"] is None
+    assert block["effect_direction"] == "reform_minus_baseline"
+    block = rows["state_repeal_md_eitc"]["reform"]
+    assert block["parameter_changes"] is None
+    assert block["neutralized_variables"] == [
+        "md_refundable_eitc",
+        "md_non_refundable_eitc",
+    ]
+
+
+def test_single_neutralized_variable_emits_as_list():
+    spec = ReformValidationSpec(
+        id="te_ctc",
+        name="CTC",
+        category="Tax expenditure",
+        in_sample=False,
+        period=2024,
+        jct_score=1.0,
+        jct_window="FY2024",
+        jct_source="JCT",
+        jct_source_url="",
+        neutralized_variable="ctc",
+    )
+    payload = reform_validation_payload([spec], period=2024, simulate=None)
+    assert payload["reforms"][0]["reform"]["neutralized_variables"] == ["ctc"]
+
+
+def test_rows_emit_benchmark_publisher():
+    spec = _oos_spec(score=-1.0)
+    object.__setattr__(spec, "benchmark_publisher", "jct")
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    level = BaselineLevelSpec(
+        id="state_ca_eitc",
+        name="CalEITC",
+        variable="ca_eitc",
+        period=2024,
+        benchmark_value=9.41e8,
+        benchmark_year="TY2023",
+        source="CA FTB",
+        source_url="https://www.ftb.ca.gov/",
+        benchmark_publisher="ca_admin",
+    )
+    payload = reform_validation_payload(
+        [spec], period=2024, simulate=None, baseline_levels=(level,)
+    )
+    rows = {row["id"]: row for row in payload["reforms"]}
+    assert rows["obbba_salt"]["jct"]["publisher"] == "jct"
+    assert rows["state_ca_eitc"]["jct"]["publisher"] == "ca_admin"
+    # A level is a score of the null reform — no reform block.
+    assert "reform" not in rows["state_ca_eitc"]
+
+
+def test_obbba_payload_carries_pre_baseline_counterfactual():
+    # The merged revert defining the pre-OBBBA scoring baseline (the
+    # TCJA-expiration counterfactual) is published once at payload level;
+    # each row's parameter_changes is its own revert patch.
+    spec_a = _oos_spec(score=-1.0, category="OBBBA")
+    payload = reform_validation_payload([spec_a], period=2024, simulate=None)
+    assert payload["obbba_pre_baseline_parameter_changes"] == spec_a.parameter_changes
+    # Absent entirely when no OBBBA rows exist.
+    payload = reform_validation_payload(
+        [_oos_spec(score=-1.0)], period=2024, simulate=None
+    )
+    assert "obbba_pre_baseline_parameter_changes" not in payload
+
+
+def test_loaders_parse_benchmark_publisher(tmp_path):
+    from populace.build.us_runtime.reform_validation import (
+        state_program_level_specs,
+        state_reform_specs,
+    )
+
+    config = _write_json(
+        tmp_path / "state_reforms.json",
+        {
+            "reforms": [
+                {
+                    "id": "state.mi.hb4170",
+                    "name": "MI HB4170",
+                    "period": 2025,
+                    "budget_measure": "mi_income_tax",
+                    "parameter_changes": {"gov.states.mi.tax.income.rate": {}},
+                    "benchmark": {
+                        "score": -7.0e8,
+                        "window": "annual",
+                        "source": "Michigan HFA fiscal note",
+                        "source_url": "https://www.legislature.mi.gov/",
+                        "publisher": "mi_fiscal_note",
+                    },
+                }
+            ]
+        },
+    )
+    (spec,) = state_reform_specs(config, period=2026)
+    assert spec.benchmark_publisher == "mi_fiscal_note"
+    levels = _write_json(
+        tmp_path / "levels.json",
+        {
+            "levels": [
+                {
+                    "id": "state_ca_eitc",
+                    "name": "CalEITC",
+                    "variable": "ca_eitc",
+                    "period": 2024,
+                    "benchmark": {"value": 9.41e8, "publisher": "ca_admin"},
+                },
+                {
+                    "id": "state_no_pub",
+                    "name": "no publisher",
+                    "variable": "ny_eitc",
+                    "period": 2024,
+                    "benchmark": {"value": 1.0},
+                },
+            ]
+        },
+    )
+    specs = state_program_level_specs(levels)
+    assert specs[0].benchmark_publisher == "ca_admin"
+    assert specs[1].benchmark_publisher is None
+
+
+def test_shipped_configs_carry_exact_publishers():
+    # populace#606: publisher slugs follow the scorecard scheme (issue #15
+    # there): state fiscal notes are {st}_fiscal_note, program actuals
+    # {st}_admin — attribution becomes exact instead of citation-parsed.
+    from populace.build.us_runtime.reform_validation import (
+        federal_eitc_state_level_specs,
+        soi_baseline_level_specs,
+        state_program_level_specs,
+        state_program_reform_specs,
+        state_reform_specs,
+        state_spm_poverty_level_specs,
+    )
+
+    for spec in in_sample_reform_specs(period=2024):
+        assert spec.benchmark_publisher == "jct"
+    for spec in out_of_sample_reform_specs(period=2026):
+        assert spec.benchmark_publisher == "jct", spec.id
+    for spec in tax_expenditure_reform_specs(period=2024):
+        if spec.jct_score is None:
+            assert spec.benchmark_publisher is None, spec.id
+        elif "Treasury" in spec.jct_source:
+            assert spec.benchmark_publisher == "treasury", spec.id
+        else:
+            assert spec.benchmark_publisher == "jct", spec.id
+    for spec in state_program_reform_specs(period=2024):
+        state = spec.id.split("_")[2]
+        assert spec.benchmark_publisher == f"{state}_admin", spec.id
+    for spec in state_reform_specs(period=2026):
+        if spec.id.startswith("state."):
+            state = spec.id.split(".")[1]
+            assert spec.benchmark_publisher == f"{state}_fiscal_note", spec.id
+        else:
+            assert spec.benchmark_publisher in {"jct", "cbo", "census_pep"}, spec.id
+    for spec in soi_baseline_level_specs():
+        assert spec.benchmark_publisher == "irs_soi", spec.id
+    for spec in state_program_level_specs():
+        state = spec.id.split("_")[1]
+        assert spec.benchmark_publisher == f"{state}_admin", spec.id
+    for spec in federal_eitc_state_level_specs():
+        assert spec.benchmark_publisher == "irs", spec.id
+    for spec in state_spm_poverty_level_specs():
+        assert spec.benchmark_publisher == "census", spec.id
 
 
 def test_shipped_spm_poverty_config_well_formed():
