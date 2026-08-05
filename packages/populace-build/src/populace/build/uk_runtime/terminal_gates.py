@@ -424,9 +424,7 @@ def _terminal_gate_policy_payload(
             sorted(UK_REVIEWED_EXPORT_EXCLUSIONS.items())
         ),
         "input_mass_parity": _weighted_integrity_policy_payload(input_mass_policy),
-        "qrf_tail_concentration": _weighted_integrity_policy_payload(
-            qrf_tail_policy
-        ),
+        "qrf_tail_concentration": _weighted_integrity_policy_payload(qrf_tail_policy),
     }
 
 
@@ -673,6 +671,12 @@ class _AttestedUKTerminalGateReport(GateReport):
     @property
     def evaluated_gates(self) -> tuple[str, ...]:
         return tuple(result.name for result in self.results)
+
+    @property
+    def passed(self) -> bool:
+        """True iff the sealed terminal report is publishable."""
+
+        return bool(self.report_payload()["passed"])
 
     def _current_attestation_sha256(self) -> str:
         return _canonical_sha256(
@@ -1419,9 +1423,7 @@ def uk_terminal_gate_report(
             )
         )
 
-    input_mass_armed = (
-        input_mass_reference is not None or input_mass_policy is not None
-    )
+    input_mass_armed = input_mass_reference is not None or input_mass_policy is not None
     if input_mass_armed:
 
         def input_mass_evaluator() -> GateResult:
@@ -1449,9 +1451,7 @@ def uk_terminal_gate_report(
 
         def qrf_tail_evaluator() -> GateResult:
             if not isinstance(qrf_tail_policy, UKQRFTailConcentrationPolicy):
-                raise TypeError(
-                    "qrf_tail_policy must be UKQRFTailConcentrationPolicy."
-                )
+                raise TypeError("qrf_tail_policy must be UKQRFTailConcentrationPolicy.")
             values, weights, surface = uk_qrf_tail_concentration_columns(dataset)
             return uk_qrf_tail_concentration_gate(
                 values,

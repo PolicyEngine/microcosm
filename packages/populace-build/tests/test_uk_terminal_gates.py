@@ -442,9 +442,7 @@ def test_unevidenced_gates_are_omitted_not_stubbed_as_passes() -> None:
 
 def _input_mass_reference(totals=None) -> UKInputMassReference:
     return UKInputMassReference(
-        totals=(
-            {"person.employment_income": 10.0} if totals is None else totals
-        ),
+        totals=({"person.employment_income": 10.0} if totals is None else totals),
         filename="enhanced_frs_2023_24.h5",
         revision="655dd07e4bb9c777b00dac044949611f1feb824f",
         sha256="a" * 64,
@@ -666,6 +664,8 @@ def test_terminal_report_writer_persists_before_missing_signing_key_raise(
     report = _report()
     output = tmp_path / "terminal_gates.json"
 
+    assert report.passed is False
+    assert report.passed == report.report_payload()["passed"]
     with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
         write_uk_terminal_gate_report(report, output)
 
