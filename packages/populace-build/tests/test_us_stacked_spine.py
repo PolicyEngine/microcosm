@@ -852,13 +852,34 @@ _GAP_FILL_TEST_PLAN = (
 
 
 def test_production_entrypoints_take_no_authority_parameters() -> None:
-    authority_parameters = {
-        gap_fill_stacked_spine: {"plan"},
-        stacked_completeness_gate: {"declared_surface", "declared_gap_fill_plan"},
-        by_origin_battery: {"registry"},
+    production_entrypoints = (
+        gap_fill_stacked_spine,
+        stacked_completeness_gate,
+        by_origin_battery,
+    )
+    authority_parameter_tokens = {
+        "authority",
+        "canonical",
+        "declared",
+        "metric",
+        "metrics",
+        "plan",
+        "profile",
+        "registry",
+        "support",
+        "surface",
     }
-    for entrypoint, forbidden in authority_parameters.items():
-        assert forbidden.isdisjoint(inspect.signature(entrypoint).parameters)
+
+    for entrypoint in production_entrypoints:
+        authority_parameters = {
+            parameter
+            for parameter in inspect.signature(entrypoint).parameters
+            if authority_parameter_tokens.intersection(parameter.split("_"))
+        }
+        assert not authority_parameters, (
+            f"{entrypoint.__name__} exposes caller-controlled authority "
+            f"parameter(s): {sorted(authority_parameters)}"
+        )
 
 
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
