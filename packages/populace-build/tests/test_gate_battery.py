@@ -28,6 +28,7 @@ from populace.build.gate_battery import (
     evaluate_phase,
     gate_signing_key_env,
 )
+from populace.build.trace import compute_composition_fingerprint
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 
@@ -93,10 +94,7 @@ class TestOutcomeTaxonomy:
             "support": _binding("support"),
             "exported_nonzero": _binding("exported_nonzero"),
             "nonconstant_columns": _binding("nonconstant_columns", passes=False),
-            **{
-                name: DEFAULT_REGISTRY[name]
-                for name in ("weights_audit",)
-            },
+            **{name: DEFAULT_REGISTRY[name] for name in ("weights_audit",)},
         }
         run = GateBatteryRun(
             manifest,
@@ -121,18 +119,14 @@ class TestOutcomeTaxonomy:
         assert report["gates"]["t_na"]["reason"] == "no incumbent dataset yet"
         assert "macro_realism" in report["gates"]["t_no_impl"]["reason"]
         assert "fit_weight_records" in report["gates"]["t_no_evidence"]["reason"]
-        assert report["gates"]["t_fail"]["failures"] == [
-            "nonconstant_columns failed"
-        ]
+        assert report["gates"]["t_fail"]["failures"] == ["nonconstant_columns failed"]
 
     def test_unreached_is_distinct_from_not_applicable(self, tmp_path, signing_env):
         manifest = _manifest(
             [
                 _entry("pf_fail", gate="support", phase="preflight"),
                 _entry("t_gate", gate="exported_nonzero"),
-                _entry(
-                    "t_na", gate="parity", not_applicable="no incumbent dataset"
-                ),
+                _entry("t_na", gate="parity", not_applicable="no incumbent dataset"),
             ]
         )
         registry = {"support": _binding("support", passes=False)}
@@ -302,9 +296,7 @@ class TestEvidenceAbsence:
                 release_candidate=release_candidate,
             )
             run.run_phase("terminal", EvidenceContext())
-            assert (
-                run.enforce("terminal", mode=BlockingMode.MARKS_ARTIFACT) is blocked
-            )
+            assert run.enforce("terminal", mode=BlockingMode.MARKS_ARTIFACT) is blocked
             report = json.loads(run.report_path.read_text())
             assert report["gates"]["t"]["status"] == "evidence_absent"
             assert report["shippable"] is False
@@ -475,9 +467,7 @@ class TestAttestation:
 
 
 class TestBelgianCompatibility:
-    def test_the_be_spec_runs_as_declared_with_named_gaps(
-        self, tmp_path, monkeypatch
-    ):
+    def test_the_be_spec_runs_as_declared_with_named_gaps(self, tmp_path, monkeypatch):
         monkeypatch.setenv(gate_signing_key_env("be"), KEY)
         spec = load_country_spec("be")
         run = GateBatteryRun(
@@ -485,8 +475,6 @@ class TestBelgianCompatibility:
             release_id="be-test-build",
             report_path=tmp_path / "terminal_gates.json",
             release_candidate=True,
-            spec_fingerprint=spec.fingerprint,
-            gates_manifest_sha256=spec.resource_hashes["gates.json"],
         )
         run.run_phase("terminal", EvidenceContext())
         report = json.loads((tmp_path / "terminal_gates.json").read_text())
@@ -495,6 +483,73 @@ class TestBelgianCompatibility:
             gate["status"] == "evidence_absent" for gate in report["gates"].values()
         ), "unimplemented BE gates are named gaps, never crashes or passes"
         assert report["shippable"] is False
-        assert report["gates_manifest_sha256"] == spec.resource_hashes["gates.json"]
+        assert len(report["gates_manifest_sha256"]) == 64
+        assert (
+            report["attestation"]["gates_manifest_sha256"]
+            == report["gates_manifest_sha256"]
+        )
         with pytest.raises(GateBatteryBlockedError):
             run.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+
+
+class TestDerivedManifestProvenance:
+    def test_truncated_manifest_cannot_claim_canonical_provenance(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.setenv(gate_signing_key_env("be"), KEY)
+        spec = load_country_spec("be")
+        canonical = GateBatteryRun(
+            spec.gates,
+            release_id="be-canonical-build",
+            report_path=tmp_path / "canonical.json",
+            release_candidate=False,
+        ).report_payload()
+        substitute = GatesManifest.from_mapping(
+            {
+                "version": spec.gates.version,
+                "country": spec.gates.country,
+                "policy": spec.gates.policy,
+                "phases": list(spec.gates.phases),
+                "gates": [
+                    {
+                        "id": "substitute",
+                        "gate": "parity",
+                        "phase": "terminal",
+                        "criticality": "release_blocking",
+                        "not_applicable": "substitute has no incumbent",
+                    }
+                ],
+            },
+            country="be",
+        )
+
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            GateBatteryRun(
+                substitute,
+                release_id="be-substitute-build",
+                report_path=tmp_path / "forged.json",
+                release_candidate=True,
+                spec_fingerprint=spec.fingerprint,
+                gates_manifest_sha256=spec.resource_hashes["gates.json"],
+            )
+
+        run = GateBatteryRun(
+            substitute,
+            release_id="be-substitute-build",
+            report_path=tmp_path / "substitute.json",
+            release_candidate=True,
+        )
+        run.run_phase("terminal", EvidenceContext())
+        report = json.loads(run.report_path.read_text())
+
+        assert list(report["gates"]) == ["substitute"]
+        assert report["gates"]["substitute"]["status"] == "not_applicable"
+        assert report["shippable"] is True
+        assert report["attestation"]["signature"] is not None
+        for field in ("spec_fingerprint", "gates_manifest_sha256"):
+            assert report[field]
+            assert report["attestation"][field] == report[field]
+            assert report[field] != canonical[field]
+        assert report["spec_fingerprint"] == compute_composition_fingerprint(
+            (report["gates_manifest_sha256"],)
+        )

@@ -60,6 +60,7 @@ from populace.build.gates import (
     tail_concentration_gate,
     weights_audit_gate,
 )
+from populace.build.trace import compute_composition_fingerprint
 from populace.frame import Frame
 
 __all__ = [
@@ -158,8 +159,10 @@ def _json_safe(value: object) -> object:
     if isinstance(value, Mapping):
         return {str(key): _json_safe(child) for key, child in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
-        items = list(value) if not isinstance(value, (set, frozenset)) else sorted(
-            value, key=repr
+        items = (
+            list(value)
+            if not isinstance(value, (set, frozenset))
+            else sorted(value, key=repr)
         )
         return [_json_safe(child) for child in items]
     item = getattr(value, "item", None)
@@ -169,6 +172,29 @@ def _json_safe(value: object) -> object:
         except (TypeError, ValueError):
             pass
     return repr(value)
+
+
+def _gates_manifest_payload(gates: GatesManifest) -> dict[str, object]:
+    """Project the exact evaluated manifest into canonical JSON data."""
+
+    return {
+        "country": gates.country,
+        "version": gates.version,
+        "policy": gates.policy,
+        "phases": list(gates.phases),
+        "gates": [
+            {
+                "id": entry.id,
+                "gate": entry.gate,
+                "phase": entry.phase,
+                "criticality": entry.criticality,
+                "parameters": _json_safe(entry.parameters),
+                "not_applicable": entry.not_applicable,
+                "notes": entry.notes,
+            }
+            for entry in gates.gates
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -212,9 +238,7 @@ class GateBinding(Protocol):
 
     name: str
 
-    def required_artifacts(
-        self, parameters: Mapping[str, Any]
-    ) -> frozenset[str]:
+    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
         """Artifact keys the gate needs, checked before evaluation."""
         ...
 
@@ -262,9 +286,7 @@ class FunctionBinding:
     frame_argument: str | None = None
     evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
 
-    def required_artifacts(
-        self, parameters: Mapping[str, Any]
-    ) -> frozenset[str]:
+    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
         return frozenset(self.artifact_arguments.values())
 
     def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
@@ -393,8 +415,7 @@ class GateOutcome:
                     "cannot carry a GateResult."
                 )
             if (
-                self.status
-                in (GateStatus.NOT_APPLICABLE, GateStatus.EVIDENCE_ABSENT)
+                self.status in (GateStatus.NOT_APPLICABLE, GateStatus.EVIDENCE_ABSENT)
                 and not self.reason
             ):
                 raise ValueError(
@@ -416,9 +437,7 @@ class GateOutcome:
                 else []
             ),
             "details": (
-                _json_safe(dict(self.result.details))
-                if self.result is not None
-                else {}
+                _json_safe(dict(self.result.details)) if self.result is not None else {}
             ),
             "reason": self.reason,
         }
@@ -431,9 +450,7 @@ class GatePhaseReport:
     phase: str
     outcomes: tuple[GateOutcome, ...]
 
-    def blocking_outcomes(
-        self, *, release_candidate: bool
-    ) -> tuple[GateOutcome, ...]:
+    def blocking_outcomes(self, *, release_candidate: bool) -> tuple[GateOutcome, ...]:
         """Outcomes that stop the build at this phase boundary.
 
         A failed release-blocking gate always blocks. A release-blocking
@@ -450,9 +467,7 @@ class GatePhaseReport:
                 continue
             if outcome.status is GateStatus.FAILED:
                 blocking.append(outcome)
-            elif (
-                outcome.status is GateStatus.EVIDENCE_ABSENT and release_candidate
-            ):
+            elif outcome.status is GateStatus.EVIDENCE_ABSENT and release_candidate:
                 blocking.append(outcome)
         return tuple(blocking)
 
@@ -637,16 +652,13 @@ class GateBatteryBlockedError(RuntimeError):
     including the block itself — is on disk.
     """
 
-    def __init__(
-        self, phase: str, failures: Sequence[str], report_path: Path
-    ) -> None:
+    def __init__(self, phase: str, failures: Sequence[str], report_path: Path) -> None:
         self.phase = phase
         self.failures = tuple(failures)
         self.report_path = report_path
         lines = "\n".join(f"  - {line}" for line in self.failures)
         super().__init__(
-            f"Gate battery blocked at phase {phase!r} "
-            f"(report: {report_path}):\n{lines}"
+            f"Gate battery blocked at phase {phase!r} (report: {report_path}):\n{lines}"
         )
 
 
@@ -668,10 +680,6 @@ class GateBatteryRun:
             cannot excuse absent evidence; dev builds record it and
             continue.
         registry: Gate bindings; defaults to :data:`DEFAULT_REGISTRY`.
-        spec_fingerprint: The loaded spec's composition fingerprint, for
-            build provenance.
-        gates_manifest_sha256: sha256 of the country's ``gates.json`` bytes
-            — the membership anchor the release verifier pins per country.
     """
 
     def __init__(
@@ -682,8 +690,6 @@ class GateBatteryRun:
         report_path: Path | str,
         release_candidate: bool,
         registry: Mapping[str, GateBinding] = DEFAULT_REGISTRY,
-        spec_fingerprint: str | None = None,
-        gates_manifest_sha256: str | None = None,
     ) -> None:
         if not isinstance(release_id, str) or not release_id.strip():
             raise ValueError("release_id must be a non-empty string.")
@@ -692,8 +698,12 @@ class GateBatteryRun:
         self._report_path = Path(report_path)
         self._release_candidate = bool(release_candidate)
         self._registry = dict(registry)
-        self._spec_fingerprint = spec_fingerprint
-        self._gates_manifest_sha256 = gates_manifest_sha256
+        self._gates_manifest_sha256 = _canonical_sha256(
+            _gates_manifest_payload(self._gates)
+        )
+        self._spec_fingerprint = compute_composition_fingerprint(
+            (self._gates_manifest_sha256,)
+        )
         self._phase_reports: dict[str, GatePhaseReport] = {}
         self._blocked_at_phase: str | None = None
 
@@ -737,9 +747,7 @@ class GateBatteryRun:
                 f"phase {phase!r} is out of order; expected {expected!r} "
                 f"(declared order {list(self._gates.phases)})."
             )
-        report = evaluate_phase(
-            self._gates, phase, context, registry=self._registry
-        )
+        report = evaluate_phase(self._gates, phase, context, registry=self._registry)
         self._phase_reports[phase] = report
         self._write_report()
         return report
@@ -766,9 +774,7 @@ class GateBatteryRun:
                 f"evaluated so far: {evaluated}."
             )
         report = self._phase_reports[phase]
-        blocking = report.blocking_outcomes(
-            release_candidate=self._release_candidate
-        )
+        blocking = report.blocking_outcomes(release_candidate=self._release_candidate)
         if not blocking:
             return False
         self._blocked_at_phase = phase
@@ -823,9 +829,7 @@ class GateBatteryRun:
         """The full schema-4 report, attested when a signing key is present."""
 
         outcomes = list(self._outcomes_by_entry())
-        gates_payload = {
-            outcome.entry.id: outcome.to_payload() for outcome in outcomes
-        }
+        gates_payload = {outcome.entry.id: outcome.to_payload() for outcome in outcomes}
         evidence_sha256 = {
             outcome.entry.id: outcome.evidence_sha256
             for outcome in outcomes
@@ -848,6 +852,7 @@ class GateBatteryRun:
             and self._blocked_at_phase is None
             and blocking_ok
             and signing_key is not None
+            and self._gates_manifest_sha256 is not None
         )
         attestation: dict[str, object] = {
             "schema_version": GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
