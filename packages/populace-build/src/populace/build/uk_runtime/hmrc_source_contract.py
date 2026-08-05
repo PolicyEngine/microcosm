@@ -936,17 +936,11 @@ def uk_hmrc_weighted_qrf_output_columns(
         if not isinstance(stage, Mapping):
             raise ValueError("UK HMRC source manifest stages must be objects.")
         operations = stage.get("operations", ())
-        if not isinstance(operations, Sequence) or isinstance(
-            operations, (str, bytes)
-        ):
-            raise ValueError(
-                "UK HMRC source manifest stage operations must be a list."
-            )
+        if not isinstance(operations, Sequence) or isinstance(operations, (str, bytes)):
+            raise ValueError("UK HMRC source manifest stage operations must be a list.")
         for operation in operations:
             if not isinstance(operation, Mapping):
-                raise ValueError(
-                    "UK HMRC source manifest operations must be objects."
-                )
+                raise ValueError("UK HMRC source manifest operations must be objects.")
             kind = operation.get("kind")
             if not isinstance(kind, str) or not kind.startswith("fit_weighted_qrf"):
                 continue
