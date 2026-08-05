@@ -14,7 +14,7 @@ metadata, and the assumptions register ships beside the data.
 Entry-size distribution (the assumption)
 ----------------------------------------
 
-CBP publishes no entry-size distribution, only fiscal-year national totals
+CBP publishes no entry-size distribution, only national totals
 (:mod:`populace.build.us_runtime.us_trade.cbp_entry_stats`). The generator assumes
 within-cell lognormal entry sizes, with both free parameters anchored to
 those published totals:
@@ -22,17 +22,32 @@ those published totals:
 - the national mean entry value pins per-cell entry counts
   (``count = clip(round(value / mean), 1, value)``), and
 - the lognormal shape ``sigma`` is solved so the generated mixture's share
-  of entries at or below the informal-entry threshold matches CBP's
-  published informal share. Informal entries are shipments "not exceeding
-  $2,500 in value" (19 CFR 143.21), so the threshold interprets the
-  published count as a size-distribution moment.
+  of entries at or below $2,500 of customs value matches CBP's published
+  informal-entry count share.
+
+The sigma calibration is a **proxy**, not a statutory identification.
+19 CFR 143.21 defines informal entry by entry-type rules, of which the
+"not exceeding $2,500" clause is only the first: the section also admits
+installment shipments and portions of consignments, personal and household
+effects, certain institutional (books/libraries) imports, and some
+returned US products up to $10,000, and carries Chapter 99 exclusions —
+categories that are not a function of customs value. CBP's published
+informal count is therefore not the CDF of entry value at $2,500; the
+generator uses it as an *approximate* size-distribution moment because no
+closer public moment exists, and the register discloses the mapping
+limitation (``known_gaps.informal_share_proxy``).
 
 Cells are stratified into equal-probability strata of that lognormal; each
 stratum becomes at most two weighted rows (an integer largest-remainder
 split), which keeps the file at a few rows per cell while preserving exact
 integer margins and a nondegenerate size distribution for de minimis-style
-threshold analyses. The scheme is fully deterministic — no random state —
-so the same margins and anchors reproduce the same bytes.
+threshold analyses. The scheme is fully deterministic — no random state,
+no wall-clock input, and a canonical (period, hts10, country) cell order —
+so the same margins and anchors reproduce the same rows and, under the
+locked build environment (numpy/scipy/pyarrow pinned by ``uv.lock``), the
+same serialized bytes. Cross-platform floating-point identity of the
+lognormal stratum shapes is not claimed; the exact-margin guarantee holds
+on every platform regardless, because all dollar allocation is integer.
 
 Schema is the composed tariff spine's input surface (rulespec-us
 ``us:policies/cbp/us-tariff-duty/composition``): dotted ``hts_number``,
@@ -66,11 +81,21 @@ __all__ = [
     "validate_entries_against_margins",
 ]
 
-#: 19 CFR 143.21: informal entry covers shipments of merchandise "not
-#: exceeding $2,500 in value" (with narrow Chapter 99 exceptions).
+#: The 19 CFR 143.21(a) value clause: informal entry covers shipments of
+#: merchandise "not exceeding $2,500 in value". The section's other
+#: clauses admit entries by type rather than value (see the module
+#: docstring), so this threshold underpins a proxy calibration only.
 DEFAULT_INFORMAL_VALUE_THRESHOLD = 2_500
 
 DEFAULT_STRATA = 7
+
+#: Margin cell values above this are outside the proven-exact allocation
+#: domain: the largest-remainder residual split routes through float64
+#: quotas, and integers above 2**53 are not exactly representable there.
+#: Real cells are orders of magnitude below (the largest observed monthly
+#: cell is ~$4e10); the gate makes the boundary explicit instead of
+#: leaving exactness silently unproven on absurd inputs.
+MAX_EXACT_CELL_VALUE = 2**53
 
 _ENTRY_DAY_OF_MONTH = 15
 _SIGMA_BOUNDS = (0.05, 6.0)
@@ -108,13 +133,19 @@ class EntrySizeAssumption:
             "statement": (
                 "Synthetic entries; only the (HTS-10 x country x month) "
                 "customs-value margins are calibrated truth. Entry counts "
-                "and sizes are an assumption: within-cell lognormal sizes "
-                "with the national mean entry value and the informal-entry "
-                "count share (entries at or below the 19 CFR 143.21 "
-                "informal threshold) matched to CBP's published fiscal-year "
-                "totals."
+                "and sizes are an assumption: within-cell lognormal sizes, "
+                "with per-cell counts pinned by CBP's published national "
+                "mean entry value and the shape sigma proxy-calibrated so "
+                "the share of entries at or below $2,500 of customs value "
+                "matches CBP's published informal-entry count share. The "
+                "informal share is an approximate size-distribution moment, "
+                "not a statutory identification — see "
+                "known_gaps.informal_share_proxy."
             ),
-            "size_model": asdict(self),
+            "size_model": {
+                **asdict(self),
+                "sigma_calibration_class": "proxy_moment_match",
+            },
             "sensitivity": (
                 "Margins are invariant to this assumption by construction; "
                 "entry-count and size-dependent statistics (for example "
@@ -124,6 +155,22 @@ class EntrySizeAssumption:
                 "sensitivity."
             ),
             "known_gaps": {
+                "informal_share_proxy": (
+                    "Sigma equates CBP's 'Total Informal Entry Summaries' "
+                    "count share with the share of entries at or below "
+                    "$2,500 of customs value. 19 CFR 143.21 defines "
+                    "informal entry by entry-type rules beyond that value "
+                    "clause — installment shipments and portions of "
+                    "consignments, personal and household effects, certain "
+                    "institutional imports, some returned US products up "
+                    "to $10,000 — with Chapter 99 exclusions, so the "
+                    "published informal count is not the CDF of customs "
+                    "value at $2,500. No public moment maps categories to "
+                    "values, so the share is admitted as an approximate "
+                    "moment; threshold-sensitive statistics inherit this "
+                    "category-mapping error in addition to the lognormal "
+                    "shape assumption."
+                ),
                 "is_postal_shipment": (
                     "All entries carry False. The bulk IMDB margins carry "
                     "air/vessel/containerized transport splits but no "
@@ -243,9 +290,23 @@ def generate_entries(
     missing = sorted(required - set(margins.columns))
     if missing:
         raise ValueError(f"Margins table is missing column(s) {missing}.")
-    cells = margins.loc[margins["con_val_mo"] > 0].reset_index(drop=True)
+    # Canonical cell order: never inherit the input file's row order. Any
+    # permutation of the same margin cells generates identical rows.
+    cells = (
+        margins.loc[margins["con_val_mo"] > 0]
+        .sort_values(["period", "hts10", "cty_code"], kind="stable")
+        .reset_index(drop=True)
+    )
     if cells.empty:
         raise ValueError("No margin cells with positive consumption value.")
+    duplicated = cells.duplicated(["period", "hts10", "cty_code"])
+    if duplicated.any():
+        first = cells.loc[duplicated].iloc[0]
+        raise ValueError(
+            "Margins table carries duplicate cells for "
+            f"({first['period']}, {first['hts10']}, {first['cty_code']}); "
+            "each (period, hts10, cty_code) must appear once."
+        )
     values = _checked_cell_values(cells["con_val_mo"].to_numpy(dtype=np.int64))
     counts = _cell_entry_counts(values, assumption.mean_entry_value)
     weights, entry_values, cell_index, stratum = _stratify(
@@ -285,12 +346,17 @@ def generate_entries(
             "customs_value": entry_values.astype(np.int64),
             "shipment_value": entry_values.astype(np.int64),
             "is_postal_shipment": np.zeros(len(weights), dtype=bool),
+            # Row-level synthetic marker: schema metadata and id prefixes do
+            # not survive every conversion (CSV exports, database loads),
+            # a column does.
+            "is_synthetic": np.ones(len(weights), dtype=bool),
             "weight": weights.astype(np.int64),
             "size_stratum": stratum.astype(np.int8),
         }
     )
-    # _stratify emits rows lexsorted by (cell, stratum, value) and the cell
-    # order is the margins row order, so the frame is already deterministic.
+    # _stratify emits rows lexsorted by (cell, stratum, value) over the
+    # canonically sorted cells, so the frame order is deterministic and
+    # input-permutation-invariant.
     return frame
 
 
@@ -353,6 +419,8 @@ def validate_entries_against_margins(
         failures.append("shipment_value must equal customs_value (documented rule).")
     if entries["is_postal_shipment"].any():
         failures.append("is_postal_shipment must be uniformly False (documented gap).")
+    if "is_synthetic" not in entries.columns or not entries["is_synthetic"].all():
+        failures.append("Every row must carry is_synthetic=True.")
     if not entries["entry_id"].str.startswith("synthetic-").all():
         failures.append("Every entry_id must carry the synthetic- prefix.")
     dotted = entries["hts_number"].str.fullmatch(r"\d{4}\.\d{2}\.\d{2}\.\d{2}")
@@ -363,13 +431,17 @@ def validate_entries_against_margins(
             "Synthetic entries failed validation:\n" + "\n".join(failures[:25])
         )
     weights = entries["weight"].to_numpy(dtype=np.int64)
-    values = entries["customs_value"].to_numpy(dtype=np.int64)
-    total_value = int((weights * values).sum())
+    # Aggregate totals in Python ints: every per-cell sum is bounded by its
+    # margin value (<= 2**53), but the window total is not bounded by
+    # int64, so the grand totals must never route through fixed-width
+    # accumulation.
+    total_value = sum(int(value) for value in produced.to_numpy())
+    total_weight = sum(int(weight) for weight in weights)
     return {
         "cells_checked": int(len(expected)),
         "cells_exact": int(len(expected)),
         "entry_rows": int(len(entries)),
-        "weighted_entries": int(weights.sum()),
+        "weighted_entries": total_weight,
         "weighted_customs_value": total_value,
         "exact": True,
     }
@@ -381,6 +453,16 @@ def _checked_cell_values(cell_values: np.ndarray) -> np.ndarray:
         raise ValueError("No margin cells supplied.")
     if (values <= 0).any():
         raise ValueError("Margin cell values must be positive integers.")
+    if (values > MAX_EXACT_CELL_VALUE).any():
+        largest = int(values.max())
+        raise ValueError(
+            f"Margin cell value {largest} exceeds MAX_EXACT_CELL_VALUE "
+            f"(2**53 = {MAX_EXACT_CELL_VALUE}): the largest-remainder "
+            "residual split is only proven exact where integer dollars are "
+            "exactly representable in float64. Real Census cells are "
+            "orders of magnitude below this bound; refusing rather than "
+            "allocating inexactly."
+        )
     return values
 
 
@@ -452,6 +534,21 @@ def _stratify(
     quota = remainder[:, None] * share
     floor = np.floor(quota).astype(np.int64)
     shortfall = (values - counts - floor.sum(axis=1)).astype(np.int64)
+    # The +$1 top-up can add at most one dollar per active stratum, so
+    # exactness requires 0 <= shortfall <= active strata per cell. Within
+    # the MAX_EXACT_CELL_VALUE domain the float64 quotas are exact enough
+    # to guarantee this; assert it anyway so any violation fails the build
+    # loudly instead of shipping an inexact allocation.
+    if (shortfall < 0).any() or (shortfall > effective).any():
+        offender = int(np.argmax((shortfall < 0) | (shortfall > effective)))
+        raise AssertionError(
+            "Largest-remainder shortfall out of bounds for cell "
+            f"{offender}: shortfall={int(shortfall[offender])}, active "
+            f"strata={int(effective[offender])}, value="
+            f"{int(values[offender])}, count={int(counts[offender])}. "
+            "The allocation cannot be completed exactly; this is a bug "
+            "or an out-of-domain input, never a rounding to absorb."
+        )
     fraction = np.where(active, quota - floor, -1.0)
     order = np.argsort(-fraction, axis=1, kind="stable")
     rank = np.empty_like(order)

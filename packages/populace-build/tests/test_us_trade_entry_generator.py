@@ -128,12 +128,22 @@ def test_sigma_solver_hits_reachable_informal_share():
         informal_count_share=0.65,
         anchor_provenance={"basis": "test"},
     )
-    assert abs(assumption.achieved_informal_count_share - 0.65) < 0.02
+    # The share function moves in weight-granular steps as stratum values
+    # cross the threshold, so the reachable precision scales with the
+    # fixture's ~80k weighted entries; the solver's 1e-4 stopping tolerance
+    # is demonstrated within one order of magnitude here and to 2.6e-5 on
+    # the real pilot (validation report).
+    assert abs(assumption.achieved_informal_count_share - 0.65) < 1e-3
     assert 0.05 <= assumption.sigma <= 6.0
     assert assumption.total_weighted_entries > 0
     register = assumption.register()
     assert register["synthetic"] is True
-    assert "19 CFR 143.21" in register["statement"]
+    assert "proxy" in register["statement"]
+    assert register["size_model"]["sigma_calibration_class"] == "proxy_moment_match"
+    proxy_gap = register["known_gaps"]["informal_share_proxy"]
+    assert "19 CFR 143.21" in proxy_gap
+    assert "installment" in proxy_gap
+    assert "not the CDF" in proxy_gap
     assert register["known_gaps"]["is_postal_shipment"]
 
 
@@ -210,3 +220,65 @@ def test_weight_times_value_never_overflows_quietly():
     assert total == 10**12
     report = validate_entries_against_margins(entries, margins)
     assert report["weighted_customs_value"] == 10**12
+
+
+def test_exactness_holds_to_the_declared_domain_bound_and_gates_beyond():
+    """The accepted domain is explicit: values through the float-exact
+    region allocate exactly; values beyond 2**53 are refused, never
+    allocated inexactly."""
+
+    big = 10**15  # beyond any real Census cell, inside the proven domain
+    margins = _margins(
+        [
+            ("2026-01", "8471300100", "5700", "CN", big),
+            ("2026-01", "0101210010", "1220", "CA", 3),
+        ]
+    )
+    entries = generate_entries(margins, _assumption(mean_entry_value=30_000.0))
+    report = validate_entries_against_margins(entries, margins)
+    assert report["exact"] is True
+    assert report["weighted_customs_value"] == big + 3
+
+    over = _margins([("2026-01", "8471300100", "5700", "CN", 2**53 + 1)])
+    with pytest.raises(ValueError, match="MAX_EXACT_CELL_VALUE"):
+        generate_entries(over, _assumption(mean_entry_value=30_000.0))
+    with pytest.raises(ValueError, match="MAX_EXACT_CELL_VALUE"):
+        solve_size_assumption(
+            np.array([2**53 + 1], dtype=np.int64),
+            mean_entry_value=30_000.0,
+            informal_count_share=0.5,
+        )
+
+
+def test_generation_is_input_order_invariant():
+    rows = [
+        ("2026-01", "8471300100", "5700", "CN", 123_456_789),
+        ("2026-02", "0101210010", "1220", "CA", 4_321),
+        ("2026-01", "0101210010", "2010", "MX", 999_999),
+        ("2026-02", "9903810100", "5700", "CN", 55_555),
+    ]
+    assumption = _assumption(mean_entry_value=777.0, sigma=2.3)
+    canonical = generate_entries(_margins(rows), assumption)
+    permuted = generate_entries(_margins(rows[::-1]), assumption)
+    pd.testing.assert_frame_equal(canonical, permuted)
+
+
+def test_duplicate_margin_cells_are_refused():
+    margins = _margins(
+        [
+            ("2026-01", "0101210010", "1220", "CA", 100),
+            ("2026-01", "0101210010", "1220", "CA", 100),
+        ]
+    )
+    with pytest.raises(ValueError, match="duplicate cells"):
+        generate_entries(margins, _assumption())
+
+
+def test_row_level_synthetic_marker_is_present_and_enforced():
+    margins = _margins([("2026-01", "0101210010", "1220", "CA", 5_000)])
+    entries = generate_entries(margins, _assumption())
+    assert entries["is_synthetic"].all()
+    unmarked = entries.copy()
+    unmarked["is_synthetic"] = False
+    with pytest.raises(ValueError, match="is_synthetic"):
+        validate_entries_against_margins(unmarked, margins)

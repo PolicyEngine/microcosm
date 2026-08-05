@@ -12,6 +12,18 @@ HTS-10 x country x month customs-value margin exactly. Emits:
 - ``validation_report.json`` — exact-margin check results plus context
   statistics (achieved vs anchor moments, weighted entry counts).
 
+Inputs are authenticated against the P1 publication, not merely hashed:
+the margins parquet must hash to the P1 ``build_report.json``'s recorded
+``margins_parquet_sha256``, the archived CBP page must hash to its entry
+in the P1 ``source_manifest.jsonl``, and that manifest must hash to the
+report's ``source_manifest_sha256`` — so a substituted-but-parseable input
+can never silently become an anchor.
+
+The build is a pure function of those authenticated inputs: no wall-clock
+value enters any output. Rebuilding from the same P1 publication with the
+locked environment (``uv.lock`` pins numpy/scipy/pyarrow) reproduces every
+output byte for byte; provenance timestamps are the P1 report's own.
+
 Everything in the output is generated, never observed; the file is a
 weighted representation whose only calibrated facts are the margins it
 reproduces. Exit code 1 on any validation failure.
@@ -29,7 +41,6 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -41,6 +52,7 @@ sys.path.insert(
 )
 
 from populace.build.us_runtime.us_trade.cbp_entry_stats import (  # noqa: E402
+    fiscal_year_end,
     parse_cbp_trade_stats,
 )
 from populace.build.us_runtime.us_trade.entry_generator import (  # noqa: E402
@@ -95,6 +107,7 @@ def main() -> int:
     args = parser.parse_args()
 
     margins_path = args.margins_dir / "margins_hts10_country_month.parquet"
+    p1 = _authenticated_p1_build(args.margins_dir, margins_path)
     margins = pd.read_parquet(margins_path)
     end = args.end or str(margins["period"].max())
     window = margins.loc[
@@ -111,6 +124,7 @@ def main() -> int:
         end_month=end,
         mean_override=args.mean_entry_value,
         share_override=args.informal_share,
+        p1=p1,
     )
     print(
         f"[entries] anchors: mean entry value "
@@ -141,15 +155,16 @@ def main() -> int:
 
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    generated_at = datetime.now(UTC).isoformat(timespec="seconds")
+    # No wall-clock value enters any output: the build is a pure function
+    # of the authenticated P1 publication, whose own timestamps carry the
+    # retrieval provenance.
     generator_block = {
         "producer": "populace.build.us_runtime.us_trade.entry_generator",
         "issue": "PolicyEngine/populace#615",
         "phase": "P2",
         "synthetic": True,
-        "generated_at": generated_at,
         "window": {"start": months[0], "end": months[-1]},
-        "margins_parquet_sha256": _sha256(margins_path),
+        "p1_build": p1,
         "engine_domain_start": ENGINE_DOMAIN_START,
     }
     entries_path = out_dir / "synthetic_import_entries.parquet"
@@ -160,7 +175,7 @@ def main() -> int:
         {
             "window": {"start": months[0], "end": months[-1], "months": len(months)},
             "entries_parquet_sha256": _sha256(entries_path),
-            "generated_at": generated_at,
+            "p1_build": p1,
             "monthly_weighted_entries": _monthly_counts(entries),
             "engine_domain_start": ENGINE_DOMAIN_START,
             "engine_runnable_months": [
@@ -175,14 +190,92 @@ def main() -> int:
     return 0
 
 
+def _authenticated_p1_build(margins_dir: Path, margins_path: Path) -> dict:
+    """Authenticate the P1 inputs against the P1 publication's own report.
+
+    Returns the provenance block recorded in every P2 output. Refuses when
+    the margins parquet does not hash to the report's pin, when the source
+    manifest does not hash to the report's pin, or when the archived CBP
+    page does not hash to its source-manifest entry.
+    """
+    report_path = margins_dir / "build_report.json"
+    if not report_path.is_file():
+        raise SystemExit(
+            f"P1 build report {report_path} is missing; the margins "
+            "directory must be a complete P1 publication (the report is "
+            "the authentication root for every P2 input)."
+        )
+    report_raw = report_path.read_bytes()
+    report = json.loads(report_raw)
+    margins_sha = _sha256(margins_path)
+    expected_margins_sha = report.get("margins_parquet_sha256")
+    if margins_sha != expected_margins_sha:
+        raise SystemExit(
+            f"Margins parquet hash {margins_sha} does not match the P1 "
+            f"build report's recorded {expected_margins_sha}; refusing a "
+            "margins file the P1 publication did not certify."
+        )
+    manifest_path = margins_dir / "source_manifest.jsonl"
+    if not manifest_path.is_file():
+        raise SystemExit(
+            f"P1 source manifest {manifest_path} is missing; cannot "
+            "authenticate the archived CBP page."
+        )
+    manifest_raw = manifest_path.read_bytes()
+    manifest_sha = hashlib.sha256(manifest_raw).hexdigest()
+    expected_manifest_sha = report.get("source_manifest_sha256")
+    if manifest_sha != expected_manifest_sha:
+        raise SystemExit(
+            f"P1 source manifest hash {manifest_sha} does not match the "
+            f"build report's recorded {expected_manifest_sha}."
+        )
+    cbp_entries = [
+        json.loads(line)
+        for line in manifest_raw.decode("utf-8").splitlines()
+        if line.strip()
+    ]
+    cbp_recorded = [
+        entry for entry in cbp_entries if entry.get("filename") == CBP_ARCHIVE_NAME
+    ]
+    if len(cbp_recorded) != 1:
+        raise SystemExit(
+            f"P1 source manifest lists {len(cbp_recorded)} entries for "
+            f"{CBP_ARCHIVE_NAME}; expected exactly one."
+        )
+    page_sha = _sha256(margins_dir / CBP_ARCHIVE_NAME)
+    if page_sha != cbp_recorded[0].get("sha256"):
+        raise SystemExit(
+            f"Archived CBP page hash {page_sha} does not match its P1 "
+            f"source-manifest entry {cbp_recorded[0].get('sha256')}; "
+            "refusing a page the P1 publication did not certify."
+        )
+    return {
+        "build_report_sha256": hashlib.sha256(report_raw).hexdigest(),
+        "extracted_at": report.get("extracted_at"),
+        "margins_parquet_sha256": margins_sha,
+        "facts_sha256": report.get("facts_sha256"),
+        "source_manifest_sha256": manifest_sha,
+        "cbp_page_sha256": page_sha,
+    }
+
+
 def _anchors(
     margins_dir: Path,
     *,
     end_month: str,
     mean_override: float | None,
     share_override: float | None,
+    p1: dict | None = None,
 ) -> dict:
-    """CBP fiscal-year anchors from the P1 archived page, or overrides."""
+    """CBP entry anchors from the P1-authenticated archived page, or overrides.
+
+    The anchor fiscal year is usually still in progress when the pilot
+    window ends: the page's exact cells then cover October 1 through the
+    publisher's as-of endpoint, and the derived mean entry value and
+    informal count share are fiscal-year-to-date window statistics, not
+    completed-annual statistics. The coverage is labeled explicitly and
+    recorded in the anchor provenance.
+    """
     if mean_override is not None and share_override is not None:
         return {
             "basis": "explicit overrides",
@@ -191,6 +284,12 @@ def _anchors(
         }
     archive = margins_dir / CBP_ARCHIVE_NAME
     raw = archive.read_bytes()
+    page_sha = hashlib.sha256(raw).hexdigest()
+    if p1 is not None and page_sha != p1["cbp_page_sha256"]:
+        raise SystemExit(
+            "Archived CBP page changed between authentication and anchor "
+            "parse; refusing."
+        )
     stats = parse_cbp_trade_stats(raw)
     year, month = int(end_month[:4]), int(end_month[5:7])
     fiscal_year = year + 1 if month >= 10 else year
@@ -207,15 +306,33 @@ def _anchors(
             f"CBP archive has no exact FY{fiscal_year} cell for {error}; "
             "pass --mean-entry-value/--informal-share explicitly."
         ) from None
+    coverage_endpoint = stats.as_of_date
+    complete = bool(
+        coverage_endpoint and fiscal_year_end(fiscal_year) <= coverage_endpoint
+    )
+    if complete:
+        coverage = f"completed fiscal year FY{fiscal_year}"
+        period_coverage = "fiscal_year"
+    else:
+        endpoint_text = coverage_endpoint or "the page's unstated endpoint"
+        coverage = (
+            f"fiscal-year-to-date FY{fiscal_year} "
+            f"({fiscal_year - 1}-10-01 through {endpoint_text})"
+        )
+        period_coverage = "fiscal_year_to_date"
     anchors = {
         "basis": (
-            f"CBP Trade Statistics FY{fiscal_year} published totals "
-            "(exact cells parsed from the archived page)"
+            f"CBP Trade Statistics {coverage} published totals (exact "
+            "cells parsed from the P1-authenticated archived page). The "
+            "mean entry value and informal count share are ratios over "
+            "that coverage window."
         ),
         "source_url": "https://www.cbp.gov/newsroom/stats/trade",
-        "source_sha256": hashlib.sha256(raw).hexdigest(),
+        "source_sha256": page_sha,
         "publisher_as_of_note": stats.as_of_note,
         "fiscal_year": fiscal_year,
+        "period_coverage": period_coverage,
+        "coverage_as_of": coverage_endpoint,
         "total_import_value": total_value,
         "total_entry_summaries": total_entries,
         "informal_entry_summaries": informal,
@@ -285,7 +402,17 @@ def _write_labeled_parquet(
             ),
         }
     )
-    pq.write_table(table.replace_schema_metadata(metadata), path, compression="zstd")
+    # Serialization is pinned explicitly (codec, level, format versions) so
+    # byte identity does not ride on pyarrow defaults changing; the pyarrow
+    # build itself is pinned by uv.lock.
+    pq.write_table(
+        table.replace_schema_metadata(metadata),
+        path,
+        compression="zstd",
+        compression_level=3,
+        version="2.6",
+        data_page_version="1.0",
+    )
 
 
 def _monthly_counts(entries: pd.DataFrame) -> dict:

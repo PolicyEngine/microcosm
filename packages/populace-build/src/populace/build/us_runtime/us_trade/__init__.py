@@ -22,9 +22,9 @@ Modules:
   summary counts from the archived public statistics page.
 - :mod:`populace.build.us_runtime.us_trade.import_entry_facts` — ledger
   consumer-artifact emission for the margin series.
-- :mod:`populace.build.us_trade.entry_generator` — synthetic weighted
-  entries reproducing the value margins exactly (deterministic; every
-  distributional assumption documented in the emitted register).
+- :mod:`populace.build.us_runtime.us_trade.entry_generator` — synthetic
+  weighted entries reproducing the value margins exactly (deterministic;
+  every distributional assumption documented in the emitted register).
 """
 
 from populace.build.us_runtime.us_trade.cbp_entry_stats import (

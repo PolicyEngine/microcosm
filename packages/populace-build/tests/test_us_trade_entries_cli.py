@@ -1,7 +1,23 @@
-"""End-to-end test for the synthetic import-entry build CLI (#615 P2)."""
+"""End-to-end tests for the synthetic import-entry build CLI (#615 P2).
+
+The fixture is a minimal but internally *authenticated* P1 publication:
+margins parquet, archived CBP page, source manifest, and a build report
+whose pins bind them together — the same chain the real P1 CLI publishes.
+Covers the review-critical properties end to end:
+
+- **Byte determinism**: two invocations over the same P1 publication
+  produce byte-identical parquet, register, and validation report — no
+  wall-clock value enters any output.
+- **Input authentication**: the margins parquet and archived CBP page must
+  hash to the P1 build report's pins (directly and through the source
+  manifest); a substituted-but-parseable input is refused, not adopted.
+- **Engine contract**: the generated columns satisfy the sha-pinned
+  composition input-surface contract fixture.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -9,12 +25,15 @@ from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
+import pytest
 
 GOLDEN = Path(__file__).parent / "golden" / "us_trade"
 CLI = Path(__file__).resolve().parents[3] / "tools" / "build_us_import_entries.py"
+CONTRACT = GOLDEN / "engine_entry_contract.json"
 
 
 def _margins_dir(tmp_path: Path) -> Path:
+    """A minimal but internally authenticated P1 publication directory."""
     margins_dir = tmp_path / "margins"
     margins_dir.mkdir()
     frame = pd.DataFrame(
@@ -28,16 +47,39 @@ def _margins_dir(tmp_path: Path) -> Path:
         ],
         columns=["period", "hts10", "chapter", "cty_code", "iso2", "con_val_mo"],
     )
-    frame.to_parquet(margins_dir / "margins_hts10_country_month.parquet", index=False)
-    cbp = (GOLDEN / "cbp_trade_stats_fragment.html").read_bytes()
-    (margins_dir / "cbp_newsroom_stats_trade.html").write_bytes(cbp)
+    margins_path = margins_dir / "margins_hts10_country_month.parquet"
+    frame.to_parquet(margins_path, index=False)
+    page_bytes = (GOLDEN / "cbp_trade_stats_fragment.html").read_bytes()
+    (margins_dir / "cbp_newsroom_stats_trade.html").write_bytes(page_bytes)
+    manifest_path = margins_dir / "source_manifest.jsonl"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "source_name": "cbp_trade_stats",
+                "filename": "cbp_newsroom_stats_trade.html",
+                "sha256": hashlib.sha256(page_bytes).hexdigest(),
+                "retrieved_at": "2026-08-05T14:00:00+00:00",
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    report = {
+        "extracted_at": "2026-08-05T14:00:00+00:00",
+        "facts_sha256": "ee" * 32,
+        "margins_parquet_sha256": hashlib.sha256(margins_path.read_bytes()).hexdigest(),
+        "source_manifest_sha256": hashlib.sha256(
+            manifest_path.read_bytes()
+        ).hexdigest(),
+    }
+    (margins_dir / "build_report.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n"
+    )
     return margins_dir
 
 
-def test_cli_builds_labeled_validated_entries(tmp_path):
-    margins_dir = _margins_dir(tmp_path)
-    out_dir = tmp_path / "entries"
-    result = subprocess.run(
+def _run(margins_dir: Path, out_dir: Path, start: str = "2026-01"):
+    return subprocess.run(
         [
             sys.executable,
             str(CLI),
@@ -46,12 +88,19 @@ def test_cli_builds_labeled_validated_entries(tmp_path):
             "--out-dir",
             str(out_dir),
             "--start",
-            "2026-01",
+            start,
         ],
         capture_output=True,
         text=True,
         check=False,
+        timeout=300,
     )
+
+
+def test_cli_builds_labeled_validated_entries(tmp_path):
+    margins_dir = _margins_dir(tmp_path)
+    out_dir = tmp_path / "entries"
+    result = _run(margins_dir, out_dir)
     assert result.returncode == 0, result.stderr
 
     report = json.loads((out_dir / "validation_report.json").read_text())
@@ -60,14 +109,23 @@ def test_cli_builds_labeled_validated_entries(tmp_path):
     assert report["window"] == {"start": "2026-01", "end": "2026-02", "months": 2}
     assert report["engine_runnable_months"] == ["2026-02"]
     assert report["chapter_country_cells_exact"] == 4
+    assert "generated_at" not in report
+    assert report["p1_build"]["extracted_at"] == "2026-08-05T14:00:00+00:00"
 
     register = json.loads((out_dir / "assumptions.json").read_text())
     assert register["synthetic"] is True
+    assert register["known_gaps"]["informal_share_proxy"]
+    assert register["size_model"]["sigma_calibration_class"] == "proxy_moment_match"
     anchors = register["size_model"]["anchor_provenance"]
     assert anchors["fiscal_year"] == 2026
     assert anchors["total_entry_summaries"] == 83_133_856
     assert 0.68 < anchors["informal_count_share"] < 0.69
     assert 30_000 < anchors["mean_entry_value"] < 36_000
+    # The FY2026 cells cover October 2025 through the page's as-of date:
+    # the anchors are fiscal-year-to-date window statistics and say so.
+    assert anchors["period_coverage"] == "fiscal_year_to_date"
+    assert anchors["coverage_as_of"] == "2026-07-27"
+    assert "fiscal-year-to-date FY2026" in anchors["basis"]
 
     table = pq.read_table(out_dir / "synthetic_import_entries.parquet")
     metadata = table.schema.metadata
@@ -75,9 +133,12 @@ def test_cli_builds_labeled_validated_entries(tmp_path):
     generator = json.loads(metadata[b"populace_us_trade.generator"])
     assert generator["issue"] == "PolicyEngine/populace#615"
     assert generator["synthetic"] is True
+    assert "generated_at" not in generator
+    assert generator["p1_build"]["margins_parquet_sha256"]
 
     entries = table.to_pandas()
     assert entries["entry_id"].str.startswith("synthetic-").all()
+    assert entries["is_synthetic"].all()
     produced = (
         (entries["weight"] * entries["customs_value"])
         .groupby([entries["period"], entries["hts10"]])
@@ -89,23 +150,101 @@ def test_cli_builds_labeled_validated_entries(tmp_path):
     assert str(entries.loc[0, "entry_date"])[:10].endswith("-15")
 
 
+def test_two_builds_are_byte_identical(tmp_path):
+    margins_dir = _margins_dir(tmp_path)
+    first = _run(margins_dir, tmp_path / "out-a")
+    assert first.returncode == 0, first.stderr
+    second = _run(margins_dir, tmp_path / "out-b")
+    assert second.returncode == 0, second.stderr
+
+    def hashes(out_dir: Path) -> dict[str, str]:
+        return {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(out_dir.iterdir())
+            if path.is_file()
+        }
+
+    hashes_a = hashes(tmp_path / "out-a")
+    assert set(hashes_a) == {
+        "synthetic_import_entries.parquet",
+        "assumptions.json",
+        "validation_report.json",
+    }
+    assert hashes_a == hashes(tmp_path / "out-b")
+
+
+def test_substituted_margins_parquet_is_refused(tmp_path):
+    margins_dir = _margins_dir(tmp_path)
+    tampered = pd.read_parquet(margins_dir / "margins_hts10_country_month.parquet")
+    tampered.loc[1, "con_val_mo"] = 90_001
+    tampered.to_parquet(
+        margins_dir / "margins_hts10_country_month.parquet", index=False
+    )
+    result = _run(margins_dir, tmp_path / "out")
+    assert result.returncode != 0
+    assert "did not certify" in result.stderr
+    assert not (tmp_path / "out" / "synthetic_import_entries.parquet").exists()
+
+
+def test_substituted_cbp_page_is_refused(tmp_path):
+    margins_dir = _margins_dir(tmp_path)
+    page_path = margins_dir / "cbp_newsroom_stats_trade.html"
+    page_path.write_bytes(page_path.read_bytes().replace(b"83,133,856", b"93,133,856"))
+    result = _run(margins_dir, tmp_path / "out")
+    assert result.returncode != 0
+    assert "did not certify" in result.stderr
+
+
+def test_missing_p1_report_is_refused(tmp_path):
+    margins_dir = _margins_dir(tmp_path)
+    (margins_dir / "build_report.json").unlink()
+    result = _run(margins_dir, tmp_path / "out")
+    assert result.returncode != 0
+    assert "build report" in result.stderr
+
+
+def test_generated_entries_satisfy_the_pinned_engine_contract(tmp_path):
+    contract = json.loads(CONTRACT.read_text())
+    assert contract["source"]["commit"] == ("8b580e778a0ad134b93d563b5f8ae17980a29008")
+    margins_dir = _margins_dir(tmp_path)
+    result = _run(margins_dir, tmp_path / "out")
+    assert result.returncode == 0, result.stderr
+    entries = pd.read_parquet(tmp_path / "out" / "synthetic_import_entries.parquet")
+    for name, field in contract["inputs"].items():
+        assert field["entries_column"] in entries.columns, (
+            f"contract input {name} missing"
+        )
+    assert (entries["customs_value"] > 0).all()
+    assert (entries["shipment_value"] == entries["customs_value"]).all()
+    assert entries["hts_number"].str.fullmatch(r"\d{4}\.\d{2}\.\d{2}\.\d{2}").all()
+    assert entries["country_of_origin"].str.fullmatch(r"[A-Z]{2}").all()
+    assert entries["is_postal_shipment"].dtype == bool
+    assert not entries["is_postal_shipment"].any()
+    engine_dates = entries.loc[entries["period"] >= "2026-02", "entry_date"]
+    assert all(str(day)[:10] >= "2026-02-15" for day in engine_dates)
+
+
+@pytest.mark.skipif(not CONTRACT.is_file(), reason="contract fixture missing")
+def test_contract_fixture_names_its_upstream_pin():
+    contract = json.loads(CONTRACT.read_text())
+    assert contract["source"]["repo"] == "TheAxiomFoundation/axiom-oracles"
+    assert len(contract["source"]["file_sha256"]) == 64
+    axiom_inputs = {
+        field["axiom_input"]
+        for field in contract["inputs"].values()
+        if field["axiom_input"].startswith("us:policies")
+    }
+    assert axiom_inputs == {
+        "us:policies/cbp/us-tariff-duty/composition#input.customs_value",
+        "us:policies/cbp/us-tariff-duty/composition#input.shipment_value",
+        "us:policies/cbp/us-tariff-duty/composition#input.hts_number",
+        "us:policies/cbp/us-tariff-duty/composition#input.country_of_origin",
+        "us:policies/cbp/us-tariff-duty/composition#input.is_postal_shipment",
+    }
+
+
 def test_cli_fails_when_margins_missing_from_window(tmp_path):
     margins_dir = _margins_dir(tmp_path)
-    out_dir = tmp_path / "entries"
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "--margins-dir",
-            str(margins_dir),
-            "--out-dir",
-            str(out_dir),
-            "--start",
-            "2027-01",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = _run(margins_dir, tmp_path / "entries", start="2027-01")
     assert result.returncode == 1
     assert "no margin cells" in result.stdout
