@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
+import populace.build.us_runtime.puf_support as puf_support_module
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -608,6 +609,46 @@ def test_strict_recipient_predictors_fail_closed_on_absence() -> None:
         acs_detail, "puf_predictor_employment_income"
     ]
     assert zero_filled.eq(0.0).all()
+
+
+def test_strict_recipient_predictors_reject_null_filing_status_before_coercion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing filing status is terminal before status-code conversion."""
+
+    cloned = _cloned_stacked_fixture()
+    tax_unit = cloned.table("tax_unit")
+    tax_unit["filing_status_input"] = "SINGLE"
+    puf_mask = tax_unit[support_clone_index_column("tax_unit")].eq(1)
+    tax_unit.loc[tax_unit.index[puf_mask][0], "filing_status_input"] = np.nan
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    def reject_early_coercion(_values: object) -> np.ndarray:
+        raise AssertionError("filing-status coercion ran before recipient validation")
+
+    monkeypatch.setattr(
+        puf_support_module,
+        "_filing_status_codes",
+        reject_early_coercion,
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"puf_predictor_filing_status_code.*1.*recipient rows",
+    ):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_filing_status_code",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
 
 
 def _asec_gap_source() -> Frame:

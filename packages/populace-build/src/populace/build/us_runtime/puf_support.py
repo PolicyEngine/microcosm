@@ -1267,6 +1267,14 @@ def impute_us_puf_tax_detail_support(
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF detail clone has no tax-unit rows.")
+    if require_complete_recipient_predictors:
+        _require_complete_recipient_predictor_sources(frame, puf_mask, predictors)
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
     missing_donor = [
@@ -1306,12 +1314,6 @@ def impute_us_puf_tax_detail_support(
         predictors,
         preserve_nulls=require_complete_recipient_predictors,
     )
-    puf_mask = puf_tax_detail_clone_mask(
-        frame.table("tax_unit"),
-        entity="tax_unit",
-    )
-    if not puf_mask.any():
-        raise ValueError("PUF detail clone has no tax-unit rows.")
     if require_complete_recipient_predictors:
         _require_complete_recipient_predictors(features, puf_mask, predictors)
     predictions = fitted.predict(
@@ -1364,6 +1366,14 @@ def prepare_us_puf_tax_detail_chain_inputs(
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF detail clone has no tax-unit rows.")
+    if require_complete_recipient_predictors:
+        _require_complete_recipient_predictor_sources(frame, puf_mask, predictors)
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
     missing_donor = [
@@ -1385,12 +1395,6 @@ def prepare_us_puf_tax_detail_chain_inputs(
         predictors,
         preserve_nulls=require_complete_recipient_predictors,
     )
-    puf_mask = puf_tax_detail_clone_mask(
-        frame.table("tax_unit"),
-        entity="tax_unit",
-    )
-    if not puf_mask.any():
-        raise ValueError("PUF detail clone has no tax-unit rows.")
     if require_complete_recipient_predictors:
         _require_complete_recipient_predictors(features, puf_mask, predictors)
     recipient_features = features.loc[puf_mask, list(predictors)].copy()
@@ -2280,7 +2284,10 @@ def _tax_unit_feature_frame(
                 source = tax_unit.get("filing_status")
             if source is None:
                 raise ValueError("tax_unit table lacks filing-status input.")
-            result[column] = _filing_status_codes(source)
+            result[column] = _filing_status_codes(
+                source,
+                preserve_nulls=preserve_nulls,
+            )
         elif source_column == "tax_unit_person_count":
             result[column] = (
                 person.groupby("person_tax_unit_id", sort=False)
@@ -2290,7 +2297,10 @@ def _tax_unit_feature_frame(
                 .to_numpy(dtype=np.float64)
             )
         elif source_column in tax_unit.columns:
-            numeric = pd.to_numeric(tax_unit[source_column], errors="coerce")
+            numeric = pd.to_numeric(
+                tax_unit[source_column],
+                errors="raise" if preserve_nulls else "coerce",
+            )
             result[column] = numeric if preserve_nulls else numeric.fillna(0.0)
         else:
             result[column] = _person_tax_unit_sum(
@@ -2329,7 +2339,10 @@ def _person_tax_unit_sum(
                 f"Cannot build tax-unit predictor {column!r}; no matching "
                 "tax_unit column or person column exists."
             )
-        numeric = pd.to_numeric(person[column], errors="coerce")
+        numeric = pd.to_numeric(
+            person[column],
+            errors="raise" if preserve_nulls else "coerce",
+        )
         if not preserve_nulls:
             numeric = numeric.fillna(0.0)
         values = numeric
@@ -2340,9 +2353,11 @@ def _person_tax_unit_sum(
         }
     ).groupby("person_tax_unit_id", sort=False)[column]
     if preserve_nulls:
-        # min_count=1 keeps a unit null when none of its people carry the
-        # leaf; the reindex likewise must not manufacture zeros.
+        # ``sum`` normally skips partial nulls, which would turn a missing
+        # member-level source into an observed unit total.  Poison any such
+        # group so strict recipient validation sees the absence by name.
         grouped = grouped_frame.sum(min_count=1)
+        grouped[grouped_frame.count() != grouped_frame.size()] = np.nan
         return grouped.reindex(tax_unit["tax_unit_id"]).to_numpy()
     grouped = grouped_frame.sum()
     return grouped.reindex(tax_unit["tax_unit_id"]).fillna(0.0).to_numpy()
@@ -2358,10 +2373,81 @@ def _optional_person(
         if preserve_nulls:
             return np.full(len(person), np.nan, dtype=np.float64)
         return np.zeros(len(person), dtype=np.float64)
-    numeric = pd.to_numeric(person[column], errors="coerce")
+    numeric = pd.to_numeric(
+        person[column],
+        errors="raise" if preserve_nulls else "coerce",
+    )
     if not preserve_nulls:
         numeric = numeric.fillna(0.0)
     return numeric.to_numpy(dtype=np.float64)
+
+
+def _require_complete_recipient_predictor_sources(
+    frame: Frame,
+    recipient_mask: np.ndarray,
+    predictors: Sequence[str],
+) -> None:
+    """Reject raw recipient absence before feature conversion or coercion."""
+
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    recipient_ids = tax_unit.loc[recipient_mask, "tax_unit_id"]
+    offenders: dict[str, int] = {}
+    for predictor in predictors:
+        source = _predictor_source_column(predictor)
+        if source == "filing_status_code":
+            values = tax_unit.get("filing_status_input")
+            if values is None:
+                values = tax_unit.get("filing_status")
+            missing = (
+                np.ones(int(recipient_mask.sum()), dtype=bool)
+                if values is None
+                else values.loc[recipient_mask].isna().to_numpy()
+            )
+        elif source == "tax_unit_person_count":
+            missing = np.zeros(int(recipient_mask.sum()), dtype=bool)
+        elif source in tax_unit.columns:
+            missing = tax_unit.loc[recipient_mask, source].isna().to_numpy()
+        else:
+            if source == "dividend_income" and source not in person.columns:
+                source_columns = (
+                    "non_qualified_dividend_income",
+                    "qualified_dividend_income",
+                )
+            elif source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
+                source_columns = _PREDICTOR_LEAF_ALIASES[source]
+            else:
+                source_columns = (source,)
+            absent_columns = [
+                column for column in source_columns if column not in person.columns
+            ]
+            if absent_columns:
+                missing = np.ones(int(recipient_mask.sum()), dtype=bool)
+            else:
+                link = person["person_tax_unit_id"]
+                relevant = link.isin(recipient_ids)
+                observed_ids = set(link.loc[relevant].tolist())
+                null_source = (
+                    person.loc[relevant, list(source_columns)].isna().any(axis=1)
+                )
+                null_ids = set(link.loc[relevant].loc[null_source].tolist())
+                missing = np.asarray(
+                    [
+                        tax_unit_id not in observed_ids or tax_unit_id in null_ids
+                        for tax_unit_id in recipient_ids
+                    ],
+                    dtype=bool,
+                )
+        count = int(missing.sum())
+        if count:
+            offenders[str(predictor)] = count
+    if offenders:
+        raise ValueError(
+            "PUF recipient predictor source(s) have missing values before "
+            f"coercion: {offenders} (of {int(len(recipient_ids))} recipient rows). "
+            "This is a terminal stacked-spine failure; gap-fill the source "
+            "before the PUF pass."
+        )
 
 
 def _require_complete_recipient_predictors(
@@ -3122,9 +3208,16 @@ def _tax_unit_source_values(
     return None
 
 
-def _filing_status_codes(values: Sequence[Any]) -> np.ndarray:
+def _filing_status_codes(
+    values: Sequence[Any],
+    *,
+    preserve_nulls: bool = False,
+) -> np.ndarray:
     decoded = pd.Series(values).map(_decode_status).str.upper()
-    return decoded.map(_FILING_STATUS_CODES).fillna(0.0).to_numpy(dtype=np.float64)
+    codes = decoded.map(_FILING_STATUS_CODES)
+    if not preserve_nulls:
+        codes = codes.fillna(0.0)
+    return codes.to_numpy(dtype=np.float64)
 
 
 def _decode_status(value: Any) -> str:
