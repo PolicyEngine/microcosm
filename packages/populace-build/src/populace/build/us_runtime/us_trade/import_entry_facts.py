@@ -397,6 +397,15 @@ def build_cbp_entry_fact_rows(
     partial-year count can never be selected, summed, or compared as a
     completed annual total.
     """
+    if stats.as_of_note and not stats.as_of_date:
+        # The parser fails closed on unreadable notes, so this state can
+        # only come from a hand-built CbpEntryStats; refuse it the same
+        # way — a note without a date must never fall back to the
+        # retrieval date as if no note existed.
+        raise ValueError(
+            "CBP stats carry an as-of note without a parsed as-of date; "
+            "refusing the retrieval-date fallback."
+        )
     coverage_endpoint = stats.as_of_date or retrieved_at[:10]
     coverage_basis = "publisher_as_of_note" if stats.as_of_date else "retrieval_date"
     rows: list[dict[str, Any]] = []

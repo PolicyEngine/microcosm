@@ -48,9 +48,15 @@ _TAG_PATTERN = re.compile(r"<[^>]+>")
 _EXACT_VALUE_PATTERN = re.compile(r"^\$?[0-9][0-9,]*$")
 _FISCAL_YEAR_PATTERN = re.compile(r"FY\s*(\d{4})")
 _AS_OF_PATTERN = re.compile(
-    r"FY\s*\d{4}\s*(?:and|,)\s*FY\s*\d{4}\s*(?:is|are)\s*updated\s*as\s*of"
+    r"FY\s*\d{4}\s*(?:(?:and|,)\s*FY\s*\d{4}\s*)?(?:is|are)\s*updated\s*as\s*of"
     r"\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})",
 )
+#: Any as-of-like wording at all. Wherever this fires without a full
+#: ``_AS_OF_PATTERN`` parse, the page carries an update note we cannot
+#: read — and an unread note may hide fiscal-year-to-date coverage, so
+#: the parse fails closed instead of letting consumers fall back to the
+#: retrieval date as if no note existed.
+_AS_OF_SENTINEL_PATTERN = re.compile(r"updated?\s+as\s+of", re.IGNORECASE)
 
 _MONTH_NUMBERS = {
     "january": 1,
@@ -154,7 +160,7 @@ def parse_cbp_trade_stats(raw_html: bytes) -> CbpEntryStats:
         raise ValueError(
             f"CBP entry-summaries table is missing expected row(s): {missing}."
         )
-    note, note_date = _as_of_note(html)
+    note, note_date = _as_of_note(html, table_html)
     return CbpEntryStats(cells=tuple(cells), as_of_note=note, as_of_date=note_date)
 
 
@@ -196,23 +202,81 @@ def _exact_value(text: str) -> int | None:
     return None
 
 
-def _as_of_note(html: str) -> tuple[str, str]:
-    """The verbatim as-of note and its date in ISO form (both may be empty)."""
-    text = _TAG_PATTERN.sub(" ", html)
-    text = re.sub(r"\s+", " ", text)
-    match = _AS_OF_PATTERN.search(text)
-    if match is None:
-        return "", ""
-    month_name, day, year = match.group(1), match.group(2), match.group(3)
-    month_number = _MONTH_NUMBERS.get(month_name.lower())
-    if month_number is None:
+def _as_of_note(html: str, table_html: str) -> tuple[str, str]:
+    """The as-of note governing the entry-summaries table, date in ISO form.
+
+    CBP prints an update note per statistics table, in the page flow
+    directly after the table it governs (the live page carries several
+    tables, each with its own note and date — the Trade Remedy table's
+    "All programs updated as of: …" note must never become this table's
+    coverage endpoint). The scan is therefore scoped to the text between
+    the entry-summaries table and the next table.
+
+    Returns ``("", "")`` only when the whole page carries no as-of wording
+    at all — the sole state in which a consumer may substitute its
+    retrieval date for the coverage endpoint.
+
+    Raises:
+        ValueError: If the scoped window carries as-of wording the strict
+            pattern cannot read, parsed notes conflict, or the window has
+            no note while as-of wording appears elsewhere on the page.
+            Treating an unread or displaced note as "no note" would
+            silently recreate the partial-fiscal-year bug the note exists
+            to prevent.
+    """
+    table_start = html.find(table_html)
+    window_start = table_start + len(table_html) if table_start >= 0 else 0
+    next_table = html.find("<table", window_start)
+    window_html = html[window_start : next_table if next_table >= 0 else len(html)]
+    note = _extract_as_of(window_html)
+    if note is not None:
+        return note
+    if _AS_OF_SENTINEL_PATTERN.search(_collapse_text(html)):
         raise ValueError(
-            f"CBP as-of note carries an unrecognized month {month_name!r}."
+            "The entry-summaries table carries no as-of note of its own "
+            "while the page carries as-of wording elsewhere; refusing the "
+            "retrieval-date fallback — the table's update note may have "
+            "moved, and an unread note may hide fiscal-year-to-date "
+            "coverage."
         )
-    return (
-        match.group(0),
-        f"{int(year):04d}-{month_number:02d}-{int(day):02d}",
-    )
+    return "", ""
+
+
+def _extract_as_of(window_html: str) -> tuple[str, str] | None:
+    """Parse the window's as-of note; ``None`` when it has no as-of wording."""
+    text = _collapse_text(window_html)
+    matches = list(_AS_OF_PATTERN.finditer(text))
+    sentinels = _AS_OF_SENTINEL_PATTERN.findall(text)
+    if not sentinels and not matches:
+        return None
+    if len(sentinels) > len(matches):
+        first = _AS_OF_SENTINEL_PATTERN.search(text)
+        start = max(0, first.start() - 60)
+        raise ValueError(
+            "CBP entry-summaries note carries as-of wording the parser "
+            f"cannot read (…{text[start : first.end() + 60]}…); refusing to "
+            "treat it as 'no note' — the retrieval-date fallback is only "
+            "safe when no note exists."
+        )
+    dates = set()
+    for match in matches:
+        month_name, day, year = match.group(1), match.group(2), match.group(3)
+        month_number = _MONTH_NUMBERS.get(month_name.lower())
+        if month_number is None:
+            raise ValueError(
+                f"CBP as-of note carries an unrecognized month {month_name!r}."
+            )
+        dates.add(f"{int(year):04d}-{month_number:02d}-{int(day):02d}")
+    if len(dates) > 1:
+        raise ValueError(
+            f"CBP entry-summaries notes carry conflicting as-of dates "
+            f"({sorted(dates)}); the coverage endpoint is ambiguous."
+        )
+    return matches[0].group(0), dates.pop()
+
+
+def _collapse_text(html: str) -> str:
+    return re.sub(r"\s+", " ", _TAG_PATTERN.sub(" ", html))
 
 
 def _clean(cell_html: str) -> str:

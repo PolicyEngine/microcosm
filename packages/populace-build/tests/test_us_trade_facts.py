@@ -409,6 +409,106 @@ def test_cbp_parse_fails_closed_on_layout_change():
         parse_cbp_trade_stats(b"<html><table><tr><td>x</td></tr></table></html>")
 
 
+_FIXTURE_NOTE = "FY 2026 and FY 2025 is updated as of July 27, 2026."
+
+
+def _fixture_with_note(replacement: str) -> bytes:
+    html = CBP_FIXTURE.read_text()
+    assert _FIXTURE_NOTE in html
+    return html.replace(_FIXTURE_NOTE, replacement).encode("utf-8")
+
+
+def test_cbp_single_fiscal_year_note_parses_and_keeps_fytd_labeling():
+    """The r2 probe: with the note reworded to name a single fiscal year
+    and retrieval after September 30, the old parser treated the note as
+    absent and emitted plain completed-year facts. The single-year wording
+    must parse, and the late retrieval must still label FY2026 as FYTD
+    through the note's endpoint."""
+
+    stats = parse_cbp_trade_stats(
+        _fixture_with_note("FY 2026 is updated as of July 27, 2026.")
+    )
+    assert stats.as_of_date == "2026-07-27"
+    rows = build_cbp_entry_fact_rows(
+        stats,
+        page_sha256="dd" * 32,
+        retrieved_at="2026-10-01T00:00:00+00:00",
+    )
+    assert len(rows) == 4
+    for row in rows:
+        assert row["period"]["type"] == "fiscal_year_to_date"
+        assert row["period"]["as_of"] == "2026-07-27"
+        assert row["period"]["as_of_basis"] == "publisher_as_of_note"
+        assert ".fytd." in row["layout"]["record_set_id"]
+
+
+def test_cbp_unreadable_as_of_wording_fails_closed():
+    """As-of wording the strict pattern cannot read must raise — never be
+    treated as 'no note' with a silent retrieval-date fallback."""
+
+    with pytest.raises(ValueError, match="cannot read"):
+        parse_cbp_trade_stats(
+            _fixture_with_note("FY 2026 data is updated as of the latest revision.")
+        )
+
+
+def test_cbp_displaced_note_fails_closed():
+    """When the entry-summaries table carries no note of its own while
+    as-of wording exists elsewhere on the page (every live page carries
+    other tables' notes, e.g. the Trade Remedy 'All programs updated as
+    of:' footnote), the parser must refuse rather than fall back — and
+    must never adopt the other table's date."""
+
+    html = CBP_FIXTURE.read_text().replace(
+        _FIXTURE_NOTE, "Revenue collection statistics."
+    )
+    html = html.replace(
+        'summary="Trade',
+        'summary="Trade remedy"><tbody><tr><td>All programs updated as of: '
+        "July 05, 2026.</td></tr></tbody></table>",
+    )
+    with pytest.raises(ValueError, match="no as-of note of its own"):
+        parse_cbp_trade_stats(html.encode("utf-8"))
+
+
+def test_cbp_conflicting_window_notes_fail_closed():
+    with pytest.raises(ValueError, match="conflicting as-of dates"):
+        parse_cbp_trade_stats(
+            _fixture_with_note(
+                "FY 2026 and FY 2025 are updated as of July 27, 2026. "
+                "FY 2024 and FY 2023 are updated as of June 01, 2026."
+            )
+        )
+
+
+def test_cbp_no_as_of_wording_anywhere_is_a_genuine_no_note_page():
+    """Only a page with no as-of wording at all may return the empty note
+    that authorizes the retrieval-date fallback."""
+
+    stats = parse_cbp_trade_stats(_fixture_with_note("Revenue collection statistics."))
+    assert stats.as_of_note == ""
+    assert stats.as_of_date == ""
+
+
+def test_cbp_note_without_date_is_refused_by_the_fact_builder():
+    """Defense in depth at the consumer: stats carrying a note but no
+    parsed date can only come from a hand-built object, and the builder
+    refuses the retrieval-date fallback for them too."""
+
+    stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    inconsistent = CbpEntryStats(
+        cells=stats.cells,
+        as_of_note="FY 2026 is updated as of an unknown date",
+        as_of_date="",
+    )
+    with pytest.raises(ValueError, match="without a parsed as-of date"):
+        build_cbp_entry_fact_rows(
+            inconsistent,
+            page_sha256="dd" * 32,
+            retrieved_at="2026-08-05T00:00:00+00:00",
+        )
+
+
 def test_grain_catalog_is_the_documented_set():
     assert IMPORT_ENTRY_FACT_GRAINS == (
         "national",
