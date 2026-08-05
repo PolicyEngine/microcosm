@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import pickle
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -44,6 +45,7 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord, GateResult
+from populace.build.serialization_dtypes import canonicalize_table_string_dtypes
 from populace.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
@@ -814,6 +816,189 @@ def _direction_targets_snapshot(
     return table.loc[mask, present].copy(deep=True)
 
 
+def _canonical_donor_series_payload(
+    series: pd.Series,
+    *,
+    boundary: str,
+) -> tuple[object, ...]:
+    """Return a canonical, byte-aware identity payload for one donor target."""
+
+    column = "__stacked_gap_fill_donor_target__"
+    canonical_table = canonicalize_table_string_dtypes(
+        series.to_frame(name=column),
+        boundary=boundary,
+        table_name=f"donor_target[{series.name!r}]",
+    )
+    canonical = canonical_table[column]
+    canonical.name = series.name
+    values = canonical.to_numpy(copy=False)
+    if (
+        not pd.api.types.is_extension_array_dtype(canonical.dtype)
+        and not values.dtype.hasobject
+    ):
+        encoding = "raw_numpy_c_order"
+        value_payload = np.ascontiguousarray(values).tobytes(order="C")
+    else:
+        encoding = "independent_scalar_pickle_protocol_5"
+        semantic_values = canonical.to_numpy(
+            dtype=object,
+            copy=True,
+        ).tolist()
+        value_payload = _semantic_scalar_sequence_payload(
+            semantic_values,
+            boundary=f"{boundary} values",
+            reject_mixed_object=pd.api.types.is_object_dtype(canonical.dtype),
+        )
+    return (
+        canonical.shape,
+        _index_identity_payload(
+            canonical.index,
+            boundary=f"{boundary} index",
+        ),
+        _semantic_scalar_payload(
+            canonical.name,
+            boundary=f"{boundary} series name",
+        ),
+        (
+            _qualified_type_name(canonical.dtype),
+            pickle.dumps(canonical.dtype, protocol=5),
+        ),
+        encoding,
+        value_payload,
+    )
+
+
+def _qualified_type_name(value: object) -> str:
+    value_type = type(value)
+    return f"{value_type.__module__}.{value_type.__qualname__}"
+
+
+def _semantic_scalar_payload(
+    value: object,
+    *,
+    boundary: str,
+) -> tuple[str, bytes]:
+    """Serialize one supported scalar without a cross-value pickle memo."""
+
+    supported = (
+        value is None
+        or value is pd.NA
+        or value is pd.NaT
+        or isinstance(
+            value,
+            (
+                str,
+                bytes,
+                bool,
+                int,
+                float,
+                complex,
+                np.generic,
+                pd.Timestamp,
+                pd.Timedelta,
+                pd.Period,
+                pd.Interval,
+            ),
+        )
+    )
+    if not supported:
+        raise TypeError(
+            f"{boundary}: donor byte identity found unsupported semantic "
+            f"scalar type {_qualified_type_name(value)!r}."
+        )
+    return (
+        _qualified_type_name(value),
+        pickle.dumps(value, protocol=5),
+    )
+
+
+def _semantic_scalar_is_missing(value: object) -> bool:
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    missing = pd.isna(value)
+    return isinstance(missing, (bool, np.bool_)) and bool(missing)
+
+
+def _semantic_scalar_sequence_payload(
+    values: Sequence[object],
+    *,
+    boundary: str,
+    reject_mixed_object: bool,
+) -> tuple[tuple[str, bytes], ...]:
+    payloads: list[tuple[str, bytes]] = []
+    observed_types: set[str] = set()
+    for position, value in enumerate(values):
+        payload = _semantic_scalar_payload(
+            value,
+            boundary=f"{boundary} position {position}",
+        )
+        payloads.append(payload)
+        if reject_mixed_object and not _semantic_scalar_is_missing(value):
+            observed_types.add(payload[0])
+    if len(observed_types) > 1:
+        raise TypeError(
+            f"{boundary}: donor byte identity found mixed object scalar types "
+            f"{sorted(observed_types)}."
+        )
+    return tuple(payloads)
+
+
+def _index_identity_payload(
+    index: pd.Index,
+    *,
+    boundary: str,
+) -> tuple[object, ...]:
+    """Return exact index authority without list-wide object serialization."""
+
+    names = tuple(
+        _semantic_scalar_payload(
+            name,
+            boundary=f"{boundary} name {position}",
+        )
+        for position, name in enumerate(index.names)
+    )
+    index_type = _qualified_type_name(index)
+    if isinstance(index, pd.MultiIndex):
+        levels = tuple(
+            _index_identity_payload(
+                level,
+                boundary=f"{boundary} level {position}",
+            )
+            for position, level in enumerate(index.levels)
+        )
+        codes = tuple(
+            (
+                code.dtype.str,
+                code.shape,
+                np.ascontiguousarray(code).tobytes(order="C"),
+            )
+            for code in index.codes
+        )
+        return (index_type, names, "multiindex_levels_codes", levels, codes)
+
+    dtype = index.dtype
+    dtype_authority = (
+        _qualified_type_name(dtype),
+        pickle.dumps(dtype, protocol=5),
+    )
+    values = index.to_numpy(copy=False)
+    if not pd.api.types.is_extension_array_dtype(dtype) and not values.dtype.hasobject:
+        encoding = "raw_numpy_c_order"
+        value_payload: object = (
+            values.shape,
+            np.ascontiguousarray(values).tobytes(order="C"),
+        )
+    else:
+        encoding = "independent_scalar_pickle_protocol_5"
+        semantic_values = index.to_numpy(dtype=object, copy=True).tolist()
+        value_payload = _semantic_scalar_sequence_payload(
+            semantic_values,
+            boundary=f"{boundary} values",
+            reject_mixed_object=False,
+        )
+    return (index_type, names, dtype_authority, encoding, value_payload)
+
+
 def _verify_gap_fill_activation_authority(
     frame: Frame,
     *,
@@ -911,11 +1096,22 @@ def _verify_gap_fill_outcome(
                 label = f"{direction.name}/{entity}/{family}/{target}"
                 before = donor_snapshot[entity].get(target)
                 after = donor_after.get(target)
-                if before is None or after is None or not before.equals(after):
+                if (
+                    before is None
+                    or after is None
+                    or _canonical_donor_series_payload(
+                        before,
+                        boundary=f"{label} donor identity before transfer",
+                    )
+                    != _canonical_donor_series_payload(
+                        after,
+                        boundary=f"{label} donor identity after transfer",
+                    )
+                ):
                     failures.append(
-                        f"{label}: donor origin cells changed during the "
-                        "gap-fill transfer; observed donor data must be "
-                        "byte-identical."
+                        f"{label}: donor byte identity failed for origin "
+                        f"{direction.donor_channel!r}; canonical donor payload "
+                        "changed during gap-fill transfer."
                     )
                 null_mask = table[target].isna()
                 residual_nulls = int((null_mask & recipient_rows).sum())

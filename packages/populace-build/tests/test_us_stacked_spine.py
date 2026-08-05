@@ -19,6 +19,7 @@ from pandas.testing import assert_frame_equal
 
 import populace.build.us_runtime.puf_support as puf_support_module
 import populace.build.us_runtime.stacked_spine as stacked_spine_module
+from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -950,6 +951,133 @@ def test_gap_fill_outcome_rejects_forged_residual_receipt(
     assert (
         "activation accounting equation failed: authorized_null_rows=11 "
         "!= imputed_rows=11 + unmodeled_rows=1" in str(error.value)
+    )
+
+
+def test_gap_fill_rejects_signed_zero_donor_byte_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Donor identity distinguishes equal-valued IEEE-754 signed zeros."""
+
+    stacked = _stacked_gap_fixture()
+    person = stacked.table("person")
+    channel_column = support_channel_column("person")
+    donor_rows = person[channel_column].astype(str).eq("asec")
+    donor_index = person.index[
+        donor_rows & person["unemployment_compensation"].eq(0.0)
+    ][0]
+    person.loc[donor_index, "unemployment_compensation"] = -0.0
+    assert np.signbit(person.loc[donor_index, "unemployment_compensation"])
+
+    transfer = stacked_spine_module.transfer_acs_inputs
+
+    def flip_donor_signed_zero(*args: object, **kwargs: object) -> object:
+        result = transfer(*args, **kwargs)
+        result_person = result.frame.table("person").copy(deep=True)
+        assert np.signbit(result_person.loc[donor_index, "unemployment_compensation"])
+        result_person.loc[donor_index, "unemployment_compensation"] = 0.0
+        tables = {
+            entity: result.frame.table(entity) for entity in result.frame.entities
+        }
+        tables["person"] = result_person
+        changed = Frame(
+            tables,
+            result.frame.schema,
+            {
+                entity: result.frame.weights_for(entity)
+                for entity in result.frame.weighted_entities
+            },
+            result.frame.strata,
+            mass_log=result.frame.mass_log,
+            metadata=result.frame.metadata,
+        )
+        return replace(result, frame=changed)
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "transfer_acs_inputs",
+        flip_donor_signed_zero,
+    )
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"asec_survey_to_acs/person/model_required_numeric/"
+            r"unemployment_compensation: donor byte identity failed.*"
+            r"canonical donor payload changed"
+        ),
+    ):
+        gap_fill_stacked_spine(
+            stacked,
+            plan=(_GAP_FILL_TEST_PLAN[0],),
+            seed=578,
+            n_estimators=10,
+        )
+
+
+def test_donor_byte_identity_canonicalizes_semantic_strings() -> None:
+    index = pd.Index([7, 3], name="donor_row")
+    object_strings = pd.Series(
+        ["RENTED", None],
+        index=index,
+        name="tenure_type",
+        dtype=object,
+    )
+    canonical_strings = object_strings.astype(CANONICAL_STRING_DTYPE)
+
+    assert stacked_spine_module._canonical_donor_series_payload(
+        object_strings,
+        boundary="object-string donor identity",
+    ) == stacked_spine_module._canonical_donor_series_payload(
+        canonical_strings,
+        boundary="canonical-string donor identity",
+    )
+
+    unchanged_controls = (
+        pd.Series([True, False], name="native_bool", dtype=bool),
+        pd.Series([True, pd.NA], name="nullable_bool", dtype="boolean"),
+        pd.Series(
+            pd.Categorical(["a", None], categories=["a", "b"]),
+            name="native_category",
+        ),
+        pd.Series([None, np.nan], name="all_null_object", dtype=object),
+    )
+    for control in unchanged_controls:
+        assert stacked_spine_module._canonical_donor_series_payload(
+            control,
+            boundary=f"{control.name} donor identity before",
+        ) == stacked_spine_module._canonical_donor_series_payload(
+            control.copy(deep=True),
+            boundary=f"{control.name} donor identity after",
+        )
+
+    mixed = pd.Series(
+        ["RENTED", 1],
+        name="mixed_tenure_type",
+        dtype=object,
+    )
+    with pytest.raises(TypeError, match="semantic strings cannot mix"):
+        stacked_spine_module._canonical_donor_series_payload(
+            mixed,
+            boundary="mixed-object donor identity",
+        )
+
+
+def test_donor_byte_identity_ignores_string_object_alias_topology() -> None:
+    shared = "".join(["dynamically", "-", "allocated", "-", "donor"])
+    separate = [
+        "".join(["dynamically", "-", "allocated", "-", "donor"]) for _ in range(2)
+    ]
+    before = pd.Series([shared, shared], name="native_label", dtype=object)
+    after = pd.Series(separate, name="native_label", dtype=object)
+    assert before.iloc[0] is before.iloc[1]
+    assert after.iloc[0] is not after.iloc[1]
+
+    assert stacked_spine_module._canonical_donor_series_payload(
+        before,
+        boundary="aliased-string donor identity before",
+    ) == stacked_spine_module._canonical_donor_series_payload(
+        after,
+        boundary="aliased-string donor identity after",
     )
 
 
