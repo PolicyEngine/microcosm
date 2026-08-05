@@ -444,6 +444,42 @@ def test_non_finite_weight_emits_strict_json_without_exact_total(
     assert "NaN" not in captured.out
 
 
+@pytest.mark.parametrize(
+    ("column_label", "reported_label"),
+    [
+        (float("inf"), "inf"),
+        (pd.Timestamp("2023-01-01"), "2023-01-01 00:00:00"),
+    ],
+)
+def test_non_json_column_collision_labels_are_sanitized_in_strict_report(
+    column_label: object,
+    reported_label: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    path = tmp_path / "non-json-column-label.h5"
+    json_out = tmp_path / "strict-collision-report.json"
+    tables = _clean_tables()
+    tables["person"][column_label] = [1, 1, 1, 1]
+    tables["benunit"][column_label] = [1, 1]
+    with pytest.warns(pd.errors.PerformanceWarning):
+        _write_artifact(path, tables)
+
+    exit_code = PREFLIGHT.main([str(path), "--json-out", str(json_out)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    artifact = _strict_json_loads(captured.out)["artifacts"][0]
+    assert artifact["column_collisions"] == [reported_label]
+    assert artifact["frame_constructed"] is False
+    assert artifact["frame_construction_failure_reason"] == (
+        "Frame rejects column names duplicated across entity tables."
+    )
+    _strict_json_loads(json_out.read_text())
+
+
 def test_split_benunit_fails_preflight_even_when_frame_constructs(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

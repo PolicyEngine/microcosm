@@ -213,7 +213,11 @@ def column_collisions(
     for table in tables:
         for column in table.columns:
             seen[column] = seen.get(column, 0) + 1
-    return sorted(name for name, uses in seen.items() if uses > 1)
+    # Fixed-format H5 can preserve non-string labels (including NaN/inf or
+    # Timestamp objects). They are schema, not unit data, but returning them
+    # raw can violate strict JSON. Stringify only after determining identity,
+    # so distinct labels are not collapsed during classification.
+    return sorted(str(name) for name, uses in seen.items() if uses > 1)
 
 
 def reserved_weight_column_collisions(
