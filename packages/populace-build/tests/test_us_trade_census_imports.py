@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from populace.build.us_trade.census_country_bridge import (
+from populace.build.us_runtime.us_trade.census_country_bridge import (
     BRIDGE_SHA256,
     load_census_country_bridge,
 )
-from populace.build.us_trade.census_imports import (
+from populace.build.us_runtime.us_trade.census_imports import (
     CensusImportsMonth,
     _elide_key,
     _reconcile_against_census_totals,

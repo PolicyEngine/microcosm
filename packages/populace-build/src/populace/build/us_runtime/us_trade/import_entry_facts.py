@@ -39,12 +39,12 @@ from typing import Any
 
 import pandas as pd
 
-from populace.build.us_trade.cbp_entry_stats import (
+from populace.build.us_runtime.us_trade.cbp_entry_stats import (
     CBP_TRADE_STATS_URL,
     CbpEntryStats,
 )
-from populace.build.us_trade.census_imports import CENSUS_IMPORTS_HS_ENDPOINT
-from populace.build.us_trade.imdb_bulk import IMDB_URL_TEMPLATE
+from populace.build.us_runtime.us_trade.census_imports import CENSUS_IMPORTS_HS_ENDPOINT
+from populace.build.us_runtime.us_trade.imdb_bulk import IMDB_URL_TEMPLATE
 
 __all__ = [
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
@@ -747,7 +747,7 @@ def default_generator_block(
     """Manifest ``generator`` block naming the populace producer."""
     moment = now or datetime.now(UTC)
     return {
-        "producer": "populace.build.us_trade",
+        "producer": "populace.build.us_runtime.us_trade",
         "issue": "PolicyEngine/populace#615",
         "created_at": moment.isoformat(timespec="seconds"),
         "months": list(months),

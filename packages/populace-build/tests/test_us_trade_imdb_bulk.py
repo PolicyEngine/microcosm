@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
-from populace.build.us_trade.census_country_bridge import load_census_country_bridge
-from populace.build.us_trade.imdb_bulk import (
+from populace.build.us_runtime.us_trade.census_country_bridge import load_census_country_bridge
+from populace.build.us_runtime.us_trade.imdb_bulk import (
     assemble_bulk_margins,
     ensure_imdb_archive,
     imdb_archive_name,
@@ -22,7 +22,7 @@ from populace.build.us_trade.imdb_bulk import (
     load_imdb_month,
     summarize_imdb_month,
 )
-from populace.build.us_trade.import_entry_facts import (
+from populace.build.us_runtime.us_trade.import_entry_facts import (
     IMDB_BULK_SOURCE_LEG,
     build_district_entry_fact_rows,
     build_import_entry_fact_rows,
@@ -661,7 +661,7 @@ def test_ensure_archive_downloads_verifies_and_adopts(tmp_path):
 
 
 def test_ensure_archive_rejects_junk_downloads(tmp_path, monkeypatch):
-    import populace.build.us_trade.imdb_bulk as module
+    import populace.build.us_runtime.us_trade.imdb_bulk as module
 
     monkeypatch.setattr(module, "_DOWNLOAD_BACKOFF_SECONDS", 0.0)
     with pytest.raises(RuntimeError, match="Could not download a valid IMDB"):
@@ -930,7 +930,7 @@ def test_shifted_detail_colspecs_fail_reconciliation(tmp_path, monkeypatch):
     direction changes at least one parsed value while the control files
     (parsed with correct positions) keep the published totals.
     """
-    import populace.build.us_trade.imdb_bulk as module
+    import populace.build.us_runtime.us_trade.imdb_bulk as module
 
     for delta in (-1, 1):
         shifted = tuple(

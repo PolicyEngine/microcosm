@@ -9,31 +9,31 @@ margins is explicit, documented, and labeled synthetic.
 
 Modules:
 
-- :mod:`populace.build.us_trade.imdb_bulk` — the primary ingest: Census
+- :mod:`populace.build.us_runtime.us_trade.imdb_bulk` — the primary ingest: Census
   monthly bulk IMDB archives (full HTS-10 × country × district × rate-
   provision detail with transport splits), parsed per the archives' own
   record layouts and reconciled exactly against their control totals.
-- :mod:`populace.build.us_trade.census_imports` — Census International Trade
+- :mod:`populace.build.us_runtime.us_trade.census_imports` — Census International Trade
   API ingest, retained as the independent cross-check leg: the same margin
   series fetched over a second official channel.
-- :mod:`populace.build.us_trade.census_country_bridge` — the vendored Census
+- :mod:`populace.build.us_runtime.us_trade.census_country_bridge` — the vendored Census
   Schedule C → ISO-2 bridge (fail-closed).
-- :mod:`populace.build.us_trade.cbp_entry_stats` — CBP fiscal-year entry
+- :mod:`populace.build.us_runtime.us_trade.cbp_entry_stats` — CBP fiscal-year entry
   summary counts from the archived public statistics page.
-- :mod:`populace.build.us_trade.import_entry_facts` — ledger
+- :mod:`populace.build.us_runtime.us_trade.import_entry_facts` — ledger
   consumer-artifact emission for the margin series.
 """
 
-from populace.build.us_trade.cbp_entry_stats import (
+from populace.build.us_runtime.us_trade.cbp_entry_stats import (
     CBP_TRADE_STATS_URL,
     CbpEntryStats,
     parse_cbp_trade_stats,
 )
-from populace.build.us_trade.census_country_bridge import (
+from populace.build.us_runtime.us_trade.census_country_bridge import (
     CensusCountryBridge,
     load_census_country_bridge,
 )
-from populace.build.us_trade.census_imports import (
+from populace.build.us_runtime.us_trade.census_imports import (
     CENSUS_IMPORTS_HS_ENDPOINT,
     CensusImportsMonth,
     CensusImportsPull,
@@ -43,7 +43,7 @@ from populace.build.us_trade.census_imports import (
     month_range,
     parse_imports_response,
 )
-from populace.build.us_trade.imdb_bulk import (
+from populace.build.us_runtime.us_trade.imdb_bulk import (
     IMDB_URL_TEMPLATE,
     ImdbBulkAssembly,
     ImdbMonth,
@@ -56,7 +56,7 @@ from populace.build.us_trade.imdb_bulk import (
     load_imdb_month,
     summarize_imdb_month,
 )
-from populace.build.us_trade.import_entry_facts import (
+from populace.build.us_runtime.us_trade.import_entry_facts import (
     IMDB_BULK_SOURCE_LEG,
     IMPORT_ENTRY_FACT_GRAINS,
     FactSourceLeg,

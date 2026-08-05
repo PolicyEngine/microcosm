@@ -13,7 +13,7 @@ containerized transport splits — plus the publisher's own control-total
 files (``imp_CTY.txt`` by country, ``IMP_COMM.txt`` by commodity,
 ``IMP_DE.txt`` by district of entry) and the record layouts under
 ``Documentation/*.lay``. Eighteen GETs replace thousands of per-chapter
-API queries; the API ingest (:mod:`populace.build.us_trade.census_imports`)
+API queries; the API ingest (:mod:`populace.build.us_runtime.us_trade.census_imports`)
 remains as an independent cross-check leg only.
 
 Field positions below are transcribed from the archives' own
@@ -61,7 +61,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from populace.build.us_trade.census_country_bridge import CensusCountryBridge
+from populace.build.us_runtime.us_trade.census_country_bridge import CensusCountryBridge
 
 __all__ = [
     "IMDB_URL_TEMPLATE",

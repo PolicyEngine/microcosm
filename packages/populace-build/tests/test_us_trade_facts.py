@@ -12,8 +12,8 @@ from populace.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
 )
-from populace.build.us_trade.cbp_entry_stats import parse_cbp_trade_stats
-from populace.build.us_trade.import_entry_facts import (
+from populace.build.us_runtime.us_trade.cbp_entry_stats import parse_cbp_trade_stats
+from populace.build.us_runtime.us_trade.import_entry_facts import (
     IMPORT_ENTRY_FACT_GRAINS,
     build_cbp_entry_fact_rows,
     build_import_entry_fact_rows,
@@ -229,7 +229,7 @@ def test_artifact_round_trips_through_the_populace_loader(tmp_path):
     assert artifact.fact_row_count == len(rows)
     provenance = artifact.provenance()
     assert provenance["schema_version"] == ("policyengine_ledger.consumer_artifact.v1")
-    assert artifact.manifest["generator"]["producer"] == "populace.build.us_trade"
+    assert artifact.manifest["generator"]["producer"] == "populace.build.us_runtime.us_trade"
     assert artifact.manifest["source_manifest"]["set_digest"]
 
     with pytest.raises(ValueError, match="empty consumer artifact"):
@@ -358,7 +358,7 @@ def test_cbp_semantic_keys_are_fiscal_year_invariant():
     )
     # Semantic identity must survive the fiscal year rolling over: rebuild
     # the identity with a different record set year and compare.
-    from populace.build.us_trade.import_entry_facts import (
+    from populace.build.us_runtime.us_trade.import_entry_facts import (
         _period_invariant_record_set,
     )
 
@@ -390,7 +390,7 @@ def test_cbp_and_district_facts_compile_into_ledger_targets(tmp_path):
             }
         ]
     )
-    from populace.build.us_trade.import_entry_facts import (
+    from populace.build.us_runtime.us_trade.import_entry_facts import (
         build_district_entry_fact_rows,
     )
 

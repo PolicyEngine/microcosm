@@ -47,7 +47,7 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
 )
 
-from populace.build.us_trade import fetch_imports_month  # noqa: E402
+from populace.build.us_runtime.us_trade import fetch_imports_month  # noqa: E402
 
 #: Stratified default sample: (month, chapters). Giants 84/85/87 exercise
 #: the prefix-split path; 01/02/41 are small; 30/61/90/94/98 mid-size; both

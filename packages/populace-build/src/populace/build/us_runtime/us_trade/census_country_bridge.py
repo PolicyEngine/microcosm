@@ -74,7 +74,9 @@ class CensusCountryBridge:
 
 def load_census_country_bridge() -> CensusCountryBridge:
     """Load and hash-verify the vendored Schedule C → ISO-2 bridge."""
-    resource = files("populace.build.us_trade").joinpath(BRIDGE_RESOURCE_NAME)
+    resource = files("populace.build.us_runtime.us_trade").joinpath(
+        BRIDGE_RESOURCE_NAME
+    )
     raw = resource.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     if digest != BRIDGE_SHA256:

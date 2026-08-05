@@ -58,7 +58,7 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
 )
 
-from populace.build.us_trade import (  # noqa: E402
+from populace.build.us_runtime.us_trade import (  # noqa: E402
     CBP_TRADE_STATS_URL,
     build_cbp_entry_fact_rows,
     build_district_entry_fact_rows,
@@ -73,7 +73,7 @@ from populace.build.us_trade import (  # noqa: E402
     summarize_imdb_month,
     write_consumer_artifact,
 )
-from populace.build.us_trade.imdb_bulk import assemble_bulk_margins  # noqa: E402
+from populace.build.us_runtime.us_trade.imdb_bulk import assemble_bulk_margins  # noqa: E402
 
 
 def main() -> int:

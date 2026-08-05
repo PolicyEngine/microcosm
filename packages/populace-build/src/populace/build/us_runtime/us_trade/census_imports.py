@@ -34,7 +34,7 @@ The API key is never written into manifests or recorded URLs.
 
 This module owns retrieval, parsing, and margin-table assembly only; fact
 emission for the ledger consumer contract lives in
-:mod:`populace.build.us_trade.import_entry_facts`.
+:mod:`populace.build.us_runtime.us_trade.import_entry_facts`.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from populace.build.us_trade.census_country_bridge import CensusCountryBridge
+from populace.build.us_runtime.us_trade.census_country_bridge import CensusCountryBridge
 
 __all__ = [
     "CENSUS_IMPORTS_HS_ENDPOINT",
