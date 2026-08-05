@@ -37,11 +37,27 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
+from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.acs_transfer import (
+    DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    AcsTransferResult,
+    AcsTransferTargetBank,
+    TargetFamilies,
+    declared_acs_transfer_target_families,
+    transfer_acs_inputs,
+)
+from populace.build.us_runtime.puf_support import (
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    clone_us_frame_for_puf_support,
+    impute_us_puf_tax_detail_support,
+    validate_puf_clone_attachment,
+)
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -57,9 +73,15 @@ __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "STACKED_SPINE_MANIFEST_KEY",
+    "GapFillDirection",
+    "GapFillResult",
+    "StackedPufPassResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
+    "gap_fill_stacked_spine",
+    "run_stacked_puf_pass",
     "sample_acs_households",
+    "stacked_gap_fill_plan",
     "validate_stacked_spine_frame",
 ]
 
@@ -482,3 +504,484 @@ def _json_ready(value: object) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise TypeError("Stacked spine receipts must be mappings.")
     return {str(key): thaw(item) for key, item in value.items()}
+
+
+# ---------------------------------------------------------------------------
+# Cross-origin gap-fill (charter item 2)
+# ---------------------------------------------------------------------------
+
+_GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
+_GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
+_GAP_FILL_HOUSING_FAMILY = "housing"
+
+
+@dataclass(frozen=True)
+class GapFillDirection:
+    """One declared cross-origin fill: recipient origin <- donor origin.
+
+    Activation authority is declared here, not inferred from nullness: the
+    named recipient channel's rows are the only rows the direction may fill,
+    and the named donor channel's native rows are the only donor evidence.
+    The transfer machinery itself stays spine-blind; this owner-level
+    declaration is what makes the run-7 silent-skip class impossible — a
+    direction either fills its declared families on its declared rows or
+    fails by name.
+    """
+
+    name: str
+    recipient_channel: str
+    donor_channel: str
+    target_families: TargetFamilies
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("name", self.name),
+            ("recipient_channel", self.recipient_channel),
+            ("donor_channel", self.donor_channel),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"GapFillDirection.{label} must be a non-empty string."
+                )
+        if self.recipient_channel == self.donor_channel:
+            raise ValueError(
+                "GapFillDirection must fill across origins; recipient and "
+                f"donor are both {self.donor_channel!r}."
+            )
+        if not isinstance(self.target_families, Mapping) or not any(
+            families for families in self.target_families.values()
+        ):
+            raise ValueError(
+                f"GapFillDirection {self.name!r} declares no target families."
+            )
+
+
+@dataclass(frozen=True)
+class GapFillResult:
+    """The gap-filled stacked spine plus per-direction receipts."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+    transfer_results: Mapping[str, AcsTransferResult] = field(default_factory=dict)
+
+
+def stacked_gap_fill_plan(
+    target_families: TargetFamilies | None = None,
+) -> tuple[GapFillDirection, ...]:
+    """Return the declared two-direction gap-fill plan for the stacked spine.
+
+    ACS-origin rows receive every declared ASEC-survey transfer family except
+    housing; ASEC-origin rows receive the ACS-native housing family.  The
+    declaration reuses the reviewed ACS-transfer family registry unchanged so
+    the gap-fill, the completeness gate, and the by-origin battery all consume
+    one plan.
+    """
+
+    families = (
+        declared_acs_transfer_target_families()
+        if target_families is None
+        else target_families
+    )
+    survey_families: dict[str, dict[str, tuple[str, ...]]] = {}
+    housing_families: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, entity_families in families.items():
+        for family, targets in entity_families.items():
+            bucket = (
+                housing_families
+                if family == _GAP_FILL_HOUSING_FAMILY
+                else survey_families
+            )
+            bucket.setdefault(entity, {})[family] = tuple(targets)
+    directions: list[GapFillDirection] = []
+    if survey_families:
+        directions.append(
+            GapFillDirection(
+                name=_GAP_FILL_ASEC_TO_ACS,
+                recipient_channel=ACS_STACKED_SUPPORT_CHANNEL,
+                donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
+                target_families=survey_families,
+            )
+        )
+    if housing_families:
+        directions.append(
+            GapFillDirection(
+                name=_GAP_FILL_ACS_TO_ASEC,
+                recipient_channel=BASE_ASEC_SUPPORT_CHANNEL,
+                donor_channel=ACS_STACKED_SUPPORT_CHANNEL,
+                target_families=housing_families,
+            )
+        )
+    return tuple(directions)
+
+
+def gap_fill_stacked_spine(
+    frame: Frame,
+    *,
+    plan: Sequence[GapFillDirection] | None = None,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_banks: Mapping[str, AcsTransferTargetBank] | None = None,
+) -> GapFillResult:
+    """Gap-fill survey-specific fields cross-origin on the stacked spine.
+
+    Runs before any clone operator: every row still carries clone index zero,
+    so filled values are cloned into the PUF arm afterwards and the single
+    PUF pass conditions on observed predictors for every origin.
+
+    Per direction, in order:
+
+    1. **Activation authority** — declared, then verified: every target
+       column must exist, the donor origin's rows must observe it completely,
+       and every null cell must lie on the declared recipient origin.  A
+       null anywhere else is a named terminal failure, so absence can never
+       silently reroute or skip a family (populace#578 audit item 2).
+    2. **Authoritative donors** — the donor frame passed to the spine-blind
+       transfer is this owner's projection of the donor origin's native rows
+       (audit item 3); ``donor_channel=None`` marks the deliberate
+       whole-donor fit of that projection.
+    3. **Banked transfer** — the reviewed #608 target-at-a-time banking
+       machinery is reused unchanged via ``target_banks[direction.name]``.
+    4. **Post-verification** — donor-origin cells must be byte-identical
+       before and after, and no null may remain on authorized rows beyond
+       the transfer's receipted unmodeled rows.
+
+    Returns a :class:`GapFillResult` whose receipt records, per direction and
+    target, the authorized-null, imputed, unmodeled, and residual-null
+    counts alongside the transfer's fit provenance.
+    """
+
+    validate_stacked_spine_frame(frame, boundary="stacked gap-fill entry")
+    directions = tuple(stacked_gap_fill_plan() if plan is None else plan)
+    if not directions:
+        raise ValueError("Stacked gap-fill requires at least one direction.")
+    names = [direction.name for direction in directions]
+    if len(set(names)) != len(names):
+        raise ValueError(f"Stacked gap-fill directions repeat names: {names}.")
+    if target_banks is not None:
+        unknown_banks = sorted(set(target_banks) - set(names))
+        if unknown_banks:
+            raise ValueError(
+                f"target_banks name unknown gap-fill direction(s): {unknown_banks}."
+            )
+
+    person_clone = frame.table("person")[support_clone_index_column("person")]
+    if not person_clone.eq(0).all():
+        raise ValueError(
+            "Stacked gap-fill must run before clone operators; found nonzero "
+            "person support clone indices."
+        )
+
+    current = frame
+    receipts: dict[str, object] = {}
+    transfer_results: dict[str, AcsTransferResult] = {}
+    for direction in directions:
+        pre_counts = _verify_gap_fill_activation_authority(
+            current,
+            direction=direction,
+        )
+        donor = _origin_projection(current, channel=direction.donor_channel)
+        donor_snapshot = {
+            entity: _direction_targets_snapshot(
+                current,
+                entity=entity,
+                targets=targets,
+                channel=direction.donor_channel,
+            )
+            for entity, targets in _direction_entity_targets(direction).items()
+        }
+        result = transfer_acs_inputs(
+            current,
+            donor,
+            target_families=direction.target_families,
+            donor_channel=None,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+            target_bank=(target_banks or {}).get(direction.name),
+        )
+        transfer_results[direction.name] = result
+        current = result.frame
+        receipts[direction.name] = _verify_gap_fill_outcome(
+            current,
+            direction=direction,
+            pre_counts=pre_counts,
+            donor_snapshot=donor_snapshot,
+            result=result,
+        )
+
+    validate_stacked_spine_frame(current, boundary="stacked gap-fill output")
+    return GapFillResult(
+        frame=current,
+        receipt={"directions": receipts},
+        transfer_results=transfer_results,
+    )
+
+
+def _direction_entity_targets(
+    direction: GapFillDirection,
+) -> dict[str, tuple[str, ...]]:
+    result: dict[str, tuple[str, ...]] = {}
+    for entity, families in direction.target_families.items():
+        collected: list[str] = []
+        for targets in families.values():
+            collected.extend(targets)
+        result[entity] = tuple(collected)
+    return result
+
+
+def _origin_projection(frame: Frame, *, channel: str) -> Frame:
+    """Project one origin's native lineages as a standalone donor frame."""
+
+    person = frame.table("person")
+    mask = (
+        person[support_channel_column("person")].astype(str).eq(channel)
+        & person[support_clone_index_column("person")].eq(0)
+    ).to_numpy()
+    if not mask.any():
+        raise ValueError(
+            f"Stacked spine has no native person rows for origin {channel!r}."
+        )
+    return frame.select(mask)
+
+
+def _direction_targets_snapshot(
+    frame: Frame,
+    *,
+    entity: str,
+    targets: Sequence[str],
+    channel: str,
+) -> pd.DataFrame:
+    table = frame.table(entity)
+    mask = table[support_channel_column(entity)].astype(str).eq(channel)
+    present = [target for target in targets if target in table.columns]
+    return table.loc[mask, present].copy(deep=True)
+
+
+def _verify_gap_fill_activation_authority(
+    frame: Frame,
+    *,
+    direction: GapFillDirection,
+) -> dict[tuple[str, str], dict[str, int]]:
+    """Verify declared activation authority before any modeling runs."""
+
+    failures: list[str] = []
+    counts: dict[tuple[str, str], dict[str, int]] = {}
+    for entity, families in direction.target_families.items():
+        table = frame.table(entity)
+        channel = table[support_channel_column(entity)].astype(str)
+        recipient_rows = channel.eq(direction.recipient_channel)
+        donor_rows = channel.eq(direction.donor_channel)
+        for family, targets in families.items():
+            for target in targets:
+                label = f"{direction.name}/{entity}/{family}/{target}"
+                if target not in table.columns:
+                    failures.append(
+                        f"{label}: declared gap-fill target column is absent "
+                        "from the stacked spine."
+                    )
+                    continue
+                null_mask = table[target].isna()
+                donor_nulls = int((null_mask & donor_rows).sum())
+                unauthorized_nulls = int(
+                    (null_mask & ~recipient_rows & ~donor_rows).sum()
+                )
+                if donor_nulls:
+                    failures.append(
+                        f"{label}: donor origin {direction.donor_channel!r} "
+                        f"has {donor_nulls} null cell(s); donors must observe "
+                        "every declared target."
+                    )
+                if unauthorized_nulls:
+                    failures.append(
+                        f"{label}: {unauthorized_nulls} null cell(s) lie "
+                        "outside the declared recipient origin "
+                        f"{direction.recipient_channel!r}."
+                    )
+                counts[(entity, target)] = {
+                    "authorized_null_rows": int((null_mask & recipient_rows).sum()),
+                    "recipient_rows": int(recipient_rows.sum()),
+                    "donor_rows": int(donor_rows.sum()),
+                }
+    if failures:
+        raise ValueError(
+            "Stacked gap-fill activation authority failed:\n  " + "\n  ".join(failures)
+        )
+    return counts
+
+
+def _verify_gap_fill_outcome(
+    frame: Frame,
+    *,
+    direction: GapFillDirection,
+    pre_counts: Mapping[tuple[str, str], Mapping[str, int]],
+    donor_snapshot: Mapping[str, pd.DataFrame],
+    result: AcsTransferResult,
+) -> dict[str, object]:
+    """Verify donor invariance and residual nulls; build the direction receipt."""
+
+    failures: list[str] = []
+    imputed_by_target = {
+        (record.entity, record.column): record for record in result.imputed_inputs
+    }
+    target_receipts: dict[str, dict[str, object]] = {}
+    for entity, families in direction.target_families.items():
+        table = frame.table(entity)
+        channel = table[support_channel_column(entity)].astype(str)
+        recipient_rows = channel.eq(direction.recipient_channel)
+        donor_after = {
+            entity_name: _direction_targets_snapshot(
+                frame,
+                entity=entity_name,
+                targets=targets,
+                channel=direction.donor_channel,
+            )
+            for entity_name, targets in _direction_entity_targets(direction).items()
+        }[entity]
+        for family, targets in families.items():
+            for target in targets:
+                label = f"{direction.name}/{entity}/{family}/{target}"
+                before = donor_snapshot[entity].get(target)
+                after = donor_after.get(target)
+                if before is None or after is None or not before.equals(after):
+                    failures.append(
+                        f"{label}: donor origin cells changed during the "
+                        "gap-fill transfer; observed donor data must be "
+                        "byte-identical."
+                    )
+                null_mask = table[target].isna()
+                residual_nulls = int((null_mask & recipient_rows).sum())
+                outside_nulls = int((null_mask & ~recipient_rows).sum())
+                if outside_nulls:
+                    failures.append(
+                        f"{label}: {outside_nulls} null cell(s) appeared "
+                        "outside the declared recipient origin during the "
+                        "transfer."
+                    )
+                record = imputed_by_target.get((entity, target))
+                unmodeled = record.unmodeled_recipient_rows if record else 0
+                if residual_nulls > unmodeled:
+                    failures.append(
+                        f"{label}: {residual_nulls} recipient null cell(s) "
+                        "remain but the transfer only receipted "
+                        f"{unmodeled} unmodeled row(s)."
+                    )
+                pre = pre_counts[(entity, target)]
+                target_receipts[f"{entity}/{family}/{target}"] = {
+                    "authorized_null_rows": pre["authorized_null_rows"],
+                    "imputed_rows": record.imputed_recipient_rows if record else 0,
+                    "unmodeled_rows": unmodeled,
+                    "residual_null_rows": residual_nulls,
+                }
+    if failures:
+        raise ValueError(
+            "Stacked gap-fill outcome verification failed:\n  " + "\n  ".join(failures)
+        )
+    return {
+        "recipient_channel": direction.recipient_channel,
+        "donor_channel": direction.donor_channel,
+        "donor_selection": "owner_projection_of_native_donor_rows",
+        "resolved_donor_channel": result.resolved_donor_channel,
+        "targets": target_receipts,
+        "deferred_inputs": list(result.deferred_inputs),
+        "fit_records": [
+            {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+            for record in result.fit_records
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# The single PUF pass over the stacked spine (charter item 3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StackedPufPassResult:
+    """The post-PUF stacked frame plus attachment and fit receipts."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+
+
+def run_stacked_puf_pass(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    predictors: Sequence[str] | None = None,
+    person_outputs: Sequence[str] | None = None,
+    tax_unit_outputs: Sequence[str] | None = None,
+    seed: int = 0,
+    n_estimators: int = 100,
+    fit_records: list[FitWeightRecord] | None = None,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
+) -> StackedPufPassResult:
+    """Run the one PUF pass over the gap-filled stacked spine.
+
+    Order is the charter's: the spine must already be gap-filled (this entry
+    validates the stacked manifest and refuses cloned input), the PUF clone
+    arm attaches to a seeded whole-household sample of stacked households
+    (both origins; reusing the reviewed clone-routing discipline), and the
+    primary QRF then runs under both stacked doctrines — recipient predictors
+    must be complete (no zero-filled absence) and finalization preserves
+    nulls on every cell the pass does not own.
+    """
+
+    validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
+    person_clone = frame.table("person")[support_clone_index_column("person")]
+    if not person_clone.eq(0).all():
+        raise ValueError(
+            "The stacked PUF pass owns clone attachment; found nonzero person "
+            "support clone indices on its input."
+        )
+    cloned = clone_us_frame_for_puf_support(
+        frame,
+        clone_attachment_fraction=clone_attachment_fraction,
+        clone_attachment_seed=clone_attachment_seed,
+    )
+    attachment = validate_puf_clone_attachment(
+        cloned,
+        boundary="stacked PUF pass clone attachment",
+    )
+
+    kwargs: dict[str, object] = {}
+    if predictors is not None:
+        kwargs["predictors"] = tuple(predictors)
+    if person_outputs is not None:
+        kwargs["person_outputs"] = tuple(person_outputs)
+    if tax_unit_outputs is not None:
+        kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
+    imputed = impute_us_puf_tax_detail_support(
+        cloned,
+        donor_tax_units,
+        seed=seed,
+        n_estimators=n_estimators,
+        fit_records=fit_records,
+        tail_bound_diagnostics=tail_bound_diagnostics,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        **kwargs,
+    )
+    validate_stacked_spine_frame(imputed, boundary="stacked PUF pass output")
+    validate_puf_clone_attachment(imputed, boundary="stacked PUF pass output")
+
+    person = imputed.table("person")
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = person[support_clone_index_column("person")]
+    recipients_by_origin = {
+        origin: int((channel.eq(origin) & clone_index.eq(1)).sum())
+        for origin in sorted(channel.unique())
+    }
+    return StackedPufPassResult(
+        frame=imputed,
+        receipt={
+            "clone_attachment": _json_ready(attachment),
+            "doctrines": {
+                "require_complete_recipient_predictors": True,
+                "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            },
+            "recipient_person_rows_by_origin": recipients_by_origin,
+        },
+    )

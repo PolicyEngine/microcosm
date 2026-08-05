@@ -14,12 +14,28 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
+from populace.build.us_runtime.acs_transfer import (
+    declared_acs_transfer_target_families,
+)
+from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
+from populace.build.us_runtime.puf_support import (
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
+    clone_us_frame_for_puf_support,
+    finalize_us_puf_tax_detail_predictions,
+    prepare_us_puf_tax_detail_chain_inputs,
+    validate_puf_clone_attachment,
+)
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.stacked_spine import (
     DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES,
     STACKED_SPINE_MANIFEST_KEY,
+    GapFillDirection,
     assemble_stacked_spine,
+    gap_fill_stacked_spine,
+    run_stacked_puf_pass,
     sample_acs_households,
+    stacked_gap_fill_plan,
     validate_stacked_spine_frame,
 )
 from populace.build.us_runtime.support_provenance import (
@@ -391,3 +407,687 @@ def test_selection_digest_uses_raw_spine_ids_under_collision_remap() -> None:
         result.frame,
         boundary="collision fixture",
     )
+
+
+def _asec_detail_source() -> Frame:
+    """ASEC arm with observed tax-detail sentinels and PUF-pass predictors."""
+
+    frame = _source_frame(
+        household_ids=[11, 12],
+        persons_per_household={11: 2},
+        weights=[300.0, 100.0],
+        stratum="asec_2024",
+    )
+    person = frame.table("person").copy()
+    person["employment_income_before_lsr"] = np.asarray([50_000.0, 20_000.0, 35_000.0])
+    person["taxable_interest_income"] = np.asarray([100.0, 0.0, 200.0])
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+def _cloned_stacked_fixture() -> Frame:
+    stacked = assemble_stacked_spine(
+        _asec_detail_source(),
+        _acs_source(),
+        acs_sample_fraction=1.0,
+        acs_sample_seed=0,
+    ).frame
+    return clone_us_frame_for_puf_support(stacked)
+
+
+def _finalize_fixture_predictions(
+    cloned: Frame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    tax_unit = cloned.table("tax_unit")
+    puf_mask = tax_unit[support_clone_index_column("tax_unit")].eq(1).to_numpy()
+    predictions = pd.DataFrame(
+        {
+            "taxable_interest_income": np.full(int(puf_mask.sum()), 100.0),
+            "health_savings_account_ald": np.full(int(puf_mask.sum()), 750.0),
+        },
+        index=tax_unit.index[puf_mask],
+    )
+    donor = pd.DataFrame(
+        {
+            "taxable_interest_income": [100.0, 200.0, 100.0, 150.0],
+            "health_savings_account_ald": [750.0, 500.0, 250.0, 1_000.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    return predictions, donor
+
+
+def test_finalize_preserve_nulls_keeps_unowned_cells_null() -> None:
+    cloned = _cloned_stacked_fixture()
+    predictions, donor = _finalize_fixture_predictions(cloned)
+    before_person = cloned.table("person").copy(deep=True)
+
+    finalized = finalize_us_puf_tax_detail_predictions(
+        cloned,
+        donor,
+        predictions.copy(),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=("health_savings_account_ald",),
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+
+    person = finalized.table("person")
+    channel = person[support_channel_column("person")]
+    clone_index = person[support_clone_index_column("person")]
+    native_acs = channel.eq("acs") & clone_index.eq(0)
+    native_asec = channel.eq("asec") & clone_index.eq(0)
+    detail = clone_index.eq(1)
+    assert person.loc[native_acs, "taxable_interest_income"].isna().all()
+    pd.testing.assert_series_equal(
+        person.loc[native_asec, "taxable_interest_income"],
+        before_person.loc[native_asec.to_numpy(), "taxable_interest_income"],
+        check_names=False,
+    )
+    assert person.loc[detail, "taxable_interest_income"].notna().all()
+
+    tax_unit = finalized.table("tax_unit")
+    tax_unit_clone = tax_unit[support_clone_index_column("tax_unit")]
+    assert tax_unit.loc[tax_unit_clone.eq(0), "health_savings_account_ald"].isna().all()
+    assert (
+        tax_unit.loc[tax_unit_clone.eq(1), "health_savings_account_ald"].notna().all()
+    )
+
+
+def test_finalize_legacy_zero_fill_reproduces_the_audited_defect() -> None:
+    """Pin the run-7 boundary: legacy finalization reads absence as zero."""
+
+    cloned = _cloned_stacked_fixture()
+    predictions, donor = _finalize_fixture_predictions(cloned)
+
+    finalized = finalize_us_puf_tax_detail_predictions(
+        cloned,
+        donor,
+        predictions.copy(),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=("health_savings_account_ald",),
+    )
+
+    person = finalized.table("person")
+    channel = person[support_channel_column("person")]
+    clone_index = person[support_clone_index_column("person")]
+    native_acs = channel.eq("acs") & clone_index.eq(0)
+    assert person.loc[native_acs, "taxable_interest_income"].eq(0.0).all()
+    tax_unit = finalized.table("tax_unit")
+    tax_unit_clone = tax_unit[support_clone_index_column("tax_unit")]
+    assert (
+        tax_unit.loc[tax_unit_clone.eq(0), "health_savings_account_ald"].eq(0.0).all()
+    )
+
+
+def test_preserve_nulls_sparsification_never_rewrites_native_rows() -> None:
+    cloned = _cloned_stacked_fixture()
+    predictions, donor = _finalize_fixture_predictions(cloned)
+    donor = donor.assign(
+        taxable_interest_income=[100.0, 0.0, 0.0, 0.0],
+    )
+    before_person = cloned.table("person").copy(deep=True)
+
+    finalized = finalize_us_puf_tax_detail_predictions(
+        cloned,
+        donor,
+        predictions.copy(),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=("health_savings_account_ald",),
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+
+    person = finalized.table("person")
+    clone_index = person[support_clone_index_column("person")]
+    channel = person[support_channel_column("person")]
+    native = clone_index.eq(0)
+    native_asec = native & channel.eq("asec")
+    pd.testing.assert_series_equal(
+        person.loc[native_asec, "taxable_interest_income"],
+        before_person.loc[native_asec.to_numpy(), "taxable_interest_income"],
+        check_names=False,
+    )
+    assert (
+        person.loc[native & channel.eq("acs"), "taxable_interest_income"].isna().all()
+    )
+    detail_units = (
+        person.loc[clone_index.eq(1)]
+        .groupby("person_tax_unit_id", sort=False)["taxable_interest_income"]
+        .sum()
+    )
+    assert (detail_units == 0.0).any()
+
+
+def test_strict_recipient_predictors_fail_closed_on_absence() -> None:
+    cloned = _cloned_stacked_fixture()
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="puf_predictor_employment_income"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+    legacy = prepare_us_puf_tax_detail_chain_inputs(
+        cloned,
+        donor,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+    )
+    assert not legacy.recipient_features.isna().any().any()
+    tax_unit = cloned.table("tax_unit")
+    detail_mask = tax_unit[support_clone_index_column("tax_unit")].eq(1).to_numpy()
+    acs_detail = (
+        tax_unit.loc[detail_mask, support_channel_column("tax_unit")]
+        .eq("acs")
+        .to_numpy()
+    )
+    zero_filled = legacy.recipient_features.loc[
+        acs_detail, "puf_predictor_employment_income"
+    ]
+    assert zero_filled.eq(0.0).all()
+
+
+def _asec_gap_source() -> Frame:
+    """ASEC arm observing survey detail plus the native donor analogs."""
+
+    frame = _source_frame(
+        household_ids=[11, 12, 13, 14],
+        persons_per_household={11: 2, 13: 2},
+        weights=[300.0, 100.0, 200.0, 150.0],
+        stratum="asec_2024",
+    )
+    person = frame.table("person").copy()
+    count = len(person)
+    person["is_female"] = np.asarray([False, True, True, False, True, False])
+    person["is_household_head"] = np.asarray([True, False, True, True, False, True])
+    person["employment_income_before_lsr"] = np.linspace(10_000.0, 60_000.0, count)
+    person["unemployment_compensation"] = np.asarray(
+        [0.0, 1_200.0, 0.0, 3_600.0, 0.0, 2_400.0]
+    )
+    person["is_disabled"] = np.asarray([False, False, True, False, False, True])
+    for column, base in (
+        ("taxable_interest_income", 100.0),
+        ("tax_exempt_interest_income", 0.0),
+        ("qualified_dividend_income", 50.0),
+        ("non_qualified_dividend_income", 25.0),
+        ("rental_income", 0.0),
+        ("estate_income", 0.0),
+    ):
+        person[column] = np.linspace(base, base * 2 if base else 0.0, count)
+    household = frame.table("household").copy()
+    household["tenure_type"] = pd.Series(
+        ["OWNED_WITH_MORTGAGE", "RENTED", "OWNED_OUTRIGHT", "RENTED"],
+        dtype=object,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    tables["household"] = household
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+def _acs_gap_source() -> Frame:
+    """ACS arm observing housing plus the honest native aggregates."""
+
+    frame = _source_frame(
+        household_ids=list(range(101, 111)),
+        persons_per_household={103: 2},
+        weights=[float(10 * position) for position in range(1, 11)],
+        stratum="acs_2024_1yr",
+    )
+    person = frame.table("person").copy()
+    count = len(person)
+    person["is_female"] = np.asarray([position % 2 == 0 for position in range(count)])
+    person["is_household_head"] = ~person["person_household_id"].duplicated()
+    person["employment_income_before_lsr"] = np.linspace(8_000.0, 90_000.0, count)
+    person["acs_interest_dividend_rental_income"] = np.asarray(
+        [0.0, 400.0, 0.0, 150.0, 900.0, 0.0, 250.0, 0.0, 3_000.0, 120.0, 60.0]
+    )
+    person["pre_subsidy_rent"] = np.asarray(
+        [
+            0.0,
+            14_400.0,
+            0.0,
+            0.0,
+            9_600.0,
+            12_000.0,
+            0.0,
+            18_000.0,
+            0.0,
+            7_200.0,
+            15_600.0,
+        ]
+    )
+    household = frame.table("household").copy()
+    household["tenure_type"] = pd.Series(
+        [
+            "OWNED_OUTRIGHT",
+            "RENTED",
+            "OWNED_WITH_MORTGAGE",
+            "OWNED_OUTRIGHT",
+            "RENTED",
+            "RENTED",
+            "OWNED_WITH_MORTGAGE",
+            "RENTED",
+            "OWNED_OUTRIGHT",
+            "RENTED",
+        ],
+        dtype=object,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    tables["household"] = household
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+_GAP_FILL_TEST_PLAN = (
+    GapFillDirection(
+        name="asec_survey_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
+        target_families={
+            "person": {
+                "model_required_numeric": ("unemployment_compensation",),
+                "model_required_boolean": ("is_disabled",),
+            }
+        },
+    ),
+    GapFillDirection(
+        name="acs_housing_to_asec",
+        recipient_channel="asec",
+        donor_channel="acs",
+        target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+    ),
+)
+
+
+def _stacked_gap_fixture() -> Frame:
+    return assemble_stacked_spine(
+        _asec_gap_source(),
+        _acs_gap_source(),
+        acs_sample_fraction=1.0,
+        acs_sample_seed=578,
+    ).frame
+
+
+def test_gap_fill_plan_covers_declared_families_exactly() -> None:
+    plan = stacked_gap_fill_plan()
+    assert [direction.name for direction in plan] == [
+        "asec_survey_to_acs",
+        "acs_housing_to_asec",
+    ]
+    survey, housing = plan
+    assert survey.recipient_channel == "acs"
+    assert survey.donor_channel == "asec"
+    assert housing.recipient_channel == "asec"
+    assert housing.donor_channel == "acs"
+    assert set(housing.target_families) == {"person"}
+    assert housing.target_families["person"] == {"housing": ("pre_subsidy_rent",)}
+
+    declared = declared_acs_transfer_target_families()
+    recombined: dict[str, dict[str, tuple[str, ...]]] = {}
+    for direction in plan:
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                recombined.setdefault(entity, {})[family] = tuple(targets)
+    assert recombined == {
+        entity: {family: tuple(targets) for family, targets in families.items()}
+        for entity, families in declared.items()
+    }
+
+
+def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
+    stacked = _stacked_gap_fixture()
+    result = gap_fill_stacked_spine(
+        stacked,
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    )
+
+    person = result.frame.table("person")
+    channel = person[support_channel_column("person")]
+    acs_rows = channel.eq("acs")
+    asec_rows = channel.eq("asec")
+    for column in ("unemployment_compensation", "is_disabled"):
+        assert person.loc[acs_rows, column].notna().all()
+    assert person.loc[asec_rows, "pre_subsidy_rent"].notna().all()
+
+    before_person = stacked.table("person")
+    for column in ("unemployment_compensation", "is_disabled"):
+        pd.testing.assert_series_equal(
+            person.loc[asec_rows, column],
+            before_person.loc[asec_rows.to_numpy(), column],
+            check_names=False,
+        )
+    pd.testing.assert_series_equal(
+        person.loc[acs_rows, "pre_subsidy_rent"],
+        before_person.loc[acs_rows.to_numpy(), "pre_subsidy_rent"],
+        check_names=False,
+    )
+
+    directions = result.receipt["directions"]
+    survey = directions["asec_survey_to_acs"]
+    assert survey["donor_selection"] == "owner_projection_of_native_donor_rows"
+    assert survey["resolved_donor_channel"] is None
+    unemployment = survey["targets"][
+        "person/model_required_numeric/unemployment_compensation"
+    ]
+    assert unemployment["authorized_null_rows"] == int(acs_rows.sum())
+    assert unemployment["imputed_rows"] == int(acs_rows.sum())
+    assert unemployment["residual_null_rows"] == 0
+    housing = directions["acs_housing_to_asec"]
+    rent = housing["targets"]["person/housing/pre_subsidy_rent"]
+    assert rent["imputed_rows"] == int(asec_rows.sum())
+    assert rent["residual_null_rows"] == 0
+
+    survey_transfer = result.transfer_results["asec_survey_to_acs"]
+    native_predictor_used = any(
+        "__acs_transfer_interest_dividend_rental_income"
+        in pattern.observed_optional_predictors
+        for record in survey_transfer.imputed_inputs
+        for pattern in record.patterns
+    )
+    assert native_predictor_used
+
+
+def test_gap_fill_activation_authority_fails_closed_on_donor_nulls() -> None:
+    stacked = _stacked_gap_fixture()
+    person = stacked.table("person").copy()
+    channel = person[support_channel_column("person")]
+    poke = person.index[channel.eq("asec")][1]
+    person.loc[poke, "unemployment_compensation"] = np.nan
+    tables = {entity: stacked.table(entity) for entity in stacked.entities}
+    tables["person"] = person
+    poked = Frame(
+        tables,
+        stacked.schema,
+        {entity: stacked.weights_for(entity) for entity in stacked.weighted_entities},
+        stacked.strata,
+        mass_log=stacked.mass_log,
+        metadata=stacked.metadata,
+    )
+
+    with pytest.raises(ValueError, match="donors must observe"):
+        gap_fill_stacked_spine(poked, plan=_GAP_FILL_TEST_PLAN, seed=578)
+
+
+def test_gap_fill_fails_closed_on_missing_target_column() -> None:
+    stacked = _stacked_gap_fixture()
+    plan = (
+        GapFillDirection(
+            name="asec_survey_to_acs",
+            recipient_channel="acs",
+            donor_channel="asec",
+            target_families={
+                "person": {"model_required_numeric": ("veterans_benefits",)}
+            },
+        ),
+    )
+    with pytest.raises(ValueError, match="veterans_benefits.*absent"):
+        gap_fill_stacked_spine(stacked, plan=plan, seed=578)
+
+
+def test_gap_fill_rejects_cloned_frames() -> None:
+    cloned = clone_us_frame_for_puf_support(_stacked_gap_fixture())
+    with pytest.raises(ValueError, match="before clone operators"):
+        gap_fill_stacked_spine(cloned, plan=_GAP_FILL_TEST_PLAN, seed=578)
+
+
+def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
+    identity = {"pilot": "stacked-gap-fill", "seed": 578}
+    banks = {
+        "asec_survey_to_acs": AcsTransferTargetBankStore(
+            tmp_path / "survey",
+            identity=identity,
+        ),
+        "acs_housing_to_asec": AcsTransferTargetBankStore(
+            tmp_path / "housing",
+            identity=identity,
+        ),
+    }
+    first = gap_fill_stacked_spine(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+        target_banks=banks,
+    )
+    survey_files = sorted((tmp_path / "survey" / "targets").glob("*.h5"))
+    housing_files = sorted((tmp_path / "housing" / "targets").glob("*.h5"))
+    assert len(survey_files) == 2
+    assert len(housing_files) == 1
+
+    resumed_banks = {
+        "asec_survey_to_acs": AcsTransferTargetBankStore(
+            tmp_path / "survey",
+            identity=identity,
+        ),
+        "acs_housing_to_asec": AcsTransferTargetBankStore(
+            tmp_path / "housing",
+            identity=identity,
+        ),
+    }
+    second = gap_fill_stacked_spine(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+        target_banks=resumed_banks,
+    )
+    for column in ("unemployment_compensation", "is_disabled", "pre_subsidy_rent"):
+        pd.testing.assert_series_equal(
+            first.frame.table("person")[column],
+            second.frame.table("person")[column],
+        )
+    survey_receipt = resumed_banks["asec_survey_to_acs"].receipt()
+    assert survey_receipt["targets"]
+
+
+def test_clone_attachment_is_seeded_exact_and_pair_weighted() -> None:
+    stacked = _stacked_gap_fixture()
+    attached = clone_us_frame_for_puf_support(
+        stacked,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+    )
+    repeated = clone_us_frame_for_puf_support(
+        stacked,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+    )
+    changed_seed = clone_us_frame_for_puf_support(
+        stacked,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=579,
+    )
+
+    manifest = attached.metadata[PUF_CLONE_ATTACHMENT_MANIFEST_KEY]
+    assert manifest["eligible_household_count"] == 14
+    assert manifest["requested_household_count"] == 7
+    assert manifest["realized_household_count"] == 7
+    assert manifest["exact_count_rule"] == "floor(fraction * eligible)"
+    assert (
+        manifest["selected_household_source_ids_sha256"]
+        == repeated.metadata[PUF_CLONE_ATTACHMENT_MANIFEST_KEY][
+            "selected_household_source_ids_sha256"
+        ]
+    )
+    assert (
+        manifest["selected_household_source_ids_sha256"]
+        != changed_seed.metadata[PUF_CLONE_ATTACHMENT_MANIFEST_KEY][
+            "selected_household_source_ids_sha256"
+        ]
+    )
+
+    household = attached.table("household")
+    clone_index = household[support_clone_index_column("household")]
+    assert int(clone_index.eq(0).sum()) == 14
+    assert int(clone_index.eq(1).sum()) == 7
+    weights = attached.weights_for("household").values
+    assert np.isclose(
+        float(weights.sum()),
+        float(stacked.weights_for("household").total),
+        rtol=1e-12,
+    )
+    source_column = household.columns[household.columns.str.endswith("_source_id")][0]
+    attached_ids = set(
+        household.loc[clone_index.eq(1), source_column].astype(int).tolist()
+    )
+    incoming = dict(
+        zip(
+            stacked.table("household")[source_column].astype(int).tolist(),
+            stacked.weights_for("household").values.tolist(),
+            strict=True,
+        )
+    )
+    for row, weight in zip(household.itertuples(index=False), weights, strict=True):
+        source_id = int(getattr(row, source_column))
+        expected = (
+            incoming[source_id] / 2.0
+            if source_id in attached_ids
+            else incoming[source_id]
+        )
+        assert np.isclose(weight, expected, rtol=1e-12)
+
+    assert validate_puf_clone_attachment(attached, boundary="attachment fixture")
+
+
+def test_clone_attachment_fraction_one_matches_full_clone() -> None:
+    stacked = _stacked_gap_fixture()
+    full = clone_us_frame_for_puf_support(stacked)
+    attached = clone_us_frame_for_puf_support(
+        stacked,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=0,
+    )
+    for entity in full.entities:
+        assert_frame_equal(
+            attached.table(entity).reset_index(drop=True),
+            full.table(entity).reset_index(drop=True),
+        )
+    np.testing.assert_allclose(
+        attached.weights_for("household").values,
+        full.weights_for("household").values,
+        rtol=1e-15,
+    )
+
+
+def test_clone_attachment_configuration_fails_closed() -> None:
+    stacked = _stacked_gap_fixture()
+    with pytest.raises(ValueError, match="provided together"):
+        clone_us_frame_for_puf_support(stacked, clone_attachment_fraction=0.5)
+    with pytest.raises(ValueError, match="assembled frame"):
+        clone_us_frame_for_puf_support(
+            _asec_gap_source(),
+            clone_attachment_fraction=0.5,
+            clone_attachment_seed=1,
+        )
+    with pytest.raises(ValueError, match="floors to zero"):
+        clone_us_frame_for_puf_support(
+            stacked,
+            clone_attachment_fraction=0.01,
+            clone_attachment_seed=1,
+        )
+
+
+def test_clone_attachment_manifest_mutation_fails_closed() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+    )
+    manifest = {
+        key: value
+        for key, value in attached.metadata[PUF_CLONE_ATTACHMENT_MANIFEST_KEY].items()
+    }
+    manifest["realized_household_count"] = 8
+    manifest["requested_household_count"] = 8
+    tampered = Frame(
+        {entity: attached.table(entity) for entity in attached.entities},
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata={
+            **attached.metadata,
+            PUF_CLONE_ATTACHMENT_MANIFEST_KEY: manifest,
+        },
+    )
+    with pytest.raises(ValueError, match="violates floor"):
+        validate_puf_clone_attachment(tampered, boundary="tampered attachment")
+
+
+def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
+    gap_filled = gap_fill_stacked_spine(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0, 70_000.0, 22_000.0],
+            "taxable_interest_income": [120.0, 30.0, 900.0, 0.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    result = run_stacked_puf_pass(
+        gap_filled,
+        donor,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        seed=578,
+        n_estimators=10,
+    )
+
+    person = result.frame.table("person")
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = person[support_clone_index_column("person")]
+    assert person.loc[clone_index.eq(1), "taxable_interest_income"].notna().all()
+    assert (
+        person.loc[clone_index.eq(0) & channel.eq("acs"), "taxable_interest_income"]
+        .isna()
+        .all()
+    )
+    by_origin = result.receipt["recipient_person_rows_by_origin"]
+    assert set(by_origin) == {"asec", "acs"}
+    assert all(count > 0 for count in by_origin.values())
+    assert result.receipt["doctrines"]["absent_cells"] == "preserve_nulls"
+
+    with pytest.raises(ValueError, match="clone attachment"):
+        run_stacked_puf_pass(
+            result.frame,
+            donor,
+            clone_attachment_fraction=0.5,
+            clone_attachment_seed=578,
+        )
