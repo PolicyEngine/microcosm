@@ -1020,6 +1020,8 @@ def run_stacked_puf_pass(
     attachment = validate_puf_clone_attachment(
         cloned,
         boundary="stacked PUF pass clone attachment",
+        expected_fraction=clone_attachment_fraction,
+        expected_seed=clone_attachment_seed,
     )
 
     kwargs: dict[str, object] = {}
@@ -1041,7 +1043,12 @@ def run_stacked_puf_pass(
         **kwargs,
     )
     validate_stacked_spine_frame(imputed, boundary="stacked PUF pass output")
-    validate_puf_clone_attachment(imputed, boundary="stacked PUF pass output")
+    validate_puf_clone_attachment(
+        imputed,
+        boundary="stacked PUF pass output",
+        expected_fraction=clone_attachment_fraction,
+        expected_seed=clone_attachment_seed,
+    )
 
     person = imputed.table("person")
     channel = person[support_channel_column("person")].astype(str)

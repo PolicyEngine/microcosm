@@ -515,10 +515,10 @@ def clone_us_frame_for_puf_support(
             frames only — the PUF clone arm attaches to a seeded whole-
             household sample of the spine: ``floor(fraction * households)``
             households keep their clone pair at half weight each, every other
-            household keeps a single full-weight native lineage, and an
-            attachment manifest binds fraction, seed, and the realized
-            selection digest to the live rows.  ``None`` reproduces the full
-            two-arm clone byte for byte.
+            household keeps a single full-weight native lineage, and partial
+            attachments carry a manifest binding fraction, seed, and the
+            realized selection digest to the live rows.  ``None`` and exact
+            ``1.0`` both return the ordinary full two-arm clone unchanged.
         clone_attachment_seed: Non-negative selection seed; required exactly
             when a fraction is given so the attachment identity is always
             explicit.
@@ -637,6 +637,14 @@ def clone_us_frame_for_puf_support(
         )
     if clone_attachment_fraction is not None:
         assert clone_attachment_seed is not None  # validated at entry
+        if float(clone_attachment_fraction) == 1.0:
+            validate_puf_clone_attachment(
+                result,
+                boundary="PUF support full-clone identity output",
+                expected_fraction=float(clone_attachment_fraction),
+                expected_seed=clone_attachment_seed,
+            )
+            return result
         result = _attach_clone_arm_to_seeded_sample(
             result,
             fraction=clone_attachment_fraction,
@@ -649,6 +657,8 @@ def clone_us_frame_for_puf_support(
         validate_puf_clone_attachment(
             result,
             boundary="PUF support clone attachment output",
+            expected_fraction=float(clone_attachment_fraction),
+            expected_seed=clone_attachment_seed,
         )
     return result
 
@@ -665,7 +675,6 @@ def _attach_clone_arm_to_seeded_sample(
     identical to the full expansion: the detail lineages of unselected
     households are dropped whole (via :meth:`Frame.select`) and those
     households' native weights are restored to their pre-clone values.
-    ``fraction=1.0`` keeps every pair and reproduces the full clone exactly.
     Mass is conserved: selected households carry half weight on each arm,
     unselected households carry full weight on their native lineage.
     """
@@ -758,16 +767,58 @@ def validate_puf_clone_attachment(
     frame: Frame,
     *,
     boundary: str,
+    expected_fraction: float | None = None,
+    expected_seed: int | None = None,
 ) -> Mapping[str, Any]:
     """Validate the clone-attachment manifest against live clone lineages.
 
     The realized clone-pair count, the selection digest over live detail-arm
     household source IDs, the floor rule, and per-pair weight symmetry must
     all match the manifest; any mutation of the sample, the counts, or the
-    manifest fails closed with a named error.
+    manifest fails closed with a named error.  An explicitly expected full
+    attachment uses the metadata-symmetric ordinary clone instead: exact
+    native/detail household lineage and pair-weight identity are validated
+    and returned as an out-of-frame authority receipt.
     """
 
+    if (expected_fraction is None) != (expected_seed is None):
+        raise ValueError(
+            f"{boundary}: expected clone attachment fraction and seed must be "
+            "provided together."
+        )
+    if expected_fraction is not None:
+        if (
+            isinstance(expected_fraction, bool)
+            or not isinstance(expected_fraction, (int, float))
+            or not np.isfinite(expected_fraction)
+            or not 0.0 < float(expected_fraction) <= 1.0
+        ):
+            raise ValueError(
+                f"{boundary}: expected clone attachment fraction must be a "
+                f"finite number in (0, 1], got {expected_fraction!r}."
+            )
+        if (
+            isinstance(expected_seed, bool)
+            or not isinstance(expected_seed, int)
+            or expected_seed < 0
+        ):
+            raise ValueError(
+                f"{boundary}: expected clone attachment seed must be a "
+                f"non-negative integer, got {expected_seed!r}."
+            )
+
     manifest = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
+    if expected_fraction is not None and float(expected_fraction) == 1.0:
+        if manifest is not None:
+            raise ValueError(
+                f"{boundary}: full-clone metadata symmetry failed: attachment "
+                "manifest must be absent from both full-clone paths."
+            )
+        return _validate_full_clone_identity(
+            frame,
+            boundary=boundary,
+            expected_seed=expected_seed,
+        )
     if manifest is None:
         raise ValueError(
             f"{boundary}: clone attachment manifest "
@@ -788,6 +839,16 @@ def validate_puf_clone_attachment(
         raise ValueError(
             f"{boundary}: clone attachment seed must be a non-negative "
             f"integer, got {seed!r}."
+        )
+    if expected_fraction is not None and fraction != float(expected_fraction):
+        raise ValueError(
+            f"{boundary}: clone attachment fraction {fraction!r} differs from "
+            f"the expected fraction {float(expected_fraction)!r}."
+        )
+    if expected_seed is not None and seed != expected_seed:
+        raise ValueError(
+            f"{boundary}: clone attachment seed {seed!r} differs from the "
+            f"expected seed {expected_seed!r}."
         )
 
     household = frame.table("household")
@@ -858,6 +919,60 @@ def validate_puf_clone_attachment(
             "evenly between the native and detail arms."
         )
     return manifest
+
+
+def _validate_full_clone_identity(
+    frame: Frame,
+    *,
+    boundary: str,
+    expected_seed: int,
+) -> Mapping[str, Any]:
+    """Receipt exact full-clone coverage without mutating frame metadata."""
+
+    household = frame.table("household")
+    clone_index = household[support_clone_index_column("household")]
+    source_ids = household[support_source_id_column("household")]
+    native = clone_index.eq(0)
+    detail = clone_index.eq(PUF_TAX_DETAIL_CLONE_INDEX)
+    weights = frame.weights_for("household").values
+
+    native_ids = source_ids.loc[native].to_numpy(dtype=np.int64)
+    detail_ids = source_ids.loc[detail].to_numpy(dtype=np.int64)
+    native_order = np.argsort(native_ids, kind="stable")
+    detail_order = np.argsort(detail_ids, kind="stable")
+    ordered_native_ids = native_ids[native_order]
+    ordered_detail_ids = detail_ids[detail_order]
+    native_weights = np.ascontiguousarray(weights[native.to_numpy()][native_order])
+    detail_weights = np.ascontiguousarray(weights[detail.to_numpy()][detail_order])
+
+    lineages_exact = (
+        bool((native | detail).all())
+        and len(ordered_native_ids) == len(ordered_detail_ids)
+        and len(np.unique(ordered_native_ids)) == len(ordered_native_ids)
+        and len(np.unique(ordered_detail_ids)) == len(ordered_detail_ids)
+        and np.array_equal(ordered_native_ids, ordered_detail_ids)
+    )
+    weights_exact = (
+        native_weights.dtype == detail_weights.dtype
+        and native_weights.shape == detail_weights.shape
+        and native_weights.tobytes(order="C") == detail_weights.tobytes(order="C")
+    )
+    if not lineages_exact or not weights_exact:
+        raise ValueError(
+            f"{boundary}: full-clone identity failed: native/detail household "
+            "lineages or pair weights are not exact."
+        )
+
+    return {
+        "authority_form": "full_clone_identity_no_manifest",
+        "clone_attachment_fraction": 1.0,
+        "clone_attachment_seed": expected_seed,
+        "eligible_household_count": len(ordered_native_ids),
+        "requested_household_count": len(ordered_native_ids),
+        "realized_household_count": len(ordered_detail_ids),
+        "exact_count_rule": "full native/detail identity",
+        "selected_household_source_ids_sha256": _source_ids_sha256(ordered_detail_ids),
+    }
 
 
 def _source_ids_sha256(ids: np.ndarray) -> str:

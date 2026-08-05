@@ -1152,16 +1152,106 @@ def test_clone_attachment_fraction_one_matches_full_clone() -> None:
         clone_attachment_fraction=1.0,
         clone_attachment_seed=0,
     )
+
+    assert attached.schema == full.schema
+    assert attached.entities == full.entities
+    assert attached.links == full.links
+    assert attached.weighted_entities == full.weighted_entities
     for entity in full.entities:
         assert_frame_equal(
-            attached.table(entity).reset_index(drop=True),
-            full.table(entity).reset_index(drop=True),
+            attached.table(entity),
+            full.table(entity),
+            check_exact=True,
         )
-    np.testing.assert_allclose(
-        attached.weights_for("household").values,
-        full.weights_for("household").values,
-        rtol=1e-15,
+    for link in full.links:
+        assert_frame_equal(
+            attached.link(link),
+            full.link(link),
+            check_exact=True,
+        )
+    for entity in full.weighted_entities:
+        attached_weights = attached.weights_for(entity)
+        full_weights = full.weights_for(entity)
+        assert attached_weights.kind == full_weights.kind
+        assert attached_weights.values.dtype == full_weights.values.dtype
+        assert attached_weights.values.shape == full_weights.values.shape
+        assert attached_weights.values.tobytes(
+            order="C"
+        ) == full_weights.values.tobytes(order="C")
+    pd.testing.assert_series_equal(attached.strata, full.strata, check_exact=True)
+    assert attached.mass_log == full.mass_log
+    assert PUF_CLONE_ATTACHMENT_MANIFEST_KEY not in full.metadata
+    assert PUF_CLONE_ATTACHMENT_MANIFEST_KEY not in attached.metadata
+    assert attached.metadata == full.metadata
+    receipt = validate_puf_clone_attachment(
+        attached,
+        boundary="fraction-one identity fixture",
+        expected_fraction=1.0,
+        expected_seed=0,
     )
+    assert receipt["authority_form"] == "full_clone_identity_no_manifest"
+    assert receipt["eligible_household_count"] == 14
+    assert receipt["realized_household_count"] == 14
+    with pytest.raises(ValueError, match="clone attachment manifest.*is absent"):
+        validate_puf_clone_attachment(
+            attached,
+            boundary="fraction-one identity without declared expectation",
+        )
+
+
+def test_full_clone_identity_validation_fails_closed() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=0,
+    )
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables.update({link: attached.link(link) for link in attached.links})
+    weights = {
+        entity: attached.weights_for(entity) for entity in attached.weighted_entities
+    }
+    household_weights = attached.weights_for("household")
+    tampered_values = household_weights.values.copy()
+    household_clone = attached.table("household")[
+        support_clone_index_column("household")
+    ]
+    first_detail = int(np.flatnonzero(household_clone.eq(1).to_numpy())[0])
+    tampered_values[first_detail] += 1.0
+    weights["household"] = Weights(tampered_values, household_weights.kind)
+    tampered = Frame(
+        tables,
+        attached.schema,
+        weights,
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+    with pytest.raises(ValueError, match="full-clone identity failed"):
+        validate_puf_clone_attachment(
+            tampered,
+            boundary="tampered full clone",
+            expected_fraction=1.0,
+            expected_seed=0,
+        )
+
+    asymmetric_metadata = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata={
+            **attached.metadata,
+            PUF_CLONE_ATTACHMENT_MANIFEST_KEY: {"unexpected": True},
+        },
+    )
+    with pytest.raises(ValueError, match="full-clone metadata symmetry failed"):
+        validate_puf_clone_attachment(
+            asymmetric_metadata,
+            boundary="metadata-asymmetric full clone",
+            expected_fraction=1.0,
+            expected_seed=0,
+        )
 
 
 def test_clone_attachment_configuration_fails_closed() -> None:
@@ -1256,6 +1346,41 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
             clone_attachment_fraction=0.5,
             clone_attachment_seed=578,
         )
+
+
+def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> None:
+    gap_filled = gap_fill_stacked_spine(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0, 70_000.0, 22_000.0],
+            "taxable_interest_income": [120.0, 30.0, 900.0, 0.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    result = run_stacked_puf_pass(
+        gap_filled,
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=0,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        seed=578,
+        n_estimators=10,
+    )
+
+    assert PUF_CLONE_ATTACHMENT_MANIFEST_KEY not in result.frame.metadata
+    attachment = result.receipt["clone_attachment"]
+    assert attachment["authority_form"] == "full_clone_identity_no_manifest"
+    assert attachment["clone_attachment_fraction"] == 1.0
+    assert attachment["clone_attachment_seed"] == 0
+    assert attachment["eligible_household_count"] == 14
+    assert attachment["realized_household_count"] == 14
 
 
 def _completed_stacked_frame() -> Frame:
