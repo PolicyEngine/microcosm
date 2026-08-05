@@ -1,0 +1,71 @@
+{
+  "chambers": [
+    {
+      "area_type": "sldu",
+      "max_realized_weight_ratio": 99.99999999999999,
+      "median_fraction_within_10pct": 1.0,
+      "n_districts": 29,
+      "past_at_final": 0,
+      "pushed_out": 0
+    },
+    {
+      "area_type": "sldl",
+      "max_realized_weight_ratio": 100.00000000000001,
+      "median_fraction_within_10pct": 1.0,
+      "n_districts": 75,
+      "past_at_final": 0,
+      "pushed_out": 0
+    }
+  ],
+  "doctrine": {
+    "anchor_rule": "artifact_calibrated_weights",
+    "max_weight_ratio": 100.0,
+    "scale_rule": "default_target_loss_scales",
+    "target_loss_cap": 10.0,
+    "target_weight_rule": "uniform"
+  },
+  "inputs": {
+    "artifact_h5": {
+      "path": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/515b7398d7b4414694865b7a95e4c3f1faa2edb5/populace_us_2024_acs_local.h5",
+      "sha256": "71763290ded993789af0ad818fd833a6aabb9ca7ff7d14f78315340d8617c6f4"
+    },
+    "membership_ladder": {
+      "path": "/private/tmp/claude-501/-Users-maxghenis-PolicyEngine-populace--claude-worktrees-musing-bardeen-994886/396b617b-ef7b-4224-bdcb-c40a9d98a429/scratchpad/us_sld_membership_ladder_2024.npz",
+      "sha256": "670af722cc11798ce2bf46a357425bb73f223c87d9663e9074cad1281632171b"
+    },
+    "sld_facts": {
+      "path": "/private/tmp/claude-501/-Users-maxghenis-PolicyEngine-populace--claude-worktrees-musing-bardeen-994886/396b617b-ef7b-4224-bdcb-c40a9d98a429/scratchpad/ut_sld_facts_2024.jsonl",
+      "sha256": "05289ce375b3ad548d9f4d04f64c57b097cb97c5ab72cbb880352605f8b7f694"
+    }
+  },
+  "membership_gate": {
+    "method_counts": {
+      "puma_cd_county_draw": 12972,
+      "puma_county_draw": 718,
+      "tract_exact": 490,
+      "tract_split_draw": 371
+    },
+    "n_rows": 14551,
+    "unassigned_share": 0.0
+  },
+  "schema_version": 1,
+  "scope_states": [
+    "49"
+  ],
+  "sidecar_sha256": {
+    "sld_achieved_vs_target.csv.gz": "150f229f25b62793817c2de1b2a39ef21e7b920446f2034102b55babb967160a",
+    "sld_local_boundaries.json": "889f56fdf02a8d42f2a7d7cef7fadf33d7b5a49311aafe385c13839ef881cc60",
+    "sld_local_boundaries.md": "4257178943f3d8799d255e6c70e5bd959101ae91f9479dd1b3f0dcb33bc47a1a",
+    "sld_local_diagnostics.json": "e8dcaea2e2f0eea05dc37842624ff2b00d3c805cdb6870b65e78e7f9dd44fd86",
+    "sld_local_weights.csv.gz": "d91f8f46c7279d1bb02613668cd88bcdf7dfaaf5100f0fbf40e619cbfa426860"
+  },
+  "solver": {
+    "epochs": 512,
+    "learning_rate": 0.15,
+    "seed": 0
+  },
+  "zero_support_districts": {
+    "sldl": [],
+    "sldu": []
+  }
+}

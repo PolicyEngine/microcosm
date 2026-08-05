@@ -1,0 +1,200 @@
+{
+  "calibrated_surface": {
+    "metric_families": [
+      "age_bands",
+      "households",
+      "income_brackets"
+    ],
+    "statement": "Per-district weights are calibrated to ACS 5-year demographics and household-income brackets only: population by age band (S0101), household counts and household income brackets (B19001). All tax and program detail is inherited from the state-and-national calibrated artifact solve and is NOT district-calibrated."
+  },
+  "consumption": {
+    "statement": "Three lenses: household-level results use artifact rows directly; statewide results use the artifact's calibrated weights; by-district results use the per-district sidecar weights. District weight columns are valid only within their own district's rows."
+  },
+  "doctrine": {
+    "anchor_rule": "artifact_calibrated_weights",
+    "max_weight_ratio": 100.0,
+    "scale_rule": "default_target_loss_scales",
+    "target_loss_cap": 10.0,
+    "target_weight_rule": "uniform"
+  },
+  "income_instrument": {
+    "recipe": {
+      "absent_columns": [
+        "survivor_benefits",
+        "financial_assistance"
+      ],
+      "components_absent": [],
+      "components_present": [
+        "wages_salary_tips",
+        "self_employment",
+        "interest_dividends_rental_estates",
+        "social_security",
+        "retirement_pensions",
+        "unemployment_workers_comp_veterans",
+        "other_regular_income"
+      ],
+      "declared_exclusions": {
+        "capital_gains": "ACS money income excludes capital gains and losses",
+        "in_kind_transfers": "SNAP, housing subsidies, and other in-kind transfers are not money income",
+        "tax_credits": "refundable tax credits are not ACS money income"
+      },
+      "declared_omissions": {
+        "public_assistance_cash": "TANF cash assistance is engine-computed, not an artifact input; omitted from the bracket instrument",
+        "supplemental_security_income": "SSI is engine-computed (seeded take-up), not an artifact input; omitted from the bracket instrument"
+      },
+      "household_columns": [],
+      "person_columns": [
+        "employment_income_before_lsr",
+        "tip_income",
+        "self_employment_income_before_lsr",
+        "farm_income",
+        "taxable_interest_income",
+        "tax_exempt_interest_income",
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+        "rental_income",
+        "farm_rent_income",
+        "estate_income",
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_survivors",
+        "social_security_dependents",
+        "taxable_private_pension_income",
+        "tax_exempt_private_pension_income",
+        "taxable_ira_distributions",
+        "tax_exempt_ira_distributions",
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "taxable_sep_distributions",
+        "keogh_distributions",
+        "disability_benefits",
+        "unemployment_compensation",
+        "workers_compensation",
+        "veterans_benefits",
+        "alimony_income",
+        "child_support_received"
+      ]
+    },
+    "statement": "Income brackets bind on a declared ACS money-income analog built from artifact input columns; the published median household income (B19013) is validation-only \u2014 a linear reweighting operator cannot honestly target a median."
+  },
+  "membership_assignment": {
+    "method_counts": {
+      "puma_cd_county_draw": 12972,
+      "puma_county_draw": 718,
+      "tract_exact": 490,
+      "tract_split_draw": 371
+    },
+    "statement": "District membership is derived at the 2024 boundary vintage: exact or population-weighted within-tract lookup for rows carrying certified tract geography, seeded block-overlap draws conditional on (PUMA, congressional district, county) for ACS-spine rows.",
+    "unassigned_share": 0.0
+  },
+  "small_area_tails": {
+    "census_rollups": [
+      {
+        "area_type": "sldu",
+        "escaped": 3,
+        "frozen": 0,
+        "n_districts": 29,
+        "n_targets": 1015,
+        "past_at_final": 0,
+        "past_at_init": 3,
+        "pushed_out": 0,
+        "worst_districts": []
+      },
+      {
+        "area_type": "sldl",
+        "escaped": 23,
+        "frozen": 0,
+        "n_districts": 75,
+        "n_targets": 2625,
+        "past_at_final": 0,
+        "past_at_init": 23,
+        "pushed_out": 0,
+        "worst_districts": []
+      }
+    ],
+    "min_effective_sample_size": {
+      "sldl": 29.941564545226694,
+      "sldu": 56.40827209461011
+    },
+    "thin_district_row_threshold": 150,
+    "thin_districts": [
+      {
+        "area_code": "620L900US49016",
+        "area_type": "sldl",
+        "n_households": 147
+      },
+      {
+        "area_code": "620L900US49017",
+        "area_type": "sldl",
+        "n_households": 143
+      },
+      {
+        "area_code": "620L900US49020",
+        "area_type": "sldl",
+        "n_households": 135
+      },
+      {
+        "area_code": "620L900US49021",
+        "area_type": "sldl",
+        "n_households": 141
+      },
+      {
+        "area_code": "620L900US49025",
+        "area_type": "sldl",
+        "n_households": 118
+      },
+      {
+        "area_code": "620L900US49026",
+        "area_type": "sldl",
+        "n_households": 146
+      },
+      {
+        "area_code": "620L900US49027",
+        "area_type": "sldl",
+        "n_households": 144
+      },
+      {
+        "area_code": "620L900US49030",
+        "area_type": "sldl",
+        "n_households": 142
+      },
+      {
+        "area_code": "620L900US49036",
+        "area_type": "sldl",
+        "n_households": 146
+      },
+      {
+        "area_code": "620L900US49045",
+        "area_type": "sldl",
+        "n_households": 149
+      },
+      {
+        "area_code": "620L900US49047",
+        "area_type": "sldl",
+        "n_households": 148
+      },
+      {
+        "area_code": "620L900US49048",
+        "area_type": "sldl",
+        "n_households": 147
+      },
+      {
+        "area_code": "620L900US49050",
+        "area_type": "sldl",
+        "n_households": 149
+      }
+    ],
+    "zero_support_districts": {
+      "sldl": [],
+      "sldu": []
+    }
+  },
+  "vintages": {
+    "acs_window": "2020-2024 ACS 5-year estimates (2024 dollars)",
+    "district_boundaries": [
+      "2024_state_legislative_districts"
+    ],
+    "membership_source": "Census 2024 SLD block-equivalency files",
+    "period_alignment": "district targets are 2020-2024 5-year survey aggregates applied to the 2024 build-year artifact; this alignment is declared, not adjusted"
+  }
+}
