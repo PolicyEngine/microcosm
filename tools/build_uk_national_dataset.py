@@ -234,8 +234,7 @@ def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]
         )
     elif args.input_mass_exclusions is not None:
         parser_error(
-            "--input-mass-exclusions requires the input_mass_parity gate to "
-            "be armed."
+            "--input-mass-exclusions requires the input_mass_parity gate to be armed."
         )
     qrf_thresholds = (
         args.qrf_tail_top_k,
@@ -302,6 +301,9 @@ def main() -> int:
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
         build_record_path=build_record_path,
+        input_mass_reference_path=args.input_mass_reference_json,
+        input_mass_exclusions_path=args.input_mass_exclusions,
+        qrf_tail_exclusions_path=args.qrf_tail_exclusions,
     )
     # Read-only gate inputs are materialized before any sidecar unlink so a
     # path collision cannot consume a just-deleted file.
@@ -590,6 +592,9 @@ def _validate_distinct_paths(
     adult_tab: Path,
     benefits_tab: Path,
     build_record_path: Path,
+    input_mass_reference_path: Path | None,
+    input_mass_exclusions_path: Path | None,
+    qrf_tail_exclusions_path: Path | None,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
@@ -603,6 +608,15 @@ def _validate_distinct_paths(
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),
     }
+    paths.update(
+        (label, path.resolve())
+        for label, path in {
+            "--input-mass-reference-json": input_mass_reference_path,
+            "--input-mass-exclusions": input_mass_exclusions_path,
+            "--qrf-tail-exclusions": qrf_tail_exclusions_path,
+        }.items()
+        if path is not None
+    )
     collisions = [
         (left_label, right_label, left_path, right_path)
         for (left_label, left_path), (right_label, right_path) in combinations(
