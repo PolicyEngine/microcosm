@@ -90,6 +90,7 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
         "prev_row_digest",
         "row_digest",
     }
+    assert "ALTER EXTENSION pgcrypto SET SCHEMA extensions" in sql
     assert "trim_scale((p_value #>> '{}')::numeric)::text" in sql
     assert "rung IN ('f001', 'f010', 'f100')" in sql
     assert "CHECK (chronicle.valid_build_phases(phases_reached))" in builds

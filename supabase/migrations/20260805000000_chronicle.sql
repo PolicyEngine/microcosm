@@ -14,6 +14,26 @@
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
+-- IF NOT EXISTS leaves an already-installed extension in its original schema.
+-- Chronicle hard-qualifies digest() below, so normalize a relocatable pgcrypto
+-- installation instead of depending on the database's prior search path.
+DO $pgcrypto_schema$
+DECLARE
+    installed_schema text;
+BEGIN
+    SELECT namespace.nspname
+    INTO installed_schema
+    FROM pg_catalog.pg_extension AS extension
+    JOIN pg_catalog.pg_namespace AS namespace
+        ON namespace.oid = extension.extnamespace
+    WHERE extension.extname = 'pgcrypto';
+
+    IF installed_schema IS DISTINCT FROM 'extensions' THEN
+        ALTER EXTENSION pgcrypto SET SCHEMA extensions;
+    END IF;
+END;
+$pgcrypto_schema$;
+
 CREATE SCHEMA IF NOT EXISTS chronicle;
 
 CREATE DOMAIN chronicle.sha256_hex AS text
