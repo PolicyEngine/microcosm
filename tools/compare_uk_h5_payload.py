@@ -15,8 +15,9 @@ Service EUL (CD137 §8 / CD171 §5.2.1). Differences are reported as column
 names, dtype names, booleans, and threshold-guarded row counts — never as
 unit-record values. Reads are ``mode="r"`` throughout.
 
-Exit code: 0 when the payloads are identical, 1 when they differ, and 2 for
-an unsafe CLI configuration.
+Exit code: 0 when the payloads are identical, 1 when they differ, and 2 when
+no verdict is possible — an unsafe CLI configuration, or an artifact that
+could not be read (reported with exception text suppressed).
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ def _validated_sdc_minimum(minimum: int) -> int:
 def sdc_count(count: int, *, minimum: int) -> int | str:
     """Mask small nonzero counts: zero and counts >= minimum are safe."""
 
+    minimum = _validated_sdc_minimum(minimum)
     count = int(count)
     if count == 0 or count >= minimum:
         return count
@@ -69,15 +71,25 @@ def _paths_alias(left: Path, right: Path) -> bool:
 
 
 def _series_equal_mask(left: pd.Series, right: pd.Series) -> np.ndarray:
-    """Row-wise equality treating aligned NaN as equal, without leaking values."""
+    """Row-wise equality treating aligned NaN as equal, without leaking values.
 
-    left_values = left.to_numpy()
-    right_values = right.to_numpy()
+    Integer and boolean pairs compare on their raw values: a float64 cast
+    would silently equate int64 values above 2**53, exactly the magnitude
+    regime rowwise id multiplication grows toward.
+    """
+
+    integer_like = (
+        pd.api.types.is_integer_dtype(left) or pd.api.types.is_bool_dtype(left)
+    ) and (pd.api.types.is_integer_dtype(right) or pd.api.types.is_bool_dtype(right))
+    if integer_like and not left.isna().any() and not right.isna().any():
+        return left.to_numpy() == right.to_numpy()
     if pd.api.types.is_numeric_dtype(left) and pd.api.types.is_numeric_dtype(right):
         left_numeric = left.to_numpy(dtype="float64", na_value=np.nan)
         right_numeric = right.to_numpy(dtype="float64", na_value=np.nan)
         both_nan = np.isnan(left_numeric) & np.isnan(right_numeric)
         return (left_numeric == right_numeric) | both_nan
+    left_values = left.to_numpy()
+    right_values = right.to_numpy()
     left_na = pd.isna(left).to_numpy()
     right_na = pd.isna(right).to_numpy()
     equal = np.zeros(len(left), dtype=bool)
@@ -95,6 +107,7 @@ def compare_tables(
 ) -> dict[str, Any]:
     """Compare one table pair; report classifications, never values."""
 
+    minimum = _validated_sdc_minimum(minimum)
     report: dict[str, Any] = {
         "rows": {"left": int(len(left)), "right": int(len(right))},
         "row_count_equal": bool(len(left) == len(right)),
@@ -102,6 +115,8 @@ def compare_tables(
         "columns_only_left": sorted(set(left.columns) - set(right.columns)),
         "columns_only_right": sorted(set(right.columns) - set(left.columns)),
         "index_type_equal": bool(type(left.index) is type(right.index)),
+        "index_dtype_equal": bool(str(left.index.dtype) == str(right.index.dtype)),
+        "index_name_equal": bool(left.index.name == right.index.name),
         "index_values_equal": bool(
             len(left) == len(right) and left.index.equals(right.index)
         ),
@@ -128,6 +143,8 @@ def compare_tables(
         and not report["columns_only_left"]
         and not report["columns_only_right"]
         and report["index_type_equal"]
+        and report["index_dtype_equal"]
+        and report["index_name_equal"]
         and report["index_values_equal"]
         and not dtype_mismatches
         and not value_mismatches
@@ -153,8 +170,20 @@ def _read_root_attrs(path: Path) -> dict[str, Any]:
             value = file.attrs[name]
             if isinstance(value, bytes):
                 value = value.decode("utf-8")
-            attrs[str(name)] = str(value)
+            attrs[str(name)] = value
         return attrs
+
+
+def _attr_values_equal(left: Any, right: Any) -> bool:
+    """Raw-value attr equality: a str() comparison masks array and typed
+    differences (numpy truncates long arrays in str()), so arrays compare
+    element-wise and everything else compares on value and type name."""
+
+    if type(left).__name__ != type(right).__name__:
+        return False
+    if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
+        return bool(np.array_equal(np.asarray(left), np.asarray(right)))
+    return bool(left == right)
 
 
 def compare_uk_h5_payload(
@@ -177,17 +206,32 @@ def compare_uk_h5_payload(
             continue
         left_object = left_objects[key]
         right_object = right_objects[key]
+        # The stored kind is payload: a DataFrame where readers expect a
+        # Series changes what loaders parse, so normalizing for comparison
+        # must not hide the difference.
+        stored_kinds = {
+            "left": type(left_object).__name__,
+            "right": type(right_object).__name__,
+        }
         if isinstance(left_object, pd.Series):
             left_object = left_object.to_frame(name=key)
         if isinstance(right_object, pd.Series):
             right_object = right_object.to_frame(name=key)
-        tables[key] = compare_tables(left_object, right_object, minimum=minimum)
+        table_report = compare_tables(left_object, right_object, minimum=minimum)
+        table_report["stored_kind"] = stored_kinds
+        table_report["stored_kind_equal"] = bool(
+            stored_kinds["left"] == stored_kinds["right"]
+        )
+        table_report["payload_equal"] = bool(
+            table_report["payload_equal"] and table_report["stored_kind_equal"]
+        )
+        tables[key] = table_report
 
     attr_names_equal = list(left_attrs) == list(right_attrs)
     attrs_differing = sorted(
         name
         for name in set(left_attrs) & set(right_attrs)
-        if left_attrs[name] != right_attrs[name]
+        if not _attr_values_equal(left_attrs[name], right_attrs[name])
     )
     report: dict[str, Any] = {
         "left": str(left_path),
@@ -257,19 +301,33 @@ def main(argv: list[str] | None = None) -> int:
         print("error: left and right must be distinct artifacts.", file=sys.stderr)
         return 2
     if args.json_out is not None and (
-        _paths_alias(args.json_out, args.left) or _paths_alias(args.json_out, args.right)
+        _paths_alias(args.json_out, args.left)
+        or _paths_alias(args.json_out, args.right)
     ):
         print("error: --json-out must not alias either H5 input.", file=sys.stderr)
         return 2
 
-    report = compare_uk_h5_payload(args.left, args.right, minimum=minimum)
+    try:
+        report = compare_uk_h5_payload(args.left, args.right, minimum=minimum)
+        rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
+    except Exception:
+        # An unreadable or malformed artifact is not a "payloads differ"
+        # verdict, and exception text from licensed data is never echoed —
+        # the operator pastes this terminal to the tracking issue.
+        print(
+            "error: comparison could not be completed; exception text was "
+            "suppressed. Verify both artifacts are readable UK single-year "
+            "H5 files.",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.json_out is not None and (
-        _paths_alias(args.json_out, args.left) or _paths_alias(args.json_out, args.right)
+        _paths_alias(args.json_out, args.left)
+        or _paths_alias(args.json_out, args.right)
     ):
         print("error: --json-out became an alias of an H5 input.", file=sys.stderr)
         return 2
-    rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
     print(rendered)
     if args.json_out is not None:
         args.json_out.write_text(rendered + "\n", encoding="utf-8")

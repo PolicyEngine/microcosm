@@ -82,10 +82,17 @@ def test_differences_are_classified_masked_and_never_leak_values(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
     left = _write(tmp_path / "left.h5", _tables())
     right = _write(
         tmp_path / "right.h5", _tables(weight_two=SENTINEL_VALUE), attr="importance"
     )
+    # The mass-log attr embeds weighted totals as JSON — the disclosure-
+    # relevant attr shape. A differing value must surface by NAME only.
+    with h5py.File(left, mode="r+") as file:
+        file.attrs["populace_mass_log_json"] = '[{"new_total": 30.0}]'
+    with h5py.File(right, mode="r+") as file:
+        file.attrs["populace_mass_log_json"] = f'[{{"new_total": {SENTINEL_VALUE}}}]'
 
     exit_code = COMPARATOR.main(
         [str(left), str(right), "--json-out", str(tmp_path / "diff.json")]
@@ -97,16 +104,17 @@ def test_differences_are_classified_masked_and_never_leak_values(
     assert report["payload_identical"] is False
     household = report["tables"]["household"]
     assert household["value_mismatch_rows_by_column"] == {"household_weight": "< 10"}
-    assert report["root_attrs"]["attrs_with_differing_values"] == [
-        "populace_household_weight_kind"
+    assert sorted(report["root_attrs"]["attrs_with_differing_values"]) == [
+        "populace_household_weight_kind",
+        "populace_mass_log_json",
     ]
-    # The canary: the differing unit-record value appears in no output channel.
+    # The canary: the differing unit-record value — in a column AND inside
+    # the mass-log attr JSON — appears in no output channel.
     for channel in (
         captured.out,
         captured.err,
         (tmp_path / "diff.json").read_text(),
     ):
-        assert str(int(SENTINEL_VALUE)) not in channel
         assert "987654321" not in channel
 
 
@@ -117,9 +125,95 @@ def test_unsafe_configurations_exit_two(tmp_path: Path) -> None:
     assert COMPARATOR.main([str(left), str(left)]) == 2
     right = _write(tmp_path / "right.h5", _tables())
     assert COMPARATOR.main([str(left), str(right), "--sdc-minimum-count", "1"]) == 2
-    assert (
-        COMPARATOR.main([str(left), str(right), "--json-out", str(right)]) == 2
-    )
+    assert COMPARATOR.main([str(left), str(right), "--json-out", str(right)]) == 2
+
+
+def test_unreadable_artifact_exits_two_with_suppressed_reason(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An I/O failure is not a 'payloads differ' verdict, and no exception
+    text (which can embed licensed-data fragments) reaches any channel."""
+
+    pytest.importorskip("tables")
+    left = _write(tmp_path / "left.h5", _tables())
+    missing = tmp_path / "missing.h5"
+
+    exit_code = COMPARATOR.main([str(left), str(missing)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "exception text was suppressed" in captured.err
+    assert "Traceback" not in captured.err
+    assert "Traceback" not in captured.out
+
+
+def test_sdc_floor_is_unlowerable_at_every_entry_point() -> None:
+    """CD171 §5.2.1: the floor holds even for direct helper importers."""
+
+    with pytest.raises(ValueError, match="at least 3"):
+        COMPARATOR.sdc_count(1, minimum=1)
+    with pytest.raises(ValueError, match="at least 3"):
+        COMPARATOR.compare_tables(
+            pd.DataFrame({"x": [1.0]}), pd.DataFrame({"x": [2.0]}), minimum=1
+        )
+    with pytest.raises(ValueError, match="at least 3"):
+        COMPARATOR.compare_uk_h5_payload(Path("a.h5"), Path("b.h5"), minimum=0)
+
+
+def test_int64_values_above_float_precision_are_not_equated() -> None:
+    """A float64 cast equates int64 values past 2**53 — the magnitude regime
+    rowwise id multiplication grows toward. Raw integer comparison must not."""
+
+    base = 2**53
+    left = pd.DataFrame({"person_id": pd.array([base], dtype="int64")})
+    right = pd.DataFrame({"person_id": pd.array([base + 1], dtype="int64")})
+
+    report = COMPARATOR.compare_tables(left, right, minimum=10)
+
+    assert report["payload_equal"] is False
+    assert report["value_mismatch_rows_by_column"] == {"person_id": "< 10"}
+
+
+def test_series_vs_dataframe_stored_kind_is_payload(tmp_path: Path) -> None:
+    """A DataFrame stored where readers expect a Series corrupts what the
+    loader parses; normalizing for comparison must not hide the difference."""
+
+    pytest.importorskip("tables")
+    left = _write(tmp_path / "left.h5", _tables())
+    right = _write(tmp_path / "right.h5", _tables())
+    with pd.HDFStore(right, mode="r+") as store:
+        period_frame = pd.DataFrame({"time_period": ["2023"]})
+        store.remove("time_period")
+        store.put("time_period", period_frame, format="table")
+
+    report = COMPARATOR.compare_uk_h5_payload(left, right, minimum=10)
+
+    assert report["tables"]["time_period"]["stored_kind_equal"] is False
+    assert report["payload_identical"] is False
+
+
+def test_array_attrs_compare_on_raw_values_not_str(tmp_path: Path) -> None:
+    """numpy truncates long arrays in str(); a mid-array difference must
+    still be detected, reported by attribute name only."""
+
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    import numpy as np
+
+    left = _write(tmp_path / "left.h5", _tables())
+    right = _write(tmp_path / "right.h5", _tables())
+    left_array = np.arange(2000)
+    right_array = np.arange(2000)
+    right_array[1000] = -1
+    with h5py.File(left, mode="r+") as file:
+        file.attrs["probe_array"] = left_array
+    with h5py.File(right, mode="r+") as file:
+        file.attrs["probe_array"] = right_array
+
+    report = COMPARATOR.compare_uk_h5_payload(left, right, minimum=10)
+
+    assert "probe_array" in report["root_attrs"]["attrs_with_differing_values"]
+    assert report["payload_identical"] is False
 
 
 def test_structural_differences_reported_by_name_only(tmp_path: Path) -> None:
