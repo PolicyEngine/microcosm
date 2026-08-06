@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import populace.build.chronicle as chronicle
 from populace.build.chronicle import (
     ChronicleRow,
     export_rows,
@@ -75,6 +76,49 @@ def test_export_fails_closed_when_suffix_does_not_extend_tail(
         export_rows(archive, [divergent])
 
     assert archive.read_bytes() == original
+
+
+def test_export_reauthenticates_mutable_nested_row_state(tmp_path: Path) -> None:
+    archive = tmp_path / "chronicle.jsonl"
+    row = _row("archive-1", predecessor=None)
+    row.gate_verdicts["terminal"]["verdict"] = "tampered"
+
+    with pytest.raises(ValueError, match=r"row_digest.*does not match"):
+        export_rows(archive, [row])
+
+    assert not archive.exists()
+
+
+def test_export_retry_completes_parent_fsync_after_interrupted_replace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "chronicle.jsonl"
+    row = _row("archive-1", predecessor=None)
+    real_fsync_parent = chronicle._fsync_parent_directory
+    parent_fsync_calls = 0
+
+    def fail_first_parent_fsync(path: Path) -> None:
+        nonlocal parent_fsync_calls
+        parent_fsync_calls += 1
+        if parent_fsync_calls == 1:
+            raise OSError("injected directory fsync failure")
+        real_fsync_parent(path)
+
+    monkeypatch.setattr(
+        chronicle,
+        "_fsync_parent_directory",
+        fail_first_parent_fsync,
+    )
+
+    with pytest.raises(OSError, match="injected directory fsync failure"):
+        export_rows(archive, [row])
+    assert load_chronicle_file(archive) == (row,)
+
+    retry = export_rows(archive, [row])
+
+    assert (retry.existing, retry.appended) == (1, 0)
+    assert parent_fsync_calls == 2
 
 
 def test_mid_row_tamper_names_the_row(tmp_path: Path) -> None:

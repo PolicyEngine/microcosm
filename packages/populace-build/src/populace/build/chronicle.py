@@ -260,7 +260,7 @@ class ChronicleRow:
     def to_mapping(self) -> dict[str, Any]:
         """Return the normalized JSON row in #628 database-column order."""
 
-        return {
+        mapping = {
             "build_id": self.build_id,
             "ts": self.ts,
             "pipeline": self.pipeline,
@@ -279,6 +279,12 @@ class ChronicleRow:
             "prev_row_digest": self.prev_row_digest,
             "row_digest": self.row_digest,
         }
+        # ``frozen=True`` prevents attribute replacement but a caller can
+        # still mutate nested JSON containers.  Re-authenticate immediately
+        # before every serialization boundary so neither such a mutation nor
+        # direct dataclass construction can persist an invalid row.
+        ChronicleRow.from_mapping(mapping)
+        return mapping
 
     def to_json_line(self) -> str:
         """Serialize one portable compact JSON row."""
@@ -528,9 +534,12 @@ def reconcile_spool(
         )
 
     directory = Path(spool_dir)
+    attempted = 0
     posted = 0
+    removed = 0
     errors: list[str] = []
     for row in rows:
+        attempted += 1
         success, error = _post_build_row(
             row,
             ledger_url=config[0],
@@ -540,9 +549,11 @@ def reconcile_spool(
         if not success:
             errors.append(f"{row.build_id}: {error or 'remote insert failed'}")
             break
+        posted += 1
         path = directory / f"{row.row_digest}.json"
         try:
             path.unlink()
+            removed += 1
             _fsync_parent_directory(directory)
         except OSError as exc:
             errors.append(
@@ -550,11 +561,10 @@ def reconcile_spool(
                 f"failed: {exc}"
             )
             break
-        posted += 1
     return ReconcileResult(
-        attempted=posted + (1 if errors else 0),
+        attempted=attempted,
         posted=posted,
-        retained=len(rows) - posted,
+        retained=len(rows) - removed,
         errors=tuple(errors),
     )
 
@@ -613,6 +623,11 @@ def export_rows(
             )
         addition = "".join(row.to_json_line() for row in new_rows).encode("utf-8")
         _atomic_write_bytes(archive, original + addition)
+    elif archive.exists():
+        # A previous atomic replacement may have become visible before its
+        # parent-directory fsync failed.  An exact retry must complete that
+        # durability boundary instead of returning early.
+        _fsync_file_and_parent(archive)
 
     tail = new_rows[-1].row_digest if new_rows else predecessor
     return ChronicleExportResult(
@@ -932,6 +947,9 @@ def _atomic_write_row(path: Path, row: ChronicleRow) -> None:
             raise ValueError(
                 f"Chronicle spool digest collision or divergent retry at {path}."
             )
+        # Complete a possibly interrupted replacement whose file became
+        # visible before the parent-directory fsync succeeded.
+        _fsync_file_and_parent(path)
         return
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -959,6 +977,12 @@ def _atomic_write_bytes(path: Path, content: bytes) -> None:
         _fsync_parent_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _fsync_file_and_parent(path: Path) -> None:
+    with path.open("rb") as stream:
+        os.fsync(stream.fileno())
+    _fsync_parent_directory(path.parent)
 
 
 def _fsync_parent_directory(path: Path) -> None:
