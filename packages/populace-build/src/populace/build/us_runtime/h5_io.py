@@ -328,6 +328,14 @@ def _load_authenticated_us_multispine_pool_manifest(
         diagnostics.get("agreement_gate"),
         label=f"US multispine pool diagnostics {diagnostics_path}.agreement_gate",
     )
+    _require_matching_terminal_gate_aliases(
+        manifest,
+        diagnostics,
+        manifest_path=manifest_path,
+        diagnostics_path=diagnostics_path,
+        manifest_agreement_gate=manifest_agreement_gate,
+        diagnostics_agreement_gate=diagnostics_agreement_gate,
+    )
     if diagnostics_agreement_gate != manifest_agreement_gate:
         raise ValueError(
             f"US multispine pool diagnostics {diagnostics_path} agreement-gate "
@@ -734,6 +742,58 @@ def _mapping(value: object, *, label: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} must be an object.")
     return value
+
+
+def _require_matching_terminal_gate_aliases(
+    manifest: Mapping[str, object],
+    diagnostics: Mapping[str, object],
+    *,
+    manifest_path: Path,
+    diagnostics_path: Path,
+    manifest_agreement_gate: Mapping[str, object],
+    diagnostics_agreement_gate: Mapping[str, object],
+) -> None:
+    """Bind stacked terminal gates to the legacy compatibility aliases.
+
+    Legacy two-spine manifests predate ``terminal_gates`` and remain valid
+    without it.  The stacked pipeline declares that field as its terminal
+    authority, so both publication documents must carry it and must reproduce
+    their existing ``agreement_gate`` compatibility aliases exactly.
+    """
+
+    is_stacked = manifest.get("pipeline") == "us-stacked-pool"
+    manifest_has_terminal = "terminal_gates" in manifest
+    diagnostics_has_terminal = "terminal_gates" in diagnostics
+    if not (is_stacked or manifest_has_terminal or diagnostics_has_terminal):
+        return
+    if not manifest_has_terminal:
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path}.terminal_gates must be "
+            "an object matching agreement_gate."
+        )
+    if not diagnostics_has_terminal:
+        raise ValueError(
+            f"US stacked pool diagnostics {diagnostics_path}.terminal_gates must "
+            "be an object matching agreement_gate."
+        )
+    manifest_terminal_gates = _mapping(
+        manifest.get("terminal_gates"),
+        label=f"US stacked pool manifest {manifest_path}.terminal_gates",
+    )
+    diagnostics_terminal_gates = _mapping(
+        diagnostics.get("terminal_gates"),
+        label=f"US stacked pool diagnostics {diagnostics_path}.terminal_gates",
+    )
+    if manifest_terminal_gates != manifest_agreement_gate:
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} terminal_gates do not "
+            "match agreement_gate."
+        )
+    if diagnostics_terminal_gates != diagnostics_agreement_gate:
+        raise ValueError(
+            f"US stacked pool diagnostics {diagnostics_path} terminal_gates do "
+            "not match agreement_gate."
+        )
 
 
 def _publication_run_id(value: object, *, label: str) -> str:
