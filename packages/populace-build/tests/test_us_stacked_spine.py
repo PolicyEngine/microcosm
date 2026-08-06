@@ -2909,6 +2909,23 @@ def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
         GateReport((stripped,)).to_manifest()
 
 
+def test_stripped_five_component_authority_cannot_escape_under_a_renamed_gate() -> None:
+    authority = stacked_spine_module.stacked_spine_authority_receipt()
+    components = deepcopy(dict(authority["components"]))
+    assert "joint_metric_registry" in components
+    stripped = GateResult(
+        name="renamed_stacked_battery",
+        passed=True,
+        details={"authority": {"components": components}},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="unrecognized gate name.*manifest emission is forbidden",
+    ):
+        GateReport((stripped,)).to_manifest()
+
+
 def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
     attached = clone_us_frame_for_puf_support(
         _stacked_gap_fixture(),
