@@ -25,6 +25,8 @@ from populace.build.serialization_dtypes import (
 )
 from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime.puf_support import (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -63,6 +65,11 @@ from populace.frame import EntitySchema, Frame, WeightKind, Weights
 # values, never QRF predictors or targets. Loads authenticate the immutable file
 # SHA, metadata, and legacy dtype-sensitive recipient identity before applying
 # the canonical in-memory string policy, so existing bank bytes remain valid.
+# The populace#578 stacked-spine doctrine controls likewise do not bump v5:
+# legacy manifests omit both fields and retain their exact bytes and behavior.
+# A non-legacy initialization writes both controls into each immutable bank,
+# the root manifest, and every target receipt so deletion or mutation cannot
+# silently downgrade a stacked chain to the legacy policy.
 PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 5
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
@@ -80,6 +87,12 @@ _ARTIFACT_KIND = "populace_primary_puf_qrf_chain"
 _RAW_TARGET_ARTIFACT_KIND = "populace_primary_puf_qrf_raw_target"
 _METADATA_DATASET = "metadata_json"
 _RAW_DRAW_BITS_DATASET = "raw_draw_bits"
+_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS = "require_complete_recipient_predictors"
+_ABSENT_CELLS = "absent_cells"
+_ABSENT_CELLS_POLICIES = (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
+)
 
 __all__ = [
     "PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION",
@@ -103,8 +116,29 @@ def initialize_primary_puf_qrf_chain(
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     seed: int = 0,
     n_estimators: int = 100,
+    require_complete_recipient_predictors: bool = False,
+    absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> dict[str, object]:
-    """Write immutable donor/recipient inputs and the initial RNG manifest."""
+    """Write immutable donor/recipient inputs and the initial RNG manifest.
+
+    The defaults preserve the historical two-spine chain exactly: recipient
+    predictor absence is zero-filled, finalization globally zero-fills absent
+    outputs, and the two doctrine fields are omitted so legacy v5 bank bytes do
+    not change.  Selecting either non-legacy control declares *both* settings
+    in every immutable bank, the root manifest, and per-target receipts.
+    """
+
+    require_complete_recipient_predictors, absent_cells = (
+        _validate_chain_doctrine_controls(
+            require_complete_recipient_predictors,
+            absent_cells,
+            source="Primary QRF initialization",
+        )
+    )
+    doctrine_receipt = _declared_chain_doctrine_receipt(
+        require_complete_recipient_predictors,
+        absent_cells,
+    )
 
     root = Path(checkpoint_dir)
     manifest_path = root / PRIMARY_QRF_MANIFEST_FILENAME
@@ -113,12 +147,16 @@ def initialize_primary_puf_qrf_chain(
     root.mkdir(parents=True, exist_ok=True)
     (root / PRIMARY_QRF_TARGETS_DIRNAME).mkdir(exist_ok=True)
 
+    preparation_kwargs: dict[str, object] = {}
+    if require_complete_recipient_predictors:
+        preparation_kwargs[_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS] = True
     inputs = prepare_us_puf_tax_detail_chain_inputs(
         frame,
         donor_tax_units,
         predictors=predictors,
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
+        **preparation_kwargs,
     )
     target_order = inputs.target_order
     if (
@@ -141,6 +179,7 @@ def initialize_primary_puf_qrf_chain(
             "artifact_kind": _ARTIFACT_KIND,
             "role": "donor",
             "target_order": list(target_order),
+            **doctrine_receipt,
         },
     )
     recipient_frame, identity_columns = _recipient_checkpoint_frame(frame, inputs)
@@ -159,6 +198,7 @@ def initialize_primary_puf_qrf_chain(
             "predictors": list(inputs.predictors),
             "role": "recipient",
             "target_order": list(target_order),
+            **doctrine_receipt,
         },
     )
 
@@ -191,6 +231,7 @@ def initialize_primary_puf_qrf_chain(
         "target_order": list(target_order),
         "target_order_sha256": _ordered_strings_sha256(target_order),
         "tax_unit_outputs": list(inputs.tax_unit_outputs),
+        **doctrine_receipt,
     }
     _atomic_write_json(manifest_path, manifest)
     return manifest
@@ -395,6 +436,7 @@ def finalize_primary_puf_qrf_chain(
         person_outputs=_manifest_strings(manifest, "person_outputs"),
         tax_unit_outputs=_manifest_strings(manifest, "tax_unit_outputs"),
         tail_bound_diagnostics=tail_bound_diagnostics,
+        **_finalization_doctrine_kwargs(manifest),
     )
     initial_state = manifest.get("initial_state")
     if not isinstance(initial_state, dict):
@@ -493,6 +535,11 @@ def _load_bound_frame(
                 f"Primary QRF {role} checkpoint has invalid {key}: expected "
                 f"{expected!r}, got {loaded.metadata.get(key)!r}."
             )
+    _assert_bound_doctrine_controls(
+        manifest,
+        loaded.metadata,
+        role=f"{role} checkpoint",
+    )
     if role == "recipient":
         identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
         recipient_table = loaded.frame.table("tax_unit")
@@ -529,6 +576,7 @@ def _write_target_checkpoint(
     weight_kind: str,
 ) -> None:
     draw = np.ascontiguousarray(raw_draw, dtype="<f8")
+    doctrine_receipt = _manifest_doctrine_receipt(manifest)
     metadata = {
         "artifact_kind": _RAW_TARGET_ARTIFACT_KIND,
         "manifest_sha256": _mapping_sha256(manifest),
@@ -541,6 +589,7 @@ def _write_target_checkpoint(
         "target": target,
         "target_index": target_index,
         "weight_kind": weight_kind,
+        **doctrine_receipt,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
@@ -602,6 +651,11 @@ def _load_target_checkpoint(
                 f"Primary QRF target checkpoint {path} has invalid {key}: "
                 f"expected {value!r}, got {metadata.get(key)!r}."
             )
+    _assert_bound_doctrine_controls(
+        manifest,
+        metadata,
+        role=f"target checkpoint {path}",
+    )
     if len(bits) != _manifest_integer(manifest, "recipient_rows"):
         raise ValueError(f"Primary QRF target checkpoint {path} has wrong row count.")
     actual_draw_digest = hashlib.sha256(bits.tobytes()).hexdigest()
@@ -682,6 +736,7 @@ def _load_manifest(root: Path) -> dict[str, object]:
         raise ValueError("Primary QRF production_target_order must be boolean.")
     if production_target_order and target_order != PRIMARY_QRF_TARGET_ORDER:
         raise ValueError("Primary QRF production target order changed.")
+    _resolve_chain_doctrine_controls(manifest, source="Primary QRF manifest")
     return manifest
 
 
@@ -740,6 +795,117 @@ def _manifest_integer(manifest: Mapping[str, object], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"Primary QRF manifest {key!r} must be an integer.")
     return value
+
+
+def _validate_chain_doctrine_controls(
+    require_complete_recipient_predictors: object,
+    absent_cells: object,
+    *,
+    source: str,
+) -> tuple[bool, str]:
+    if not isinstance(require_complete_recipient_predictors, bool):
+        raise ValueError(
+            f"{source} {_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS!r} must be boolean."
+        )
+    if not isinstance(absent_cells, str) or absent_cells not in _ABSENT_CELLS_POLICIES:
+        raise ValueError(
+            f"{source} {_ABSENT_CELLS!r} must be one of "
+            f"{list(_ABSENT_CELLS_POLICIES)}; got {absent_cells!r}."
+        )
+    return require_complete_recipient_predictors, absent_cells
+
+
+def _declared_chain_doctrine_receipt(
+    require_complete_recipient_predictors: bool,
+    absent_cells: str,
+) -> dict[str, object]:
+    if (
+        not require_complete_recipient_predictors
+        and absent_cells == PUF_ABSENT_CELLS_LEGACY_ZERO_FILL
+    ):
+        return {}
+    return {
+        _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS: (require_complete_recipient_predictors),
+        _ABSENT_CELLS: absent_cells,
+    }
+
+
+def _resolve_chain_doctrine_controls(
+    payload: Mapping[str, object],
+    *,
+    source: str,
+) -> tuple[bool, str, bool]:
+    has_require_complete = _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS in payload
+    has_absent_cells = _ABSENT_CELLS in payload
+    if has_require_complete != has_absent_cells:
+        raise ValueError(
+            f"{source} doctrine controls must declare both "
+            f"{_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS!r} and "
+            f"{_ABSENT_CELLS!r}, or neither for a legacy v5 bank."
+        )
+    if not has_require_complete:
+        return False, PUF_ABSENT_CELLS_LEGACY_ZERO_FILL, False
+    require_complete, absent_cells = _validate_chain_doctrine_controls(
+        payload[_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS],
+        payload[_ABSENT_CELLS],
+        source=source,
+    )
+    return require_complete, absent_cells, True
+
+
+def _manifest_doctrine_receipt(
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    require_complete, absent_cells, declared = _resolve_chain_doctrine_controls(
+        manifest,
+        source="Primary QRF manifest",
+    )
+    if not declared:
+        return {}
+    return {
+        _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS: require_complete,
+        _ABSENT_CELLS: absent_cells,
+    }
+
+
+def _assert_bound_doctrine_controls(
+    manifest: Mapping[str, object],
+    receipt: Mapping[str, object],
+    *,
+    role: str,
+) -> None:
+    manifest_require_complete, manifest_absent_cells, manifest_declared = (
+        _resolve_chain_doctrine_controls(
+            manifest,
+            source="Primary QRF manifest",
+        )
+    )
+    receipt_require_complete, receipt_absent_cells, receipt_declared = (
+        _resolve_chain_doctrine_controls(
+            receipt,
+            source=f"Primary QRF {role}",
+        )
+    )
+    if (
+        receipt_declared != manifest_declared
+        or receipt_require_complete != manifest_require_complete
+        or receipt_absent_cells != manifest_absent_cells
+    ):
+        raise ValueError(
+            f"Primary QRF {role} doctrine controls disagree with the manifest."
+        )
+
+
+def _finalization_doctrine_kwargs(
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    _require_complete, absent_cells, declared = _resolve_chain_doctrine_controls(
+        manifest,
+        source="Primary QRF manifest",
+    )
+    if not declared:
+        return {}
+    return {_ABSENT_CELLS: absent_cells}
 
 
 def _recipient_identity_sha256(
