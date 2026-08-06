@@ -1,9 +1,11 @@
 """National UK build orchestration with batched terminal release gates.
 
-This module is deliberately table-oriented. UK source stages operate on the
-same person, benunit, and household tables persisted by a PolicyEngine-UK
-single-year H5, including ``household_weight`` as a real export column. The
-local-geography clone remains a separate downstream build product.
+UK source stages run ``Frame -> Frame`` on the national carrier assembled by
+:mod:`populace.build.uk_runtime.national_frame`; the staging H5 persists the
+same person, benunit, and household tables PolicyEngine-UK reads, including
+``household_weight`` as a real export column materialized from the frame's
+typed weights. The local-geography clone remains a separate downstream build
+product with its own carrier.
 """
 
 from __future__ import annotations
@@ -11,11 +13,10 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 import populace.build.uk_runtime.national_frame as _national_frame
@@ -50,18 +51,14 @@ uk_release_input_coverage_gate = _release_input_coverage.uk_release_input_covera
 
 __all__ = [
     "UKNationalBuildResult",
-    "UKNationalDataset",
     "UKNationalStage",
     "UKStagingProvenance",
     "build_uk_national_dataset",
-    "load_uk_national_dataset",
     "load_uk_national_frame",
     "uk_household_weight_kind",
     "uk_national_frame",
     "uk_time_period",
-    "validate_uk_national_dataset",
     "validate_uk_national_frame",
-    "write_uk_national_dataset",
     "write_uk_national_frame",
 ]
 
@@ -75,74 +72,6 @@ UK_MASS_LOG_ATTR = "populace_mass_log_json"
 # certified candidates to it) on their current import path.
 _UKSourceFileFingerprint = _national_frame._UKSourceFileFingerprint
 _uk_source_file_fingerprint = _national_frame._uk_source_file_fingerprint
-
-
-@dataclass(frozen=True)
-class UKNationalDataset:
-    """Explicit entity tables at one point in the national build pipeline."""
-
-    person: pd.DataFrame
-    benunit: pd.DataFrame
-    household: pd.DataFrame
-    time_period: str
-    household_weight_kind: WeightKind = WeightKind.DESIGN
-    mass_log: tuple[MassChangeRecord, ...] = ()
-    _source_h5: Path | None = field(
-        default=None,
-        init=False,
-        repr=False,
-        compare=False,
-    )
-    _source_file_fingerprint: _UKSourceFileFingerprint | None = field(
-        default=None,
-        init=False,
-        repr=False,
-        compare=False,
-    )
-
-    @property
-    def source_h5(self) -> Path | None:
-        """Resolved source path set by the H5 loader, never by table callers."""
-
-        return self._source_h5
-
-    @property
-    def source_file_fingerprint(self) -> _UKSourceFileFingerprint | None:
-        """Stable identity of the file bytes opened by the H5 loader."""
-
-        return self._source_file_fingerprint
-
-    def with_tables(
-        self,
-        *,
-        person: pd.DataFrame | None = None,
-        benunit: pd.DataFrame | None = None,
-        household: pd.DataFrame | None = None,
-        time_period: int | str | None = None,
-        household_weight_kind: WeightKind | None = None,
-        mass_log: tuple[MassChangeRecord, ...] | None = None,
-    ) -> UKNationalDataset:
-        """Return a dataset with selected tables replaced."""
-
-        result = UKNationalDataset(
-            person=self.person if person is None else person,
-            benunit=self.benunit if benunit is None else benunit,
-            household=self.household if household is None else household,
-            time_period=(self.time_period if time_period is None else str(time_period)),
-            household_weight_kind=(
-                self.household_weight_kind
-                if household_weight_kind is None
-                else household_weight_kind
-            ),
-            mass_log=self.mass_log if mass_log is None else tuple(mass_log),
-        )
-        object.__setattr__(result, "_source_h5", self._source_h5)
-        object.__setattr__(
-            result,
-            "_source_file_fingerprint",
-            self._source_file_fingerprint,
-        )
-        return result
 
 
 @dataclass(frozen=True)
@@ -249,24 +178,6 @@ def _read_uk_national_tables(
     return payload, fingerprint_after, input_path
 
 
-def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
-    """Load and validate a compact UK single-year H5."""
-
-    payload, fingerprint, input_path = _read_uk_national_tables(path)
-    dataset = UKNationalDataset(
-        person=payload["person"],
-        benunit=payload["benunit"],
-        household=payload["household"],
-        time_period=payload["time_period"],
-        household_weight_kind=payload["household_weight_kind"],
-        mass_log=payload["mass_log"],
-    )
-    object.__setattr__(dataset, "_source_h5", input_path)
-    object.__setattr__(dataset, "_source_file_fingerprint", fingerprint)
-    validate_uk_national_dataset(dataset)
-    return dataset
-
-
 def load_uk_national_frame(
     path: str | Path,
 ) -> tuple[Frame, UKStagingProvenance]:
@@ -290,86 +201,6 @@ def load_uk_national_frame(
     )
     validate_uk_national_frame(frame)
     return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
-
-
-def validate_uk_national_dataset(dataset: UKNationalDataset) -> None:
-    """Validate UK entity IDs, memberships, weights, and period metadata."""
-
-    if not isinstance(dataset, UKNationalDataset):
-        raise TypeError(
-            "UK national stages must operate on UKNationalDataset instances."
-        )
-    for name in ("person", "benunit", "household"):
-        if not isinstance(getattr(dataset, name), pd.DataFrame):
-            raise TypeError(f"UK national {name} table must be a pandas DataFrame.")
-    if not isinstance(dataset.time_period, str) or not dataset.time_period.strip():
-        raise ValueError("UK national dataset time_period must be a non-empty string.")
-    if not isinstance(dataset.household_weight_kind, WeightKind):
-        raise TypeError(
-            "UK national dataset household_weight_kind must be a WeightKind."
-        )
-    if not isinstance(dataset.mass_log, tuple) or any(
-        not isinstance(record, MassChangeRecord) for record in dataset.mass_log
-    ):
-        raise TypeError(
-            "UK national dataset mass_log must be a tuple of MassChangeRecord."
-        )
-
-    _require_columns(
-        dataset.person,
-        ("person_id", "person_household_id", "person_benunit_id"),
-        label="person",
-    )
-    _require_columns(dataset.benunit, ("benunit_id",), label="benunit")
-    _require_columns(
-        dataset.household,
-        ("household_id", "household_weight"),
-        label="household",
-    )
-    _require_unique(dataset.person, "person_id", label="person")
-    _require_unique(dataset.benunit, "benunit_id", label="benunit")
-    _require_unique(dataset.household, "household_id", label="household")
-
-    missing_households = sorted(
-        set(dataset.person["person_household_id"])
-        - set(dataset.household["household_id"])
-    )
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-    missing_benunits = sorted(
-        set(dataset.person["person_benunit_id"]) - set(dataset.benunit["benunit_id"])
-    )
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
-
-    weights = pd.to_numeric(dataset.household["household_weight"], errors="coerce")
-    if weights.isna().any() or not np.isfinite(weights.to_numpy(dtype=float)).all():
-        raise ValueError("household.household_weight must contain finite numbers.")
-    if (weights < 0).any():
-        raise ValueError("household.household_weight must be non-negative.")
-    if not (weights > 0).any():
-        raise ValueError(
-            "household.household_weight must retain at least one positive value."
-        )
-    household_records = [
-        record for record in dataset.mass_log if record.entity == "household"
-    ]
-    if household_records and not np.isclose(
-        household_records[-1].new_total,
-        float(weights.sum()),
-        rtol=1e-9,
-        atol=0.0,
-    ):
-        raise ValueError(
-            "UK national dataset household_weight total disagrees with the "
-            "latest household MassChangeRecord."
-        )
 
 
 def _write_uk_single_year_tables(
@@ -410,27 +241,6 @@ def _write_uk_single_year_tables(
     finally:
         temporary_path.unlink(missing_ok=True)
     return path
-
-
-def write_uk_national_dataset(
-    dataset: UKNationalDataset,
-    path: str | Path,
-) -> Path:
-    """Atomically write a validated UK national single-year staging H5."""
-
-    validate_uk_national_dataset(dataset)
-    output_path = Path(path)
-    if output_path.suffix != ".h5":
-        raise ValueError("UK national staging path must end with '.h5'.")
-    return _write_uk_single_year_tables(
-        person=dataset.person,
-        benunit=dataset.benunit,
-        household=dataset.household,
-        time_period=dataset.time_period,
-        weight_kind=dataset.household_weight_kind,
-        mass_log=dataset.mass_log,
-        path=output_path,
-    )
 
 
 def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:
@@ -625,26 +435,6 @@ def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
     )
 
 
-def _require_columns(
-    frame: pd.DataFrame,
-    columns: Sequence[str],
-    *,
-    label: str,
-) -> None:
-    missing = sorted(set(columns) - set(frame.columns))
-    if missing:
-        raise ValueError(f"{label} table is missing column(s): {missing}.")
-
-
-def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
-    if frame[column].isna().any():
-        raise ValueError(f"{label}.{column} contains missing values.")
-    if frame[column].duplicated().any():
-        duplicates = frame.loc[frame[column].duplicated(), column].unique()
-        raise ValueError(
-            f"{label}.{column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates[:5]))}."
-        )
 
 
 def _weight_kind_from_stored(value: object) -> WeightKind:

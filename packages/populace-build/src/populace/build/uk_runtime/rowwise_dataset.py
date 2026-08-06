@@ -630,7 +630,8 @@ def write_uk_rowwise_dataset(
     )
     # The national seam's shared physical writer supplies the atomic
     # two-phase rename and the weight-kind/mass-log attrs, so the rowwise
-    # output is self-describing under ``load_uk_national_dataset`` and the
+    # output is self-describing under ``read_uk_single_year_weight_metadata``
+    # and the
     # two artifacts can never drift in layout.
     return _write_uk_single_year_tables(
         person=result.person,

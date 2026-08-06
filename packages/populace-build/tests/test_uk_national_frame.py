@@ -19,9 +19,7 @@ import pandas as pd
 import pytest
 
 from populace.build.uk_runtime.national_build import (
-    UKNationalDataset,
     load_uk_national_frame,
-    write_uk_national_dataset,
     write_uk_national_frame,
 )
 from populace.build.uk_runtime.national_frame import (
@@ -207,29 +205,25 @@ def test_write_load_round_trip_with_provenance(tmp_path: Path) -> None:
     assert stored_mass_log == frame.mass_log
 
 
-def test_frame_writer_payload_is_identical_to_shadow_writer(
+def test_frame_writer_payload_is_stable_across_generations(
     tmp_path: Path,
 ) -> None:
-    """The staging artifact must not change because the carrier did.
+    """The payload survives a write -> load -> write round trip unchanged.
 
     Payload identity, deliberately not byte identity: HDF5 stamps write
-    times, so two runs of the *same* writer already differ in bytes.
+    times, so two runs of the *same* writer already differ in bytes. The
+    shadow-writer comparison arm retired with the shadow carrier; this pins
+    the same keys/column-order/dtype/value/attr surface generation to
+    generation, which is what downstream readers actually depend on.
     """
 
     pytest.importorskip("tables")
     h5py = pytest.importorskip("h5py")
     mass_log = _mass_log(60.0)
-    dataset = UKNationalDataset(
-        person=person_frame(),
-        benunit=benunit_frame(),
-        household=household_frame(),
-        time_period="2023",
-        household_weight_kind=WeightKind.IMPORTANCE,
-        mass_log=mass_log,
-    )
     frame = _frame(weight_kind=WeightKind.IMPORTANCE, mass_log=mass_log)
-    old_path = write_uk_national_dataset(dataset, tmp_path / "old.h5")
-    new_path = write_uk_national_frame(frame, tmp_path / "new.h5")
+    old_path = write_uk_national_frame(frame, tmp_path / "old.h5")
+    reloaded, _provenance = load_uk_national_frame(old_path)
+    new_path = write_uk_national_frame(reloaded, tmp_path / "new.h5")
 
     with (
         pd.HDFStore(old_path, mode="r") as old_store,

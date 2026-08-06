@@ -264,13 +264,9 @@ from populace.build.uk_runtime.local_targets import (
 )
 from populace.build.uk_runtime.national_build import (
     UKNationalBuildResult,
-    UKNationalDataset,
     UKNationalStage,
     build_uk_national_dataset,
-    load_uk_national_dataset,
     load_uk_national_frame,
-    validate_uk_national_dataset,
-    write_uk_national_dataset,
     write_uk_national_frame,
 )
 from populace.build.uk_runtime.national_frame import (
@@ -579,7 +575,6 @@ __all__ = [
     "UKHMRCIncomeStageTransform",
     "UKHMRCTargetMaterialization",
     "UKNationalBuildResult",
-    "UKNationalDataset",
     "UKStagingProvenance",
     "UK_NATIONAL_SCHEMA",
     "UKNationalStage",
@@ -682,7 +677,6 @@ __all__ = [
     "local_authority_household_targets",
     "load_uk_local_target_census",
     "ladder_target_provenance",
-    "load_uk_national_dataset",
     "load_uk_national_frame",
     "load_uk_release_input_coverage_manifest",
     "committed_uk_local_target_census_path",
@@ -732,7 +726,6 @@ __all__ = [
     "uk_household_weight_kind",
     "uk_national_frame",
     "uk_time_period",
-    "validate_uk_national_dataset",
     "validate_uk_national_frame",
     "validate_uk_ladder_rowwise_dataset_tables",
     "validate_uk_rowwise_dataset_tables",
@@ -741,7 +734,6 @@ __all__ = [
     "verify_hmrc_spi_collated_ods",
     "verify_spi_donor_identity",
     "write_uk_local_target_census",
-    "write_uk_national_dataset",
     "write_uk_national_frame",
     "validate_geography_coverage",
     "write_geography_crosswalk",
