@@ -2,12 +2,14 @@
 
 Three acceptance facts, each load-bearing for the carrier migration:
 construction and the UK residue validation; the new writer/loader pair
-round-tripping payload and provenance; and **payload identity** between the
-shadow-carrier writer and the Frame writer on the same tables — the staging
-artifact must not change because the in-build carrier did. The SPI
-replacement test is the CI-side kill-shot for the riskiest unknown: whether
-the mid-pipeline tables (cloned households, rebuilt ids) satisfy Frame's
-sorted-group-id and bidirectional-membership invariants.
+round-tripping payload and provenance; and payload **stability across
+write -> load -> write generations** — the shadow writer is deleted, so
+old-vs-new identity is no longer provable in CI and was settled instead by
+the credentialed acceptance run recorded on #612 (loader->writer round trip
+of the certified candidate, compared with tools/compare_uk_h5_payload.py).
+The SPI replacement test is the CI-side kill-shot for the riskiest unknown:
+whether the mid-pipeline tables (cloned households, rebuilt ids) satisfy
+Frame's sorted-group-id and bidirectional-membership invariants.
 """
 
 from __future__ import annotations

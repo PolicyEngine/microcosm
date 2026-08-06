@@ -44,6 +44,7 @@ def _toy_result_frame():
         ),
     )
 
+
 _PATH_ARGUMENTS = (
     "evidence_path",
     "replay_path",

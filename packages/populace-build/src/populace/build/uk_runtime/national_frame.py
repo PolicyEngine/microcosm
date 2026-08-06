@@ -109,11 +109,11 @@ def uk_national_frame(
             "household must carry a household_weight column; the UK staging "
             "artifact exports it as a real column."
         )
-    period = "" if time_period is None else str(time_period).strip()
-    if not period:
-        raise ValueError(
-            "UK national frame time_period must be a non-empty string."
-        )
+    # Validate on a stripped copy but store the caller's exact value: the
+    # carrier must never rewrite payload it merely transports.
+    period = "" if time_period is None else str(time_period)
+    if not period.strip():
+        raise ValueError("UK national frame time_period must be a non-empty string.")
     weights = Weights(
         values=household["household_weight"].to_numpy(dtype="float64"),
         kind=weight_kind,

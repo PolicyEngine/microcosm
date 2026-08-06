@@ -496,9 +496,7 @@ def test_restoration_binds_loaded_candidate_bytes_before_source_io(
         time_period=HMRC_SPI_BUILD_PERIOD,
     )
     write_uk_national_frame(replacement, candidate_path)
-    loaded_replacement, replacement_provenance = load_uk_national_frame(
-        candidate_path
-    )
+    loaded_replacement, replacement_provenance = load_uk_national_frame(candidate_path)
     monkeypatch.setattr(
         hmrc_restoration,
         "verify_spi_donor_identity",
@@ -759,6 +757,65 @@ def test_stage_transform_requires_retained_leaf_stage_and_forwards_evidence(
     assert transform(dataset) is dataset
     assert transform.last_result is expected
     assert forwarded["frs_source_evidence"] == _FRS_SOURCE_EVIDENCE
+
+
+def test_stage_transform_binding_is_single_use_and_asserts_descent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The provenance binding restores the retired carrier's descent fence.
+
+    Binding couples the provenance to the exact loaded frame; the stage
+    consumes the binding on use, so a stale binding can never fence a later
+    run, and a pipeline whose first stage consumed a substituted frame
+    fails closed even when a matching load once happened.
+    """
+
+    loaded = _dataset()
+    provenance = UKStagingProvenance(
+        source_h5=(tmp_path / "populace_uk_2023.h5").resolve(),
+        fingerprint=_TEST_SOURCE_FINGERPRINT,
+    )
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    forwarded: list[object] = []
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "restore_uk_hmrc_income_family",
+        lambda frame, **kwargs: (
+            forwarded.append(kwargs["staging_provenance"]),
+            SimpleNamespace(frame=frame),
+        )[1],
+    )
+
+    # Descent violation: the pipeline's first stage consumed a frame other
+    # than the one the driver loaded and bound.
+    substituted = _dataset()
+    transform.retained_leaves_transform = SimpleNamespace(
+        last_result=SimpleNamespace(
+            frame=loaded, evidence=lambda: _FRS_SOURCE_EVIDENCE
+        ),
+        last_input=substituted,
+    )
+    transform.bind_staging_provenance(provenance, loaded)
+    with pytest.raises(RuntimeError, match="did not start from the frame"):
+        transform(loaded)
+    assert transform.staging_provenance is None
+    assert transform.bound_frame is None
+
+    # Descent-consistent run forwards the bound provenance exactly once...
+    transform.retained_leaves_transform.last_input = loaded
+    transform.bind_staging_provenance(provenance, loaded)
+    assert transform(loaded) is loaded
+    assert forwarded == [provenance]
+
+    # ...and a second run without rebinding gets no provenance (the real
+    # restore then fails closed on staging_provenance=None).
+    assert transform(loaded) is loaded
+    assert forwarded == [provenance, None]
 
 
 @pytest.mark.parametrize(

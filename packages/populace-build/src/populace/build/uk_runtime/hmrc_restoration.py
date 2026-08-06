@@ -219,6 +219,11 @@ class UKHMRCIncomeStageTransform:
         default=None,
         init=False,
     )
+    bound_frame: Frame | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     @property
     def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
@@ -228,19 +233,35 @@ class UKHMRCIncomeStageTransform:
             return ()
         return tuple(self.last_result.imputation.fit_weight_records)
 
-    def bind_staging_provenance(self, provenance: UKStagingProvenance) -> None:
-        """Receive the load provenance from the national build driver.
+    def bind_staging_provenance(
+        self,
+        provenance: UKStagingProvenance,
+        frame: Frame,
+    ) -> None:
+        """Receive the load provenance and the loaded frame from the driver.
 
         Provenance travels beside the frame, never inside it, so the driver
-        hands it to the one stage whose fence binds the loaded bytes to the
-        verified certified candidate.
+        hands both to the one stage whose fence binds the loaded bytes to the
+        verified certified candidate. Binding the frame object restores the
+        descent guarantee the retired carrier's loader-attached fields gave:
+        the fence can require that the pipeline it sits in started from this
+        exact loaded object, not merely that a matching load happened once.
         """
 
         if not isinstance(provenance, UKStagingProvenance):
             raise TypeError("staging provenance must be UKStagingProvenance.")
+        if not isinstance(frame, Frame):
+            raise TypeError("bound frame must be a populace Frame.")
         self.staging_provenance = provenance
+        self.bound_frame = frame
 
     def __call__(self, frame: Frame) -> Frame:
+        # Single-use: a binding never outlives the run that consumes it, so
+        # a stale binding from an earlier build can never fence a later one.
+        staging_provenance = self.staging_provenance
+        bound_frame = self.bound_frame
+        self.staging_provenance = None
+        self.bound_frame = None
         retained = (
             None
             if self.retained_leaves_transform is None
@@ -256,12 +277,20 @@ class UKHMRCIncomeStageTransform:
                 "HMRC replay raw-FRS evidence is not bound to the frame "
                 "received from the immediately preceding retained-leaves stage."
             )
+        if bound_frame is not None:
+            retained_input = getattr(self.retained_leaves_transform, "last_input", None)
+            if retained_input is not bound_frame:
+                raise RuntimeError(
+                    "HMRC replay pipeline did not start from the frame the "
+                    "driver loaded and bound; the certified-candidate fence "
+                    "refuses a substituted input."
+                )
         self.last_result = restore_uk_hmrc_income_family(
             frame,
             spi_tab_path=self.spi_tab_path,
             hmrc_ods_path=self.hmrc_ods_path,
             certified_candidate=self.certified_candidate,
-            staging_provenance=self.staging_provenance,
+            staging_provenance=staging_provenance,
             frs_source_evidence=retained.evidence(),
             seed=self.seed,
             qrf_estimators=self.qrf_estimators,

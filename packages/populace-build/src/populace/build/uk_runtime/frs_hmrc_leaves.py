@@ -206,6 +206,11 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         default=None,
         init=False,
     )
+    last_input: Frame | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     @classmethod
     def from_raw_frs_directory(
@@ -221,6 +226,10 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         )
 
     def __call__(self, frame: Frame) -> Frame:
+        # Recorded so the SPI stage's fence can assert descent: the frame
+        # this stage consumed must be the very object the driver loaded
+        # and bound its provenance to.
+        self.last_input = frame
         self.last_result = retain_uk_frs_hmrc_leaves(
             frame,
             adult_tab_path=self.adult_tab_path,

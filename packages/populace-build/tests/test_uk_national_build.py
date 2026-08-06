@@ -210,6 +210,53 @@ def _failing_gate() -> GateResult:
     )
 
 
+def test_driver_validates_the_uk_residue_after_each_stage(
+    monkeypatch, tmp_path
+) -> None:
+    """The driver's post-stage validate is load-bearing, not decorative.
+
+    A stage returning ``frame.with_weights(...)`` with a stale exported
+    ``household_weight`` column constructs a perfectly valid Frame — the
+    kernel permits the column when typed weights exist — so only the
+    driver's ``validate_uk_national_frame`` call can stop the wrong weights
+    from shipping. The stage-side rejection tests all raise inside the
+    stage's own frame construction; this one can only fail at the driver
+    seam.
+    """
+
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+    from populace.frame import CONSERVE_MASS, Weights
+
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+
+    def redistribute_without_refreshing_column(frame: Frame) -> Frame:
+        weights = frame.weights_for("household")
+        return frame.with_weights(
+            "household",
+            Weights(values=weights.values[::-1].copy(), kind=weights.kind),
+            mass=CONSERVE_MASS,
+        )
+
+    with pytest.raises(ValueError, match="refresh the exported column"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staging.h5",
+            stages=(
+                UKNationalStage(
+                    "stale_column", redistribute_without_refreshing_column
+                ),
+            ),
+            coverage_engine=object(),
+        )
+
+
 def test_gate_evidence_reproduces_the_legacy_attr_surface() -> None:
     """_uk_gate_evidence exposes exactly what the duck-typed gates read.
 

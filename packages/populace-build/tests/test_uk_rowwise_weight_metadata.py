@@ -25,6 +25,7 @@ from populace.build.uk_runtime import (
     clone_uk_dataset_with_rowwise_geography,
     read_uk_single_year_weight_metadata,
     uk_national_frame,
+    validate_uk_rowwise_dataset_tables,
     write_uk_national_frame,
     write_uk_rowwise_dataset,
 )
@@ -153,13 +154,18 @@ def test_clone_h5_carries_importance_weight_kind_and_mass_log(tmp_path) -> None:
     assert clone_record.declared_factor == 1.0
     assert "n_clones=2" in clone_record.reason
 
-    # The national loader must accept the rowwise output and see the same
-    # weight-kind chain: carriage is proven by the seam's own reader.
+    # The rowwise seam's own reader sees the same weight-kind chain, and the
+    # written bytes still satisfy the rowwise structural validator — the
+    # reader-side teeth the retired national loader used to provide here.
     stored_kind, stored_mass_log = read_uk_single_year_weight_metadata(output)
     assert stored_kind is WeightKind.IMPORTANCE
     assert stored_mass_log == result.mass_log
     with pd.HDFStore(output, mode="r") as store:
         assert store["household"]["household_weight"].sum() == pytest.approx(30.0)
+        validate_uk_rowwise_dataset_tables(
+            store["person"], store["benunit"], store["household"]
+        )
+        assert len(store["person"]) == len(result.person)
 
 
 def test_clone_legacy_h5_defaults_design_and_writes_explicit_attrs(tmp_path) -> None:

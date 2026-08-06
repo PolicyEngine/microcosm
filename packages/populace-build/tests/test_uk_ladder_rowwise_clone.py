@@ -20,6 +20,7 @@ from populace.build.uk_runtime import (
     clone_uk_dataset_with_ladder_geography,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
+    validate_uk_rowwise_dataset_tables,
     write_uk_rowwise_dataset,
 )
 from populace.frame import MassChangeRecord, WeightKind
@@ -177,10 +178,17 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
 
     # The rowwise seam's own reader accepts the output with the fence
     # chain intact. (The output is not a national frame: clone_index lives
-    # on every entity table, which Frame's flattening rule rejects.)
+    # on every entity table, which Frame's flattening rule rejects.) The
+    # written bytes must also satisfy the rowwise structural validator —
+    # the reader-side teeth the retired national loader used to provide.
     stored_kind, stored_mass_log = read_uk_single_year_weight_metadata(output)
     assert stored_kind is WeightKind.IMPORTANCE
     assert stored_mass_log == result.mass_log
+    with pd.HDFStore(output, mode="r") as store:
+        validate_uk_rowwise_dataset_tables(
+            store["person"], store["benunit"], store["household"]
+        )
+        assert len(store["person"]) == len(result.person)
 
 
 def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:

@@ -364,9 +364,7 @@ def test_candidate_clone_identity_mismatch_fails_closed(tmp_path: Path) -> None:
     adult_path, benefits_path = _write_raw_tables(tmp_path)
     person = dataset.person.copy()
     household = dataset.table("household")
-    clone_households = set(
-        household.loc[household["clone_index"] == 1, "household_id"]
-    )
+    clone_households = set(household.loc[household["clone_index"] == 1, "household_id"])
     tampered_row = person["person_household_id"].isin(clone_households).idxmax()
     person.loc[tampered_row, "person_id"] += 500
     tampered = uk_national_frame(

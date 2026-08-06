@@ -367,12 +367,14 @@ def build_uk_national_dataset(
     )
     frame, provenance = load_uk_national_frame(requested_input_path)
     # Stages whose fences bind the loaded bytes (the SPI stage's
-    # certified-candidate check) receive the load provenance explicitly —
-    # it travels beside the frame, never inside it.
+    # certified-candidate check) receive the load provenance and the loaded
+    # frame explicitly — provenance travels beside the frame, never inside
+    # it, and binding the frame object lets the fence assert descent from
+    # this exact load. Bindings are single-use; the stage consumes them.
     for stage in materialized_stages:
         binder = getattr(stage.transform, "bind_staging_provenance", None)
         if callable(binder):
-            binder(provenance)
+            binder(provenance, frame)
     for stage in materialized_stages:
         frame = stage.run(frame)
         validate_uk_national_frame(frame)
@@ -467,8 +469,6 @@ def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
-
 
 
 def _weight_kind_from_stored(value: object) -> WeightKind:
