@@ -1022,7 +1022,7 @@ def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state
         assert row.artifact_location == str((tmp_path / "stacked-pool.h5").resolve())
         assert all(
             verdict["receipt"].startswith(
-                str((tmp_path / "stacked-pool.gates.json").resolve())
+                str((tmp_path / "ledger-receipts" / row.build_id).resolve())
             )
             for verdict in row.gate_verdicts.values()
         )
@@ -1037,6 +1037,147 @@ def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state
             "sample_seed": 578,
             "realized_households": {"asec": 1, "acs": 1},
         }
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ("negative_seed", "oversized_seed", "invalid_output", "code_pin"),
+)
+def test_stacked_preflight_errors_emit_one_chronicle_row(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    arguments = _stacked_main_argv(tmp_path)
+    if failure in {"negative_seed", "oversized_seed"}:
+        seed_index = arguments.index("--sample-seed") + 1
+        arguments[seed_index] = "-1" if failure == "negative_seed" else str(2**63)
+        expected = "--sample-seed must be a non-negative signed 64-bit integer"
+    elif failure == "invalid_output":
+        output_index = arguments.index("--out") + 1
+        arguments[output_index] = str(tmp_path / "not-an-h5.txt")
+        expected = "--out must name an .h5 or .hdf5 file"
+    else:
+        monkeypatch.setattr(
+            pool_tool,
+            "_git_code_pin",
+            lambda: (_ for _ in ()).throw(RuntimeError("fixture code pin failure")),
+        )
+        expected = "fixture code pin failure"
+
+    with pytest.raises((RuntimeError, ValueError), match=expected):
+        pool_tool.main(arguments)
+
+    row_paths = list((tmp_path / "ledger-spool").glob("*.json"))
+    assert len(row_paths) == 1
+    row = load_chronicle_row(row_paths[0])
+    assert row.disposition == "failed"
+    assert row.artifact_location is None
+    assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+    error_path = Path(
+        row.gate_verdicts["pipeline_error"]["receipt"].split("#", maxsplit=1)[0]
+    )
+    assert error_path.is_file()
+    assert error_path.parent == tmp_path / "ledger-receipts" / row.build_id
+    assert order == []
+
+
+def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    stale_h5 = tmp_path / "stacked-pool.h5"
+    stale_h5.write_bytes(b"prior-build-artifact")
+
+    def fail_publication(*_args, **_kwargs) -> None:
+        raise RuntimeError("fixture publication failure")
+
+    monkeypatch.setattr(pool_tool, "_write_stacked_outputs", fail_publication)
+
+    with pytest.raises(RuntimeError, match="fixture publication failure"):
+        pool_tool.main(_stacked_main_argv(tmp_path))
+
+    row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+    assert row.artifact_location is None
+    assert set(row.gate_verdicts) == {
+        "fixture_completeness",
+        "fixture_battery",
+        "pipeline_error",
+    }
+    terminal_path = Path(
+        row.gate_verdicts["fixture_battery"]["receipt"].split("#", maxsplit=1)[0]
+    )
+    assert terminal_path.is_file()
+    assert stale_h5.read_bytes() == b"prior-build-artifact"
+
+
+def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
+    first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+    first_receipt = Path(
+        first_row.gate_verdicts["fixture_battery"]["receipt"].split("#", maxsplit=1)[0]
+    )
+    first_bytes = first_receipt.read_bytes()
+
+    monkeypatch.setattr(
+        pool_tool,
+        "by_origin_battery",
+        lambda _frame: GateResult(
+            name="fixture_battery",
+            passed=False,
+            failures=("later red verdict",),
+        ),
+    )
+    assert (
+        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=first_row.row_digest))
+        == 1
+    )
+
+    rows = [
+        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+    ]
+    second_row = next(
+        row for row in rows if row.prev_row_digest == first_row.row_digest
+    )
+    second_receipt = Path(
+        second_row.gate_verdicts["fixture_battery"]["receipt"].split("#", maxsplit=1)[0]
+    )
+    assert second_receipt != first_receipt
+    assert first_receipt.read_bytes() == first_bytes
+    assert (
+        json.loads(first_bytes)["terminal_gates"]["gates"]["fixture_battery"]["passed"]
+        is True
+    )
+    assert (
+        json.loads(second_receipt.read_bytes())["terminal_gates"]["gates"][
+            "fixture_battery"
+        ]["passed"]
+        is False
+    )
 
 
 def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(

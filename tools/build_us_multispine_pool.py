@@ -3389,7 +3389,7 @@ def _record_stacked_terminal_attempt(
     started_ts: datetime,
     code_pin: str,
     rung: str,
-    seed: int,
+    seed: int | None,
     disposition: str,
     predecessor: str | None,
 ) -> Path:
@@ -3415,50 +3415,162 @@ def _record_stacked_terminal_attempt(
     return result.spool_path
 
 
-def _stacked_error_receipt_path(outputs: PoolBuildOutputs) -> Path:
-    return outputs.pool_h5.with_suffix(".error.json")
+def _stacked_attempt_outputs(args: argparse.Namespace) -> PoolBuildOutputs:
+    """Construct safe terminal-spool paths before validating ``--out``."""
+
+    pool_h5 = Path(args.out)
+    fallback_name = pool_h5.name or "stacked-pool-output"
+    checkpoint_root = (
+        Path(args.checkpoint_root)
+        if args.checkpoint_root is not None
+        else pool_h5.parent / f"{fallback_name}.checkpoints"
+    )
+    return PoolBuildOutputs(
+        pool_h5=pool_h5,
+        manifest=pool_h5.parent / f"{fallback_name}.manifest.json",
+        agreement_diagnostics=pool_h5.parent / f"{fallback_name}.gates.json",
+        checkpoint_root=checkpoint_root,
+        primary_qrf_checkpoint_dir=checkpoint_root / "primary-qrf",
+        acs_transfer_checkpoint_dir=checkpoint_root / "acs-transfer",
+    )
+
+
+def _stacked_attempt_receipt_dir(
+    outputs: PoolBuildOutputs,
+    *,
+    build_id: str,
+) -> Path:
+    """Return the immutable, build-scoped receipt directory beside output."""
+
+    return outputs.pool_h5.parent / "ledger-receipts" / build_id
+
+
+def _stacked_error_receipt_path(
+    outputs: PoolBuildOutputs,
+    *,
+    build_id: str,
+) -> Path:
+    return _stacked_attempt_receipt_dir(outputs, build_id=build_id) / "error.json"
+
+
+def _stacked_terminal_gate_receipt_path(
+    outputs: PoolBuildOutputs,
+    *,
+    build_id: str,
+) -> Path:
+    return (
+        _stacked_attempt_receipt_dir(outputs, build_id=build_id) / "terminal-gates.json"
+    )
+
+
+def _write_stacked_terminal_gate_receipt(
+    result: StackedPoolBuildResult,
+    *,
+    outputs: PoolBuildOutputs,
+) -> Path:
+    """Persist the attempt's immutable terminal-gate receipt before publish."""
+
+    path = _stacked_terminal_gate_receipt_path(
+        outputs,
+        build_id=result.release_id,
+    )
+    _atomic_write_json(
+        path,
+        {
+            "artifact_kind": "populace_us_stacked_terminal_gate_receipt",
+            "schema_version": 1,
+            "pipeline": _STACKED_PIPELINE,
+            "build_id": result.release_id,
+            "terminal_gates": _stacked_gate_payload(result),
+        },
+    )
+    return path
+
+
+def _validate_stacked_seed(value: int, *, option: str) -> int:
+    """Keep build RNGs and Chronicle inside the signed-64-bit contract."""
+
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 0
+        or value > 2**63 - 1
+    ):
+        raise ValueError(f"{option} must be a non-negative signed 64-bit integer.")
+    return value
+
+
+def _new_stacked_attempt_id(*, timestamp: datetime) -> str:
+    """Name a preflight attempt before its rung and realized counts validate."""
+
+    instant = timestamp.astimezone(UTC)
+    return (
+        "populace-us-2024-stacked-attempt-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
 
 
 def _main_stacked(args: argparse.Namespace) -> int:
     """Build the default stacked pipeline and emit one terminal Chronicle row."""
 
-    if args.sample_seed < 0:
-        raise ValueError("--sample-seed must be non-negative.")
-    if args.clone_attachment_seed < 0:
-        raise ValueError("--clone-attachment-seed must be non-negative.")
-    fraction_token, rung = _stacked_rung(args.sample_fraction)
-    del fraction_token  # The release-ID helper revalidates the same rung.
-    outputs = _stacked_output_paths(
-        args.out,
-        checkpoint_root=args.checkpoint_root,
-    )
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    code_pin = _git_code_pin()
-    predecessor = _chronicle_predecessor(args)
-    configured_identity = _configured_stacked_identity(args)
+    outputs = _stacked_attempt_outputs(args)
+    code_pin = "unresolved-local-git-code-pin"
+    predecessor: str | None = None
+    rung = "1"
+    chronicle_seed: int | None = None
+    preflight_digest = hashlib.sha256(
+        _canonical_json_bytes(
+            {
+                "pipeline": _STACKED_PIPELINE,
+                "state": "preflight",
+            }
+        )
+    ).hexdigest()
     state = _StackedAttemptState(
-        build_id=_new_stacked_release_id(
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            realized_asec_households=0,
-            realized_acs_households=0,
-            timestamp=started_ts,
-        ),
-        identity_digest=hashlib.sha256(
-            _canonical_json_bytes(configured_identity)
-        ).hexdigest(),
-        input_pins_digest=_configured_input_pins_digest(args),
-        phases_reached=["configured"],
+        build_id=_new_stacked_attempt_id(timestamp=started_ts),
+        identity_digest=preflight_digest,
+        input_pins_digest=preflight_digest,
+        phases_reached=["attempt_started"],
         gate_verdicts={
             "pipeline": {
                 "verdict": "running",
-                "receipt": str(outputs.manifest.resolve()),
+                "receipt": "pending-build-scoped-terminal-receipt",
             }
         },
     )
 
     try:
+        state.input_pins_digest = _configured_input_pins_digest(args)
+        chronicle_seed = _validate_stacked_seed(
+            args.sample_seed,
+            option="--sample-seed",
+        )
+        _validate_stacked_seed(
+            args.clone_attachment_seed,
+            option="--clone-attachment-seed",
+        )
+        fraction_token, rung = _stacked_rung(args.sample_fraction)
+        del fraction_token  # The release-ID helper revalidates the same rung.
+        outputs = _stacked_output_paths(
+            args.out,
+            checkpoint_root=args.checkpoint_root,
+        )
+        state.build_id = _new_stacked_release_id(
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            realized_asec_households=0,
+            realized_acs_households=0,
+            timestamp=started_ts,
+        )
+        configured_identity = _configured_stacked_identity(args)
+        state.identity_digest = hashlib.sha256(
+            _canonical_json_bytes(configured_identity)
+        ).hexdigest()
+        _append_phase(state, "configured")
+        code_pin = _git_code_pin()
+        predecessor = _chronicle_predecessor(args)
         verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
         state.input_pins_digest = _input_pins_digest(verified_inputs)
         _append_phase(state, "inputs_verified")
@@ -3591,6 +3703,21 @@ def _main_stacked(args: argparse.Namespace) -> int:
             resume=resume,
             phase_reached=lambda phase: _append_phase(state, phase),
         )
+        terminal_receipt_path = _write_stacked_terminal_gate_receipt(
+            result,
+            outputs=outputs,
+        )
+        state.gate_verdicts = {
+            gate.name: {
+                "verdict": "passed" if gate.passed else "failed",
+                "receipt": (
+                    f"{terminal_receipt_path.resolve()}"
+                    f"#/terminal_gates/gates/{gate.name}"
+                ),
+            }
+            for gate in result.terminal_gates
+        }
+        _append_phase(state, "terminal_receipt_written")
         checkpoint_provenance = checkpoint_store.provenance(
             primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
             acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
@@ -3609,18 +3736,11 @@ def _main_stacked(args: argparse.Namespace) -> int:
         )
         _append_phase(state, "publication_completed")
         state.artifact_location = str(outputs.pool_h5.resolve())
-        state.gate_verdicts = {
-            gate.name: {
-                "verdict": "passed" if gate.passed else "failed",
-                "receipt": (
-                    f"{outputs.agreement_diagnostics.resolve()}"
-                    f"#/terminal_gates/gates/{gate.name}"
-                ),
-            }
-            for gate in result.terminal_gates
-        }
     except Exception as error:
-        error_path = _stacked_error_receipt_path(outputs)
+        error_path = _stacked_error_receipt_path(
+            outputs,
+            build_id=state.build_id,
+        )
         _atomic_write_json(
             error_path,
             {
@@ -3629,18 +3749,17 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 "pipeline": _STACKED_PIPELINE,
                 "build_id": state.build_id,
                 "phases_reached": state.phases_reached,
+                "gate_verdicts": state.gate_verdicts,
                 "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
                 "message": str(error),
             },
         )
-        state.artifact_location = (
-            str(outputs.pool_h5.resolve()) if outputs.pool_h5.is_file() else None
-        )
         state.gate_verdicts = {
+            **({} if set(state.gate_verdicts) == {"pipeline"} else state.gate_verdicts),
             "pipeline_error": {
                 "verdict": "error",
-                "receipt": str(error_path.resolve()),
-            }
+                "receipt": f"{error_path.resolve()}#/error_type",
+            },
         }
         _append_phase(state, "error")
         _record_stacked_terminal_attempt(
@@ -3650,7 +3769,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             started_ts=started_ts,
             code_pin=code_pin,
             rung=rung,
-            seed=args.sample_seed,
+            seed=chronicle_seed,
             disposition="failed",
             predecessor=predecessor,
         )
@@ -3664,7 +3783,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
         started_ts=started_ts,
         code_pin=code_pin,
         rung=rung,
-        seed=args.sample_seed,
+        seed=chronicle_seed,
         disposition=disposition,
         predecessor=predecessor,
     )
