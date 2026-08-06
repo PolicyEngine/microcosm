@@ -33,7 +33,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -432,9 +432,20 @@ def build_cbp_entry_fact_rows(
         )
     coverage_endpoint = stats.as_of_date or retrieved_at[:10]
     coverage_basis = "publisher_as_of_note" if stats.as_of_date else "retrieval_date"
+    try:
+        # Completeness is a calendar comparison, never a lexical one: an
+        # impossible endpoint ("2026-09-31" sorts after the FY2026 end but
+        # names no day) must be refused, not compared.
+        endpoint = date.fromisoformat(coverage_endpoint)
+    except ValueError as error:
+        raise ValueError(
+            f"CBP coverage endpoint {coverage_endpoint!r} is not a real "
+            "calendar date; refusing to classify fiscal-year completeness "
+            "against it."
+        ) from error
     rows: list[dict[str, Any]] = []
     for cell in stats.exact_cells():
-        complete = fiscal_year_end(cell.fiscal_year) <= coverage_endpoint
+        complete = date.fromisoformat(fiscal_year_end(cell.fiscal_year)) <= endpoint
         if complete:
             period: dict[str, Any] = {
                 "type": "fiscal_year",

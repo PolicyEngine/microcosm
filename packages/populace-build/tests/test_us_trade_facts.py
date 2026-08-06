@@ -490,6 +490,82 @@ def test_cbp_no_as_of_wording_anywhere_is_a_genuine_no_note_page():
     assert stats.as_of_date == ""
 
 
+def test_cbp_entity_encoded_note_wording_is_read_not_fail_open():
+    """The r3 probe: ``updated&nbsp;as of`` renders identically to
+    ``updated as of`` but is byte-different, and the pre-fix scan saw
+    neither sentinel nor note — so an October retrieval emitted all four
+    FY2026 cells as completed fiscal years. Entity-encoded wording must
+    parse exactly like its rendering, keeping the FYTD labeling."""
+
+    stats = parse_cbp_trade_stats(
+        _fixture_with_note("FY 2026 and FY 2025 is updated&nbsp;as of July 27, 2026.")
+    )
+    assert stats.as_of_date == "2026-07-27"
+    rows = build_cbp_entry_fact_rows(
+        stats,
+        page_sha256="dd" * 32,
+        retrieved_at="2026-10-01T00:00:00+00:00",
+    )
+    assert len(rows) == 4
+    for row in rows:
+        assert row["period"]["type"] == "fiscal_year_to_date"
+        assert row["period"]["as_of"] == "2026-07-27"
+        assert row["period"]["as_of_basis"] == "publisher_as_of_note"
+
+    # The fail-closed side of the same hole: entity-encoded as-of wording
+    # the strict pattern cannot read must still trip the sentinel and
+    # raise — never scan as "no note" and fall back to the retrieval date.
+    with pytest.raises(ValueError, match="cannot read"):
+        parse_cbp_trade_stats(
+            _fixture_with_note("Data is updated&#160;as of the latest revision.")
+        )
+
+
+def test_cbp_impossible_as_of_dates_fail_closed():
+    """September 31 must never become a coverage endpoint: the pre-fix
+    f-string minted '2026-09-31', which sorts after the FY2026 end and
+    classified the in-progress year as complete."""
+
+    with pytest.raises(ValueError, match="impossible calendar date"):
+        parse_cbp_trade_stats(
+            _fixture_with_note(
+                "FY 2026 and FY 2025 is updated as of September 31, 2026."
+            )
+        )
+    with pytest.raises(ValueError, match="impossible calendar date"):
+        parse_cbp_trade_stats(
+            _fixture_with_note(
+                "FY 2026 and FY 2025 is updated as of February 29, 2026."
+            )
+        )
+
+
+def test_cbp_fact_builder_refuses_non_date_coverage_endpoints():
+    """Defense in depth at the consumer: an impossible as-of date on a
+    hand-built stats object, or a malformed retrieval timestamp, must be
+    refused — completeness is a calendar comparison, not a string one."""
+
+    stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    doctored = CbpEntryStats(
+        cells=stats.cells,
+        as_of_note=stats.as_of_note,
+        as_of_date="2026-09-31",
+    )
+    with pytest.raises(ValueError, match="not a real calendar date"):
+        build_cbp_entry_fact_rows(
+            doctored,
+            page_sha256="dd" * 32,
+            retrieved_at="2026-10-01T00:00:00+00:00",
+        )
+    noteless = CbpEntryStats(cells=stats.cells, as_of_note="", as_of_date="")
+    with pytest.raises(ValueError, match="not a real calendar date"):
+        build_cbp_entry_fact_rows(
+            noteless,
+            page_sha256="dd" * 32,
+            retrieved_at="not-a-timestamp",
+        )
+
+
 def test_cbp_note_without_date_is_refused_by_the_fact_builder():
     """Defense in depth at the consumer: stats carrying a note but no
     parsed date can only come from a hand-built object, and the builder

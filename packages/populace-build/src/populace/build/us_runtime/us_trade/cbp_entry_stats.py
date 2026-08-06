@@ -18,8 +18,10 @@ but never admitted as exact facts.
 
 from __future__ import annotations
 
+import html as html_module
 import re
 from dataclasses import dataclass
+from datetime import date
 
 __all__ = [
     "CBP_TRADE_STATS_URL",
@@ -266,7 +268,15 @@ def _extract_as_of(window_html: str) -> tuple[str, str] | None:
             raise ValueError(
                 f"CBP as-of note carries an unrecognized month {month_name!r}."
             )
-        dates.add(f"{int(year):04d}-{month_number:02d}-{int(day):02d}")
+        try:
+            note_date = date(int(year), month_number, int(day))
+        except ValueError as error:
+            raise ValueError(
+                f"CBP as-of note names an impossible calendar date "
+                f"{month_name} {day}, {year}; refusing to derive a coverage "
+                "endpoint from it."
+            ) from error
+        dates.add(note_date.isoformat())
     if len(dates) > 1:
         raise ValueError(
             f"CBP entry-summaries notes carry conflicting as-of dates "
@@ -276,9 +286,16 @@ def _extract_as_of(window_html: str) -> tuple[str, str] | None:
 
 
 def _collapse_text(html: str) -> str:
-    return re.sub(r"\s+", " ", _TAG_PATTERN.sub(" ", html))
+    """Tag-stripped, entity-unescaped, whitespace-collapsed rendered text.
+
+    Matching runs against what the page *renders*, not its byte encoding:
+    ``updated&nbsp;as of`` and ``updated as of`` are the same note to a
+    reader, so both the sentinel and the strict pattern must see them
+    identically — an entity-encoded note must never scan as "no note".
+    """
+    return re.sub(r"\s+", " ", html_module.unescape(_TAG_PATTERN.sub(" ", html)))
 
 
 def _clean(cell_html: str) -> str:
-    text = _TAG_PATTERN.sub(" ", cell_html)
+    text = html_module.unescape(_TAG_PATTERN.sub(" ", cell_html))
     return re.sub(r"\s+", " ", text).strip()
