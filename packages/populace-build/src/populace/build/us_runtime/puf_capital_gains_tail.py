@@ -28,7 +28,6 @@ from populace.build.us_runtime.support_provenance import (
     PUF_TAX_DETAIL_CLONE_INDEX,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     puf_tax_detail_clone_mask,
-    support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
@@ -1249,23 +1248,9 @@ def _clone_and_transfer(
     assignments["recipient_household_weight_after"] = (
         source_before - assignments["assigned_weight"]
     )
-    tail_household = tables["household"].loc[
-        tables["household"][support_clone_index_column("household")].eq(2)
-    ]
-    source_channel_counts = {
-        str(channel): int(count)
-        for channel, count in sorted(
-            tail_household[support_channel_column("household")]
-            .astype(str)
-            .value_counts()
-            .items()
-        )
-    }
     clone_receipt: dict[str, object] = {
         "method": "selective_post_qrf_household_weight_split",
-        "provenance_schema_version": 2,
-        "support_role": PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
-        "source_channels": source_channel_counts,
+        "support_channel": PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
         "clone_index": 2,
         "id_multiplier": int(id_multiplier),
         "selected_household_count": int(len(assignments)),
@@ -1284,8 +1269,6 @@ def _clone_and_transfer(
         "entity_rows_before": before_rows,
         "entity_rows_after": after_rows,
     }
-    if set(source_channel_counts) == {PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL}:
-        clone_receipt["support_channel"] = PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL
     return transferred, clone_receipt
 
 

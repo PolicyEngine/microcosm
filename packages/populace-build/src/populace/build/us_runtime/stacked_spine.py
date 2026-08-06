@@ -3187,6 +3187,7 @@ def _run_stacked_puf_pass_evaluate(
             seed=seed,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
+        tail_receipt = _bind_stacked_tail_origin_receipt(output, tail_receipt)
         output = bind_puf_clone_attachment_tail_descendant(
             output,
             attachment_receipt=attachment,
@@ -3234,6 +3235,54 @@ def _run_stacked_puf_pass_evaluate(
             "recipient_person_rows_by_origin": recipients_by_origin,
         },
     )
+
+
+def _bind_stacked_tail_origin_receipt(
+    frame: Frame,
+    tail_manifest: Mapping[str, object],
+) -> dict[str, object]:
+    """Bind clone-2 origin counts at the stacked provenance-owner boundary."""
+
+    validate_stacked_spine_frame(frame, boundary="stacked tail origin binding")
+    validate_puf_capital_gains_tail_manifest(tail_manifest)
+    household = frame.table("household")
+    clone_index = pd.to_numeric(
+        household[support_clone_index_column("household")], errors="raise"
+    ).astype("int64")
+    source_channel_counts = {
+        str(channel): int(count)
+        for channel, count in sorted(
+            household.loc[
+                clone_index.eq(2),
+                support_channel_column("household"),
+            ]
+            .astype(str)
+            .value_counts()
+            .items()
+        )
+    }
+    if not source_channel_counts:
+        raise ValueError("Stacked tail origin binding found no clone-2 households.")
+
+    bound = _json_ready(tail_manifest)
+    bound.pop("manifest_sha256", None)
+    clone_receipt = bound.get("clone")
+    if not isinstance(clone_receipt, dict):
+        raise ValueError("Stacked tail clone provenance receipt is malformed.")
+    if clone_receipt.pop("support_channel", None) != (
+        PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL
+    ):
+        raise ValueError("Stacked tail support-role provenance is malformed.")
+    clone_receipt.update(
+        {
+            "provenance_schema_version": 2,
+            "support_role": PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
+            "source_channels": source_channel_counts,
+        }
+    )
+    bound["manifest_sha256"] = _canonical_sha256(bound)
+    validate_puf_capital_gains_tail_manifest(bound)
+    return bound
 
 
 def prepare_stacked_tail_derivation(frame: Frame) -> tuple[Frame, dict[str, object]]:

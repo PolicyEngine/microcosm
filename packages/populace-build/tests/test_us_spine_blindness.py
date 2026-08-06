@@ -3131,6 +3131,14 @@ def _frame_metadata_drops(source: str) -> tuple[str, ...]:
             and metadata.attr == "metadata"
             and ast.dump(metadata.value) == ast.dump(mass_log.value)
         )
+        if isinstance(metadata, ast.Dict):
+            same_source = any(
+                key is None
+                and isinstance(value, ast.Attribute)
+                and value.attr == "metadata"
+                and ast.dump(value.value) == ast.dump(mass_log.value)
+                for key, value in zip(metadata.keys, metadata.values, strict=True)
+            )
         if not same_source:
             drops.append(
                 f"line {node.lineno}: Frame carrying {ast.unparse(mass_log)} "

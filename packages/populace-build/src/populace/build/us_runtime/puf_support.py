@@ -851,17 +851,16 @@ def bind_puf_clone_attachment_tail_descendant(
             "tail_household_source_ids_sha256": _source_ids_sha256(record_source_ids),
         },
     }
-    metadata = {
-        **frame.metadata,
-        PUF_CLONE_ATTACHMENT_MANIFEST_KEY: descendant_manifest,
-    }
     descendant = Frame(
         {entity: frame.table(entity) for entity in frame.entities},
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
-        metadata=metadata,
+        metadata={
+            **frame.metadata,
+            PUF_CLONE_ATTACHMENT_MANIFEST_KEY: descendant_manifest,
+        },
     )
     validate_puf_clone_attachment(
         descendant,
