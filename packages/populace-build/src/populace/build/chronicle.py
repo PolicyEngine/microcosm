@@ -22,6 +22,9 @@ where the predecessor is lowercase ASCII, or the empty string for genesis.
 Writes use the house pattern: file fsync, atomic rename, then containing-
 directory fsync. ``reconcile_spool`` retries rows in predecessor order with
 PostgREST ignore-duplicate semantics and removes only server-acknowledged rows.
+Export local rows before reconciliation; if that ordering is missed,
+``tools/chronicle.py export --remote`` recovers the private rows with a
+distinct read-only exporter credential.
 
 The Supabase key must identify the migration's ``chronicle_writer`` role, not
 the service role. The ``chronicle`` schema must also be enabled in the hosted
@@ -521,7 +524,11 @@ def reconcile_spool(
     *,
     timeout: float = 10.0,
 ) -> ReconcileResult:
-    """Retry a spool suffix in chain order and remove acknowledged rows only."""
+    """Retry a spool suffix in chain order and remove acknowledged rows only.
+
+    Export the spool to the git archive first.  A read-only live-store export
+    remains available to operators if reconciliation happens first.
+    """
 
     rows = load_spool_rows(spool_dir)
     config = _remote_config()

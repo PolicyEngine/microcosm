@@ -361,9 +361,10 @@ SELECT
     row_digest
 FROM chronicle.builds;
 
--- Custom PostgREST roles.  They are NOLOGIN group roles: a Supabase JWT may
--- select chronicle_writer through authenticator, while break-glass membership
--- is granted out of band to a human-controlled administrative identity.
+-- Custom PostgREST roles.  They are NOLOGIN group roles: Supabase JWTs may
+-- select the insert-only writer or private read-only exporter through
+-- authenticator, while break-glass membership is granted out of band to a
+-- human-controlled administrative identity.
 DO $roles$
 BEGIN
     IF NOT EXISTS (
@@ -371,6 +372,12 @@ BEGIN
     ) THEN
         EXECUTE
             'CREATE ROLE chronicle_writer NOLOGIN NOINHERIT NOBYPASSRLS';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'chronicle_exporter'
+    ) THEN
+        EXECUTE
+            'CREATE ROLE chronicle_exporter NOLOGIN NOINHERIT NOBYPASSRLS';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles
@@ -388,11 +395,13 @@ REVOKE ALL ON ALL TABLES IN SCHEMA chronicle FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA chronicle FROM PUBLIC;
 
 GRANT USAGE ON SCHEMA chronicle
-    TO chronicle_writer, chronicle_break_glass_admin;
+    TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
 GRANT USAGE ON TYPE chronicle.sha256_hex, chronicle.build_disposition
-    TO chronicle_writer, chronicle_break_glass_admin;
+    TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
 GRANT INSERT ON chronicle.builds, chronicle.predictions
     TO chronicle_writer;
+GRANT SELECT ON chronicle.builds, chronicle.predictions
+    TO chronicle_exporter;
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON chronicle.builds, chronicle.predictions
     TO chronicle_break_glass_admin;
@@ -415,6 +424,18 @@ CREATE POLICY predictions_writer_insert
     FOR INSERT
     TO chronicle_writer
     WITH CHECK (true);
+
+CREATE POLICY builds_exporter_select
+    ON chronicle.builds
+    FOR SELECT
+    TO chronicle_exporter
+    USING (true);
+
+CREATE POLICY predictions_exporter_select
+    ON chronicle.predictions
+    FOR SELECT
+    TO chronicle_exporter
+    USING (true);
 
 CREATE POLICY builds_break_glass_all
     ON chronicle.builds
@@ -459,7 +480,8 @@ BEGIN
     END IF;
 
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
-        EXECUTE 'GRANT chronicle_writer TO authenticator';
+        EXECUTE
+            'GRANT chronicle_writer, chronicle_exporter TO authenticator';
     END IF;
 END;
 $supabase_roles$;

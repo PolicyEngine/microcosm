@@ -1,22 +1,35 @@
-"""Export, validate, and render the append-only Chronicle build archive."""
+"""Export, validate, and render the append-only Chronicle build archive.
+
+Remote export uses a distinct, read-only ``chronicle_exporter`` JWT supplied
+as ``POPULACE_LEDGER_EXPORT_KEY``.  It never reuses the insert-only writer key.
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from populace.build.chronicle import (
+    CHRONICLE_ROW_FIELDS,
     ChronicleRow,
     export_rows,
     load_chronicle_file,
     load_spool_rows,
+    order_rows_by_chain,
     render_markdown,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ARCHIVE = ROOT / "chronicle.jsonl"
 DEFAULT_SOURCE = ROOT / "ledger-spool"
+REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
+REMOTE_PAGE_SIZE = 500
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -35,13 +48,21 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_ARCHIVE,
         help=f"Chronicle JSONL archive (default: {DEFAULT_ARCHIVE}).",
     )
-    export.add_argument(
+    source = export.add_mutually_exclusive_group()
+    source.add_argument(
         "--source",
         type=Path,
-        default=DEFAULT_SOURCE,
         help=(
             "Completed spool directory or genesis-rooted Chronicle JSONL source "
             f"(default: {DEFAULT_SOURCE})."
+        ),
+    )
+    source.add_argument(
+        "--remote",
+        action="store_true",
+        help=(
+            "Read the private live store using POPULACE_LEDGER_URL and the "
+            f"read-only {REMOTE_EXPORT_KEY_ENV}."
         ),
     )
 
@@ -84,6 +105,100 @@ def _source_rows(path: Path) -> tuple[ChronicleRow, ...]:
     return load_chronicle_file(path)
 
 
+def _remote_rows() -> tuple[ChronicleRow, ...]:
+    ledger_url = os.environ.get("POPULACE_LEDGER_URL")
+    export_key = os.environ.get(REMOTE_EXPORT_KEY_ENV)
+    if not ledger_url or not export_key:
+        raise ValueError(
+            f"remote export requires POPULACE_LEDGER_URL and {REMOTE_EXPORT_KEY_ENV}"
+        )
+
+    rows: list[ChronicleRow] = []
+    offset = 0
+    while True:
+        endpoint = _remote_builds_endpoint(
+            ledger_url,
+            offset=offset,
+            limit=REMOTE_PAGE_SIZE,
+        )
+        request = Request(
+            endpoint,
+            headers={
+                "Accept": "application/json",
+                "Accept-Profile": "chronicle",
+                "apikey": export_key,
+                "Authorization": f"Bearer {export_key}",
+                "Prefer": "count=exact",
+            },
+        )
+        with urlopen(request, timeout=30.0) as response:
+            status = getattr(response, "status", 200)
+            if not 200 <= status < 300:
+                raise RuntimeError(f"Chronicle live store returned HTTP {status}")
+            page = _decode_remote_page(response.read())
+            total = _content_range_total(getattr(response, "headers", {}))
+        rows.extend(ChronicleRow.from_mapping(item) for item in page)
+        offset += len(page)
+        if total is not None and offset >= total:
+            break
+        if not page:
+            if total is not None:
+                raise RuntimeError(
+                    "Chronicle live store ended before its declared row count"
+                )
+            break
+    return order_rows_by_chain(rows)
+
+
+def _remote_builds_endpoint(url: str, *, offset: int, limit: int) -> str:
+    base = url.rstrip("/")
+    if base.endswith("/rest/v1/builds"):
+        endpoint = base
+    elif base.endswith("/rest/v1"):
+        endpoint = f"{base}/builds"
+    else:
+        endpoint = f"{base}/rest/v1/builds"
+    query = urlencode(
+        {
+            "select": ",".join(sorted(CHRONICLE_ROW_FIELDS)),
+            "order": "ts.asc,build_id.asc",
+            "limit": str(limit),
+            "offset": str(offset),
+        }
+    )
+    return f"{endpoint}?{query}"
+
+
+def _decode_remote_page(payload: bytes) -> list[dict[str, Any]]:
+    try:
+        value = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Chronicle live store returned invalid JSON: {exc}") from exc
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise ValueError("Chronicle live store response must be an array of rows")
+    return value
+
+
+def _content_range_total(headers: Any) -> int | None:
+    content_range = headers.get("Content-Range")
+    if not isinstance(content_range, str) or "/" not in content_range:
+        return None
+    total = content_range.rsplit("/", 1)[1]
+    if total == "*":
+        return None
+    try:
+        parsed = int(total)
+    except ValueError as exc:
+        raise ValueError(
+            f"Chronicle live store returned invalid Content-Range {content_range!r}"
+        ) from exc
+    if parsed < 0:
+        raise ValueError(
+            f"Chronicle live store returned invalid Content-Range {content_range!r}"
+        )
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one Chronicle command and return its process exit code."""
 
@@ -112,7 +227,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "export":
-            candidates = _source_rows(args.source)
+            candidates = (
+                _remote_rows()
+                if args.remote
+                else _source_rows(args.source or DEFAULT_SOURCE)
+            )
             receipt = export_rows(args.archive, candidates)
             print(
                 f"exported {receipt.appended} new Chronicle rows "

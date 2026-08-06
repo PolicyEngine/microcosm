@@ -99,6 +99,11 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "gate_verdicts" not in public_view
     assert "GRANT INSERT ON chronicle.builds, chronicle.predictions" in sql
     assert "TO chronicle_writer" in sql
+    assert "GRANT SELECT ON chronicle.builds, chronicle.predictions" in sql
+    assert "TO chronicle_exporter" in sql
+    assert "CREATE POLICY builds_exporter_select" in sql
+    assert "CREATE POLICY predictions_exporter_select" in sql
+    assert "GRANT chronicle_writer, chronicle_exporter TO authenticator" in sql
 
 
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
