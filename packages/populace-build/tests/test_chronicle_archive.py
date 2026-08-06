@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -76,6 +78,53 @@ def test_export_fails_closed_when_suffix_does_not_extend_tail(
         export_rows(archive, [divergent])
 
     assert archive.read_bytes() == original
+
+
+def test_competing_exports_are_serialized_without_losing_a_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "chronicle.jsonl"
+    first = _row("archive-1", predecessor=None)
+    left = _row("archive-left", predecessor=first.row_digest)
+    right = _row("archive-right", predecessor=first.row_digest)
+    export_rows(archive, [first])
+    real_export = chronicle._export_rows_locked
+    first_entered = threading.Event()
+    second_entered = threading.Event()
+    release_first = threading.Event()
+    entry_lock = threading.Lock()
+    entries = 0
+
+    def observed_export(
+        path: Path,
+        candidates: list[ChronicleRow],
+    ) -> chronicle.ChronicleExportResult:
+        nonlocal entries
+        with entry_lock:
+            entries += 1
+            entry = entries
+        if entry == 1:
+            first_entered.set()
+            assert release_first.wait(timeout=2)
+        else:
+            second_entered.set()
+        return real_export(path, candidates)
+
+    monkeypatch.setattr(chronicle, "_export_rows_locked", observed_export)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(export_rows, archive, [left])
+        assert first_entered.wait(timeout=2)
+        second_future = executor.submit(export_rows, archive, [right])
+        assert not second_entered.wait(timeout=0.1)
+        release_first.set()
+        first_receipt = first_future.result(timeout=2)
+        with pytest.raises(ValueError, match=r"diverges.*archive tail"):
+            second_future.result(timeout=2)
+
+    assert first_receipt.appended == 1
+    assert second_entered.is_set()
+    assert load_chronicle_file(archive) == (first, left)
 
 
 def test_export_reauthenticates_mutable_nested_row_state(tmp_path: Path) -> None:

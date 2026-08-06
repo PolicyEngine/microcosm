@@ -36,13 +36,16 @@ tool; adoption remains in populace#616.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import math
 import os
 import re
+import threading
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -111,6 +114,8 @@ CHRONICLE_ROW_FIELDS = frozenset(
     }
 )
 _HASH_EXCLUDED_FIELDS = frozenset({"prev_row_digest", "row_digest"})
+_ARCHIVE_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+_ARCHIVE_THREAD_LOCKS_GUARD = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -599,9 +604,20 @@ def export_rows(
     """Content-append a verified chain suffix, failing closed on divergence."""
 
     archive = Path(path)
+    with _exclusive_archive_lock(archive):
+        return _export_rows_locked(archive, candidates)
+
+
+def _export_rows_locked(
+    archive: Path,
+    candidates: Sequence[ChronicleRow],
+) -> ChronicleExportResult:
+    """Append while the archive's stable parent-directory lock is held."""
+
     if archive.exists():
-        existing = load_chronicle_file(archive)
         original = archive.read_bytes()
+        existing = _load_jsonl_bytes(archive, original)
+        _validate_ordered_chain(existing, expected_predecessor=None)
     else:
         existing = ()
         original = b""
@@ -689,28 +705,40 @@ def render_markdown(
 
 
 def _load_jsonl_rows(path: Path) -> tuple[ChronicleRow, ...]:
-    rows: list[ChronicleRow] = []
     try:
-        stream = path.open(encoding="utf-8")
+        content = path.read_bytes()
     except OSError as exc:
         raise ValueError(f"Cannot read Chronicle rows from {path}: {exc}.") from exc
-    with stream:
-        for line_number, line in enumerate(stream, start=1):
-            if not line.strip():
-                raise ValueError(
-                    f"Invalid Chronicle row {line_number} (blank) in {path}: "
-                    "blank lines are not allowed."
-                )
-            build_id = "unknown"
-            try:
-                value = json.loads(line)
-                if isinstance(value, Mapping):
-                    build_id = str(value.get("build_id", build_id))
-                rows.append(ChronicleRow.from_mapping(value))
-            except (json.JSONDecodeError, ValueError) as exc:
-                raise ValueError(
-                    f"Invalid Chronicle row {line_number} ({build_id}) in {path}: {exc}"
-                ) from exc
+    return _load_jsonl_bytes(path, content)
+
+
+def _load_jsonl_bytes(path: Path, content: bytes) -> tuple[ChronicleRow, ...]:
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Cannot read Chronicle rows from {path}: {exc}.") from exc
+    if not text:
+        return ()
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    rows: list[ChronicleRow] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            raise ValueError(
+                f"Invalid Chronicle row {line_number} (blank) in {path}: "
+                "blank lines are not allowed."
+            )
+        build_id = "unknown"
+        try:
+            value = json.loads(line)
+            if isinstance(value, Mapping):
+                build_id = str(value.get("build_id", build_id))
+            rows.append(ChronicleRow.from_mapping(value))
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid Chronicle row {line_number} ({build_id}) in {path}: {exc}"
+            ) from exc
     return tuple(rows)
 
 
@@ -739,6 +767,30 @@ def _validate_ordered_chain(
 
 def _markdown_cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+@contextmanager
+def _exclusive_archive_lock(path: Path) -> Iterator[None]:
+    """Serialize atomic archive replacements without leaving a lock artifact."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    directory = path.parent.resolve()
+    with _ARCHIVE_THREAD_LOCKS_GUARD:
+        thread_lock = _ARCHIVE_THREAD_LOCKS.setdefault(
+            directory,
+            threading.Lock(),
+        )
+    with thread_lock:
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        descriptor = os.open(directory, flags)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
