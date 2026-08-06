@@ -18,8 +18,8 @@ import pytest
 from populace.build.uk_runtime import (
     assemble_uk_oa_ladder,
     clone_uk_dataset_with_ladder_geography,
-    load_uk_national_dataset,
     load_uk_oa_ladder,
+    read_uk_single_year_weight_metadata,
     write_uk_rowwise_dataset,
 )
 from populace.frame import MassChangeRecord, WeightKind
@@ -175,10 +175,12 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
     assert "n_clones=2" in result.mass_log[-1].reason
     assert result.gate.passed
 
-    # The seam's own reader accepts the output with the fence chain intact.
-    reloaded = load_uk_national_dataset(output)
-    assert reloaded.household_weight_kind is WeightKind.IMPORTANCE
-    assert reloaded.mass_log == result.mass_log
+    # The rowwise seam's own reader accepts the output with the fence
+    # chain intact. (The output is not a national frame: clone_index lives
+    # on every entity table, which Frame's flattening rule rejects.)
+    stored_kind, stored_mass_log = read_uk_single_year_weight_metadata(output)
+    assert stored_kind is WeightKind.IMPORTANCE
+    assert stored_mass_log == result.mass_log
 
 
 def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:
@@ -290,15 +292,15 @@ def _load_builder_module():
 
 
 def _write_seam_h5(path) -> None:
-    from populace.build.uk_runtime import write_uk_national_dataset
-    from populace.build.uk_runtime.national_build import UKNationalDataset
+    from populace.build.uk_runtime import write_uk_national_frame
+    from populace.build.uk_runtime.national_frame import uk_national_frame
 
-    dataset = UKNationalDataset(
+    dataset = uk_national_frame(
         person=_person_frame(),
         benunit=_benunit_frame(),
         household=_household_frame(),
         time_period="2023",
-        household_weight_kind=WeightKind.IMPORTANCE,
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -309,7 +311,7 @@ def _write_seam_h5(path) -> None:
             ),
         ),
     )
-    write_uk_national_dataset(dataset, path)
+    write_uk_national_frame(dataset, path)
 
 
 def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path):

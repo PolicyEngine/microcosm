@@ -45,12 +45,13 @@ from populace.build.uk_runtime import (
     clone_uk_dataset_with_ladder_geography,
     constituency_household_targets,
     ladder_target_provenance,
-    load_uk_national_dataset,
+    load_uk_national_frame,
     load_uk_oa_ladder,
     rowwise_area_support_summary,
     rowwise_calibration_mass_record,
     solve_uk_rowwise_weights_under_doctrine,
     uk_geography_ladder_gate,
+    uk_time_period,
     write_uk_rowwise_dataset,
 )
 from populace.frame import MassChangeRecord, WeightKind, assert_kind_transition
@@ -143,10 +144,10 @@ def main(argv: list[str] | None = None) -> int:
 
     input_artifact = _artifact_info(input_h5)
     ladder_artifact = _artifact_info(ladder_path)
-    national_dataset = load_uk_national_dataset(input_h5)
+    national_frame, _national_provenance = load_uk_national_frame(input_h5)
     source_year = _source_year(
         args.source_year,
-        time_period=national_dataset.time_period,
+        time_period=uk_time_period(national_frame),
     )
     output_paths = _output_paths(out_dir, source_year=source_year)
     _validate_output_paths(
@@ -159,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("cloning through the ladder route...", file=sys.stderr, flush=True)
     assignment = _clone_with_ladder_binding(
-        national_dataset,
+        national_frame,
         ladder,
         n_clones=args.n_clones,
         seed=args.seed,
