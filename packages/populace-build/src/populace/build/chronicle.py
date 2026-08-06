@@ -51,16 +51,21 @@ from urllib.request import Request, urlopen
 __all__ = [
     "BUILD_DISPOSITIONS",
     "CHRONICLE_ROW_FIELDS",
+    "CHRONICLE_RUNGS",
+    "ChronicleExportResult",
     "ChronicleRow",
     "ChronicleWriteResult",
     "ReconcileResult",
     "canonical_json_bytes",
     "compute_row_digest",
+    "export_rows",
+    "load_chronicle_file",
     "load_spool_rows",
     "load_chronicle_row",
     "order_rows_by_chain",
     "reconcile_spool",
     "record_build_attempt",
+    "render_markdown",
 ]
 
 
@@ -310,6 +315,15 @@ class ReconcileResult:
     errors: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ChronicleExportResult:
+    """Receipt for one content-append to the git archive."""
+
+    existing: int
+    appended: int
+    tail_digest: str | None
+
+
 def canonical_json_bytes(value: Any) -> bytes:
     """Encode JSON using #628's deterministic Python/PostgreSQL form.
 
@@ -545,6 +559,161 @@ def reconcile_spool(
     )
 
 
+def load_chronicle_file(path: str | Path) -> tuple[ChronicleRow, ...]:
+    """Load and validate a genesis-rooted Chronicle JSONL archive."""
+
+    archive = Path(path)
+    if not archive.exists():
+        raise ValueError(f"Chronicle archive does not exist: {archive}.")
+    rows = _load_jsonl_rows(archive)
+    _validate_ordered_chain(rows, expected_predecessor=None)
+    return rows
+
+
+def export_rows(
+    path: str | Path,
+    candidates: Sequence[ChronicleRow],
+) -> ChronicleExportResult:
+    """Content-append a verified chain suffix, failing closed on divergence."""
+
+    archive = Path(path)
+    if archive.exists():
+        existing = load_chronicle_file(archive)
+        original = archive.read_bytes()
+    else:
+        existing = ()
+        original = b""
+
+    ordered = order_rows_by_chain(candidates)
+    existing_by_id = {row.build_id: row for row in existing}
+    new_rows: list[ChronicleRow] = []
+    saw_new = False
+    for row in ordered:
+        archived = existing_by_id.get(row.build_id)
+        if archived is not None:
+            if saw_new:
+                raise ValueError(
+                    f"Chronicle candidate chain returns to archived row {row.build_id} "
+                    "after its new suffix begins."
+                )
+            if archived != row:
+                raise ValueError(
+                    f"Chronicle candidate diverges from archived row {row.build_id}."
+                )
+            continue
+        saw_new = True
+        new_rows.append(row)
+
+    predecessor = existing[-1].row_digest if existing else None
+    _validate_ordered_chain(tuple(new_rows), expected_predecessor=predecessor)
+    if new_rows:
+        if original and not original.endswith(b"\n"):
+            raise ValueError(
+                f"Chronicle archive {archive} does not end with a newline."
+            )
+        addition = "".join(row.to_json_line() for row in new_rows).encode("utf-8")
+        _atomic_write_bytes(archive, original + addition)
+
+    tail = new_rows[-1].row_digest if new_rows else predecessor
+    return ChronicleExportResult(
+        existing=len(existing),
+        appended=len(new_rows),
+        tail_digest=tail,
+    )
+
+
+def render_markdown(
+    rows: Sequence[ChronicleRow],
+    *,
+    rung: str | None = None,
+    dispositions: set[str] | None = None,
+) -> str:
+    """Render the public-safe Chronicle projection as a Markdown table."""
+
+    if rung is not None:
+        _validate_rung(rung)
+    if dispositions is not None:
+        invalid = dispositions - BUILD_DISPOSITIONS
+        if invalid:
+            raise ValueError(f"Unknown Chronicle dispositions: {sorted(invalid)}.")
+    selected = [
+        row
+        for row in rows
+        if (rung is None or row.rung == rung)
+        and (dispositions is None or row.disposition in dispositions)
+    ]
+    lines = [
+        "| Timestamp (UTC) | Build | Pipeline | Rung | Disposition | Artifact |",
+        "|---|---|---|---|---|---|",
+    ]
+    for row in selected:
+        values = (
+            row.ts,
+            row.build_id,
+            row.pipeline,
+            row.rung,
+            row.disposition,
+            row.artifact_location or "—",
+        )
+        lines.append(
+            "| " + " | ".join(_markdown_cell(value) for value in values) + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _load_jsonl_rows(path: Path) -> tuple[ChronicleRow, ...]:
+    rows: list[ChronicleRow] = []
+    try:
+        stream = path.open(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Cannot read Chronicle rows from {path}: {exc}.") from exc
+    with stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                raise ValueError(
+                    f"Invalid Chronicle row {line_number} (blank) in {path}: "
+                    "blank lines are not allowed."
+                )
+            build_id = "unknown"
+            try:
+                value = json.loads(line)
+                if isinstance(value, Mapping):
+                    build_id = str(value.get("build_id", build_id))
+                rows.append(ChronicleRow.from_mapping(value))
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid Chronicle row {line_number} ({build_id}) in {path}: {exc}"
+                ) from exc
+    return tuple(rows)
+
+
+def _validate_ordered_chain(
+    rows: Sequence[ChronicleRow],
+    *,
+    expected_predecessor: str | None,
+) -> None:
+    predecessor = expected_predecessor
+    build_ids: set[str] = set()
+    for position, row in enumerate(rows, start=1):
+        if row.build_id in build_ids:
+            raise ValueError(
+                f"Chronicle chain repeats build_id {row.build_id} at row {position}."
+            )
+        if row.prev_row_digest != predecessor:
+            context = "genesis" if predecessor is None else "current archive tail"
+            raise ValueError(
+                f"Chronicle chain diverges at row {position} ({row.build_id}): "
+                f"prev_row_digest={row.prev_row_digest!r}, expected {context} "
+                f"{predecessor!r}."
+            )
+        build_ids.add(row.build_id)
+        predecessor = row.row_digest
+
+
+def _markdown_cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
 def _remote_config() -> tuple[str, str] | None:
     url = os.environ.get("POPULACE_LEDGER_URL")
     key = os.environ.get("POPULACE_LEDGER_KEY")
@@ -768,6 +937,22 @@ def _atomic_write_row(path: Path, row: ChronicleRow) -> None:
     try:
         with temporary.open("w", encoding="utf-8") as stream:
             stream.write(row.to_json_line())
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        _fsync_parent_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    """Durably replace one file with exact bytes using the house pattern."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("wb") as stream:
+            stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
