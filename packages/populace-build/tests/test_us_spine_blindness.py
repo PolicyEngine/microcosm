@@ -3253,8 +3253,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 59, (
-            f"{tool.name} must reach the pinned 59-module runtime graph; "
+        assert len(runtime_graph) == 60, (
+            f"{tool.name} must reach the pinned 60-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
