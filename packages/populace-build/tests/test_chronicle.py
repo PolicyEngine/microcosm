@@ -199,6 +199,36 @@ def test_spool_write_is_atomic_and_durable(
     ]
 
 
+def test_spool_retry_completes_parent_fsync_after_interrupted_replace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    real_fsync_parent = chronicle._fsync_parent_directory
+    parent_fsync_calls = 0
+
+    def fail_first_parent_fsync(path: Path) -> None:
+        nonlocal parent_fsync_calls
+        parent_fsync_calls += 1
+        if parent_fsync_calls == 1:
+            raise OSError("injected directory fsync failure")
+        real_fsync_parent(path)
+
+    monkeypatch.setattr(
+        chronicle,
+        "_fsync_parent_directory",
+        fail_first_parent_fsync,
+    )
+
+    with pytest.raises(OSError, match="injected directory fsync failure"):
+        record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+    persisted = next(tmp_path.glob("*.json"))
+
+    retry = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert retry.spool_path == persisted
+    assert parent_fsync_calls == 2
+
+
 def test_identical_retry_is_idempotent(tmp_path: Path) -> None:
     first = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
     original_bytes = first.spool_path.read_bytes()

@@ -536,6 +536,9 @@ def _atomic_write_row(path: Path, row: ChronicleRow) -> None:
             raise ValueError(
                 f"Chronicle spool digest collision or divergent retry at {path}."
             )
+        # Complete a possibly interrupted replacement whose file became
+        # visible before the parent-directory fsync succeeded.
+        _fsync_file_and_parent(path)
         return
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -547,6 +550,12 @@ def _atomic_write_row(path: Path, row: ChronicleRow) -> None:
         _fsync_parent_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _fsync_file_and_parent(path: Path) -> None:
+    with path.open("rb") as stream:
+        os.fsync(stream.fileno())
+    _fsync_parent_directory(path.parent)
 
 
 def _fsync_parent_directory(path: Path) -> None:
