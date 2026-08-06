@@ -20,7 +20,6 @@ from populace.build.uk_runtime import (
     clone_uk_dataset_with_ladder_geography,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
-    validate_uk_rowwise_dataset_tables,
     write_uk_rowwise_dataset,
 )
 from populace.frame import MassChangeRecord, WeightKind
@@ -178,17 +177,24 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
 
     # The rowwise seam's own reader accepts the output with the fence
     # chain intact. (The output is not a national frame: clone_index lives
-    # on every entity table, which Frame's flattening rule rejects.) The
-    # written bytes must also satisfy the rowwise structural validator —
-    # the reader-side teeth the retired national loader used to provide.
+    # on every entity table, which Frame's flattening rule rejects; nor a
+    # rowwise-geography artifact — the ladder carries its own column
+    # family.) The written bytes must still hold the structural facts the
+    # retired national loader used to re-check on read: entity row counts,
+    # id uniqueness, and person->household linkage.
     stored_kind, stored_mass_log = read_uk_single_year_weight_metadata(output)
     assert stored_kind is WeightKind.IMPORTANCE
     assert stored_mass_log == result.mass_log
     with pd.HDFStore(output, mode="r") as store:
-        validate_uk_rowwise_dataset_tables(
-            store["person"], store["benunit"], store["household"]
-        )
-        assert len(store["person"]) == len(result.person)
+        person = store["person"]
+        benunit = store["benunit"]
+        household = store["household"]
+        assert len(person) == len(result.person)
+        assert len(benunit) == len(result.benunit)
+        assert len(household) == len(result.household)
+        assert household["household_id"].is_unique
+        assert person["person_id"].is_unique
+        assert set(person["person_household_id"]) <= set(household["household_id"])
 
 
 def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:
