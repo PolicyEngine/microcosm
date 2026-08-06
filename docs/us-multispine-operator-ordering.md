@@ -1,10 +1,12 @@
 # US multispine operator ordering
 
-This note records the executable pool ordering in
-`tools/build_us_multispine_pool.py` and the serial lineage it replaces. The
-assembly and agreement contracts originated in populace#581; populace#578
-increment 2 wires them into a build path. This documentation and its fixture
-tests do not certify a full-data output artifact.
+This note records both executable pool orderings in
+`tools/build_us_multispine_pool.py`: the production stacked pipeline selected
+by default and the byte-compatible retiring lineage selected explicitly with
+`--legacy-two-spine`. The assembly and agreement contracts originated in
+populace#581; the ratified populace#578 adoption replaces agreement with a
+complete, origin-aware terminal battery on one stack. This documentation and
+its fixture tests do not certify a full-data output artifact.
 
 ## Retired serial ordering
 
@@ -67,7 +69,7 @@ under `tools/_legacy`; its summary and reviewed-null receipts remain the inputs
 expected by `build_us_acs_local_release.py`. New multispine work uses the pool
 builder below, but the supported legacy release recipe is not left half-working.
 
-## Executable increment-2 pool build
+## Production stacked pool build
 
 `build_us_multispine_pool.py` consumes only explicit local files and their
 declared SHA-256 values:
@@ -100,8 +102,54 @@ continues to produce only its historical release outputs.
 The tool does not download any source. It verifies all file pins and validates
 the raw artifact kind, stage, frame identity, operator status, and complete
 operator-output absence before loading the peer frames. Measured ACS mappings
-are allowed only when named by the ACS native-input receipt. It then runs this
-fixed sequence:
+are allowed only when named by the ACS native-input receipt.
+
+### Default sequence
+
+1. `assemble_stacked_spine(...)` selects whole households independently from
+   both survey arms with the single `sample_fraction` and `sample_seed`,
+   restores each sample to its full-source design-weight mass, and assembles
+   one origin-labeled frame. Standard rungs are `f001`, `f010`, and `f100`;
+   the manifest binds the fraction, seed, exact realized ASEC/ACS counts, and
+   selected-lineage digests. The full PUF remains a donor and is never sampled.
+2. The spine-blind source-preparation chain derives the native predictors
+   needed by the declared cross-origin fills. No population operator selects
+   behavior from the source-channel labels.
+3. `gap_fill_stacked_spine(...)` runs the two immutable directions over the
+   same frame: ASEC survey fields fill ACS nulls and ACS housing fills ASEC
+   nulls. Activation authority is source-and-role exact, observed zero is not
+   absence, native donor cells must remain byte-identical, and the #608
+   per-target banks sit beneath the stack-bound checkpoint identity.
+4. `run_stacked_puf_pass(...)` attaches the separately controlled PUF clone
+   arm (`clone_attachment_fraction`, default `1.0`) and runs one primary QRF
+   pass across both survey origins. PUF donors stay full. The clone-2
+   capital-gains-tail operator runs inside this pass; exact tail-owned and
+   QRF-owned cells are checked after source completion and every later phase.
+5. The transferred checkpoint records the gap-fill banks, primary-QRF bank,
+   tail manifest, weights audit, stack-manifest digest, fraction/seed, and
+   clone controls. The same identity regime governs cold and resumed builds.
+6. Schedule-D preparation, deterministic derivation, seeded inputs, and
+   batched simulation run on the transferred stack. The tool retains the
+   existing `assembled`, `transferred`, and `simulated` #599 boundaries.
+7. A fresh `us_stacked_completeness` gate proves every declared input is
+   observed or has exact source-by-role absence authority. The terminal
+   `us_by_origin_battery` then evaluates all 131 declared targets (114 person,
+   9 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
+   immutable live-digested per-column metric registry. Metric choice never
+   dispatches from physical dtype. At small rungs, comparisons outside the
+   validity domain receipt `insufficient_support`; tolerances do not widen.
+8. Only after both gates run does publication write the nullable H5,
+   diagnostics, and readiness manifest. Success, failed gate, and exception
+   paths each append a durable Chronicle spool row beside the output, with the
+   fraction token, seed, code/input/identity pins, phases, gate-receipt
+   pointers, wall time, artifact location, and disposition.
+
+### Retiring `--legacy-two-spine` sequence
+
+The explicit compatibility flag preserves the previous assemble-first pool
+path, including its publication bytes. It remains reproducible for lineage
+comparison but is not the production default. That path runs this fixed
+sequence:
 
 1. `assemble_spines({"asec": ..., "acs": ...})` creates the first shared
    population state and binds the immutable assembly receipt.
@@ -155,9 +203,10 @@ fixed sequence:
    The gate batches all failures and controls the manifest's simulation-ready
    status.
 
-The 23-operator pool contract registry makes clone placement total and
-executable. Adding an operator without a phase declaration, or calling one in
-an undeclared phase, fails before the kernel runs:
+On the retiring path, the 23-operator pool contract registry makes clone
+placement total and executable. Adding an operator without a phase
+declaration, or calling one in an undeclared phase, fails before the kernel
+runs:
 
 | Operator | Clone phase | Mechanism receipt |
 |---|---|---|
@@ -191,18 +240,19 @@ operator-free validation, and assembly, so this ordering correction neither
 changes nor requires reproduction of that checkpoint.
 
 The output H5 is a nullable, input-only, pre-calibration pool. Its companion
-manifest carries input pins, the assembly receipt, per-source and per-clone
-counts, operator receipts, and the complete agreement result. Publication
-first atomically replaces any prior manifest with a non-ready tombstone, then
+manifest carries input pins, the stack/assembly receipts, per-source and
+per-clone counts, operator receipts, and the complete terminal-gate result.
+Publication first atomically replaces any prior manifest with a non-ready
+tombstone, then
 stages the H5 and diagnostics under one publication run ID and renames them,
 and finally writes the readiness manifest. The manifest records the H5 and
 diagnostics run IDs and SHA-256 digests. The readiness loader requires a green
 manifest whose run ID and digests match the H5 metadata and diagnostics
 payload. An interrupted, substituted, or failed publication therefore
-self-reports not ready even beside stale files. A failed agreement gate writes
+self-reports not ready even beside stale files. A failed stacked gate writes
 diagnostics and a non-ready final manifest and exits nonzero. Calibration is
-deliberately absent; the downstream k-ladder
-may consume only a pool whose terminal agreement result passed.
+deliberately absent; the downstream k-ladder may consume only a pool whose
+terminal stacked battery passed.
 
 ## Provenance axes
 
@@ -227,18 +277,20 @@ concepts separate.
 
 ## Canonical executable ordering
 
-The US multispine build order is:
+The production US multispine build order is:
 
 ```text
 source ingestion and faithful schema harmonization
-    -> assemble peer spines
-    -> clone stage (prepare clone-sensitive inputs, then clone PUF detail)
-    -> impute
+    -> uniformly sample both survey arms and assemble one stack
+    -> prepare native predictors
+    -> banked cross-origin gap-fill
+    -> one PUF QRF pass plus clone-2 capital-gains tail
+    -> source completion
     -> derive
     -> seed take-up and other stochastic inputs
     -> simulate
-    -> spine-agreement gate
-    -> emit input-only pool and receipts
+    -> completeness gate plus 131-target by-origin battery
+    -> emit input-only pool, receipts, and terminal Chronicle row
 ```
 
 Calibration is a downstream consumer boundary, not a stage in this tool.
@@ -257,9 +309,9 @@ whose immutable assembly receipt remains the authority.
 
 ASEC and ACS are peer household spines. A future household source can join
 the same assembly contract. PUF tax detail is not a peer spine: it remains a
-clone operator applied after assembly and after the clone stage's spine-blind
-preparation, so every assembled household source is subject to the same clone
-and downstream operator sequence.
+clone operator applied once after assembly and banked cross-origin gap-fill,
+so every assembled household source reaches the PUF pass with the same
+declared predictor surface.
 
 The new provenance contract is:
 
@@ -279,7 +331,7 @@ The new provenance contract is:
 not made read-only by the dataframe API. Enforcement instead uses a private,
 deeply frozen frame-metadata receipt. At assembly it records the declared
 channel set and the native row count for every entity/channel pair. Assembly
-output, PUF clone entry/output, and the spine-agreement gate validate live
+output, PUF clone entry/output, and both stacked terminal gates validate live
 channels and clone-index-zero row counts against that receipt. They also
 require every person's channel to agree with each linked group row, including
 its household. An unknown/forged channel, a drifted native count, a missing
@@ -288,9 +340,10 @@ that names the assembly manifest. US runtime frame rebuilds carry the receipt
 whenever they carry the source frame's mass log, and a structural test rejects
 a mass-log-preserving rebuild that drops it.
 
-Assembly, provenance reporting, and the spine-agreement gate may read source
-channels. Population operators must not. In particular, an operator may
-route PUF-detail behavior using clone provenance, but it may not make a fit,
+Assembly, provenance reporting, gap-fill routing, completeness, and the
+by-origin battery may read source channels. Population operators must not. In
+particular, an operator may route PUF-detail behavior using clone provenance,
+but it may not make a fit,
 draw, transformation, or overwrite conditional on `asec`, `acs`, or another
 source channel. The current unassembled lineage remains compatible: when the
 raw-spine ID field is absent, its historical `asec`/`puf_tax_detail` channel
@@ -339,43 +392,31 @@ contracts while making the first shared mutable population state explicit.
 
 ## Gate and calibration boundary
 
-The spine-agreement gate runs after simulation and before calibration. Its
-registry covers each transferred or imputed input family, every variable in
-the checked-in take-up contract, and the downstream `ssi` simulation output
-measured by the multispine QA contract. This includes
-`takes_up_ssi_if_eligible`. The registry declares the statistics and
-tolerances used to compare source-conditional distributions. Failures are
-collected and reported as one batch. Calibration must not consume a frame
-whose agreement gate failed.
+The completeness gate and by-origin battery run after simulation and before
+publication or calibration. Their authority bundle freezes the complete
+declared surface, gap-fill plan, per-column metric registry, joint metrics,
+and support profile; live content digests are recomputed at evaluation and
+manifest emission. Production entrypoints accept no caller-supplied surface,
+metric, or tolerance authority.
 
-The increment-1 registry is generated from the declared ACS transfer families,
-with transfer batch suffixes normalized and deterministic transfer outputs
-included, then extended from the take-up inventory and the declared simulated
-output surface. Each registered numeric or boolean distribution uses the same
-fixed contract, with no family-specific override:
+Each declared comparison uses positive record weights and exactly one named
+metric: boolean/rare incidence, monetary sign-separated incidence plus
+conditional quantiles, or categorical total variation. Incidence ratios use
+`[0.8, 1.25]`; conditional q10/q25/q50/q75/q90 envelopes and categorical TVD
+use `0.25`. A one-sided supported hole fails. Small-rung comparisons below
+the immutable effective-support floor are explicitly untestable and receipt
+`insufficient_support`; they do not silently pass as tested and do not alter
+the production tolerances.
 
-- every pair of source spines is compared using positive record weights;
-- the weighted nonzero-incidence ratio must be in `[0.8, 1.25]`; and
-- among nonzero records, the largest symmetric relative distance at weighted
-  q10, q25, q50, q75, or q90 must not exceed `0.25`.
+Both gates return batched `GateResult` failures. Calibration cannot consume a
+frame whose completeness or by-origin gate failed, and no source-specific
+target, loss term, seed, inferred dtype metric, or caller threshold may shape
+a passing result.
 
-The union of source channels observed across registered entity grains defines
-the required pair set, so a missing third-spine entity comparison is explicit
-and fails. A one-sided zero incidence is a disagreement. A both-zero pair is
-recorded as untestable in gate details and also fails; registered all-zero
-surfaces cannot pass silently.
+## Validation boundary
 
-The gate returns one `GateResult` containing every malformed-input and
-distribution failure rather than stopping at the first disagreement.
-
-This ordering makes the gate diagnostic of the shared operator surface:
-calibration cannot hide a disagreement, and no per-spine target, loss term,
-seed, or tolerance may be introduced to shape a passing result.
-
-## Increment-2 validation boundary
-
-This increment makes the assembly seam executable and covers it with small,
-synthetic two-spine fixtures. It does not execute or certify a full-data
-build, download a source dataset, calibrate the pool, select k, or change the
-current sparse/dense release artifacts. Those data-scale and release steps
-remain downstream of this code increment.
+The production adoption is covered by synthetic module fixtures and a tiny
+tool-entrypoint build, but this documentation does not claim a restricted-data
+smoke or full production artifact. The tool never downloads a source dataset,
+and calibration, exact-k selection, certification, and release promotion
+remain downstream operations.
