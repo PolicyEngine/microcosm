@@ -29,16 +29,42 @@ CREATE TYPE chronicle.build_disposition AS ENUM (
     'discarded'
 );
 
+-- Python's str.strip() recognizes these 29 Unicode whitespace code points.
+-- Keep direct database inserts on the same nonempty/trimmed text contract as
+-- the fail-closed Chronicle client.
+CREATE OR REPLACE FUNCTION chronicle.nonempty_trimmed_text(p_value text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog, chronicle
+AS $function$
+    SELECT p_value <> '' AND p_value = btrim(
+        p_value,
+        U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020' ||
+        U&'\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006' ||
+        U&'\2007\2008\2009\200A\2028\2029\202F\205F\3000'
+    )
+$function$;
+
 CREATE TABLE chronicle.predictions (
-    id text PRIMARY KEY CHECK (btrim(id) <> ''),
+    id text PRIMARY KEY CHECK (chronicle.nonempty_trimmed_text(id)),
     ts timestamptz NOT NULL CHECK (isfinite(ts)),
-    claim text CHECK (claim IS NULL OR btrim(claim) <> ''),
-    type text CHECK (type IS NULL OR btrim(type) <> ''),
+    claim text CHECK (
+        claim IS NULL OR chronicle.nonempty_trimmed_text(claim)
+    ),
+    type text CHECK (
+        type IS NULL OR chronicle.nonempty_trimmed_text(type)
+    ),
     predicted jsonb,
     p numeric CHECK (p IS NULL OR (p >= 0 AND p <= 1)),
     resolved timestamptz CHECK (resolved IS NULL OR isfinite(resolved)),
-    resolves text CHECK (resolves IS NULL OR btrim(resolves) <> ''),
-    outcome text NOT NULL CHECK (btrim(outcome) <> ''),
+    resolves text CHECK (
+        resolves IS NULL
+        OR chronicle.nonempty_trimmed_text(resolves)
+    ),
+    outcome text NOT NULL CHECK (chronicle.nonempty_trimmed_text(outcome)),
     actual jsonb,
     note text,
     CONSTRAINT predictions_event_shape CHECK (
@@ -67,24 +93,106 @@ CREATE INDEX predictions_resolves_idx
     ON chronicle.predictions (resolves)
     WHERE resolves IS NOT NULL;
 
+CREATE OR REPLACE FUNCTION chronicle.valid_build_phases(p_value jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog, chronicle
+AS $function$
+DECLARE
+    item jsonb;
+    phase text;
+    phases_seen text[] := ARRAY[]::text[];
+BEGIN
+    IF jsonb_typeof(p_value) <> 'array' THEN
+        RETURN false;
+    END IF;
+    IF jsonb_array_length(p_value) = 0 THEN
+        RETURN false;
+    END IF;
+    FOR item IN SELECT value FROM jsonb_array_elements(p_value)
+    LOOP
+        IF jsonb_typeof(item) <> 'string' THEN
+            RETURN false;
+        END IF;
+        phase := item #>> '{}';
+        IF NOT chronicle.nonempty_trimmed_text(phase)
+            OR phase = ANY(phases_seen)
+        THEN
+            RETURN false;
+        END IF;
+        phases_seen := array_append(phases_seen, phase);
+    END LOOP;
+    RETURN true;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION chronicle.valid_gate_verdicts(p_value jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+SET search_path = pg_catalog, chronicle
+AS $function$
+DECLARE
+    member record;
+    verdict text;
+    receipt_pointer text;
+BEGIN
+    IF jsonb_typeof(p_value) <> 'object' OR p_value = '{}'::jsonb THEN
+        RETURN false;
+    END IF;
+    FOR member IN SELECT key, value FROM jsonb_each(p_value)
+    LOOP
+        IF NOT chronicle.nonempty_trimmed_text(member.key)
+            OR jsonb_typeof(member.value) <> 'object'
+            OR jsonb_typeof(member.value -> 'verdict') IS DISTINCT FROM 'string'
+            OR jsonb_typeof(member.value -> 'receipt') IS DISTINCT FROM 'string'
+        THEN
+            RETURN false;
+        END IF;
+        verdict := member.value ->> 'verdict';
+        receipt_pointer := member.value ->> 'receipt';
+        IF NOT chronicle.nonempty_trimmed_text(verdict)
+            OR NOT chronicle.nonempty_trimmed_text(receipt_pointer)
+        THEN
+            RETURN false;
+        END IF;
+    END LOOP;
+    RETURN true;
+END;
+$function$;
+
 CREATE TABLE chronicle.builds (
-    build_id text PRIMARY KEY CHECK (btrim(build_id) <> ''),
+    build_id text PRIMARY KEY CHECK (
+        chronicle.nonempty_trimmed_text(build_id)
+        AND build_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$'
+    ),
     ts timestamptz NOT NULL CHECK (isfinite(ts)),
-    pipeline text NOT NULL CHECK (btrim(pipeline) <> ''),
+    pipeline text NOT NULL CHECK (chronicle.nonempty_trimmed_text(pipeline)),
     rung text NOT NULL,
     seed bigint CHECK (seed IS NULL OR seed >= 0),
-    code_pin text NOT NULL CHECK (btrim(code_pin) <> ''),
+    code_pin text NOT NULL CHECK (chronicle.nonempty_trimmed_text(code_pin)),
     input_pins_digest chronicle.sha256_hex NOT NULL,
     identity_digest chronicle.sha256_hex NOT NULL,
-    phases_reached jsonb NOT NULL DEFAULT '[]'::jsonb
-        CHECK (jsonb_typeof(phases_reached) = 'array'),
-    gate_verdicts jsonb NOT NULL DEFAULT '{}'::jsonb
-        CHECK (jsonb_typeof(gate_verdicts) = 'object'),
+    phases_reached jsonb NOT NULL
+        CHECK (chronicle.valid_build_phases(phases_reached)),
+    gate_verdicts jsonb NOT NULL
+        CHECK (chronicle.valid_gate_verdicts(gate_verdicts)),
     wall_seconds numeric,
     cost_usd numeric,
-    artifact_location text,
+    artifact_location text CHECK (
+        artifact_location IS NULL
+        OR chronicle.nonempty_trimmed_text(artifact_location)
+    ),
     disposition chronicle.build_disposition NOT NULL,
-    prediction_id text,
+    prediction_id text CHECK (
+        prediction_id IS NULL
+        OR chronicle.nonempty_trimmed_text(prediction_id)
+    ),
     prev_row_digest chronicle.sha256_hex,
     row_digest chronicle.sha256_hex NOT NULL,
     CONSTRAINT builds_rung_fraction_token CHECK (
@@ -423,6 +531,11 @@ GRANT USAGE ON SCHEMA chronicle
     TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
 GRANT USAGE ON TYPE chronicle.sha256_hex, chronicle.build_disposition
     TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
+GRANT EXECUTE ON FUNCTION
+    chronicle.nonempty_trimmed_text(text),
+    chronicle.valid_build_phases(jsonb),
+    chronicle.valid_gate_verdicts(jsonb)
+    TO chronicle_writer, chronicle_break_glass_admin;
 GRANT INSERT ON chronicle.builds, chronicle.predictions
     TO chronicle_writer;
 GRANT SELECT ON chronicle.builds

@@ -92,6 +92,29 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     }
     assert "trim_scale((p_value #>> '{}')::numeric)::text" in sql
     assert "rung IN ('f001', 'f010', 'f100')" in sql
+    assert "CHECK (chronicle.valid_build_phases(phases_reached))" in builds
+    assert "CHECK (chronicle.valid_gate_verdicts(gate_verdicts))" in builds
+    assert "phases_reached jsonb NOT NULL DEFAULT" not in builds
+    assert "gate_verdicts jsonb NOT NULL DEFAULT" not in builds
+    function_grants = sql.split("GRANT EXECUTE ON FUNCTION", 1)[1].split(
+        "GRANT INSERT ON", 1
+    )[0]
+    assert "chronicle.nonempty_trimmed_text(text)" in function_grants
+    assert "chronicle.valid_build_phases(jsonb)" in function_grants
+    assert "chronicle.valid_gate_verdicts(jsonb)" in function_grants
+    assert "TO chronicle_writer, chronicle_break_glass_admin" in function_grants
+
+    text_helper = sql.split(
+        "CREATE OR REPLACE FUNCTION chronicle.nonempty_trimmed_text",
+        1,
+    )[1].split("$function$;", 1)[0]
+    sql_whitespace = {
+        int(codepoint, 16) for codepoint in re.findall(r"\\([0-9A-F]{4})", text_helper)
+    }
+    python_whitespace = {
+        codepoint for codepoint in range(0x110000) if chr(codepoint).isspace()
+    }
+    assert sql_whitespace == python_whitespace
 
     public_view = sql.split("CREATE VIEW chronicle.builds_public", 1)[1].split(
         "FROM chronicle.builds;", 1
