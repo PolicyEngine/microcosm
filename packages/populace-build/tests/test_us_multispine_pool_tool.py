@@ -1004,7 +1004,7 @@ def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state
     row = load_chronicle_row(rows[0])
     assert frozenset(row.to_mapping()) == CHRONICLE_ROW_FIELDS
     assert row.disposition == disposition
-    assert row.rung == "1/100"
+    assert row.rung == "f001"
     assert row.seed == 578
     assert row.pipeline == "us-stacked-pool"
     assert len(row.input_pins_digest) == len(row.identity_digest) == 64
@@ -1065,7 +1065,8 @@ def test_stacked_preflight_errors_emit_one_chronicle_row(
         tmp_path,
         terminal="success",
     )
-    arguments = _stacked_main_argv(tmp_path)
+    predecessor = "a" * 64
+    arguments = _stacked_main_argv(tmp_path, predecessor=predecessor)
     if failure in {"negative_seed", "oversized_seed"}:
         seed_index = arguments.index("--sample-seed") + 1
         arguments[seed_index] = "-1" if failure == "negative_seed" else str(2**63)
@@ -1089,6 +1090,8 @@ def test_stacked_preflight_errors_emit_one_chronicle_row(
     assert len(row_paths) == 1
     row = load_chronicle_row(row_paths[0])
     assert row.disposition == "failed"
+    assert row.rung == "f001"
+    assert row.prev_row_digest == predecessor
     assert row.artifact_location is None
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
     error_path = Path(

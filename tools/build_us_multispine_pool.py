@@ -225,10 +225,10 @@ _POOL_STAGE_CHECKPOINT_FILENAMES: Mapping[str, str] = {
 _POOL_SIMULATION_OUTPUT_COLUMN = "ssi"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _BANK_IDENTITY_SIBLING_SCAN_LIMIT = 64
-_STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, tuple[str, str]] = {
-    0.01: ("f001", "1/100"),
-    0.10: ("f010", "1/10"),
-    1.00: ("f100", "1"),
+_STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
+    0.01: "f001",
+    0.10: "f010",
+    1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
 _STACKED_CHECKPOINT_MATERIALIZER_VERSION = 1
@@ -911,7 +911,7 @@ def _pool_checkpoint_base_identity(
     }
 
 
-def _stacked_rung(sample_fraction: float) -> tuple[str, str]:
+def _stacked_rung(sample_fraction: float) -> str:
     try:
         return _STACKED_SAMPLE_RUNG_TOKENS[float(sample_fraction)]
     except KeyError as exc:
@@ -964,7 +964,7 @@ def _stacked_checkpoint_base_identity(
 ) -> dict[str, object]:
     """Bind #599/#608 caches to the live stack and both scale controls."""
 
-    fraction_token, _rung = _stacked_rung(sample_fraction)
+    fraction_token = _stacked_rung(sample_fraction)
     if isinstance(sample_seed, bool) or sample_seed < 0:
         raise ValueError("sample_seed must be a non-negative integer.")
     if isinstance(clone_attachment_seed, bool) or clone_attachment_seed < 0:
@@ -1039,7 +1039,7 @@ def _stacked_checkpoint_base_identity(
 def _configured_stacked_identity(args: argparse.Namespace) -> dict[str, object]:
     """Identity available before input verification for terminal error rows."""
 
-    fraction_token, _rung = _stacked_rung(args.sample_fraction)
+    fraction_token = _stacked_rung(args.sample_fraction)
     return {
         "artifact_kind": "populace_us_stacked_pool_configured_identity",
         "schema_version": 1,
@@ -1169,7 +1169,7 @@ def _new_stacked_release_id(
     timestamp: datetime | None = None,
     nonce: str | None = None,
 ) -> str:
-    fraction_token, _rung = _stacked_rung(sample_fraction)
+    fraction_token = _stacked_rung(sample_fraction)
     instant = datetime.now(UTC) if timestamp is None else timestamp.astimezone(UTC)
     suffix = uuid.uuid4().hex[:8] if nonce is None else nonce
     if not re.fullmatch(r"[0-9a-f]{8}", suffix):
@@ -2918,7 +2918,7 @@ def _stacked_manifest_payload(
         "random_seed": POOL_RANDOM_SEED,
         "sampling": {
             "sample_fraction": float(sample_fraction),
-            "fraction_token": _stacked_rung(sample_fraction)[0],
+            "fraction_token": _stacked_rung(sample_fraction),
             "sample_seed": sample_seed,
             "realized_households": {
                 channel: result.stack_receipt["survey_samples"][channel][
@@ -3545,8 +3545,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
     started_ts = datetime.now(UTC)
     outputs = _stacked_attempt_outputs(args)
     code_pin = "unresolved-local-git-code-pin"
-    predecessor: str | None = None
-    rung = "1"
+    predecessor = args.chronicle_prev_row_digest
+    rung = _stacked_rung(args.sample_fraction)
     chronicle_seed: int | None = None
     preflight_digest = hashlib.sha256(
         _canonical_json_bytes(
@@ -3570,6 +3570,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
     )
 
     try:
+        predecessor = _chronicle_predecessor(args)
         state.input_pins_digest = _configured_input_pins_digest(args)
         chronicle_seed = _validate_stacked_seed(
             args.sample_seed,
@@ -3579,8 +3580,6 @@ def _main_stacked(args: argparse.Namespace) -> int:
             args.clone_attachment_seed,
             option="--clone-attachment-seed",
         )
-        fraction_token, rung = _stacked_rung(args.sample_fraction)
-        del fraction_token  # The release-ID helper revalidates the same rung.
         outputs = _stacked_output_paths(
             args.out,
             checkpoint_root=args.checkpoint_root,
@@ -3598,7 +3597,6 @@ def _main_stacked(args: argparse.Namespace) -> int:
         ).hexdigest()
         _append_phase(state, "configured")
         code_pin = _git_code_pin()
-        predecessor = _chronicle_predecessor(args)
         verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
         state.input_pins_digest = _input_pins_digest(verified_inputs)
         _append_phase(state, "inputs_verified")

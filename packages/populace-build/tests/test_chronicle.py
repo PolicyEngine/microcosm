@@ -12,6 +12,7 @@ import pytest
 import populace.build.chronicle as chronicle
 from populace.build.chronicle import (
     CHRONICLE_ROW_FIELDS,
+    CHRONICLE_RUNGS,
     ChronicleRow,
     canonical_json_bytes,
     load_chronicle_row,
@@ -24,7 +25,7 @@ def _row_kwargs(**overrides: object) -> dict[str, object]:
         "build_id": "fixture-build-1",
         "ts": "2026-08-04T15:06:00-04:00",
         "pipeline": "fixture-pipeline",
-        "rung": "1/10",
+        "rung": "f010",
         "seed": 628,
         "code_pin": "1c1fc717",
         "input_pins_digest": "1" * 64,
@@ -57,7 +58,7 @@ def test_row_schema_json_round_trip_matches_628_golden() -> None:
     assert frozenset(row.to_mapping()) == CHRONICLE_ROW_FIELDS
     assert restored.ts == "2026-08-04T19:06:00.000000Z"
     assert restored.row_digest == (
-        "eda7f5e42268a65de97a0701c9ccd32053773568347def1f4472c5cd98589f63"
+        "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927"
     )
 
 
@@ -75,9 +76,9 @@ def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
         ("build_id", "bad build id", "build_id"),
         ("ts", "2026-08-04T19:06:00", "UTC offset"),
         ("pipeline", " fixture ", "pipeline"),
-        ("rung", "f010", "canonical fraction token"),
-        ("rung", "0.1", "canonical fraction token"),
-        ("rung", "2/20", "canonical fraction token"),
+        ("rung", "1/10", "rung must be one of"),
+        ("rung", "0.1", "rung must be one of"),
+        ("rung", "f020", "rung must be one of"),
         ("seed", True, "seed"),
         ("seed", -1, "seed"),
         ("code_pin", "", "code_pin"),
@@ -127,7 +128,7 @@ def test_published_row_requires_an_artifact_location() -> None:
         ChronicleRow.create(**_row_kwargs(disposition="published"))
 
 
-@pytest.mark.parametrize("rung", ["1/100", "1/10", "1"])
+@pytest.mark.parametrize("rung", sorted(CHRONICLE_RUNGS))
 def test_standard_scale_rungs_are_accepted(rung: str) -> None:
     assert ChronicleRow.create(**_row_kwargs(rung=rung)).rung == rung
 

@@ -29,13 +29,13 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 __all__ = [
     "BUILD_DISPOSITIONS",
     "CHRONICLE_ROW_FIELDS",
+    "CHRONICLE_RUNGS",
     "ChronicleRow",
     "ChronicleWriteResult",
     "canonical_json_bytes",
@@ -58,7 +58,7 @@ BUILD_DISPOSITIONS = frozenset(
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
-_RUNG_PATTERN = re.compile(r"^(?:1|[1-9][0-9]*/[1-9][0-9]*)$")
+CHRONICLE_RUNGS = frozenset({"f001", "f010", "f100"})
 CHRONICLE_ROW_FIELDS = frozenset(
     {
         "build_id",
@@ -440,19 +440,9 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
 
 
 def _validate_rung(value: str) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) > 255
-        or not _RUNG_PATTERN.fullmatch(value)
-    ):
+    if value not in CHRONICLE_RUNGS:
         raise ValueError(
-            "rung must be a canonical fraction token such as '1' or '1/10'."
-        )
-    fraction = Fraction(value)
-    if fraction <= 0 or fraction > 1 or str(fraction) != value:
-        raise ValueError(
-            "rung must be a canonical fraction token greater than zero and at "
-            f"most one, got {value!r}."
+            f"rung must be one of {sorted(CHRONICLE_RUNGS)}, got {value!r}."
         )
     return value
 
