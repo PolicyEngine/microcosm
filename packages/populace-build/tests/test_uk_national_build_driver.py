@@ -20,6 +20,9 @@ _PATH_ARGUMENTS = (
     "adult_tab",
     "benefits_tab",
     "build_record_path",
+    "input_mass_reference_path",
+    "input_mass_exclusions_path",
+    "qrf_tail_exclusions_path",
 )
 _IDENTITY_CLI_ARGUMENTS = (
     "--release-id",

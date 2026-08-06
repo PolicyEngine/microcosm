@@ -23,6 +23,14 @@ from populace.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
 )
+from populace.build.uk_runtime.weighted_integrity import (
+    UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+    UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UKInputMassParityPolicy,
+    UKQRFTailConcentrationPolicy,
+    load_uk_input_mass_reference,
+    load_uk_reviewed_exclusion_register,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -116,7 +124,145 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
+    parser.add_argument(
+        "--input-mass-reference-json",
+        type=Path,
+        help=(
+            "Frozen weighted per-column reference totals (schema_version 1: "
+            "identity + totals) emitted by the #609 measurement tooling. "
+            "Supplying it arms the input_mass_parity terminal gate; both "
+            "--input-mass-* thresholds are then required."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-relative-tolerance",
+        type=float,
+        help=(
+            "Maximum |candidate - reference| / |reference| per column before "
+            "input_mass_parity fails. No default: the boundary comes from the "
+            "#609 measurement pass, not from the US 0.5."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-minimum-reference-total",
+        type=float,
+        help=(
+            "Reference-mass floor (GBP-scale) below which a column is not "
+            "checked. No default: the US 1e9 is a USD figure against a "
+            "different pool and must not be inherited (#609)."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-exclusions",
+        type=Path,
+        help=(
+            "Reviewed input-mass exclusion register overriding the committed "
+            f"{UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE}. Stale entries fail "
+            "the gate; dormant entries are reported."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-top-k",
+        type=int,
+        help=(
+            "Tail size for the qrf_tail_concentration terminal gate. "
+            "Supplying the three --qrf-tail-* thresholds together arms the "
+            "gate; no defaults are inherited from the US #462 calibration."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-max-top-share",
+        type=float,
+        help=(
+            "Blocking share of weighted |mass| the top-k records may carry "
+            "per declared QRF output, in (0, 1). Measured per #609."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-min-nonzero-records",
+        type=int,
+        help=(
+            "Columns with fewer weighted carriers are reported as thin and "
+            "not checked; must exceed --qrf-tail-top-k. Measured per #609."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-exclusions",
+        type=Path,
+        help=(
+            "Reviewed QRF tail-concentration exclusion register overriding "
+            f"the committed {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE}. Stale "
+            "entries fail the gate; dormant entries are reported."
+        ),
+    )
     return parser.parse_args()
+
+
+def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]:
+    """Assemble the increment-4 gate arguments, requiring complete arming."""
+
+    def parser_error(message: str) -> None:
+        raise SystemExit(f"error: {message}")
+
+    arguments: dict[str, object] = {}
+    input_mass_thresholds = (
+        args.input_mass_relative_tolerance,
+        args.input_mass_minimum_reference_total,
+    )
+    input_mass_requested = args.input_mass_reference_json is not None or any(
+        value is not None for value in input_mass_thresholds
+    )
+    if input_mass_requested:
+        if args.input_mass_reference_json is None or any(
+            value is None for value in input_mass_thresholds
+        ):
+            parser_error(
+                "arming input_mass_parity requires --input-mass-reference-json, "
+                "--input-mass-relative-tolerance, and "
+                "--input-mass-minimum-reference-total together."
+            )
+        arguments["input_mass_reference"] = load_uk_input_mass_reference(
+            args.input_mass_reference_json
+        )
+        arguments["input_mass_policy"] = UKInputMassParityPolicy(
+            relative_tolerance=args.input_mass_relative_tolerance,
+            minimum_reference_total=args.input_mass_minimum_reference_total,
+            reviewed_exclusions=load_uk_reviewed_exclusion_register(
+                args.input_mass_exclusions,
+                resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+            ),
+        )
+    elif args.input_mass_exclusions is not None:
+        parser_error(
+            "--input-mass-exclusions requires the input_mass_parity gate to be armed."
+        )
+    qrf_thresholds = (
+        args.qrf_tail_top_k,
+        args.qrf_tail_max_top_share,
+        args.qrf_tail_min_nonzero_records,
+    )
+    if any(value is not None for value in qrf_thresholds):
+        if any(value is None for value in qrf_thresholds):
+            parser_error(
+                "arming qrf_tail_concentration requires --qrf-tail-top-k, "
+                "--qrf-tail-max-top-share, and --qrf-tail-min-nonzero-records "
+                "together."
+            )
+        arguments["qrf_tail_policy"] = UKQRFTailConcentrationPolicy(
+            top_k=args.qrf_tail_top_k,
+            max_top_share=args.qrf_tail_max_top_share,
+            min_nonzero_records=args.qrf_tail_min_nonzero_records,
+            reviewed_exclusions=load_uk_reviewed_exclusion_register(
+                args.qrf_tail_exclusions,
+                resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+            ),
+        )
+    elif args.qrf_tail_exclusions is not None:
+        parser_error(
+            "--qrf-tail-exclusions requires the qrf_tail_concentration gate "
+            "to be armed."
+        )
+    return arguments
 
 
 def main() -> int:
@@ -155,7 +301,13 @@ def main() -> int:
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
         build_record_path=build_record_path,
+        input_mass_reference_path=args.input_mass_reference_json,
+        input_mass_exclusions_path=args.input_mass_exclusions,
+        qrf_tail_exclusions_path=args.qrf_tail_exclusions,
     )
+    # Read-only gate inputs are materialized before any sidecar unlink so a
+    # path collision cannot consume a just-deleted file.
+    weighted_integrity_arguments = _weighted_integrity_arguments(args)
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
@@ -172,6 +324,9 @@ def main() -> int:
         # This staging path performs no calibration and therefore has no real
         # target-surface or target-fit evidence. Leave parity_evidence absent;
         # the terminal report omits that trio instead of inventing passes.
+        # The weighted-integrity pair (#609) follows the same rule: it joins
+        # the battery only when the caller arms it with a frozen reference
+        # and measured thresholds.
         gate_path_argument = (
             {"input_coverage_path": legacy_input_coverage_path}
             if legacy_input_coverage_path is not None
@@ -193,6 +348,7 @@ def main() -> int:
                 ),
             ),
             **gate_path_argument,
+            **weighted_integrity_arguments,
         )
     except RuntimeError as error:
         if (
@@ -436,6 +592,9 @@ def _validate_distinct_paths(
     adult_tab: Path,
     benefits_tab: Path,
     build_record_path: Path,
+    input_mass_reference_path: Path | None,
+    input_mass_exclusions_path: Path | None,
+    qrf_tail_exclusions_path: Path | None,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
@@ -449,6 +608,15 @@ def _validate_distinct_paths(
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),
     }
+    paths.update(
+        (label, path.resolve())
+        for label, path in {
+            "--input-mass-reference-json": input_mass_reference_path,
+            "--input-mass-exclusions": input_mass_exclusions_path,
+            "--qrf-tail-exclusions": qrf_tail_exclusions_path,
+        }.items()
+        if path is not None
+    )
     collisions = [
         (left_label, right_label, left_path, right_path)
         for (left_label, left_path), (right_label, right_path) in combinations(

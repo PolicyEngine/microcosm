@@ -26,6 +26,9 @@ from populace.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_manifest_current,
 )
 from populace.build.uk_runtime.terminal_gates import (
+    UKInputMassParityPolicy,
+    UKInputMassReference,
+    UKQRFTailConcentrationPolicy,
     UKReleaseParityEvidence,
     uk_terminal_gate_report,
     write_uk_terminal_gate_report,
@@ -362,6 +365,9 @@ def build_uk_national_dataset(
     stages: Sequence[UKNationalStage] = (),
     coverage_engine: Any | None = None,
     parity_evidence: UKReleaseParityEvidence | None = None,
+    input_mass_reference: UKInputMassReference | None = None,
+    input_mass_policy: UKInputMassParityPolicy | None = None,
+    qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
     terminal_gate_path: str | Path | None = None,
     input_coverage_path: str | Path | None = None,
 ) -> UKNationalBuildResult:
@@ -430,7 +436,11 @@ def build_uk_national_dataset(
         fit_weight_records=fit_weight_records,
         require_fit_weight_records=require_fit_weight_records,
         parity_evidence=parity_evidence,
+        input_mass_reference=input_mass_reference,
+        input_mass_policy=input_mass_policy,
+        qrf_tail_policy=qrf_tail_policy,
     )
+    write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
     if legacy_input_coverage_output:
         input_coverage = next(
             gate
@@ -438,8 +448,6 @@ def build_uk_national_dataset(
             if gate.name == "uk_release_input_coverage"
         )
         _write_input_coverage_diagnostic(diagnostic_path, input_coverage)
-    else:
-        write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
     if not terminal_gates.passed:
         raise RuntimeError(
             "Release gates failed: " + "; ".join(terminal_gates.failures)

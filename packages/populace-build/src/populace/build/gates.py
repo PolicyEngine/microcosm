@@ -2503,7 +2503,7 @@ def tail_concentration_gate(
             concentrated (a documented, tracked defect or a genuinely
             concentrated instrument). A column now below the threshold is a
             stale entry and fails; an entry for a column absent from this
-            surface is dormant and only reported.
+            surface or too thin to check is dormant and only reported.
 
     Returns:
         Pass iff every checked, non-excluded column's top-``top_k`` weighted
@@ -2580,7 +2580,9 @@ def tail_concentration_gate(
             f"concentration threshold now, remove the exclusion: "
             f"{sorted(stale_exclusions)}."
         )
-    dormant_exclusions = sorted(set(exclusions) - set(column_values))
+    dormant_exclusions = sorted(
+        set(exclusions) - set(used_exclusions) - set(stale_exclusions)
+    )
 
     return GateResult(
         name="tail_concentration",
