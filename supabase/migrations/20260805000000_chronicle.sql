@@ -400,7 +400,7 @@ GRANT USAGE ON TYPE chronicle.sha256_hex, chronicle.build_disposition
     TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
 GRANT INSERT ON chronicle.builds, chronicle.predictions
     TO chronicle_writer;
-GRANT SELECT ON chronicle.builds, chronicle.predictions
+GRANT SELECT ON chronicle.builds
     TO chronicle_exporter;
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON chronicle.builds, chronicle.predictions
@@ -427,12 +427,6 @@ CREATE POLICY predictions_writer_insert
 
 CREATE POLICY builds_exporter_select
     ON chronicle.builds
-    FOR SELECT
-    TO chronicle_exporter
-    USING (true);
-
-CREATE POLICY predictions_exporter_select
-    ON chronicle.predictions
     FOR SELECT
     TO chronicle_exporter
     USING (true);

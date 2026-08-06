@@ -27,9 +27,11 @@ Export local rows before reconciliation; if that ordering is missed,
 distinct read-only exporter credential.
 
 The Supabase key must identify the migration's ``chronicle_writer`` role, not
-the service role. The ``chronicle`` schema must also be enabled in the hosted
-project's PostgREST exposed-schema setting. This module deliberately wires no
-build tool; adoption remains in populace#616.
+the service role. Hosted Supabase projects should additionally provide the
+project gateway key as ``POPULACE_LEDGER_API_KEY``; single-key deployments may
+omit it. The ``chronicle`` schema must also be enabled in the hosted project's
+PostgREST exposed-schema setting. This module deliberately wires no build
+tool; adoption remains in populace#616.
 """
 
 from __future__ import annotations
@@ -48,8 +50,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 __all__ = [
     "BUILD_DISPOSITIONS",
@@ -86,6 +88,7 @@ BUILD_DISPOSITIONS = frozenset(
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
 CHRONICLE_RUNGS = frozenset({"f001", "f010", "f100"})
+LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 CHRONICLE_ROW_FIELDS = frozenset(
     {
         "build_id",
@@ -425,6 +428,7 @@ def record_build_attempt(
         row,
         ledger_url=config[0],
         ledger_key=config[1],
+        ledger_api_key=config[2],
         timeout=timeout,
     )
     return ChronicleWriteResult(
@@ -551,6 +555,7 @@ def reconcile_spool(
             row,
             ledger_url=config[0],
             ledger_key=config[1],
+            ledger_api_key=config[2],
             timeout=timeout,
         )
         if not success:
@@ -736,15 +741,55 @@ def _markdown_cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
-def _remote_config() -> tuple[str, str] | None:
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Refuse redirects so credential headers never cross an origin boundary."""
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        del req, fp, code, msg, headers, newurl
+        return None
+
+
+_NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler())
+
+
+def urlopen(request: Request, *, timeout: float) -> Any:
+    """Open one Chronicle request without following HTTP redirects."""
+
+    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
+
+
+def _remote_config() -> tuple[str, str, str] | None:
     url = os.environ.get("POPULACE_LEDGER_URL")
     key = os.environ.get("POPULACE_LEDGER_KEY")
     if not url or not key:
         return None
-    return url, key
+    api_key = os.environ.get(LEDGER_API_KEY_ENV) or key
+    return url, key, api_key
+
+
+def _validate_remote_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError("Chronicle URL must have a host and no embedded credentials")
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and loopback):
+        raise ValueError("Chronicle URL must use HTTPS (HTTP is loopback-only)")
 
 
 def _builds_endpoint(url: str) -> str:
+    _validate_remote_url(url)
     base = url.rstrip("/")
     if base.endswith("/rest/v1/builds"):
         endpoint = base
@@ -760,23 +805,24 @@ def _post_build_row(
     *,
     ledger_url: str,
     ledger_key: str,
+    ledger_api_key: str,
     timeout: float,
 ) -> tuple[bool, str | None]:
     if timeout <= 0:
         return False, "timeout must be greater than zero"
-    request = Request(
-        _builds_endpoint(ledger_url),
-        data=row.to_json_line().rstrip("\n").encode("utf-8"),
-        method="POST",
-        headers={
-            "apikey": ledger_key,
-            "Authorization": f"Bearer {ledger_key}",
-            "Content-Profile": "chronicle",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=ignore-duplicates,return=minimal",
-        },
-    )
     try:
+        request = Request(
+            _builds_endpoint(ledger_url),
+            data=row.to_json_line().rstrip("\n").encode("utf-8"),
+            method="POST",
+            headers={
+                "apikey": ledger_api_key,
+                "Authorization": f"Bearer {ledger_key}",
+                "Content-Profile": "chronicle",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=ignore-duplicates,return=minimal",
+            },
+        )
         with urlopen(request, timeout=timeout) as response:
             status = getattr(response, "status", 200)
             if not 200 <= status < 300:

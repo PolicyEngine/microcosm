@@ -30,6 +30,7 @@ def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
 
 
 def _row_kwargs(**overrides: object) -> dict[str, object]:
@@ -99,10 +100,10 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "gate_verdicts" not in public_view
     assert "GRANT INSERT ON chronicle.builds, chronicle.predictions" in sql
     assert "TO chronicle_writer" in sql
-    assert "GRANT SELECT ON chronicle.builds, chronicle.predictions" in sql
+    assert "GRANT SELECT ON chronicle.builds" in sql
     assert "TO chronicle_exporter" in sql
     assert "CREATE POLICY builds_exporter_select" in sql
-    assert "CREATE POLICY predictions_exporter_select" in sql
+    assert "CREATE POLICY predictions_exporter_select" not in sql
     assert "GRANT chronicle_writer, chronicle_exporter TO authenticator" in sql
 
 
@@ -308,6 +309,7 @@ def test_remote_insert_happens_after_spool_and_uses_chronicle_profile(
 ) -> None:
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
     monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
     requests: list[object] = []
 
     def fake_urlopen(request: object, *, timeout: float) -> _Response:
@@ -331,6 +333,8 @@ def test_remote_insert_happens_after_spool_and_uses_chronicle_profile(
         "https://fixture.supabase.co/rest/v1/builds?on_conflict=build_id"
     )
     assert request.method == "POST"
+    assert request.headers["Apikey"] == "project-api-key"
+    assert request.headers["Authorization"] == "Bearer writer-jwt"
     assert request.headers["Content-profile"] == "chronicle"
     assert request.headers["Prefer"] == ("resolution=ignore-duplicates,return=minimal")
     assert json.loads(request.data) == result.row.to_mapping()
@@ -353,6 +357,39 @@ def test_remote_failure_never_blocks_a_build_attempt(
     assert result.posted is False
     assert result.remote_error == "Supabase insert failed: offline"
     assert load_chronicle_row(result.spool_path) == result.row
+
+
+def test_insecure_remote_url_never_blocks_a_build_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "http://not-loopback.example")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert result.posted is False
+    assert "must use HTTPS" in (result.remote_error or "")
+    assert load_chronicle_row(result.spool_path) == result.row
+
+
+def test_remote_redirects_are_never_followed() -> None:
+    handler = chronicle._NoRedirectHandler()
+    request = chronicle.Request(
+        "https://fixture.supabase.co/rest/v1/builds",
+        headers={"Authorization": "Bearer writer-jwt"},
+    )
+
+    redirected = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "http://attacker.example/collect",
+    )
+
+    assert redirected is None
 
 
 def test_reconcile_posts_in_chain_order_and_removes_acknowledged_rows(

@@ -1,7 +1,8 @@
 """Export, validate, and render the append-only Chronicle build archive.
 
 Remote export uses a distinct, read-only ``chronicle_exporter`` JWT supplied
-as ``POPULACE_LEDGER_EXPORT_KEY``.  It never reuses the insert-only writer key.
+as ``POPULACE_LEDGER_EXPORT_KEY`` plus the hosted project's gateway key in
+``POPULACE_LEDGER_API_KEY``.  It never reuses the insert-only writer key.
 """
 
 from __future__ import annotations
@@ -13,22 +14,25 @@ import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from populace.build.chronicle import (
     CHRONICLE_ROW_FIELDS,
     ChronicleRow,
+    _validate_remote_url,
     export_rows,
     load_chronicle_file,
     load_spool_rows,
     order_rows_by_chain,
     render_markdown,
+    urlopen,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ARCHIVE = ROOT / "chronicle.jsonl"
 DEFAULT_SOURCE = ROOT / "ledger-spool"
 REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
+REMOTE_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 REMOTE_PAGE_SIZE = 500
 
 
@@ -62,7 +66,8 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Read the private live store using POPULACE_LEDGER_URL and the "
-            f"read-only {REMOTE_EXPORT_KEY_ENV}."
+            f"read-only {REMOTE_EXPORT_KEY_ENV}, authenticated at the gateway "
+            f"by {REMOTE_API_KEY_ENV}."
         ),
     )
 
@@ -108,9 +113,11 @@ def _source_rows(path: Path) -> tuple[ChronicleRow, ...]:
 def _remote_rows() -> tuple[ChronicleRow, ...]:
     ledger_url = os.environ.get("POPULACE_LEDGER_URL")
     export_key = os.environ.get(REMOTE_EXPORT_KEY_ENV)
-    if not ledger_url or not export_key:
+    api_key = os.environ.get(REMOTE_API_KEY_ENV)
+    if not ledger_url or not export_key or not api_key:
         raise ValueError(
-            f"remote export requires POPULACE_LEDGER_URL and {REMOTE_EXPORT_KEY_ENV}"
+            "remote export requires POPULACE_LEDGER_URL, "
+            f"{REMOTE_EXPORT_KEY_ENV}, and {REMOTE_API_KEY_ENV}"
         )
 
     rows: list[ChronicleRow] = []
@@ -126,7 +133,7 @@ def _remote_rows() -> tuple[ChronicleRow, ...]:
             headers={
                 "Accept": "application/json",
                 "Accept-Profile": "chronicle",
-                "apikey": export_key,
+                "apikey": api_key,
                 "Authorization": f"Bearer {export_key}",
                 "Prefer": "count=exact",
             },
@@ -151,6 +158,7 @@ def _remote_rows() -> tuple[ChronicleRow, ...]:
 
 
 def _remote_builds_endpoint(url: str, *, offset: int, limit: int) -> str:
+    _validate_remote_url(url)
     base = url.rstrip("/")
     if base.endswith("/rest/v1/builds"):
         endpoint = base
