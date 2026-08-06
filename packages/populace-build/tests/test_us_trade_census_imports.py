@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 from pathlib import Path
@@ -284,10 +285,17 @@ def test_month_range_and_key_elision():
     assert "time=2026-01" in elided
 
 
-def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(tmp_path):
-    """Reuse is not retrieval: resuming over a warm cache must reuse the
-    split marker verbatim — original retrieved_at, no sidecar rewrite —
-    and must succeed against a read-only cache directory."""
+def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(
+    tmp_path, monkeypatch
+):
+    """Reuse is not retrieval: resuming over a warm split-tree cache must
+    reuse the split marker verbatim — original retrieved_at — and issue
+    zero write calls. The spy intercepts every write primitive the module
+    can reach (Path.write_text / Path.write_bytes / writable open), which
+    a directory-permission probe cannot prove: a read-only *directory*
+    still lets 0644 sidecars be rewritten in place, and a rewrite within
+    the marker's one-second timestamp precision reproduces identical
+    bytes, passing any byte-snapshot comparison."""
 
     def fake_fetch(url: str):
         commodity = url.split("I_COMMODITY=")[1].split("&")[0]
@@ -313,18 +321,37 @@ def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(tmp_path):
     def refusing_fetch(url: str):
         raise AssertionError(f"resume must not fetch, asked for {url}")
 
-    tmp_path.chmod(0o555)
-    try:
-        resumed = fetch_imports_month(
-            "2026-03",
-            "test-key",
-            cache_dir=tmp_path,
-            chapters=("31",),
-            fetch=refusing_fetch,
-            throttle_seconds=0.0,
-        )
-    finally:
-        tmp_path.chmod(0o755)
+    writes: list[str] = []
+    real_open = builtins.open
+
+    def spy_write_text(self, data, *args, **kwargs):
+        writes.append(f"write_text:{self}")
+        return len(data)
+
+    def spy_write_bytes(self, data, *args, **kwargs):
+        writes.append(f"write_bytes:{self}")
+        return len(data)
+
+    def spy_open(file, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in ("w", "a", "x", "+")):
+            writes.append(f"open[{mode}]:{file}")
+            raise AssertionError(f"resume opened {file!r} writable ({mode!r})")
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", spy_write_text)
+    monkeypatch.setattr(Path, "write_bytes", spy_write_bytes)
+    monkeypatch.setattr(builtins, "open", spy_open)
+    resumed = fetch_imports_month(
+        "2026-03",
+        "test-key",
+        cache_dir=tmp_path,
+        chapters=("31",),
+        fetch=refusing_fetch,
+        throttle_seconds=0.0,
+    )
+    monkeypatch.undo()
+
+    assert writes == []
     assert resumed.country_rows == warm.country_rows
     resumed_marker = next(
         entry for entry in resumed.manifest_entries if entry.get("superseded_by_split")
