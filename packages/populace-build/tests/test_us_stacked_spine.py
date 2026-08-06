@@ -2909,36 +2909,22 @@ def test_battery_rejects_registry_omitting_declared_champva_before_comparisons()
     None
 ):
     champva = "has_champva_health_coverage_at_interview"
-    frame = _battery_frame(
-        {
-            champva: (np.ones(8), np.zeros(11)),
-            "healthy_control": (
-                np.asarray([1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]),
-                np.asarray([1.0] * 7 + [0.0] * 4),
-            ),
-        }
+    target = ("person", "model_required_boolean", champva, 0)
+    registry = dict(stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY)
+    assert registry.pop(target) == "boolean_incidence"
+    authority = stacked_spine_module._make_test_stacked_authority(
+        metric_registry=registry,
     )
-    result = _battery_with_test_authority(
-        frame,
-        registry=(
-            OriginBatterySpec(
-                entity="person",
-                family="healthy_control",
-                column_metrics={"healthy_control": "boolean_incidence"},
-            ),
-        ),
+    result = stacked_spine_module._by_origin_battery_with_test_authority(
+        _battery_frame({champva: (np.ones(8), np.zeros(11))}),
+        authority=authority,
     )
 
     assert not result.passed
     assert result.details["tested_comparisons"] == 0
-    assert any(
-        f"missing declared battery target person/model_required_boolean/{champva}"
-        in failure
-        for failure in result.failures
-    )
-    assert any(
-        champva in target for target in result.details["missing_declared_targets"]
-    )
+    label = f"person/model_required_boolean/{champva}[clone_0]"
+    assert result.details["missing_declared_targets"] == [label]
+    assert f"missing declared battery target {label}." in result.failures
 
 
 def test_battery_taxable_interest_metric_cannot_be_relabelled_rare_incidence() -> None:
