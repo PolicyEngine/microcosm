@@ -13,6 +13,7 @@ import stat
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -21,6 +22,7 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
+from populace.build.chronicle import CHRONICLE_ROW_FIELDS, load_chronicle_row
 from populace.build.gates import GateReport, GateResult
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import transfer_acs_inputs
@@ -98,6 +100,41 @@ def _source_frame(
             )
         },
         pd.Series(["fixture", "fixture"], dtype=object),
+    )
+
+
+def _many_household_source_frame(
+    *,
+    count: int = 100,
+    measured_offset: float = 0.0,
+) -> Frame:
+    ids = np.arange(1, count + 1, dtype=np.int64)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "A_AGE": np.full(count, 40.0),
+            "A_SEX": np.where(ids % 2, 1, 2).astype(np.int64),
+            "source_year": np.full(count, 2024, dtype=np.int64),
+            "measured": ids.astype(np.float64) + measured_offset,
+        }
+    )
+    tables = {
+        "person": person,
+        **{
+            entity: pd.DataFrame({f"{entity}_id": ids})
+            for entity in US_SCHEMA.group_entities
+        },
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.full(count, 2.0), WeightKind.DESIGN)},
+        pd.Series(["fixture"] * count, dtype=object),
     )
 
 
@@ -356,6 +393,33 @@ def _checkpoint_fixture_input_receipts() -> dict[str, object]:
             "build_receipt": {"artifact": "fixture-donor"},
         },
     }
+
+
+def _verified_inputs_fixture(pool_tool: ModuleType, root: Path):
+    verified = {}
+    for index, role in enumerate(
+        (
+            "asec_raw_stage",
+            "acs_household",
+            "acs_person",
+            "acs_rent_donor",
+            "processed_puf",
+            "puf_source_year",
+        ),
+        start=1,
+    ):
+        path = root / f"{role}.stacked-fixture"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(f"stacked-input-{index}".encode())
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        verified[role] = pool_tool._VerifiedInput(
+            role=role,
+            path=path,
+            expected_sha256=digest,
+            actual_sha256=digest,
+            size_bytes=path.stat().st_size,
+        )
+    return verified
 
 
 def _run_checkpoint_fixture(
@@ -671,6 +735,453 @@ def _assert_publication_tombstone(
         pool_tool.load_simulation_ready_us_multispine_pool_manifest(outputs.manifest)
 
 
+def _stacked_main_argv(tmp_path: Path) -> list[str]:
+    arguments: list[str] = []
+    for option in (
+        "asec-raw-stage-h5",
+        "acs-household-zip",
+        "acs-person-zip",
+        "acs-rent-h5",
+        "puf-h5",
+        "puf-source-year-csv",
+    ):
+        arguments.extend([f"--{option}", str(tmp_path / option)])
+        arguments.extend([f"--{option}-sha256", "1" * 64])
+    arguments.extend(
+        [
+            "--sample-fraction",
+            "0.01",
+            "--sample-seed",
+            "578",
+            "--clone-attachment-fraction",
+            "1.0",
+            "--clone-attachment-seed",
+            "579",
+            "--out",
+            str(tmp_path / "stacked-pool.h5"),
+        ]
+    )
+    return arguments
+
+
+def _install_stacked_entrypoint_stubs(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    terminal: str,
+) -> tuple[list[str], int]:
+    order: list[str] = []
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    source_manifest = pool_tool.load_acs_source_manifest()
+    puf_donor = pd.DataFrame({"fixture": np.arange(7)})
+    loaded = pool_tool._LoadedInputs(
+        asec=_many_household_source_frame(),
+        acs=_many_household_source_frame(measured_offset=1_000.0),
+        acs_rent_donor=pd.DataFrame({"fixture": [1.0]}),
+        puf_donor=puf_donor,
+        asec_raw_stage_checkpoint={"artifact": "fixture-raw-stage"},
+        acs_build={"artifact": "fixture-acs-build"},
+        acs_native_inputs={},
+        puf_donor_build={"artifact": "fixture-puf-build"},
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_verify_inputs",
+        lambda _args, _outputs: (verified, source_manifest),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_load_inputs",
+        lambda _args, *, acs_source_manifest: loaded,
+    )
+    monkeypatch.setattr(pool_tool, "_git_code_pin", lambda: "a" * 40)
+
+    real_stack = pool_tool.assemble_stacked_spine
+
+    def stack(*args, **kwargs):
+        order.append("stack")
+        return real_stack(*args, **kwargs)
+
+    monkeypatch.setattr(pool_tool, "assemble_stacked_spine", stack)
+
+    def prepare(frame: Frame, *, acs_rent_donor: pd.DataFrame):
+        order.append("prepare")
+        assert len(acs_rent_donor) == 1
+        return PoolStageOutput(frame, {"fixture": "prepare"})
+
+    monkeypatch.setattr(
+        pool_tool,
+        "prepare_multispine_source_inputs_for_clone",
+        prepare,
+    )
+    directions = (
+        SimpleNamespace(name="asec_survey_to_acs"),
+        SimpleNamespace(name="acs_housing_to_asec"),
+    )
+    monkeypatch.setattr(pool_tool, "stacked_gap_fill_plan", lambda: directions)
+
+    def gap_fill(frame: Frame, **kwargs):
+        order.append("gap")
+        assert set(kwargs["target_banks"]) == {
+            "asec_survey_to_acs",
+            "acs_housing_to_asec",
+        }
+        return SimpleNamespace(
+            frame=frame,
+            receipt={"fixture": "gap"},
+            transfer_results={},
+        )
+
+    monkeypatch.setattr(pool_tool, "gap_fill_stacked_spine", gap_fill)
+    monkeypatch.setattr(
+        pool_tool,
+        "weights_audit_gate",
+        lambda _records: GateResult(name="fixture_weights", passed=True),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "validate_puf_capital_gains_tail_manifest",
+        lambda _manifest: None,
+    )
+
+    def puf_pass(frame: Frame, donor: pd.DataFrame, **kwargs):
+        order.append("puf")
+        assert donor is puf_donor
+        assert len(donor) == 7
+        assert kwargs["clone_attachment_fraction"] == 1.0
+        assert kwargs["clone_attachment_seed"] == 579
+        if terminal == "error":
+            raise RuntimeError("fixture stacked error")
+        checkpoint_dir = Path(kwargs["primary_qrf_checkpoint_dir"])
+        pool_tool._atomic_write_json(
+            checkpoint_dir / pool_tool.PRIMARY_QRF_MANIFEST_FILENAME,
+            {"fixture": "primary-qrf"},
+        )
+        return SimpleNamespace(
+            frame=frame,
+            receipt={
+                "primary_puf_qrf": {
+                    "mode": "checkpoint_chain",
+                    "resume_status": "initialized",
+                },
+                "puf_capital_gains_tail_transfer": {"fixture": "tail"},
+                "tail_status": "applied",
+            },
+        )
+
+    monkeypatch.setattr(pool_tool, "run_stacked_puf_pass", puf_pass)
+
+    def complete(frame: Frame):
+        order.append("complete")
+        return PoolStageOutput(frame, {"fixture": "complete"})
+
+    monkeypatch.setattr(pool_tool, "complete_multispine_source_inputs", complete)
+    monkeypatch.setattr(
+        pool_tool,
+        "assert_stacked_tail_cells_preserved",
+        lambda _frame, _manifest: {"passed": True},
+    )
+
+    def tail_prepare(frame: Frame):
+        order.append("tail_prepare")
+        return frame, {"fixture": "tail_prepare"}
+
+    monkeypatch.setattr(pool_tool, "prepare_stacked_tail_derivation", tail_prepare)
+
+    def identity_stage(name: str):
+        def stage(frame: Frame):
+            order.append(name)
+            return PoolStageOutput(frame, {"fixture": name})
+
+        return stage
+
+    monkeypatch.setattr(
+        pool_tool,
+        "derive_multispine_pool_inputs",
+        identity_stage("derive"),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "seed_multispine_pool_inputs",
+        identity_stage("seed"),
+    )
+
+    def simulate(frame: Frame):
+        order.append("simulate")
+        person = frame.table("person").copy()
+        person["ssi"] = 0.0
+        return PoolStageOutput(_replace_person(frame, person), {"fixture": "simulate"})
+
+    monkeypatch.setattr(
+        pool_tool,
+        "materialize_multispine_agreement_outputs",
+        simulate,
+    )
+
+    def completeness(_frame: Frame) -> GateResult:
+        order.append("completeness")
+        return GateResult(name="fixture_completeness", passed=True)
+
+    def battery(_frame: Frame) -> GateResult:
+        order.append("battery")
+        if terminal == "red":
+            return GateResult(
+                name="fixture_battery",
+                passed=False,
+                failures=("fixture terminal failure",),
+            )
+        return GateResult(name="fixture_battery", passed=True)
+
+    monkeypatch.setattr(pool_tool, "stacked_completeness_gate", completeness)
+    monkeypatch.setattr(pool_tool, "by_origin_battery", battery)
+    real_publish = pool_tool._write_stacked_outputs
+
+    def publish(*args, **kwargs):
+        order.append("publish")
+        return real_publish(*args, **kwargs)
+
+    monkeypatch.setattr(pool_tool, "_write_stacked_outputs", publish)
+    return order, len(puf_donor)
+
+
+@pytest.mark.parametrize(
+    ("terminal", "expected_code", "disposition"),
+    [
+        ("success", 0, "iterating"),
+        ("red", 1, "failed"),
+        ("error", None, "failed"),
+    ],
+)
+def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    terminal: str,
+    expected_code: int | None,
+    disposition: str,
+) -> None:
+    order, full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal=terminal,
+    )
+    if terminal == "error":
+        with pytest.raises(RuntimeError, match="fixture stacked error"):
+            pool_tool.main(_stacked_main_argv(tmp_path))
+    else:
+        assert pool_tool.main(_stacked_main_argv(tmp_path)) == expected_code
+
+    rows = list((tmp_path / "ledger-spool").glob("*.json"))
+    assert len(rows) == 1
+    row = load_chronicle_row(rows[0])
+    assert frozenset(row.to_mapping()) == CHRONICLE_ROW_FIELDS
+    assert row.disposition == disposition
+    assert row.rung == "1/100"
+    assert row.seed == 578
+    assert row.pipeline == "us-stacked-pool"
+    assert len(row.input_pins_digest) == len(row.identity_digest) == 64
+    assert "f001-s578-asec1-acs1" in row.build_id
+    assert full_puf_rows == 7
+    if terminal == "error":
+        assert order == ["stack", "prepare", "gap", "puf"]
+        assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+        assert row.artifact_location is None
+    else:
+        assert order == [
+            "stack",
+            "prepare",
+            "gap",
+            "puf",
+            "complete",
+            "tail_prepare",
+            "derive",
+            "seed",
+            "simulate",
+            "completeness",
+            "battery",
+            "publish",
+        ]
+        assert row.artifact_location == str((tmp_path / "stacked-pool.h5").resolve())
+        assert all(
+            verdict["receipt"].startswith(
+                str((tmp_path / "stacked-pool.gates.json").resolve())
+            )
+            for verdict in row.gate_verdicts.values()
+        )
+        manifest = json.loads(
+            (tmp_path / "stacked-pool.manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest["pipeline"] == "us-stacked-pool"
+        assert manifest["sampling"] == {
+            **manifest["sampling"],
+            "sample_fraction": 0.01,
+            "fraction_token": "f001",
+            "sample_seed": 578,
+            "realized_households": {"asec": 1, "acs": 1},
+        }
+
+
+def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    asec = _many_household_source_frame()
+    acs = _many_household_source_frame(measured_offset=1_000.0)
+    base_stack = pool_tool.assemble_stacked_spine(
+        asec,
+        acs,
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
+
+    def identity(
+        *,
+        stack=base_stack,
+        sample_fraction: float = 0.10,
+        sample_seed: int = 578,
+        clone_fraction: float = 1.0,
+        clone_seed: int = 578,
+    ) -> dict[str, object]:
+        return pool_tool._stacked_checkpoint_base_identity(
+            verified,
+            stack_receipt=stack.receipt,
+            sample_fraction=sample_fraction,
+            sample_seed=sample_seed,
+            clone_attachment_fraction=clone_fraction,
+            clone_attachment_seed=clone_seed,
+            policyengine_us_version="fixture-engine",
+        )
+
+    fraction_stack = pool_tool.assemble_stacked_spine(
+        asec,
+        acs,
+        sample_fraction=0.01,
+        sample_seed=578,
+    )
+    seed_stack = pool_tool.assemble_stacked_spine(
+        asec,
+        acs,
+        sample_fraction=0.10,
+        sample_seed=579,
+    )
+    mutated_receipt = copy.deepcopy(dict(base_stack.receipt))
+    mutated_receipt["survey_samples"]["acs"]["selected_household_ids_sha256"] = "f" * 64
+    mutated_stack = SimpleNamespace(receipt=mutated_receipt)
+    identities = {
+        "base": identity(),
+        "sample_fraction": identity(
+            stack=fraction_stack,
+            sample_fraction=0.01,
+        ),
+        "sample_seed": identity(stack=seed_stack, sample_seed=579),
+        "clone_fraction": identity(clone_fraction=0.5),
+        "clone_seed": identity(clone_seed=579),
+        "stack_manifest": identity(stack=mutated_stack),
+    }
+    digests = {
+        name: pool_tool._pool_checkpoint_identity_sha256(value)
+        for name, value in identities.items()
+    }
+    assert len(set(digests.values())) == len(digests)
+
+    checkpoint_root = tmp_path / "identity-checkpoints"
+    original_store = pool_tool._PoolStageCheckpointStore(
+        checkpoint_root,
+        base_identity=identities["base"],
+    )
+    original_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    original_store.write(
+        pool_tool.MultispinePoolCheckpoint(
+            stage="assembled",
+            frame=base_stack.frame,
+            assembly_receipt=base_stack.frame.metadata[
+                pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY
+            ],
+            stage_receipts={},
+        )
+    )
+    for name, changed_identity in identities.items():
+        if name == "base":
+            continue
+        changed_store = pool_tool._PoolStageCheckpointStore(
+            checkpoint_root,
+            base_identity=changed_identity,
+        )
+        assert changed_store.load_deepest() is None
+
+
+@pytest.mark.parametrize(
+    ("fraction", "token"),
+    [(0.01, "f001"), (0.10, "f010"), (1.0, "f100")],
+)
+def test_stacked_release_id_carries_rung_seed_and_realized_counts(
+    pool_tool: ModuleType,
+    fraction: float,
+    token: str,
+) -> None:
+    release_id = pool_tool._new_stacked_release_id(
+        sample_fraction=fraction,
+        sample_seed=578,
+        realized_asec_households=123,
+        realized_acs_households=456,
+        timestamp=datetime(2026, 8, 5, 12, 34, 56, tzinfo=UTC),
+        nonce="abcdef01",
+    )
+
+    assert release_id == (
+        f"populace-us-2024-stacked-{token}-s578-asec123-acs456-"
+        "20260805T123456Z-abcdef01"
+    )
+
+
+def test_legacy_two_spine_fixture_is_origin_main_byte_exact(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    store = _checkpoint_fixture_store(pool_tool, tmp_path / "checkpoints")
+    store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    result, order = _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=store,
+    )
+    artifact = tmp_path / "legacy-origin-main.canonical.h5"
+    pool_tool.write_frame_checkpoint(artifact, result.frame)
+
+    assert order == ["impute", "derive", "seed", "simulate"]
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() == (
+        "8db75afe501cde41352c7db53fc062bd7628dd5033fe578122aee5fa6eb70af4"
+    )
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_main_dispatches_only_to_the_selected_pipeline(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy: bool,
+) -> None:
+    calls: list[str] = []
+    namespace = SimpleNamespace(legacy_two_spine=legacy)
+    parser = SimpleNamespace(parse_args=lambda _argv: namespace)
+    monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_legacy",
+        lambda _args: calls.append("legacy") or 17,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_stacked",
+        lambda _args: calls.append("stacked") or 23,
+    )
+
+    assert pool_tool.main(["fixture"]) == (17 if legacy else 23)
+    assert calls == (["legacy"] if legacy else ["stacked"])
+
+
 def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
     pool_tool: ModuleType,
 ) -> None:
@@ -687,19 +1198,40 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         ("puf_source_year_csv", "puf_source_year_csv_sha256"),
     )
     expected_destinations = {destination for pair in pairs for destination in pair} | {
+        "chronicle_prev_row_digest",
+        "clone_attachment_fraction",
+        "clone_attachment_seed",
         "checkpoint_root",
+        "legacy_two_spine",
         "out",
+        "sample_fraction",
+        "sample_seed",
     }
 
     assert set(actions) == expected_destinations
     assert all(
         actions[destination].required
-        for destination in expected_destinations - {"checkpoint_root"}
+        for destination in expected_destinations
+        - {
+            "checkpoint_root",
+            "chronicle_prev_row_digest",
+            "clone_attachment_fraction",
+            "clone_attachment_seed",
+            "legacy_two_spine",
+            "sample_fraction",
+            "sample_seed",
+        }
     )
     assert not actions["checkpoint_root"].required
     assert actions["out"].option_strings == ["--out"]
     assert actions["checkpoint_root"].option_strings == ["--checkpoint-root"]
     assert actions["checkpoint_root"].type is Path
+    assert actions["sample_fraction"].default == 1.0
+    assert actions["sample_seed"].default == 578
+    assert actions["clone_attachment_fraction"].default == 1.0
+    assert actions["clone_attachment_seed"].default == 578
+    assert actions["legacy_two_spine"].default is False
+    assert actions["chronicle_prev_row_digest"].default is None
     for path_destination, sha_destination in pairs:
         assert actions[path_destination].type is Path
         assert actions[sha_destination].type is pool_tool._sha256_argument

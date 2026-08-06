@@ -120,6 +120,7 @@ __all__ = [
     "sample_acs_households",
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
+    "stacked_spine_authority_receipt",
     "validate_stacked_spine_frame",
 ]
 
@@ -2001,6 +2002,18 @@ def stacked_gap_fill_plan() -> tuple[GapFillDirection, ...]:
     """Return the immutable canonical two-direction stacked gap-fill plan."""
 
     return _STACKED_GAP_FILL_PLAN
+
+
+def stacked_spine_authority_receipt() -> Mapping[str, object]:
+    """Return the live-digested canonical authority for build identity binding."""
+
+    authority = _production_stacked_authority()
+    receipt = _authority_receipt(authority)
+    _validate_production_authority_receipt(
+        receipt,
+        boundary="stacked spine authority identity",
+    )
+    return _json_ready(receipt)
 
 
 def _direction_target_index(
