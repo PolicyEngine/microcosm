@@ -1257,6 +1257,55 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
     }
     assert len(set(digests.values())) == len(digests)
 
+    bank_outputs = pool_tool._output_paths(
+        tmp_path / "identity-pool.h5",
+        checkpoint_root=tmp_path / "identity-banks",
+    )
+    base_bank_outputs = pool_tool._with_checkpoint_identity(
+        bank_outputs,
+        base_identity_sha256=digests["base"],
+    )
+    for base_bank in (
+        base_bank_outputs.primary_qrf_checkpoint_dir,
+        base_bank_outputs.acs_transfer_checkpoint_dir,
+    ):
+        base_bank.mkdir(parents=True)
+        (base_bank / "stale-marker").write_text("must remain unopened\n")
+    for name, changed_digest in digests.items():
+        if name == "base":
+            continue
+        changed_outputs = pool_tool._with_checkpoint_identity(
+            bank_outputs,
+            base_identity_sha256=changed_digest,
+        )
+        for selected, stale in (
+            (
+                changed_outputs.primary_qrf_checkpoint_dir,
+                base_bank_outputs.primary_qrf_checkpoint_dir,
+            ),
+            (
+                changed_outputs.acs_transfer_checkpoint_dir,
+                base_bank_outputs.acs_transfer_checkpoint_dir,
+            ),
+        ):
+            assert selected != stale
+            assert selected.name == changed_digest
+            routing = pool_tool._identity_routed_bank_open_receipt(
+                selected,
+                current_base_identity_sha256=changed_digest,
+            )
+            assert routing["selected_path"] == str(selected.resolve())
+            assert routing["identity_mismatches"] == [
+                {
+                    "load_status": "identity_mismatch",
+                    "stale_base_identity_sha256": digests["base"],
+                    "current_base_identity_sha256": changed_digest,
+                    "disposition": "bypassed",
+                    "path": str(stale.resolve()),
+                }
+            ]
+            assert (stale / "stale-marker").read_text() == "must remain unopened\n"
+
     checkpoint_root = tmp_path / "identity-checkpoints"
     original_store = pool_tool._PoolStageCheckpointStore(
         checkpoint_root,

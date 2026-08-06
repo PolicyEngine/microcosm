@@ -1918,7 +1918,7 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
     result = run_stacked_puf_pass(
         gap_filled,
         donor,
-        clone_attachment_fraction=1.0,
+        clone_attachment_fraction=0.5,
         clone_attachment_seed=578,
         predictors=("puf_predictor_employment_income",),
         person_outputs=("taxable_interest_income",),
