@@ -1342,6 +1342,63 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         assert changed_store.load_deepest() is None
 
 
+def test_stacked_materializer_v1_checkpoint_is_not_discovered(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    stack = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(),
+        _many_household_source_frame(measured_offset=1_000.0),
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
+    checkpoint_root = tmp_path / "stacked-materializer-checkpoints"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(pool_tool, "_STACKED_CHECKPOINT_MATERIALIZER_VERSION", 1)
+        legacy_identity = pool_tool._stacked_checkpoint_base_identity(
+            verified,
+            stack_receipt=stack.receipt,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            policyengine_us_version="fixture-engine",
+        )
+        legacy_store = pool_tool._PoolStageCheckpointStore(
+            checkpoint_root,
+            base_identity=legacy_identity,
+        )
+        legacy_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+        legacy_store.write(
+            pool_tool.MultispinePoolCheckpoint(
+                stage="assembled",
+                frame=stack.frame,
+                assembly_receipt=stack.frame.metadata[
+                    pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY
+                ],
+                stage_receipts={},
+            )
+        )
+
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 2
+    assert (
+        pool_tool._discover_stacked_checkpoint_identity(
+            checkpoint_root,
+            verified_inputs=verified,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+        )
+        is None
+    )
+    assert "checkpoint base identity is stale" in capsys.readouterr().out
+
+
 def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,

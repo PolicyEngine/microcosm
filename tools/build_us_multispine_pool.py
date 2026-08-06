@@ -231,7 +231,9 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 1
+# Version 2 binds the complete clone-2 tail provenance and attachment-descendant
+# metadata. Version-1 stacked checkpoints predate that state and must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 2
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
