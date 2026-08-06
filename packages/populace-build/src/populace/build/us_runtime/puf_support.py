@@ -65,6 +65,7 @@ __all__ = [
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
+    "bind_puf_clone_attachment_tail_descendant",
     "clone_us_frame_for_puf_support",
     "finalize_us_puf_tax_detail_predictions",
     "has_support_role_metadata",
@@ -88,6 +89,11 @@ US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 #: digest of the attached households' assembly-unique source IDs.
 PUF_CLONE_ATTACHMENT_MANIFEST_KEY = "us_puf_clone_attachment_manifest"
 _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION = 1
+_PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION = 2
+_SUPPORTED_PUF_CLONE_ATTACHMENT_MANIFEST_VERSIONS = {
+    _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION,
+    _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION,
+}
 
 #: Finalization policies for cells the PUF pass does not own (populace#578
 #: revision, audit item 1).  The legacy policy reproduces the historical
@@ -763,6 +769,109 @@ def _person_household_source_ids(frame: Frame) -> np.ndarray:
     return mapped.to_numpy(dtype=np.int64)
 
 
+def bind_puf_clone_attachment_tail_descendant(
+    frame: Frame,
+    *,
+    attachment_receipt: Mapping[str, Any],
+    tail_manifest: Mapping[str, Any],
+) -> Frame:
+    """Bind a clone-2 tail split into the live attachment identity.
+
+    The initial attachment contract proves equal native/clone-1 weights.  A
+    capital-gains-tail split intentionally moves part of clone-1's weight to
+    clone 2, so retaining the version-1 receipt would make the live frame fail
+    its own identity validator.  Version 2 binds the tail manifest and the
+    exact clone-2 lineage inventory; its live invariant is native weight equal
+    to the sum of clone-1 and clone-2 weights for every attached household.
+    """
+
+    if not isinstance(attachment_receipt, Mapping):
+        raise TypeError("Clone attachment receipt must be a mapping.")
+    if not isinstance(tail_manifest, Mapping):
+        raise TypeError("PUF tail manifest must be a mapping.")
+    records = tail_manifest.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("PUF tail descendant binding requires nonempty records.")
+    try:
+        record_source_ids = np.sort(
+            np.asarray(
+                [int(record["recipient_household_source_id"]) for record in records],
+                dtype=np.int64,
+            )
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            "PUF tail descendant records have malformed household lineage."
+        ) from error
+    if len(np.unique(record_source_ids)) != len(record_source_ids):
+        raise ValueError("PUF tail descendant household lineages must be unique.")
+
+    household = frame.table("household")
+    clone_index = pd.to_numeric(
+        household[support_clone_index_column("household")], errors="raise"
+    ).astype("int64")
+    live_source_ids = np.sort(
+        household.loc[
+            clone_index.eq(2),
+            support_source_id_column("household"),
+        ].to_numpy(dtype=np.int64)
+    )
+    if not np.array_equal(live_source_ids, record_source_ids):
+        raise ValueError(
+            "PUF tail descendant manifest lineages differ from live clone-2 households."
+        )
+
+    required_attachment_fields = {
+        "clone_attachment_fraction",
+        "clone_attachment_seed",
+        "eligible_household_count",
+        "requested_household_count",
+        "realized_household_count",
+        "selected_household_source_ids_sha256",
+    }
+    missing = sorted(required_attachment_fields - set(attachment_receipt))
+    if missing:
+        raise ValueError(
+            f"PUF tail descendant attachment receipt is missing {missing}."
+        )
+    tail_manifest_sha256 = tail_manifest.get("manifest_sha256")
+    stage = tail_manifest.get("stage")
+    if not isinstance(tail_manifest_sha256, str) or not isinstance(stage, str):
+        raise ValueError("PUF tail descendant manifest identity is malformed.")
+
+    descendant_manifest = {
+        **dict(attachment_receipt),
+        "version": _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION,
+        "exact_count_rule": "floor(fraction * eligible)",
+        "post_attachment_transform": {
+            "stage": stage,
+            "tail_clone_index": 2,
+            "tail_manifest_sha256": tail_manifest_sha256,
+            "tail_household_count": int(len(record_source_ids)),
+            "tail_household_source_ids_sha256": _source_ids_sha256(record_source_ids),
+        },
+    }
+    metadata = {
+        **frame.metadata,
+        PUF_CLONE_ATTACHMENT_MANIFEST_KEY: descendant_manifest,
+    }
+    descendant = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=metadata,
+    )
+    validate_puf_clone_attachment(
+        descendant,
+        boundary="PUF clone attachment tail descendant",
+        expected_fraction=float(descendant_manifest["clone_attachment_fraction"]),
+        expected_seed=int(descendant_manifest["clone_attachment_seed"]),
+    )
+    return descendant
+
+
 def validate_puf_clone_attachment(
     frame: Frame,
     *,
@@ -808,12 +917,11 @@ def validate_puf_clone_attachment(
             )
 
     manifest = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
-    if expected_fraction is not None and float(expected_fraction) == 1.0:
-        if manifest is not None:
-            raise ValueError(
-                f"{boundary}: full-clone metadata symmetry failed: attachment "
-                "manifest must be absent from both full-clone paths."
-            )
+    if (
+        expected_fraction is not None
+        and float(expected_fraction) == 1.0
+        and manifest is None
+    ):
         return _validate_full_clone_identity(
             frame,
             boundary=boundary,
@@ -825,10 +933,29 @@ def validate_puf_clone_attachment(
             f"{PUF_CLONE_ATTACHMENT_MANIFEST_KEY!r} is absent."
         )
     if (
-        not isinstance(manifest, Mapping)
-        or manifest.get("version") != _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION
+        expected_fraction is not None
+        and float(expected_fraction) == 1.0
+        and (
+            not isinstance(manifest, Mapping)
+            or manifest.get("version")
+            != _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION
+        )
+    ):
+        raise ValueError(
+            f"{boundary}: full-clone metadata symmetry failed: attachment "
+            "manifest must be absent before the tail split."
+        )
+    if not isinstance(manifest, Mapping) or manifest.get("version") not in (
+        _SUPPORTED_PUF_CLONE_ATTACHMENT_MANIFEST_VERSIONS
     ):
         raise ValueError(f"{boundary}: clone attachment manifest is malformed.")
+    version = int(manifest["version"])
+    if expected_fraction is not None and float(expected_fraction) == 1.0:
+        if version != _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION:
+            raise ValueError(
+                f"{boundary}: full-clone metadata symmetry failed: attachment "
+                "manifest must be absent before the tail split."
+            )
     fraction = manifest.get("clone_attachment_fraction")
     if not isinstance(fraction, float) or isinstance(fraction, bool):
         raise ValueError(
@@ -902,21 +1029,110 @@ def validate_puf_clone_attachment(
         }
     )
     attached = pair_frame[pair_frame["source_id"].isin(live_detail_ids)]
+    duplicated_roles = attached.duplicated(["source_id", "clone_index"], keep=False)
+    if duplicated_roles.any():
+        raise ValueError(
+            f"{boundary}: attached clone lineages contain duplicate household roles."
+        )
     by_pair = attached.pivot_table(
         index="source_id",
         columns="clone_index",
         values="weight",
         aggfunc="sum",
     )
+    if version == _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION:
+        unexpected_roles = sorted(
+            set(pd.to_numeric(clone_index, errors="raise").astype("int64"))
+            - {0, PUF_TAX_DETAIL_CLONE_INDEX}
+        )
+        if unexpected_roles:
+            raise ValueError(
+                f"{boundary}: version-1 attachment has unauthorized clone "
+                f"roles {unexpected_roles}."
+            )
+        if not np.allclose(
+            by_pair[0].to_numpy(dtype=np.float64),
+            by_pair[PUF_TAX_DETAIL_CLONE_INDEX].to_numpy(dtype=np.float64),
+            rtol=1e-12,
+            atol=0.0,
+        ):
+            raise ValueError(
+                f"{boundary}: attached clone pairs must split household mass "
+                "evenly between the native and detail arms."
+            )
+        return manifest
+
+    transform = manifest.get("post_attachment_transform")
+    if not isinstance(transform, Mapping):
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment transform is malformed."
+        )
+    expected_transform_fields = {
+        "stage",
+        "tail_clone_index",
+        "tail_manifest_sha256",
+        "tail_household_count",
+        "tail_household_source_ids_sha256",
+    }
+    if set(transform) != expected_transform_fields:
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment transform fields are malformed."
+        )
+    if transform["tail_clone_index"] != 2:
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment must use clone index 2."
+        )
+    stage = transform["stage"]
+    tail_sha = transform["tail_manifest_sha256"]
+    if not isinstance(stage, str) or not stage.strip():
+        raise ValueError(f"{boundary}: tail-descendant stage is malformed.")
+    if (
+        not isinstance(tail_sha, str)
+        or len(tail_sha) != 64
+        or any(character not in "0123456789abcdef" for character in tail_sha)
+    ):
+        raise ValueError(f"{boundary}: tail-descendant manifest SHA-256 is malformed.")
+    all_roles = set(pd.to_numeric(clone_index, errors="raise").astype("int64"))
+    unexpected_roles = sorted(all_roles - {0, PUF_TAX_DETAIL_CLONE_INDEX, 2})
+    if unexpected_roles:
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment has unauthorized clone "
+            f"roles {unexpected_roles}."
+        )
+    tail = clone_index.eq(2)
+    live_tail_ids = np.sort(source_ids.loc[tail].to_numpy(dtype=np.int64))
+    if int(transform["tail_household_count"]) != len(live_tail_ids):
+        raise ValueError(
+            f"{boundary}: live tail household count {len(live_tail_ids)} differs "
+            "from the tail-descendant attachment transform."
+        )
+    live_tail_sha = _source_ids_sha256(live_tail_ids)
+    if live_tail_sha != transform["tail_household_source_ids_sha256"]:
+        raise ValueError(
+            f"{boundary}: live tail household lineage digest differs from the "
+            "tail-descendant attachment transform."
+        )
+    orphaned_tail = sorted(set(live_tail_ids) - set(live_detail_ids))
+    if orphaned_tail:
+        raise ValueError(
+            f"{boundary}: tail clone lineages have no attached detail parent: "
+            f"{orphaned_tail[:5]}."
+        )
+    by_pair = by_pair.reindex(
+        index=live_detail_ids,
+        columns=[0, PUF_TAX_DETAIL_CLONE_INDEX, 2],
+        fill_value=0.0,
+    ).fillna(0.0)
     if not np.allclose(
         by_pair[0].to_numpy(dtype=np.float64),
-        by_pair[PUF_TAX_DETAIL_CLONE_INDEX].to_numpy(dtype=np.float64),
+        by_pair[PUF_TAX_DETAIL_CLONE_INDEX].to_numpy(dtype=np.float64)
+        + by_pair[2].to_numpy(dtype=np.float64),
         rtol=1e-12,
         atol=0.0,
     ):
         raise ValueError(
-            f"{boundary}: attached clone pairs must split household mass "
-            "evenly between the native and detail arms."
+            f"{boundary}: tail-descendant clone lineages must conserve each "
+            "native household's weight across clone 1 and clone 2."
         )
     return manifest
 

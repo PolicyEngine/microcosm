@@ -61,8 +61,15 @@ from populace.build.us_runtime.multispine_pool import (
     pool_transfer_target_families,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
     PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
 )
@@ -77,6 +84,7 @@ from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     US_PUF_SUPPORT_FIT_NAME,
+    bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
     validate_puf_clone_attachment,
@@ -3178,6 +3186,17 @@ def _run_stacked_puf_pass_evaluate(
             seed=seed,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
+        output = bind_puf_clone_attachment_tail_descendant(
+            output,
+            attachment_receipt=attachment,
+            tail_manifest=tail_receipt,
+        )
+        attachment = validate_puf_clone_attachment(
+            output,
+            boundary="stacked PUF tail descendant",
+            expected_fraction=clone_attachment_fraction,
+            expected_seed=clone_attachment_seed,
+        )
         tail_ceiling = tail_receipt["tail_distribution_receipts"]["frame_after_stage"]
         if not tail_ceiling["positive_mass_five_x_target_exceeded"]:
             raise ValueError(
@@ -3258,63 +3277,362 @@ def assert_stacked_tail_cells_preserved(
     frame: Frame,
     tail_manifest: Mapping[str, object],
 ) -> dict[str, object]:
-    """Prove exact tail-owned cells and recipient-owned QRF cells survived."""
+    """Prove the complete clone-2 tail state and recipient QRF cells survived."""
 
     validate_stacked_spine_frame(frame, boundary="stacked tail preservation")
     validate_puf_capital_gains_tail_manifest(tail_manifest)
+    attachment = validate_puf_clone_attachment(
+        frame,
+        boundary="stacked tail preservation attachment",
+    )
+    transform = attachment.get("post_attachment_transform")
+    if not isinstance(transform, Mapping) or transform.get(
+        "tail_manifest_sha256"
+    ) != tail_manifest.get("manifest_sha256"):
+        raise ValueError(
+            "Stacked tail preservation attachment is not bound to the supplied "
+            "tail manifest."
+        )
     records = tail_manifest.get("records")
     if not isinstance(records, list) or not records:
         raise ValueError("Stacked tail preservation requires nonempty records.")
 
-    observed_vectors: list[dict[str, object]] = []
+    person = frame.table("person")
+    tax_unit = frame.table("tax_unit")
+    household = frame.table("household")
+    person_clone_column = support_clone_index_column("person")
+    tax_unit_clone_column = support_clone_index_column("tax_unit")
+    household_clone_column = support_clone_index_column("household")
+    person_clone = pd.to_numeric(person[person_clone_column], errors="raise").astype(
+        "int64"
+    )
+    tax_unit_clone = pd.to_numeric(
+        tax_unit[tax_unit_clone_column], errors="raise"
+    ).astype("int64")
+    household_clone = pd.to_numeric(
+        household[household_clone_column], errors="raise"
+    ).astype("int64")
+
+    expected_tail_tax_unit_ids = sorted(
+        int(record["tail_tax_unit_id"]) for record in records
+    )
+    expected_tail_household_ids = sorted(
+        int(record["tail_household_id"]) for record in records
+    )
+    live_tail_tax_unit_ids = sorted(
+        tax_unit.loc[tax_unit_clone.eq(2), "tax_unit_id"].astype(int).tolist()
+    )
+    live_tail_household_ids = sorted(
+        household.loc[household_clone.eq(2), "household_id"].astype(int).tolist()
+    )
+    if live_tail_tax_unit_ids != expected_tail_tax_unit_ids:
+        raise ValueError(
+            "Stacked tail live clone-2 tax-unit IDs differ from the manifest."
+        )
+    if live_tail_household_ids != expected_tail_household_ids:
+        raise ValueError(
+            "Stacked tail live clone-2 household IDs differ from the manifest."
+        )
+    applied = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN]
+    live_applied_ids = sorted(
+        tax_unit.loc[applied.eq(True), "tax_unit_id"].astype(int).tolist()  # noqa: E712
+    )
+    if live_applied_ids != expected_tail_tax_unit_ids:
+        raise ValueError(
+            "Stacked tail applied-provenance tax-unit IDs differ from the manifest."
+        )
+
+    clone_receipt = tail_manifest.get("clone")
+    if not isinstance(clone_receipt, Mapping):
+        raise ValueError("Stacked tail clone provenance receipt is malformed.")
+    if clone_receipt.get("support_role") != PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL:
+        raise ValueError("Stacked tail clone support-role provenance is malformed.")
+    live_source_channel_counts = {
+        str(channel): int(count)
+        for channel, count in sorted(
+            household.loc[
+                household_clone.eq(2),
+                support_channel_column("household"),
+            ]
+            .astype(str)
+            .value_counts()
+            .items()
+        )
+    }
+    if clone_receipt.get("source_channels") != live_source_channel_counts:
+        raise ValueError(
+            "Stacked tail clone source-channel counts differ from the live frame."
+        )
+
+    household_weight_by_id = pd.Series(
+        frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(dtype=np.int64),
+    )
+    tax_unit_weight_by_id = pd.Series(
+        frame.resolve_weights("tax_unit").values,
+        index=tax_unit["tax_unit_id"].to_numpy(dtype=np.int64),
+    )
+
+    observed_state: list[dict[str, object]] = []
+    tail_owned_cell_count = 0
+
+    def assert_float_exact(
+        actual_value: object,
+        expected_value: object,
+        *,
+        label: str,
+    ) -> float:
+        expected = np.float64(expected_value)
+        actual = np.float64(actual_value)
+        if actual.tobytes() != expected.tobytes():
+            raise ValueError(
+                f"Stacked tail-owned {label} changed: expected {expected!r}, "
+                f"got {actual!r}."
+            )
+        return float(actual)
+
     for record in records:
         if not isinstance(record, Mapping) or not isinstance(
             record.get("joint_vector"), Mapping
         ):
             raise ValueError("Stacked tail preservation found a malformed record.")
         joint_vector = record["joint_vector"]
-        for entity, identifier_key, columns in (
-            (
-                "person",
-                "tail_person_id",
-                PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
-            ),
-            (
-                "tax_unit",
-                "tail_tax_unit_id",
-                PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
-            ),
+        tail_household_id = int(record["tail_household_id"])
+        recipient_household_id = int(record["recipient_household_id"])
+        tail_tax_unit_id = int(record["tail_tax_unit_id"])
+        recipient_tax_unit_id = int(record["recipient_tax_unit_id"])
+        tail_person_id = int(record["tail_person_id"])
+
+        tail_household_rows = household.loc[
+            household["household_id"].eq(tail_household_id)
+        ]
+        recipient_household_rows = household.loc[
+            household["household_id"].eq(recipient_household_id)
+        ]
+        tail_tax_unit_rows = tax_unit.loc[tax_unit["tax_unit_id"].eq(tail_tax_unit_id)]
+        recipient_tax_unit_rows = tax_unit.loc[
+            tax_unit["tax_unit_id"].eq(recipient_tax_unit_id)
+        ]
+        for label, rows in (
+            ("tail household", tail_household_rows),
+            ("recipient household", recipient_household_rows),
+            ("tail tax unit", tail_tax_unit_rows),
+            ("recipient tax unit", recipient_tax_unit_rows),
         ):
-            table = frame.table(entity)
-            primary = frame.schema.entity_id_column(entity)
-            identifier = int(record[identifier_key])
-            rows = table.loc[table[primary].eq(identifier)]
             if len(rows) != 1:
                 raise ValueError(
-                    f"Stacked tail preservation expected one {entity} row for "
-                    f"{identifier_key}={identifier}; found {len(rows)}."
+                    f"Stacked tail preservation expected one {label} row; "
+                    f"found {len(rows)}."
                 )
-            for column in columns:
-                if column not in rows:
-                    raise ValueError(
-                        f"Stacked tail-owned column {entity}.{column} is absent."
+        tail_household_row = tail_household_rows.iloc[0]
+        recipient_household_row = recipient_household_rows.iloc[0]
+        tail_tax_unit_row = tail_tax_unit_rows.iloc[0]
+        recipient_tax_unit_row = recipient_tax_unit_rows.iloc[0]
+        lineage_expectations = (
+            (
+                "tail household",
+                tail_household_row,
+                household_clone_column,
+                2,
+                support_source_id_column("household"),
+                record["recipient_household_source_id"],
+            ),
+            (
+                "recipient household",
+                recipient_household_row,
+                household_clone_column,
+                1,
+                support_source_id_column("household"),
+                record["recipient_household_source_id"],
+            ),
+            (
+                "tail tax unit",
+                tail_tax_unit_row,
+                tax_unit_clone_column,
+                2,
+                support_source_id_column("tax_unit"),
+                record["recipient_tax_unit_source_id"],
+            ),
+            (
+                "recipient tax unit",
+                recipient_tax_unit_row,
+                tax_unit_clone_column,
+                1,
+                support_source_id_column("tax_unit"),
+                record["recipient_tax_unit_source_id"],
+            ),
+        )
+        for (
+            label,
+            row,
+            clone_column,
+            clone_role,
+            source_column,
+            source_id,
+        ) in lineage_expectations:
+            if int(row[clone_column]) != clone_role or int(row[source_column]) != int(
+                source_id
+            ):
+                raise ValueError(f"Stacked tail {label} lineage changed.")
+
+        tail_weight = assert_float_exact(
+            household_weight_by_id.loc[tail_household_id],
+            record["assigned_weight"],
+            label=f"clone-2 household weight for household_id={tail_household_id}",
+        )
+        recipient_weight = assert_float_exact(
+            household_weight_by_id.loc[recipient_household_id],
+            record["recipient_household_weight_after"],
+            label=(
+                "clone-1 residual household weight for "
+                f"household_id={recipient_household_id}"
+            ),
+        )
+        assert_float_exact(
+            tax_unit_weight_by_id.loc[tail_tax_unit_id],
+            record["assigned_weight"],
+            label=f"clone-2 tax-unit weight for tax_unit_id={tail_tax_unit_id}",
+        )
+        assert_float_exact(
+            tax_unit_weight_by_id.loc[recipient_tax_unit_id],
+            record["recipient_household_weight_after"],
+            label=(
+                "clone-1 residual tax-unit weight for "
+                f"tax_unit_id={recipient_tax_unit_id}"
+            ),
+        )
+        observed_state.extend(
+            [
+                {
+                    "kind": "weight",
+                    "role": "tail",
+                    "household_id": tail_household_id,
+                    "value": tail_weight,
+                },
+                {
+                    "kind": "weight",
+                    "role": "recipient",
+                    "household_id": recipient_household_id,
+                    "value": recipient_weight,
+                },
+            ]
+        )
+
+        provenance_expectations = (
+            (PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, True),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+                int(record["donor_source_id"]),
+            ),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+                bool(record["donor_is_synthetic"]),
+            ),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+                int(record["donor_filing_status_code"]),
+            ),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+                int(record["donor_agi_band_index"]),
+            ),
+        )
+        for column, expected in provenance_expectations:
+            actual = tail_tax_unit_row[column]
+            if actual != expected or type(actual) is not type(expected):
+                # Pandas scalar integer/bool types are valid exact scalar
+                # representations even though their Python types differ.
+                if isinstance(expected, bool):
+                    matches = (
+                        isinstance(actual, (bool, np.bool_))
+                        and bool(actual) == expected
                     )
-                expected = np.float64(joint_vector[column])
-                actual = np.float64(rows.iloc[0][column])
-                if actual.tobytes() != expected.tobytes():
-                    raise ValueError(
-                        f"Stacked tail-owned cell {entity}.{column} for "
-                        f"{identifier_key}={identifier} changed: expected "
-                        f"{expected!r}, got {actual!r}."
+                else:
+                    matches = (
+                        isinstance(actual, (int, np.integer))
+                        and int(actual) == expected
                     )
-                observed_vectors.append(
+                if not matches:
+                    raise ValueError(
+                        f"Stacked tail provenance {column} for "
+                        f"tax_unit_id={tail_tax_unit_id} changed."
+                    )
+            observed_state.append(
+                {
+                    "kind": "provenance",
+                    "column": column,
+                    "tax_unit_id": tail_tax_unit_id,
+                    "value": bool(actual)
+                    if isinstance(expected, bool)
+                    else int(actual),
+                }
+            )
+        transfer_weight = assert_float_exact(
+            tail_tax_unit_row[PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN],
+            record["assigned_weight"],
+            label=(f"transfer-weight provenance for tax_unit_id={tail_tax_unit_id}"),
+        )
+        observed_state.append(
+            {
+                "kind": "provenance",
+                "column": PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+                "tax_unit_id": tail_tax_unit_id,
+                "value": transfer_weight,
+            }
+        )
+
+        tail_people = person.loc[person["person_tax_unit_id"].eq(tail_tax_unit_id)]
+        if tail_people.empty or not person_clone.loc[tail_people.index].eq(2).all():
+            raise ValueError(
+                f"Stacked tail tax_unit_id={tail_tax_unit_id} has malformed people."
+            )
+        if int(tail_people["person_id"].eq(tail_person_id).sum()) != 1:
+            raise ValueError(
+                f"Stacked tail carrier person_id={tail_person_id} is not unique."
+            )
+        for _, row in tail_people.iterrows():
+            person_id = int(row["person_id"])
+            carrier = person_id == tail_person_id
+            for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
+                if column not in row:
+                    raise ValueError(
+                        f"Stacked tail-owned column person.{column} is absent."
+                    )
+                actual = assert_float_exact(
+                    row[column],
+                    joint_vector[column] if carrier else 0.0,
+                    label=f"cell person.{column} for person_id={person_id}",
+                )
+                observed_state.append(
                     {
-                        "entity": entity,
+                        "kind": "cell",
+                        "entity": "person",
                         "column": column,
-                        "id": identifier,
-                        "value": float(actual),
+                        "id": person_id,
+                        "value": actual,
                     }
                 )
+                tail_owned_cell_count += 1
+        for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
+            if column not in tail_tax_unit_row:
+                raise ValueError(
+                    f"Stacked tail-owned column tax_unit.{column} is absent."
+                )
+            actual = assert_float_exact(
+                tail_tax_unit_row[column],
+                joint_vector[column],
+                label=f"cell tax_unit.{column} for tax_unit_id={tail_tax_unit_id}",
+            )
+            observed_state.append(
+                {
+                    "kind": "cell",
+                    "entity": "tax_unit",
+                    "column": column,
+                    "id": tail_tax_unit_id,
+                    "value": actual,
+                }
+            )
+            tail_owned_cell_count += 1
 
     preserved_nonowned = 0
     for entity, owned_columns, qrf_outputs in (
@@ -3368,9 +3686,10 @@ def assert_stacked_tail_cells_preserved(
     return {
         "passed": True,
         "record_count": len(records),
-        "tail_owned_cell_count": len(observed_vectors),
+        "tail_owned_cell_count": tail_owned_cell_count,
+        "tail_owned_state_count": len(observed_state),
         "recipient_owned_qrf_cell_count": preserved_nonowned,
-        "tail_owned_cells_sha256": _canonical_sha256(observed_vectors),
+        "tail_owned_cells_sha256": _canonical_sha256(observed_state),
     }
 
 

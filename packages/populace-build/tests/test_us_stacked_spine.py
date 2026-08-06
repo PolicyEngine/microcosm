@@ -1936,12 +1936,144 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
             result.frame.table(entity)[support_clone_index_column(entity)].astype(int)
         )
 
+    attachment = validate_puf_clone_attachment(
+        result.frame,
+        boundary="stacked tail descendant fixture",
+        expected_fraction=0.5,
+        expected_seed=578,
+    )
+    assert attachment["version"] == 2
+    assert (
+        attachment["post_attachment_transform"]["tail_manifest_sha256"]
+        == tail["manifest_sha256"]
+    )
+    tail_household = result.frame.table("household")
+    tail_household_clone = tail_household[support_clone_index_column("household")].eq(2)
+    live_source_channels = {
+        str(channel): int(count)
+        for channel, count in sorted(
+            tail_household.loc[
+                tail_household_clone,
+                support_channel_column("household"),
+            ]
+            .astype(str)
+            .value_counts()
+            .items()
+        )
+    }
+    assert tail["clone"]["support_role"] == "puf_tax_detail"
+    assert tail["clone"]["source_channels"] == live_source_channels
+    assert "support_channel" not in tail["clone"]
+
     preservation = stacked_spine_module.assert_stacked_tail_cells_preserved(
         result.frame,
         tail,
     )
     assert preservation["passed"] is True
-    assert preservation["tail_owned_cell_count"] == 10
+    assert preservation["tail_owned_cell_count"] == 14
+
+    multi_person_record = next(
+        record
+        for record in tail["records"]
+        if result.frame.table("person")["person_tax_unit_id"]
+        .eq(int(record["tail_tax_unit_id"]))
+        .sum()
+        > 1
+    )
+    person = result.frame.table("person").copy()
+    noncarrier = person["person_tax_unit_id"].eq(
+        int(multi_person_record["tail_tax_unit_id"])
+    ) & ~person["person_id"].eq(int(multi_person_record["tail_person_id"]))
+    person.loc[noncarrier, "short_term_capital_gains"] = 123_456_789.0
+    noncarrier_tampered = Frame(
+        {
+            **{entity: result.frame.table(entity) for entity in result.frame.entities},
+            "person": person,
+        },
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata=result.frame.metadata,
+    )
+    with pytest.raises(
+        ValueError,
+        match="cell person.short_term_capital_gains",
+    ):
+        stacked_spine_module.assert_stacked_tail_cells_preserved(
+            noncarrier_tampered,
+            tail,
+        )
+
+    first_record = tail["records"][0]
+    household = result.frame.table("household")
+    weights = result.frame.weights_for("household")
+    changed_weights = weights.values.copy()
+    recipient_position = int(
+        np.flatnonzero(
+            household["household_id"]
+            .eq(int(first_record["recipient_household_id"]))
+            .to_numpy()
+        )[0]
+    )
+    tail_position = int(
+        np.flatnonzero(
+            household["household_id"]
+            .eq(int(first_record["tail_household_id"]))
+            .to_numpy()
+        )[0]
+    )
+    shift = min(0.5, changed_weights[recipient_position] / 2.0)
+    changed_weights[recipient_position] -= shift
+    changed_weights[tail_position] += shift
+    weight_tampered = Frame(
+        {entity: result.frame.table(entity) for entity in result.frame.entities},
+        result.frame.schema,
+        {"household": Weights(changed_weights, weights.kind)},
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata=result.frame.metadata,
+    )
+    assert validate_puf_clone_attachment(
+        weight_tampered,
+        boundary="conservative tail-weight mutation",
+        expected_fraction=0.5,
+        expected_seed=578,
+    )
+    with pytest.raises(ValueError, match="clone-2 household weight"):
+        stacked_spine_module.assert_stacked_tail_cells_preserved(
+            weight_tampered,
+            tail,
+        )
+
+    tax_unit = result.frame.table("tax_unit").copy()
+    tail_tax_unit = tax_unit["tax_unit_id"].eq(int(first_record["tail_tax_unit_id"]))
+    tax_unit.loc[
+        tail_tax_unit,
+        "puf_capital_gains_tail_transfer_weight",
+    ] += 1.0
+    provenance_tampered = Frame(
+        {
+            **{entity: result.frame.table(entity) for entity in result.frame.entities},
+            "tax_unit": tax_unit,
+        },
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata=result.frame.metadata,
+    )
+    with pytest.raises(ValueError, match="transfer-weight provenance"):
+        stacked_spine_module.assert_stacked_tail_cells_preserved(
+            provenance_tampered,
+            tail,
+        )
 
     prepared, receipt = stacked_spine_module.prepare_stacked_tail_derivation(
         result.frame
@@ -2045,6 +2177,15 @@ def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
 
     tail = result.receipt["puf_capital_gains_tail_transfer"]
     assert tail["record_count"] == 2
+    assert (
+        validate_puf_clone_attachment(
+            result.frame,
+            boundary="full stacked tail descendant",
+            expected_fraction=1.0,
+            expected_seed=578,
+        )["version"]
+        == 2
+    )
     assert stacked_spine_module.assert_stacked_tail_cells_preserved(
         result.frame,
         tail,
