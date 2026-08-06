@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 import pickle
 from collections import Counter
 from copy import deepcopy
@@ -3065,6 +3066,101 @@ def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
         acs_sample_fraction=1.0,
         acs_sample_seed=0,
     ).frame
+
+
+@pytest.mark.parametrize("clone_role", (0, 1, 2))
+def test_completeness_rejects_nonfinite_values_on_every_clone_role(
+    clone_role: int,
+) -> None:
+    base = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    attached = clone_us_frame_for_puf_support(
+        base,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    tables = {entity: attached.table(entity).copy() for entity in attached.entities}
+    if clone_role == 2:
+        for entity, table in tables.items():
+            clone_column = support_clone_index_column(entity)
+            table.loc[table[clone_column].eq(1), clone_column] = 2
+    person = tables["person"]
+    clone_column = support_clone_index_column("person")
+    invalid = person[clone_column].eq(clone_role)
+    person.loc[invalid, "taxable_interest_income"] = np.inf
+    frame = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    result = stacked_completeness_gate(frame)
+
+    assert not result.passed
+    label = "person/puf_tax_itemization/taxable_interest_income"
+    receipt = result.details["targets"][label]
+    assert receipt["status"] == "invalid_values"
+    assert receipt["invalid_rows"] == int(invalid.sum())
+    assert receipt["invalidity"] == {"non_finite_rows": int(invalid.sum())}
+    assert set(receipt["invalid_by_origin_role"]) == {
+        f"asec/clone_{clone_role}",
+        f"acs/clone_{clone_role}",
+    }
+    assert any(
+        label in failure
+        and "monetary_sign_separated" in failure
+        and "non_finite_rows" in failure
+        for failure in result.failures
+    )
+    json.dumps(GateReport((result,)).to_manifest(), allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    ("asec_values", "acs_values", "expected_invalid"),
+    (
+        (np.full(8, np.inf), np.full(11, np.inf), 19),
+        (np.full(8, np.inf), np.full(11, 100.0), 8),
+    ),
+)
+def test_battery_rejects_nonfinite_values_before_comparison(
+    asec_values: np.ndarray,
+    acs_values: np.ndarray,
+    expected_invalid: int,
+) -> None:
+    frame = _battery_frame({"taxable_interest_income": (asec_values, acs_values)})
+
+    result = by_origin_battery(frame)
+
+    assert not result.passed
+    label = "person/puf_tax_itemization/taxable_interest_income[clone_0]"
+    receipt = result.details["comparisons"][label]
+    assert receipt == {
+        "status": "invalid_values",
+        "metric": "monetary_sign_separated",
+        "invalid_rows": expected_invalid,
+        "invalidity": {"non_finite_rows": expected_invalid},
+    }
+    assert any(
+        label in failure and "non_finite_rows" in failure for failure in result.failures
+    )
+    json.dumps(GateReport((result,)).to_manifest(), allow_nan=False)
+
+
+def test_quantile_envelope_rejects_nonfinite_inputs_defensively() -> None:
+    with pytest.raises(ValueError, match="require finite values"):
+        stacked_spine_module._battery_quantile_envelope_distance(
+            np.asarray([np.inf]),
+            np.asarray([np.inf]),
+        )
 
 
 def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:

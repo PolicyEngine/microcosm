@@ -2336,6 +2336,7 @@ def _validate_stacked_gate_manifest_details(
             reject("canonical completeness receipt target surface mismatch")
         allowed_target_forms = {
             "observed_complete",
+            "invalid_declared_metric_values",
             "missing_declared_entity",
             "missing_declared_target",
             "origin_exact_recipient",
@@ -3736,6 +3737,66 @@ class AbsenceProof:
             raise ValueError("AbsenceProof.clone_index must be a non-negative integer.")
 
 
+def _declared_metric_invalidity(
+    series: pd.Series,
+    *,
+    metric: str,
+    scope: np.ndarray,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Return invalid rows under one declared metric, never inferred dtype."""
+
+    if metric not in ORIGIN_BATTERY_METRIC_KINDS:
+        raise ValueError(f"Unknown declared metric {metric!r}.")
+    if scope.dtype != np.bool_ or scope.ndim != 1 or len(scope) != len(series):
+        raise ValueError("Declared-metric validity scope must be an aligned mask.")
+    invalid = np.zeros(len(series), dtype=bool)
+    positions = np.flatnonzero(scope & ~series.isna().to_numpy(dtype=bool))
+    counts = {
+        "non_numeric_rows": 0,
+        "non_finite_rows": 0,
+        "outside_boolean_domain_rows": 0,
+        "invalid_categorical_rows": 0,
+    }
+    if not len(positions):
+        return invalid, counts
+
+    scoped = series.iloc[positions]
+    if metric == "categorical_tvd":
+        local_invalid = np.zeros(len(scoped), dtype=bool)
+        for index, value in enumerate(scoped.to_numpy(dtype=object)):
+            valid = bool(pd.api.types.is_scalar(value))
+            if valid:
+                try:
+                    hash(value)
+                except TypeError:
+                    valid = False
+            if valid and isinstance(value, (float, np.floating)):
+                valid = bool(np.isfinite(value))
+            local_invalid[index] = not valid
+        invalid[positions] = local_invalid
+        counts["invalid_categorical_rows"] = int(local_invalid.sum())
+        return invalid, counts
+
+    numeric = pd.to_numeric(scoped, errors="coerce").to_numpy(dtype=np.float64)
+    non_numeric = np.isnan(numeric)
+    non_finite = np.isinf(numeric)
+    local_invalid = non_numeric | non_finite
+    counts["non_numeric_rows"] = int(non_numeric.sum())
+    counts["non_finite_rows"] = int(non_finite.sum())
+    if metric == "boolean_incidence":
+        outside_boolean = np.isfinite(numeric) & ~np.isin(numeric, (0.0, 1.0))
+        local_invalid |= outside_boolean
+        counts["outside_boolean_domain_rows"] = int(outside_boolean.sum())
+    invalid[positions] = local_invalid
+    return invalid, counts
+
+
+def _nonzero_invalidity_counts(counts: Mapping[str, int]) -> dict[str, int]:
+    """Keep invalidity receipts compact and canonical-JSON safe."""
+
+    return {key: int(value) for key, value in counts.items() if int(value)}
+
+
 def stacked_completeness_gate(
     frame: Frame,
     *,
@@ -3841,6 +3902,12 @@ def _stacked_completeness_gate_evaluate(
         ] = proof.reason
 
     target_receipts: dict[str, dict[str, object]] = {}
+    metric_by_target = {
+        (entity, family, column): metric
+        for (entity, family, column, _clone_index), metric in (
+            authority.metric_registry.items()
+        )
+    }
     authority_sha256 = authority_receipt["sha256"]
     plan_sha256 = authority_receipt["components"]["gap_fill_plan"]["sha256"]
     surface_sha256 = authority_receipt["components"]["declared_surface"]["sha256"]
@@ -3872,6 +3939,9 @@ def _stacked_completeness_gate_evaluate(
             table[support_clone_index_column(entity)],
             errors="raise",
         ).astype("int64")
+        positive_weight = (
+            np.asarray(frame.resolve_weights(entity).values, dtype=np.float64) > 0.0
+        )
         for family, targets in families.items():
             for target in targets:
                 label = f"{entity}/{family}/{target}"
@@ -3888,11 +3958,48 @@ def _stacked_completeness_gate_evaluate(
                     }
                     continue
                 null_mask = table[target].isna()
+                metric = metric_by_target[(entity, family, target)]
+                invalid_mask, invalidity = _declared_metric_invalidity(
+                    table[target],
+                    metric=metric,
+                    scope=positive_weight,
+                )
+                invalid_rows = int(invalid_mask.sum())
+                invalid_by_origin_role: dict[str, int] = {}
+                if invalid_rows:
+                    invalid_by_origin_role = {
+                        f"{cell_channel}/clone_{int(cell_clone)}": int(count)
+                        for (cell_channel, cell_clone), count in (
+                            pd.DataFrame(
+                                {
+                                    "channel": channel.loc[invalid_mask],
+                                    "clone_index": clone_index.loc[invalid_mask],
+                                }
+                            )
+                            .groupby(["channel", "clone_index"], sort=True)
+                            .size()
+                            .items()
+                        )
+                    }
+                    failures.append(
+                        f"{label}: declared {metric} metric has {invalid_rows} "
+                        "invalid positive-weight value(s), including "
+                        f"{_nonzero_invalidity_counts(invalidity)} (by "
+                        f"origin/role: {invalid_by_origin_role})."
+                    )
                 if not null_mask.any():
                     target_receipts[label] = {
-                        "status": "complete",
+                        "status": ("invalid_values" if invalid_rows else "complete"),
                         "null_rows": 0,
-                        **authority_binding("observed_complete"),
+                        "metric": metric,
+                        "invalid_rows": invalid_rows,
+                        "invalidity": _nonzero_invalidity_counts(invalidity),
+                        "invalid_by_origin_role": invalid_by_origin_role,
+                        **authority_binding(
+                            "invalid_declared_metric_values"
+                            if invalid_rows
+                            else "observed_complete"
+                        ),
                     }
                     continue
                 proofs = proof_index.get((entity, target), {})
@@ -3974,11 +4081,25 @@ def _stacked_completeness_gate_evaluate(
                 else:
                     target_authority_form = "mixed_proven_absence"
                 target_receipts[label] = {
-                    "status": "proven_absent" if not unproven else "unproven",
+                    "status": (
+                        "unproven"
+                        if unproven
+                        else "invalid_values"
+                        if invalid_rows
+                        else "proven_absent"
+                    ),
                     "null_rows": int(null_mask.sum()),
+                    "metric": metric,
+                    "invalid_rows": invalid_rows,
+                    "invalidity": _nonzero_invalidity_counts(invalidity),
+                    "invalid_by_origin_role": invalid_by_origin_role,
                     "proven": proven,
                     "unproven": unproven,
-                    **authority_binding(target_authority_form),
+                    **authority_binding(
+                        "invalid_declared_metric_values"
+                        if invalid_rows and not unproven
+                        else target_authority_form
+                    ),
                 }
     return GateResult(
         name=_COMPLETENESS_GATE_NAME,
@@ -4224,6 +4345,41 @@ def _by_origin_battery_evaluate(
                     "null_rows": scoped_nulls,
                 }
                 continue
+            invalid_mask, invalidity = _declared_metric_invalidity(
+                series,
+                metric=metric,
+                scope=scope,
+            )
+            invalid_rows = int(invalid_mask.sum())
+            if invalid_rows:
+                invalid_counts = _nonzero_invalidity_counts(invalidity)
+                failures.append(
+                    f"{label}: declared {metric} metric has {invalid_rows} "
+                    "invalid value(s) inside the comparison scope, including "
+                    f"{invalid_counts}."
+                )
+                comparisons[label] = {
+                    "status": "invalid_values",
+                    "metric": metric,
+                    "invalid_rows": invalid_rows,
+                    "invalidity": invalid_counts,
+                }
+                continue
+            values: np.ndarray | None = None
+            if metric != "categorical_tvd":
+                values = _battery_numeric_values(
+                    label,
+                    series,
+                    metric=metric,
+                    scope=scope,
+                    failures=failures,
+                )
+                if values is None:
+                    comparisons[label] = {
+                        "status": "invalid_values",
+                        "metric": metric,
+                    }
+                    continue
             support = {
                 "asec": int(left_rows.sum()),
                 "acs": int(right_rows.sum()),
@@ -4248,18 +4404,8 @@ def _by_origin_battery_evaluate(
                     comparisons=comparisons,
                 )
                 continue
-            values = _battery_numeric_values(
-                label,
-                series,
-                metric=metric,
-                failures=failures,
-            )
-            if values is None:
-                comparisons[label] = {
-                    "status": "invalid_values",
-                    "metric": metric,
-                }
-                continue
+            if values is None:  # pragma: no cover - categorical continued above
+                raise AssertionError("Numeric battery metric has no values.")
             if metric in {"boolean_incidence", "rare_incidence"}:
                 _battery_incidence_comparison(
                     label=label,
@@ -4385,15 +4531,27 @@ def _battery_numeric_values(
     series: pd.Series,
     *,
     metric: str,
+    scope: np.ndarray,
     failures: list[str],
 ) -> np.ndarray | None:
+    values = np.zeros(len(series), dtype=np.float64)
     try:
-        values = pd.to_numeric(series, errors="raise").to_numpy(dtype=np.float64)
+        values[scope] = pd.to_numeric(
+            series.iloc[np.flatnonzero(scope)],
+            errors="raise",
+        ).to_numpy(dtype=np.float64)
     except (TypeError, ValueError):
         failures.append(f"{label}: declared {metric} metric requires numeric values.")
         return None
+    non_finite = ~np.isfinite(values[scope])
+    if non_finite.any():
+        failures.append(
+            f"{label}: declared {metric} metric requires finite numeric values; "
+            f"found {int(non_finite.sum())} non-finite value(s)."
+        )
+        return None
     if metric == "boolean_incidence":
-        invalid = ~np.isin(values, (0.0, 1.0))
+        invalid = ~np.isin(values[scope], (0.0, 1.0))
         if invalid.any():
             failures.append(
                 f"{label}: declared boolean incidence requires values in "
@@ -4593,6 +4751,8 @@ def _battery_quantile_envelope_distance(
     left: np.ndarray,
     right: np.ndarray,
 ) -> float:
+    if not np.isfinite(left).all() or not np.isfinite(right).all():
+        raise ValueError("Battery quantile envelopes require finite values.")
     denominator = np.abs(left) + np.abs(right)
     distances = np.divide(
         2.0 * np.abs(left - right),
@@ -4600,4 +4760,7 @@ def _battery_quantile_envelope_distance(
         out=np.zeros_like(denominator),
         where=denominator > 0.0,
     )
-    return float(np.max(distances))
+    distance = float(np.max(distances))
+    if not math.isfinite(distance):
+        raise ValueError("Battery quantile-envelope distance must be finite.")
+    return distance
