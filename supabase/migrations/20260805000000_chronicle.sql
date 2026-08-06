@@ -32,15 +32,40 @@ CREATE TYPE chronicle.build_disposition AS ENUM (
 CREATE TABLE chronicle.predictions (
     id text PRIMARY KEY CHECK (btrim(id) <> ''),
     ts timestamptz NOT NULL CHECK (isfinite(ts)),
-    claim text NOT NULL CHECK (btrim(claim) <> ''),
-    type text NOT NULL CHECK (btrim(type) <> ''),
+    claim text CHECK (claim IS NULL OR btrim(claim) <> ''),
+    type text CHECK (type IS NULL OR btrim(type) <> ''),
     predicted jsonb,
     p numeric CHECK (p IS NULL OR (p >= 0 AND p <= 1)),
     resolved timestamptz CHECK (resolved IS NULL OR isfinite(resolved)),
+    resolves text CHECK (resolves IS NULL OR btrim(resolves) <> ''),
     outcome text NOT NULL CHECK (btrim(outcome) <> ''),
     actual jsonb,
-    note text
+    note text,
+    CONSTRAINT predictions_event_shape CHECK (
+        (
+            resolves IS NULL
+            AND claim IS NOT NULL
+            AND type IS NOT NULL
+        )
+        OR (
+            resolves IS NOT NULL
+            AND claim IS NULL
+            AND type IS NULL
+        )
+    ),
+    CONSTRAINT predictions_resolves_other CHECK (
+        resolves IS NULL OR resolves <> id
+    ),
+    CONSTRAINT predictions_resolves_fk FOREIGN KEY (resolves)
+        REFERENCES chronicle.predictions (id)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT
+        DEFERRABLE INITIALLY DEFERRED
 );
+
+CREATE INDEX predictions_resolves_idx
+    ON chronicle.predictions (resolves)
+    WHERE resolves IS NOT NULL;
 
 CREATE TABLE chronicle.builds (
     build_id text PRIMARY KEY CHECK (btrim(build_id) <> ''),

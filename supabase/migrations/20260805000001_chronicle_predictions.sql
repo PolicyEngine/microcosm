@@ -25,7 +25,11 @@ WITH prediction_seed AS (
           {"id":"p014","ts":"2026-08-05T09:45-04:00","claim":"publish Friday 8/7","type":"date","predicted":"2026-08-07","outcome":"OPEN"},
           {"id":"p015","ts":"2026-08-05T09:45-04:00","claim":"#616 merges by midday Wed (round 3 clean)","type":"time_window","predicted":"2026-08-05T13:00-04:00","p":0.55,"outcome":"OPEN","note":"two HOLD rounds so far; base rate for round-3 APPROVE on this PR family is good (607: r3 clean; 608: r3 clean) but this reviewer keeps finding real layers"},
           {"id":"p016","ts":"2026-08-05T09:45-04:00","claim":"10% pilot build's by-origin battery verdict lands this evening (Wed)","type":"time_window","predicted":"2026-08-05T22:00-04:00","p":0.5,"outcome":"OPEN","note":"gated on #616 merge + adoption lane + first stacked Modal run; three serial unknowns"},
-          {"id":"p017","ts":"2026-08-05T09:45-04:00","claim":"pilot battery PASSES on first stacked build","type":"binary","p":0.45,"outcome":"OPEN","note":"stated BEFORE the run per p012's lesson; first contact between new architecture and real data; the completeness gate + declared metrics are new surface"}
+          {"id":"p017","ts":"2026-08-05T09:45-04:00","claim":"pilot battery PASSES on first stacked build","type":"binary","p":0.45,"outcome":"OPEN","note":"stated BEFORE the run per p012's lesson; first contact between new architecture and real data; the completeness gate + declared metrics are new surface"},
+          {"id":"p015-resolution","ts":"2026-08-05T21:45-04:00","resolves":"p015","outcome":"MISS","actual":"#616 merged ~20:45 ET, not midday — two extra fix rounds (r2 authority class + fix2 verification restart) plus three codex content-filter blocks forcing the fable-lane route for r3","note":"the 0.55 was closer than the point estimate deserved; filter-block delay was the unmodeled tail"},
+          {"id":"p018","ts":"2026-08-05T21:45-04:00","claim":"adoption lane delivers receipts by 01:00 ET Thu","type":"time_window","p":0.6,"outcome":"OPEN","note":"large scope (tool rewrite + registry + tail + chronicle rows); restart hazard priced in"},
+          {"id":"p019","ts":"2026-08-05T21:45-04:00","claim":"first 1% smoke build completes end-to-end CLEAN (all phases incl. export; gates fire; battery receipts insufficient_support as designed) on first attempt","type":"binary","p":0.35,"outcome":"OPEN","note":"first contact of the full stacked pipeline with real data at any scale; the smoke rung exists precisely because this number is low"},
+          {"id":"p016-resolution","ts":"2026-08-05T23:05-04:00","resolves":"p016","outcome":"MISS","actual":"no pilot build ran Wed evening — the architecture went through two more review rounds (correctly) and the adoption lane is still building; the 22:00 deadline assumed three serial unknowns would all break favorably","note":"p=0.5 was overconfident given three serial dependencies; the 0.35 discipline on p019 reflects the correction"}
         ]
         $chronicle_predictions$::jsonb
     ) AS source(
@@ -36,6 +40,7 @@ WITH prediction_seed AS (
         predicted jsonb,
         p numeric,
         resolved timestamptz,
+        resolves text,
         outcome text,
         actual jsonb,
         note text
@@ -49,6 +54,7 @@ INSERT INTO chronicle.predictions (
     predicted,
     p,
     resolved,
+    resolves,
     outcome,
     actual,
     note
@@ -61,6 +67,7 @@ SELECT
     predicted,
     p,
     resolved,
+    resolves,
     outcome,
     actual,
     note
