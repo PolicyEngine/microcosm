@@ -735,7 +735,11 @@ def _assert_publication_tombstone(
         pool_tool.load_simulation_ready_us_multispine_pool_manifest(outputs.manifest)
 
 
-def _stacked_main_argv(tmp_path: Path) -> list[str]:
+def _stacked_main_argv(
+    tmp_path: Path,
+    *,
+    predecessor: str | None = None,
+) -> list[str]:
     arguments: list[str] = []
     for option in (
         "asec-raw-stage-h5",
@@ -761,6 +765,8 @@ def _stacked_main_argv(tmp_path: Path) -> list[str]:
             str(tmp_path / "stacked-pool.h5"),
         ]
     )
+    if predecessor is not None:
+        arguments.extend(["--chronicle-prev-row-digest", predecessor])
     return arguments
 
 
@@ -1111,6 +1117,81 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
             base_identity=changed_identity,
         )
         assert changed_store.load_deepest() is None
+
+
+def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
+    cold_order = list(order)
+    first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+
+    checkpoint_root = next(
+        (tmp_path / "stacked-pool.checkpoints" / "stacked").iterdir()
+    )
+    for suffix in (".h5", ".manifest.json"):
+        (checkpoint_root / f"simulated.checkpoint{suffix}").unlink()
+    order.clear()
+    assert (
+        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=first_row.row_digest))
+        == 0
+    )
+    transferred_resume_order = list(order)
+    rows = [
+        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+    ]
+    second_row = next(
+        row for row in rows if row.prev_row_digest == first_row.row_digest
+    )
+
+    for stage in ("transferred", "simulated"):
+        for suffix in (".h5", ".manifest.json"):
+            (checkpoint_root / f"{stage}.checkpoint{suffix}").unlink()
+    order.clear()
+    assert (
+        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=second_row.row_digest))
+        == 0
+    )
+    assembled_resume_order = list(order)
+
+    assert cold_order == [
+        "stack",
+        "prepare",
+        "gap",
+        "puf",
+        "complete",
+        "tail_prepare",
+        "derive",
+        "seed",
+        "simulate",
+        "completeness",
+        "battery",
+        "publish",
+    ]
+    assert transferred_resume_order == [
+        "stack",
+        "tail_prepare",
+        "derive",
+        "seed",
+        "simulate",
+        "completeness",
+        "battery",
+        "publish",
+    ]
+    assert assembled_resume_order == cold_order
+    final_rows = [
+        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+    ]
+    assert len(final_rows) == 3
+    assert any(row.prev_row_digest == second_row.row_digest for row in final_rows)
 
 
 @pytest.mark.parametrize(
