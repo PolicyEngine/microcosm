@@ -29,7 +29,8 @@ Example::
         /path/to/staging_uk_2023.h5 \
         --json-out preflight_uk_frame_linkage.json
 
-Exit code: 1 if any artifact fails Frame construction, 0 otherwise.
+Exit code: 1 if any artifact fails Frame construction or the split-benunit
+nesting check, 2 for an unsafe CLI configuration, and 0 otherwise.
 """
 
 from __future__ import annotations
@@ -58,11 +59,25 @@ from populace.frame import EntitySchema, Frame, Weights  # noqa: E402
 GROUP_ENTITIES = ("benunit", "household")
 UK_SCHEMA = EntitySchema(group_entities=GROUP_ENTITIES)
 _TABLES = ("person", *GROUP_ENTITIES)
+DEFAULT_SDC_MINIMUM_COUNT = 10
+# CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are
+# never reportable. Keep this as the single authority for every entry point;
+# callers may raise the threshold (including to a study-specific 30), but
+# cannot lower it.
+MINIMUM_SDC_COUNT = 3
+
+
+def _validated_sdc_minimum(minimum: int) -> int:
+    minimum = int(minimum)
+    if minimum < MINIMUM_SDC_COUNT:
+        raise ValueError(f"SDC minimum count must be at least {MINIMUM_SDC_COUNT}.")
+    return minimum
 
 
 def sdc_count(count: int, *, minimum: int) -> int | str:
     """Mask small nonzero counts: zero and counts >= minimum are safe."""
 
+    minimum = _validated_sdc_minimum(minimum)
     count = int(count)
     if count == 0 or count >= minimum:
         return count
@@ -93,18 +108,18 @@ def classify_group_linkage(
         return {"missing_columns": missing}
 
     ids = group_table[id_column]
-    memberships = person[membership_column].dropna()
+    membership_values = person[membership_column]
+    memberships = membership_values.dropna()
     id_set = set(ids.dropna())
     membership_set = set(memberships)
     non_na = ids.dropna()
     return {
         "missing_columns": [],
+        "membership_na": sdc_count(membership_values.isna().sum(), minimum=minimum),
         "id_na": sdc_count(ids.isna().sum(), minimum=minimum),
         "id_duplicated": sdc_count(non_na.duplicated().sum(), minimum=minimum),
         "ids_sorted_ascending": bool(non_na.is_monotonic_increasing),
-        "orphaned_group_rows": sdc_count(
-            len(id_set - membership_set), minimum=minimum
-        ),
+        "orphaned_group_rows": sdc_count(len(id_set - membership_set), minimum=minimum),
         "dangling_memberships": sdc_count(
             len(membership_set - id_set), minimum=minimum
         ),
@@ -157,18 +172,34 @@ def classify_household_weights(
 ) -> dict[str, Any]:
     """Classify the weight vector against Frame's weight invariants."""
 
+    minimum = _validated_sdc_minimum(minimum)
     if _column_missing(household, "household_weight"):
         return {"missing_columns": ["household_weight"]}
     weights = household["household_weight"]
-    values = weights.to_numpy(dtype="float64", na_value=np.nan)
+    numeric = pd.to_numeric(weights, errors="coerce")
+    conversion_failures = int((weights.notna() & numeric.isna()).sum())
+    values = numeric.to_numpy(dtype="float64", na_value=np.nan)
+    non_finite = int((~np.isfinite(values)).sum())
+    finite = values[np.isfinite(values)]
+    carriers = int(np.count_nonzero(finite))
+    total_mass_suppressed = 0 < carriers < minimum
+    total_mass: float | None = None
+    if non_finite == 0 and not total_mass_suppressed:
+        candidate_total = float(values.sum())
+        if np.isfinite(candidate_total):
+            total_mass = candidate_total
     return {
         "missing_columns": [],
         "dtype": str(weights.dtype),
-        "non_finite": sdc_count(int((~np.isfinite(values)).sum()), minimum=minimum),
+        "empty": bool(values.size == 0),
+        "conversion_failures": sdc_count(conversion_failures, minimum=minimum),
+        "non_finite": sdc_count(non_finite, minimum=minimum),
         "negative": sdc_count(int((values < 0).sum()), minimum=minimum),
-        "all_zero": bool(np.nansum(np.abs(values)) == 0.0),
-        # A population aggregate: sums every carrier, publishable.
-        "total_mass": float(np.nansum(values)),
+        "all_zero": bool(values.size > 0 and non_finite == 0 and carriers == 0),
+        # A weight total can reveal one or two nonzero unit records. Publish it
+        # only when it aggregates zero or at least the configured minimum.
+        "total_mass": total_mass,
+        "total_mass_suppressed": total_mass_suppressed,
     }
 
 
@@ -182,7 +213,34 @@ def column_collisions(
     for table in tables:
         for column in table.columns:
             seen[column] = seen.get(column, 0) + 1
-    return sorted(name for name, uses in seen.items() if uses > 1)
+    # Fixed-format H5 can preserve non-string labels (including NaN/inf or
+    # Timestamp objects). They are schema, not unit data, but returning them
+    # raw can violate strict JSON. Stringify only after determining identity,
+    # so distinct labels are not collapsed during classification.
+    return sorted(str(name) for name, uses in seen.items() if uses > 1)
+
+
+def reserved_weight_column_collisions(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> list[str]:
+    """Reserved weight columns Frame would reject, fully qualified.
+
+    The preflight constructs typed weights only for ``household``. Therefore
+    ``household.household_weight`` is the one permitted materialized column;
+    every other ``{entity}_weight`` placement is a kernel-name collision.
+    """
+
+    tables = {"person": person, "benunit": benunit, "household": household}
+    collisions: list[str] = []
+    for entity in UK_SCHEMA.entities:
+        reserved = f"{entity}_weight"
+        for table_entity, table in tables.items():
+            if reserved not in table.columns:
+                continue
+            if table_entity == entity == "household":
+                continue
+            collisions.append(f"{table_entity}.{reserved}")
+    return sorted(collisions)
 
 
 def payload_probe(table: pd.DataFrame) -> dict[str, Any]:
@@ -226,25 +284,106 @@ def attempt_frame_construction(
     return True
 
 
+def _count_is_nonzero(value: Any) -> bool:
+    """Whether an SDC-count field proves at least one violation."""
+
+    return value is not None and value != 0
+
+
+def _classified_frame_failure_reason(
+    linkage: dict[str, Any],
+    household_weights: dict[str, Any],
+    collisions: list[str],
+    reserved_collisions: list[str],
+) -> str:
+    """Return a static failure category without surfacing unit-record values."""
+
+    person = linkage.get("person", {})
+    if person.get("missing_columns"):
+        return "Frame requires the classified person id column."
+    if _count_is_nonzero(person.get("id_na")):
+        return "Frame rejects missing person ids."
+    if _count_is_nonzero(person.get("id_duplicated")):
+        return "Frame rejects duplicated person ids."
+    for group in GROUP_ENTITIES:
+        classified = linkage.get(group, {})
+        if classified.get("missing_columns"):
+            return "Frame requires the classified group linkage columns."
+        if _count_is_nonzero(classified.get("membership_na")):
+            return "Frame rejects missing group memberships."
+        if _count_is_nonzero(classified.get("id_na")):
+            return "Frame rejects missing group ids."
+        if _count_is_nonzero(classified.get("id_duplicated")):
+            return "Frame rejects duplicated group ids."
+        if classified.get("ids_sorted_ascending") is False:
+            return "Frame requires group ids sorted ascending."
+        if _count_is_nonzero(classified.get("orphaned_group_rows")):
+            return "Frame rejects group rows without member persons."
+        if _count_is_nonzero(classified.get("dangling_memberships")):
+            return "Frame rejects person memberships without a group row."
+    if collisions:
+        return "Frame rejects column names duplicated across entity tables."
+    if household_weights.get("missing_columns"):
+        return "Frame construction requires household weights."
+    if household_weights.get("empty"):
+        return "Frame construction requires a nonempty household weight vector."
+    if _count_is_nonzero(household_weights.get("conversion_failures")):
+        return "Frame rejects non-numeric household weights."
+    if _count_is_nonzero(household_weights.get("non_finite")):
+        return "Frame rejects non-finite household weights."
+    if _count_is_nonzero(household_weights.get("negative")):
+        return "Frame rejects negative household weights."
+    if household_weights.get("all_zero"):
+        return "Frame rejects an all-zero household weight vector."
+    if reserved_collisions:
+        return "Frame rejects reserved weight-column collisions."
+    return "Frame rejected an unclassified invariant; exception text was suppressed."
+
+
+def _split_benunits_reported(linkage: dict[str, Any]) -> bool:
+    return _count_is_nonzero(linkage.get("split_benunits"))
+
+
 def preflight_artifact(path: Path, *, minimum: int) -> dict[str, Any]:
     """Run every check against one UK single-year H5 artifact."""
 
+    minimum = _validated_sdc_minimum(minimum)
     weight_kind, _mass_log = read_uk_single_year_weight_metadata(path)
     with pd.HDFStore(path, mode="r") as store:
         keys = {key.lstrip("/") for key in store.keys()}
         missing = sorted(set(_TABLES) - keys)
         if missing:
-            raise ValueError(
-                f"UK artifact {path.name} is missing table(s): {missing}."
-            )
+            raise ValueError(f"UK artifact {path.name} is missing table(s): {missing}.")
         person = store["person"]
         benunit = store["benunit"]
         household = store["household"]
         time_period = (
             str(store["time_period"].iloc[0]) if "time_period" in keys else None
         )
+    linkage = classify_linkage(person, benunit, household, minimum=minimum)
+    household_weights = classify_household_weights(household, minimum=minimum)
+    collisions = column_collisions(person, benunit, household)
+    reserved_collisions = reserved_weight_column_collisions(person, benunit, household)
+    frame_constructed = attempt_frame_construction(
+        person, benunit, household, weight_kind=weight_kind
+    )
+    frame_failure_reason = (
+        None
+        if frame_constructed
+        else _classified_frame_failure_reason(
+            linkage,
+            household_weights,
+            collisions,
+            reserved_collisions,
+        )
+    )
+    split_benunits = _split_benunits_reported(linkage)
+    failure_reasons = [frame_failure_reason] if frame_failure_reason else []
+    if split_benunits:
+        failure_reasons.append("Benunits span multiple households.")
     return {
         "path": str(path),
+        "audit_completed": True,
         "time_period": time_period,
         "household_weight_kind": weight_kind.value,
         "tables": {
@@ -252,12 +391,46 @@ def preflight_artifact(path: Path, *, minimum: int) -> dict[str, Any]:
             "benunit": payload_probe(benunit),
             "household": payload_probe(household),
         },
-        "linkage": classify_linkage(person, benunit, household, minimum=minimum),
-        "household_weights": classify_household_weights(household, minimum=minimum),
-        "column_collisions": column_collisions(person, benunit, household),
-        "frame_constructed": attempt_frame_construction(
-            person, benunit, household, weight_kind=weight_kind
-        ),
+        "linkage": linkage,
+        "household_weights": household_weights,
+        "column_collisions": collisions,
+        "reserved_weight_column_collisions": reserved_collisions,
+        "frame_constructed": frame_constructed,
+        "frame_construction_failure_reason": frame_failure_reason,
+        "preflight_passed": frame_constructed and not split_benunits,
+        "preflight_failure_reasons": failure_reasons,
+    }
+
+
+def _paths_alias(left: Path, right: Path) -> bool:
+    """Compare lexical/resolved identity and filesystem inode identity."""
+
+    resolved_alias = False
+    try:
+        resolved_alias = left.resolve(strict=False) == right.resolve(strict=False)
+    except (OSError, RuntimeError):
+        pass
+    filesystem_alias = False
+    try:
+        filesystem_alias = left.samefile(right)
+    except OSError:
+        pass
+    return resolved_alias or filesystem_alias
+
+
+def _json_output_aliases_input(json_out: Path, h5_paths: list[Path]) -> bool:
+    return any(_paths_alias(json_out, path) for path in h5_paths)
+
+
+def _incomplete_artifact_report(path: Path) -> dict[str, Any]:
+    reason = "Artifact could not be audited; exception text was suppressed."
+    return {
+        "path": str(path),
+        "audit_completed": False,
+        "frame_constructed": False,
+        "frame_construction_failure_reason": reason,
+        "preflight_passed": False,
+        "preflight_failure_reasons": [reason],
     }
 
 
@@ -277,10 +450,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sdc-minimum-count",
         type=int,
-        default=10,
+        default=DEFAULT_SDC_MINIMUM_COUNT,
         help=(
             "Counts below this (other than zero) are reported as a "
-            "threshold, never exactly (default: 10)."
+            "threshold, never exactly "
+            f"(default: {DEFAULT_SDC_MINIMUM_COUNT}; minimum: "
+            f"{MINIMUM_SDC_COUNT})."
         ),
     )
     parser.add_argument(
@@ -294,25 +469,49 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    try:
+        minimum = _validated_sdc_minimum(args.sdc_minimum_count)
+    except ValueError:
+        print(
+            f"error: --sdc-minimum-count must be at least {MINIMUM_SDC_COUNT}.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.json_out is not None and _json_output_aliases_input(args.json_out, args.h5):
+        print(
+            "error: --json-out must not alias any H5 input.",
+            file=sys.stderr,
+        )
+        return 2
+    artifacts: list[dict[str, Any]] = []
+    for path in args.h5:
+        try:
+            artifact = preflight_artifact(path, minimum=minimum)
+        except Exception:
+            artifact = _incomplete_artifact_report(path)
+        artifacts.append(artifact)
     report = {
-        "sdc_minimum_count": args.sdc_minimum_count,
-        "artifacts": [
-            preflight_artifact(path, minimum=args.sdc_minimum_count)
-            for path in args.h5
-        ],
+        "sdc_minimum_count": minimum,
+        "artifacts": artifacts,
     }
-    rendered = json.dumps(report, indent=2, sort_keys=True)
+    if args.json_out is not None and _json_output_aliases_input(args.json_out, args.h5):
+        print(
+            "error: --json-out became an alias of an H5 input.",
+            file=sys.stderr,
+        )
+        return 2
+    rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
     print(rendered)
     if args.json_out is not None:
-        args.json_out.write_text(rendered + "\n")
+        args.json_out.write_text(rendered + "\n", encoding="utf-8")
     failed = [
         artifact["path"]
         for artifact in report["artifacts"]
-        if not artifact["frame_constructed"]
+        if not artifact["preflight_passed"]
     ]
     if failed:
         print(
-            f"FAIL: {len(failed)} artifact(s) do not construct a Frame.",
+            f"FAIL: {len(failed)} artifact(s) do not pass linkage preflight.",
             file=sys.stderr,
         )
         return 1

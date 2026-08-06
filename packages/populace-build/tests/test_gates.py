@@ -62,6 +62,29 @@ class TestGateResultInvariants:
         assert manifest["passed"] is False
         assert manifest["gates"]["b"]["failures"] == ["broke"]
 
+    def test_report_manifest_deep_copies_nested_details(self) -> None:
+        details = {
+            "authority": {"surface": {"sha256": "a" * 64}},
+            "targets": [{"name": "person/income", "receipts": ["canonical"]}],
+        }
+        result = GateResult(name="authority", passed=True, details=details)
+
+        manifest = GateReport((result,)).to_manifest()
+        manifest_details = manifest["gates"]["authority"]["details"]
+
+        details["authority"]["surface"]["sha256"] = "b" * 64
+        details["targets"][0]["receipts"].append("source-tampered")
+        assert manifest_details["authority"]["surface"]["sha256"] == "a" * 64
+        assert manifest_details["targets"][0]["receipts"] == ["canonical"]
+
+        manifest_details["authority"]["surface"]["sha256"] = "c" * 64
+        manifest_details["targets"][0]["receipts"].append("manifest-tampered")
+        assert result.details["authority"]["surface"]["sha256"] == "b" * 64
+        assert result.details["targets"][0]["receipts"] == [
+            "canonical",
+            "source-tampered",
+        ]
+
 
 class TestParityGate:
     def test_gap_fails_with_the_variable_named(self) -> None:
@@ -1840,6 +1863,18 @@ class TestTailConcentrationGate:
         )
         assert result.passed
         assert result.details["thin_columns"] == {"thin": 10}
+
+    def test_thin_reviewed_exclusion_is_dormant(self) -> None:
+        result = tail_concentration_gate(
+            {"thin": np.ones(10)},
+            {"thin": np.ones(10)},
+            reviewed_exclusions={"thin": "Documented while inactive."},
+        )
+
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {}
+        assert result.details["stale_exclusions"] == []
+        assert result.details["dormant_exclusions"] == ["thin"]
 
     def test_all_zero_column_is_thin_not_failing(self) -> None:
         result = tail_concentration_gate(

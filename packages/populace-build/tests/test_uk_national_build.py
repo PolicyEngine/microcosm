@@ -14,15 +14,20 @@ from populace.build.uk_runtime.national_build import (
     load_uk_national_dataset,
 )
 from populace.build.uk_runtime.terminal_gates import (
+    UK_TERMINAL_GATE_SIGNING_KEY_ENV,
     UKReleaseParityEvidence,
 )
 from populace.build.uk_runtime.terminal_gates import (
     uk_terminal_gate_report as real_uk_terminal_gate_report,
 )
+from populace.build.uk_runtime.terminal_gates import (
+    write_uk_terminal_gate_report as real_write_uk_terminal_gate_report,
+)
 from populace.frame import MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
 TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
+TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 
 def _run_national_build(**kwargs):
@@ -30,6 +35,14 @@ def _run_national_build(**kwargs):
         release_id=TEST_UK_RELEASE_ID,
         calibration_diagnostics_sha256=TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
         **kwargs,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
+    monkeypatch.setenv(
+        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY,
     )
 
 
@@ -304,6 +317,62 @@ def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
         b'    "passed": true\n  },\n  "schema_version": 1\n}\n'
     )
     assert legacy_json.read_bytes() == expected
+
+
+def test_legacy_input_coverage_alias_fails_closed_without_signing_key(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The compatibility output cannot bypass the signed terminal writer."""
+
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build, terminal_gates
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    legacy_json = tmp_path / "input_coverage.json"
+    _write_two_row_h5(input_h5)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_terminal_gate_report",
+        real_uk_terminal_gate_report,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "write_uk_terminal_gate_report",
+        real_write_uk_terminal_gate_report,
+    )
+    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+
+    with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=staging_h5,
+            coverage_engine=object(),
+            input_coverage_path=legacy_json,
+        )
+
+    assert not staging_h5.exists()
+    payload = json.loads(legacy_json.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 3
+    assert payload["passed"] is False
+    assert payload["attestation"]["signature"] is None
+    assert payload["attestation"]["signing_key_sha256"] is None
 
 
 def test_national_build_gate_failure_writes_diagnostic_not_h5(

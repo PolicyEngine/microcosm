@@ -104,6 +104,7 @@ before reading) shows:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from collections.abc import Iterable, Mapping
@@ -125,6 +126,7 @@ from populace.build.gates import (
 __all__ = [
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
+    "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
     "UK_QRF_TAIL_CONCENTRATION_GATE_NAME",
     "UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
@@ -143,6 +145,26 @@ UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
 UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
 
+# Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
+# the 131-column weighted input surface emitted from the pinned enhanced-FRS
+# artifact (sha 584ae33d...) by build_uk_efrs_parity_reference.py. The totals
+# remain uncommitted under the UKDS EUL; this reviewed digest lets the gate and
+# publication contract bind them without disclosing them (PR #610 review).
+UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
+    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+)
+_UK_INPUT_MASS_REFERENCE_IDENTITY = MappingProxyType(
+    {
+        "filename": "enhanced_frs_2023_24.h5",
+        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
+        "vintage": "2023_24",
+    }
+)
+
+# TODO(PR #610 review): María to define approval identity, receipt metadata,
+# and expiry semantics before the column -> reason exclusion schema changes.
+
 # Mirrors terminal_gates._STRUCTURAL_COLUMNS for the national table layout;
 # ids and the weight vector are plumbing, not input mass.
 _UK_ENTITY_STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
@@ -157,7 +179,22 @@ def _reviewed_reason_mapping(values: object, *, label: str) -> dict[str, str]:
         return {}
     if not isinstance(values, Mapping):
         raise TypeError(f"{label} reviewed exclusions must be a mapping.")
-    normalized = {str(name): str(reason) for name, reason in values.items()}
+    if any(
+        not isinstance(name, str) or not isinstance(reason, str)
+        for name, reason in values.items()
+    ):
+        raise TypeError(
+            f"{label} reviewed exclusion names and reasons must be strings."
+        )
+    normalized = dict(values)
+    invalid_names = sorted(
+        repr(name) for name in normalized if not name.strip() or name != name.strip()
+    )
+    if invalid_names:
+        raise ValueError(
+            f"{label} reviewed exclusions need non-empty, trimmed column names: "
+            f"{invalid_names}."
+        )
     missing = sorted(name for name, reason in normalized.items() if not reason.strip())
     if missing:
         raise ValueError(f"{label} reviewed exclusions need reasons: {missing}.")
@@ -184,13 +221,49 @@ def load_uk_reviewed_exclusion_register(
     else:
         raw = Path(source).read_text(encoding="utf-8")
         label = str(source)
-    payload = json.loads(raw)
+
+    def strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        duplicates: set[str] = set()
+        for name, value in pairs:
+            if name in result:
+                duplicates.add(name)
+            result[name] = value
+        if duplicates:
+            raise ValueError(f"{label}: duplicate JSON key(s): {sorted(duplicates)}.")
+        return result
+
+    def reject_nonfinite_json(value: str) -> object:
+        raise ValueError(f"{label}: non-finite JSON value {value!r} is invalid.")
+
+    try:
+        payload = json.loads(
+            raw,
+            object_pairs_hook=strict_object,
+            parse_constant=reject_nonfinite_json,
+        )
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label}: malformed JSON: {exc.msg}.") from exc
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label}: exclusion register must be a JSON object.")
-    if payload.get("schema_version") != 1:
+    expected_fields = {"schema_version", "description", "exclusions"}
+    if set(payload) != expected_fields:
+        raise ValueError(
+            f"{label}: exclusion register fields must be exactly "
+            f"{sorted(expected_fields)}, got {sorted(payload)}."
+        )
+    if (
+        type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != 1
+    ):
         raise ValueError(
             f"{label}: exclusion register schema_version must be 1, got "
             f"{payload.get('schema_version')!r}."
+        )
+    description = payload.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(
+            f"{label}: exclusion register description must be a non-empty string."
         )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, Mapping):
@@ -224,13 +297,15 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
     totals = payload.get("totals")
     if not isinstance(totals, Mapping):
         raise ValueError(f"{path}: input-mass reference needs a 'totals' object.")
-    return UKInputMassReference(
+    reference = UKInputMassReference(
         totals=dict(totals),
         filename=str(identity.get("filename", "")),
         revision=str(identity.get("revision", "")),
         sha256=str(identity.get("sha256", "")),
         vintage=str(identity.get("vintage", "")),
     )
+    _validate_input_mass_reference(reference)
+    return reference
 
 
 @dataclass(frozen=True)
@@ -291,6 +366,41 @@ class UKInputMassReference:
             "sha256": self.sha256,
             "vintage": self.vintage,
         }
+
+
+def _input_mass_reference_evidence_sha256(
+    reference: UKInputMassReference,
+) -> str:
+    payload = {
+        "reference": {
+            "identity": reference.identity,
+            "totals": {name: float(total) for name, total in reference.totals.items()},
+        }
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _validate_input_mass_reference(reference: UKInputMassReference) -> None:
+    expected_identity = dict(_UK_INPUT_MASS_REFERENCE_IDENTITY)
+    if reference.identity != expected_identity:
+        raise ValueError(
+            "UK input-mass reference identity must match the reviewed "
+            f"enhanced-FRS incumbent; expected {expected_identity}, got "
+            f"{reference.identity}."
+        )
+    observed_digest = _input_mass_reference_evidence_sha256(reference)
+    if observed_digest != UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256:
+        raise ValueError(
+            "UK input-mass reference totals must match the reviewed "
+            "enhanced-FRS incumbent; expected canonical evidence sha256 "
+            f"{UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}, got {observed_digest}."
+        )
 
 
 @dataclass(frozen=True)
@@ -359,9 +469,13 @@ class UKQRFTailConcentrationPolicy:
 
     def __post_init__(self) -> None:
         if isinstance(self.top_k, bool) or not isinstance(self.top_k, int):
-            raise ValueError(f"UK QRF tail top_k must be an integer, got {self.top_k!r}.")
+            raise ValueError(
+                f"UK QRF tail top_k must be an integer, got {self.top_k!r}."
+            )
         if self.top_k < 1:
-            raise ValueError(f"UK QRF tail top_k must be at least 1, got {self.top_k!r}.")
+            raise ValueError(
+                f"UK QRF tail top_k must be at least 1, got {self.top_k!r}."
+            )
         share = float(self.max_top_share)
         if not math.isfinite(share) or not 0.0 < share < 1.0:
             raise ValueError(
@@ -407,9 +521,7 @@ def _entity_table(dataset: Any, entity: str) -> pd.DataFrame:
         else getattr(dataset, entity, None)
     )
     if not isinstance(table, pd.DataFrame):
-        raise TypeError(
-            f"UK weighted-integrity gates require a {entity} DataFrame."
-        )
+        raise TypeError(f"UK weighted-integrity gates require a {entity} DataFrame.")
     return table
 
 
@@ -436,9 +548,10 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
     household_weights = pd.to_numeric(
         household["household_weight"], errors="coerce"
     ).astype(np.float64)
-    if household_weights.isna().any() or not np.isfinite(
-        household_weights.to_numpy()
-    ).all():
+    if (
+        household_weights.isna().any()
+        or not np.isfinite(household_weights.to_numpy()).all()
+    ):
         raise ValueError("UK household weights must be finite numbers.")
     by_household = pd.Series(
         household_weights.to_numpy(), index=household["household_id"]
@@ -449,8 +562,7 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
     person_weights = person["person_household_id"].map(by_household)
     if person_weights.isna().any():
         raise ValueError(
-            "UK person rows reference household_id values with no resolvable "
-            "weight."
+            "UK person rows reference household_id values with no resolvable weight."
         )
 
     # A benunit inherits the weight of the household containing it, so the
@@ -476,8 +588,7 @@ def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
     benunit_weights = benunit["benunit_id"].map(benunit_household).map(by_household)
     if benunit_weights.isna().any():
         raise ValueError(
-            "UK benunit rows have no member persons to resolve a household "
-            "weight from."
+            "UK benunit rows have no member persons to resolve a household weight from."
         )
     return {
         "person": person_weights.to_numpy(dtype=np.float64),
@@ -549,6 +660,7 @@ def uk_input_mass_parity_gate(
         raise TypeError("reference must be UKInputMassReference.")
     if not isinstance(policy, UKInputMassParityPolicy):
         raise TypeError("policy must be UKInputMassParityPolicy.")
+    _validate_input_mass_reference(reference)
     exclusions = dict(policy.reviewed_exclusions)
     base = input_mass_parity_gate(
         candidate_totals,
@@ -572,11 +684,7 @@ def uk_input_mass_parity_gate(
         # Re-check the single excluded column without its exclusion, reusing
         # the shared gate's exact semantics (zero-fail, drift, absence).
         probe = input_mass_parity_gate(
-            (
-                {column: candidate_totals[column]}
-                if column in candidate_totals
-                else {}
-            ),
+            ({column: candidate_totals[column]} if column in candidate_totals else {}),
             {column: reference.totals[column]},
             candidate_name=candidate_name,
             reference_name=reference.filename,
@@ -639,24 +747,30 @@ def uk_qrf_tail_concentration_columns(
     person_weights = _uk_entity_weights(dataset)["person"]
     values: dict[str, np.ndarray] = {}
     weights: dict[str, np.ndarray] = {}
+    checked: list[str] = []
     absent: list[str] = []
     non_numeric: list[str] = []
     for column in declared:
         if column not in person.columns:
             absent.append(column)
+            values[column] = np.array([], dtype=np.float64)
+            weights[column] = np.array([], dtype=np.float64)
             continue
         series = person[column]
         if pd.api.types.is_bool_dtype(series) or not pd.api.types.is_numeric_dtype(
             series
         ):
             non_numeric.append(column)
+            values[column] = np.array([], dtype=np.float64)
+            weights[column] = np.array([], dtype=np.float64)
             continue
         numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
         values[column] = numeric.to_numpy(dtype=np.float64)
         weights[column] = person_weights
+        checked.append(column)
     surface: dict[str, object] = {
         "declared_qrf_outputs": len(declared),
-        "checked_columns": sorted(values),
+        "checked_columns": sorted(checked),
         "absent_columns": absent,
         "non_numeric_columns": non_numeric,
         "density_filter": "none: every declared output is checked (#609)",
@@ -690,11 +804,71 @@ def uk_qrf_tail_concentration_gate(
         reviewed_exclusions=dict(policy.reviewed_exclusions),
     )
     details = dict(base.details)
+    failures = list(base.failures)
     if surface is not None:
         details["surface"] = dict(surface)
+        failures.extend(
+            f"{column}: declared QRF output is absent from the person table."
+            for column in surface.get("absent_columns", ())
+        )
+        failures.extend(
+            f"{column}: declared QRF output is not numeric in the person table."
+            for column in surface.get("non_numeric_columns", ())
+        )
+        declared_count = surface.get("declared_qrf_outputs")
+        classified = {
+            field: surface.get(field)
+            for field in (
+                "checked_columns",
+                "absent_columns",
+                "non_numeric_columns",
+            )
+        }
+        if (
+            isinstance(declared_count, bool)
+            or not isinstance(declared_count, int)
+            or declared_count <= 0
+            or any(
+                not isinstance(names, list)
+                or any(not isinstance(name, str) or not name for name in names)
+                for names in classified.values()
+            )
+        ):
+            failures.append(
+                "QRF surface must declare a positive output count and three "
+                "lists of non-empty column names."
+            )
+        else:
+            checked = set(classified["checked_columns"])
+            absent = set(classified["absent_columns"])
+            non_numeric = set(classified["non_numeric_columns"])
+            all_lists = [
+                *classified["checked_columns"],
+                *classified["absent_columns"],
+                *classified["non_numeric_columns"],
+            ]
+            accounted = checked | absent | non_numeric
+            gate_accounted = set(details["top_share"]) | set(details["thin_columns"])
+            if (
+                len(all_lists) != len(accounted)
+                or declared_count != len(accounted)
+                or set(details["top_share"]) & set(details["thin_columns"])
+                or accounted != gate_accounted
+                or checked != gate_accounted - absent - non_numeric
+            ):
+                failures.append(
+                    "QRF surface declarations must reconcile exactly across "
+                    "declared, checked, absent, nonnumeric, checked-tail, and "
+                    "thin outputs."
+                )
+    if details["columns_checked"] == 0:
+        failures.append(
+            "No declared QRF output had enough weighted carriers for the "
+            "tail-concentration check."
+        )
     return GateResult(
         name=UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
-        passed=base.passed,
-        failures=base.failures,
+        passed=not failures,
+        failures=tuple(failures),
         details=details,
     )

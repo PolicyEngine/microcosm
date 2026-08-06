@@ -67,10 +67,10 @@ class UKRowwiseDatasetResult:
     """Cloned UK single-year tables and row-wise geography metadata.
 
     ``household_weight_kind`` and ``mass_log`` carry the national seam's
-    weight provenance through the clone. Absence on the input defaults to
-    ``WeightKind.DESIGN`` — the same semantics the national loader applies to
-    an attr-less H5 — and the clone always appends one mass-conserving record
-    documenting the ``n_clones`` split.
+    weight provenance through the clone. Dataset-object entry points require
+    in-memory inputs to declare ``household_weight_kind``; only an attr-less H5
+    defaults to ``WeightKind.DESIGN``. The clone always appends one
+    mass-conserving record documenting the ``n_clones`` split.
     """
 
     person: pd.DataFrame
@@ -411,9 +411,10 @@ def clone_uk_dataset_with_ladder_geography(
 ) -> UKLadderRowwiseDatasetResult:
     """Clone a UK dataset object or H5 with OA-ladder geography.
 
-    Weight kind and mass log come from the input exactly as in the crosswalk
-    route (absence keeps the national loader's DESIGN semantics; unknown
-    kinds fail closed).
+    The declared weight kind and any mass log are carried from the input.
+    In-memory dataset objects must declare ``household_weight_kind``; only an
+    attr-less H5 defaults to the national loader's ``WeightKind.DESIGN``
+    semantics. Unknown stored kinds fail closed.
     """
 
     tables = _dataset_tables(dataset, source_year=source_year)
@@ -556,11 +557,12 @@ def clone_uk_dataset_with_rowwise_geography(
 ) -> UKRowwiseDatasetResult:
     """Clone a UK single-year dataset object or H5 path with row-wise geography.
 
-    The input's stored weight kind and mass log are carried, never overridden:
-    an H5 supplies them via the national metadata attrs (absence means
+    The input's weight kind and mass log are carried, never overridden. An H5
+    supplies them via the national metadata attrs; an attr-less H5 defaults to
     ``WeightKind.DESIGN`` and an empty log, exactly as the national loader
-    reads it), and a dataset object supplies them via equally named
-    attributes when present.
+    reads it. An in-memory dataset object must declare
+    ``household_weight_kind``; its absent ``mass_log`` defaults to an empty
+    history.
     """
 
     tables = _dataset_tables(dataset, source_year=source_year)

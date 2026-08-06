@@ -59,6 +59,18 @@ from populace.build.country_spec import (  # noqa: E402 - after the compat gate
     country_stage_plan,
     load_country_spec,
 )
+from populace.build.gate_battery import (  # noqa: E402 - after the compat gate
+    BlockingMode,
+    EvidenceContext,
+    FunctionBinding,
+    GateBatteryBlockedError,
+    GateBatteryRun,
+    GateBinding,
+    GateOutcome,
+    GatePhaseReport,
+    GateStatus,
+    evaluate_phase,
+)
 from populace.build.gates import (  # noqa: E402 - after the compat gate
     FitWeightRecord,
     GateReport,
@@ -128,13 +140,23 @@ from populace.build.staging import (  # noqa: E402 - after the compat gate
 __version__ = "0.1.0"
 
 __all__ = [
+    "BlockingMode",
     "CountrySpec",
     "DonorSpec",
+    "EvidenceContext",
     "FitWeightRecord",
+    "FunctionBinding",
+    "GateBatteryBlockedError",
+    "GateBatteryRun",
+    "GateBinding",
+    "GateOutcome",
+    "GatePhaseReport",
     "GateReport",
     "GateResult",
     "GateSelectionSpec",
+    "GateStatus",
     "GatesManifest",
+    "evaluate_phase",
     "GeographySpineManifest",
     "GeographySpineSpec",
     "ReleaseContractManifest",

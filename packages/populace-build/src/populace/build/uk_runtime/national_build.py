@@ -542,6 +542,7 @@ def build_uk_national_dataset(
         input_mass_policy=input_mass_policy,
         qrf_tail_policy=qrf_tail_policy,
     )
+    write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
     if legacy_input_coverage_output:
         input_coverage = next(
             gate
@@ -549,8 +550,6 @@ def build_uk_national_dataset(
             if gate.name == "uk_release_input_coverage"
         )
         _write_input_coverage_diagnostic(diagnostic_path, input_coverage)
-    else:
-        write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
     if not terminal_gates.passed:
         raise RuntimeError(
             "Release gates failed: " + "; ".join(terminal_gates.failures)

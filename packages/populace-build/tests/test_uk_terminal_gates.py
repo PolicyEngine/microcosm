@@ -8,6 +8,7 @@ import hmac
 import json
 import math
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -91,14 +92,20 @@ def _coverage(*, passed: bool = True) -> GateResult:
 
 
 def _report(dataset=None, **kwargs):
-    return uk_terminal_gate_report(
-        _dataset() if dataset is None else dataset,
-        object(),
-        release_id=TEST_UK_RELEASE_ID,
-        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-        input_coverage_evaluator=lambda: _coverage(),
-        **kwargs,
-    )
+    # Small synthetic totals exercise battery behavior without disclosing the
+    # licensed 131-column reference; trust-anchor behavior has dedicated tests.
+    with patch(
+        "populace.build.uk_runtime.weighted_integrity._validate_input_mass_reference",
+        return_value=None,
+    ):
+        return uk_terminal_gate_report(
+            _dataset() if dataset is None else dataset,
+            object(),
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
+            input_coverage_evaluator=lambda: _coverage(),
+            **kwargs,
+        )
 
 
 def _gates(report) -> dict[str, dict[str, object]]:
@@ -442,12 +449,10 @@ def test_unevidenced_gates_are_omitted_not_stubbed_as_passes() -> None:
 
 def _input_mass_reference(totals=None) -> UKInputMassReference:
     return UKInputMassReference(
-        totals=(
-            {"person.employment_income": 10.0} if totals is None else totals
-        ),
+        totals=({"person.employment_income": 10.0} if totals is None else totals),
         filename="enhanced_frs_2023_24.h5",
         revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-        sha256="a" * 64,
+        sha256=("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
         vintage="2023_24",
     )
 
@@ -666,6 +671,8 @@ def test_terminal_report_writer_persists_before_missing_signing_key_raise(
     report = _report()
     output = tmp_path / "terminal_gates.json"
 
+    assert report.passed is False
+    assert report.passed == report.report_payload()["passed"]
     with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
         write_uk_terminal_gate_report(report, output)
 

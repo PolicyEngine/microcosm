@@ -10,8 +10,9 @@ candidate-only columns are reported and never fail, near-zero reference
 columns are skipped) and records the frozen reference's filename, revision,
 sha256, and vintage, and `uk_qrf_tail_concentration_gate` derives its column
 surface from the `fit_weighted_qrf_stage*` outputs declared in the HMRC
-source manifest with no sparsity filter — every declared output is checked,
-with `min_nonzero_records` as the sole thinness guard.
+source manifest with no sparsity filter — every declared output is represented,
+absent or nonnumeric outputs fail by name, and `min_nonzero_records` classifies
+thin present outputs without allowing an armed zero-column gate to pass.
 
 Both gates join `uk_terminal_gate_report` under the optional-evidence rule: a
 path with no frozen reference or reviewed thresholds omits them instead of
@@ -58,3 +59,20 @@ Conditions require it), refuses a `--top-k` narrower than that count, and
 records the rules it applied alongside the citation obligations under clauses
 11 and 12. Per-column weighted totals aggregate every carrier and are reported
 unconditionally.
+
+The #610 review hardened every output and publication seam around those gates.
+The legacy `--input-coverage-json` alias now runs through the signed terminal
+writer before its compatibility projection, so missing credentials persist an
+unsigned failed receipt and stop staging. Input-mass references must match the
+committed enhanced-FRS source identity and the reviewed canonical digest of
+all 131 weighted totals at load, gate, and publication time.
+Exclusion JSON now rejects duplicate keys, malformed shapes, nulls, and
+non-string names or reasons; thin exclusions are always classified as dormant.
+Publication independently rejects absent, nonnumeric, vacuous, partially
+omitted, or impossible threshold/share/carrier/thin-count QRF evidence and
+reconciles every declared output across the checked and thin maps. The launcher
+collision-checks the reference and both exclusion inputs against every source
+and output path before unlinking anything.
+Approval identity, receipt metadata, and expiry semantics for exclusions
+remain an author-owned follow-up rather than an invented schema change in this
+review.

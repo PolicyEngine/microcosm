@@ -45,10 +45,12 @@ def _minimal_package(**overrides) -> dict[str, dict]:
             "version": 1,
             "country": "xx",
             "policy": "test gates",
+            "phases": ["terminal"],
             "gates": [
                 {
                     "id": "fit",
                     "gate": "per_family_fit",
+                    "phase": "terminal",
                     "criticality": "release_blocking",
                 }
             ],
@@ -89,10 +91,7 @@ class TestBelgianPackage:
         ]
         assert offsets == [-1]  # SILC year N carries year N-1 incomes
         assert "belgium_pit_article_23_worker_remuneration" in stage.outputs
-        assert (
-            "belgium_pit_article_23_worker_remuneration"
-            in stage.nonnegative_outputs
-        )
+        assert "belgium_pit_article_23_worker_remuneration" in stage.nonnegative_outputs
 
     def test_geography_spine_is_vintage_aware(self, spec) -> None:
         spine = spec.geography_spine.geography_spine
@@ -144,6 +143,10 @@ class TestBelgianPackage:
         assert "source_coverage.json" in contract.required_release_files
         assert "reform_validation.json" in contract.required_release_files
 
+    def test_gates_declare_their_phase_order(self, spec) -> None:
+        assert spec.gates.phases == ("terminal",)
+        assert {gate.phase for gate in spec.gates.gates} == {"terminal"}
+
     def test_fingerprint_is_stable_across_loads(self, spec) -> None:
         assert load_country_spec("be").fingerprint == spec.fingerprint
 
@@ -177,7 +180,7 @@ class TestGoldenBelgianSpec:
         rendered = canonical_json_bytes(summary)
         assert GOLDEN.exists(), (
             "Golden file missing. Generate it after reviewing the spec:\n"
-            f"  python -c \"...\" > {GOLDEN}"
+            f'  python -c "..." > {GOLDEN}'
         )
         assert rendered == GOLDEN.read_bytes(), (
             "The Belgian country spec changed. If intentional, regenerate "
@@ -192,9 +195,7 @@ class TestCountryStagePlan:
         names = [stage.stage for stage in spec.sources.stages] + [
             spec.geography_spine.geography_spine.stage
         ]
-        plan = country_stage_plan(
-            spec, {name: (lambda frame: frame) for name in names}
-        )
+        plan = country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
         assert [stage.name for stage in plan.stages] == [
             "silc_load",
             "clone_assign_communes",
@@ -215,9 +216,7 @@ class TestCountryStagePlan:
             "silc_load_fallback",
         ]
         with pytest.raises(ValueError, match="Unknown stage implementation"):
-            country_stage_plan(
-                spec, {name: (lambda frame: frame) for name in names}
-            )
+            country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
 
 
 class TestExistingPackagesGeneralize:
@@ -286,6 +285,58 @@ class TestRefusals:
         with pytest.raises(ValueError, match="release_blocking"):
             load_country_spec(package_dir)
 
+    def test_gate_without_a_phase_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        del files["gates.json"]["gates"][0]["phase"]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="phase must be a non-empty string"):
+            load_country_spec(package_dir)
+
+    def test_unknown_gate_phase_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["phase"] = "someday"
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="unknown phase 'someday'"):
+            load_country_spec(package_dir)
+
+    def test_missing_phase_order_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        del files["gates.json"]["phases"]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="phases must be a non-empty list"):
+            load_country_spec(package_dir)
+
+    def test_gate_phase_outside_the_declared_order_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["phase"] = "preflight"
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="not in the declared phase order"):
+            load_country_spec(package_dir)
+
+    def test_duplicate_phases_are_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["phases"] = ["terminal", "terminal"]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="duplicate phase"):
+            load_country_spec(package_dir)
+
+    def test_not_applicable_with_parameters_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["not_applicable"] = "no surface yet"
+        files["gates.json"]["gates"][0]["parameters"] = {"within": 0.1}
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            load_country_spec(package_dir)
+
+    def test_empty_not_applicable_reason_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["not_applicable"] = "  "
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(
+            ValueError, match="not_applicable must be a non-empty string"
+        ):
+            load_country_spec(package_dir)
+
     def test_target_reference_carrying_a_value_is_refused(self, tmp_path) -> None:
         files = _minimal_package()
         files["country_package.json"]["resources"].append("target_references.json")
@@ -305,7 +356,9 @@ class TestRefusals:
         with pytest.raises(ValueError, match="values live in Ledger"):
             load_country_spec(package_dir)
 
-    def test_target_reference_carrying_a_nested_value_is_refused(self, tmp_path) -> None:
+    def test_target_reference_carrying_a_nested_value_is_refused(
+        self, tmp_path
+    ) -> None:
         files = _minimal_package()
         files["country_package.json"]["resources"].append("target_references.json")
         files["target_references.json"] = {
@@ -389,7 +442,9 @@ class TestRefusals:
         with pytest.raises(ValueError, match="ordinal version token"):
             load_country_spec(package_dir)
 
-    def test_version_like_substrings_without_ordinal_tokens_load(self, tmp_path) -> None:
+    def test_version_like_substrings_without_ordinal_tokens_load(
+        self, tmp_path
+    ) -> None:
         # "sha-v2x" is not an ordinal token: the digits run into a letter.
         files = _minimal_package()
         files["country_package.json"]["resources"].append("release_contract.json")

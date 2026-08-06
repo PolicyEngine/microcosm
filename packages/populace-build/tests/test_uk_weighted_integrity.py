@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from populace.build.uk_runtime import weighted_integrity
 from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
@@ -67,7 +69,7 @@ def _reference(totals, **overrides) -> UKInputMassReference:
     fields = {
         "filename": "enhanced_frs_2023_24.h5",
         "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": "a" * 64,
+        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
         "vintage": "2023_24",
     }
     fields.update(overrides)
@@ -78,6 +80,17 @@ def _policy(**overrides) -> UKInputMassParityPolicy:
     fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
     fields.update(overrides)
     return UKInputMassParityPolicy(**fields)
+
+
+def _synthetic_input_mass_gate(*args, **kwargs):
+    """Exercise gate semantics with small totals, outside the licensed pin."""
+
+    with patch.object(
+        weighted_integrity,
+        "_validate_input_mass_reference",
+        return_value=None,
+    ):
+        return uk_input_mass_parity_gate(*args, **kwargs)
 
 
 def test_dataset_totals_broadcast_household_weights_by_membership() -> None:
@@ -116,7 +129,7 @@ def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:
     dataset = _dataset(person_columns={"employment_income": [0.0, 0.0, 0.0, 0.0]})
     reference = _reference({"person.employment_income": 10.0})
 
-    gate = uk_input_mass_parity_gate(
+    gate = _synthetic_input_mass_gate(
         uk_dataset_input_mass_totals(dataset),
         reference,
         policy=_policy(relative_tolerance=1e9),
@@ -130,12 +143,12 @@ def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:
 
 def test_material_mass_loss_fails_and_within_tolerance_passes() -> None:
     reference = _reference({"person.employment_income": 10.0})
-    lost = uk_input_mass_parity_gate(
+    lost = _synthetic_input_mass_gate(
         {"person.employment_income": 0.01},
         reference,
         policy=_policy(),
     )
-    kept = uk_input_mass_parity_gate(
+    kept = _synthetic_input_mass_gate(
         {"person.employment_income": 9.0, "person.pension_income": 5.0},
         reference,
         policy=_policy(),
@@ -151,7 +164,7 @@ def test_material_mass_loss_fails_and_within_tolerance_passes() -> None:
 def test_input_mass_reference_identity_is_recorded() -> None:
     reference = _reference({"person.employment_income": 10.0})
 
-    gate = uk_input_mass_parity_gate(
+    gate = _synthetic_input_mass_gate(
         {"person.employment_income": 10.0},
         reference,
         policy=_policy(),
@@ -160,16 +173,82 @@ def test_input_mass_reference_identity_is_recorded() -> None:
     assert gate.details["reference_identity"] == {
         "filename": "enhanced_frs_2023_24.h5",
         "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": "a" * 64,
+        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
         "vintage": "2023_24",
     }
 
 
+def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
+    tmp_path,
+) -> None:
+    caller_self_reference = _reference(
+        {"person.employment_income": 1.0},
+    )
+
+    with pytest.raises(ValueError, match="reference totals must match the reviewed"):
+        uk_input_mass_parity_gate(
+            {"person.employment_income": 1.0},
+            caller_self_reference,
+            policy=_policy(),
+        )
+    path = tmp_path / "self-reference.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "identity": caller_self_reference.identity,
+                "totals": dict(caller_self_reference.totals),
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="reference totals must match the reviewed"):
+        load_uk_input_mass_reference(path)
+
+
+def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    shadow = {
+        "schema_version": 3,
+        "source": {
+            "repo_id": "caller/repo",
+            "repo_type": "model",
+            "filename": "caller.h5",
+            "revision": "caller",
+            "sha256": "b" * 64,
+            "url": "https://example.invalid/caller.h5",
+            "vintage": "caller",
+            "period": "2023",
+            "size_bytes": 1,
+        },
+        "nonzero_shares": {"employment_income": 1.0},
+        "input_entities": {"employment_income": "person"},
+    }
+    (tmp_path / "efrs_parity_reference.json").write_text(
+        json.dumps(shadow), encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    caller_reference = _reference(
+        {"person.employment_income": 1.0},
+        filename="caller.h5",
+        revision="caller",
+        sha256="b" * 64,
+        vintage="caller",
+    )
+
+    with pytest.raises(ValueError, match="identity must match the reviewed"):
+        uk_input_mass_parity_gate(
+            {"person.employment_income": 1.0},
+            caller_reference,
+            policy=_policy(),
+        )
+
+
 def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
     reason = "Seeded reviewed loss for the fixture."
-    reference = _reference(
-        {"person.employment_income": 10.0, "person.tiny_layer": 0.5}
-    )
+    reference = _reference({"person.employment_income": 10.0, "person.tiny_layer": 0.5})
     policy = _policy(
         minimum_reference_total=1.0,
         reviewed_exclusions={
@@ -179,12 +258,12 @@ def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
         },
     )
 
-    live = uk_input_mass_parity_gate(
+    live = _synthetic_input_mass_gate(
         {"person.employment_income": 0.0},
         reference,
         policy=policy,
     )
-    stale = uk_input_mass_parity_gate(
+    stale = _synthetic_input_mass_gate(
         {"person.employment_income": 10.0},
         reference,
         policy=policy,
@@ -192,9 +271,7 @@ def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
 
     # A live exclusion suppresses the zeroed-column failure and is recorded.
     assert live.passed
-    assert (
-        live.details["reviewed_exclusions"]["person.employment_income"] == reason
-    )
+    assert live.details["reviewed_exclusions"]["person.employment_income"] == reason
     # Below-floor and absent-from-reference entries are dormant, not failing.
     assert live.details["dormant_exclusions"] == [
         "person.never_shipped",
@@ -217,6 +294,10 @@ def test_input_mass_policy_and_reference_validation() -> None:
         _reference({})
     with pytest.raises(ValueError, match="finite"):
         _reference({"person.employment_income": float("nan")})
+    with pytest.raises(TypeError, match="names and reasons must be strings"):
+        _policy(reviewed_exclusions={1: "Seeded invalid name."})
+    with pytest.raises(TypeError, match="names and reasons must be strings"):
+        _policy(reviewed_exclusions={"person.employment_income": None})
 
 
 def test_qrf_surface_is_derived_from_the_source_manifest() -> None:
@@ -252,6 +333,80 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
     assert surface["declared_qrf_outputs"] >= 47
+
+
+def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
+    values, weights, surface = uk_qrf_tail_concentration_columns(
+        _dataset(),
+        output_columns=("declared_but_absent",),
+    )
+
+    assert set(values) == {"declared_but_absent"}
+    assert set(weights) == {"declared_but_absent"}
+    gate = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.5,
+            min_nonzero_records=2,
+        ),
+        surface=surface,
+    )
+
+    assert not gate.passed
+    assert gate.details["columns_checked"] == 0
+    assert gate.details["surface"]["absent_columns"] == ["declared_but_absent"]
+    assert "declared_but_absent" in gate.failures[0]
+    assert "absent" in gate.failures[0]
+
+
+def test_declared_nonnumeric_qrf_output_is_a_named_gate_failure() -> None:
+    values, weights, surface = uk_qrf_tail_concentration_columns(
+        _dataset(person_columns={"declared_nonnumeric": ["x"] * 4}),
+        output_columns=("declared_nonnumeric",),
+    )
+
+    assert set(values) == {"declared_nonnumeric"}
+    assert set(weights) == {"declared_nonnumeric"}
+    gate = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.5,
+            min_nonzero_records=2,
+        ),
+        surface=surface,
+    )
+
+    assert not gate.passed
+    assert gate.details["columns_checked"] == 0
+    assert gate.details["surface"]["non_numeric_columns"] == ["declared_nonnumeric"]
+    assert "declared_nonnumeric" in gate.failures[0]
+    assert "not numeric" in gate.failures[0]
+
+
+def test_qrf_surface_rejects_partially_omitted_declared_outputs() -> None:
+    gate = uk_qrf_tail_concentration_gate(
+        {"self_employment_income": np.ones(4)},
+        {"self_employment_income": np.ones(4)},
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=1,
+            max_top_share=0.75,
+            min_nonzero_records=2,
+        ),
+        surface={
+            "declared_qrf_outputs": 2,
+            "checked_columns": ["self_employment_income"],
+            "absent_columns": [],
+            "non_numeric_columns": [],
+            "density_filter": "none: every declared output is checked (#609)",
+        },
+    )
+
+    assert not gate.passed
+    assert "QRF surface declarations must reconcile exactly" in gate.failures[0]
 
 
 def test_concentrated_qrf_column_fails_by_name() -> None:
@@ -293,8 +448,31 @@ def test_thin_qrf_column_is_reported_not_checked() -> None:
         ),
     )
 
-    assert gate.passed
-    assert gate.details["thin_columns"] == {"self_employment_income": 4}
+    assert not gate.passed
+    assert gate.details["thin_columns"]["self_employment_income"] == 4
+    assert "No declared QRF output" in gate.failures[0]
+
+
+def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
+    values = {"person.x": np.ones(4)}
+    weights = {"person.x": np.ones(4)}
+
+    gate = uk_qrf_tail_concentration_gate(
+        values,
+        weights,
+        policy=UKQRFTailConcentrationPolicy(
+            top_k=10,
+            max_top_share=0.5,
+            min_nonzero_records=100,
+            reviewed_exclusions={"person.x": "Seeded thin entry."},
+        ),
+    )
+
+    assert not gate.passed
+    assert gate.details["thin_columns"] == {"person.x": 4}
+    assert gate.details["reviewed_exclusions"] == {}
+    assert gate.details["stale_exclusions"] == []
+    assert gate.details["dormant_exclusions"] == ["person.x"]
 
 
 def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
@@ -324,7 +502,9 @@ def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
 
 def test_qrf_policy_validation() -> None:
     with pytest.raises(ValueError, match="strict subset"):
-        UKQRFTailConcentrationPolicy(top_k=10, max_top_share=0.5, min_nonzero_records=10)
+        UKQRFTailConcentrationPolicy(
+            top_k=10, max_top_share=0.5, min_nonzero_records=10
+        )
     with pytest.raises(ValueError, match=r"in \(0, 1\)"):
         UKQRFTailConcentrationPolicy(top_k=1, max_top_share=1.0, min_nonzero_records=2)
     with pytest.raises(ValueError, match="need reasons"):
@@ -353,10 +533,24 @@ def test_committed_exclusion_registers_load_and_are_empty() -> None:
 def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> None:
     bad_reason = tmp_path / "register.json"
     bad_reason.write_text(
-        json.dumps({"schema_version": 1, "exclusions": {"person.x": ""}})
+        json.dumps(
+            {
+                "schema_version": 1,
+                "description": "Seeded register.",
+                "exclusions": {"person.x": ""},
+            }
+        )
     )
     bad_schema = tmp_path / "schema.json"
-    bad_schema.write_text(json.dumps({"schema_version": 2, "exclusions": {}}))
+    bad_schema.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "description": "Seeded register.",
+                "exclusions": {},
+            }
+        )
+    )
 
     with pytest.raises(ValueError, match="need reasons"):
         load_uk_reviewed_exclusion_register(
@@ -368,6 +562,82 @@ def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> Non
             bad_schema,
             resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
         )
+
+
+@pytest.mark.parametrize(
+    ("raw", "match"),
+    [
+        (
+            '{"schema_version":1,"description":"x","exclusions":'
+            '{"person.x":"first","person.x":null}}',
+            "duplicate JSON key",
+        ),
+        (
+            '{"schema_version":1,"description":"x","exclusions":{"person.x":null}}',
+            "names and reasons must be strings",
+        ),
+        (
+            '{"schema_version":1,"description":"x",'
+            '"exclusions":{"person.x":{"ticket":"610"}}}',
+            "names and reasons must be strings",
+        ),
+        (
+            '{"schema_version":1,"description":"x","exclusions":{"person.x":7}}',
+            "names and reasons must be strings",
+        ),
+        (
+            '{"schema_version":1,"description":"x","exclusions":[[1,"reason"]]}',
+            "'exclusions' object",
+        ),
+        ("null", "JSON object"),
+        ('{"schema_version":1', "malformed JSON"),
+    ],
+)
+def test_register_loader_rejects_malformed_or_coerced_entries(
+    tmp_path,
+    raw: str,
+    match: str,
+) -> None:
+    path = tmp_path / "register.json"
+    path.write_text(raw, encoding="utf-8")
+
+    with pytest.raises((TypeError, ValueError), match=match):
+        load_uk_reviewed_exclusion_register(
+            path,
+            resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        )
+
+
+def test_uk_totals_handle_shuffled_ids_benunits_and_entity_name_collisions() -> None:
+    dataset = SimpleNamespace(
+        person=pd.DataFrame(
+            {
+                "person_id": [3, 1, 2],
+                "person_household_id": [20, 10, 20],
+                "person_benunit_id": [200, 100, 200],
+                "shared": [11.0, 5.0, 7.0],
+            }
+        ),
+        benunit=pd.DataFrame(
+            {
+                "benunit_id": [200, 100],
+                "shared": [13.0, 17.0],
+            }
+        ),
+        household=pd.DataFrame(
+            {
+                "household_id": [20, 10],
+                "household_weight": [3.0, 2.0],
+                "shared": [19.0, 23.0],
+            }
+        ),
+    )
+
+    totals = uk_dataset_input_mass_totals(dataset)
+
+    assert totals["person.shared"] == 64.0
+    assert totals["benunit.shared"] == 73.0
+    assert totals["household.shared"] == 103.0
 
 
 def test_uk_totals_match_the_shared_frame_helper_on_equivalent_data() -> None:
@@ -455,16 +725,14 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         relative_tolerance=policy.relative_tolerance,
         minimum_reference_total=policy.minimum_reference_total,
     )
-    ported = uk_input_mass_parity_gate(candidate, reference, policy=policy)
+    ported = _synthetic_input_mass_gate(candidate, reference, policy=policy)
 
     assert ported.name == shared.name == "input_mass_parity"
     assert ported.passed == shared.passed
     assert ported.failures == shared.failures
     shared_details = dict(shared.details)
     assert {
-        key: value
-        for key, value in ported.details.items()
-        if key in shared_details
+        key: value for key, value in ported.details.items() if key in shared_details
     } == shared_details
     assert set(ported.details) - set(shared_details) == {
         "stale_exclusions",
@@ -520,7 +788,9 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
                 "identity": {
                     "filename": "enhanced_frs_2023_24.h5",
                     "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-                    "sha256": "a" * 64,
+                    "sha256": (
+                        "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"
+                    ),
                     "vintage": "2023_24",
                 },
                 "totals": {"person.employment_income": 10.5},
@@ -528,7 +798,14 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
         )
     )
 
-    reference = load_uk_input_mass_reference(path)
+    # The licensed 131-column totals are intentionally unavailable to CI;
+    # bypass only the reviewed digest while checking the measurement schema.
+    with patch.object(
+        weighted_integrity,
+        "_validate_input_mass_reference",
+        return_value=None,
+    ):
+        reference = load_uk_input_mass_reference(path)
 
     assert reference.filename == "enhanced_frs_2023_24.h5"
     assert dict(reference.totals) == {"person.employment_income": 10.5}
