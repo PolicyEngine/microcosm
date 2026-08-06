@@ -285,6 +285,30 @@ def test_identical_retry_is_idempotent(tmp_path: Path) -> None:
     assert len(list(tmp_path.glob("*.json"))) == 1
 
 
+def test_nested_tuple_gate_data_normalizes_for_exact_retry(tmp_path: Path) -> None:
+    gate_verdicts = {
+        "agreement": {
+            "verdict": "failed",
+            "receipt": "receipt://fixture/agreement.json",
+            "bounds": (1, 2),
+            "nested": ({"values": (3, 4)},),
+        }
+    }
+
+    first = record_build_attempt(
+        **_row_kwargs(gate_verdicts=gate_verdicts),
+        spool_dir=tmp_path,
+    )
+    second = record_build_attempt(
+        **_row_kwargs(gate_verdicts=gate_verdicts),
+        spool_dir=tmp_path,
+    )
+
+    assert second == first
+    assert second.row.gate_verdicts["agreement"]["bounds"] == [1, 2]
+    assert second.row.gate_verdicts["agreement"]["nested"] == [{"values": [3, 4]}]
+
+
 def test_missing_remote_environment_is_spool_only(tmp_path: Path) -> None:
     result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
 

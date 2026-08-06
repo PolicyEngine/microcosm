@@ -940,7 +940,9 @@ def _validate_phases(value: Sequence[str]) -> tuple[str, ...]:
 def _validate_gate_verdicts(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping) or not value:
         raise ValueError("gate_verdicts must be a non-empty JSON object.")
-    normalized = deepcopy(dict(value))
+    normalized = _normalize_json_value(value)
+    if not isinstance(normalized, dict):  # pragma: no cover - guarded above
+        raise AssertionError("gate_verdicts normalization lost its object shape")
     for gate, receipt in normalized.items():
         _nonempty_text(gate, "gate_verdicts gate name")
         if not isinstance(receipt, Mapping):
@@ -949,6 +951,22 @@ def _validate_gate_verdicts(value: Mapping[str, Any]) -> dict[str, Any]:
         _nonempty_text(receipt.get("receipt"), f"gate_verdicts[{gate!r}].receipt")
     canonical_json_bytes(normalized)
     return normalized
+
+
+def _normalize_json_value(value: Any) -> Any:
+    """Return JSON containers with tuples and mappings normalized for retries."""
+
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise ValueError("Canonical JSON object keys must be strings.")
+        return {key: _normalize_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json_value(item) for item in value]
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    raise ValueError(
+        f"Canonical JSON does not support values of type {type(value).__name__}."
+    )
 
 
 def _validate_nonnegative_number(
