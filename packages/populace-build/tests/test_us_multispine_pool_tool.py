@@ -429,6 +429,7 @@ def _run_checkpoint_fixture(
     store,
     resume=None,
     target_bank_receipt: Mapping[str, object] | None = None,
+    primary_qrf_manifest_path: Path | None = None,
 ):
     order: list[str] = []
 
@@ -441,6 +442,15 @@ def _run_checkpoint_fixture(
             person = frame.table("person").copy()
             transform(person)
             receipt: dict[str, object] = {"fixture_stage": name}
+            if name == "impute" and primary_qrf_manifest_path is not None:
+                receipt = {
+                    "primary_puf_qrf": {
+                        "mode": "checkpoint_chain",
+                        "checkpoint_manifest_path": str(
+                            primary_qrf_manifest_path.resolve()
+                        ),
+                    }
+                }
             if name == "impute" and target_bank_receipt is not None:
                 receipt = {
                     "source_operator_chain": {"post_primary_completion": {}},
@@ -2184,6 +2194,52 @@ def test_production_transferred_checkpoint_bytes_ignore_bank_interruption_proven
     )["stages"]["transferred"]["receipts_sidecar"]
     assert receipts_provenance["load_status"] == "loaded"
     assert receipts_provenance["path"] == str(receipts_path.resolve())
+
+
+def test_transferred_checkpoint_bytes_ignore_stacked_qrf_manifest_location(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    checkpoint_bytes: list[bytes] = []
+    manifest_locations: list[str] = []
+    identity_digests: list[str] = []
+    for label in ("volume-a", "volume-b"):
+        (tmp_path / label).mkdir()
+        store = _checkpoint_fixture_store(
+            pool_tool,
+            tmp_path / label / "checkpoints",
+        )
+        store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+        manifest_path = tmp_path / label / "primary-qrf" / "manifest.json"
+        _run_checkpoint_fixture(
+            pool_tool,
+            tmp_path,
+            store=store,
+            primary_qrf_manifest_path=manifest_path,
+        )
+        transferred_path = store.checkpoint_path("transferred")
+        checkpoint_bytes.append(transferred_path.read_bytes())
+        metadata = pool_tool.load_frame_checkpoint(transferred_path).metadata
+        identity_digests.append(metadata["identity_sha256"])
+        assert (
+            "checkpoint_manifest_path"
+            not in metadata["stage_receipts"]["impute"]["primary_puf_qrf"]
+        )
+        sidecar = pool_tool._read_json_object(
+            store.checkpoint_receipts_path("transferred")
+        )
+        manifest_locations.append(
+            sidecar["operational_stage_receipts"]["impute"]["primary_puf_qrf"][
+                "checkpoint_manifest_path"
+            ]
+        )
+
+    assert checkpoint_bytes[0] == checkpoint_bytes[1]
+    assert identity_digests[0] == identity_digests[1]
+    assert manifest_locations == [
+        str((tmp_path / label / "primary-qrf" / "manifest.json").resolve())
+        for label in ("volume-a", "volume-b")
+    ]
 
 
 @pytest.mark.parametrize("damage", ("missing", "corrupt"))
