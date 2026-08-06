@@ -167,7 +167,9 @@ __all__ = [
     "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
     "POOL_STAGE_CHECKPOINT_SCHEMA_VERSION",
     "PoolBuildOutputs",
+    "StackedPoolBuildResult",
     "build_multispine_pool",
+    "build_stacked_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "main",
 ]
