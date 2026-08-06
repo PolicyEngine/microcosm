@@ -71,11 +71,26 @@ def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
 
 
 @pytest.mark.parametrize(
+    "value",
+    [
+        {"nested": "diagnostic\x00detail"},
+        {"diagnostic\x00key": "detail"},
+    ],
+)
+def test_canonical_json_rejects_postgresql_incompatible_nul(
+    value: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="NUL"):
+        canonical_json_bytes(value)
+
+
+@pytest.mark.parametrize(
     ("field", "value", "message"),
     [
         ("build_id", "bad build id", "build_id"),
         ("ts", "2026-08-04T19:06:00", "UTC offset"),
         ("pipeline", " fixture ", "pipeline"),
+        ("pipeline", "fixture\x00pipeline", "NUL"),
         ("rung", "1/10", "rung must be one of"),
         ("rung", "0.1", "rung must be one of"),
         ("rung", "f020", "rung must be one of"),
@@ -116,6 +131,19 @@ def test_schema_rejects_missing_and_extra_fields_by_name() -> None:
         match=r"missing=\['identity_digest'\].*extra=\['fraction_token'\]",
     ):
         ChronicleRow.from_mapping(mapping)
+
+
+def test_row_rejects_nul_in_nested_gate_diagnostics() -> None:
+    gate_verdicts = {
+        "agreement": {
+            "verdict": "failed",
+            "receipt": "receipt://fixture/agreement.json",
+            "diagnostics": {"detail": "unreconcilable\x00postgresql-text"},
+        }
+    }
+
+    with pytest.raises(ValueError, match="NUL"):
+        ChronicleRow.create(**_row_kwargs(gate_verdicts=gate_verdicts))
 
 
 def test_wrong_supplied_row_digest_is_rejected() -> None:
