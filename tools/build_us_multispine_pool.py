@@ -1921,6 +1921,16 @@ def _split_checkpoint_stage_receipts(
             if not isinstance(identity_routing, Mapping):
                 raise ValueError("Primary QRF identity routing must be an object.")
             operational_primary["identity_routing"] = dict(identity_routing)
+        if "checkpoint_manifest_path" in primary_qrf:
+            checkpoint_manifest_path = primary_qrf.pop("checkpoint_manifest_path")
+            if (
+                not isinstance(checkpoint_manifest_path, str)
+                or not checkpoint_manifest_path
+            ):
+                raise ValueError(
+                    "Primary QRF checkpoint manifest path must be a non-empty string."
+                )
+            operational_primary["checkpoint_manifest_path"] = checkpoint_manifest_path
         if operational_primary:
             operational_impute["primary_puf_qrf"] = operational_primary
     acs_transfer = impute.get("acs_qrf_transfer")
@@ -1959,7 +1969,13 @@ def _attach_checkpoint_operational_receipts(
     if not isinstance(canonical_impute, dict):
         raise ValueError("canonical stage receipts have no impute object")
     allowed_fields = {
-        "primary_puf_qrf": frozenset({"resume_status", "identity_routing"}),
+        "primary_puf_qrf": frozenset(
+            {
+                "resume_status",
+                "identity_routing",
+                "checkpoint_manifest_path",
+            }
+        ),
         "acs_qrf_transfer": frozenset({"target_bank"}),
     }
     for section, operational_section in operational_impute.items():
@@ -2594,8 +2610,20 @@ def build_stacked_pool(
         primary_qrf_receipt = dict(primary_qrf_receipt)
         primary_qrf_receipt["identity_routing"] = primary_qrf_identity_routing
         qrf_manifest_path = _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
+        reported_manifest_path = primary_qrf_receipt.pop(
+            "checkpoint_manifest",
+            None,
+        )
+        if (
+            reported_manifest_path is not None
+            and Path(reported_manifest_path).resolve() != qrf_manifest_path.resolve()
+        ):
+            raise ValueError(
+                "Stacked PUF pass reported a different primary-QRF manifest path."
+            )
         primary_qrf_receipt.update(
             {
+                "checkpoint_manifest_path": str(qrf_manifest_path.resolve()),
                 "checkpoint_manifest_receipt": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
                 "n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
