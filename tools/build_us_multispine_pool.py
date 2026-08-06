@@ -633,14 +633,7 @@ def _verify_inputs(
     args: argparse.Namespace,
     outputs: PoolBuildOutputs,
 ) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
-    source_paths = {
-        Path(args.asec_raw_stage_h5).resolve(),
-        Path(args.acs_household_zip).resolve(),
-        Path(args.acs_person_zip).resolve(),
-        Path(args.acs_rent_h5).resolve(),
-        Path(args.puf_h5).resolve(),
-        Path(args.puf_source_year_csv).resolve(),
-    }
+    source_paths = _configured_source_paths(args)
     _validate_checkpoint_path_layout(outputs, source_paths=source_paths)
 
     output_paths = {
@@ -694,6 +687,19 @@ def _verify_inputs(
         ),
     }
     return verified, acs_source_manifest
+
+
+def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
+    """Resolve the six immutable input locations without opening them."""
+
+    return {
+        Path(args.asec_raw_stage_h5).resolve(),
+        Path(args.acs_household_zip).resolve(),
+        Path(args.acs_person_zip).resolve(),
+        Path(args.acs_rent_h5).resolve(),
+        Path(args.puf_h5).resolve(),
+        Path(args.puf_source_year_csv).resolve(),
+    }
 
 
 def _validate_checkpoint_path_layout(
@@ -1047,6 +1053,90 @@ def _configured_stacked_identity(args: argparse.Namespace) -> dict[str, object]:
         "clone_attachment_seed": args.clone_attachment_seed,
         "stacked_authority": stacked_spine_authority_receipt(),
     }
+
+
+def _stacked_checkpoint_root(
+    outputs: PoolBuildOutputs,
+    configured_identity: Mapping[str, object],
+) -> Path:
+    """Route one configured build to its non-mixing discovery namespace."""
+
+    configured_digest = hashlib.sha256(
+        _canonical_json_bytes(configured_identity)
+    ).hexdigest()
+    return outputs.checkpoint_root / "stacked" / configured_digest
+
+
+def _discover_stacked_checkpoint_identity(
+    checkpoint_root: Path,
+    *,
+    verified_inputs: Mapping[str, _VerifiedInput],
+    sample_fraction: float,
+    sample_seed: int,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+) -> dict[str, object] | None:
+    """Recover a current live-stack identity before loading survey sources.
+
+    The configured namespace binds all pins and scale controls available before
+    assembly.  A stage manifest inside it supplies the realized stack receipt;
+    this function recomputes the complete identity from that receipt and accepts
+    it only when every current code, input, authority, and sampling field agrees.
+    The regular checkpoint loader subsequently authenticates the sidecar, H5,
+    frame metadata, and receipt bytes before any stage is resumed.
+    """
+
+    root = Path(checkpoint_root)
+    for stage in reversed(POOL_CHECKPOINT_STAGE_ORDER):
+        checkpoint_path = root / _POOL_STAGE_CHECKPOINT_FILENAMES[stage]
+        manifest_path = checkpoint_path.with_suffix(".manifest.json")
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = _read_json_object(manifest_path)
+            if (
+                manifest.get("artifact_kind")
+                != _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND
+                or manifest.get("schema_version")
+                != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
+                or manifest.get("materializer_version")
+                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or manifest.get("stage") != stage
+            ):
+                raise ValueError("unsupported checkpoint manifest binding")
+            stage_identity = manifest.get("identity")
+            if not isinstance(stage_identity, Mapping):
+                raise ValueError("checkpoint manifest identity is not an object")
+            if stage_identity.get("stage") != stage or stage_identity.get(
+                "stage_index"
+            ) != POOL_CHECKPOINT_STAGE_ORDER.index(stage):
+                raise ValueError("checkpoint manifest stage identity changed")
+            base_identity = dict(stage_identity)
+            del base_identity["stage"]
+            del base_identity["stage_index"]
+            sampling = base_identity.get("sampling")
+            if not isinstance(sampling, Mapping):
+                raise ValueError("checkpoint identity has no sampling object")
+            stack_manifest = sampling.get("stack_manifest")
+            if not isinstance(stack_manifest, Mapping):
+                raise ValueError("checkpoint identity has no stack manifest")
+            expected = _stacked_checkpoint_base_identity(
+                verified_inputs,
+                stack_receipt=stack_manifest,
+                sample_fraction=sample_fraction,
+                sample_seed=sample_seed,
+                clone_attachment_fraction=clone_attachment_fraction,
+                clone_attachment_seed=clone_attachment_seed,
+            )
+            if base_identity != expected:
+                raise ValueError("checkpoint base identity is stale")
+            return expected
+        except Exception as error:
+            print(
+                f"Ignored stacked checkpoint discovery manifest {manifest_path}: "
+                f"{type(error).__name__}: {error}."
+            )
+    return None
 
 
 def _stacked_realized_counts(
@@ -2342,8 +2432,8 @@ def build_stacked_pool(
     *,
     expected_stack_receipt: Mapping[str, object],
     release_id: str,
-    puf_donor: pd.DataFrame,
-    acs_rent_donor: pd.DataFrame,
+    puf_donor: pd.DataFrame | None,
+    acs_rent_donor: pd.DataFrame | None,
     primary_qrf_checkpoint_dir: Path,
     acs_transfer_checkpoint_dir: Path,
     checkpoint_identity: Mapping[str, object],
@@ -2357,10 +2447,6 @@ def build_stacked_pool(
 
     if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):
         raise ValueError(f"Invalid stacked release ID {release_id!r}.")
-    if not isinstance(puf_donor, pd.DataFrame):
-        raise TypeError("Stacked builds require the full PUF donor DataFrame.")
-    if not isinstance(acs_rent_donor, pd.DataFrame):
-        raise TypeError("Stacked builds require the canonical ACS rent donor.")
 
     def mark_phase(name: str) -> None:
         if phase_reached is not None:
@@ -2429,6 +2515,16 @@ def build_stacked_pool(
             mark_phase(completed_phase)
 
     if resume_stage in {None, "assembled"}:
+        if not isinstance(puf_donor, pd.DataFrame):
+            raise TypeError(
+                "A cold or assembled-resume stacked build requires the full "
+                "PUF donor DataFrame."
+            )
+        if not isinstance(acs_rent_donor, pd.DataFrame):
+            raise TypeError(
+                "A cold or assembled-resume stacked build requires the canonical "
+                "ACS rent donor."
+            )
         prepared = prepare_multispine_source_inputs_for_clone(
             current,
             acs_rent_donor=acs_rent_donor,
@@ -3366,45 +3462,9 @@ def _main_stacked(args: argparse.Namespace) -> int:
         verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
         state.input_pins_digest = _input_pins_digest(verified_inputs)
         _append_phase(state, "inputs_verified")
-        loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
-        _append_phase(state, "sources_loaded")
-        assert_operator_free_source_frame(
-            loaded.asec,
-            label="ASEC raw-stage stacked input",
-        )
-        assert_operator_free_source_frame(
-            loaded.acs,
-            label="ACS native-mapped stacked input",
-            native_inputs=loaded.acs_native_inputs,
-        )
-        stack = assemble_stacked_spine(
-            loaded.asec,
-            loaded.acs,
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-        )
-        asec_count, acs_count = _stacked_realized_counts(stack.receipt)
-        state.build_id = _new_stacked_release_id(
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            realized_asec_households=asec_count,
-            realized_acs_households=acs_count,
-            timestamp=started_ts,
-        )
-        checkpoint_identity = _stacked_checkpoint_base_identity(
-            verified_inputs,
-            stack_receipt=stack.receipt,
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            clone_attachment_fraction=args.clone_attachment_fraction,
-            clone_attachment_seed=args.clone_attachment_seed,
-        )
-        state.identity_digest = _pool_checkpoint_identity_sha256(checkpoint_identity)
-        configured_digest = hashlib.sha256(
-            _canonical_json_bytes(configured_identity)
-        ).hexdigest()
-        stacked_checkpoint_root = (
-            outputs.checkpoint_root / "stacked" / configured_digest
+        stacked_checkpoint_root = _stacked_checkpoint_root(
+            outputs,
+            configured_identity,
         )
         outputs = replace(
             outputs,
@@ -3412,23 +3472,116 @@ def _main_stacked(args: argparse.Namespace) -> int:
             primary_qrf_checkpoint_dir=stacked_checkpoint_root / "primary-qrf",
             acs_transfer_checkpoint_dir=stacked_checkpoint_root / "acs-transfer",
         )
-        checkpoint_store = _PoolStageCheckpointStore(
-            outputs.checkpoint_root,
-            base_identity=checkpoint_identity,
-        )
-        outputs = _with_checkpoint_identity(
+        _validate_checkpoint_path_layout(
             outputs,
-            base_identity_sha256=checkpoint_store.base_identity_sha256,
+            source_paths=_configured_source_paths(args),
         )
-        resume = checkpoint_store.load_deepest()
-        checkpoint_store.bind_input_receipts(_loaded_input_receipts(loaded))
+        checkpoint_identity = _discover_stacked_checkpoint_identity(
+            outputs.checkpoint_root,
+            verified_inputs=verified_inputs,
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            clone_attachment_fraction=args.clone_attachment_fraction,
+            clone_attachment_seed=args.clone_attachment_seed,
+        )
+        checkpoint_store: _PoolStageCheckpointStore | None = None
+        resume: MultispinePoolCheckpoint | None = None
+        stack_frame: Frame | None = None
+        stack_receipt: Mapping[str, object] | None = None
+        puf_donor: pd.DataFrame | None = None
+        acs_rent_donor: pd.DataFrame | None = None
+        if checkpoint_identity is not None:
+            checkpoint_store = _PoolStageCheckpointStore(
+                outputs.checkpoint_root,
+                base_identity=checkpoint_identity,
+            )
+            outputs = _with_checkpoint_identity(
+                outputs,
+                base_identity_sha256=checkpoint_store.base_identity_sha256,
+            )
+            resume = checkpoint_store.load_deepest()
+            if resume is not None:
+                sampling = checkpoint_identity.get("sampling")
+                if not isinstance(sampling, Mapping):  # pragma: no cover
+                    raise ValueError("Discovered stacked identity lost sampling.")
+                discovered_receipt = sampling.get("stack_manifest")
+                if not isinstance(discovered_receipt, Mapping):  # pragma: no cover
+                    raise ValueError("Discovered stacked identity lost its manifest.")
+                stack_receipt = dict(discovered_receipt)
+                stack_frame = resume.frame
+                _append_phase(state, "checkpoint_loaded")
+                if resume.stage == "assembled":
+                    acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
+                    puf_donor, _puf_donor_build = _load_puf_donor(args)
+                    _validate_resumed_puf_donor(
+                        puf_donor,
+                        checkpoint_store.input_receipts,
+                    )
+                    _append_phase(state, "resume_donors_loaded")
+
+        if resume is None:
+            loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
+            _append_phase(state, "sources_loaded")
+            assert_operator_free_source_frame(
+                loaded.asec,
+                label="ASEC raw-stage stacked input",
+            )
+            assert_operator_free_source_frame(
+                loaded.acs,
+                label="ACS native-mapped stacked input",
+                native_inputs=loaded.acs_native_inputs,
+            )
+            stack = assemble_stacked_spine(
+                loaded.asec,
+                loaded.acs,
+                sample_fraction=args.sample_fraction,
+                sample_seed=args.sample_seed,
+            )
+            stack_frame = stack.frame
+            stack_receipt = stack.receipt
+            puf_donor = loaded.puf_donor
+            acs_rent_donor = loaded.acs_rent_donor
+            checkpoint_identity = _stacked_checkpoint_base_identity(
+                verified_inputs,
+                stack_receipt=stack_receipt,
+                sample_fraction=args.sample_fraction,
+                sample_seed=args.sample_seed,
+                clone_attachment_fraction=args.clone_attachment_fraction,
+                clone_attachment_seed=args.clone_attachment_seed,
+            )
+            checkpoint_store = _PoolStageCheckpointStore(
+                outputs.checkpoint_root,
+                base_identity=checkpoint_identity,
+            )
+            outputs = _with_checkpoint_identity(
+                outputs,
+                base_identity_sha256=checkpoint_store.base_identity_sha256,
+            )
+            checkpoint_store.bind_input_receipts(_loaded_input_receipts(loaded))
+
+        if (
+            checkpoint_store is None
+            or checkpoint_identity is None
+            or stack_frame is None
+            or stack_receipt is None
+        ):  # pragma: no cover - cold/resume branches establish all four
+            raise AssertionError("Stacked checkpoint routing did not initialize.")
+        asec_count, acs_count = _stacked_realized_counts(stack_receipt)
+        state.build_id = _new_stacked_release_id(
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            realized_asec_households=asec_count,
+            realized_acs_households=acs_count,
+            timestamp=started_ts,
+        )
+        state.identity_digest = _pool_checkpoint_identity_sha256(checkpoint_identity)
 
         result = build_stacked_pool(
-            stack.frame,
-            expected_stack_receipt=stack.receipt,
+            stack_frame,
+            expected_stack_receipt=stack_receipt,
             release_id=state.build_id,
-            puf_donor=loaded.puf_donor,
-            acs_rent_donor=loaded.acs_rent_donor,
+            puf_donor=puf_donor,
+            acs_rent_donor=acs_rent_donor,
             primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
             acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
             checkpoint_identity=checkpoint_store.base_identity,
