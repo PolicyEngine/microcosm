@@ -25,10 +25,10 @@ import populace.build.us_runtime.puf_support as puf_support_module
 import populace.build.us_runtime.stacked_spine as stacked_spine_module
 from populace.build.gates import GateReport, GateResult
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
-from populace.build.us_runtime.acs_transfer import (
-    declared_acs_transfer_target_families,
-)
 from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
+from populace.build.us_runtime.multispine_pool import (
+    pool_transfer_target_families,
+)
 from populace.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
@@ -316,7 +316,7 @@ def test_production_and_legacy_sampling_controls_are_mutually_exclusive() -> Non
         ),
         (
             lambda manifest: manifest.__setitem__("acs_sample_fraction", 0.35),
-            "violates floor",
+            "sample fraction does not match",
         ),
         (
             lambda manifest: manifest.__setitem__("acs_sample_seed", "578"),
@@ -970,6 +970,7 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
     plan = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    joint_registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
     profile = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
 
     assert isinstance(plan, tuple)
@@ -981,11 +982,20 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         registry[("person", "puf_tax_itemization", "taxable_interest_income", 0)] = (
             "rare_incidence"
         )
+    with pytest.raises(TypeError):
+        joint_registry[
+            (
+                "person",
+                "source_operator_immigration",
+                ("ssn_card_type", "immigration_status_str"),
+                0,
+            )
+        ] = "categorical_tvd"
     with pytest.raises(FrozenInstanceError):
         profile.min_effective_support = 50
 
 
-def test_canonical_metric_registry_covers_the_declared_90_target_split() -> None:
+def test_canonical_metric_registry_covers_the_declared_131_target_split() -> None:
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     surface_targets = {
@@ -995,17 +1005,47 @@ def test_canonical_metric_registry_covers_the_declared_90_target_split() -> None
         for target in targets
     }
 
-    assert len(surface_targets) == 90
+    assert len(surface_targets) == 131
+    assert Counter(entity for entity, _family, _target, _clone in surface_targets) == {
+        "person": 114,
+        "tax_unit": 9,
+        "spm_unit": 8,
+    }
+    assert (
+        len(
+            {
+                (entity, family)
+                for entity, families in surface.items()
+                for family in families
+            }
+        )
+        == 31
+    )
     assert set(registry) == surface_targets
     assert Counter(registry.values()) == {
-        "monetary_sign_separated": 62,
-        "boolean_incidence": 26,
-        "categorical_tvd": 2,
+        "monetary_sign_separated": 79,
+        "boolean_incidence": 48,
+        "categorical_tvd": 4,
     }
     assert (
         registry[("person", "puf_tax_itemization", "taxable_interest_income", 0)]
         == "monetary_sign_separated"
     )
+    gap_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    assert len(gap_targets) == 118
+    assert gap_targets < surface_targets
+    assert not {
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    } & {target for _entity, _family, target, _clone in surface_targets}
 
 
 def test_explicit_test_seams_reject_the_canonical_authority() -> None:
@@ -1127,7 +1167,7 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     assert set(housing.target_families) == {"person"}
     assert housing.target_families["person"] == {"housing": ("pre_subsidy_rent",)}
 
-    declared = declared_acs_transfer_target_families()
+    declared = pool_transfer_target_families()
     recombined: dict[str, dict[str, tuple[str, ...]]] = {}
     for direction in plan:
         for entity, families in direction.target_families.items():
@@ -2088,7 +2128,7 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     )
     canonical = stacked_completeness_gate(frame)
     assert canonical.passed, canonical.failures
-    assert canonical.details["declared_targets"] == 90
+    assert canonical.details["declared_targets"] == 131
     authority = canonical.details["authority"]
     assert authority["authority_form"] == "CANONICAL"
     assert authority["canonical"] is True
@@ -2379,7 +2419,7 @@ def test_fresh_gate_result_cannot_graft_canonical_authority_onto_test_surface() 
 
     with pytest.raises(
         ValueError,
-        match="must declare exactly 90 targets.*manifest emission is forbidden",
+        match="must declare exactly 131 targets.*manifest emission is forbidden",
     ):
         GateReport((grafted,)).to_manifest()
 
@@ -2452,7 +2492,7 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
 
     with pytest.raises(
         ValueError,
-        match="coverage receipt must bind all 90 targets.*emission is forbidden",
+        match="coverage receipt must bind all 131 targets.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 
@@ -2596,16 +2636,13 @@ def _complete_battery_registry(
     *extras: OriginBatterySpec,
 ) -> tuple[OriginBatterySpec, ...]:
     metrics: dict[tuple[str, str, int], dict[str, str]] = {}
-    for direction in stacked_gap_fill_plan():
-        for entity, families in direction.target_families.items():
-            for family, targets in families.items():
-                bucket = metrics.setdefault((entity, family, 0), {})
-                bucket.update(
-                    {
-                        target: _declared_battery_metric(entity, family, target)
-                        for target in targets
-                    }
-                )
+    for (
+        entity,
+        family,
+        target,
+        clone_index,
+    ), metric in stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.items():
+        metrics.setdefault((entity, family, clone_index), {})[target] = metric
     for spec in extras:
         metrics.setdefault((spec.entity, spec.family, spec.clone_index), {}).update(
             spec.column_metrics
@@ -2627,12 +2664,14 @@ def _with_declared_battery_defaults(
     preserve: frozenset[tuple[str, str]] = frozenset(),
 ) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    for direction in stacked_gap_fill_plan():
-        for entity, families in direction.target_families.items():
-            for targets in families.values():
-                for target in targets:
-                    if (entity, target) not in preserve:
-                        tables[entity][target] = 1.0
+    for (
+        entity,
+        _family,
+        target,
+        _clone_index,
+    ) in stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY:
+        if (entity, target) not in preserve:
+            tables[entity][target] = 1.0
     return Frame(
         tables,
         frame.schema,
@@ -2726,6 +2765,36 @@ def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:
     )
 
 
+def test_battery_joint_immigration_tvd_preserves_dependence_guarantee() -> None:
+    frame = _battery_frame(
+        {
+            "ssn_card_type": (
+                np.asarray(["A"] * 4 + ["B"] * 4, dtype=object),
+                np.asarray(["A"] * 4 + ["B"] * 4, dtype=object),
+            ),
+            "immigration_status_str": (
+                np.asarray(["X"] * 4 + ["Y"] * 4, dtype=object),
+                np.asarray(["Y"] * 4 + ["X"] * 4, dtype=object),
+            ),
+        }
+    )
+
+    result = by_origin_battery(frame)
+
+    assert not result.passed
+    for column in ("ssn_card_type", "immigration_status_str"):
+        marginal = result.details["comparisons"][
+            f"person/source_operator_immigration/{column}[clone_0]"
+        ]
+        assert marginal["total_variation_distance"] == 0.0
+    joint_label = (
+        "person/source_operator_immigration/"
+        "joint[ssn_card_type,immigration_status_str][clone_0]"
+    )
+    assert result.details["comparisons"][joint_label]["total_variation_distance"] == 1.0
+    assert any(joint_label in failure for failure in result.failures)
+
+
 def test_battery_rejects_registry_omitting_declared_champva_before_comparisons() -> (
     None
 ):
@@ -2785,7 +2854,7 @@ def test_battery_taxable_interest_metric_cannot_be_relabelled_rare_incidence() -
     assert not result.passed
     assert result.details["tested_comparisons"] == 0
     metric_receipt = result.details["authority"]["components"]["metric_registry"]
-    assert metric_receipt["target_count"] == 90
+    assert metric_receipt["target_count"] == 131
     assert any(
         "person/puf_tax_itemization/taxable_interest_income[clone_0]" in failure
         and "authoritative metric 'monetary_sign_separated'" in failure

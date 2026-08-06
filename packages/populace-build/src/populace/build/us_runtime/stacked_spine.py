@@ -53,8 +53,11 @@ from populace.build.us_runtime.acs_transfer import (
     AcsTransferResult,
     AcsTransferTargetBank,
     TargetFamilies,
-    declared_acs_transfer_target_families,
     transfer_acs_inputs,
+)
+from populace.build.us_runtime.multispine_pool import (
+    POOL_SPINE_AGREEMENT_REGISTRY,
+    pool_transfer_target_families,
 )
 from populace.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -76,8 +79,10 @@ from populace.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
     "CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY",
+    "CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY",
     "CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE",
     "CANONICAL_STACKED_DECLARED_SURFACE",
+    "CANONICAL_STACKED_GAP_FILL_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_PLAN",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "ORIGIN_BATTERY_METRIC_KINDS",
@@ -841,7 +846,7 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-_STACKED_AUTHORITY_VERSION = 1
+_STACKED_AUTHORITY_VERSION = 2
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 
@@ -990,6 +995,7 @@ class _StackedAuthority:
     gap_fill_plan: tuple[GapFillDirection, ...]
     declared_surface: TargetFamilies
     metric_registry: Mapping[tuple[str, str, str, int], str]
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     support_profile: _BatterySupportProfile
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
@@ -1014,6 +1020,11 @@ class _StackedAuthority:
             "metric_registry",
             _freeze_metric_registry(self.metric_registry),
         )
+        object.__setattr__(
+            self,
+            "joint_metric_registry",
+            _freeze_joint_metric_registry(self.joint_metric_registry),
+        )
         if not isinstance(self.support_profile, _BatterySupportProfile):
             raise TypeError(
                 "Stacked authority support_profile must be a _BatterySupportProfile."
@@ -1023,6 +1034,7 @@ class _StackedAuthority:
             "gap_fill_plan",
             "declared_surface",
             "metric_registry",
+            "joint_metric_registry",
             "support_profile",
         }:
             raise ValueError(
@@ -1072,6 +1084,35 @@ def _freeze_metric_registry(
             raise ValueError(
                 f"Origin-battery target {_battery_target_label(key)} declares "
                 f"unknown metric {metric!r}."
+            )
+        frozen[key] = metric
+    return MappingProxyType(frozen)
+
+
+def _freeze_joint_metric_registry(
+    registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
+) -> Mapping[tuple[str, str, tuple[str, ...], int], str]:
+    if not isinstance(registry, Mapping):
+        raise TypeError("The joint origin-battery metric registry must be a mapping.")
+    frozen: dict[tuple[str, str, tuple[str, ...], int], str] = {}
+    for key, metric in registry.items():
+        if (
+            not isinstance(key, tuple)
+            or len(key) != 4
+            or any(not isinstance(value, str) or not value for value in key[:2])
+            or not isinstance(key[2], tuple)
+            or len(key[2]) < 2
+            or len(set(key[2])) != len(key[2])
+            or any(not isinstance(column, str) or not column for column in key[2])
+            or isinstance(key[3], bool)
+            or not isinstance(key[3], int)
+            or key[3] < 0
+        ):
+            raise ValueError(f"Invalid joint origin-battery metric key {key!r}.")
+        if metric != "categorical_tvd":
+            raise ValueError(
+                "Joint origin-battery targets must declare categorical_tvd; "
+                f"got {metric!r} for {key!r}."
             )
         frozen[key] = metric
     return MappingProxyType(frozen)
@@ -1138,6 +1179,21 @@ def _metric_registry_payload(
     ]
 
 
+def _joint_metric_registry_payload(
+    registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "entity": entity,
+            "family": family,
+            "columns": list(columns),
+            "clone_index": clone_index,
+            "metric": registry[(entity, family, columns, clone_index)],
+        }
+        for entity, family, columns, clone_index in sorted(registry)
+    ]
+
+
 def _support_profile_payload(profile: _BatterySupportProfile) -> dict[str, object]:
     return {
         "min_effective_support": profile.min_effective_support,
@@ -1151,12 +1207,14 @@ def _authority_component_payloads(
     gap_fill_plan: Sequence[GapFillDirection],
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
     support_profile: _BatterySupportProfile,
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
         "declared_surface": _surface_payload(declared_surface),
         "metric_registry": _metric_registry_payload(metric_registry),
+        "joint_metric_registry": _joint_metric_registry_payload(joint_metric_registry),
         "support_profile": _support_profile_payload(support_profile),
     }
 
@@ -1179,6 +1237,7 @@ def _authority_live_digests(
         gap_fill_plan=authority.gap_fill_plan,
         declared_surface=authority.declared_surface,
         metric_registry=authority.metric_registry,
+        joint_metric_registry=authority.joint_metric_registry,
         support_profile=authority.support_profile,
     )
     component_digests = {
@@ -1203,16 +1262,22 @@ def _make_stacked_authority(
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
     declared_form: str,
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
+    | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
     declared_sha256: str | None = None,
 ) -> _StackedAuthority:
     frozen_plan = tuple(gap_fill_plan)
     frozen_surface = _freeze_target_families(declared_surface)
     frozen_registry = _freeze_metric_registry(metric_registry)
+    frozen_joint_registry = _freeze_joint_metric_registry(
+        {} if joint_metric_registry is None else joint_metric_registry
+    )
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
+        joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
     )
     live_components = {
@@ -1231,6 +1296,7 @@ def _make_stacked_authority(
         gap_fill_plan=frozen_plan,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
+        joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
         declared_component_sha256=(
             live_components
@@ -1242,9 +1308,11 @@ def _make_stacked_authority(
     )
 
 
-def _canonical_metric_registry(
+def _test_metric_registry_for_surface(
     surface: TargetFamilies,
 ) -> Mapping[tuple[str, str, str, int], str]:
+    """Choose fixture metrics only; production uses explicit declarations."""
+
     boolean_columns = {
         "estate_income_would_be_qualified",
         "farm_operations_income_would_be_qualified",
@@ -1275,14 +1343,494 @@ def _canonical_metric_registry(
     return MappingProxyType(registry)
 
 
-CANONICAL_STACKED_DECLARED_SURFACE = _freeze_target_families(
-    declared_acs_transfer_target_families()
+def _terminal_surface_from_pool_registry() -> TargetFamilies:
+    surface: dict[str, dict[str, tuple[str, ...]]] = {}
+    for spec in POOL_SPINE_AGREEMENT_REGISTRY:
+        surface.setdefault(spec.entity, {})[spec.family] = tuple(spec.columns)
+    return _freeze_target_families(surface)
+
+
+_EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
+    str, tuple[tuple[str, str, str], ...]
+] = MappingProxyType(
+    {
+        "monetary_sign_separated": (
+            ("person", "adult_care", "pre_subsidy_care_expenses"),
+            (
+                "person",
+                "derived_transfer",
+                "schedule_d_capital_gain_distributions",
+            ),
+            ("person", "housing", "pre_subsidy_rent"),
+            (
+                "person",
+                "model_required_numeric",
+                "health_insurance_premiums_without_medicare_part_b",
+            ),
+            ("person", "model_required_numeric", "hours_worked_last_week"),
+            ("person", "model_required_numeric", "other_medical_expenses"),
+            (
+                "person",
+                "model_required_numeric",
+                "over_the_counter_health_expenses",
+            ),
+            (
+                "person",
+                "model_required_numeric",
+                "tax_exempt_private_pension_income",
+            ),
+            (
+                "person",
+                "model_required_numeric",
+                "unemployment_compensation",
+            ),
+            ("person", "model_required_numeric", "veterans_benefits"),
+            ("person", "puf_tax_itemization", "taxable_interest_income"),
+            ("person", "puf_tax_itemization", "qualified_dividend_income"),
+            ("person", "puf_tax_itemization", "non_qualified_dividend_income"),
+            ("person", "puf_tax_itemization", "tax_exempt_interest_income"),
+            ("person", "puf_tax_itemization", "short_term_capital_gains"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "long_term_capital_gains_before_response",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "long_term_capital_gains_on_collectibles",
+            ),
+            ("person", "puf_tax_itemization", "non_sch_d_capital_gains"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "taxable_private_pension_income",
+            ),
+            ("person", "puf_tax_itemization", "taxable_ira_distributions"),
+            ("person", "puf_tax_itemization", "social_security_retirement"),
+            ("person", "puf_tax_itemization", "social_security_disability"),
+            ("person", "puf_tax_itemization", "social_security_dependents"),
+            ("person", "puf_tax_itemization", "social_security_survivors"),
+            ("person", "puf_tax_itemization", "alimony_income"),
+            ("person", "puf_tax_itemization", "alimony_expense"),
+            ("person", "puf_tax_itemization", "salt_refund_income"),
+            ("person", "puf_tax_itemization", "charitable_cash_donations"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "charitable_non_cash_donations",
+            ),
+            ("person", "puf_tax_itemization", "home_mortgage_interest"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "investment_interest_expense",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "investment_income_elected_form_4952",
+            ),
+            ("person", "puf_tax_itemization", "student_loan_interest"),
+            ("person", "puf_tax_itemization", "educator_expense"),
+            ("person", "puf_tax_itemization", "qualified_tuition_expenses"),
+            ("person", "puf_tax_itemization", "casualty_loss"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "unreimbursed_business_employee_expenses",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "traditional_ira_contributions_desired",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "self_employed_pension_contributions_desired",
+            ),
+            ("person", "puf_tax_itemization", "rental_income"),
+            ("person", "puf_tax_itemization", "estate_income"),
+            ("person", "puf_tax_itemization", "farm_income"),
+            ("person", "puf_tax_itemization", "farm_operations_income"),
+            ("person", "puf_tax_itemization", "farm_rent_income"),
+            ("person", "puf_tax_itemization", "miscellaneous_income"),
+            ("person", "puf_tax_itemization", "partnership_income"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "partnership_self_employment_net_earnings",
+            ),
+            ("person", "puf_tax_itemization", "qualified_bdc_income"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "qualified_reit_and_ptp_income",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_self_employment_income_before_lsr",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_unadjusted_basis_qualified_property",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_w2_wages_from_qualified_business",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "unadjusted_basis_qualified_property",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "w2_wages_from_qualified_business",
+            ),
+            ("person", "simulated_output", "ssi"),
+            (
+                "person",
+                "source_operator_child_support",
+                "child_support_expense",
+            ),
+            (
+                "person",
+                "source_operator_child_support",
+                "child_support_received",
+            ),
+            (
+                "person",
+                "source_operator_cps_carried",
+                "strike_benefits",
+            ),
+            (
+                "person",
+                "source_operator_disability_benefits",
+                "disability_benefits",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "educational_assistance",
+            ),
+            (
+                "person",
+                "source_operator_hours_worked",
+                "weekly_hours_worked_before_lsr",
+            ),
+            (
+                "person",
+                "source_operator_prior_year_income",
+                "self_employment_income_last_year",
+            ),
+            (
+                "person",
+                "source_operator_retirement_contributions",
+                "roth_401k_contributions_desired",
+            ),
+            (
+                "person",
+                "source_operator_retirement_contributions",
+                "roth_ira_contributions_desired",
+            ),
+            (
+                "person",
+                "source_operator_retirement_contributions",
+                "traditional_401k_contributions_desired",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "keogh_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "tax_exempt_ira_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "taxable_401k_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "taxable_403b_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "taxable_sep_distributions",
+            ),
+            (
+                "person",
+                "source_operator_weeks_unemployed",
+                "weeks_unemployed",
+            ),
+            (
+                "person",
+                "source_operator_workers_compensation",
+                "workers_compensation",
+            ),
+            (
+                "spm_unit",
+                "model_required_numeric",
+                "spm_unit_pre_subsidy_childcare_expenses",
+            ),
+            (
+                "spm_unit",
+                "source_operator_energy_subsidy",
+                "spm_unit_energy_subsidy",
+            ),
+            ("tax_unit", "puf_tax_itemization", "domestic_production_ald"),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "unrecaptured_section_1250_gain",
+            ),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "first_home_mortgage_balance",
+            ),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "first_home_mortgage_interest",
+            ),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "health_savings_account_ald",
+            ),
+        ),
+        "boolean_incidence": (
+            ("person", "adult_care", "is_incapable_of_self_care"),
+            (
+                "person",
+                "model_required_boolean",
+                "has_champva_health_coverage_at_interview",
+            ),
+            ("person", "model_required_boolean", "has_esi"),
+            (
+                "person",
+                "model_required_boolean",
+                "has_indian_health_service_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_marketplace_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_medicaid_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_other_means_tested_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_tricare_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_va_health_coverage_at_interview",
+            ),
+            ("person", "model_required_boolean", "is_blind"),
+            ("person", "model_required_boolean", "is_disabled"),
+            (
+                "person",
+                "model_required_boolean",
+                "is_full_time_college_student",
+            ),
+            ("person", "model_required_boolean", "is_pregnant"),
+            ("person", "model_required_boolean", "receives_wic"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "estate_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "farm_operations_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "farm_rent_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "partnership_s_corp_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "rental_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "self_employment_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_self_employment_income_would_be_qualified",
+            ),
+            ("person", "puf_tax_itemization", "business_is_sstb"),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "attends_eligible_educational_institution_for_american_opportunity_credit",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "has_american_opportunity_credit_1098_t_or_exception",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "has_american_opportunity_credit_institution_ein",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "is_pursuing_credential_for_american_opportunity_credit",
+            ),
+            (
+                "person",
+                "source_operator_medicare_take_up",
+                "takes_up_medicare_if_eligible",
+            ),
+            (
+                "person",
+                "source_operator_prior_year_income",
+                "previous_year_income_available",
+            ),
+            (
+                "person",
+                "source_operator_relationship_inputs",
+                "is_separated",
+            ),
+            (
+                "person",
+                "source_operator_relationship_inputs",
+                "is_surviving_spouse",
+            ),
+            (
+                "person",
+                "source_operator_wic_claim",
+                "would_claim_wic",
+            ),
+            ("person", "take_up", "takes_up_basic_health_program_if_eligible"),
+            ("person", "take_up", "takes_up_chip_if_eligible"),
+            ("person", "take_up", "takes_up_early_head_start_if_eligible"),
+            ("person", "take_up", "takes_up_head_start_if_eligible"),
+            ("person", "take_up", "takes_up_medicaid_if_eligible"),
+            ("person", "take_up", "takes_up_ssi_if_eligible"),
+            (
+                "spm_unit",
+                "benefit_participation",
+                "takes_up_housing_assistance_if_eligible",
+            ),
+            ("spm_unit", "model_required_boolean", "is_tanf_enrolled"),
+            ("spm_unit", "model_required_boolean", "receives_snap"),
+            (
+                "spm_unit",
+                "source_operator_housing_inputs",
+                "receives_housing_assistance",
+            ),
+            ("spm_unit", "take_up", "takes_up_snap_if_eligible"),
+            ("spm_unit", "take_up", "takes_up_tanf_if_eligible"),
+            ("tax_unit", "take_up", "takes_up_aca_if_eligible"),
+            ("tax_unit", "take_up", "takes_up_dc_ptc"),
+            ("tax_unit", "take_up", "takes_up_eitc"),
+        ),
+        "categorical_tvd": (
+            ("person", "model_required_discrete", "own_children_in_household"),
+            (
+                "person",
+                "source_operator_immigration",
+                "immigration_status_str",
+            ),
+            ("person", "source_operator_immigration", "ssn_card_type"),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "first_home_mortgage_origination_year",
+            ),
+        ),
+    }
 )
+
+
+def _explicit_origin_battery_metric_registry(
+    surface: TargetFamilies,
+) -> Mapping[tuple[str, str, str, int], str]:
+    registry = {
+        (entity, family, column, 0): metric
+        for metric, declarations in _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS.items()
+        for entity, family, column in declarations
+    }
+    surface_keys = set(_surface_target_keys(surface))
+    missing = sorted(surface_keys - set(registry))
+    extra = sorted(set(registry) - surface_keys)
+    if missing or extra:
+        raise RuntimeError(
+            "Explicit stacked battery metrics do not exactly cover the production "
+            f"surface; missing={missing}, extra={extra}."
+        )
+    return _freeze_metric_registry(registry)
+
+
+CANONICAL_STACKED_GAP_FILL_SURFACE = _freeze_target_families(
+    pool_transfer_target_families()
+)
+CANONICAL_STACKED_DECLARED_SURFACE = _terminal_surface_from_pool_registry()
 CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
+    CANONICAL_STACKED_GAP_FILL_SURFACE
+)
+CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _explicit_origin_battery_metric_registry(
     CANONICAL_STACKED_DECLARED_SURFACE
 )
-CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _canonical_metric_registry(
-    CANONICAL_STACKED_DECLARED_SURFACE
+CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY: Mapping[
+    tuple[str, str, tuple[str, ...], int], str
+] = MappingProxyType(
+    {
+        (
+            "person",
+            "source_operator_immigration",
+            ("ssn_card_type", "immigration_status_str"),
+            0,
+        ): "categorical_tvd"
+    }
 )
 CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
     profile_id="us_stacked_origin_battery_support",
@@ -1291,9 +1839,13 @@ CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
 )
 
 _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR = CANONICAL_STACKED_DECLARED_SURFACE
+_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR = CANONICAL_STACKED_GAP_FILL_SURFACE
 _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR = CANONICAL_STACKED_GAP_FILL_PLAN
 _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+)
+_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR = (
+    CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 )
 _CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
@@ -1303,8 +1855,10 @@ _CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
 # immutable anchors. Rebinding any active reference is detected at evaluation,
 # and the live content digest is receipted rather than trusting a stale hash.
 _STACKED_DECLARED_SURFACE = CANONICAL_STACKED_DECLARED_SURFACE
+_STACKED_GAP_FILL_SURFACE = CANONICAL_STACKED_GAP_FILL_SURFACE
 _STACKED_GAP_FILL_PLAN = CANONICAL_STACKED_GAP_FILL_PLAN
 _BATTERY_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+_BATTERY_JOINT_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 _BATTERY_SUPPORT_PROFILE = CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
 
 _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
@@ -1313,6 +1867,7 @@ _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
     gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
     declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
     metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+    joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
     support_profile=_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR,
     declared_form=_CANONICAL_AUTHORITY_FORM,
 )
@@ -1323,18 +1878,24 @@ def _production_stacked_authority(
     *,
     _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
     _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_gap_surface: TargetFamilies = CANONICAL_STACKED_GAP_FILL_SURFACE,
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
     ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_joint_registry: Mapping[
+        tuple[str, str, tuple[str, ...], int], str
+    ] = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
     _canonical_profile: _BatterySupportProfile = (
         CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
     ),
 ) -> _StackedAuthority:
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
+        and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
         and _STACKED_DECLARED_SURFACE is _canonical_surface
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
+        and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
         and _BATTERY_SUPPORT_PROFILE is _canonical_profile
     )
     if identity:
@@ -1345,6 +1906,7 @@ def _production_stacked_authority(
         gap_fill_plan=_STACKED_GAP_FILL_PLAN,
         declared_surface=_STACKED_DECLARED_SURFACE,
         metric_registry=_BATTERY_METRIC_REGISTRY,
+        joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
         support_profile=_BATTERY_SUPPORT_PROFILE,
         declared_form=_CANONICAL_AUTHORITY_FORM,
         declared_component_sha256=_canonical_authority.declared_component_sha256,
@@ -1355,7 +1917,7 @@ def _production_stacked_authority(
 def _metric_registry_for_surface(
     surface: TargetFamilies,
 ) -> Mapping[tuple[str, str, str, int], str]:
-    inferred = _canonical_metric_registry(surface)
+    inferred = _test_metric_registry_for_surface(surface)
     return MappingProxyType(
         {
             key: CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.get(
@@ -1372,6 +1934,8 @@ def _make_test_stacked_authority(
     declared_surface: TargetFamilies | None = None,
     gap_fill_plan: Sequence[GapFillDirection] | None = None,
     metric_registry: Mapping[tuple[str, str, str, int], str] | None = None,
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
+    | None = None,
     support_profile: _BatterySupportProfile | None = None,
 ) -> _StackedAuthority:
     """Explicit test-only seam; every receipt is marked non-canonical."""
@@ -1387,12 +1951,25 @@ def _make_test_stacked_authority(
         if metric_registry is None
         else metric_registry
     )
+    surface_keys = set(_surface_target_keys(surface))
+    joints = (
+        {
+            key: metric
+            for key, metric in CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY.items()
+            if all(
+                (key[0], key[1], column, key[3]) in surface_keys for column in key[2]
+            )
+        }
+        if joint_metric_registry is None
+        else joint_metric_registry
+    )
     return _make_stacked_authority(
         authority_id=f"{_STACKED_AUTHORITY_ID}.test",
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=plan,
         declared_surface=surface,
         metric_registry=registry,
+        joint_metric_registry=joints,
         support_profile=(
             CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
             if support_profile is None
@@ -1478,6 +2055,14 @@ def _authority_receipt(
             "target_count": len(authority.metric_registry),
             "digest_matches_declared": component_integrity["metric_registry"],
         },
+        "joint_metric_registry": {
+            "sha256": live_components["joint_metric_registry"],
+            "declared_sha256": authority.declared_component_sha256[
+                "joint_metric_registry"
+            ],
+            "target_count": len(authority.joint_metric_registry),
+            "digest_matches_declared": component_integrity["joint_metric_registry"],
+        },
         "support_profile": {
             **support,
             "sha256": live_components["support_profile"],
@@ -1512,6 +2097,9 @@ def _authority_validation_failures(
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
     ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_joint_registry: Mapping[
+        tuple[str, str, tuple[str, ...], int], str
+    ] = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
     _canonical_profile: _BatterySupportProfile = (
         CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
     ),
@@ -1546,6 +2134,7 @@ def _authority_validation_failures(
         ("gap_fill_plan", "gap-fill plan"),
         ("declared_surface", "declared surface"),
         ("metric_registry", "metric registry"),
+        ("joint_metric_registry", "joint metric registry"),
         ("support_profile", "support profile"),
     ):
         component = receipt["components"][name]
@@ -1578,6 +2167,36 @@ def _authority_validation_failures(
             failures.append(
                 f"declared battery target {_battery_target_label(target)} must "
                 f"use authoritative metric {canonical_metric!r}, got {metric!r}."
+            )
+    for target, metric in authority.joint_metric_registry.items():
+        entity, family, columns, clone_index = target
+        missing_members = [
+            column
+            for column in columns
+            if (entity, family, column, clone_index) not in authority.metric_registry
+        ]
+        noncategorical_members = [
+            column
+            for column in columns
+            if authority.metric_registry.get((entity, family, column, clone_index))
+            not in {None, "categorical_tvd"}
+        ]
+        if missing_members:
+            failures.append(
+                f"joint battery target {_joint_battery_target_label(target)} has "
+                f"unregistered member(s) {missing_members}."
+            )
+        if noncategorical_members:
+            failures.append(
+                f"joint battery target {_joint_battery_target_label(target)} has "
+                f"non-categorical member metric(s) {noncategorical_members}."
+            )
+        canonical_metric = _canonical_joint_registry.get(target)
+        if canonical_metric is not None and metric != canonical_metric:
+            failures.append(
+                f"declared joint battery target {_joint_battery_target_label(target)} "
+                f"must use authoritative metric {canonical_metric!r}, got "
+                f"{metric!r}."
             )
     if authority.support_profile != _canonical_profile:
         failures.append(
@@ -1631,6 +2250,9 @@ def _validate_stacked_gate_manifest_details(
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
     ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_joint_registry: Mapping[
+        tuple[str, str, tuple[str, ...], int], str
+    ] = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
 ) -> None:
     """Validate gate-specific receipts against the captured canonical doctrine."""
 
@@ -1665,8 +2287,11 @@ def _validate_stacked_gate_manifest_details(
             for column in columns
         }
         targets = details.get("targets")
-        if details.get("declared_targets") != 90:
-            reject("canonical completeness receipt must declare exactly 90 targets")
+        if details.get("declared_targets") != len(expected_keys):
+            reject(
+                "canonical completeness receipt must declare exactly "
+                f"{len(expected_keys)} targets"
+            )
         if not isinstance(targets, Mapping) or set(targets) != expected_labels:
             reject("canonical completeness receipt target surface mismatch")
         allowed_target_forms = {
@@ -1695,7 +2320,12 @@ def _validate_stacked_gate_manifest_details(
             for cell, proof_receipt in proven.items():
                 if not isinstance(proof_receipt, Mapping):
                     reject(f"{label} {cell} proof receipt is not a mapping")
-                direction = direction_by_label[label]
+                direction = direction_by_label.get(label)
+                if direction is None:
+                    reject(
+                        f"{label} has no canonical gap-fill direction and cannot "
+                        "carry a proven-absence receipt"
+                    )
                 cell_channel, separator, _clone_role = str(cell).partition("/clone_")
                 if (
                     not separator
@@ -1716,7 +2346,13 @@ def _validate_stacked_gate_manifest_details(
         return
 
     if gate_name == _BATTERY_GATE_NAME:
-        expected_labels = {_battery_target_label(target) for target in expected_keys}
+        expected_labels = {
+            *(_battery_target_label(target) for target in expected_keys),
+            *(
+                _joint_battery_target_label(target)
+                for target in _canonical_joint_registry
+            ),
+        }
         expected_plan = {
             "plan_id": "stacked_gap_fill_plan",
             "version": authority["version"],
@@ -1724,12 +2360,17 @@ def _validate_stacked_gate_manifest_details(
         }
         comparisons = details.get("comparisons")
         if (
-            details.get("declared_target_count") != 90
-            or details.get("registered_target_count") != 90
+            details.get("declared_target_count") != len(expected_keys)
+            or details.get("registered_target_count") != len(expected_keys)
+            or details.get("registered_joint_target_count")
+            != len(_canonical_joint_registry)
             or details.get("missing_declared_targets") != []
             or details.get("extra_registered_targets") != []
         ):
-            reject("canonical battery coverage receipt must bind all 90 targets")
+            reject(
+                "canonical battery coverage receipt must bind all "
+                f"{len(expected_keys)} targets"
+            )
         if details.get("declared_plan") != expected_plan:
             reject("canonical battery plan receipt mismatch")
         if details.get("support_profile") != authority["components"]["support_profile"]:
@@ -1738,6 +2379,14 @@ def _validate_stacked_gate_manifest_details(
             reject("canonical battery comparison surface mismatch")
         for target, metric in _canonical_registry.items():
             label = _battery_target_label(target)
+            comparison = comparisons[label]
+            if (
+                not isinstance(comparison, Mapping)
+                or comparison.get("metric") != metric
+            ):
+                reject(f"{label} comparison must use canonical metric {metric!r}")
+        for target, metric in _canonical_joint_registry.items():
+            label = _joint_battery_target_label(target)
             comparison = comparisons[label]
             if (
                 not isinstance(comparison, Mapping)
@@ -1753,16 +2402,32 @@ _canonical_surface_keys = _surface_target_keys(
     _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
 )
 if (
-    len(_canonical_surface_keys) != 90
-    or len(set(_canonical_surface_keys)) != 90
+    len(_canonical_surface_keys) != 131
+    or len(set(_canonical_surface_keys)) != 131
+    or len(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR)) != 118
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
-    != set(_canonical_surface_keys)
+    != set(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR))
+    or not set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR)).issubset(
+        _canonical_surface_keys
+    )
     or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
     != set(_canonical_surface_keys)
+    or len(_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR) != 1
+    or any(
+        (entity, family, column, clone_index) not in _canonical_surface_keys
+        or _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR[
+            (entity, family, column, clone_index)
+        ]
+        != "categorical_tvd"
+        for entity, family, columns, clone_index in (
+            _CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR
+        )
+        for column in columns
+    )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must bind one plan, surface, and metric "
-        "for exactly 90 unique targets."
+        "Canonical stacked authority must bind an exact 118-target gap-fill "
+        "plan inside an exact 131-target terminal surface and metric registry."
     )
 
 
@@ -2717,7 +3382,7 @@ class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
 
     Production never accepts these specs from a caller: it consumes the
-    immutable 90-column canonical registry. The explicit test-authority seam
+    immutable 131-column canonical registry. The explicit test-authority seam
     groups its digested registry into specs so the comparison engine can reuse
     the same loop. ``clone_index`` scopes a fixture comparison to one clone
     role: 0 compares native rows and 1 compares a PUF arm.
@@ -2769,7 +3434,7 @@ class OriginBatterySpec:
 def by_origin_battery(
     frame: Frame,
 ) -> GateResult:
-    """Run the canonical 90-target by-origin battery."""
+    """Run the canonical 131-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,
@@ -2818,8 +3483,9 @@ def _by_origin_battery_evaluate(
 ) -> GateResult:
     """Compare declared statistics between origins within the one spine.
 
-    Replaces the retired spine-vs-spine agreement: the same comparisons,
-    scoped to gap-filled families, with per-family DECLARED metrics.  The
+    Replaces the retired spine-vs-spine agreement: the same comparisons over
+    the complete terminal production surface, with per-column DECLARED
+    metrics.  The
     tolerances are the chartered ones — incidence ratios within
     ``[0.8, 1.25]``, conditional-quantile envelopes within ``0.25``,
     categorical total-variation within ``0.25`` — deliberately NOT widened.
@@ -2862,6 +3528,7 @@ def _by_origin_battery_evaluate(
         "authority": authority_receipt,
         "declared_target_count": len(declared_target_set),
         "registered_target_count": len(registered_targets),
+        "registered_joint_target_count": len(authority.joint_metric_registry),
         "missing_declared_targets": [
             _battery_target_label(target) for target in missing_targets
         ],
@@ -2991,6 +3658,67 @@ def _by_origin_battery_evaluate(
                         authority.support_profile.min_effective_support
                     ),
                 )
+    for target, metric in authority.joint_metric_registry.items():
+        entity, family, columns, clone_role = target
+        label = _joint_battery_target_label(target)
+        table = frame.table(entity)
+        missing_columns = sorted(set(columns) - set(table.columns))
+        if missing_columns:
+            failures.append(
+                f"{label}: registered column(s) are absent from the frame: "
+                f"{missing_columns}."
+            )
+            comparisons[label] = {
+                "status": "missing_column",
+                "metric": metric,
+                "missing_columns": missing_columns,
+            }
+            continue
+        channel = table[support_channel_column(entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).astype("int64")
+        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+        scope = clone_index.eq(clone_role).to_numpy() & (weights > 0.0)
+        left_rows = scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+        right_rows = scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
+        scoped_nulls = int(table.loc[:, list(columns)].isna().any(axis=1)[scope].sum())
+        if scoped_nulls:
+            failures.append(
+                f"{label}: {scoped_nulls} null tuple(s) inside the comparison "
+                "scope; the battery runs only on completed surfaces."
+            )
+            comparisons[label] = {
+                "status": "null_in_scope",
+                "metric": metric,
+                "null_rows": scoped_nulls,
+            }
+            continue
+        support = {"asec": int(left_rows.sum()), "acs": int(right_rows.sum())}
+        if min(support.values()) < authority.support_profile.min_effective_support:
+            comparisons[label] = {
+                "status": "insufficient_support",
+                "metric": metric,
+                "scope_rows": support,
+            }
+            untestable.append(label)
+            continue
+        tested += 1
+        tuples = pd.Series(
+            list(table.loc[:, list(columns)].itertuples(index=False, name=None)),
+            index=table.index,
+            dtype=object,
+        )
+        _battery_categorical_comparison(
+            label=label,
+            series=tuples,
+            left_rows=left_rows,
+            right_rows=right_rows,
+            weights=weights,
+            failures=failures,
+            comparisons=comparisons,
+        )
     return GateResult(
         name=_BATTERY_GATE_NAME,
         passed=not failures,
@@ -3017,6 +3745,13 @@ def _by_origin_battery_evaluate(
 def _battery_target_label(target: tuple[str, str, str, int]) -> str:
     entity, family, column, clone_index = target
     return f"{entity}/{family}/{column}[clone_{clone_index}]"
+
+
+def _joint_battery_target_label(
+    target: tuple[str, str, tuple[str, ...], int],
+) -> str:
+    entity, family, columns, clone_index = target
+    return f"{entity}/{family}/joint[{','.join(columns)}][clone_{clone_index}]"
 
 
 def _battery_numeric_values(
