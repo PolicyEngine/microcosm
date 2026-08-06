@@ -1,10 +1,17 @@
-"""Local-only Chronicle spool rows compatible with the #628 build ledger.
+"""Durable, append-only Chronicle client for terminal build attempts.
 
-This module is the direct-write fallback for build tools whose branch base
-does not yet contain :mod:`populace.build.ledger`. It implements the exact
-17-field row schema and hash contract from populace#628, but deliberately has
-no remote client: a successful call validates one terminal build-attempt row
-and durably writes ``<row_digest>.json`` beneath the caller's spool directory.
+``record_build_attempt`` is the adoption seam owned by populace#616. Callers
+provide a complete terminal attempt receipt and the digest of the chain head
+they are extending. Chronicle validates and hashes the receipt, durably writes
+``<row_digest>.json`` beneath the caller's spool directory, and only then makes
+a best-effort Supabase REST insert.
+
+Remote availability is never part of build correctness. If either
+``POPULACE_LEDGER_URL`` or ``POPULACE_LEDGER_KEY`` is absent, the validated row
+stays in spool-only mode without error. Network and HTTP failures are returned
+as receipt data and never raised. Local validation and durable-spool failures
+remain fatal: callers must not claim an attempt was recorded if its local row
+was invalid or could not be persisted.
 
 The caller owns chain coordination and must provide ``prev_row_digest`` for
 the ledger head it extends. The row digest is
@@ -12,8 +19,14 @@ the ledger head it extends. The row digest is
 ``sha256(canonical JSON of all non-chain fields || prev_row_digest)``
 
 where the predecessor is lowercase ASCII, or the empty string for genesis.
-Local validation and durable-spool failures are fatal. Writes use the house
-pattern: file fsync, atomic rename, then containing-directory fsync.
+Writes use the house pattern: file fsync, atomic rename, then containing-
+directory fsync. ``reconcile_spool`` retries rows in predecessor order with
+PostgREST ignore-duplicate semantics and removes only server-acknowledged rows.
+
+The Supabase key must identify the migration's ``chronicle_writer`` role, not
+the service role. The ``chronicle`` schema must also be enabled in the hosted
+project's PostgREST exposed-schema setting. This module deliberately wires no
+build tool; adoption remains in populace#616.
 """
 
 from __future__ import annotations
@@ -29,18 +42,24 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from fractions import Fraction
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 __all__ = [
     "BUILD_DISPOSITIONS",
     "CHRONICLE_ROW_FIELDS",
     "ChronicleRow",
     "ChronicleWriteResult",
+    "ReconcileResult",
     "canonical_json_bytes",
     "compute_row_digest",
+    "load_spool_rows",
     "load_chronicle_row",
+    "order_rows_by_chain",
+    "reconcile_spool",
     "record_build_attempt",
 ]
 
@@ -58,7 +77,7 @@ BUILD_DISPOSITIONS = frozenset(
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
-_RUNG_PATTERN = re.compile(r"^(?:1|[1-9][0-9]*/[1-9][0-9]*)$")
+CHRONICLE_RUNGS = frozenset({"f001", "f010", "f100"})
 CHRONICLE_ROW_FIELDS = frozenset(
     {
         "build_id",
@@ -273,10 +292,22 @@ class ChronicleRow:
 
 @dataclass(frozen=True)
 class ChronicleWriteResult:
-    """Receipt for one durable local Chronicle spool write."""
+    """Receipt for one durable local write and best-effort remote insert."""
 
     row: ChronicleRow
     spool_path: Path
+    posted: bool = False
+    remote_error: str | None = None
+
+
+@dataclass(frozen=True)
+class ReconcileResult:
+    """Receipt for one ordered spool reconciliation pass."""
+
+    attempted: int
+    posted: int
+    retained: int
+    errors: tuple[str, ...]
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -333,8 +364,15 @@ def record_build_attempt(
     prev_row_digest: str | None,
     row_digest: str | None = None,
     spool_dir: str | Path = "ledger-spool",
+    timeout: float = 10.0,
 ) -> ChronicleWriteResult:
-    """Validate and durably spool one terminal attempt without network I/O."""
+    """Validate, durably spool, then best-effort insert one terminal attempt.
+
+    The complete row, including ``prev_row_digest``, is supplied by the caller
+    so chain coordination is explicit. A missing URL or key selects spool-only
+    mode. Remote failures are reported in ``remote_error`` and never raised;
+    validation and local persistence errors do raise.
+    """
 
     row = ChronicleRow.create(
         build_id=build_id,
@@ -357,7 +395,21 @@ def record_build_attempt(
     )
     spool_path = Path(spool_dir) / f"{row.row_digest}.json"
     _atomic_write_row(spool_path, row)
-    return ChronicleWriteResult(row=row, spool_path=spool_path)
+    config = _remote_config()
+    if config is None:
+        return ChronicleWriteResult(row=row, spool_path=spool_path)
+    posted, error = _post_build_row(
+        row,
+        ledger_url=config[0],
+        ledger_key=config[1],
+        timeout=timeout,
+    )
+    return ChronicleWriteResult(
+        row=row,
+        spool_path=spool_path,
+        posted=posted,
+        remote_error=error,
+    )
 
 
 def load_chronicle_row(path: str | Path) -> ChronicleRow:
@@ -375,6 +427,181 @@ def load_chronicle_row(path: str | Path) -> ChronicleRow:
             f"{row.build_id}: {spool_path.name}."
         )
     return row
+
+
+def load_spool_rows(spool_dir: str | Path) -> tuple[ChronicleRow, ...]:
+    """Load and chain-order every completed JSON row in a spool directory."""
+
+    directory = Path(spool_dir)
+    if not directory.exists():
+        return ()
+    if not directory.is_dir():
+        raise ValueError(f"Chronicle spool path is not a directory: {directory}.")
+    rows = tuple(load_chronicle_row(path) for path in sorted(directory.glob("*.json")))
+    return order_rows_by_chain(rows)
+
+
+def order_rows_by_chain(
+    rows: Sequence[ChronicleRow],
+) -> tuple[ChronicleRow, ...]:
+    """Return one complete chain or suffix, rejecting forks and disconnection."""
+
+    if not rows:
+        return ()
+    by_digest: dict[str, ChronicleRow] = {}
+    build_ids: set[str] = set()
+    successors: dict[str, ChronicleRow] = {}
+    for row in rows:
+        if row.row_digest in by_digest:
+            raise ValueError(f"Duplicate Chronicle row_digest: {row.row_digest}.")
+        if row.build_id in build_ids:
+            raise ValueError(f"Duplicate Chronicle build_id: {row.build_id}.")
+        by_digest[row.row_digest] = row
+        build_ids.add(row.build_id)
+        predecessor = row.prev_row_digest
+        if predecessor is not None:
+            if predecessor in successors:
+                first = successors[predecessor]
+                raise ValueError(
+                    "Chronicle chain forks after "
+                    f"{predecessor}: {first.build_id}, {row.build_id}."
+                )
+            successors[predecessor] = row
+
+    roots = [
+        row
+        for row in rows
+        if row.prev_row_digest is None or row.prev_row_digest not in by_digest
+    ]
+    if len(roots) != 1:
+        raise ValueError(
+            "Chronicle rows must form one connected chain; "
+            f"found {len(roots)} roots among {len(rows)} rows."
+        )
+
+    ordered: list[ChronicleRow] = []
+    current = roots[0]
+    while True:
+        ordered.append(current)
+        successor = successors.get(current.row_digest)
+        if successor is None:
+            break
+        current = successor
+    if len(ordered) != len(rows):
+        unseen = sorted(set(by_digest) - {row.row_digest for row in ordered})
+        raise ValueError(
+            "Chronicle rows contain a cycle or disconnected component; "
+            f"unseen digests={unseen}."
+        )
+    return tuple(ordered)
+
+
+def reconcile_spool(
+    spool_dir: str | Path = "ledger-spool",
+    *,
+    timeout: float = 10.0,
+) -> ReconcileResult:
+    """Retry a spool suffix in chain order and remove acknowledged rows only."""
+
+    rows = load_spool_rows(spool_dir)
+    config = _remote_config()
+    if config is None or not rows:
+        return ReconcileResult(
+            attempted=0,
+            posted=0,
+            retained=len(rows),
+            errors=(),
+        )
+
+    directory = Path(spool_dir)
+    posted = 0
+    errors: list[str] = []
+    for row in rows:
+        success, error = _post_build_row(
+            row,
+            ledger_url=config[0],
+            ledger_key=config[1],
+            timeout=timeout,
+        )
+        if not success:
+            errors.append(f"{row.build_id}: {error or 'remote insert failed'}")
+            break
+        path = directory / f"{row.row_digest}.json"
+        try:
+            path.unlink()
+            _fsync_parent_directory(directory)
+        except OSError as exc:
+            errors.append(
+                f"{row.build_id}: remote insert succeeded but spool cleanup "
+                f"failed: {exc}"
+            )
+            break
+        posted += 1
+    return ReconcileResult(
+        attempted=posted + (1 if errors else 0),
+        posted=posted,
+        retained=len(rows) - posted,
+        errors=tuple(errors),
+    )
+
+
+def _remote_config() -> tuple[str, str] | None:
+    url = os.environ.get("POPULACE_LEDGER_URL")
+    key = os.environ.get("POPULACE_LEDGER_KEY")
+    if not url or not key:
+        return None
+    return url, key
+
+
+def _builds_endpoint(url: str) -> str:
+    base = url.rstrip("/")
+    if base.endswith("/rest/v1/builds"):
+        endpoint = base
+    elif base.endswith("/rest/v1"):
+        endpoint = f"{base}/builds"
+    else:
+        endpoint = f"{base}/rest/v1/builds"
+    return f"{endpoint}?{urlencode({'on_conflict': 'build_id'})}"
+
+
+def _post_build_row(
+    row: ChronicleRow,
+    *,
+    ledger_url: str,
+    ledger_key: str,
+    timeout: float,
+) -> tuple[bool, str | None]:
+    if timeout <= 0:
+        return False, "timeout must be greater than zero"
+    request = Request(
+        _builds_endpoint(ledger_url),
+        data=row.to_json_line().rstrip("\n").encode("utf-8"),
+        method="POST",
+        headers={
+            "apikey": ledger_key,
+            "Authorization": f"Bearer {ledger_key}",
+            "Content-Profile": "chronicle",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=ignore-duplicates,return=minimal",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            status = getattr(response, "status", 200)
+            if not 200 <= status < 300:
+                return False, f"Supabase returned HTTP {status}"
+    except HTTPError as exc:
+        try:
+            body = exc.read(1_024).decode("utf-8", errors="replace").strip()
+        except OSError:
+            body = ""
+        detail = f": {body}" if body else ""
+        return False, f"Supabase returned HTTP {exc.code}{detail}"
+    except OSError as exc:
+        return False, f"Supabase insert failed: {exc}"
+    except Exception as exc:  # pragma: no cover - defensive build-safety boundary
+        return False, f"Supabase insert failed: {type(exc).__name__}: {exc}"
+    return True, None
 
 
 def _canonical_json_text(value: Any) -> str:
@@ -440,19 +667,9 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
 
 
 def _validate_rung(value: str) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) > 255
-        or not _RUNG_PATTERN.fullmatch(value)
-    ):
+    if not isinstance(value, str) or value not in CHRONICLE_RUNGS:
         raise ValueError(
-            "rung must be a canonical fraction token such as '1' or '1/10'."
-        )
-    fraction = Fraction(value)
-    if fraction <= 0 or fraction > 1 or str(fraction) != value:
-        raise ValueError(
-            "rung must be a canonical fraction token greater than zero and at "
-            f"most one, got {value!r}."
+            "rung must be a #624 fraction token: 'f001', 'f010', or 'f100'."
         )
     return value
 

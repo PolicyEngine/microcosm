@@ -15,8 +15,17 @@ from populace.build.chronicle import (
     ChronicleRow,
     canonical_json_bytes,
     load_chronicle_row,
+    reconcile_spool,
     record_build_attempt,
 )
+
+
+@pytest.fixture(autouse=True)
+def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests never inherit operator Chronicle credentials."""
+
+    monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
 
 
 def _row_kwargs(**overrides: object) -> dict[str, object]:
@@ -24,7 +33,7 @@ def _row_kwargs(**overrides: object) -> dict[str, object]:
         "build_id": "fixture-build-1",
         "ts": "2026-08-04T15:06:00-04:00",
         "pipeline": "fixture-pipeline",
-        "rung": "1/10",
+        "rung": "f010",
         "seed": 628,
         "code_pin": "1c1fc717",
         "input_pins_digest": "1" * 64,
@@ -57,7 +66,7 @@ def test_row_schema_json_round_trip_matches_628_golden() -> None:
     assert frozenset(row.to_mapping()) == CHRONICLE_ROW_FIELDS
     assert restored.ts == "2026-08-04T19:06:00.000000Z"
     assert restored.row_digest == (
-        "eda7f5e42268a65de97a0701c9ccd32053773568347def1f4472c5cd98589f63"
+        "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927"
     )
 
 
@@ -75,9 +84,9 @@ def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
         ("build_id", "bad build id", "build_id"),
         ("ts", "2026-08-04T19:06:00", "UTC offset"),
         ("pipeline", " fixture ", "pipeline"),
-        ("rung", "f010", "canonical fraction token"),
-        ("rung", "0.1", "canonical fraction token"),
-        ("rung", "2/20", "canonical fraction token"),
+        ("rung", "1/10", "#624 fraction token"),
+        ("rung", "0.1", "#624 fraction token"),
+        ("rung", "f020", "#624 fraction token"),
         ("seed", True, "seed"),
         ("seed", -1, "seed"),
         ("code_pin", "", "code_pin"),
@@ -127,7 +136,7 @@ def test_published_row_requires_an_artifact_location() -> None:
         ChronicleRow.create(**_row_kwargs(disposition="published"))
 
 
-@pytest.mark.parametrize("rung", ["1/100", "1/10", "1"])
+@pytest.mark.parametrize("rung", ["f001", "f010", "f100"])
 def test_standard_scale_rungs_are_accepted(rung: str) -> None:
     assert ChronicleRow.create(**_row_kwargs(rung=rung)).rung == rung
 
@@ -207,3 +216,140 @@ def test_identical_retry_is_idempotent(tmp_path: Path) -> None:
     assert second == first
     assert second.spool_path.read_bytes() == original_bytes
     assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_missing_remote_environment_is_spool_only(tmp_path: Path) -> None:
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert result.spool_path.exists()
+    assert result.posted is False
+    assert result.remote_error is None
+
+
+class _Response:
+    status = 201
+
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+def test_remote_insert_happens_after_spool_and_uses_chronicle_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    requests: list[object] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _Response:
+        requests.append(request)
+        assert timeout == 3.0
+        assert len(list(tmp_path.glob("*.json"))) == 1
+        return _Response()
+
+    monkeypatch.setattr(chronicle, "urlopen", fake_urlopen)
+
+    result = record_build_attempt(
+        **_row_kwargs(),
+        spool_dir=tmp_path,
+        timeout=3.0,
+    )
+
+    assert result.posted is True
+    assert result.remote_error is None
+    request = requests[0]
+    assert request.full_url == (
+        "https://fixture.supabase.co/rest/v1/builds?on_conflict=build_id"
+    )
+    assert request.method == "POST"
+    assert request.headers["Content-profile"] == "chronicle"
+    assert request.headers["Prefer"] == ("resolution=ignore-duplicates,return=minimal")
+    assert json.loads(request.data) == result.row.to_mapping()
+
+
+def test_remote_failure_never_blocks_a_build_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+
+    def fail(*_args: object, **_kwargs: object) -> _Response:
+        raise OSError("offline")
+
+    monkeypatch.setattr(chronicle, "urlopen", fail)
+
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert result.posted is False
+    assert result.remote_error == "Supabase insert failed: offline"
+    assert load_chronicle_row(result.spool_path) == result.row
+
+
+def test_reconcile_posts_in_chain_order_and_removes_acknowledged_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+    second = record_build_attempt(
+        **_row_kwargs(
+            build_id="fixture-build-2",
+            prev_row_digest=first.row.row_digest,
+        ),
+        spool_dir=tmp_path,
+    )
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co/rest/v1")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    posted_ids: list[str] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _Response:
+        del timeout
+        posted_ids.append(json.loads(request.data)["build_id"])
+        return _Response()
+
+    monkeypatch.setattr(chronicle, "urlopen", fake_urlopen)
+
+    receipt = reconcile_spool(tmp_path)
+
+    assert posted_ids == [first.row.build_id, second.row.build_id]
+    assert receipt == chronicle.ReconcileResult(2, 2, 0, ())
+    assert list(tmp_path.glob("*.json")) == []
+
+
+def test_reconcile_stops_at_first_failure_and_retains_chain_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+    second = record_build_attempt(
+        **_row_kwargs(
+            build_id="fixture-build-2",
+            prev_row_digest=first.row.row_digest,
+        ),
+        spool_dir=tmp_path,
+    )
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    attempts = 0
+
+    def fake_urlopen(request: object, *, timeout: float) -> _Response:
+        nonlocal attempts
+        del request, timeout
+        attempts += 1
+        if attempts == 2:
+            raise OSError("offline")
+        return _Response()
+
+    monkeypatch.setattr(chronicle, "urlopen", fake_urlopen)
+
+    receipt = reconcile_spool(tmp_path)
+
+    assert receipt.attempted == 2
+    assert receipt.posted == 1
+    assert receipt.retained == 1
+    assert "fixture-build-2" in receipt.errors[0]
+    assert not first.spool_path.exists()
+    assert second.spool_path.exists()
