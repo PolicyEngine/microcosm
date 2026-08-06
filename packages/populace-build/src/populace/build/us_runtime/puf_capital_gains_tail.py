@@ -1272,6 +1272,13 @@ def _clone_and_transfer(
 
 
 def _support_clone_multiplier(frame: Frame) -> int:
+    """Recover one clone offset from source-matched native/detail pairs.
+
+    Seeded attachment keeps every native row but only a selected subset of the
+    primary PUF clone. Counts and positional ordering therefore need not match;
+    the immutable support source ID is the pairing authority.
+    """
+
     multiplier: int | None = None
     for entity in frame.entities:
         table = frame.table(entity)
@@ -1280,24 +1287,44 @@ def _support_clone_multiplier(frame: Frame) -> int:
         missing = [column for column in (clone_index, source_id) if column not in table]
         if missing:
             raise ValueError(f"PUF support {entity} metadata missing: {missing}.")
-        if (table[clone_index].to_numpy(dtype=np.int64) >= 2).any():
+        clone_indices = table[clone_index].to_numpy(dtype=np.int64)
+        if (clone_indices >= 2).any():
             raise ValueError("PUF capital-gains tail transfer must run exactly once.")
         puf = puf_tax_detail_clone_mask(table, entity=entity)
         if not puf.any():
             raise ValueError(f"PUF detail clone has no {entity} rows.")
-        native = table[clone_index].to_numpy(dtype=np.int64) == 0
-        native_ids = np.sort(
-            table.loc[native, frame.schema.entity_id_column(entity)].to_numpy(
-                dtype=np.int64
+        native = clone_indices == 0
+        primary = frame.schema.entity_id_column(entity)
+        source_ids = table[source_id].to_numpy(dtype=np.int64)
+        native_source_ids = source_ids[native]
+        puf_source_ids = source_ids[puf]
+        if len(np.unique(native_source_ids)) != len(native_source_ids):
+            raise ValueError(f"PUF support {entity} native source IDs are not unique.")
+        if len(np.unique(puf_source_ids)) != len(puf_source_ids):
+            raise ValueError(
+                f"PUF support {entity} detail clone source IDs are not unique."
+            )
+        native_primary_by_source = dict(
+            zip(
+                native_source_ids.tolist(),
+                table.loc[native, primary].to_numpy(dtype=np.int64).tolist(),
+                strict=True,
             )
         )
-        primary = frame.schema.entity_id_column(entity)
-        puf_ids = np.sort(table.loc[puf, primary].to_numpy(dtype=np.int64))
-        if len(native_ids) != len(puf_ids):
+        missing_native_sources = sorted(
+            set(puf_source_ids.tolist()) - set(native_primary_by_source)
+        )
+        if missing_native_sources:
             raise ValueError(
-                f"PUF support {entity} native and detail clone counts differ."
+                f"PUF support {entity} detail clone source IDs have no native "
+                f"match: {missing_native_sources}."
             )
-        differences = puf_ids - native_ids
+        matched_native_ids = np.asarray(
+            [native_primary_by_source[source] for source in puf_source_ids],
+            dtype=np.int64,
+        )
+        puf_ids = table.loc[puf, primary].to_numpy(dtype=np.int64)
+        differences = puf_ids - matched_native_ids
         unique = np.unique(differences)
         if len(unique) != 1 or int(unique[0]) <= 0:
             raise ValueError(f"PUF support {entity} IDs do not share one clone offset.")
