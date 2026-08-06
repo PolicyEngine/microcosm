@@ -71,7 +71,7 @@ from populace.build.us_runtime.support_provenance import (
     support_clone_index_column,
     validate_assembly_provenance,
 )
-from populace.frame import US_SCHEMA, Frame
+from populace.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
 
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
@@ -112,7 +112,12 @@ DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES: Mapping[str, float] = {
 }
 
 STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
-_STACKED_SPINE_MANIFEST_VERSION = 1
+_LEGACY_STACKED_SPINE_MANIFEST_VERSION = 1
+_STACKED_SPINE_MANIFEST_VERSION = 2
+_SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS = {
+    _LEGACY_STACKED_SPINE_MANIFEST_VERSION,
+    _STACKED_SPINE_MANIFEST_VERSION,
+}
 _EXACT_COUNT_RULE = "floor(fraction * eligible)"
 _MASS_RTOL = 1e-9
 
@@ -138,6 +143,73 @@ class StackedSpineResult:
             )
         if not isinstance(self.receipt, Mapping):
             raise TypeError("StackedSpineResult.receipt must be a mapping.")
+
+
+def _sample_survey_households(
+    source: Frame,
+    *,
+    fraction: float,
+    seed: int,
+    source_name: str,
+) -> tuple[Frame, dict[str, object]]:
+    """Draw one seeded, whole-household survey sample with a receipt."""
+
+    if not isinstance(source, Frame):
+        raise TypeError(f"{source_name} must be a Frame, got {type(source).__name__}.")
+    if source.schema != US_SCHEMA:
+        raise ValueError(
+            f"{source_name} household sampling requires the US entity schema."
+        )
+    _validate_fraction(fraction)
+    _validate_seed(seed)
+    household_channel = support_channel_column("household")
+    if household_channel in source.table("household").columns:
+        raise ValueError(
+            f"{source_name} household sampling runs before assembly; the source "
+            f"frame already carries support provenance ({household_channel!r})."
+        )
+
+    household_ids = source.table("household")["household_id"].to_numpy()
+    eligible = int(len(household_ids))
+    incoming_mass = float(source.weights_for("household").total)
+    requested = int(math.floor(fraction * eligible))
+    if requested < 1:
+        raise ValueError(
+            f"{source_name} sample fraction {fraction!r} floors to zero households "
+            f"({_EXACT_COUNT_RULE} with eligible={eligible}); the stacked "
+            "spine requires at least one sampled household."
+        )
+
+    ordered_ids = np.sort(np.asarray(household_ids, copy=True))
+    if requested == eligible:
+        selected_ids = ordered_ids
+        sampled = source
+    else:
+        rng = np.random.default_rng(seed)
+        selected_ids = np.sort(rng.choice(ordered_ids, size=requested, replace=False))
+        person_mask = (
+            source.table("person")["person_household_id"].isin(selected_ids).to_numpy()
+        )
+        sampled = source.select(person_mask)
+
+    realized_ids = np.sort(sampled.table("household")["household_id"].to_numpy())
+    if not np.array_equal(realized_ids, selected_ids):
+        raise ValueError(
+            f"{source_name} household sampling realized a different household set "
+            "than it selected; whole-household selection failed."
+        )
+    receipt: dict[str, object] = {
+        "fraction": float(fraction),
+        "seed": int(seed),
+        "eligible_household_count": eligible,
+        "requested_household_count": requested,
+        "realized_household_count": int(len(realized_ids)),
+        "exact_count_rule": _EXACT_COUNT_RULE,
+        "selected_household_ids_sha256": _ids_sha256(selected_ids),
+        "incoming_household_mass": incoming_mass,
+        "sampled_household_mass": float(sampled.weights_for("household").total),
+    }
+    return sampled, receipt
 
 
 def sample_acs_households(
@@ -171,79 +243,74 @@ def sample_acs_households(
             households, which fails closed).
     """
 
-    if not isinstance(acs, Frame):
-        raise TypeError(f"acs must be a Frame, got {type(acs).__name__}.")
-    if acs.schema != US_SCHEMA:
-        raise ValueError("ACS household sampling requires the US entity schema.")
-    _validate_fraction(fraction)
-    _validate_seed(seed)
-    household_channel = support_channel_column("household")
-    if household_channel in acs.table("household").columns:
-        raise ValueError(
-            "ACS household sampling runs before assembly; the source frame "
-            f"already carries support provenance ({household_channel!r})."
-        )
+    return _sample_survey_households(
+        acs,
+        fraction=fraction,
+        seed=seed,
+        source_name="ACS",
+    )
 
-    household_ids = acs.table("household")["household_id"].to_numpy()
-    eligible = int(len(household_ids))
-    incoming_mass = float(acs.weights_for("household").total)
-    requested = int(math.floor(fraction * eligible))
-    if requested < 1:
-        raise ValueError(
-            f"ACS sample fraction {fraction!r} floors to zero households "
-            f"({_EXACT_COUNT_RULE} with eligible={eligible}); the stacked "
-            "spine requires at least one sampled household."
-        )
 
-    ordered_ids = np.sort(np.asarray(household_ids, copy=True))
-    if requested == eligible:
-        selected_ids = ordered_ids
-        sampled = acs
-    else:
-        rng = np.random.default_rng(seed)
-        selected_ids = np.sort(rng.choice(ordered_ids, size=requested, replace=False))
-        person_mask = (
-            acs.table("person")["person_household_id"].isin(selected_ids).to_numpy()
-        )
-        sampled = acs.select(person_mask)
+def _normalize_sampled_household_mass(
+    sampled: Frame,
+    *,
+    target_mass: float,
+    source_name: str,
+) -> tuple[Frame, float]:
+    """Restore one sampled survey arm to its full-source design-weight mass."""
 
-    realized_ids = np.sort(sampled.table("household")["household_id"].to_numpy())
-    if not np.array_equal(realized_ids, selected_ids):
+    weights = sampled.weights_for("household")
+    sampled_mass = float(weights.total)
+    if not np.isfinite(sampled_mass) or sampled_mass <= 0.0:
         raise ValueError(
-            "ACS household sampling realized a different household set than "
-            "it selected; whole-household selection failed."
+            f"{source_name} sampled household mass must be positive and finite."
         )
-    receipt: dict[str, object] = {
-        "fraction": float(fraction),
-        "seed": int(seed),
-        "eligible_household_count": eligible,
-        "requested_household_count": requested,
-        "realized_household_count": int(len(realized_ids)),
-        "exact_count_rule": _EXACT_COUNT_RULE,
-        "selected_household_ids_sha256": _ids_sha256(selected_ids),
-        "incoming_household_mass": incoming_mass,
-        "sampled_household_mass": float(sampled.weights_for("household").total),
-    }
-    return sampled, receipt
+    factor = float(target_mass / sampled_mass)
+    normalized_weights = weights.with_values(weights.values * factor, weights.kind)
+    mass_policy: str | MassChange = (
+        CONSERVE_MASS
+        if np.isclose(factor, 1.0, rtol=_MASS_RTOL, atol=0.0)
+        else MassChange(
+            factor=factor,
+            reason=(
+                f"composition-preserving {source_name} survey sampling "
+                "normalization to full-source household mass"
+            ),
+        )
+    )
+    normalized = sampled.with_weights(
+        "household",
+        normalized_weights,
+        mass=mass_policy,
+    )
+    return normalized, factor
 
 
 def assemble_stacked_spine(
     asec: Frame,
     acs: Frame,
     *,
-    acs_sample_fraction: float,
-    acs_sample_seed: int,
+    acs_sample_fraction: float | None = None,
+    acs_sample_seed: int | None = None,
+    sample_fraction: float | None = None,
+    sample_seed: int | None = None,
     household_mass_shares: Mapping[str, float] | None = None,
     mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
 ) -> StackedSpineResult:
-    """Assemble ASEC plus a seeded ACS household sample into one spine.
+    """Assemble uniformly sampled ASEC and ACS survey arms into one spine.
 
-    The sample is drawn by :func:`sample_acs_households`, the combination
-    reuses the reviewed :func:`assemble_spines` seam unchanged, and the
-    resulting frame carries a stacked-spine manifest binding the sampling
-    configuration (fraction, seed), the realized selection digest, and the
-    per-arm weight-harmonization receipts to the live rows.  Origin labels
-    survive as the ordinary support-channel columns.
+    Production callers provide the single ``sample_fraction`` and
+    ``sample_seed`` scale-ladder controls.  The exact same fraction is applied
+    independently to both survey arms at whole-household grain; each sampled
+    arm is then normalized back to its full-source household mass before the
+    reviewed :func:`assemble_spines` harmonization.  This preserves each arm's
+    composition and prevents the anchor population from shrinking with the
+    rung.  PUF donors are not accepted here and therefore remain unsampled.
+
+    ``acs_sample_fraction``/``acs_sample_seed`` retain the reviewed version-1
+    pilot contract for reproducibility only: ASEC remains full and ACS alone
+    is sampled.  Supplying pilot and production controls together fails
+    closed.
 
     Returns:
         A validated :class:`StackedSpineResult` whose receipt mirrors the
@@ -255,20 +322,109 @@ def assemble_stacked_spine(
         if household_mass_shares is None
         else dict(household_mass_shares)
     )
-    sampled, sample_receipt = sample_acs_households(
-        acs,
-        fraction=acs_sample_fraction,
-        seed=acs_sample_seed,
-    )
-    asec_incoming_mass = float(asec.weights_for("household").total)
-    incoming_masses = {
-        BASE_ASEC_SUPPORT_CHANNEL: asec_incoming_mass,
-        ACS_STACKED_SUPPORT_CHANNEL: float(sample_receipt["sampled_household_mass"]),
-    }
+    uses_pilot_controls = acs_sample_fraction is not None or acs_sample_seed is not None
+    uses_production_controls = sample_fraction is not None or sample_seed is not None
+    if uses_pilot_controls == uses_production_controls:
+        raise ValueError(
+            "Provide exactly one complete sampling control pair: production "
+            "sample_fraction/sample_seed or legacy "
+            "acs_sample_fraction/acs_sample_seed."
+        )
+
+    if uses_pilot_controls:
+        if acs_sample_fraction is None or acs_sample_seed is None:
+            raise ValueError(
+                "Legacy ACS sampling requires both acs_sample_fraction and "
+                "acs_sample_seed."
+            )
+        sampled_asec = asec
+        sampled_acs, acs_sample_receipt = sample_acs_households(
+            acs,
+            fraction=acs_sample_fraction,
+            seed=acs_sample_seed,
+        )
+        incoming_masses = {
+            BASE_ASEC_SUPPORT_CHANNEL: float(
+                sampled_asec.weights_for("household").total
+            ),
+            ACS_STACKED_SUPPORT_CHANNEL: float(
+                acs_sample_receipt["sampled_household_mass"]
+            ),
+        }
+        manifest_version = _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        sampling_manifest: dict[str, object] = {
+            "acs_sample_fraction": float(acs_sample_fraction),
+            "acs_sample_seed": int(acs_sample_seed),
+            "acs_sample": acs_sample_receipt,
+        }
+    else:
+        if sample_fraction is None or sample_seed is None:
+            raise ValueError(
+                "Production stacked sampling requires both sample_fraction and "
+                "sample_seed."
+            )
+        _validate_fraction(sample_fraction)
+        _validate_seed(sample_seed)
+        sampled_asec_raw, asec_sample_receipt = _sample_survey_households(
+            asec,
+            fraction=sample_fraction,
+            seed=sample_seed,
+            source_name="ASEC",
+        )
+        sampled_acs_raw, acs_sample_receipt = _sample_survey_households(
+            acs,
+            fraction=sample_fraction,
+            seed=sample_seed,
+            source_name="ACS",
+        )
+        sampled_asec, asec_normalization = _normalize_sampled_household_mass(
+            sampled_asec_raw,
+            target_mass=float(asec.weights_for("household").total),
+            source_name="ASEC",
+        )
+        sampled_acs, acs_normalization = _normalize_sampled_household_mass(
+            sampled_acs_raw,
+            target_mass=float(acs.weights_for("household").total),
+            source_name="ACS",
+        )
+        asec_sample_receipt.update(
+            {
+                "normalization_factor": asec_normalization,
+                "normalized_household_mass": float(
+                    sampled_asec.weights_for("household").total
+                ),
+            }
+        )
+        acs_sample_receipt.update(
+            {
+                "normalization_factor": acs_normalization,
+                "normalized_household_mass": float(
+                    sampled_acs.weights_for("household").total
+                ),
+            }
+        )
+        incoming_masses = {
+            BASE_ASEC_SUPPORT_CHANNEL: float(
+                sampled_asec.weights_for("household").total
+            ),
+            ACS_STACKED_SUPPORT_CHANNEL: float(
+                sampled_acs.weights_for("household").total
+            ),
+        }
+        manifest_version = _STACKED_SPINE_MANIFEST_VERSION
+        sampling_manifest = {
+            "sample_fraction": float(sample_fraction),
+            "sample_seed": int(sample_seed),
+            "survey_samples": {
+                BASE_ASEC_SUPPORT_CHANNEL: asec_sample_receipt,
+                ACS_STACKED_SUPPORT_CHANNEL: acs_sample_receipt,
+            },
+        }
+
     assembled = assemble_spines(
         {
-            BASE_ASEC_SUPPORT_CHANNEL: asec,
-            ACS_STACKED_SUPPORT_CHANNEL: sampled,
+            BASE_ASEC_SUPPORT_CHANNEL: sampled_asec,
+            ACS_STACKED_SUPPORT_CHANNEL: sampled_acs,
         },
         household_mass_shares=shares,
         mass_anchor_channel=mass_anchor_channel,
@@ -281,10 +437,8 @@ def assemble_stacked_spine(
         incoming_masses=incoming_masses,
     )
     manifest: dict[str, object] = {
-        "version": _STACKED_SPINE_MANIFEST_VERSION,
-        "acs_sample_fraction": float(acs_sample_fraction),
-        "acs_sample_seed": int(acs_sample_seed),
-        "acs_sample": sample_receipt,
+        "version": manifest_version,
+        **sampling_manifest,
         "household_mass_shares": {
             channel: float(share) for channel, share in shares.items()
         },
@@ -313,6 +467,110 @@ def assemble_stacked_spine(
     return StackedSpineResult(frame=stacked, receipt=_json_ready(validated))
 
 
+def _validate_survey_sample_receipt(
+    frame: Frame,
+    *,
+    channel: str,
+    fraction: float,
+    seed: int,
+    sample: Mapping[str, object],
+    boundary: str,
+    require_normalization: bool,
+) -> None:
+    required_keys = {
+        "eligible_household_count",
+        "requested_household_count",
+        "realized_household_count",
+        "exact_count_rule",
+        "selected_household_ids_sha256",
+    }
+    if require_normalization:
+        required_keys.update(
+            {
+                "incoming_household_mass",
+                "sampled_household_mass",
+                "normalization_factor",
+                "normalized_household_mass",
+            }
+        )
+    missing = sorted(required_keys - set(sample))
+    if missing:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample receipt is missing {missing}."
+        )
+    if float(sample.get("fraction", float("nan"))) != fraction:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample fraction does not "
+            "match the manifest control."
+        )
+    if sample.get("seed") != seed:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample seed does not match "
+            "the manifest control."
+        )
+    if sample["exact_count_rule"] != _EXACT_COUNT_RULE:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample declares exact-count "
+            f"rule {sample['exact_count_rule']!r}; expected {_EXACT_COUNT_RULE!r}."
+        )
+    eligible = int(sample["eligible_household_count"])
+    requested = int(sample["requested_household_count"])
+    realized = int(sample["realized_household_count"])
+    if requested != int(math.floor(fraction * eligible)):
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} requested household count "
+            f"{requested} violates {_EXACT_COUNT_RULE} for fraction={fraction!r}, "
+            f"eligible={eligible}."
+        )
+    if realized != requested:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} realized household count "
+            f"{realized} differs from the requested count {requested}."
+        )
+
+    household = frame.table("household")
+    channel_values = household[support_channel_column("household")].astype(str)
+    clone_index = household[support_clone_index_column("household")]
+    native = channel_values.eq(channel) & clone_index.eq(0)
+    live_count = int(native.sum())
+    if live_count != realized:
+        raise ValueError(
+            f"{boundary}: live native {channel} household count {live_count} "
+            "differs from the stacked spine manifest's realized count "
+            f"{realized}."
+        )
+    live_ids = np.sort(
+        household.loc[native, spine_source_id_column("household")].to_numpy()
+    )
+    live_sha = _ids_sha256(live_ids)
+    if live_sha != sample["selected_household_ids_sha256"]:
+        raise ValueError(
+            f"{boundary}: live native {channel} household lineage digest "
+            f"{live_sha} differs from the stacked spine manifest's selection "
+            f"digest {sample['selected_household_ids_sha256']}."
+        )
+    if require_normalization:
+        incoming_mass = float(sample["incoming_household_mass"])
+        sampled_mass = float(sample["sampled_household_mass"])
+        normalization = float(sample["normalization_factor"])
+        normalized_mass = float(sample["normalized_household_mass"])
+        if not np.isclose(
+            sampled_mass * normalization,
+            normalized_mass,
+            rtol=_MASS_RTOL,
+            atol=0.0,
+        ) or not np.isclose(
+            incoming_mass,
+            normalized_mass,
+            rtol=_MASS_RTOL,
+            atol=0.0,
+        ):
+            raise ValueError(
+                f"{boundary}: stacked spine {channel} sample normalization "
+                "does not restore the full-source household mass."
+            )
+
+
 def validate_stacked_spine_frame(
     frame: Frame,
     *,
@@ -339,10 +597,10 @@ def validate_stacked_spine_frame(
         )
     if not isinstance(manifest, Mapping):
         raise ValueError(f"{boundary}: stacked spine manifest is malformed.")
-    if manifest.get("version") != _STACKED_SPINE_MANIFEST_VERSION:
+    version = manifest.get("version")
+    if version not in _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS:
         raise ValueError(
-            f"{boundary}: stacked spine manifest has unsupported version "
-            f"{manifest.get('version')!r}."
+            f"{boundary}: stacked spine manifest has unsupported version {version!r}."
         )
     assembly = frame.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
     channels = tuple(assembly["channels"])
@@ -353,75 +611,66 @@ def validate_stacked_spine_frame(
             f"{sorted(expected_channels)}; assembly declares {sorted(channels)}."
         )
 
-    fraction = manifest.get("acs_sample_fraction")
-    seed = manifest.get("acs_sample_seed")
+    if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION:
+        fraction = manifest.get("acs_sample_fraction")
+        seed = manifest.get("acs_sample_seed")
+        sample = manifest.get("acs_sample")
+        sample_receipts: Mapping[str, object] = {ACS_STACKED_SUPPORT_CHANNEL: sample}
+    else:
+        fraction = manifest.get("sample_fraction")
+        seed = manifest.get("sample_seed")
+        sample_receipts = manifest.get("survey_samples")
+    fraction_label = (
+        "acs_sample_fraction"
+        if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        else "sample_fraction"
+    )
+    seed_label = (
+        "acs_sample_seed"
+        if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        else "sample_seed"
+    )
     if not isinstance(fraction, float) or isinstance(fraction, bool):
         raise ValueError(
-            f"{boundary}: stacked spine manifest acs_sample_fraction must be "
+            f"{boundary}: stacked spine manifest {fraction_label} must be "
             f"a float, got {fraction!r}."
         )
     _validate_fraction(fraction, boundary=boundary)
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError(
-            f"{boundary}: stacked spine manifest acs_sample_seed must be a "
+            f"{boundary}: stacked spine manifest {seed_label} must be a "
             f"non-negative integer, got {seed!r}."
         )
-
-    sample = manifest.get("acs_sample")
-    if not isinstance(sample, Mapping):
-        raise ValueError(f"{boundary}: stacked spine sample receipt is absent.")
-    required_keys = (
-        "eligible_household_count",
-        "requested_household_count",
-        "realized_household_count",
-        "exact_count_rule",
-        "selected_household_ids_sha256",
+    expected_sample_channels = (
+        (ACS_STACKED_SUPPORT_CHANNEL,)
+        if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        else expected_channels
     )
-    missing = [key for key in required_keys if key not in sample]
-    if missing:
+    if not isinstance(sample_receipts, Mapping) or set(sample_receipts) != set(
+        expected_sample_channels
+    ):
         raise ValueError(
-            f"{boundary}: stacked spine sample receipt is missing {missing}."
+            f"{boundary}: stacked spine sample receipts must exactly cover "
+            f"{sorted(expected_sample_channels)}."
         )
-    if sample["exact_count_rule"] != _EXACT_COUNT_RULE:
-        raise ValueError(
-            f"{boundary}: stacked spine sample declares exact-count rule "
-            f"{sample['exact_count_rule']!r}; expected {_EXACT_COUNT_RULE!r}."
-        )
-    eligible = int(sample["eligible_household_count"])
-    requested = int(sample["requested_household_count"])
-    realized = int(sample["realized_household_count"])
-    if requested != int(math.floor(fraction * eligible)):
-        raise ValueError(
-            f"{boundary}: stacked spine requested household count {requested} "
-            f"violates {_EXACT_COUNT_RULE} for fraction={fraction!r}, "
-            f"eligible={eligible}."
-        )
-    if realized != requested:
-        raise ValueError(
-            f"{boundary}: stacked spine realized household count {realized} "
-            f"differs from the requested count {requested}."
+    for channel in expected_sample_channels:
+        sample = sample_receipts[channel]
+        if not isinstance(sample, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked spine {channel} sample receipt is absent."
+            )
+        _validate_survey_sample_receipt(
+            frame,
+            channel=channel,
+            fraction=fraction,
+            seed=seed,
+            sample=sample,
+            boundary=boundary,
+            require_normalization=version == _STACKED_SPINE_MANIFEST_VERSION,
         )
 
     household = frame.table("household")
     channel_values = household[support_channel_column("household")].astype(str)
-    clone_index = household[support_clone_index_column("household")]
-    native_acs = channel_values.eq(ACS_STACKED_SUPPORT_CHANNEL) & clone_index.eq(0)
-    live_count = int(native_acs.sum())
-    if live_count != realized:
-        raise ValueError(
-            f"{boundary}: live native ACS household count {live_count} differs "
-            f"from the stacked spine manifest's realized count {realized}."
-        )
-    live_ids = np.sort(
-        household.loc[native_acs, spine_source_id_column("household")].to_numpy()
-    )
-    live_sha = _ids_sha256(live_ids)
-    if live_sha != sample["selected_household_ids_sha256"]:
-        raise ValueError(
-            f"{boundary}: live native ACS household lineage digest {live_sha} "
-            "differs from the stacked spine manifest's selection digest "
-            f"{sample['selected_household_ids_sha256']}."
-        )
 
     shares = manifest.get("household_mass_shares")
     if not isinstance(shares, Mapping) or set(shares) != set(expected_channels):
@@ -479,6 +728,20 @@ def validate_stacked_spine_frame(
                 f"{channel!r} is malformed."
             )
         live_mass = float(weights[channel_values.eq(channel).to_numpy()].sum())
+        if version == _STACKED_SPINE_MANIFEST_VERSION:
+            normalized_sample_mass = float(
+                sample_receipts[channel]["normalized_household_mass"]
+            )
+            if not np.isclose(
+                float(arm.get("incoming_mass", float("nan"))),
+                normalized_sample_mass,
+                rtol=_MASS_RTOL,
+                atol=0.0,
+            ):
+                raise ValueError(
+                    f"{boundary}: stacked spine {channel} harmonization input "
+                    "mass differs from its normalized survey-sample mass."
+                )
         allocated = float(arm["allocated_mass"])
         declared_allocation = float(arm["declared_allocation"])
         expected_allocation = float(shares[channel]) * live_anchor_mass

@@ -215,6 +215,90 @@ def test_stacked_assembly_seed_and_fraction_bind_identity() -> None:
     assert wider_fraction.receipt["acs_sample"]["realized_household_count"] == 5
 
 
+def test_production_sampling_is_uniform_and_composition_preserving() -> None:
+    asec = _asec_source()
+    acs = _acs_source()
+    result = assemble_stacked_spine(
+        asec,
+        acs,
+        sample_fraction=0.5,
+        sample_seed=578,
+    )
+
+    assert result.receipt["version"] == 2
+    assert result.receipt["sample_fraction"] == 0.5
+    assert result.receipt["sample_seed"] == 578
+    samples = result.receipt["survey_samples"]
+    assert samples["asec"]["realized_household_count"] == 1
+    assert samples["acs"]["realized_household_count"] == 5
+    for channel, source in (("asec", asec), ("acs", acs)):
+        sample = samples[channel]
+        assert sample["fraction"] == 0.5
+        assert sample["seed"] == 578
+        assert np.isclose(
+            sample["normalized_household_mass"],
+            source.weights_for("household").total,
+        )
+
+    # The rung changes row counts, not either arm's population meaning.
+    assert np.isclose(
+        result.frame.weights_for("household").total,
+        asec.weights_for("household").total,
+    )
+    validate_stacked_spine_frame(result.frame, boundary="production sample fixture")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    (
+        ("sample_fraction", 1.0, "sample fraction does not match"),
+        ("sample_seed", 579, "sample seed does not match"),
+    ),
+)
+def test_production_sampling_identity_mutations_fail_closed(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    result = assemble_stacked_spine(
+        _asec_source(),
+        _acs_source(),
+        sample_fraction=0.5,
+        sample_seed=578,
+    )
+    manifest = deepcopy(result.receipt)
+    manifest[field] = value
+    tampered = Frame(
+        {entity: result.frame.table(entity) for entity in result.frame.entities},
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata={
+            **result.frame.metadata,
+            STACKED_SPINE_MANIFEST_KEY: manifest,
+        },
+    )
+
+    with pytest.raises(ValueError, match=match):
+        validate_stacked_spine_frame(tampered, boundary="mutated sample identity")
+
+
+def test_production_and_legacy_sampling_controls_are_mutually_exclusive() -> None:
+    with pytest.raises(ValueError, match="exactly one complete sampling control"):
+        assemble_stacked_spine(
+            _asec_source(),
+            _acs_source(),
+            acs_sample_fraction=0.5,
+            acs_sample_seed=578,
+            sample_fraction=0.5,
+            sample_seed=578,
+        )
+
+
 @pytest.mark.parametrize(
     ("mutate", "match"),
     (
