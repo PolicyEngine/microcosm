@@ -100,6 +100,40 @@ class UKNationalStage:
 
 
 @dataclass(frozen=True)
+class _UKGateEvidence:
+    """The duck-attr evidence surface the UK gate battery consumes today.
+
+    Exactly the shadow carrier's read surface — the three entity tables plus
+    the weight-kind, period, and mass-log metadata — materialized from the
+    frame. The gate modules stay deliberately duck-typed (#611 owns their
+    Frame typing); until that lands, this adapter is the one place the legacy
+    evidence shape survives, so a gate that reads ``household_weight_kind``
+    or ``time_period`` sees the frame's real values rather than a fallback.
+    """
+
+    person: pd.DataFrame
+    benunit: pd.DataFrame
+    household: pd.DataFrame
+    time_period: str
+    household_weight_kind: WeightKind
+    mass_log: tuple[MassChangeRecord, ...]
+
+
+def _uk_gate_evidence(frame: Frame) -> _UKGateEvidence:
+    """Materialize the gate battery's evidence surface from the frame."""
+
+    tables = engine_tables(frame)
+    return _UKGateEvidence(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        household_weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+    )
+
+
+@dataclass(frozen=True)
 class UKNationalBuildResult:
     """A gated national staging artifact and its execution evidence."""
 
@@ -349,7 +383,7 @@ def build_uk_national_dataset(
         materialized_stages
     )
     terminal_gates = uk_terminal_gate_report(
-        engine_tables(frame),
+        _uk_gate_evidence(frame),
         engine,
         release_id=release_id,
         calibration_diagnostics_sha256=calibration_diagnostics_sha256,

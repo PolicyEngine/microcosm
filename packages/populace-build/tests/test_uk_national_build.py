@@ -210,6 +210,55 @@ def _failing_gate() -> GateResult:
     )
 
 
+def test_gate_evidence_reproduces_the_legacy_attr_surface() -> None:
+    """_uk_gate_evidence exposes exactly what the duck-typed gates read.
+
+    The gate modules stay deliberately duck-typed until #611 types them on
+    Frame; the evidence adapter must therefore carry the metadata attrs
+    (kind, period, mass log) the coverage gate's hmrc family getattr-reads,
+    with the typed weights materialized authoritatively into the tables.
+    """
+
+    from populace.build.uk_runtime import national_build
+
+    mass_log = (
+        MassChangeRecord(
+            entity="household",
+            old_total=2.0,
+            new_total=2.0,
+            declared_factor=1.0,
+            reason="Toy reviewed record.",
+        ),
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [10],
+                "person_benunit_id": [100],
+                "person_household_id": [1],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [100]}),
+        household=pd.DataFrame({"household_id": [1], "household_weight": [2.0]}),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=mass_log,
+    )
+
+    evidence = national_build._uk_gate_evidence(frame)
+
+    assert evidence.household_weight_kind is WeightKind.IMPORTANCE
+    assert evidence.time_period == "2023"
+    assert evidence.mass_log == mass_log
+    assert evidence.household["household_weight"].tolist() == [2.0]
+    pd.testing.assert_frame_equal(evidence.person, frame.person)
+    # The same getattr surface the gates use resolves to real values, never
+    # the silent fallbacks a plain table mapping produced.
+    assert getattr(evidence, "household_weight_kind", None) is not None
+    assert str(getattr(evidence, "time_period", "")) == "2023"
+    assert tuple(getattr(evidence, "mass_log", ())) == mass_log
+
+
 class _RecordedFitStage:
     fit_weight_records = (
         FitWeightRecord("uk_spi_2022_23_income", "design"),
@@ -243,7 +292,14 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
 
     def coverage_gate(evidence, _engine):
         events.append("final_coverage_gate")
-        assert evidence["person"]["employment_income"].tolist() == [50_000.0]
+        assert evidence.person["employment_income"].tolist() == [50_000.0]
+        # The gate battery's evidence carries the frame's metadata surface —
+        # the coverage gate's hmrc family reads these attrs, and a bare table
+        # mapping silently fails them to ''/() (caught by the first
+        # credentialed acceptance build, not by CI's toy stages).
+        assert evidence.time_period == "2023"
+        assert evidence.household_weight_kind is WeightKind.DESIGN
+        assert evidence.mass_log == ()
         return _passing_gate()
 
     real_writer = national_build.write_uk_national_frame
