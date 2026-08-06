@@ -304,7 +304,7 @@ def test_pool_export_canonicalizes_explicit_all_missing_strings(
     assert stored.isna().all()
 
 
-def _write_ready_pool(tmp_path: Path) -> Path:
+def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     run_id = "fixture-publication"
     pool_path = tmp_path / "pool.h5"
     diagnostics_path = tmp_path / "pool.agreement.json"
@@ -326,50 +326,59 @@ def _write_ready_pool(tmp_path: Path) -> Path:
         artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
         publication_run_id=run_id,
     )
-    diagnostics_path.write_text(
-        json.dumps(
+    diagnostics = {
+        "artifact_kind": (US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND),
+        "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        "simulation_ready": True,
+        "publication_run_id": run_id,
+        "agreement_gate": agreement_gate,
+    }
+    if stacked:
+        diagnostics.update(
             {
-                "artifact_kind": (US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND),
-                "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
-                "simulation_ready": True,
-                "publication_run_id": run_id,
-                "agreement_gate": agreement_gate,
+                "pipeline": "us-stacked-pool",
+                "terminal_gates": agreement_gate,
             }
-        ),
-        encoding="utf-8",
-    )
+        )
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest = {
+        "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+        "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        "status": "simulation_ready",
+        "simulation_ready": True,
+        "publication_run_id": run_id,
+        "period": 2024,
+        "stage_checkpoints": {
+            "agreement": {
+                "source": "always_fresh",
+                "cached": False,
+                "terminal_verdict_persisted": False,
+            }
+        },
+        "agreement_gate": agreement_gate,
+        "provenance_counts": {"household": {"rows": 3}},
+        "pool_h5": {
+            "path": str(pool_path.resolve()),
+            "sha256": _sha256(pool_path),
+            "size_bytes": pool_path.stat().st_size,
+            "artifact_kind": US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+            "publication_run_id": run_id,
+        },
+        "agreement_diagnostics": {
+            "path": str(diagnostics_path.resolve()),
+            "sha256": _sha256(diagnostics_path),
+            "publication_run_id": run_id,
+        },
+    }
+    if stacked:
+        manifest.update(
+            {
+                "pipeline": "us-stacked-pool",
+                "terminal_gates": agreement_gate,
+            }
+        )
     manifest_path.write_text(
-        json.dumps(
-            {
-                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
-                "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
-                "status": "simulation_ready",
-                "simulation_ready": True,
-                "publication_run_id": run_id,
-                "period": 2024,
-                "stage_checkpoints": {
-                    "agreement": {
-                        "source": "always_fresh",
-                        "cached": False,
-                        "terminal_verdict_persisted": False,
-                    }
-                },
-                "agreement_gate": agreement_gate,
-                "provenance_counts": {"household": {"rows": 3}},
-                "pool_h5": {
-                    "path": str(pool_path.resolve()),
-                    "sha256": _sha256(pool_path),
-                    "size_bytes": pool_path.stat().st_size,
-                    "artifact_kind": US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
-                    "publication_run_id": run_id,
-                },
-                "agreement_diagnostics": {
-                    "path": str(diagnostics_path.resolve()),
-                    "sha256": _sha256(diagnostics_path),
-                    "publication_run_id": run_id,
-                },
-            }
-        ),
+        json.dumps(manifest),
         encoding="utf-8",
     )
     return manifest_path
@@ -420,6 +429,7 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     assert authenticated_pool_h5.size_bytes == manifest["pool_h5"]["size_bytes"]
     assert authenticated_pool_h5.publication_run_id == "fixture-publication"
     assert authenticated_pool_h5.manifest_sha256 == expected_manifest_sha256
+    assert "terminal_gates" not in manifest
     assert manifest_reads == 1
     assert json.loads(manifest_path.read_text())["publication_run_id"] == (
         "replacement-publication"
@@ -517,4 +527,59 @@ def test_ready_pool_loader_binds_diagnostics_agreement_verdict(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ValueError, match="verdict does not match"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+
+    _, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
+
+    assert manifest["terminal_gates"] == manifest["agreement_gate"]
+
+
+@pytest.mark.parametrize("document", ["manifest", "diagnostics"])
+def test_ready_stacked_pool_loader_rejects_divergent_terminal_gate_alias(
+    tmp_path: Path,
+    document: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if document == "manifest":
+        manifest["terminal_gates"]["passed"] = False
+    else:
+        diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+        diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        diagnostics["terminal_gates"]["passed"] = False
+        diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+        manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="terminal_gates do not match agreement_gate"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize("document", ["manifest", "diagnostics"])
+def test_ready_stacked_pool_loader_requires_both_terminal_gate_aliases(
+    tmp_path: Path,
+    document: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if document == "manifest":
+        del manifest["terminal_gates"]
+    else:
+        diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+        diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        del diagnostics["terminal_gates"]
+        diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+        manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="terminal_gates must be an object"):
         load_simulation_ready_us_multispine_pool(manifest_path)
