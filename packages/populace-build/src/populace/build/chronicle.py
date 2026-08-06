@@ -910,6 +910,11 @@ def _canonical_json_text(value: Any) -> str:
             raise ValueError("Canonical JSON cannot contain non-finite numbers.")
         return _canonical_decimal(Decimal(str(value)))
     if isinstance(value, str):
+        if "\x00" in value:
+            raise ValueError(
+                "Canonical JSON cannot contain NUL characters; PostgreSQL "
+                "text and jsonb cannot store them."
+            )
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
@@ -1056,6 +1061,8 @@ def _validate_digest(
 def _nonempty_text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be a non-empty string.")
+    if "\x00" in value:
+        raise ValueError(f"{field} must not contain NUL characters.")
     if value != value.strip():
         raise ValueError(f"{field} must not have leading or trailing whitespace.")
     return value
