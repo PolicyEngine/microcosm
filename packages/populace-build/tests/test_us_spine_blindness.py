@@ -96,6 +96,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
+        # Stacked-spine pilot (#578 revision): stacking, gap-fill donor
+        # routing, activation authority, the completeness gate, and the
+        # by-origin battery are origin-aware by charter.
+        "stacked_spine.py",
         "support_provenance.py",  # Centralized provenance compatibility.
         "warm_start_selection.py",  # Provenance reporting and recovery.
     }
@@ -236,6 +240,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spine_agreement.py",
         "spine_assembly.py",
         "spm_resources.py",
+        "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
