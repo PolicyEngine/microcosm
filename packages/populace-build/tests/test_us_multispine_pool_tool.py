@@ -831,6 +831,14 @@ def _install_stacked_entrypoint_stubs(
 
     monkeypatch.setattr(pool_tool, "assemble_stacked_spine", stack)
 
+    real_build_stacked_pool = pool_tool.build_stacked_pool
+
+    def build_stacked_pool(*args, **kwargs):
+        order.append("build_stacked_pool")
+        return real_build_stacked_pool(*args, **kwargs)
+
+    monkeypatch.setattr(pool_tool, "build_stacked_pool", build_stacked_pool)
+
     def prepare(frame: Frame, *, acs_rent_donor: pd.DataFrame):
         order.append("prepare")
         assert len(acs_rent_donor) == 1
@@ -979,7 +987,7 @@ def _install_stacked_entrypoint_stubs(
         ("error", None, "failed"),
     ],
 )
-def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state(
+def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_terminal_state(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -987,6 +995,7 @@ def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state
     expected_code: int | None,
     disposition: str,
 ) -> None:
+    """Exercise the real tool, stack assembly, orchestrator, and publication shell."""
     order, full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -1011,12 +1020,13 @@ def test_stacked_tool_entrypoint_emits_one_chronicle_row_at_every_terminal_state
     assert "f001-s578-asec1-acs1" in row.build_id
     assert full_puf_rows == 7
     if terminal == "error":
-        assert order == ["stack", "prepare", "gap", "puf"]
+        assert order == ["stack", "build_stacked_pool", "prepare", "gap", "puf"]
         assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
         assert row.artifact_location is None
     else:
         assert order == [
             "stack",
+            "build_stacked_pool",
             "prepare",
             "gap",
             "puf",
@@ -1390,6 +1400,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
 
     assert cold_order == [
         "stack",
+        "build_stacked_pool",
         "prepare",
         "gap",
         "puf",
@@ -1402,8 +1413,14 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "battery",
         "publish",
     ]
-    assert simulated_resume_order == ["completeness", "battery", "publish"]
+    assert simulated_resume_order == [
+        "build_stacked_pool",
+        "completeness",
+        "battery",
+        "publish",
+    ]
     assert transferred_resume_order == [
+        "build_stacked_pool",
         "tail_prepare",
         "derive",
         "seed",
@@ -1413,6 +1430,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "publish",
     ]
     assert assembled_resume_order == [
+        "build_stacked_pool",
         "prepare",
         "gap",
         "puf",
