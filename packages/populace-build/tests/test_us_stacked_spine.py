@@ -29,9 +29,14 @@ from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankSto
 from populace.build.us_runtime.multispine_pool import (
     pool_transfer_target_families,
 )
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+)
 from populace.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
+    PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
     clone_us_frame_for_puf_support,
     finalize_us_puf_tax_detail_predictions,
     prepare_us_puf_tax_detail_chain_inputs,
@@ -1779,7 +1784,7 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
             "weight": [1.0, 1.0, 1.0, 1.0],
         }
     )
-    result = run_stacked_puf_pass(
+    result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
         gap_filled,
         donor,
         clone_attachment_fraction=0.5,
@@ -1806,7 +1811,7 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
     assert result.receipt["doctrines"]["absent_cells"] == "preserve_nulls"
 
     with pytest.raises(ValueError, match="clone attachment"):
-        run_stacked_puf_pass(
+        stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
             result.frame,
             donor,
             clone_attachment_fraction=0.5,
@@ -1828,7 +1833,7 @@ def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> N
             "weight": [1.0, 1.0, 1.0, 1.0],
         }
     )
-    result = run_stacked_puf_pass(
+    result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
         gap_filled,
         donor,
         clone_attachment_fraction=1.0,
@@ -1847,6 +1852,111 @@ def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> N
     assert attachment["clone_attachment_seed"] == 0
     assert attachment["eligible_household_count"] == 14
     assert attachment["realized_household_count"] == 14
+
+
+def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    tables = {entity: gap_filled.table(entity) for entity in gap_filled.entities}
+    person = tables["person"].copy()
+    for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
+        person[column] = 0.0
+    tables["person"] = person
+    tax_unit = tables["tax_unit"].copy()
+    tax_unit["filing_status_input"] = "SINGLE"
+    for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
+        tax_unit[column] = 0.0
+    tables["tax_unit"] = tax_unit
+    gap_filled = Frame(
+        tables,
+        gap_filled.schema,
+        {
+            entity: gap_filled.weights_for(entity)
+            for entity in gap_filled.weighted_entities
+        },
+        gap_filled.strata,
+        mass_log=gap_filled.mass_log,
+        metadata=gap_filled.metadata,
+    )
+    donor = pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20, 1_000_001],
+            "employment_income": [45_000.0, 8_000.0, 70_000.0],
+            "taxable_interest_income": [120.0, 30.0, 900.0],
+            "health_savings_account_ald": [0.0, 500.0, 1_000.0],
+            "weight": [996.0, 3.0, 1.0],
+            "filing_status_code": [1.0, 1.0, 1.0],
+            PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN: [
+                100_000.0,
+                5_000_000.0,
+                10_000_000.0,
+            ],
+            "short_term_capital_gains": [0.0, -10_000_000_000.0, 5_000_000_000.0],
+            "long_term_capital_gains_before_response": [
+                100_000.0,
+                100_000_000_000.0,
+                75_000_000_000.0,
+            ],
+            "long_term_capital_gains_on_collectibles": [
+                0.0,
+                2_000_000_000.0,
+                1_000_000_000.0,
+            ],
+            "non_sch_d_capital_gains": [0.0, 3_000_000_000.0, 0.0],
+            "unrecaptured_section_1250_gain": [
+                0.0,
+                4_000_000_000.0,
+                250_000_000.0,
+            ],
+        }
+    )
+
+    result = run_stacked_puf_pass(
+        gap_filled,
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=("health_savings_account_ald",),
+        seed=578,
+        n_estimators=10,
+    )
+
+    assert result.receipt["tail_status"] == "applied"
+    tail = result.receipt["puf_capital_gains_tail_transfer"]
+    assert tail["record_count"] == 2
+    for entity in result.frame.entities:
+        assert 2 in set(
+            result.frame.table(entity)[support_clone_index_column(entity)].astype(int)
+        )
+
+    preservation = stacked_spine_module.assert_stacked_tail_cells_preserved(
+        result.frame,
+        tail,
+    )
+    assert preservation["passed"] is True
+    assert preservation["tail_owned_cell_count"] == 10
+
+    prepared, receipt = stacked_spine_module.prepare_stacked_tail_derivation(
+        result.frame
+    )
+    if "schedule_d_capital_gain_distributions" in prepared.table("person"):
+        clone_two = prepared.table("person")[support_clone_index_column("person")].eq(2)
+        assert (
+            prepared.table("person")
+            .loc[clone_two, "schedule_d_capital_gain_distributions"]
+            .isna()
+            .all()
+        )
+    assert receipt["cleared_rows"] == int(
+        prepared.table("person")[support_clone_index_column("person")].eq(2).sum()
+    )
+    stacked_spine_module.assert_stacked_tail_cells_preserved(prepared, tail)
 
 
 def _completed_stacked_frame() -> Frame:
@@ -3281,7 +3391,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
             "weight": [1.0] * 8,
         }
     )
-    passed = run_stacked_puf_pass(
+    passed = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
         gap_filled.frame,
         donor,
         clone_attachment_fraction=0.5,
@@ -3299,7 +3409,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
     # The audit's failure mode is now a named terminal error, not a silent
     # zero-fill: without gap-fill the strict doctrine refuses the PUF pass.
     with pytest.raises(ValueError, match="puf_predictor_taxable_interest_income"):
-        run_stacked_puf_pass(
+        stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
             stacked,
             donor,
             clone_attachment_fraction=0.5,
