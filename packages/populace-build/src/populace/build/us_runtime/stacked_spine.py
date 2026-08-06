@@ -41,6 +41,7 @@ import pickle
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
@@ -59,8 +60,23 @@ from populace.build.us_runtime.multispine_pool import (
     POOL_SPINE_AGREEMENT_REGISTRY,
     pool_transfer_target_families,
 )
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+    transfer_puf_capital_gains_tail,
+    validate_puf_capital_gains_tail_manifest,
+)
+from populace.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_MANIFEST_FILENAME,
+    finalize_primary_puf_qrf_chain,
+    initialize_primary_puf_qrf_chain,
+    run_primary_puf_qrf_chain,
+)
 from populace.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    US_PUF_SUPPORT_FIT_NAME,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
     validate_puf_clone_attachment,
@@ -96,9 +112,11 @@ __all__ = [
     "StackedPufPassResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
+    "assert_stacked_tail_cells_preserved",
     "by_origin_battery",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
+    "prepare_stacked_tail_derivation",
     "sample_acs_households",
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
@@ -2990,8 +3008,9 @@ def run_stacked_puf_pass(
     n_estimators: int = 100,
     fit_records: list[FitWeightRecord] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    primary_qrf_checkpoint_dir: str | Path | None = None,
 ) -> StackedPufPassResult:
-    """Run the one PUF pass over the gap-filled stacked spine.
+    """Run the resumable primary QRF and clone-2 tail over the stacked spine.
 
     Order is the charter's: the spine must already be gap-filled (this entry
     validates the stacked manifest and refuses cloned input), the PUF clone
@@ -3001,6 +3020,56 @@ def run_stacked_puf_pass(
     must be complete (no zero-filled absence) and finalization preserves
     nulls on every cell the pass does not own.
     """
+
+    return _run_stacked_puf_pass_evaluate(
+        frame,
+        donor_tax_units,
+        clone_attachment_fraction=clone_attachment_fraction,
+        clone_attachment_seed=clone_attachment_seed,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+        seed=seed,
+        n_estimators=n_estimators,
+        fit_records=fit_records,
+        tail_bound_diagnostics=tail_bound_diagnostics,
+        primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        apply_capital_gains_tail=True,
+    )
+
+
+def _run_stacked_puf_pass_without_tail_for_test(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    **kwargs: object,
+) -> StackedPufPassResult:
+    """Fixture-only pilot seam; production always applies the clone-2 tail."""
+
+    return _run_stacked_puf_pass_evaluate(
+        frame,
+        donor_tax_units,
+        apply_capital_gains_tail=False,
+        **kwargs,
+    )
+
+
+def _run_stacked_puf_pass_evaluate(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    predictors: Sequence[str] | None = None,
+    person_outputs: Sequence[str] | None = None,
+    tax_unit_outputs: Sequence[str] | None = None,
+    seed: int = 0,
+    n_estimators: int = 100,
+    fit_records: list[FitWeightRecord] | None = None,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    primary_qrf_checkpoint_dir: str | Path | None = None,
+    apply_capital_gains_tail: bool,
+) -> StackedPufPassResult:
+    """Internal evaluator with one explicit fixture-only tail seam."""
 
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
@@ -3028,26 +3097,89 @@ def run_stacked_puf_pass(
         kwargs["person_outputs"] = tuple(person_outputs)
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
-    imputed = impute_us_puf_tax_detail_support(
-        cloned,
-        donor_tax_units,
-        seed=seed,
-        n_estimators=n_estimators,
-        fit_records=fit_records,
-        tail_bound_diagnostics=tail_bound_diagnostics,
-        require_complete_recipient_predictors=True,
-        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
-        **kwargs,
-    )
-    validate_stacked_spine_frame(imputed, boundary="stacked PUF pass output")
+    if primary_qrf_checkpoint_dir is None:
+        imputed = impute_us_puf_tax_detail_support(
+            cloned,
+            donor_tax_units,
+            seed=seed,
+            n_estimators=n_estimators,
+            fit_records=fit_records,
+            tail_bound_diagnostics=tail_bound_diagnostics,
+            require_complete_recipient_predictors=True,
+            absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            **kwargs,
+        )
+        primary_qrf_receipt: dict[str, object] = {
+            "mode": "monolithic",
+            "resume_status": "not_applicable",
+        }
+    else:
+        checkpoint_dir = Path(primary_qrf_checkpoint_dir)
+        manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
+        if manifest_path.exists():
+            resume_status = "resumed"
+        else:
+            if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
+                raise ValueError(
+                    "Stacked primary QRF checkpoint directory is nonempty but "
+                    f"has no manifest: {checkpoint_dir}."
+                )
+            initialize_primary_puf_qrf_chain(
+                cloned,
+                donor_tax_units,
+                checkpoint_dir,
+                seed=seed,
+                n_estimators=n_estimators,
+                require_complete_recipient_predictors=True,
+                absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+                **kwargs,
+            )
+            resume_status = "initialized"
+        run_primary_puf_qrf_chain(checkpoint_dir)
+        imputed, weight_kind = finalize_primary_puf_qrf_chain(
+            cloned,
+            checkpoint_dir,
+            tail_bound_diagnostics=tail_bound_diagnostics,
+        )
+        if fit_records is not None:
+            fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind))
+        primary_qrf_receipt = {
+            "mode": "checkpoint_chain",
+            "resume_status": resume_status,
+            "checkpoint_manifest": str(manifest_path.resolve()),
+        }
+
+    validate_stacked_spine_frame(imputed, boundary="stacked primary PUF output")
     validate_puf_clone_attachment(
         imputed,
-        boundary="stacked PUF pass output",
+        boundary="stacked primary PUF output",
         expected_fraction=clone_attachment_fraction,
         expected_seed=clone_attachment_seed,
     )
 
-    person = imputed.table("person")
+    if apply_capital_gains_tail:
+        output, tail_receipt = transfer_puf_capital_gains_tail(
+            imputed,
+            donor_tax_units,
+            seed=seed,
+        )
+        validate_puf_capital_gains_tail_manifest(tail_receipt)
+        tail_ceiling = tail_receipt["tail_distribution_receipts"]["frame_after_stage"]
+        if not tail_ceiling["positive_mass_five_x_target_exceeded"]:
+            raise ValueError(
+                "PUF capital-gains tail transfer did not clear its declared "
+                "five-times positive-mass target: "
+                f"{tail_ceiling['positive_mass_five_x_ceiling']} <= "
+                f"{tail_ceiling['positive_mass_five_x_target']}."
+            )
+        tail_status = "applied"
+    else:
+        output = imputed
+        tail_receipt = None
+        tail_status = "fixture_only_skipped"
+    validate_stacked_spine_frame(output, boundary="stacked PUF pass output")
+
+    person = output.table("person")
     channel = person[support_channel_column("person")].astype(str)
     clone_index = person[support_clone_index_column("person")]
     recipients_by_origin = {
@@ -3055,16 +3187,174 @@ def run_stacked_puf_pass(
         for origin in sorted(channel.unique())
     }
     return StackedPufPassResult(
-        frame=imputed,
+        frame=output,
         receipt={
             "clone_attachment": _json_ready(attachment),
             "doctrines": {
                 "require_complete_recipient_predictors": True,
                 "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
             },
+            "primary_puf_qrf": primary_qrf_receipt,
+            "puf_capital_gains_tail_transfer": tail_receipt,
+            "tail_status": tail_status,
             "recipient_person_rows_by_origin": recipients_by_origin,
         },
     )
+
+
+def prepare_stacked_tail_derivation(frame: Frame) -> tuple[Frame, dict[str, object]]:
+    """Clear the clone-2 Schedule-D leaf so derive recomputes it from the tail."""
+
+    validate_stacked_spine_frame(frame, boundary="stacked tail derivation entry")
+    person = frame.table("person").copy()
+    clone_column = support_clone_index_column("person")
+    clone_two = pd.to_numeric(person[clone_column], errors="raise").eq(2)
+    if not clone_two.any():
+        raise ValueError(
+            "Stacked tail derivation requires clone-2 rows from the capital-gains "
+            "tail pass."
+        )
+    column = "schedule_d_capital_gain_distributions"
+    if column not in person:
+        previously_observed = 0
+    else:
+        previously_observed = int(person.loc[clone_two, column].notna().sum())
+        person.loc[clone_two, column] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    prepared = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return prepared, {
+        "column": column,
+        "clone_index": 2,
+        "cleared_rows": int(clone_two.sum()),
+        "previously_observed_rows": previously_observed,
+        "column_was_present": column in frame.table("person"),
+        "reason": "rederive_from_clone_2_tail_owned_parents",
+    }
+
+
+def assert_stacked_tail_cells_preserved(
+    frame: Frame,
+    tail_manifest: Mapping[str, object],
+) -> dict[str, object]:
+    """Prove exact tail-owned cells and recipient-owned QRF cells survived."""
+
+    validate_stacked_spine_frame(frame, boundary="stacked tail preservation")
+    validate_puf_capital_gains_tail_manifest(tail_manifest)
+    records = tail_manifest.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("Stacked tail preservation requires nonempty records.")
+
+    observed_vectors: list[dict[str, object]] = []
+    for record in records:
+        if not isinstance(record, Mapping) or not isinstance(
+            record.get("joint_vector"), Mapping
+        ):
+            raise ValueError("Stacked tail preservation found a malformed record.")
+        joint_vector = record["joint_vector"]
+        for entity, identifier_key, columns in (
+            (
+                "person",
+                "tail_person_id",
+                PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+            ),
+            (
+                "tax_unit",
+                "tail_tax_unit_id",
+                PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+            ),
+        ):
+            table = frame.table(entity)
+            primary = frame.schema.entity_id_column(entity)
+            identifier = int(record[identifier_key])
+            rows = table.loc[table[primary].eq(identifier)]
+            if len(rows) != 1:
+                raise ValueError(
+                    f"Stacked tail preservation expected one {entity} row for "
+                    f"{identifier_key}={identifier}; found {len(rows)}."
+                )
+            for column in columns:
+                if column not in rows:
+                    raise ValueError(
+                        f"Stacked tail-owned column {entity}.{column} is absent."
+                    )
+                expected = np.float64(joint_vector[column])
+                actual = np.float64(rows.iloc[0][column])
+                if actual.tobytes() != expected.tobytes():
+                    raise ValueError(
+                        f"Stacked tail-owned cell {entity}.{column} for "
+                        f"{identifier_key}={identifier} changed: expected "
+                        f"{expected!r}, got {actual!r}."
+                    )
+                observed_vectors.append(
+                    {
+                        "entity": entity,
+                        "column": column,
+                        "id": identifier,
+                        "value": float(actual),
+                    }
+                )
+
+    preserved_nonowned = 0
+    for entity, owned_columns, qrf_outputs in (
+        (
+            "person",
+            frozenset(PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
+            PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+        ),
+        (
+            "tax_unit",
+            frozenset(PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS),
+            PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        ),
+    ):
+        table = frame.table(entity)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)], errors="raise"
+        ).astype("int64")
+        source_id = spine_source_id_column(entity)
+        primary = table.loc[clone_index.eq(1)].set_index(source_id, drop=False)
+        tail = table.loc[clone_index.eq(2)].set_index(source_id, drop=False)
+        missing_sources = sorted(set(tail.index) - set(primary.index))
+        if missing_sources:
+            raise ValueError(
+                f"Stacked tail {entity} clone-2 source rows have no clone-1 "
+                f"parent: {missing_sources}."
+            )
+        for column in sorted(set(qrf_outputs) - owned_columns):
+            if column not in table:
+                continue
+            expected = primary.loc[tail.index, column].reset_index(drop=True)
+            actual = tail[column].reset_index(drop=True)
+            expected.name = column
+            actual.name = column
+            if _canonical_donor_series_payload(
+                actual,
+                boundary=f"stacked tail actual {entity}.{column}",
+            ) != _canonical_donor_series_payload(
+                expected,
+                boundary=f"stacked tail expected {entity}.{column}",
+            ):
+                raise ValueError(
+                    f"Stacked tail recipient-owned QRF column {entity}.{column} "
+                    "changed on clone 2."
+                )
+            preserved_nonowned += int(len(actual))
+
+    return {
+        "passed": True,
+        "record_count": len(records),
+        "tail_owned_cell_count": len(observed_vectors),
+        "recipient_owned_qrf_cell_count": preserved_nonowned,
+        "tail_owned_cells_sha256": _canonical_sha256(observed_vectors),
+    }
 
 
 # ---------------------------------------------------------------------------
