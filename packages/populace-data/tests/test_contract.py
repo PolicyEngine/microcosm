@@ -3224,3 +3224,156 @@ def test_us_release_table_1_4_returns_rows_are_outside_the_dollar_blanket(
     )
 
     validate_release_dir(release_dir)
+
+
+def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    payload, evidence = _terminal_gate_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+        evidence_stages=("qrf_tail_concentration",),
+    )
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = evidence
+    build_path.write_text(json.dumps(build))
+    return directory, payload
+
+
+def _write_resigned_qrf_release(directory: Path, payload: dict) -> None:
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+
+def test_exact_k_uk_terminal_rejects_unexcluded_high_qrf_share(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _resignable_qrf_release(tmp_path)
+    details = payload["gates"]["qrf_tail_concentration"]["details"]
+    details["top_share"]["self_employment_income"] = 1.0
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "columns above details.max_top_share" in failures
+    assert "attestation.signature does not authenticate" not in failures
+
+
+def test_exact_k_uk_terminal_rejects_qrf_thin_count_at_minimum(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _resignable_qrf_release(tmp_path)
+    details = payload["gates"]["qrf_tail_concentration"]["details"]
+    details["thin_columns"]["invented_thin_output"] = details["min_nonzero_records"]
+    details["surface"]["declared_qrf_outputs"] = 2
+    details["surface"]["checked_columns"].append("invented_thin_output")
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "details.thin_columns values" in failures
+    assert "must reconcile declared, checked, absent, nonnumeric" not in failures
+    assert "attestation.signature does not authenticate" not in failures
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("top_k", True, "details.top_k"),
+        ("top_k", 0, "details.top_k"),
+        ("max_top_share", True, "details.max_top_share"),
+        ("max_top_share", 1.0, "details.max_top_share"),
+        ("min_nonzero_records", True, "details.min_nonzero_records"),
+        ("min_nonzero_records", 1, "details.min_nonzero_records"),
+    ],
+)
+def test_exact_k_uk_terminal_rejects_invalid_qrf_thresholds(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    directory, payload = _resignable_qrf_release(tmp_path)
+    payload["gates"]["qrf_tail_concentration"]["details"][field] = value
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert match in failures
+    assert "attestation.signature does not authenticate" not in failures
+
+
+def test_exact_k_uk_terminal_rejects_boolean_qrf_carrier_count(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _resignable_qrf_release(tmp_path)
+    details = payload["gates"]["qrf_tail_concentration"]["details"]
+    details["carrier_counts"]["self_employment_income"] = True
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "details.carrier_counts values" in failures
+    assert "attestation.signature does not authenticate" not in failures
+
+
+def test_exact_k_uk_terminal_accepts_high_qrf_share_with_live_exclusion(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _resignable_qrf_release(tmp_path)
+    details = payload["gates"]["qrf_tail_concentration"]["details"]
+    details["top_share"]["self_employment_income"] = 1.0
+    details["reviewed_exclusions"] = {
+        "self_employment_income": "Reviewed concentrated QRF instrument."
+    }
+    _write_resigned_qrf_release(directory, payload)
+
+    validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    ("observable", "value", "match"),
+    [
+        ("top_share", True, "details.top_share values"),
+        ("top_share", -0.1, "details.top_share values"),
+        ("carrier_counts", 1, "details.carrier_counts values"),
+        ("thin_columns", True, "details.thin_columns values"),
+        ("thin_columns", -1, "details.thin_columns values"),
+    ],
+)
+def test_exact_k_uk_terminal_rejects_invalid_qrf_observable_values(
+    tmp_path: Path,
+    observable: str,
+    value: object,
+    match: str,
+) -> None:
+    directory, payload = _resignable_qrf_release(tmp_path)
+    details = payload["gates"]["qrf_tail_concentration"]["details"]
+    column = "self_employment_income"
+    if observable == "thin_columns":
+        column = "invented_thin_output"
+        details["surface"]["declared_qrf_outputs"] = 2
+        details["surface"]["checked_columns"].append(column)
+    details[observable][column] = value
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert match in failures
+    assert "attestation.signature does not authenticate" not in failures

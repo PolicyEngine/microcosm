@@ -1344,8 +1344,46 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.columns_checked to be positive."
             )
+        top_k = qrf_tail.get("top_k")
+        valid_top_k = (
+            not isinstance(top_k, bool) and isinstance(top_k, int) and top_k >= 1
+        )
+        if not valid_top_k:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.top_k to be a positive non-boolean integer."
+            )
+        max_top_share = qrf_tail.get("max_top_share")
+        valid_max_top_share = (
+            not isinstance(max_top_share, bool)
+            and isinstance(max_top_share, int | float)
+            and 0.0 < max_top_share < 1.0
+            and math.isfinite(max_top_share)
+        )
+        if not valid_max_top_share:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.max_top_share to be a finite non-boolean "
+                "number in (0, 1)."
+            )
+        min_nonzero_records = qrf_tail.get("min_nonzero_records")
+        valid_min_nonzero_records_type = not isinstance(
+            min_nonzero_records, bool
+        ) and isinstance(min_nonzero_records, int)
+        valid_min_nonzero_records = (
+            valid_min_nonzero_records_type
+            and valid_top_k
+            and min_nonzero_records > top_k
+        )
+        if not valid_min_nonzero_records:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.min_nonzero_records to be a non-boolean integer "
+                "greater than details.top_k."
+            )
         top_share = qrf_tail.get("top_share")
         carrier_counts = qrf_tail.get("carrier_counts")
+        thin_columns = qrf_tail.get("thin_columns")
         if (
             not isinstance(top_share, Mapping)
             or not isinstance(carrier_counts, Mapping)
@@ -1357,6 +1395,68 @@ def _check_uk_terminal_gate_observables(
                 "must reconcile details.columns_checked, top_share, and "
                 "carrier_counts."
             )
+        valid_top_shares = isinstance(top_share, Mapping) and all(
+            not isinstance(share, bool)
+            and isinstance(share, int | float)
+            and 0.0 <= share <= 1.0
+            and math.isfinite(share)
+            for share in top_share.values()
+        )
+        if not valid_top_shares:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.top_share values to be finite non-boolean "
+                "numbers in [0, 1]."
+            )
+        valid_carrier_counts = isinstance(carrier_counts, Mapping) and all(
+            not isinstance(count, bool)
+            and isinstance(count, int)
+            and (not valid_min_nonzero_records_type or count >= min_nonzero_records)
+            for count in carrier_counts.values()
+        )
+        if not valid_carrier_counts:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.carrier_counts values to be non-boolean integers "
+                "at least details.min_nonzero_records."
+            )
+        valid_thin_counts = isinstance(thin_columns, Mapping) and all(
+            not isinstance(count, bool)
+            and isinstance(count, int)
+            and count >= 0
+            and (not valid_min_nonzero_records_type or count < min_nonzero_records)
+            for count in thin_columns.values()
+        )
+        if not valid_thin_counts:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.thin_columns values to be non-boolean integers "
+                "in [0, details.min_nonzero_records)."
+            )
+        reviewed_exclusions = qrf_tail.get("reviewed_exclusions")
+        valid_reviewed_exclusions = isinstance(reviewed_exclusions, Mapping) and all(
+            isinstance(name, str)
+            and bool(name.strip())
+            and isinstance(reason, str)
+            and bool(reason.strip())
+            for name, reason in reviewed_exclusions.items()
+        )
+        if not valid_reviewed_exclusions:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.reviewed_exclusions to map non-empty column "
+                "names to non-empty string reasons."
+            )
+        elif valid_top_shares and valid_max_top_share:
+            high_share_columns = {
+                name for name, share in top_share.items() if share > max_top_share
+            }
+            if high_share_columns != set(reviewed_exclusions):
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                    "requires columns above details.max_top_share to match "
+                    "details.reviewed_exclusions exactly."
+                )
         surface = qrf_tail.get("surface")
         if not isinstance(surface, Mapping):
             failures.append(
@@ -1380,7 +1480,6 @@ def _check_uk_terminal_gate_observables(
                     "non_numeric_columns",
                 )
             }
-            thin_columns = qrf_tail.get("thin_columns")
             if (
                 isinstance(declared_count, bool)
                 or not isinstance(declared_count, int)
