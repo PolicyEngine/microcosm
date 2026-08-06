@@ -8,10 +8,14 @@ import pytest
 
 from populace.build.gates import FitWeightRecord, GateReport, GateResult
 from populace.build.uk_runtime.national_build import (
-    UKNationalDataset,
     UKNationalStage,
     build_uk_national_dataset,
-    load_uk_national_dataset,
+    load_uk_national_frame,
+)
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
 )
 from populace.build.uk_runtime.terminal_gates import (
     UK_TERMINAL_GATE_SIGNING_KEY_ENV,
@@ -23,7 +27,7 @@ from populace.build.uk_runtime.terminal_gates import (
 from populace.build.uk_runtime.terminal_gates import (
     write_uk_terminal_gate_report as real_write_uk_terminal_gate_report,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.frame import Frame, MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
 TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
@@ -35,6 +39,19 @@ def _run_national_build(**kwargs):
         release_id=TEST_UK_RELEASE_ID,
         calibration_diagnostics_sha256=TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
         **kwargs,
+    )
+
+
+def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
+    """Rebuild the frame with the person table replaced (mass untouched)."""
+
+    return uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
     )
 
 
@@ -199,8 +216,8 @@ class _RecordedFitStage:
         FitWeightRecord("uk_frs_only_spi_fill", "importance"),
     )
 
-    def __call__(self, dataset: UKNationalDataset) -> UKNationalDataset:
-        return dataset
+    def __call__(self, frame: Frame) -> Frame:
+        return frame
 
 
 def test_national_build_runs_preflight_stages_gate_then_staging_write(
@@ -215,25 +232,25 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     _write_toy_h5(input_h5)
     events: list[str] = []
 
-    def stage_transform(dataset: UKNationalDataset) -> UKNationalDataset:
+    def stage_transform(frame: Frame) -> Frame:
         events.append("stage:income")
-        person = dataset.person.copy()
+        person = frame.table("person").copy()
         person["employment_income"] = 50_000.0
-        return dataset.with_tables(person=person)
+        return _replace_person(frame, person)
 
     def assert_current(**_kwargs) -> None:
         events.append("manifest_preflight")
 
-    def coverage_gate(dataset, _engine):
+    def coverage_gate(evidence, _engine):
         events.append("final_coverage_gate")
-        assert dataset.person["employment_income"].tolist() == [50_000.0]
+        assert evidence["person"]["employment_income"].tolist() == [50_000.0]
         return _passing_gate()
 
-    real_writer = national_build.write_uk_national_dataset
+    real_writer = national_build.write_uk_national_frame
 
-    def recording_writer(dataset, path):
+    def recording_writer(frame, path):
         events.append("staging_write")
-        return real_writer(dataset, path)
+        return real_writer(frame, path)
 
     monkeypatch.setattr(
         national_build,
@@ -247,7 +264,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     )
     monkeypatch.setattr(
         national_build,
-        "write_uk_national_dataset",
+        "write_uk_national_frame",
         recording_writer,
     )
 
@@ -270,12 +287,12 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     assert result.terminal_gates.passed is True
     assert result.terminal_gate_path == coverage_json.resolve()
     assert result.input_coverage_path == result.terminal_gate_path
-    assert result.dataset.source_h5 == input_h5.resolve()
+    assert result.provenance.source_h5 == input_h5.resolve()
     assert staging_h5.exists()
-    staged = load_uk_national_dataset(staging_h5)
-    assert staged.source_h5 == staging_h5.resolve()
+    staged, staged_provenance = load_uk_national_frame(staging_h5)
+    assert staged_provenance.source_h5 == staging_h5.resolve()
     assert staged.person["employment_income"].tolist() == [50_000.0]
-    assert staged.household["household_weight"].tolist() == [2.0]
+    assert staged.table("household")["household_weight"].tolist() == [2.0]
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
@@ -422,7 +439,7 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
     default_terminal_json = staging_h5.with_suffix(".terminal_gates.json")
     _write_toy_h5(input_h5)
     events: list[str] = []
-    real_loader = national_build.load_uk_national_dataset
+    real_loader = national_build.load_uk_national_frame
     real_report_writer = national_build.write_uk_terminal_gate_report
 
     def preflight(**_kwargs) -> None:
@@ -454,7 +471,7 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
         "assert_uk_release_input_coverage_build_stages",
         stage_contract,
     )
-    monkeypatch.setattr(national_build, "load_uk_national_dataset", load)
+    monkeypatch.setattr(national_build, "load_uk_national_frame", load)
     monkeypatch.setattr(national_build, "uk_release_input_coverage_gate", evaluate)
     monkeypatch.setattr(
         national_build,
@@ -707,10 +724,10 @@ def test_national_build_rejects_duplicate_stage_names_before_running(
     _write_toy_h5(input_h5)
     called = False
 
-    def transform(dataset: UKNationalDataset) -> UKNationalDataset:
+    def transform(frame: Frame) -> Frame:
         nonlocal called
         called = True
-        return dataset
+        return frame
 
     monkeypatch.setattr(
         national_build,
@@ -746,10 +763,10 @@ def test_national_build_manifest_failure_removes_stale_outputs_before_stages(
     coverage_json.write_text('{"stale_success": true}\n')
     stage_called = False
 
-    def stage_transform(dataset: UKNationalDataset) -> UKNationalDataset:
+    def stage_transform(frame: Frame) -> Frame:
         nonlocal stage_called
         stage_called = True
-        return dataset
+        return frame
 
     def reject_manifest(**_kwargs) -> None:
         raise ValueError("manifest drift")
@@ -788,12 +805,13 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
         lambda **_kwargs: None,
     )
 
-    def break_links(dataset: UKNationalDataset) -> UKNationalDataset:
-        person = dataset.person.copy()
+    def break_links(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
         person["person_household_id"] = 999
-        return dataset.with_tables(person=person)
+        return _replace_person(frame, person)
 
-    with pytest.raises(ValueError, match="absent from household"):
+    # Frame construction inside the stage is where the invariant now lives.
+    with pytest.raises(ValueError, match="absent from the table"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
@@ -807,20 +825,23 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
     [
         (
             "missing_period",
-            lambda dataset: UKNationalDataset(
-                person=dataset.person,
-                benunit=dataset.benunit,
-                household=dataset.household,
+            lambda frame: uk_national_frame(
+                person=frame.table("person"),
+                benunit=frame.table("benunit"),
+                household=frame.table("household"),
                 time_period=None,
             ),
             "time_period must be a non-empty string",
         ),
         (
             "zero_population",
-            lambda dataset: dataset.with_tables(
-                household=dataset.household.assign(household_weight=0.0)
+            lambda frame: uk_national_frame(
+                person=frame.table("person"),
+                benunit=frame.table("benunit"),
+                household=frame.table("household").assign(household_weight=0.0),
+                time_period=uk_time_period(frame),
             ),
-            "retain at least one positive value",
+            "Weights cannot be all zero",
         ),
     ],
 )
@@ -896,22 +917,26 @@ def test_national_build_accepts_hugging_face_style_h5_symlink(
     )
 
     assert result.input_h5 == cached_blob.resolve()
-    assert result.dataset.source_h5 == cached_blob.resolve()
+    assert result.provenance.source_h5 == cached_blob.resolve()
     assert staging_h5.is_file()
 
 
 def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     pytest.importorskip("tables")
     policyengine_data = pytest.importorskip("policyengine_uk.data")
-    from populace.build.uk_runtime.national_build import write_uk_national_dataset
+    from populace.build.uk_runtime.national_build import write_uk_national_frame
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
-    dataset = load_uk_national_dataset(input_h5)
-    assert dataset.source_h5 == input_h5.resolve()
-    dataset = dataset.with_tables(
-        household_weight_kind=WeightKind.IMPORTANCE,
+    frame, provenance = load_uk_national_frame(input_h5)
+    assert provenance.source_h5 == input_h5.resolve()
+    frame = uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        time_period=uk_time_period(frame),
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -922,13 +947,12 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
             ),
         ),
     )
-    assert dataset.source_h5 == input_h5.resolve()
 
-    write_uk_national_dataset(dataset, staging_h5)
+    write_uk_national_frame(frame, staging_h5)
 
-    round_tripped = load_uk_national_dataset(staging_h5)
-    assert round_tripped.household_weight_kind is WeightKind.IMPORTANCE
-    assert round_tripped.mass_log == dataset.mass_log
+    round_tripped, _staging_provenance = load_uk_national_frame(staging_h5)
+    assert uk_household_weight_kind(round_tripped) is WeightKind.IMPORTANCE
+    assert round_tripped.mass_log == frame.mass_log
 
     loaded = policyengine_data.UKSingleYearDataset(file_path=str(staging_h5))
     assert loaded.time_period == "2023"
@@ -945,7 +969,7 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
-    dataset = load_uk_national_dataset(input_h5)
+    frame, _provenance = load_uk_national_frame(input_h5)
     staging_h5.write_bytes(b"previous-good-artifact")
 
     def fail_store(path, *_args, **_kwargs):
@@ -955,7 +979,7 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
     monkeypatch.setattr(national_build.pd, "HDFStore", fail_store)
 
     with pytest.raises(OSError, match="simulated HDF write failure"):
-        national_build.write_uk_national_dataset(dataset, staging_h5)
+        national_build.write_uk_national_frame(frame, staging_h5)
 
     assert staging_h5.read_bytes() == b"previous-good-artifact"
     assert list(tmp_path.glob(".staging.h5.*.tmp.h5")) == []

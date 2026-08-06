@@ -147,10 +147,10 @@ class UKNationalDataset:
 
 @dataclass(frozen=True)
 class UKNationalStage:
-    """One named, deterministic national table transform."""
+    """One named, deterministic ``Frame -> Frame`` national transform."""
 
     name: str
-    transform: Callable[[UKNationalDataset], UKNationalDataset]
+    transform: Callable[[Frame], Frame]
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -158,13 +158,13 @@ class UKNationalStage:
         if not callable(self.transform):
             raise TypeError("UKNationalStage.transform must be callable.")
 
-    def run(self, dataset: UKNationalDataset) -> UKNationalDataset:
-        """Apply this stage and require an explicit UK dataset result."""
+    def run(self, frame: Frame) -> Frame:
+        """Apply this stage and require an explicit Frame result."""
 
-        result = self.transform(dataset)
-        if not isinstance(result, UKNationalDataset):
+        result = self.transform(frame)
+        if not isinstance(result, Frame):
             raise TypeError(
-                f"UK national stage {self.name!r} must return UKNationalDataset, "
+                f"UK national stage {self.name!r} must return a populace Frame, "
                 f"got {type(result).__name__}."
             )
         return result
@@ -174,7 +174,8 @@ class UKNationalStage:
 class UKNationalBuildResult:
     """A gated national staging artifact and its execution evidence."""
 
-    dataset: UKNationalDataset
+    frame: Frame
+    provenance: UKStagingProvenance
     input_h5: Path
     staging_h5: Path
     stage_names: tuple[str, ...]
@@ -520,10 +521,17 @@ def build_uk_national_dataset(
     assert_uk_release_input_coverage_build_stages(
         tuple(stage.name for stage in materialized_stages)
     )
-    dataset = load_uk_national_dataset(requested_input_path)
+    frame, provenance = load_uk_national_frame(requested_input_path)
+    # Stages whose fences bind the loaded bytes (the SPI stage's
+    # certified-candidate check) receive the load provenance explicitly —
+    # it travels beside the frame, never inside it.
     for stage in materialized_stages:
-        dataset = stage.run(dataset)
-        validate_uk_national_dataset(dataset)
+        binder = getattr(stage.transform, "bind_staging_provenance", None)
+        if callable(binder):
+            binder(provenance)
+    for stage in materialized_stages:
+        frame = stage.run(frame)
+        validate_uk_national_frame(frame)
 
     # Mirrors the US final-export placement: evaluate every evidenced gate in
     # one batch after all stages and immediately before the staging writer.
@@ -531,7 +539,7 @@ def build_uk_national_dataset(
         materialized_stages
     )
     terminal_gates = uk_terminal_gate_report(
-        dataset,
+        engine_tables(frame),
         engine,
         release_id=release_id,
         calibration_diagnostics_sha256=calibration_diagnostics_sha256,
@@ -555,9 +563,10 @@ def build_uk_national_dataset(
             "Release gates failed: " + "; ".join(terminal_gates.failures)
         )
 
-    write_uk_national_dataset(dataset, staging_path)
+    write_uk_national_frame(frame, staging_path)
     return UKNationalBuildResult(
-        dataset=dataset,
+        frame=frame,
+        provenance=provenance,
         input_h5=input_path,
         staging_h5=staging_path,
         stage_names=tuple(stage.name for stage in materialized_stages),

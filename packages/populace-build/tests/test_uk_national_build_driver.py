@@ -7,7 +7,42 @@ from itertools import combinations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
+
+from populace.build.uk_runtime.national_frame import (
+    UKStagingProvenance,
+    _uk_source_file_fingerprint,
+    uk_national_frame,
+)
+from populace.frame import MassChangeRecord, WeightKind
+
+
+def _toy_result_frame():
+    """A real one-household frame satisfying the driver's evidence reads."""
+
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 1],
+                "person_household_id": [1, 1],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1]}),
+        household=pd.DataFrame({"household_id": [1], "household_weight": [2.0]}),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(
+            MassChangeRecord(
+                entity="household",
+                old_total=2.0,
+                new_total=2.0,
+                declared_factor=1.0,
+                reason="reviewed test mass allocation",
+            ),
+        ),
+    )
 
 _PATH_ARGUMENTS = (
     "evidence_path",
@@ -106,21 +141,10 @@ def test_national_build_driver_uses_standalone_national_seam(
         kwargs["terminal_gate_path"].write_text('{"passed": true}\n')
         input_coverage = _gate_result(passed=True)
         return SimpleNamespace(
-            dataset=SimpleNamespace(
-                person=[1, 2],
-                benunit=[1],
-                household={"household_weight": [2.0]},
-                time_period="2023",
-                household_weight_kind=SimpleNamespace(value="importance"),
-                mass_log=(
-                    SimpleNamespace(
-                        entity="household",
-                        old_total=2.0,
-                        new_total=2.0,
-                        declared_factor=1.0,
-                        reason="reviewed test mass allocation",
-                    ),
-                ),
+            frame=_toy_result_frame(),
+            provenance=UKStagingProvenance(
+                source_h5=input_h5.resolve(),
+                fingerprint=_uk_source_file_fingerprint(input_h5.resolve()),
             ),
             input_h5=input_h5.resolve(),
             staging_h5=staging_h5.resolve(),

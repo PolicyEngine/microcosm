@@ -109,6 +109,11 @@ def uk_national_frame(
             "household must carry a household_weight column; the UK staging "
             "artifact exports it as a real column."
         )
+    period = "" if time_period is None else str(time_period).strip()
+    if not period:
+        raise ValueError(
+            "UK national frame time_period must be a non-empty string."
+        )
     weights = Weights(
         values=household["household_weight"].to_numpy(dtype="float64"),
         kind=weight_kind,
@@ -118,7 +123,7 @@ def uk_national_frame(
         schema=UK_NATIONAL_SCHEMA,
         weights={"household": weights},
         mass_log=mass_log,
-        metadata={UK_TIME_PERIOD_METADATA_KEY: str(time_period)},
+        metadata={UK_TIME_PERIOD_METADATA_KEY: period},
     )
 
 

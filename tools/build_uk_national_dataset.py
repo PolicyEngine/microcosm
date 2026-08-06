@@ -23,6 +23,10 @@ from populace.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
 )
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_time_period,
+)
 from populace.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
@@ -464,10 +468,10 @@ def _aggregate_build_record(
             ),
             "reason": record.reason,
         }
-        for record in result.dataset.mass_log
+        for record in result.frame.mass_log
     ]
     household_weights = pd.to_numeric(
-        result.dataset.household["household_weight"], errors="raise"
+        result.frame.table("household")["household_weight"], errors="raise"
     )
     return {
         "schema_version": 2,
@@ -479,13 +483,13 @@ def _aggregate_build_record(
             "qrf_estimators": int(qrf_estimators),
         },
         "dataset": {
-            "time_period": str(result.dataset.time_period),
+            "time_period": uk_time_period(result.frame),
             "entity_rows": {
-                "person": len(result.dataset.person),
-                "benunit": len(result.dataset.benunit),
-                "household": len(result.dataset.household),
+                "person": len(result.frame.table("person")),
+                "benunit": len(result.frame.table("benunit")),
+                "household": len(result.frame.table("household")),
             },
-            "household_weight_kind": result.dataset.household_weight_kind.value,
+            "household_weight_kind": uk_household_weight_kind(result.frame).value,
             "household_weight_total": float(household_weights.sum()),
             "mass_changes": mass_changes,
         },
