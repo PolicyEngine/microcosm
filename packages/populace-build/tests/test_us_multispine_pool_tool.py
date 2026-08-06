@@ -801,6 +801,16 @@ def _install_stacked_entrypoint_stubs(
         "_load_inputs",
         lambda _args, *, acs_source_manifest: loaded,
     )
+    monkeypatch.setattr(
+        pool_tool,
+        "load_acs_2022_rent_donor",
+        lambda _path: loaded.acs_rent_donor,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_load_puf_donor",
+        lambda _args: (loaded.puf_donor, loaded.puf_donor_build),
+    )
     monkeypatch.setattr(pool_tool, "_git_code_pin", lambda: "a" * 40)
 
     real_stack = pool_tool.assemble_stacked_spine
@@ -1134,17 +1144,12 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     cold_order = list(order)
     first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
 
-    checkpoint_root = next(
-        (tmp_path / "stacked-pool.checkpoints" / "stacked").iterdir()
-    )
-    for suffix in (".h5", ".manifest.json"):
-        (checkpoint_root / f"simulated.checkpoint{suffix}").unlink()
     order.clear()
     assert (
         pool_tool.main(_stacked_main_argv(tmp_path, predecessor=first_row.row_digest))
         == 0
     )
-    transferred_resume_order = list(order)
+    simulated_resume_order = list(order)
     rows = [
         load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
     ]
@@ -1152,12 +1157,30 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         row for row in rows if row.prev_row_digest == first_row.row_digest
     )
 
+    checkpoint_root = next(
+        (tmp_path / "stacked-pool.checkpoints" / "stacked").iterdir()
+    )
+    for suffix in (".h5", ".manifest.json"):
+        (checkpoint_root / f"simulated.checkpoint{suffix}").unlink()
+    order.clear()
+    assert (
+        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=second_row.row_digest))
+        == 0
+    )
+    transferred_resume_order = list(order)
+    rows = [
+        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+    ]
+    third_row = next(
+        row for row in rows if row.prev_row_digest == second_row.row_digest
+    )
+
     for stage in ("transferred", "simulated"):
         for suffix in (".h5", ".manifest.json"):
             (checkpoint_root / f"{stage}.checkpoint{suffix}").unlink()
     order.clear()
     assert (
-        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=second_row.row_digest))
+        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=third_row.row_digest))
         == 0
     )
     assembled_resume_order = list(order)
@@ -1176,8 +1199,8 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "battery",
         "publish",
     ]
+    assert simulated_resume_order == ["completeness", "battery", "publish"]
     assert transferred_resume_order == [
-        "stack",
         "tail_prepare",
         "derive",
         "seed",
@@ -1186,12 +1209,24 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "battery",
         "publish",
     ]
-    assert assembled_resume_order == cold_order
+    assert assembled_resume_order == [
+        "prepare",
+        "gap",
+        "puf",
+        "complete",
+        "tail_prepare",
+        "derive",
+        "seed",
+        "simulate",
+        "completeness",
+        "battery",
+        "publish",
+    ]
     final_rows = [
         load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
     ]
-    assert len(final_rows) == 3
-    assert any(row.prev_row_digest == second_row.row_digest for row in final_rows)
+    assert len(final_rows) == 4
+    assert any(row.prev_row_digest == third_row.row_digest for row in final_rows)
 
 
 @pytest.mark.parametrize(
@@ -1493,6 +1528,33 @@ def test_checkpoint_root_rejects_publication_file_collisions(
     ):
         pool_tool._validate_checkpoint_path_layout(
             outputs(pool_tool, tmp_path),
+            source_paths=set(),
+        )
+
+
+def test_stacked_nested_checkpoint_root_rejects_a_stage_publication_collision(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    configured_root = tmp_path / "checkpoints"
+    stacked_root = configured_root / "stacked" / ("a" * 64)
+    base_outputs = pool_tool._stacked_output_paths(
+        stacked_root / "assembled.checkpoint.h5",
+        checkpoint_root=configured_root,
+    )
+    nested_outputs = replace(
+        base_outputs,
+        checkpoint_root=stacked_root,
+        primary_qrf_checkpoint_dir=stacked_root / "primary-qrf",
+        acs_transfer_checkpoint_dir=stacked_root / "acs-transfer",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="checkpoint paths collide with publication files",
+    ):
+        pool_tool._validate_checkpoint_path_layout(
+            nested_outputs,
             source_paths=set(),
         )
 
