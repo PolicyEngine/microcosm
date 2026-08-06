@@ -64,6 +64,7 @@ from populace.build.us_runtime.support_provenance import (
     spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
+    support_source_id_column,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -1957,6 +1958,97 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
         prepared.table("person")[support_clone_index_column("person")].eq(2).sum()
     )
     stacked_spine_module.assert_stacked_tail_cells_preserved(prepared, tail)
+
+
+def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
+    """Raw ASEC/ACS IDs may collide without confusing clone parentage."""
+
+    def overlapping_source(stratum: str, income_shift: float) -> Frame:
+        source = _source_frame(
+            household_ids=list(range(11, 21)),
+            weights=[100.0] * 10,
+            stratum=stratum,
+        )
+        tables = {entity: source.table(entity).copy() for entity in source.entities}
+        person = tables["person"]
+        person["employment_income_before_lsr"] = np.linspace(
+            10_000.0 + income_shift,
+            100_000.0 + income_shift,
+            len(person),
+        )
+        for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
+            person[column] = 0.0
+        tax_unit = tables["tax_unit"]
+        tax_unit["filing_status_input"] = "SINGLE"
+        for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
+            tax_unit[column] = 0.0
+        return Frame(
+            tables,
+            US_SCHEMA,
+            {"household": source.weights_for("household")},
+            source.strata,
+        )
+
+    stacked = assemble_stacked_spine(
+        overlapping_source("asec_2024", 0.0),
+        overlapping_source("acs_2024_1yr", 500.0),
+        sample_fraction=1.0,
+        sample_seed=578,
+    ).frame
+    for entity in ("person", "tax_unit"):
+        table = stacked.table(entity)
+        assert table[spine_source_id_column(entity)].duplicated(keep=False).all()
+        assert table[support_source_id_column(entity)].is_unique
+
+    donor = pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20, 1_000_001],
+            "employment_income": [45_000.0, 8_000.0, 70_000.0],
+            "health_savings_account_ald": [0.0, 500.0, 1_000.0],
+            "weight": [996.0, 3.0, 1.0],
+            "filing_status_code": [1.0, 1.0, 1.0],
+            PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN: [
+                100_000.0,
+                5_000_000.0,
+                10_000_000.0,
+            ],
+            "short_term_capital_gains": [0.0, -10_000_000_000.0, 5_000_000_000.0],
+            "long_term_capital_gains_before_response": [
+                100_000.0,
+                100_000_000_000.0,
+                75_000_000_000.0,
+            ],
+            "long_term_capital_gains_on_collectibles": [
+                0.0,
+                2_000_000_000.0,
+                1_000_000_000.0,
+            ],
+            "non_sch_d_capital_gains": [0.0, 3_000_000_000.0, 0.0],
+            "unrecaptured_section_1250_gain": [
+                0.0,
+                4_000_000_000.0,
+                250_000_000.0,
+            ],
+        }
+    )
+    result = run_stacked_puf_pass(
+        stacked,
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=(),
+        tax_unit_outputs=("health_savings_account_ald",),
+        seed=578,
+        n_estimators=2,
+    )
+
+    tail = result.receipt["puf_capital_gains_tail_transfer"]
+    assert tail["record_count"] == 2
+    assert stacked_spine_module.assert_stacked_tail_cells_preserved(
+        result.frame,
+        tail,
+    )["passed"]
 
 
 def _completed_stacked_frame() -> Frame:

@@ -88,6 +88,7 @@ from populace.build.us_runtime.support_provenance import (
     spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
+    support_source_id_column,
     validate_assembly_provenance,
 )
 from populace.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
@@ -3332,7 +3333,10 @@ def assert_stacked_tail_cells_preserved(
         clone_index = pd.to_numeric(
             table[support_clone_index_column(entity)], errors="raise"
         ).astype("int64")
-        source_id = spine_source_id_column(entity)
+        # Raw spine IDs may legally collide across ASEC and ACS.  Clone
+        # parentage is defined by the assembly-unique pre-clone support ID,
+        # which the clone operators preserve across clone roles.
+        source_id = support_source_id_column(entity)
         primary = table.loc[clone_index.eq(1)].set_index(source_id, drop=False)
         tail = table.loc[clone_index.eq(2)].set_index(source_id, drop=False)
         missing_sources = sorted(set(tail.index) - set(primary.index))
