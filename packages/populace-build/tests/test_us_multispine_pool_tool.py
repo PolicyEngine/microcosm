@@ -1102,6 +1102,9 @@ def test_stacked_preflight_errors_emit_one_chronicle_row(
     assert row.disposition == "failed"
     assert row.rung == "f001"
     assert row.prev_row_digest == predecessor
+    assert row.code_pin == (
+        "unresolved-local-git-code-pin" if failure == "code_pin" else "a" * 40
+    )
     assert row.artifact_location is None
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
     error_path = Path(

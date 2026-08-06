@@ -3596,6 +3596,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
     )
 
     try:
+        code_pin = _git_code_pin()
         predecessor = _chronicle_predecessor(args)
         state.input_pins_digest = _configured_input_pins_digest(args)
         chronicle_seed = _validate_stacked_seed(
@@ -3622,7 +3623,6 @@ def _main_stacked(args: argparse.Namespace) -> int:
             _canonical_json_bytes(configured_identity)
         ).hexdigest()
         _append_phase(state, "configured")
-        code_pin = _git_code_pin()
         verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
         state.input_pins_digest = _input_pins_digest(verified_inputs)
         _append_phase(state, "inputs_verified")
