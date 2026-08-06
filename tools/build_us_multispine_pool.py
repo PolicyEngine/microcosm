@@ -3538,6 +3538,30 @@ def _new_stacked_attempt_id(*, timestamp: datetime) -> str:
     )
 
 
+def _promote_stacked_attempt_identity(
+    state: _StackedAttemptState,
+    *,
+    stack_receipt: Mapping[str, object],
+    checkpoint_identity: Mapping[str, object],
+    sample_fraction: float,
+    sample_seed: int,
+    timestamp: datetime,
+) -> None:
+    """Bind terminal receipts as soon as the live stack identity is known."""
+
+    asec_count, acs_count = _stacked_realized_counts(stack_receipt)
+    build_id = _new_stacked_release_id(
+        sample_fraction=sample_fraction,
+        sample_seed=sample_seed,
+        realized_asec_households=asec_count,
+        realized_acs_households=acs_count,
+        timestamp=timestamp,
+    )
+    identity_digest = _pool_checkpoint_identity_sha256(checkpoint_identity)
+    state.build_id = build_id
+    state.identity_digest = identity_digest
+
+
 def _main_stacked(args: argparse.Namespace) -> int:
     """Build the default stacked pipeline and emit one terminal Chronicle row."""
 
@@ -3647,6 +3671,14 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     raise ValueError("Discovered stacked identity lost its manifest.")
                 stack_receipt = dict(discovered_receipt)
                 stack_frame = resume.frame
+                _promote_stacked_attempt_identity(
+                    state,
+                    stack_receipt=stack_receipt,
+                    checkpoint_identity=checkpoint_identity,
+                    sample_fraction=args.sample_fraction,
+                    sample_seed=args.sample_seed,
+                    timestamp=started_ts,
+                )
                 _append_phase(state, "checkpoint_loaded")
                 if resume.stage == "assembled":
                     acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
@@ -3687,6 +3719,14 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 clone_attachment_fraction=args.clone_attachment_fraction,
                 clone_attachment_seed=args.clone_attachment_seed,
             )
+            _promote_stacked_attempt_identity(
+                state,
+                stack_receipt=stack_receipt,
+                checkpoint_identity=checkpoint_identity,
+                sample_fraction=args.sample_fraction,
+                sample_seed=args.sample_seed,
+                timestamp=started_ts,
+            )
             checkpoint_store = _PoolStageCheckpointStore(
                 outputs.checkpoint_root,
                 base_identity=checkpoint_identity,
@@ -3704,15 +3744,6 @@ def _main_stacked(args: argparse.Namespace) -> int:
             or stack_receipt is None
         ):  # pragma: no cover - cold/resume branches establish all four
             raise AssertionError("Stacked checkpoint routing did not initialize.")
-        asec_count, acs_count = _stacked_realized_counts(stack_receipt)
-        state.build_id = _new_stacked_release_id(
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            realized_asec_households=asec_count,
-            realized_acs_households=acs_count,
-            timestamp=started_ts,
-        )
-        state.identity_digest = _pool_checkpoint_identity_sha256(checkpoint_identity)
 
         result = build_stacked_pool(
             stack_frame,

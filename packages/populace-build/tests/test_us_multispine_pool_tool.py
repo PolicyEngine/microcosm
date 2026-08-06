@@ -1450,6 +1450,50 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     assert any(row.prev_row_digest == third_row.row_digest for row in final_rows)
 
 
+def test_stacked_resume_error_uses_realized_stack_identity(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
+    first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+
+    checkpoint_root = next(
+        (tmp_path / "stacked-pool.checkpoints" / "stacked").iterdir()
+    )
+    for stage in ("transferred", "simulated"):
+        for suffix in (".h5", ".manifest.json"):
+            (checkpoint_root / f"{stage}.checkpoint{suffix}").unlink()
+    monkeypatch.setattr(
+        pool_tool,
+        "_load_puf_donor",
+        lambda _args: (_ for _ in ()).throw(
+            RuntimeError("fixture resumed donor failure")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="fixture resumed donor failure"):
+        pool_tool.main(_stacked_main_argv(tmp_path, predecessor=first_row.row_digest))
+
+    rows = [
+        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+    ]
+    failed_row = next(
+        row for row in rows if row.prev_row_digest == first_row.row_digest
+    )
+    assert "f001-s578-asec1-acs1" in failed_row.build_id
+    assert failed_row.identity_digest == first_row.identity_digest
+    assert "checkpoint_loaded" in failed_row.phases_reached
+    assert "resume_donors_loaded" not in failed_row.phases_reached
+    assert failed_row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+
+
 @pytest.mark.parametrize(
     ("fraction", "token"),
     [(0.01, "f001"), (0.10, "f010"), (1.0, "f100")],
