@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -18,6 +19,9 @@ from populace.build.chronicle import (
     reconcile_spool,
     record_build_attempt,
 )
+
+ROOT = Path(__file__).resolve().parents[3]
+MIGRATION = ROOT / "supabase/migrations/20260805000000_chronicle.sql"
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +72,33 @@ def test_row_schema_json_round_trip_matches_628_golden() -> None:
     assert restored.row_digest == (
         "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927"
     )
+
+
+def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
+    sql = MIGRATION.read_text(encoding="utf-8")
+    builds = sql.split("CREATE TABLE chronicle.builds (", 1)[1].split("\n);", 1)[0]
+    for field in CHRONICLE_ROW_FIELDS:
+        assert re.search(rf"^    {field}\s", builds, flags=re.MULTILINE), field
+
+    payload = sql.split("CREATE OR REPLACE FUNCTION chronicle.build_hash_payload", 1)[
+        1
+    ].split("$function$;", 1)[0]
+    payload_fields = set(re.findall(r"'([a-z_]+)',\s+p_build\.", payload))
+    payload_fields.add("ts")
+    assert payload_fields == CHRONICLE_ROW_FIELDS - {
+        "prev_row_digest",
+        "row_digest",
+    }
+    assert "trim_scale((p_value #>> '{}')::numeric)::text" in sql
+    assert "rung IN ('f001', 'f010', 'f100')" in sql
+
+    public_view = sql.split("CREATE VIEW chronicle.builds_public", 1)[1].split(
+        "FROM chronicle.builds;", 1
+    )[0]
+    assert "cost_usd" not in public_view
+    assert "gate_verdicts" not in public_view
+    assert "GRANT INSERT ON chronicle.builds, chronicle.predictions" in sql
+    assert "TO chronicle_writer" in sql
 
 
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
