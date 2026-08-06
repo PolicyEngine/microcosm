@@ -364,31 +364,41 @@ def _anchors(
     return anchors
 
 
+def _exact_group_sums(values: pd.Series, keys: list[pd.Series]) -> pd.Series:
+    """Overflow-immune grouped integer sums (Python ints end to end).
+
+    The CLI's cross-cell aggregations mirror the generator's ``_exact_sum``:
+    every margin cell is int64-bounded, but chapter, month, and window
+    totals are not, so cross-cell accumulation must never route through
+    fixed-width arithmetic. Object-dtype accumulation keeps Python integers
+    end to end — a total beyond 2**63 stays exact instead of wrapping.
+    """
+    return values.astype(object).groupby(keys).sum().sort_index()
+
+
 def _chapter_country_cross_check(entries: pd.DataFrame, margins: pd.DataFrame) -> dict:
-    """Independent re-aggregation on the P3 dashboard axis (exact)."""
-    produced = (
-        (entries["weight"] * entries["customs_value"])
-        .groupby(
-            [
-                entries["period"].astype(str),
-                entries["chapter"].astype(str),
-                entries["census_country_code"].astype(str),
-            ]
-        )
-        .sum()
-        .sort_index()
+    """Independent re-aggregation on the P3 dashboard axis (exact).
+
+    Both sides accumulate in Python integers, so the equality below is
+    exact integer equality even when a chapter total exceeds int64 — two
+    identically wrapped int64 totals can never masquerade as a match.
+    """
+    produced = _exact_group_sums(
+        entries["weight"].astype(object) * entries["customs_value"].astype(object),
+        [
+            entries["period"].astype(str),
+            entries["chapter"].astype(str),
+            entries["census_country_code"].astype(str),
+        ],
     )
     cells = margins.loc[margins["con_val_mo"] > 0]
-    expected = (
-        cells.groupby(
-            [
-                cells["period"].astype(str),
-                cells["hts10"].str[:2],
-                cells["cty_code"].astype(str),
-            ]
-        )["con_val_mo"]
-        .sum()
-        .sort_index()
+    expected = _exact_group_sums(
+        cells["con_val_mo"],
+        [
+            cells["period"].astype(str),
+            cells["hts10"].str[:2],
+            cells["cty_code"].astype(str),
+        ],
     )
     if (
         len(produced) != len(expected)
@@ -430,7 +440,7 @@ def _write_labeled_parquet(
 
 
 def _monthly_counts(entries: pd.DataFrame) -> dict:
-    counts = entries.groupby(entries["period"].astype(str))["weight"].sum()
+    counts = _exact_group_sums(entries["weight"], [entries["period"].astype(str)])
     return {month: int(count) for month, count in counts.items()}
 
 

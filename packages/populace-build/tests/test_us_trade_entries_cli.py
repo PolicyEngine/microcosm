@@ -18,6 +18,7 @@ Covers the review-critical properties end to end:
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -357,3 +358,104 @@ def test_override_build_registers_override_basis(tmp_path):
     assert "explicitly overridden mean entry value" in register["statement"]
     assert "explicitly overridden informal count share" in register["statement"]
     assert register["p1_build"]["margins_parquet_sha256"]
+
+
+# --- Cross-cell aggregation exactness (sol r3 blocking finding) -----------
+#
+# The CLI's own aggregations — the chapter x country cross-check and the
+# monthly weighted-entry counts — accumulate across cells, where totals are
+# not int64-bounded even though every cell is. These probes pin the exact
+# overflow frames from the review: int64 accumulation wrapped both sides of
+# the cross-check to -2**63 (passing modulo 2**64) and emitted -2**63
+# monthly counts; Python-int accumulation must yield the true positive
+# totals and refuse wrapped equalities.
+
+
+def _load_cli_module():
+    spec = importlib.util.spec_from_file_location("build_us_import_entries_probe", CLI)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_chapter_cross_check_is_exact_beyond_int64():
+    """1,024 margin cells of 2**53 in one chapter: the chapter total is the
+    true +2**63, not an identical -2**63 wrap on both sides."""
+
+    cli = _load_cli_module()
+    n = 1024
+    margins = pd.DataFrame(
+        {
+            "period": ["2026-03"] * n,
+            "hts10": [f"01{i:08d}" for i in range(n)],
+            "cty_code": ["5700"] * n,
+            "con_val_mo": [2**53] * n,
+        }
+    )
+    entries = pd.DataFrame(
+        {
+            "period": ["2026-03"] * n,
+            "chapter": ["01"] * n,
+            "census_country_code": ["5700"] * n,
+            "weight": [1] * n,
+            "customs_value": [2**53] * n,
+        }
+    )
+    assert cli._chapter_country_cross_check(entries, margins) == {
+        "chapter_country_cells_exact": 1
+    }
+    totals = cli._exact_group_sums(
+        entries["weight"].astype(object) * entries["customs_value"].astype(object),
+        [
+            entries["period"].astype(str),
+            entries["chapter"].astype(str),
+            entries["census_country_code"].astype(str),
+        ],
+    )
+    assert totals.to_list() == [2**63]
+    assert totals.iloc[0] > 0
+
+
+def test_chapter_cross_check_refuses_wrapped_equality():
+    """A mod-2**64 collision must fail: entries whose true chapter total is
+    2**64 + 10 wrapped to the margin total 10 under int64 accumulation, so
+    the pre-fix comparison passed on identical wraps."""
+
+    cli = _load_cli_module()
+    margins = pd.DataFrame(
+        {
+            "period": ["2026-03"],
+            "hts10": ["0101210001"],
+            "cty_code": ["5700"],
+            "con_val_mo": [10],
+        }
+    )
+    entries = pd.DataFrame(
+        {
+            "period": ["2026-03"] * 5,
+            "chapter": ["01"] * 5,
+            "census_country_code": ["5700"] * 5,
+            "weight": [1] * 5,
+            "customs_value": [2**62] * 4 + [10],
+        }
+    )
+    with pytest.raises(ValueError, match="does not match margins"):
+        cli._chapter_country_cross_check(entries, margins)
+
+
+def test_monthly_counts_survive_totals_beyond_int64():
+    """2,048 cells at mean entry value 2 carry 2**52 weighted entries each;
+    the monthly total is the true +2**63, where int64 wrapped to -2**63."""
+
+    cli = _load_cli_module()
+    n = 2048
+    entries = pd.DataFrame(
+        {
+            "period": ["2026-03"] * n,
+            "weight": [2**52] * n,
+            "customs_value": [2] * n,
+        }
+    )
+    counts = cli._monthly_counts(entries)
+    assert counts == {"2026-03": 2**63}
+    assert counts["2026-03"] > 0
