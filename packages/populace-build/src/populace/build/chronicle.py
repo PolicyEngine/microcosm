@@ -690,13 +690,18 @@ def render_markdown(
         "|---|---|---|---|---|---|",
     ]
     for row in selected:
+        public_artifact = (
+            row.artifact_location
+            if row.disposition in {"published", "certified"}
+            else None
+        )
         values = (
             row.ts,
             row.build_id,
             row.pipeline,
             row.rung,
             row.disposition,
-            row.artifact_location or "—",
+            public_artifact or "—",
         )
         lines.append(
             "| " + " | ".join(_markdown_cell(value) for value in values) + " |"

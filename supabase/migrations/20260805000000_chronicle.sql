@@ -472,7 +472,9 @@ EXECUTE FUNCTION chronicle.enforce_build_chain();
 
 -- Only the explicitly safe build projection is exposed.  In particular, the
 -- view carries neither cost_usd nor gate_verdicts (where private failure
--- diagnostics and receipt detail can live).
+-- diagnostics and receipt detail can live).  Artifact locations are public
+-- only after publication or certification; failed-build locations may expose
+-- private runtime paths.
 CREATE VIEW chronicle.builds_public
 WITH (security_barrier = true)
 AS
@@ -487,7 +489,11 @@ SELECT
     identity_digest,
     phases_reached,
     wall_seconds,
-    artifact_location,
+    CASE
+        WHEN disposition IN ('published', 'certified')
+            THEN artifact_location
+        ELSE NULL
+    END AS artifact_location,
     disposition,
     prediction_id,
     prev_row_digest,

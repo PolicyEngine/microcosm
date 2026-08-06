@@ -187,7 +187,12 @@ def test_mid_row_tamper_names_the_row(tmp_path: Path) -> None:
 
 
 def test_render_filters_and_uses_public_safe_projection() -> None:
-    failed = _row("archive-failed", predecessor=None)
+    failed_artifact = "local://private/failure-diagnostics"
+    failed = _row(
+        "archive-failed",
+        predecessor=None,
+        artifact=failed_artifact,
+    )
     published = _row(
         "archive-published",
         predecessor=failed.row_digest,
@@ -205,3 +210,8 @@ def test_render_filters_and_uses_public_safe_projection() -> None:
     assert "archive-failed" not in table
     assert "cost_usd" not in table
     assert "gate_verdicts" not in table
+
+    all_rows_table = render_markdown([failed, published])
+    assert "archive-failed" in all_rows_table
+    assert failed_artifact not in all_rows_table
+    assert "hf-tag" in all_rows_table

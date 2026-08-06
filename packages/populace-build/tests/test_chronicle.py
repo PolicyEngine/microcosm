@@ -121,6 +121,8 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     )[0]
     assert "cost_usd" not in public_view
     assert "gate_verdicts" not in public_view
+    assert "WHEN disposition IN ('published', 'certified')" in public_view
+    assert "ELSE NULL" in public_view
     assert "GRANT INSERT ON chronicle.builds, chronicle.predictions" in sql
     assert "TO chronicle_writer" in sql
     assert "GRANT SELECT ON chronicle.builds" in sql
