@@ -191,9 +191,10 @@ def test_absent_api_totals_is_counted_and_retrievals_are_recorded(tmp_path):
     assert report["api_totals_absent"] == 1
     assert report["api_retrievals"]
     assert all(entry.get("sha256") for entry in report["api_retrievals"])
-    # The API pull without a '-' totals row fails its own internal
-    # reconciliation too; both signals gate in main's sum.
-    assert report["api_reconciliation_failures"] >= 0
+    # The API pull carries active detail with no '-' total to reconcile
+    # against, which its own internal reconciliation now counts as a
+    # coverage failure; both signals gate in main's sum.
+    assert report["api_reconciliation_failures"] == 1
 
 
 def _api_payload_row(cty: str) -> list[str]:
@@ -557,24 +558,79 @@ def test_active_pair_with_no_totals_evidence_on_either_side_gates(tmp_path):
 
 
 def test_inactive_pair_with_no_totals_anywhere_does_not_false_gate(tmp_path):
-    # A pair with no detail activity and no active totals on either side
-    # has nothing to certify; the absent-totals gate must not fire (the
-    # run-level empty-evidence gate covers all-empty runs).
+    # A genuinely empty pair — the API answers 204 with no rows at all,
+    # and both bulk slices are empty. The r2 fix's early empty-API branch
+    # hard-coded api_totals_absent=1 here, false-gating a pair with
+    # nothing to certify on either channel; every pair now flows through
+    # the one comparison path, where no activity and no active totals
+    # anywhere means no absent-evidence gate (the run-level
+    # empty-evidence gate covers all-empty runs).
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins().iloc[:0],
+        _totals().iloc[:0],
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (204, b""),
+    )
+    assert report["api_totals_absent"] == 0
+    assert report["cells_compared"] == 0
+    assert report["dollar_mismatch_cells"] == 0
+    assert report["total_mismatches"] == 0
+    assert report["api_reconciliation_failures"] == 0
+
+
+def test_inactive_pair_with_zero_carrier_detail_does_not_false_gate(tmp_path):
+    # The same pair expressed through the API's YTD union: one all-zero
+    # detail row instead of silence. Zero carriers are inactivity under
+    # the shared predicate, so the verdict must match the truly-empty
+    # wire shape above.
     rows = [
         _HEADER,
         ["1330", "DET", "0", "0", "0", "0", "0", "0", "NO", "0101210010", "2026-01"],
     ]
     payload = json.dumps(rows).encode("utf-8")
-    empty_margins = _margins().iloc[:0]
-    empty_totals = _totals().iloc[:0]
     report = crosscheck._compare_pair(
         "2026-01",
         "01",
-        empty_margins,
-        empty_totals,
+        _margins().iloc[:0],
+        _totals().iloc[:0],
         "test-key",
         tmp_path,
         fetch=lambda url: (200, payload),
     )
     assert report["api_totals_absent"] == 0
     assert report["cells_compared"] == 0
+
+
+def test_zero_carrier_api_totals_are_not_totals_evidence_for_an_active_pair(
+    tmp_path,
+):
+    # The r3 probe: matching active detail, an empty bulk totals slice,
+    # and an API totals slice holding exactly one unrelated all-zero
+    # carrier. Absence was tested on the raw slice, so the zero carrier
+    # stood in as "totals evidence" while the active-row join compared
+    # nothing — one compared cell, api_totals_absent=0, zero
+    # reconciliation failures. Absence is now judged after the activity
+    # predicate, and the API's internal reconciliation counts the active
+    # detail left without any published total.
+    rows = [
+        _HEADER,
+        _api_payload_row("1220"),
+        ["-", "DET", "0", "0", "0", "0", "0", "0", "NO", "0101999999", "2026-01"],
+    ]
+    payload = json.dumps(rows).encode("utf-8")
+    report = crosscheck._compare_pair(
+        "2026-01",
+        "01",
+        _margins(),
+        _totals().iloc[:0],
+        "test-key",
+        tmp_path,
+        fetch=lambda url: (200, payload),
+    )
+    assert report["cells_compared"] == 1
+    assert report["api_totals_absent"] == 1
+    assert report["api_zero_union_totals"] == 1
+    assert report["api_reconciliation_failures"] == 1

@@ -207,8 +207,27 @@ def _compare_pair(
     # '-' totals; a pair whose API pull is internally inconsistent must
     # never count as agreement.
     api_reconciliation_failures = len(pulled.reconciliation_failures)
-    api_cells = pd.DataFrame(list(pulled.country_rows))
-    api_totals = pd.DataFrame(list(pulled.total_rows))
+    # An empty API slice is typed to the comparison columns so every pair
+    # flows through the one comparison path below: an empty-API pair is
+    # just "every bulk cell one-sided", judged by the same activity
+    # predicate as everything else — no specially-cased branch that could
+    # gate (or pass) on different rules.
+    api_cells = pd.DataFrame(
+        list(pulled.country_rows),
+        columns=(
+            ["hts10", "cty_code", *_DOLLAR_MEASURES, *_QUANTITY_MEASURES]
+            if not pulled.country_rows
+            else None
+        ),
+    )
+    api_totals = pd.DataFrame(
+        list(pulled.total_rows),
+        columns=(
+            ["hts10", *_DOLLAR_MEASURES, *_QUANTITY_MEASURES]
+            if not pulled.total_rows
+            else None
+        ),
+    )
 
     bulk_cells = margins.loc[
         (margins["period"] == month) & (margins["chapter"] == chapter)
@@ -228,28 +247,6 @@ def _compare_pair(
     # total carrying quantity is published activity, never a zero carrier.
     active_bulk_totals = bulk_totals.loc[_active_mask(bulk_totals)]
     bulk_zero_union_totals = len(bulk_totals) - len(active_bulk_totals)
-
-    if api_cells.empty:
-        return {
-            "month": month,
-            "chapter": chapter,
-            "cells_compared": 0,
-            "dollar_mismatch_cells": int(len(bulk_cells)),
-            "total_mismatches": int(len(active_bulk_totals)),
-            "api_reconciliation_failures": api_reconciliation_failures,
-            "api_totals_absent": 1,
-            "api_only_cells": 0,
-            "bulk_only_cells": int(len(bulk_cells)),
-            "api_zero_union_cells": 0,
-            "bulk_zero_union_cells": 0,
-            "api_zero_union_totals": 0,
-            "bulk_zero_union_totals": int(bulk_zero_union_totals),
-            "quantity_diff_cells": 0,
-            "api_null_quantity_cells": 0,
-            "api_retrievals": [dict(entry) for entry in pulled.manifest_entries],
-            "note": "API returned no rows for this pair; bulk has rows.",
-            "mismatches": [],
-        }
 
     key = ["hts10", "cty_code"]
     api_indexed = api_cells.set_index(key).sort_index()
@@ -328,19 +325,23 @@ def _compare_pair(
 
     total_mismatches = 0
     api_totals_absent = 0
-    api_zero_union_totals = 0
     # The pair showed detail activity when any cell matched or either
     # side carried an active one-sided cell. Both channels' publishers
     # emit '-'/control totals wherever detail exists, so an active pair
-    # with no API totals slice at all has an absent totals leg — that is
-    # missing evidence and must gate even when the bulk totals slice is
-    # empty too (the totals leg must never pass by comparing nothing).
+    # with no ACTIVE API totals has an absent totals leg — zero carriers
+    # are inactivity, not evidence, and absence must be judged after the
+    # activity predicate: a lone all-zero carrier standing in as "the
+    # totals slice" while the active-row join compares nothing is missing
+    # evidence and must gate, even when the bulk totals slice is empty
+    # too (the totals leg must never pass by comparing nothing). Only a
+    # pair with no activity and no active totals on either side has
+    # nothing to certify.
     pair_active = bool(len(both) or len(api_only_active) or len(bulk_only_active))
-    if api_totals.empty:
+    active_api_totals = api_totals.loc[_active_mask(api_totals)]
+    api_zero_union_totals = len(api_totals) - len(active_api_totals)
+    if active_api_totals.empty:
         api_totals_absent = 1 if (pair_active or len(active_bulk_totals)) else 0
     else:
-        active_api_totals = api_totals.loc[_active_mask(api_totals)]
-        api_zero_union_totals = len(api_totals) - len(active_api_totals)
         api_total_indexed = active_api_totals.set_index("hts10")
         bulk_total_indexed = active_bulk_totals.set_index("hts10")
         total_joined = api_total_indexed.join(

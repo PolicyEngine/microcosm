@@ -113,6 +113,32 @@ def test_reconciliation_is_exact_on_publisher_totals():
     assert "con_val_mo" in failures[0]
 
 
+def test_reconciliation_gates_active_detail_without_published_total():
+    """Coverage is part of the reconciliation: iterating only published
+    total keys let active detail pass unreconciled whenever its '-' row
+    was missing. Active detail without a total must fail; a zero-carrier
+    detail row without a total stays agreement-by-absence."""
+
+    countries, _ = parse_imports_response(_fixture_bytes(), "2026-03", "31")
+    failures = _reconcile_against_census_totals(countries, [], "2026-03")
+    assert len(failures) == 1
+    assert "no published '-' total row" in failures[0]
+    assert "3103110000" in failures[0]
+
+    zero_carrier = dict(countries[0])
+    for measure in ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo"):
+        zero_carrier[measure] = 0
+    for measure in ("con_qy1_mo", "gen_qy1_mo"):
+        zero_carrier[measure] = 0
+    assert _reconcile_against_census_totals([zero_carrier], [], "2026-03") == ()
+
+    quantity_only = dict(zero_carrier)
+    quantity_only["gen_qy1_mo"] = 5
+    failures = _reconcile_against_census_totals([quantity_only], [], "2026-03")
+    assert len(failures) == 1
+    assert "no published '-' total row" in failures[0]
+
+
 def test_assemble_bridges_fail_closed_and_types_margins():
     bridge = load_census_country_bridge()
     countries, totals = parse_imports_response(_fixture_bytes(), "2026-03", "31")
