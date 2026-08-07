@@ -23,6 +23,7 @@ from populace.build.us_runtime.qbi_inputs import (
     us_qbi_inputs_signal_gate,
     us_qbi_inputs_stage_spec,
     us_qbi_inputs_summary,
+    us_qbi_reconciliation_universe_receipt,
     with_us_qbi_input_reconciliation,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -223,6 +224,52 @@ def test_reconciliation_restores_sstb_routes_total_pools_and_exposure_caps() -> 
     assert reconciled.loc[100, "qualified_reit_and_ptp_income"] == 1_000.0
 
 
+def _stacked_qbi_universe_frame(*, child_age: float = 12.0) -> Frame:
+    person = _qbi_person(20)
+    person["person_support_channel"] = np.where(
+        np.arange(len(person)) < 10,
+        "asec",
+        "acs",
+    )
+    person["person_support_clone_index"] = 0
+    person["person_spine_source_id"] = np.arange(len(person), dtype=np.int64)
+    person["age"] = 40.0
+    person["SEMP"] = person["self_employment_income_before_lsr"]
+    child = 10
+    person.loc[child, "age"] = child_age
+    person.loc[child, "self_employment_income_before_lsr"] = np.nan
+    person.loc[child, "SEMP"] = np.nan
+    person.loc[child, "business_is_sstb"] = True
+    person.loc[child, "qualified_bdc_income"] = 321.0
+    return _frame(person)
+
+
+def test_reconciliation_preserves_native_acs_child_absence_and_qbi_cells() -> None:
+    frame = _stacked_qbi_universe_frame()
+    columns = [*US_QBI_OUTPUT_COLUMNS, "self_employment_income_before_lsr"]
+    before = frame.table("person").loc[10, columns].copy(deep=True)
+
+    result = with_us_qbi_input_reconciliation(frame)
+    after = result.table("person").loc[10, columns]
+    receipt = us_qbi_reconciliation_universe_receipt(frame)
+
+    pd.testing.assert_series_equal(after, before)
+    assert pd.isna(after["self_employment_income_before_lsr"])
+    assert receipt["rows_excluded_from_reconciliation"] == 1
+    assert (
+        receipt["rules"]["self_employment_income_before_lsr"]["source_column"] == "SEMP"
+    )
+    assert receipt["person_source_cells_mutated"] is False
+    assert len(receipt["sha256"]) == 64
+
+
+def test_reconciliation_rejects_native_acs_in_universe_null() -> None:
+    frame = _stacked_qbi_universe_frame(child_age=15.0)
+
+    with pytest.raises(ValueError, match="in_universe_null_rows=1"):
+        with_us_qbi_input_reconciliation(frame)
+
+
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:
     person = _qbi_person(200)
     row = 100
@@ -312,7 +359,11 @@ def test_summary_does_not_mutate_source_frame() -> None:
 
     summary = us_qbi_inputs_summary(reconciled)
 
-    assert set(summary) == {"columns", "invariants"}
+    assert set(summary) == {
+        "columns",
+        "invariants",
+        "reconciliation_universe",
+    }
     pd.testing.assert_frame_equal(before, reconciled.table("person"))
 
 

@@ -489,7 +489,9 @@ def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
     expected_controls = {
         "require_complete_recipient_predictors": True,
         "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        "recipient_predictor_universe": manifest["recipient_predictor_universe"],
     }
+    assert len(expected_controls["recipient_predictor_universe"]["sha256"]) == 64
     assert {name: manifest[name] for name in expected_controls} == expected_controls
     for filename in (
         puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME,
@@ -512,6 +514,14 @@ def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
     tampered_manifest["absent_cells"] = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL
     manifest_path.write_text(json.dumps(tampered_manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="doctrine controls"):
+        run_primary_puf_qrf_target(checkpoint_dir, 1)
+
+    tampered_manifest = dict(manifest)
+    tampered_universe = dict(manifest["recipient_predictor_universe"])
+    tampered_universe["recipient_tax_unit_rows"] += 1
+    tampered_manifest["recipient_predictor_universe"] = tampered_universe
+    manifest_path.write_text(json.dumps(tampered_manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="universe digest is invalid"):
         run_primary_puf_qrf_target(checkpoint_dir, 1)
 
 
@@ -574,6 +584,7 @@ def test_primary_qrf_chain_legacy_v5_manifest_defaults_remain_loadable(
     )
     assert "require_complete_recipient_predictors" not in manifest
     assert "absent_cells" not in manifest
+    assert "recipient_predictor_universe" not in manifest
     for filename in (
         puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME,
         puf_qrf_chain_module.PRIMARY_QRF_RECIPIENT_FILENAME,
@@ -581,6 +592,7 @@ def test_primary_qrf_chain_legacy_v5_manifest_defaults_remain_loadable(
         metadata = load_frame_checkpoint(checkpoint_dir / filename).metadata
         assert "require_complete_recipient_predictors" not in metadata
         assert "absent_cells" not in metadata
+        assert "recipient_predictor_universe" not in metadata
     for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
         run_primary_puf_qrf_target(checkpoint_dir, target_index)
 
@@ -615,6 +627,41 @@ def test_primary_qrf_chain_rejects_incomplete_stacked_predictors(
             require_complete_recipient_predictors=True,
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
         )
+    assert not (tmp_path / "primary_qrf").exists()
+
+
+def test_primary_qrf_finalization_rejects_changed_recipient_features(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    checkpoint_dir = tmp_path / "primary_qrf"
+    initialize_primary_puf_qrf_chain(
+        frame,
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(checkpoint_dir, target_index)
+    tax_unit = frame.table("tax_unit")
+    detail = tax_unit["tax_unit_support_clone_index"].eq(1)
+    row = tax_unit.index[detail][0]
+    tax_unit.loc[row, "filing_status_input"] = "SINGLE"
+
+    with pytest.raises(
+        ValueError,
+        match="changed the PUF recipient predictor source universe or feature values",
+    ):
+        finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
 
 
 def test_primary_qrf_rejects_stale_donor_construction_schema_versions(

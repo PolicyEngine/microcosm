@@ -17,6 +17,8 @@ PolicyEngine-US owns the QBI deduction formulas and statutory limits.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from importlib.resources import files
 
 import numpy as np
@@ -24,9 +26,14 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.acs_income_universe import (
+    resolve_acs_pums_earnings_universe,
+)
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     has_support_role_metadata,
+    support_channel_column,
+    support_clone_index_column,
     support_role_series,
 )
 from populace.frame import US_SCHEMA, Frame
@@ -47,6 +54,7 @@ __all__ = [
     "us_qbi_inputs_signal_gate",
     "us_qbi_inputs_stage_spec",
     "us_qbi_inputs_summary",
+    "us_qbi_reconciliation_universe_receipt",
     "with_us_qbi_input_reconciliation",
 ]
 
@@ -150,10 +158,92 @@ def _numeric(person: pd.DataFrame, column: str) -> np.ndarray:
     return values
 
 
+def _numeric_in_scope(
+    person: pd.DataFrame,
+    column: str,
+    scope: np.ndarray,
+) -> np.ndarray:
+    """Read finite values only inside a declared reconciliation scope."""
+
+    values = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
+    nonfinite = int(np.count_nonzero(scope & ~np.isfinite(values)))
+    if nonfinite:
+        raise ValueError(
+            f"US QBI input {column!r} contains {nonfinite} nonfinite in-scope value(s)."
+        )
+    return values
+
+
 def _optional_numeric(person: pd.DataFrame, column: str) -> np.ndarray:
     if column not in person:
         return np.zeros(len(person), dtype=np.float64)
     return _numeric(person, column)
+
+
+def _qbi_reconciliation_scope(
+    frame: Frame,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Return active rows and an exact native-ACS source-universe receipt."""
+
+    person = frame.table("person")
+    channel_column = support_channel_column("person")
+    clone_column = support_clone_index_column("person")
+    if channel_column not in person or clone_column not in person:
+        receipt: dict[str, object] = {
+            "version": 1,
+            "policy": "all_rows_without_stacked_clone_provenance",
+            "rows_excluded_from_reconciliation": 0,
+            "person_source_cells_mutated": False,
+        }
+        receipt["sha256"] = _qbi_receipt_sha256(receipt)
+        return np.ones(len(person), dtype=bool), receipt
+
+    clone_index = pd.to_numeric(person[clone_column], errors="coerce")
+    if clone_index.isna().any():
+        raise ValueError("US QBI reconciliation requires complete clone provenance.")
+    native_scope = clone_index.eq(0)
+    universe = resolve_acs_pums_earnings_universe(
+        frame,
+        columns=(_SELF_EMPLOYMENT_COLUMN,),
+        person_scope=native_scope,
+        boundary="US QBI reconciliation source universe",
+    )
+    structural = universe.structural_absence_masks[_SELF_EMPLOYMENT_COLUMN].to_numpy(
+        dtype=bool
+    )
+    active = ~structural
+    receipt = dict(universe.receipt)
+    receipt["source_universe_sha256"] = receipt.pop("sha256")
+    receipt.update(
+        {
+            "operation": (
+                "reconcile observed/in-universe rows; preserve every already-"
+                "produced QBI cell on native ACS people under age 15"
+            ),
+            "rows_excluded_from_reconciliation": int(structural.sum()),
+            "person_source_cells_mutated": False,
+        }
+    )
+    receipt["sha256"] = _qbi_receipt_sha256(receipt)
+    return active, receipt
+
+
+def us_qbi_reconciliation_universe_receipt(frame: Frame) -> dict[str, object]:
+    """Expose the exact QBI reconciliation scope receipt to the pool driver."""
+
+    _scope, receipt = _qbi_reconciliation_scope(frame)
+    return json.loads(json.dumps(receipt))
+
+
+def _qbi_receipt_sha256(receipt: dict[str, object]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+    ).hexdigest()
 
 
 def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
@@ -171,6 +261,7 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
         )
 
     result = person.copy(deep=True)
+    reconciliation_scope, _universe_receipt = _qbi_reconciliation_scope(frame)
     asec_mask = np.zeros(len(result), dtype=bool)
     if has_support_role_metadata(result, entity="person"):
         asec_mask = (
@@ -188,11 +279,15 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     # This is a hermetic two-channel choice, not a claim about the retired
     # clone implementation (which imputed absent PUF variables onto both halves).
     for column in _GENERAL_QUALIFICATION_FLAGS:
-        flags[column][asec_mask] = True
-    flags["business_is_sstb"][asec_mask] = False
-    flags[_SSTB_QUALIFICATION_FLAG][asec_mask] = False
+        flags[column][asec_mask & reconciliation_scope] = True
+    flags["business_is_sstb"][asec_mask & reconciliation_scope] = False
+    flags[_SSTB_QUALIFICATION_FLAG][asec_mask & reconciliation_scope] = False
 
-    non_sstb_self_employment = _numeric(result, _SELF_EMPLOYMENT_COLUMN)
+    non_sstb_self_employment = _numeric_in_scope(
+        result,
+        _SELF_EMPLOYMENT_COLUMN,
+        reconciliation_scope,
+    )
     sstb_self_employment = _numeric(result, _SSTB_SELF_EMPLOYMENT_COLUMN)
     total_self_employment = non_sstb_self_employment + sstb_self_employment
 
@@ -220,43 +315,63 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     )
     flags[_SSTB_QUALIFICATION_FLAG] = business_is_sstb & base_self_employment_qualified
 
-    result[_SELF_EMPLOYMENT_COLUMN] = np.where(
+    reconciled_self_employment = np.where(
         business_is_sstb,
         0.0,
         total_self_employment,
     )
-    result[_SSTB_SELF_EMPLOYMENT_COLUMN] = np.where(
+    reconciled_sstb_self_employment = np.where(
         business_is_sstb,
         total_self_employment,
         0.0,
+    )
+    result.loc[reconciliation_scope, _SELF_EMPLOYMENT_COLUMN] = (
+        reconciled_self_employment[reconciliation_scope]
+    )
+    result.loc[reconciliation_scope, _SSTB_SELF_EMPLOYMENT_COLUMN] = (
+        reconciled_sstb_self_employment[reconciliation_scope]
     )
 
     w2_wages = _numeric(result, "w2_wages_from_qualified_business")
     ubia = _numeric(result, "unadjusted_basis_qualified_property")
-    result["sstb_w2_wages_from_qualified_business"] = np.where(
+    reconciled_sstb_w2 = np.where(
         business_is_sstb,
         w2_wages,
         0.0,
     )
-    result["sstb_unadjusted_basis_qualified_property"] = np.where(
+    reconciled_sstb_ubia = np.where(
         business_is_sstb,
         ubia,
         0.0,
+    )
+    result.loc[reconciliation_scope, "sstb_w2_wages_from_qualified_business"] = (
+        reconciled_sstb_w2[reconciliation_scope]
+    )
+    result.loc[reconciliation_scope, "sstb_unadjusted_basis_qualified_property"] = (
+        reconciled_sstb_ubia[reconciliation_scope]
     )
     non_qualified_dividends = np.maximum(
         _optional_numeric(result, "non_qualified_dividend_income"),
         0.0,
     )
-    result["qualified_bdc_income"] = np.minimum(
+    reconciled_bdc = np.minimum(
         _numeric(result, "qualified_bdc_income"),
         non_qualified_dividends,
     )
-    result["qualified_reit_and_ptp_income"] = np.minimum(
+    reconciled_reit = np.minimum(
         _numeric(result, "qualified_reit_and_ptp_income"),
         non_qualified_dividends + np.maximum(partnership_s_corp_income, 0.0),
     )
+    result.loc[reconciliation_scope, "qualified_bdc_income"] = reconciled_bdc[
+        reconciliation_scope
+    ]
+    result.loc[reconciliation_scope, "qualified_reit_and_ptp_income"] = reconciled_reit[
+        reconciliation_scope
+    ]
     for column, values in flags.items():
-        result[column] = values.astype(bool)
+        updated = result[column].astype(bool).to_numpy(copy=True)
+        updated[reconciliation_scope] = values[reconciliation_scope]
+        result[column] = updated
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["person"] = result
@@ -274,6 +389,7 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
     """Return weighted signal, validity, and split-identity diagnostics."""
 
     person = frame.table("person")
+    reconciliation_scope, universe_receipt = _qbi_reconciliation_scope(frame)
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
     columns: dict[str, dict[str, object]] = {}
@@ -299,9 +415,11 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
         }
 
     business = person["business_is_sstb"].astype(bool).to_numpy()
-    self_employment = pd.to_numeric(
-        person[_SELF_EMPLOYMENT_COLUMN], errors="coerce"
-    ).to_numpy(dtype=np.float64)
+    self_employment = _numeric_in_scope(
+        person,
+        _SELF_EMPLOYMENT_COLUMN,
+        reconciliation_scope,
+    )
     sstb_self_employment = pd.to_numeric(
         person[_SSTB_SELF_EMPLOYMENT_COLUMN], errors="coerce"
     ).to_numpy(dtype=np.float64)
@@ -330,51 +448,53 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
     ) + _optional_numeric(person, "s_corp_income")
     qualified_bdc_income = _numeric(person, "qualified_bdc_income")
     qualified_reit_and_ptp_income = _numeric(person, "qualified_reit_and_ptp_income")
+
+    def scoped_count(condition: np.ndarray) -> int:
+        return int(np.count_nonzero(reconciliation_scope & condition))
+
     invariants = {
-        "sstb_rows_with_non_sstb_income": int(
-            np.count_nonzero(business & ~np.isclose(self_employment, 0.0))
+        "sstb_rows_with_non_sstb_income": scoped_count(
+            business & ~np.isclose(self_employment, 0.0)
         ),
-        "non_sstb_rows_with_sstb_income": int(
-            np.count_nonzero(~business & ~np.isclose(sstb_self_employment, 0.0))
+        "non_sstb_rows_with_sstb_income": scoped_count(
+            ~business & ~np.isclose(sstb_self_employment, 0.0)
         ),
-        "sstb_w2_split_mismatches": int(
-            np.count_nonzero(
-                ~np.isclose(sstb_w2, np.where(business, w2, 0.0), atol=_INVARIANT_ATOL)
+        "sstb_w2_split_mismatches": scoped_count(
+            ~np.isclose(
+                sstb_w2,
+                np.where(business, w2, 0.0),
+                atol=_INVARIANT_ATOL,
             )
         ),
-        "sstb_ubia_split_mismatches": int(
-            np.count_nonzero(
-                ~np.isclose(
-                    sstb_ubia,
-                    np.where(business, ubia, 0.0),
-                    atol=_INVARIANT_ATOL,
-                )
+        "sstb_ubia_split_mismatches": scoped_count(
+            ~np.isclose(
+                sstb_ubia,
+                np.where(business, ubia, 0.0),
+                atol=_INVARIANT_ATOL,
             )
         ),
-        "self_employment_qualification_overlap": int(
-            np.count_nonzero(self_qualified & sstb_qualified)
+        "self_employment_qualification_overlap": scoped_count(
+            self_qualified & sstb_qualified
         ),
-        "sstb_qualification_route_mismatches": int(
-            np.count_nonzero(sstb_qualified & ~business)
+        "sstb_qualification_route_mismatches": scoped_count(sstb_qualified & ~business),
+        "non_sstb_qualification_route_mismatches": scoped_count(
+            self_qualified & business
         ),
-        "non_sstb_qualification_route_mismatches": int(
-            np.count_nonzero(self_qualified & business)
+        "qualified_bdc_exposure_mismatches": scoped_count(
+            qualified_bdc_income > non_qualified_dividends + _INVARIANT_ATOL
         ),
-        "qualified_bdc_exposure_mismatches": int(
-            np.count_nonzero(
-                qualified_bdc_income > non_qualified_dividends + _INVARIANT_ATOL
-            )
-        ),
-        "qualified_reit_ptp_exposure_mismatches": int(
-            np.count_nonzero(
-                qualified_reit_and_ptp_income
-                > non_qualified_dividends
-                + np.maximum(partnership_s_corp_income, 0.0)
-                + _INVARIANT_ATOL
-            )
+        "qualified_reit_ptp_exposure_mismatches": scoped_count(
+            qualified_reit_and_ptp_income
+            > non_qualified_dividends
+            + np.maximum(partnership_s_corp_income, 0.0)
+            + _INVARIANT_ATOL
         ),
     }
-    return {"columns": columns, "invariants": invariants}
+    return {
+        "columns": columns,
+        "invariants": invariants,
+        "reconciliation_universe": universe_receipt,
+    }
 
 
 def us_qbi_inputs_signal_gate(frame: Frame) -> GateResult:

@@ -19,6 +19,10 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
+    resolve_acs_pums_earnings_universe,
+)
 from populace.build.us_runtime.puf_e01000_reconciliation import (
     PUF_SCHEDULE_D_JOINT_COLUMNS,
     puf_capital_gains_joint_metrics,
@@ -71,6 +75,7 @@ __all__ = [
     "has_support_role_metadata",
     "impute_us_puf_tax_detail_support",
     "puf_tax_detail_clone_mask",
+    "puf_recipient_predictor_universe_receipt",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
@@ -169,6 +174,7 @@ class PufTaxDetailChainInputs:
     predictors: tuple[str, ...]
     person_outputs: tuple[str, ...]
     tax_unit_outputs: tuple[str, ...]
+    recipient_predictor_universe: Mapping[str, object]
 
     @property
     def target_order(self) -> tuple[str, ...]:
@@ -1543,6 +1549,7 @@ def impute_us_puf_tax_detail_support(
     fit_records: list[FitWeightRecord] | None = None,
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> Frame:
@@ -1573,6 +1580,9 @@ def impute_us_puf_tax_detail_support(
         tail_bound_diagnostics: Optional output sink for the per-target tail-bound
             records produced during finalization. Build callers publish these
             records with the QRF-finalization telemetry.
+        predictor_universe_receipts: Optional output sink for the exact
+            recipient predictor source-universe receipt. Stacked callers bind
+            this receipt into the PUF-pass provenance; legacy callers omit it.
         require_complete_recipient_predictors: Stacked-spine doctrine switch
             (populace#578): build recipient features null-preserving and fail
             closed by name when any recipient row is missing a predictor
@@ -1603,8 +1613,17 @@ def impute_us_puf_tax_detail_support(
     )
     if not puf_mask.any():
         raise ValueError("PUF detail clone has no tax-unit rows.")
+    strict_features: pd.DataFrame | None = None
     if require_complete_recipient_predictors:
-        _require_complete_recipient_predictor_sources(frame, puf_mask, predictors)
+        strict_features, predictor_universe = _strict_recipient_predictor_surface(
+            frame,
+            puf_mask,
+            predictors,
+        )
+        if predictor_universe_receipts is not None:
+            predictor_universe_receipts.append(
+                json.loads(json.dumps(predictor_universe))
+            )
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
     missing_donor = [
@@ -1639,13 +1658,11 @@ def impute_us_puf_tax_detail_support(
         # fit did not silently resolve unweighted (populace #300).
         fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind))
 
-    features = _tax_unit_feature_frame(
-        frame,
-        predictors,
-        preserve_nulls=require_complete_recipient_predictors,
+    features = (
+        strict_features
+        if strict_features is not None
+        else _tax_unit_feature_frame(frame, predictors, preserve_nulls=False)
     )
-    if require_complete_recipient_predictors:
-        _require_complete_recipient_predictors(features, puf_mask, predictors)
     predictions = fitted.predict(
         features.loc[puf_mask, list(predictors)], release_models=True
     )
@@ -1702,8 +1719,14 @@ def prepare_us_puf_tax_detail_chain_inputs(
     )
     if not puf_mask.any():
         raise ValueError("PUF detail clone has no tax-unit rows.")
+    strict_features: pd.DataFrame | None = None
+    predictor_universe: Mapping[str, object] = {}
     if require_complete_recipient_predictors:
-        _require_complete_recipient_predictor_sources(frame, puf_mask, predictors)
+        strict_features, predictor_universe = _strict_recipient_predictor_surface(
+            frame,
+            puf_mask,
+            predictors,
+        )
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
     missing_donor = [
@@ -1720,13 +1743,11 @@ def prepare_us_puf_tax_detail_chain_inputs(
     for column in donor.columns:
         donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
     donor_frame = _tax_unit_model_frame(donor)
-    features = _tax_unit_feature_frame(
-        frame,
-        predictors,
-        preserve_nulls=require_complete_recipient_predictors,
+    features = (
+        strict_features
+        if strict_features is not None
+        else _tax_unit_feature_frame(frame, predictors, preserve_nulls=False)
     )
-    if require_complete_recipient_predictors:
-        _require_complete_recipient_predictors(features, puf_mask, predictors)
     recipient_features = features.loc[puf_mask, list(predictors)].copy()
     recipient_tax_unit_ids = (
         frame.table("tax_unit").loc[puf_mask, "tax_unit_id"].to_numpy(copy=True)
@@ -1739,6 +1760,7 @@ def prepare_us_puf_tax_detail_chain_inputs(
         predictors=predictors,
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
+        recipient_predictor_universe=predictor_universe,
     )
 
 
@@ -2586,21 +2608,171 @@ def _reject_formula_owned_outputs(
         )
 
 
+def puf_recipient_predictor_universe_receipt(
+    frame: Frame,
+    *,
+    predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+) -> dict[str, object]:
+    """Recompute the strict recipient feature/universe receipt for validation."""
+
+    tax_unit = frame.table("tax_unit")
+    puf_mask = puf_tax_detail_clone_mask(tax_unit, entity="tax_unit")
+    if not puf_mask.any():
+        raise ValueError("PUF detail clone has no tax-unit rows.")
+    _features, receipt = _strict_recipient_predictor_surface(
+        frame,
+        puf_mask,
+        tuple(predictors),
+    )
+    return json.loads(json.dumps(receipt))
+
+
+def _strict_recipient_predictor_surface(
+    frame: Frame,
+    recipient_mask: np.ndarray,
+    predictors: Sequence[str],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Build strict features and the exact source-universe receipt together."""
+
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    recipient_ids = tax_unit.loc[recipient_mask, "tax_unit_id"]
+    person_scope = person["person_tax_unit_id"].isin(recipient_ids)
+    source_mapping = {
+        str(predictor): list(
+            _predictor_person_source_columns(
+                _predictor_source_column(predictor),
+                person,
+            )
+        )
+        for predictor in predictors
+    }
+    universe_columns = tuple(
+        dict.fromkeys(
+            source_column
+            for source_columns in source_mapping.values()
+            for source_column in source_columns
+            if source_column in ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+        )
+    )
+    structural_absence_masks: Mapping[str, pd.Series] = {}
+    if universe_columns:
+        universe_predictors = [
+            predictor
+            for predictor, source_columns in source_mapping.items()
+            if set(source_columns) & set(universe_columns)
+        ]
+        universe = resolve_acs_pums_earnings_universe(
+            frame,
+            columns=universe_columns,
+            person_scope=person_scope,
+            boundary=(
+                f"PUF recipient predictor source universe for {universe_predictors}"
+            ),
+        )
+        structural_absence_masks = universe.structural_absence_masks
+        receipt = dict(universe.receipt)
+        receipt["source_universe_sha256"] = receipt.pop("sha256")
+    else:
+        receipt = {
+            "version": 1,
+            "policy": "exact_documented_source_universe",
+            "rules": {},
+            "structurally_absent_person_rows": 0,
+            "affected_tax_unit_rows": 0,
+            "empty_universe_tax_unit_rows": 0,
+            "person_source_cells_mutated": False,
+        }
+
+    _require_complete_recipient_predictor_sources(
+        frame,
+        recipient_mask,
+        predictors,
+        structural_absence_masks=structural_absence_masks,
+    )
+    features = _tax_unit_feature_frame(
+        frame,
+        predictors,
+        preserve_nulls=True,
+        structural_absence_masks=structural_absence_masks,
+    )
+    _require_complete_recipient_predictors(features, recipient_mask, predictors)
+    recipient_features = features.loc[recipient_mask, list(predictors)]
+    receipt.update(
+        {
+            "predictor_source_mapping": source_mapping,
+            "recipient_tax_unit_rows": int(recipient_mask.sum()),
+            "recipient_feature_values_sha256": _predictor_feature_values_sha256(
+                recipient_features,
+                tax_unit.loc[recipient_mask, "tax_unit_id"],
+            ),
+        }
+    )
+    receipt["sha256"] = _receipt_sha256(receipt)
+    return features, receipt
+
+
+def _predictor_person_source_columns(
+    source: str,
+    person: pd.DataFrame,
+) -> tuple[str, ...]:
+    if source == "filing_status_code" or source == "tax_unit_person_count":
+        return ()
+    if source == "dividend_income" and source not in person.columns:
+        return ("non_qualified_dividend_income", "qualified_dividend_income")
+    if source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
+        return _PREDICTOR_LEAF_ALIASES[source]
+    return (source,)
+
+
+def _predictor_feature_values_sha256(
+    features: pd.DataFrame,
+    tax_unit_ids: pd.Series,
+) -> str:
+    values = features.copy()
+    values.insert(0, "tax_unit_id", tax_unit_ids.to_numpy(copy=True))
+    header = {
+        "columns": list(values.columns),
+        "dtypes": [str(values[column].dtype) for column in values.columns],
+    }
+    digest = hashlib.sha256(
+        json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
+    )
+    digest.update(
+        pd.util.hash_pandas_object(values, index=False).to_numpy(dtype="<u8").tobytes()
+    )
+    return digest.hexdigest()
+
+
+def _receipt_sha256(receipt: Mapping[str, object]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+    ).hexdigest()
+
+
 def _tax_unit_feature_frame(
     frame: Frame,
     columns: Sequence[str],
     *,
     preserve_nulls: bool = False,
+    structural_absence_masks: Mapping[str, pd.Series] | None = None,
 ) -> pd.DataFrame:
     """Build the tax-unit predictor surface under the active absence policy.
 
     The legacy policy zero-fills every missing predictor cell — the exact
     boundary the populace#578 audit identified as collapsing recipient draws
     to zero-conditioned degenerates.  Under ``preserve_nulls`` absence
-    propagates as null (a leaf-alias sum is null wherever any component is
-    null, and an entirely absent component column is null everywhere) so the
-    strict recipient check can fail closed by name instead of a silent fill.
-    Structural person counts are not absence and stay zero-filled.
+    propagates as null (a leaf-alias sum is null wherever any undeclared
+    component is null, and an entirely absent component column is null
+    everywhere) so the strict recipient check can fail closed by name instead
+    of a silent fill. Exact documented source-universe blanks contribute only
+    the additive identity to this derived feature; the person cells remain
+    null. Structural person counts are not absence and stay zero-filled.
     """
 
     tax_unit = frame.table("tax_unit")
@@ -2637,6 +2809,7 @@ def _tax_unit_feature_frame(
                 frame,
                 source_column,
                 preserve_nulls=preserve_nulls,
+                structural_absence_masks=structural_absence_masks,
             )
     return result
 
@@ -2646,23 +2819,32 @@ def _person_tax_unit_sum(
     column: str,
     *,
     preserve_nulls: bool = False,
+    structural_absence_masks: Mapping[str, pd.Series] | None = None,
 ) -> np.ndarray:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
+    absence_masks = structural_absence_masks or {}
     if column == "dividend_income" and column not in person.columns:
         values = _optional_person(
             person,
             "non_qualified_dividend_income",
             preserve_nulls=preserve_nulls,
+            structural_absence_mask=absence_masks.get("non_qualified_dividend_income"),
         ) + _optional_person(
             person,
             "qualified_dividend_income",
             preserve_nulls=preserve_nulls,
+            structural_absence_mask=absence_masks.get("qualified_dividend_income"),
         )
     elif column not in person.columns and column in _PREDICTOR_LEAF_ALIASES:
         values = np.zeros(len(person), dtype=np.float64)
         for leaf in _PREDICTOR_LEAF_ALIASES[column]:
-            values += _optional_person(person, leaf, preserve_nulls=preserve_nulls)
+            values += _optional_person(
+                person,
+                leaf,
+                preserve_nulls=preserve_nulls,
+                structural_absence_mask=absence_masks.get(leaf),
+            )
     else:
         if column not in person.columns:
             raise ValueError(
@@ -2675,6 +2857,15 @@ def _person_tax_unit_sum(
         )
         if not preserve_nulls:
             numeric = numeric.fillna(0.0)
+        elif column in absence_masks:
+            mask = absence_masks[column]
+            if not mask.index.equals(person.index):
+                raise ValueError(
+                    f"Structural-absence mask for {column!r} is not aligned."
+                )
+            # This is an additive-feature identity, not a person-source fill:
+            # ``person`` is untouched and its documented ACS blank persists.
+            numeric = numeric.mask(mask, 0.0)
         values = numeric
     grouped_frame = pd.DataFrame(
         {
@@ -2698,6 +2889,7 @@ def _optional_person(
     column: str,
     *,
     preserve_nulls: bool = False,
+    structural_absence_mask: pd.Series | None = None,
 ) -> np.ndarray:
     if column not in person.columns:
         if preserve_nulls:
@@ -2709,6 +2901,10 @@ def _optional_person(
     )
     if not preserve_nulls:
         numeric = numeric.fillna(0.0)
+    elif structural_absence_mask is not None:
+        if not structural_absence_mask.index.equals(person.index):
+            raise ValueError(f"Structural-absence mask for {column!r} is not aligned.")
+        numeric = numeric.mask(structural_absence_mask, 0.0)
     return numeric.to_numpy(dtype=np.float64)
 
 
@@ -2716,12 +2912,15 @@ def _require_complete_recipient_predictor_sources(
     frame: Frame,
     recipient_mask: np.ndarray,
     predictors: Sequence[str],
+    *,
+    structural_absence_masks: Mapping[str, pd.Series] | None = None,
 ) -> None:
     """Reject raw recipient absence before feature conversion or coercion."""
 
     tax_unit = frame.table("tax_unit")
     person = frame.table("person")
     recipient_ids = tax_unit.loc[recipient_mask, "tax_unit_id"]
+    absence_masks = structural_absence_masks or {}
     offenders: dict[str, int] = {}
     for predictor in predictors:
         source = _predictor_source_column(predictor)
@@ -2757,9 +2956,19 @@ def _require_complete_recipient_predictor_sources(
                 link = person["person_tax_unit_id"]
                 relevant = link.isin(recipient_ids)
                 observed_ids = set(link.loc[relevant].tolist())
-                null_source = (
-                    person.loc[relevant, list(source_columns)].isna().any(axis=1)
-                )
+                unauthorized_nulls = pd.DataFrame(index=person.index[relevant])
+                for source_column in source_columns:
+                    source_null = person.loc[relevant, source_column].isna()
+                    structural = absence_masks.get(source_column)
+                    if structural is not None:
+                        if not structural.index.equals(person.index):
+                            raise ValueError(
+                                "Recipient predictor structural-absence mask for "
+                                f"{source_column!r} is not aligned."
+                            )
+                        source_null &= ~structural.loc[relevant]
+                    unauthorized_nulls[source_column] = source_null
+                null_source = unauthorized_nulls.any(axis=1)
                 null_ids = set(link.loc[relevant].loc[null_source].tolist())
                 missing = np.asarray(
                     [
@@ -2775,8 +2984,8 @@ def _require_complete_recipient_predictor_sources(
         raise ValueError(
             "PUF recipient predictor source(s) have missing values before "
             f"coercion: {offenders} (of {int(len(recipient_ids))} recipient rows). "
-            "This is a terminal stacked-spine failure; gap-fill the source "
-            "before the PUF pass."
+            "This is a terminal stacked-spine failure; complete the source or "
+            "declare its exact source universe before the PUF pass."
         )
 
 

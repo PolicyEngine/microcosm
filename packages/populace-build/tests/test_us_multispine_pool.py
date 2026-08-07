@@ -1925,6 +1925,12 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
+    assert (
+        result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
+            "rows_excluded_from_reconciliation"
+        ]
+        == 0
+    )
     assert derived["schedule_d_capital_gain_distributions"].notna().all()
     assert derived["self_employment_income_before_lsr"].eq(15.0).all()
     assert derived["sstb_self_employment_income_before_lsr"].eq(0.0).all()

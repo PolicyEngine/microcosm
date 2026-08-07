@@ -90,6 +90,7 @@ from populace.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_MANIFEST_FILENAME,
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
+    primary_puf_qrf_recipient_predictor_universe_receipt,
     run_primary_puf_qrf_chain,
 )
 from populace.build.us_runtime.puf_support import (
@@ -4693,6 +4694,13 @@ def _verify_gap_fill_outcome(
                         "unexpected_null_rows": unexpected,
                         "structural_rows_filled": synthesized,
                     }
+                elif unmodeled or residual_nulls:
+                    failures.append(
+                        f"{label}: undeclared gap-fill residual is forbidden; "
+                        f"unmodeled_rows={unmodeled}, "
+                        f"residual_null_rows={residual_nulls}. Every downstream "
+                        "consumer requires this early target complete."
+                    )
                 target_receipts[f"{entity}/{family}/{target}"] = target_receipt
     if failures:
         raise ValueError(
@@ -5256,6 +5264,7 @@ def _run_stacked_puf_pass_evaluate(
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
     if primary_qrf_checkpoint_dir is None:
+        predictor_universe_receipts: list[dict[str, object]] = []
         imputed = impute_us_puf_tax_detail_support(
             cloned,
             donor_tax_units,
@@ -5263,13 +5272,20 @@ def _run_stacked_puf_pass_evaluate(
             n_estimators=n_estimators,
             fit_records=fit_records,
             tail_bound_diagnostics=tail_bound_diagnostics,
+            predictor_universe_receipts=predictor_universe_receipts,
             require_complete_recipient_predictors=True,
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
             **kwargs,
         )
+        if len(predictor_universe_receipts) != 1:
+            raise AssertionError(
+                "Stacked monolithic PUF pass emitted the wrong number of "
+                "recipient predictor universe receipts."
+            )
         primary_qrf_receipt: dict[str, object] = {
             "mode": "monolithic",
             "resume_status": "not_applicable",
+            "recipient_predictor_universe": predictor_universe_receipts[0],
         }
     else:
         checkpoint_dir = Path(primary_qrf_checkpoint_dir)
@@ -5293,6 +5309,9 @@ def _run_stacked_puf_pass_evaluate(
                 **kwargs,
             )
             resume_status = "initialized"
+        predictor_universe_receipt = (
+            primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
+        )
         run_primary_puf_qrf_chain(checkpoint_dir)
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
@@ -5305,6 +5324,7 @@ def _run_stacked_puf_pass_evaluate(
             "mode": "checkpoint_chain",
             "resume_status": resume_status,
             "checkpoint_manifest": str(manifest_path.resolve()),
+            "recipient_predictor_universe": predictor_universe_receipt,
         }
 
     validate_stacked_spine_frame(imputed, boundary="stacked primary PUF output")

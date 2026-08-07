@@ -67,6 +67,7 @@ from populace.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_OUTPUT_COLUMNS,
+    us_qbi_reconciliation_universe_receipt,
     with_us_qbi_input_reconciliation,
 )
 from populace.build.us_runtime.relationship_inputs import (
@@ -1565,6 +1566,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
+    qbi_universe_receipt = us_qbi_reconciliation_universe_receipt(frame)
     completed = _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
@@ -1584,6 +1586,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             "qbi_input_reconciliation": {
                 "columns": list(US_QBI_OUTPUT_COLUMNS),
                 "operation": "shared_all_or_nothing_identity_reconciliation",
+                "recipient_source_universe": qbi_universe_receipt,
             },
         },
     )

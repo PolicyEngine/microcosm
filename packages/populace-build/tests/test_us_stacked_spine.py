@@ -786,6 +786,140 @@ def test_strict_recipient_predictors_fail_closed_on_absence() -> None:
     assert zero_filled.eq(0.0).all()
 
 
+def _cloned_acs_earnings_universe_fixture() -> Frame:
+    """Give one ACS mixed-age unit and one all-child unit exact PUMS blanks."""
+
+    cloned = _cloned_stacked_fixture()
+    person = cloned.table("person")
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = person[support_clone_index_column("person")]
+    acs_detail = channel.eq("acs") & clone_index.eq(1)
+    detail_groups = list(
+        person.loc[acs_detail].groupby("person_tax_unit_id", sort=False).groups.values()
+    )
+    all_child_detail = list(detail_groups[0])
+    mixed_detail = list(next(group for group in detail_groups if len(group) > 1))
+    source_id = support_source_id_column("person")
+    all_child_lineages = set(person.loc[all_child_detail, source_id])
+    mixed_child_lineage = person.loc[mixed_detail[0], source_id]
+
+    person["self_employment_income_before_lsr"] = 0.0
+    person["WAGP"] = person["employment_income_before_lsr"]
+    person["SEMP"] = person["self_employment_income_before_lsr"]
+    acs = channel.eq("acs")
+    person.loc[acs, "age"] = 40.0
+    person.loc[acs, "employment_income_before_lsr"] = 100.0
+    person.loc[acs, "self_employment_income_before_lsr"] = 10.0
+    person.loc[acs, "WAGP"] = 100.0
+    person.loc[acs, "SEMP"] = 10.0
+    structural = acs & (
+        person[source_id].isin(all_child_lineages)
+        | person[source_id].eq(mixed_child_lineage)
+    )
+    person.loc[structural, "age"] = 12.0
+    for column in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "WAGP",
+        "SEMP",
+    ):
+        person.loc[structural, column] = np.nan
+    return cloned
+
+
+def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    before = cloned.table("person")[
+        ["employment_income_before_lsr", "self_employment_income_before_lsr"]
+    ].copy(deep=True)
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "self_employment_income": [1_000.0, 0.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    prepared = prepare_us_puf_tax_detail_chain_inputs(
+        cloned,
+        donor,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_self_employment_income",
+        ),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        require_complete_recipient_predictors=True,
+    )
+
+    receipt = prepared.recipient_predictor_universe
+    assert receipt["structurally_absent_person_rows"] == 2
+    assert receipt["affected_tax_unit_rows"] == 2
+    assert receipt["mixed_universe_tax_unit_rows"] == 1
+    assert receipt["empty_universe_tax_unit_rows"] == 1
+    assert receipt["person_source_cells_mutated"] is False
+    assert len(receipt["sha256"]) == 64
+    employment = prepared.recipient_features["puf_predictor_employment_income"]
+    self_employment = prepared.recipient_features[
+        "puf_predictor_self_employment_income"
+    ]
+    recipient_tax_units = cloned.table("tax_unit").loc[
+        prepared.recipient_features.index
+    ]
+    acs_recipient = recipient_tax_units[support_channel_column("tax_unit")].eq("acs")
+    assert employment.loc[acs_recipient].eq(0.0).sum() == 1
+    assert self_employment.loc[acs_recipient].eq(0.0).sum() == 1
+    assert employment.notna().all()
+    assert self_employment.notna().all()
+    pd.testing.assert_frame_equal(
+        cloned.table("person")[before.columns],
+        before,
+    )
+
+
+@pytest.mark.parametrize(
+    ("age", "value", "message"),
+    [
+        (15.0, np.nan, "in_universe_null_rows=1"),
+        (12.0, 1.0, "out_of_universe_nonnull_rows=1"),
+    ],
+)
+def test_strict_recipient_predictors_reject_acs_universe_mismatch(
+    age: float,
+    value: float,
+    message: str,
+) -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    person = cloned.table("person")
+    candidate = (
+        person[support_channel_column("person")].eq("acs")
+        & person[support_clone_index_column("person")].eq(1)
+        & person["age"].eq(12.0)
+    )
+    row = person.index[candidate][0]
+    person.loc[row, "age"] = age
+    person.loc[row, "employment_income_before_lsr"] = value
+    person.loc[row, "WAGP"] = value
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match=message):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
 def test_strict_recipient_predictors_reject_null_filing_status_before_coercion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1721,6 +1855,54 @@ def test_gap_fill_outcome_rejects_forged_residual_receipt(
     )
 
 
+def test_gap_fill_rejects_honestly_accounted_undeclared_residual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accounting alone cannot authorize a residual that starves later gates."""
+
+    transfer = stacked_spine_module.transfer_acs_inputs
+
+    def leave_one_unmodeled(*args: object, **kwargs: object) -> object:
+        result = transfer(*args, **kwargs)
+        person = result.frame.table("person")
+        recipient = person[support_channel_column("person")].eq("acs")
+        row = person.index[recipient][0]
+        person.loc[row, "unemployment_compensation"] = np.nan
+        return replace(
+            result,
+            imputed_inputs=tuple(
+                replace(
+                    record,
+                    imputed_recipient_rows=record.imputed_recipient_rows - 1,
+                    unmodeled_recipient_rows=1,
+                )
+                if record.column == "unemployment_compensation"
+                else record
+                for record in result.imputed_inputs
+            ),
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "transfer_acs_inputs",
+        leave_one_unmodeled,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "undeclared gap-fill residual is forbidden; "
+            "unmodeled_rows=1, residual_null_rows=1"
+        ),
+    ):
+        _gap_fill_with_test_authority(
+            _stacked_gap_fixture(),
+            plan=_GAP_FILL_TEST_PLAN,
+            seed=578,
+            n_estimators=10,
+        )
+
+
 def test_gap_fill_rejects_signed_zero_donor_byte_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2512,6 +2694,10 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
     assert set(by_origin) == {"asec", "acs"}
     assert all(count > 0 for count in by_origin.values())
     assert result.receipt["doctrines"]["absent_cells"] == "preserve_nulls"
+    universe = result.receipt["primary_puf_qrf"]["recipient_predictor_universe"]
+    assert universe["rules"]["employment_income_before_lsr"]["source_column"] == "WAGP"
+    assert universe["person_source_cells_mutated"] is False
+    assert len(universe["sha256"]) == 64
 
     with pytest.raises(ValueError, match="clone attachment"):
         stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
