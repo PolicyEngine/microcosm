@@ -226,10 +226,13 @@ risks, not footnotes:
   mandatory, not optional.
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
-  dividends, interest, retirement income; plus the SPM resource-component
-  families (never SPM poverty rates, which are permanent holdouts under
-  the rule below), and the
-  benefit-program families) with explicit tolerances. A contribution may not
+  dividends, interest, retirement income; and the benefit-program
+  families) with explicit tolerances. SPM poverty is protected through the
+  held-out regression gate (see the survey tax-benefit holdout bullet
+  below), never as a target family — and "SPM resource components" earn no
+  separate listing: their survey-measured versions are the prohibited
+  quadrant, and their administrative totals are already the
+  benefit-program families. A contribution may not
   worsen any protected family beyond tolerance even if it improves aggregate
   loss. This list is versioned with the population and is the steward's call.
 - **Off-target validity.** Generate-big-then-prune *selects* records by the
