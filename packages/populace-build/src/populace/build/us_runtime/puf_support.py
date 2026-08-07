@@ -183,6 +183,15 @@ class PufTaxDetailChainInputs:
         return (*self.person_outputs, *self.tax_unit_outputs)
 
 
+@dataclass(frozen=True)
+class _PredictorSourcePlan:
+    """One fail-closed source choice shared by strict receipt and features."""
+
+    source_column: str
+    entity: str
+    columns: tuple[str, ...]
+
+
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
     "puf_predictor_tax_unit_person_count",
@@ -2638,20 +2647,27 @@ def _strict_recipient_predictor_surface(
     person = frame.table("person")
     recipient_ids = tax_unit.loc[recipient_mask, "tax_unit_id"]
     person_scope = person["person_tax_unit_id"].isin(recipient_ids)
-    source_mapping = {
-        str(predictor): list(
-            _predictor_person_source_columns(
-                _predictor_source_column(predictor),
-                person,
-            )
+    source_plans = {
+        str(predictor): _strict_predictor_source_plan(
+            str(predictor),
+            tax_unit=tax_unit,
+            person=person,
         )
         for predictor in predictors
+    }
+    source_mapping = {
+        predictor: {
+            "entity": plan.entity,
+            "columns": list(plan.columns),
+        }
+        for predictor, plan in source_plans.items()
     }
     universe_columns = tuple(
         dict.fromkeys(
             source_column
-            for source_columns in source_mapping.values()
-            for source_column in source_columns
+            for plan in source_plans.values()
+            if plan.entity == "person"
+            for source_column in plan.columns
             if source_column in ACS_PUMS_EARNINGS_SOURCE_COLUMNS
         )
     )
@@ -2659,8 +2675,8 @@ def _strict_recipient_predictor_surface(
     if universe_columns:
         universe_predictors = [
             predictor
-            for predictor, source_columns in source_mapping.items()
-            if set(source_columns) & set(universe_columns)
+            for predictor, plan in source_plans.items()
+            if plan.entity == "person" and set(plan.columns) & set(universe_columns)
         ]
         universe = resolve_acs_pums_earnings_universe(
             frame,
@@ -2689,12 +2705,14 @@ def _strict_recipient_predictor_surface(
         recipient_mask,
         predictors,
         structural_absence_masks=structural_absence_masks,
+        source_plans=source_plans,
     )
     features = _tax_unit_feature_frame(
         frame,
         predictors,
         preserve_nulls=True,
         structural_absence_masks=structural_absence_masks,
+        source_plans=source_plans,
     )
     _require_complete_recipient_predictors(features, recipient_mask, predictors)
     recipient_features = features.loc[recipient_mask, list(predictors)]
@@ -2723,6 +2741,40 @@ def _predictor_person_source_columns(
     if source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
         return _PREDICTOR_LEAF_ALIASES[source]
     return (source,)
+
+
+def _strict_predictor_source_plan(
+    predictor: str,
+    *,
+    tax_unit: pd.DataFrame,
+    person: pd.DataFrame,
+) -> _PredictorSourcePlan:
+    """Resolve one strict predictor source and reject ambiguous grain collisions."""
+
+    source = _predictor_source_column(predictor)
+    if source == "filing_status_code":
+        columns = (
+            ("filing_status_input",)
+            if "filing_status_input" in tax_unit
+            else ("filing_status",)
+        )
+        return _PredictorSourcePlan(source, "tax_unit", columns)
+    if source == "tax_unit_person_count":
+        return _PredictorSourcePlan(source, "derived", ("person_tax_unit_id",))
+
+    person_columns = _predictor_person_source_columns(source, person)
+    person_source_present = all(column in person for column in person_columns)
+    tax_unit_source_present = source in tax_unit
+    if tax_unit_source_present and person_source_present:
+        raise ValueError(
+            "PUF recipient predictor source is ambiguous across entity grains: "
+            f"{predictor!r} resolves to tax_unit.{source} and person column(s) "
+            f"{list(person_columns)}. Remove the colliding tax-unit column or "
+            "declare a single canonical source."
+        )
+    if tax_unit_source_present:
+        return _PredictorSourcePlan(source, "tax_unit", (source,))
+    return _PredictorSourcePlan(source, "person", person_columns)
 
 
 def _predictor_feature_values_sha256(
@@ -2761,6 +2813,7 @@ def _tax_unit_feature_frame(
     *,
     preserve_nulls: bool = False,
     structural_absence_masks: Mapping[str, pd.Series] | None = None,
+    source_plans: Mapping[str, _PredictorSourcePlan] | None = None,
 ) -> pd.DataFrame:
     """Build the tax-unit predictor surface under the active absence policy.
 
@@ -2780,7 +2833,10 @@ def _tax_unit_feature_frame(
     result = pd.DataFrame(index=tax_unit.index)
     for column in columns:
         source_column = _predictor_source_column(column)
-        if source_column == "filing_status_code":
+        plan = None if source_plans is None else source_plans[str(column)]
+        if (plan is not None and plan.source_column == "filing_status_code") or (
+            plan is None and source_column == "filing_status_code"
+        ):
             source = tax_unit.get("filing_status_input")
             if source is None:
                 source = tax_unit.get("filing_status")
@@ -2790,7 +2846,9 @@ def _tax_unit_feature_frame(
                 source,
                 preserve_nulls=preserve_nulls,
             )
-        elif source_column == "tax_unit_person_count":
+        elif (plan is not None and plan.entity == "derived") or (
+            plan is None and source_column == "tax_unit_person_count"
+        ):
             result[column] = (
                 person.groupby("person_tax_unit_id", sort=False)
                 .size()
@@ -2798,9 +2856,12 @@ def _tax_unit_feature_frame(
                 .fillna(0.0)
                 .to_numpy(dtype=np.float64)
             )
-        elif source_column in tax_unit.columns:
+        elif (plan is not None and plan.entity == "tax_unit") or (
+            plan is None and source_column in tax_unit.columns
+        ):
+            tax_unit_source = plan.columns[0] if plan is not None else source_column
             numeric = pd.to_numeric(
-                tax_unit[source_column],
+                tax_unit[tax_unit_source],
                 errors="raise" if preserve_nulls else "coerce",
             )
             result[column] = numeric if preserve_nulls else numeric.fillna(0.0)
@@ -2914,6 +2975,7 @@ def _require_complete_recipient_predictor_sources(
     predictors: Sequence[str],
     *,
     structural_absence_masks: Mapping[str, pd.Series] | None = None,
+    source_plans: Mapping[str, _PredictorSourcePlan] | None = None,
 ) -> None:
     """Reject raw recipient absence before feature conversion or coercion."""
 
@@ -2923,8 +2985,14 @@ def _require_complete_recipient_predictor_sources(
     absence_masks = structural_absence_masks or {}
     offenders: dict[str, int] = {}
     for predictor in predictors:
-        source = _predictor_source_column(predictor)
-        if source == "filing_status_code":
+        plan = (
+            source_plans[str(predictor)]
+            if source_plans is not None
+            else _strict_predictor_source_plan(
+                str(predictor), tax_unit=tax_unit, person=person
+            )
+        )
+        if plan.source_column == "filing_status_code":
             values = tax_unit.get("filing_status_input")
             if values is None:
                 values = tax_unit.get("filing_status")
@@ -2933,20 +3001,12 @@ def _require_complete_recipient_predictor_sources(
                 if values is None
                 else values.loc[recipient_mask].isna().to_numpy()
             )
-        elif source == "tax_unit_person_count":
+        elif plan.entity == "derived":
             missing = np.zeros(int(recipient_mask.sum()), dtype=bool)
-        elif source in tax_unit.columns:
-            missing = tax_unit.loc[recipient_mask, source].isna().to_numpy()
+        elif plan.entity == "tax_unit":
+            missing = tax_unit.loc[recipient_mask, plan.columns[0]].isna().to_numpy()
         else:
-            if source == "dividend_income" and source not in person.columns:
-                source_columns = (
-                    "non_qualified_dividend_income",
-                    "qualified_dividend_income",
-                )
-            elif source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
-                source_columns = _PREDICTOR_LEAF_ALIASES[source]
-            else:
-                source_columns = (source,)
+            source_columns = plan.columns
             absent_columns = [
                 column for column in source_columns if column not in person.columns
             ]

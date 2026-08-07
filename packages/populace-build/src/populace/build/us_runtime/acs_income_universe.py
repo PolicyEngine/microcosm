@@ -132,7 +132,11 @@ def resolve_acs_pums_earnings_universe(
         source_column = ACS_PUMS_EARNINGS_SOURCE_COLUMNS[column]
         raw_source_present = source_column in person.columns
         raw_source_mismatch_rows = 0
-        if raw_source_present:
+        if not raw_source_present and acs_scope.any():
+            failures.append(
+                f"{source_column}: raw_source_authority_missing_for_scoped_acs_rows"
+            )
+        elif raw_source_present:
             raw_null = person[source_column].isna()
             raw_source_mismatch_rows = int(
                 (

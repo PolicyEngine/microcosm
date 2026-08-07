@@ -63,6 +63,7 @@ from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     clone_us_frame_for_puf_support,
 )
+from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 from populace.build.us_runtime.spine_agreement import (
     SpineAgreementSpec,
     default_spine_agreement_registry,
@@ -142,6 +143,7 @@ def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+    "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
 }
 
 
@@ -1801,7 +1803,8 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "PoolStageOutput",
                 "_run_source_operator_chain",
                 "list",
-                "us_qbi_reconciliation_universe_receipt",
+                "us_qbi_reconciliation_change_receipt",
+                "with_us_qbi_input_reconciliation",
             },
         ),
     )
@@ -1920,9 +1923,10 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     person = frame.table("person").copy()
     person["long_term_capital_gains_before_response"] = 100.0
     person["non_sch_d_capital_gains"] = 0.0
-    for column in multispine_pool_module.US_QBI_OUTPUT_COLUMNS:
+    for column in US_QBI_OUTPUT_COLUMNS:
         person[column] = 0.0
     person["self_employment_income_before_lsr"] = 10.0
+    person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
     frame = _replace_person(frame, person)
 
@@ -1932,7 +1936,16 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
     assert (
         result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
-            "rows_excluded_from_reconciliation"
+            "rows_excluded_from_base_self_employment_rewrite"
+        ]
+        == 0
+    )
+    assert result.receipt["qbi_input_reconciliation"][
+        "base_self_employment_changed_rows"
+    ] == len(derived)
+    assert (
+        result.receipt["qbi_input_reconciliation"][
+            "structurally_absent_base_source_changed_rows"
         ]
         == 0
     )

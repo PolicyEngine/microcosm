@@ -28,6 +28,7 @@ from populace.build.gates import GateReport, GateResult
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from populace.build.us_runtime.multispine_pool import (
+    derive_multispine_pool_inputs,
     pool_transfer_target_families,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
@@ -42,6 +43,10 @@ from populace.build.us_runtime.puf_support import (
     finalize_us_puf_tax_detail_predictions,
     prepare_us_puf_tax_detail_chain_inputs,
     validate_puf_clone_attachment,
+)
+from populace.build.us_runtime.qbi_inputs import (
+    US_QBI_BOOLEAN_OUTPUT_COLUMNS,
+    US_QBI_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.stacked_spine import (
@@ -151,7 +156,7 @@ def _acs_source() -> Frame:
         household_ids=list(range(101, 111)),
         persons_per_household={103: 3, 107: 2},
         weights=[float(10 * position) for position in range(1, 11)],
-        extra_person_columns={"acs_native_aggregate": 15.0},
+        extra_person_columns={"acs_native_aggregate": 15.0, "WAGP": 15.0},
         extra_household_columns={
             "puma": "0600101",
             "TYPEHUGQ": 1,
@@ -872,10 +877,153 @@ def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
     assert self_employment.loc[acs_recipient].eq(0.0).sum() == 1
     assert employment.notna().all()
     assert self_employment.notna().all()
+    assert receipt["predictor_source_mapping"] == {
+        "puf_predictor_employment_income": {
+            "entity": "person",
+            "columns": ["employment_income_before_lsr"],
+        },
+        "puf_predictor_self_employment_income": {
+            "entity": "person",
+            "columns": ["self_employment_income_before_lsr"],
+        },
+    }
     pd.testing.assert_frame_equal(
         cloned.table("person")[before.columns],
         before,
     )
+
+
+def test_strict_recipient_predictors_reject_cross_grain_source_collision() -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    cloned.table("tax_unit")["employment_income"] = 777.0
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="ambiguous across entity grains"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("raw_source", "predictor"),
+    [
+        ("WAGP", "puf_predictor_employment_income"),
+        ("SEMP", "puf_predictor_self_employment_income"),
+    ],
+)
+def test_strict_recipient_predictors_require_raw_acs_universe_authority(
+    raw_source: str,
+    predictor: str,
+) -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    cloned.table("person").drop(columns=[raw_source], inplace=True)
+    donor_source = predictor.removeprefix("puf_predictor_")
+    donor = pd.DataFrame(
+        {
+            donor_source: [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="raw_source_authority_missing"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=(predictor,),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
+def test_puf_finalize_and_derive_preserve_only_native_acs_child_sources() -> None:
+    frame = _cloned_acs_earnings_universe_fixture()
+    person = frame.table("person")
+    for column in US_QBI_OUTPUT_COLUMNS:
+        person[column] = False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+    person["long_term_capital_gains_before_response"] = 0.0
+    person["non_sch_d_capital_gains"] = 0.0
+    tax_unit = frame.table("tax_unit")
+    detail_tax_units = tax_unit[support_clone_index_column("tax_unit")].eq(1)
+    predictions = pd.DataFrame(
+        {
+            "employment_income_before_lsr": 1_000.0,
+            "self_employment_income_before_lsr": 100.0,
+        },
+        index=tax_unit.index[detail_tax_units],
+    )
+    donor = pd.DataFrame(
+        {
+            "employment_income_before_lsr": [1_000.0, 2_000.0],
+            "self_employment_income_before_lsr": [100.0, 200.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    finalized = finalize_us_puf_tax_detail_predictions(
+        frame,
+        donor,
+        predictions,
+        person_outputs=tuple(predictions.columns),
+        tax_unit_outputs=(),
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+    finalized_person = finalized.table("person")
+    acs = finalized_person[support_channel_column("person")].eq("acs")
+    child = finalized_person["age"].lt(15)
+    native_child = (
+        acs & child & finalized_person[support_clone_index_column("person")].eq(0)
+    )
+    detail_child = (
+        acs & child & finalized_person[support_clone_index_column("person")].eq(1)
+    )
+    assert int(native_child.sum()) == int(detail_child.sum()) == 2
+    assert (
+        finalized_person.loc[native_child, "self_employment_income_before_lsr"]
+        .isna()
+        .all()
+    )
+    assert (
+        finalized_person.loc[detail_child, "self_employment_income_before_lsr"]
+        .notna()
+        .all()
+    )
+
+    derived = derive_multispine_pool_inputs(finalized)
+    derived_person = derived.frame.table("person")
+    qbi_receipt = derived.receipt["qbi_input_reconciliation"]
+
+    assert (
+        derived_person.loc[native_child, "self_employment_income_before_lsr"]
+        .isna()
+        .all()
+    )
+    assert (
+        derived_person.loc[detail_child, "self_employment_income_before_lsr"]
+        .notna()
+        .all()
+    )
+    assert (
+        qbi_receipt["recipient_source_universe"][
+            "rows_excluded_from_base_self_employment_rewrite"
+        ]
+        == 2
+    )
+    assert qbi_receipt["structurally_absent_base_source_changed_rows"] == 0
+    assert len(qbi_receipt["input_person_values_sha256"]) == 64
+    assert len(qbi_receipt["output_person_values_sha256"]) == 64
 
 
 @pytest.mark.parametrize(
@@ -1020,6 +1168,7 @@ def _acs_gap_source() -> Frame:
     person["is_female"] = np.asarray([position % 2 == 0 for position in range(count)])
     person["is_household_head"] = ~person["person_household_id"].duplicated()
     person["employment_income_before_lsr"] = np.linspace(8_000.0, 90_000.0, count)
+    person["WAGP"] = person["employment_income_before_lsr"]
     person["acs_interest_dividend_rental_income"] = np.asarray(
         [0.0, 400.0, 0.0, 150.0, 900.0, 0.0, 250.0, 0.0, 3_000.0, 120.0, 60.0]
     )
@@ -2996,6 +3145,7 @@ def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
             100_000.0 + income_shift,
             len(person),
         )
+        person["WAGP"] = person["employment_income_before_lsr"]
         for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
             person[column] = 0.0
         tax_unit = tables["tax_unit"]
@@ -4761,6 +4911,7 @@ def _acs_e2e_source() -> Frame:
     person["is_female"] = index % 2 == 1
     person["is_household_head"] = True
     person["employment_income_before_lsr"] = 21_000.0 + 1_450.0 * index
+    person["WAGP"] = person["employment_income_before_lsr"]
     person["acs_interest_dividend_rental_income"] = np.where(
         index % 2 == 0, 1_250.0 + 42.0 * index, 0.0
     )

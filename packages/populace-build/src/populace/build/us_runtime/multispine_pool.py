@@ -66,8 +66,8 @@ from populace.build.us_runtime.prior_year_income import (
 from populace.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.qbi_inputs import (
-    US_QBI_OUTPUT_COLUMNS,
-    us_qbi_reconciliation_universe_receipt,
+    US_QBI_RECONCILED_PERSON_COLUMNS,
+    us_qbi_reconciliation_change_receipt,
     with_us_qbi_input_reconciliation,
 )
 from populace.build.us_runtime.relationship_inputs import (
@@ -1566,17 +1566,24 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
+    def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
+        reconciled = with_us_qbi_input_reconciliation(input_frame)
+        return PoolStageOutput(
+            reconciled,
+            us_qbi_reconciliation_change_receipt(input_frame, reconciled),
+        )
+
     completed = _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
         operator_names=POOL_DERIVE_OPERATOR_ORDER,
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
-            "with_us_qbi_input_reconciliation": with_us_qbi_input_reconciliation,
+            "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
         },
     )
-    qbi_universe_receipt = us_qbi_reconciliation_universe_receipt(completed.frame)
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
+    qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
     return PoolStageOutput(
         completed.frame,
         {
@@ -1584,9 +1591,9 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": {
-                "columns": list(US_QBI_OUTPUT_COLUMNS),
+                "columns": list(US_QBI_RECONCILED_PERSON_COLUMNS),
                 "operation": "shared_all_or_nothing_identity_reconciliation",
-                "recipient_source_universe": qbi_universe_receipt,
+                **qbi_receipt,
             },
         },
     )

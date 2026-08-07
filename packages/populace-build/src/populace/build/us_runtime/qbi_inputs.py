@@ -49,10 +49,12 @@ __all__ = [
     "US_QBI_NONCONSTANT_PERSON_COLUMNS",
     "US_QBI_NONNEGATIVE_OUTPUT_COLUMNS",
     "US_QBI_OUTPUT_COLUMNS",
+    "US_QBI_RECONCILED_PERSON_COLUMNS",
     "US_QBI_STAGE_NAME",
     "us_qbi_inputs_signal_gate",
     "us_qbi_inputs_stage_spec",
     "us_qbi_inputs_summary",
+    "us_qbi_reconciliation_change_receipt",
     "us_qbi_reconciliation_universe_receipt",
     "with_us_qbi_input_reconciliation",
 ]
@@ -114,6 +116,10 @@ US_QBI_NONCONSTANT_PERSON_COLUMNS = US_QBI_OUTPUT_COLUMNS
 
 _SELF_EMPLOYMENT_COLUMN = "self_employment_income_before_lsr"
 _SSTB_SELF_EMPLOYMENT_COLUMN = "sstb_self_employment_income_before_lsr"
+US_QBI_RECONCILED_PERSON_COLUMNS: tuple[str, ...] = (
+    *US_QBI_OUTPUT_COLUMNS,
+    _SELF_EMPLOYMENT_COLUMN,
+)
 _BOOLEAN_SHARE_BANDS: dict[str, tuple[float, float]] = {
     "business_is_sstb": (0.001, 0.25),
     **{column: (0.01, 0.9999) for column in _GENERAL_QUALIFICATION_FLAGS},
@@ -190,8 +196,9 @@ def _qbi_reconciliation_scope(
         receipt: dict[str, object] = {
             "version": 1,
             "policy": "all_rows_without_stacked_clone_provenance",
-            "rows_excluded_from_reconciliation": 0,
-            "person_source_cells_mutated": False,
+            "rows_excluded_from_base_self_employment_rewrite": 0,
+            "rows_included_in_other_qbi_reconciliation": int(len(person)),
+            "structurally_absent_base_source_cells_mutated": False,
         }
         receipt["sha256"] = _qbi_receipt_sha256(receipt)
         return np.ones(len(person), dtype=bool), receipt
@@ -212,14 +219,18 @@ def _qbi_reconciliation_scope(
     active = ~structural
     receipt = dict(universe.receipt)
     receipt["source_universe_sha256"] = receipt.pop("sha256")
+    receipt["source_universe_resolution_mutated_person_cells"] = receipt.pop(
+        "person_source_cells_mutated"
+    )
     receipt.update(
         {
             "operation": (
-                "reconcile observed/in-universe rows; preserve every already-"
-                "produced QBI cell on native ACS people under age 15"
+                "preserve the native ACS under-15 base self-employment blank; "
+                "reconcile every derived QBI identity on every person row"
             ),
-            "rows_excluded_from_reconciliation": int(structural.sum()),
-            "person_source_cells_mutated": False,
+            "rows_excluded_from_base_self_employment_rewrite": int(structural.sum()),
+            "rows_included_in_other_qbi_reconciliation": int(len(person)),
+            "structurally_absent_base_source_cells_mutated": False,
         }
     )
     receipt["sha256"] = _qbi_receipt_sha256(receipt)
@@ -244,6 +255,75 @@ def _qbi_receipt_sha256(receipt: dict[str, object]) -> str:
     ).hexdigest()
 
 
+def us_qbi_reconciliation_change_receipt(
+    before: Frame,
+    after: Frame,
+) -> dict[str, object]:
+    """Bind the QBI kernel's declared input/output surface and exact mutations."""
+
+    before_person = before.table("person")
+    after_person = after.table("person")
+    if not before_person.index.equals(after_person.index):
+        raise ValueError("US QBI reconciliation changed the person-row index.")
+    missing = sorted(
+        set(US_QBI_RECONCILED_PERSON_COLUMNS)
+        - set(before_person.columns).intersection(after_person.columns)
+    )
+    if missing:
+        raise ValueError(
+            "US QBI reconciliation change receipt lacks declared person column(s): "
+            f"{missing}."
+        )
+    base_scope, universe_receipt = _qbi_reconciliation_scope(before)
+    structural = ~base_scope
+    before_values = before_person.loc[:, US_QBI_RECONCILED_PERSON_COLUMNS]
+    after_values = after_person.loc[:, US_QBI_RECONCILED_PERSON_COLUMNS]
+    equal = before_values.eq(after_values) | (
+        before_values.isna() & after_values.isna()
+    )
+    changed_rows = ~equal.all(axis=1).to_numpy(dtype=bool)
+    before_base = before_person[_SELF_EMPLOYMENT_COLUMN]
+    after_base = after_person[_SELF_EMPLOYMENT_COLUMN]
+    base_equal = before_base.eq(after_base) | (before_base.isna() & after_base.isna())
+    structural_base_changes = int(np.count_nonzero(structural & ~base_equal.to_numpy()))
+    if structural_base_changes:
+        raise ValueError(
+            "US QBI reconciliation mutated "
+            f"{structural_base_changes} structurally absent ACS base source cell(s)."
+        )
+    receipt: dict[str, object] = {
+        "version": 1,
+        "declared_person_columns": list(US_QBI_RECONCILED_PERSON_COLUMNS),
+        "recipient_source_universe": universe_receipt,
+        "input_person_values_sha256": _qbi_person_values_sha256(before_person),
+        "output_person_values_sha256": _qbi_person_values_sha256(after_person),
+        "changed_person_rows": int(changed_rows.sum()),
+        "base_self_employment_changed_rows": int((~base_equal).sum()),
+        "structurally_absent_base_source_changed_rows": structural_base_changes,
+    }
+    receipt["sha256"] = _qbi_receipt_sha256(receipt)
+    return receipt
+
+
+def _qbi_person_values_sha256(person: pd.DataFrame) -> str:
+    id_column = "person_id" if "person_id" in person else None
+    columns = [*US_QBI_RECONCILED_PERSON_COLUMNS]
+    if id_column is not None:
+        columns.insert(0, id_column)
+    values = person.loc[:, columns]
+    header = {
+        "columns": columns,
+        "dtypes": [str(values[column].dtype) for column in columns],
+    }
+    digest = hashlib.sha256(
+        json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
+    )
+    digest.update(
+        pd.util.hash_pandas_object(values, index=True).to_numpy(dtype="<u8").tobytes()
+    )
+    return digest.hexdigest()
+
+
 def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     """Restore archived all-or-nothing SSTB split identities after PUF QRF."""
 
@@ -259,7 +339,8 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
         )
 
     result = person.copy(deep=True)
-    reconciliation_scope, _universe_receipt = _qbi_reconciliation_scope(frame)
+    base_self_employment_scope, _universe_receipt = _qbi_reconciliation_scope(frame)
+    reconciliation_scope = np.ones(len(result), dtype=bool)
     asec_mask = np.zeros(len(result), dtype=bool)
     if has_support_role_metadata(result, entity="person"):
         asec_mask = (
@@ -284,15 +365,24 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     non_sstb_self_employment = _numeric_in_scope(
         result,
         _SELF_EMPLOYMENT_COLUMN,
-        reconciliation_scope,
+        base_self_employment_scope,
     )
-    sstb_self_employment = _numeric(result, _SSTB_SELF_EMPLOYMENT_COLUMN)
+    non_sstb_self_employment = np.where(
+        base_self_employment_scope,
+        non_sstb_self_employment,
+        0.0,
+    )
+    sstb_self_employment = np.where(
+        base_self_employment_scope,
+        _numeric(result, _SSTB_SELF_EMPLOYMENT_COLUMN),
+        0.0,
+    )
     total_self_employment = non_sstb_self_employment + sstb_self_employment
 
     base_self_employment_qualified = (
         flags["self_employment_income_would_be_qualified"]
         | flags[_SSTB_QUALIFICATION_FLAG]
-    )
+    ) & base_self_employment_scope
     partnership_s_corp_income = _optional_numeric(
         result, "partnership_income"
     ) + _optional_numeric(result, "s_corp_income")
@@ -323,8 +413,8 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
         total_self_employment,
         0.0,
     )
-    result.loc[reconciliation_scope, _SELF_EMPLOYMENT_COLUMN] = (
-        reconciled_self_employment[reconciliation_scope]
+    result.loc[base_self_employment_scope, _SELF_EMPLOYMENT_COLUMN] = (
+        reconciled_self_employment[base_self_employment_scope]
     )
     result.loc[reconciliation_scope, _SSTB_SELF_EMPLOYMENT_COLUMN] = (
         reconciled_sstb_self_employment[reconciliation_scope]
@@ -387,7 +477,8 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
     """Return weighted signal, validity, and split-identity diagnostics."""
 
     person = frame.table("person")
-    reconciliation_scope, universe_receipt = _qbi_reconciliation_scope(frame)
+    base_self_employment_scope, universe_receipt = _qbi_reconciliation_scope(frame)
+    reconciliation_scope = np.ones(len(person), dtype=bool)
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
     columns: dict[str, dict[str, object]] = {}
@@ -416,7 +507,12 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
     self_employment = _numeric_in_scope(
         person,
         _SELF_EMPLOYMENT_COLUMN,
-        reconciliation_scope,
+        base_self_employment_scope,
+    )
+    self_employment = np.where(
+        base_self_employment_scope,
+        self_employment,
+        0.0,
     )
     sstb_self_employment = pd.to_numeric(
         person[_SSTB_SELF_EMPLOYMENT_COLUMN], errors="coerce"

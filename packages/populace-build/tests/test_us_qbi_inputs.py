@@ -244,22 +244,23 @@ def _stacked_qbi_universe_frame(*, child_age: float = 12.0) -> Frame:
     return _frame(person)
 
 
-def test_reconciliation_preserves_native_acs_child_absence_and_qbi_cells() -> None:
+def test_reconciliation_preserves_child_source_but_reconciles_other_qbi_cells() -> None:
     frame = _stacked_qbi_universe_frame()
-    columns = [*US_QBI_OUTPUT_COLUMNS, "self_employment_income_before_lsr"]
-    before = frame.table("person").loc[10, columns].copy(deep=True)
 
     result = with_us_qbi_input_reconciliation(frame)
-    after = result.table("person").loc[10, columns]
+    after = result.table("person").loc[10]
     receipt = us_qbi_reconciliation_universe_receipt(frame)
 
-    pd.testing.assert_series_equal(after, before)
     assert pd.isna(after["self_employment_income_before_lsr"])
-    assert receipt["rows_excluded_from_reconciliation"] == 1
+    assert after["business_is_sstb"] == 0
+    assert after["sstb_self_employment_income_before_lsr"] == 0.0
+    assert after["sstb_w2_wages_from_qualified_business"] == 0.0
+    assert receipt["rows_excluded_from_base_self_employment_rewrite"] == 1
+    assert receipt["rows_included_in_other_qbi_reconciliation"] == 20
     assert (
         receipt["rules"]["self_employment_income_before_lsr"]["source_column"] == "SEMP"
     )
-    assert receipt["person_source_cells_mutated"] is False
+    assert receipt["structurally_absent_base_source_cells_mutated"] is False
     assert len(receipt["sha256"]) == 64
 
 

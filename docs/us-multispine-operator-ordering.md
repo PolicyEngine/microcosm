@@ -150,6 +150,11 @@ are allowed only when named by the ACS native-input receipt.
    person-grain earnings sources, while each tax-unit predictor sums only
    age-15-and-older ACS members. A unit with no eligible member receives the
    derived empty-sum value `0.0` at feature grain; no person cell is coerced.
+   The mapped leaves' universe missingness must agree with the raw
+   `WAGP`/`SEMP` authority columns, which are mandatory on scoped ACS rows. A
+   same-named tax-unit/person source
+   collision is ambiguous and fails instead of letting receipt and feature
+   construction choose different grains.
    Exact structural-person, affected-unit, mixed-unit, and empty-unit counts
    and lineage/feature digests bind the root QRF manifest, both immutable
    banks, every target checkpoint, live finalization, and the outer stacked
@@ -176,9 +181,13 @@ are allowed only when named by the ACS native-input receipt.
 7. Schedule-D preparation, deterministic derivation, seeded inputs, and
    batched simulation run on the transferred stack. QBI reconciliation uses
    the same source declaration: it fails on any in-universe self-employment
-   null, excludes only native ACS people younger than 15 from the identity
-   rewrite, preserves their source nulls and already-produced QBI detail
-   cells, and emits an exact exclusion count and lineage digest. The tool
+   null and preserves the native ACS under-15 base self-employment source
+   blank. That narrow source exception does not suppress independent QBI
+   identities: every QBI detail row is still reconciled and checked. The
+   operator declares the base self-employment rewrite alongside its QBI
+   outputs and receipts pre/post value digests, changed-row counts, an exact
+   structural-source exclusion count, and zero forbidden structural-source
+   mutations. The tool
    retains the existing `assembled`, `transferred`, and `simulated` #599
    boundaries.
 8. A fresh `us_stacked_completeness` gate proves every declared input is
@@ -211,7 +220,7 @@ only after a comparison surface is complete and valid.
 |---|---|---|---|
 | Early gap-fill handoff | Donors observe every declared target; every recipient null is filled except the exact ACS group-quarters rent rule. Nonstructural `unmodeled_rows` and residual nulls are forbidden. | The pre-clone ASEC source operators supply 48 early targets to the two ASEC-to-ACS directions. | No accepted starvation remains. A nonstructural residual fails before cloning; literal `insufficient_support` is not an early-transfer outcome. |
 | Clone attachment | Input rows are all clone 0; the seeded whole-household selection, lineage, pair weights, fraction, and seed agree exactly. | The completed gap-filled stack and the attachment sampler. | A permitted structural rent null is copied with its authority. Any other early residual has already failed. |
-| PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
+| PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an explicitly receipted empty eligible set whose derived sum is `0.0`. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
 | Clone-2 capital-gains tail | Candidate recipients have the required filing-status/AGI support, positive donor mass, unique household lineage, and sufficient weight capacity; every selected donor is assigned once. | Completed clone-1 QRF output and full PUF tail donors. | No early residual is accepted. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
@@ -219,7 +228,7 @@ only after a comparison surface is complete and valid.
 | Post-PUF transfer | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 30 source targets, with three overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
 | Tail preservation | Tail manifest, descendants, IDs, weights, provenance, joint vector, and non-tail QRF cells remain exact after completion, transfer, derive, seed, and simulation. | The tail manifest bound during the PUF pass. | Completeness receipts cannot authorize a mutation; any byte or identity change fails. |
 | Schedule-D derive | Both transferred parent columns are finite for every person and align to every tax unit. | Completed post-PUF transfer plus tail replacements. | No. A residual would fail late transfer first and derive again by name. |
-| QBI derive | All QBI detail outputs are finite; self-employment is finite wherever its source applies; archived split identities hold on the reconciliation scope. | PUF/source detail plus ACS/ASEC native self-employment. | No silent starvation. Native ACS under-15 rows are excluded by the exact WAGP/SEMP universe receipt; an in-universe null fails. |
+| QBI derive | All QBI detail outputs are finite; self-employment is finite wherever its source applies; every independent archived QBI identity holds. The declared surface includes the base self-employment rewrite and binds pre/post digests. | PUF/source detail plus ACS/ASEC native self-employment. | No silent starvation. Only the native ACS under-15 base source cell is excluded from rewriting; all derived QBI cells remain in scope, and an in-universe null fails. |
 | Take-up seed | Every administratively seeded variable completes; transfer-owned take-up cannot use a default; only explicitly non-transfer-owned inputs may use receipted engine defaults. | Seed kernels, the complete transfer surface, and declared defaults. | Transfer-owned residuals fail. A declared default is a separate modeled state, not an insufficient-support receipt. |
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
 | Terminal completeness | All 131 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 131-target terminal surface. |
