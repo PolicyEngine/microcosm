@@ -42,6 +42,11 @@ from populace.build.us_runtime.puf_support import (
     clone_us_frame_for_puf_support,
     support_channel_column,
     support_clone_index_column,
+    support_source_id_column,
+)
+from populace.build.us_runtime.support_provenance import (
+    spine_assembly_manifest,
+    spine_source_id_column,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -155,6 +160,52 @@ def _donor() -> pd.DataFrame:
     )
 
 
+def _assembled_native_recipient_frame() -> Frame:
+    expanded = _expanded_recipient_frame()
+    native = expanded.select(
+        expanded.table("person")[support_clone_index_column("person")].eq(0).to_numpy()
+    )
+    tables = {entity: native.table(entity).copy() for entity in native.entities}
+    for entity, table in tables.items():
+        table[spine_source_id_column(entity)] = table[
+            support_source_id_column(entity)
+        ].to_numpy()
+    return Frame(
+        tables,
+        native.schema,
+        {
+            "household": Weights(
+                native.weights_for("household").values * 2.0,
+                native.weights_for("household").kind,
+            )
+        },
+        native.strata,
+        mass_log=native.mass_log,
+        metadata=spine_assembly_manifest(tables, channels=("asec", "acs")),
+    )
+
+
+def _partially_attached_recipient_frame() -> Frame:
+    return clone_us_frame_for_puf_support(
+        _assembled_native_recipient_frame(),
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=1,
+    )
+
+
+def _replace_entity_table(frame: Frame, entity: str, table: pd.DataFrame) -> Frame:
+    tables = {name: frame.table(name).copy() for name in frame.entities}
+    tables[entity] = table
+    return Frame(
+        tables,
+        frame.schema,
+        {name: frame.weights_for(name) for name in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
 def _load_support_builder_module():
     root = Path(__file__).resolve().parents[3]
     path = root / "tools" / "build_us_puf_support_base.py"
@@ -163,6 +214,74 @@ def _load_support_builder_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_tail_transfer_matches_full_and_partial_clone_attachments() -> None:
+    assembled = _assembled_native_recipient_frame()
+    full = clone_us_frame_for_puf_support(
+        assembled,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=1,
+    )
+    partial = _partially_attached_recipient_frame()
+
+    assert tail_module._support_clone_multiplier(full) == 100_000
+    assert tail_module._support_clone_multiplier(partial) == 100_000
+    household = partial.table("household")
+    clone_index = household[support_clone_index_column("household")]
+    attached_sources = household.loc[
+        clone_index.eq(1),
+        support_source_id_column("household"),
+    ].astype("int64")
+    assert attached_sources.tolist() == [2, 3]
+
+    transferred, manifest = transfer_puf_capital_gains_tail(
+        partial,
+        _donor(),
+        seed=567,
+    )
+
+    assert manifest["record_count"] == 2
+    assert manifest["clone"]["id_multiplier"] == 100_000
+    partial.weights_for("household").assert_mass_conserved(
+        transferred.weights_for("household")
+    )
+
+
+def test_support_clone_multiplier_rejects_unmatched_detail_source_id() -> None:
+    partial = _partially_attached_recipient_frame()
+    person = partial.table("person").copy()
+    detail = person[support_clone_index_column("person")].eq(1)
+    person.loc[person.index[detail][0], support_source_id_column("person")] = 999_999
+    corrupted = _replace_entity_table(partial, "person", person)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "PUF support person detail clone source IDs have no native match: "
+            r"\[999999\]"
+        ),
+    ):
+        tail_module._support_clone_multiplier(corrupted)
+
+
+def test_support_clone_multiplier_rejects_duplicate_detail_source_id() -> None:
+    partial = _partially_attached_recipient_frame()
+    person = partial.table("person").copy()
+    detail_positions = person.index[
+        person[support_clone_index_column("person")].eq(1)
+    ].tolist()
+    source_id = support_source_id_column("person")
+    person.loc[detail_positions[1], source_id] = person.loc[
+        detail_positions[0], source_id
+    ]
+    corrupted = _replace_entity_table(partial, "person", person)
+
+    with pytest.raises(
+        ValueError,
+        match="PUF support person detail clone source IDs are not unique",
+    ):
+        tail_module._support_clone_multiplier(corrupted)
 
 
 def test_tail_selection_consumes_synthetic_eligibility() -> None:

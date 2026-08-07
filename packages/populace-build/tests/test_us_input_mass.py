@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from populace.build.input_mass import input_mass_totals
+from populace.build.us_runtime import us_input_mass_totals as package_input_mass_totals
 from populace.build.us_runtime.input_mass import us_input_mass_totals
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -53,6 +55,11 @@ def _frame(**person_extra: object) -> Frame:
         US_SCHEMA,
         {"household": Weights(np.asarray([10.0, 30.0]), WeightKind.CALIBRATED)},
     )
+
+
+def test_legacy_us_exports_are_exact_shared_function_aliases() -> None:
+    assert us_input_mass_totals is input_mass_totals
+    assert package_input_mass_totals is input_mass_totals
 
 
 def test_totals_weight_each_entity_through_household_membership() -> None:

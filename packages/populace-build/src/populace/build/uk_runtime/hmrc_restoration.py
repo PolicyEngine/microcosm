@@ -36,11 +36,14 @@ from populace.build.uk_runtime.hmrc_source_contract import (
     HMRC_DISTRIBUTIONAL_INPUTS,
     assert_uk_hmrc_income_source_contract_current,
 )
-from populace.build.uk_runtime.national_build import (
-    UKNationalDataset,
+from populace.build.uk_runtime.national_frame import (
+    UKStagingProvenance,
     _uk_source_file_fingerprint,
     _UKSourceFileFingerprint,
-    validate_uk_national_dataset,
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
+    validate_uk_national_frame,
 )
 from populace.build.uk_runtime.release_identity import UK_RELEASE_TIER_FRS
 from populace.build.uk_runtime.release_input_coverage import (
@@ -63,7 +66,7 @@ from populace.build.uk_runtime.spi_support import (
     replace_uk_spi_support_tables,
     support_channel_column,
 )
-from populace.frame import WeightKind
+from populace.frame import Frame, WeightKind
 
 __all__ = [
     "CERTIFIED_UK_CANDIDATE_FILENAME",
@@ -116,9 +119,9 @@ class UKCertifiedCandidateIdentity:
 
 @dataclass(frozen=True)
 class UKHMRCIncomeRestorationResult:
-    """Importance-weight replay dataset plus aggregate-only evidence."""
+    """Importance-weight replay frame plus aggregate-only evidence."""
 
-    dataset: UKNationalDataset
+    frame: Frame
     support: UKSPISupportResult
     imputation: UKSPIIncomeImputationResult
     source_targets: HMRCIncomeTargetSet
@@ -185,7 +188,7 @@ class UKHMRCIncomeRestorationResult:
                     "the 208 facts are reviewed exclusions rather than biased "
                     "calibration constraints."
                 ),
-                "output_weight_kind": self.dataset.household_weight_kind.value,
+                "output_weight_kind": uk_household_weight_kind(self.frame).value,
             },
             "effective_mass_coverage": {
                 "minimum_nondefault_mass_share": (
@@ -212,6 +215,15 @@ class UKHMRCIncomeStageTransform:
         default=None,
         init=False,
     )
+    staging_provenance: UKStagingProvenance | None = field(
+        default=None,
+        init=False,
+    )
+    bound_frame: Frame | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     @property
     def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
@@ -221,7 +233,35 @@ class UKHMRCIncomeStageTransform:
             return ()
         return tuple(self.last_result.imputation.fit_weight_records)
 
-    def __call__(self, dataset: UKNationalDataset) -> UKNationalDataset:
+    def bind_staging_provenance(
+        self,
+        provenance: UKStagingProvenance,
+        frame: Frame,
+    ) -> None:
+        """Receive the load provenance and the loaded frame from the driver.
+
+        Provenance travels beside the frame, never inside it, so the driver
+        hands both to the one stage whose fence binds the loaded bytes to the
+        verified certified candidate. Binding the frame object restores the
+        descent guarantee the retired carrier's loader-attached fields gave:
+        the fence can require that the pipeline it sits in started from this
+        exact loaded object, not merely that a matching load happened once.
+        """
+
+        if not isinstance(provenance, UKStagingProvenance):
+            raise TypeError("staging provenance must be UKStagingProvenance.")
+        if not isinstance(frame, Frame):
+            raise TypeError("bound frame must be a populace Frame.")
+        self.staging_provenance = provenance
+        self.bound_frame = frame
+
+    def __call__(self, frame: Frame) -> Frame:
+        # Single-use: a binding never outlives the run that consumes it, so
+        # a stale binding from an earlier build can never fence a later one.
+        staging_provenance = self.staging_provenance
+        bound_frame = self.bound_frame
+        self.staging_provenance = None
+        self.bound_frame = None
         retained = (
             None
             if self.retained_leaves_transform is None
@@ -232,23 +272,32 @@ class UKHMRCIncomeStageTransform:
                 "HMRC replay requires the raw-FRS retained-leaves stage to run "
                 "immediately before the SPI stage."
             )
-        if retained.dataset is not dataset:
+        if retained.frame is not frame:
             raise RuntimeError(
-                "HMRC replay raw-FRS evidence is not bound to the dataset "
+                "HMRC replay raw-FRS evidence is not bound to the frame "
                 "received from the immediately preceding retained-leaves stage."
             )
+        if bound_frame is not None:
+            retained_input = getattr(self.retained_leaves_transform, "last_input", None)
+            if retained_input is not bound_frame:
+                raise RuntimeError(
+                    "HMRC replay pipeline did not start from the frame the "
+                    "driver loaded and bound; the certified-candidate fence "
+                    "refuses a substituted input."
+                )
         self.last_result = restore_uk_hmrc_income_family(
-            dataset,
+            frame,
             spi_tab_path=self.spi_tab_path,
             hmrc_ods_path=self.hmrc_ods_path,
             certified_candidate=self.certified_candidate,
+            staging_provenance=staging_provenance,
             frs_source_evidence=retained.evidence(),
             seed=self.seed,
             qrf_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
             spi_prior_mass_share=self.spi_prior_mass_share,
         )
-        return self.last_result.dataset
+        return self.last_result.frame
 
 
 def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdentity:
@@ -296,11 +345,12 @@ def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdent
 
 
 def restore_uk_hmrc_income_family(
-    dataset: UKNationalDataset,
+    frame: Frame,
     *,
     spi_tab_path: str | Path,
     hmrc_ods_path: str | Path,
     certified_candidate: UKCertifiedCandidateIdentity,
+    staging_provenance: UKStagingProvenance | None = None,
     frs_source_evidence: Mapping[str, object],
     seed: int = 42,
     qrf_estimators: int = 100,
@@ -317,28 +367,31 @@ def restore_uk_hmrc_income_family(
     )
     if not isinstance(frs_source_evidence, Mapping) or not frs_source_evidence:
         raise ValueError("HMRC replay requires non-empty raw-FRS source evidence.")
-    validate_uk_national_dataset(dataset)
-    _assert_dataset_matches_certified_candidate(dataset, certified_candidate)
+    validate_uk_national_frame(frame)
+    _assert_provenance_matches_certified_candidate(
+        staging_provenance, certified_candidate
+    )
+    time_period = uk_time_period(frame)
 
     # The licensed donor and official ODS are one reviewed source pair. Bind
     # both identities before parsing either source or rebuilding support.
     verified_donor = verify_spi_donor_identity(spi_tab_path)
     verified_ods = verify_hmrc_spi_collated_ods(hmrc_ods_path)
-    assert_frs_hmrc_auxiliary_crosswalk_available(dataset.person)
+    assert_frs_hmrc_auxiliary_crosswalk_available(frame.table("person"))
     source_targets = materialize_hmrc_spi_income_band_targets(
         verified_ods,
-        build_period=dataset.time_period,
+        build_period=time_period,
     )
 
     support = replace_uk_spi_support_tables(
-        person=dataset.person,
-        benunit=dataset.benunit,
-        household=dataset.household,
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
         seed=seed,
-        source_year=int(dataset.time_period),
+        source_year=int(time_period),
         spi_prior_mass_share=spi_prior_mass_share,
-        input_weight_kind=dataset.household_weight_kind,
-        mass_log=dataset.mass_log,
+        input_weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
     )
     imputation = impute_uk_spi_income_support(
         support,
@@ -346,19 +399,23 @@ def restore_uk_hmrc_income_family(
         seed=seed,
         n_estimators=qrf_estimators,
         donor_sample_size=donor_sample_size,
-        build_period=dataset.time_period,
+        build_period=time_period,
         verified_donor=verified_donor,
     )
-    replay_dataset = dataset.with_tables(
+    # The SPI replacement reshapes tables AND advances the weight kind, so the
+    # stage hard-constructs its output frame with the support seam's reviewed
+    # mass log (conservation-checked, factor 1.0).
+    replay_frame = uk_national_frame(
         person=imputation.person,
         benunit=support.benunit,
         household=support.household,
-        household_weight_kind=WeightKind.IMPORTANCE,
+        time_period=time_period,
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=support.mass_log,
     )
-    validate_uk_national_dataset(replay_dataset)
-    identity_rows = _assert_post_draw_identity(replay_dataset)
-    distributional_mass_shares = _distributional_mass_shares(replay_dataset)
+    validate_uk_national_frame(replay_frame)
+    identity_rows = _assert_post_draw_identity(replay_frame)
+    distributional_mass_shares = _distributional_mass_shares(replay_frame)
     insufficient = {
         name: share
         for name, share in distributional_mass_shares.items()
@@ -396,7 +453,7 @@ def restore_uk_hmrc_income_family(
     }
     build_evidence = {
         "stage": "hmrc_spi_income",
-        "output_weight_kind": replay_dataset.household_weight_kind.value,
+        "output_weight_kind": uk_household_weight_kind(replay_frame).value,
         "calibration_performed": False,
         "spi_prior_mass_share": support.spi_prior_mass_share,
         "replaced_spi_households": support.replaced_spi_households,
@@ -430,7 +487,7 @@ def restore_uk_hmrc_income_family(
         effective_mass_evidence=effective_mass_evidence,
     )
     return UKHMRCIncomeRestorationResult(
-        dataset=replay_dataset,
+        frame=replay_frame,
         support=support,
         imputation=imputation,
         source_targets=source_targets,
@@ -458,10 +515,10 @@ def _aggregate_frs_source_evidence(
     return result
 
 
-def _assert_post_draw_identity(dataset: UKNationalDataset) -> int:
+def _assert_post_draw_identity(frame: Frame) -> int:
     """Require deterministic TEI + TII = TI on every rebuilt SPI draw."""
 
-    person = dataset.person
+    person = frame.table("person")
     channel = support_channel_column("person")
     required = (
         channel,
@@ -497,10 +554,10 @@ def _assert_post_draw_identity(dataset: UKNationalDataset) -> int:
     return int(spi.sum())
 
 
-def _distributional_mass_shares(dataset: UKNationalDataset) -> dict[str, float]:
+def _distributional_mass_shares(frame: Frame) -> dict[str, float]:
     """Audit charitable signal on strictly positive rebuilt-SPI mass."""
 
-    person = dataset.person
+    person = frame.table("person")
     person_channel = support_channel_column("person")
     if person_channel not in person:
         raise RuntimeError(
@@ -512,7 +569,9 @@ def _distributional_mass_shares(dataset: UKNationalDataset) -> dict[str, float]:
     )
     if not spi_people.any():
         raise RuntimeError("Rebuilt HMRC family contains no SPI support people.")
-    household_weights = dataset.household.set_index("household_id")["household_weight"]
+    household_weights = frame.table("household").set_index("household_id")[
+        "household_weight"
+    ]
     mapped = pd.to_numeric(
         person["person_household_id"].map(household_weights),
         errors="coerce",
@@ -586,24 +645,29 @@ def _validate_certified_candidate_identity(
         )
 
 
-def _assert_dataset_matches_certified_candidate(
-    dataset: UKNationalDataset,
+def _assert_provenance_matches_certified_candidate(
+    provenance: UKStagingProvenance | None,
     identity: UKCertifiedCandidateIdentity,
 ) -> None:
-    """Bind in-memory tables to the H5 verified once by the driver."""
+    """Bind the loaded bytes to the H5 verified once by the driver.
 
-    source_h5 = dataset.source_h5
-    if source_h5 is None:
+    The provenance record is produced by ``load_uk_national_frame`` beside the
+    frame; the national build driver hands it to this stage through
+    ``bind_staging_provenance``, so an unbound run — a frame that did not come
+    through the loader — fails closed here.
+    """
+
+    if provenance is None:
         raise ValueError(
-            "HMRC replay requires a UK national dataset loaded from the verified "
-            "certified-candidate H5."
+            "HMRC replay requires the staging provenance of a UK national "
+            "frame loaded from the verified certified-candidate H5."
         )
-    if source_h5 != identity.path:
+    if provenance.source_h5 != identity.path:
         raise ValueError(
-            "HMRC replay dataset source does not match the verified certified "
-            f"candidate: loaded {source_h5}, verified {identity.path}."
+            "HMRC replay frame source does not match the verified certified "
+            f"candidate: loaded {provenance.source_h5}, verified {identity.path}."
         )
-    if dataset.source_file_fingerprint != identity._source_file_fingerprint:
+    if provenance.fingerprint != identity._source_file_fingerprint:
         raise ValueError(
             "HMRC replay candidate H5 changed after SHA-256 verification; the "
             "loaded bytes are not the certified bytes."

@@ -7,7 +7,6 @@ frames or H5 files and does not import an incumbent data package.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,11 @@ from populace.build.uk_runtime.national_build import (
     _mass_log_from_stored,
     _read_weight_metadata,
     _weight_kind_from_stored,
-    _write_weight_metadata,
+    _write_uk_single_year_tables,
+)
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_time_period,
 )
 from populace.build.uk_runtime.rowwise_geography import (
     ROWWISE_GEOGRAPHY_COLUMNS,
@@ -36,7 +39,7 @@ from populace.build.uk_runtime.rowwise_geography import (
     clone_entity_frame,
     id_multiplier_for_values,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 
 #: Declared bound for the clone operator's exact mass conservation: dividing
 #: each household weight by ``n_clones`` and duplicating rows changes the
@@ -64,10 +67,10 @@ class UKRowwiseDatasetResult:
     """Cloned UK single-year tables and row-wise geography metadata.
 
     ``household_weight_kind`` and ``mass_log`` carry the national seam's
-    weight provenance through the clone. Absence on the input defaults to
-    ``WeightKind.DESIGN`` — the same semantics the national loader applies to
-    an attr-less H5 — and the clone always appends one mass-conserving record
-    documenting the ``n_clones`` split.
+    weight provenance through the clone. Dataset-object entry points require
+    in-memory inputs to declare ``household_weight_kind``; only an attr-less H5
+    defaults to ``WeightKind.DESIGN``. The clone always appends one
+    mass-conserving record documenting the ``n_clones`` split.
     """
 
     person: pd.DataFrame
@@ -408,9 +411,10 @@ def clone_uk_dataset_with_ladder_geography(
 ) -> UKLadderRowwiseDatasetResult:
     """Clone a UK dataset object or H5 with OA-ladder geography.
 
-    Weight kind and mass log come from the input exactly as in the crosswalk
-    route (absence keeps the national loader's DESIGN semantics; unknown
-    kinds fail closed).
+    The declared weight kind and any mass log are carried from the input.
+    In-memory dataset objects must declare ``household_weight_kind``; only an
+    attr-less H5 defaults to the national loader's ``WeightKind.DESIGN``
+    semantics. Unknown stored kinds fail closed.
     """
 
     tables = _dataset_tables(dataset, source_year=source_year)
@@ -553,11 +557,12 @@ def clone_uk_dataset_with_rowwise_geography(
 ) -> UKRowwiseDatasetResult:
     """Clone a UK single-year dataset object or H5 path with row-wise geography.
 
-    The input's stored weight kind and mass log are carried, never overridden:
-    an H5 supplies them via the national metadata attrs (absence means
+    The input's weight kind and mass log are carried, never overridden. An H5
+    supplies them via the national metadata attrs; an attr-less H5 defaults to
     ``WeightKind.DESIGN`` and an empty log, exactly as the national loader
-    reads it), and a dataset object supplies them via equally named
-    attributes when present.
+    reads it. An in-memory dataset object must declare
+    ``household_weight_kind``; its absent ``mass_log`` defaults to an empty
+    history.
     """
 
     tables = _dataset_tables(dataset, source_year=source_year)
@@ -623,36 +628,20 @@ def write_uk_rowwise_dataset(
         result.mass_log,
         float(np.asarray(result.household["household_weight"], dtype=np.float64).sum()),
     )
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Tables and the weight-kind/mass-log attrs must land together: writing
-    # them into a temporary file and renaming keeps a metadata failure from
-    # leaving a complete-looking attr-less H5 that would silently default to
-    # DESIGN semantics on the next read.
-    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
-    try:
-        with pd.HDFStore(temporary_path) as store:
-            store.put("person", result.person, format="table", data_columns=True)
-            store.put("benunit", result.benunit, format="table", data_columns=True)
-            store.put(
-                "household",
-                result.household,
-                format="table",
-                data_columns=True,
-            )
-            store.put(
-                "time_period",
-                pd.Series([result.time_period]),
-                format="table",
-                data_columns=True,
-            )
-        # The national seam's own writer supplies the attrs so the rowwise
-        # output is self-describing under ``load_uk_national_dataset``.
-        _write_weight_metadata(temporary_path, result)
-        temporary_path.replace(path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-    return path
+    # The national seam's shared physical writer supplies the atomic
+    # two-phase rename and the weight-kind/mass-log attrs, so the rowwise
+    # output is self-describing under ``read_uk_single_year_weight_metadata``
+    # and the
+    # two artifacts can never drift in layout.
+    return _write_uk_single_year_tables(
+        person=result.person,
+        benunit=result.benunit,
+        household=result.household,
+        time_period=result.time_period,
+        weight_kind=result.household_weight_kind,
+        mass_log=result.mass_log,
+        path=Path(output_path),
+    )
 
 
 def validate_uk_rowwise_dataset_tables(
@@ -712,6 +701,22 @@ def _dataset_tables(
 ) -> dict[str, Any]:
     if isinstance(dataset, str | Path):
         return _read_uk_single_year_h5(dataset)
+    if isinstance(dataset, Frame):
+        # The #612 carrier: tables through the shared materializer (typed
+        # weights authoritative), the weight kind from the typed weights
+        # themselves, and the mass log from the frame — nothing here can be
+        # absent or silently defaulted.
+        tables = engine_tables(dataset)
+        return {
+            "person": tables["person"],
+            "benunit": tables["benunit"],
+            "household": tables["household"],
+            "time_period": _normalise_time_period(
+                uk_time_period(dataset), source_year=source_year
+            ),
+            "household_weight_kind": uk_household_weight_kind(dataset),
+            "mass_log": dataset.mass_log,
+        }
     missing = [
         name
         for name in ("person", "benunit", "household")
@@ -720,7 +725,14 @@ def _dataset_tables(
     if missing:
         raise ValueError(f"dataset is missing table attribute(s): {missing}.")
     time_period = getattr(dataset, "time_period", None)
-    weight_kind = getattr(dataset, "household_weight_kind", WeightKind.DESIGN)
+    if not hasattr(dataset, "household_weight_kind"):
+        raise TypeError(
+            "dataset.household_weight_kind is required on in-memory datasets; "
+            "defaulting an absent kind would silently downgrade importance or "
+            "calibrated weights to design. Declare the kind explicitly "
+            "(H5 paths keep their documented attribute-less design default)."
+        )
+    weight_kind = dataset.household_weight_kind
     mass_log = getattr(dataset, "mass_log", ())
     if mass_log is None:
         raise TypeError(

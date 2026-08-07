@@ -19,9 +19,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from populace.build.uk_runtime.national_build import (
-    UKNationalDataset,
-    validate_uk_national_dataset,
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
+    validate_uk_national_frame,
 )
 from populace.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
@@ -29,6 +31,7 @@ from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_PAY_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
 )
+from populace.frame import Frame
 
 __all__ = [
     "FRS_HMRC_INCPBEN_COLUMN",
@@ -146,9 +149,9 @@ class UKFRSRawTableIdentity:
 
 @dataclass(frozen=True)
 class UKFRSHMRCRetainedLeavesResult:
-    """National dataset plus raw-source and lineage evidence."""
+    """National frame plus raw-source and lineage evidence."""
 
-    dataset: UKNationalDataset
+    frame: Frame
     adult_source: UKFRSRawTableIdentity
     benefits_source: UKFRSRawTableIdentity
     clone_id_multiplier: int
@@ -165,7 +168,7 @@ class UKFRSHMRCRetainedLeavesResult:
         return {
             "stage": FRS_HMRC_RETAINED_LEAVES_STAGE_NAME,
             "source_vintage": FRS_SOURCE_VINTAGE,
-            "mapped_build_period": self.dataset.time_period,
+            "mapped_build_period": uk_time_period(self.frame),
             "sources": {
                 "adult": self.adult_source.evidence(),
                 "benefits": self.benefits_source.evidence(),
@@ -203,6 +206,11 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         default=None,
         init=False,
     )
+    last_input: Frame | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     @classmethod
     def from_raw_frs_directory(
@@ -217,13 +225,17 @@ class UKFRSHMRCRetainedLeavesStageTransform:
             benefits_tab_path=directory / "benefits.tab",
         )
 
-    def __call__(self, dataset: UKNationalDataset) -> UKNationalDataset:
+    def __call__(self, frame: Frame) -> Frame:
+        # Recorded so the SPI stage's fence can assert descent: the frame
+        # this stage consumed must be the very object the driver loaded
+        # and bound its provenance to.
+        self.last_input = frame
         self.last_result = retain_uk_frs_hmrc_leaves(
-            dataset,
+            frame,
             adult_tab_path=self.adult_tab_path,
             benefits_tab_path=self.benefits_tab_path,
         )
-        return self.last_result.dataset
+        return self.last_result.frame
 
 
 @dataclass(frozen=True)
@@ -245,18 +257,19 @@ class _CandidateLineage:
 
 
 def retain_uk_frs_hmrc_leaves(
-    dataset: UKNationalDataset,
+    frame: Frame,
     *,
     adult_tab_path: str | Path,
     benefits_tab_path: str | Path,
 ) -> UKFRSHMRCRetainedLeavesResult:
     """Read two raw FRS tables and retain the adjudicated HMRC constituents."""
 
-    validate_uk_national_dataset(dataset)
-    if dataset.time_period not in {FRS_SOURCE_BUILD_PERIOD, FRS_SOURCE_VINTAGE}:
+    validate_uk_national_frame(frame)
+    time_period = uk_time_period(frame)
+    if time_period not in {FRS_SOURCE_BUILD_PERIOD, FRS_SOURCE_VINTAGE}:
         raise ValueError(
             f"Raw FRS {FRS_SOURCE_VINTAGE} leaves may only map to build period "
-            f"{FRS_SOURCE_BUILD_PERIOD!r}; got {dataset.time_period!r}."
+            f"{FRS_SOURCE_BUILD_PERIOD!r}; got {time_period!r}."
         )
 
     adult, adult_source = _read_raw_frs_table(
@@ -270,7 +283,7 @@ def retain_uk_frs_hmrc_leaves(
         required_columns=_BENEFITS_REQUIRED_COLUMNS,
     )
     source_leaves = _materialize_source_leaves(adult, benefits)
-    lineage = _resolve_candidate_lineage(dataset)
+    lineage = _resolve_candidate_lineage(frame)
     unknown_source_ids = sorted(
         set(source_leaves.index) - lineage.canonical_raw_person_ids
     )
@@ -280,7 +293,7 @@ def retain_uk_frs_hmrc_leaves(
             f"from the certified candidate base: {unknown_source_ids[:5]}."
         )
 
-    person = dataset.person.copy()
+    person = frame.table("person").copy()
     aligned = source_leaves.reindex(lineage.source_person_ids, fill_value=0.0)
     if aligned.isna().any().any():  # pragma: no cover - defensive
         raise RuntimeError("Raw FRS retained-leaf alignment produced missing values.")
@@ -292,10 +305,19 @@ def retain_uk_frs_hmrc_leaves(
     for column in FRS_HMRC_RETAINED_LEAF_COLUMNS:
         person[column] = aligned[column].to_numpy(dtype=float)
 
-    result_dataset = dataset.with_tables(person=person)
-    validate_uk_national_dataset(result_dataset)
+    # Person-only replacement: mass is untouched, so the kind and mass log
+    # carry through unchanged; Frame construction re-runs linkage validation.
+    result_frame = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        time_period=time_period,
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+    )
+    validate_uk_national_frame(result_frame)
     _validate_retained_leaf_propagation(
-        result_dataset.person,
+        result_frame.table("person"),
         source_person_ids=lineage.source_person_ids,
         source_leaves=source_leaves,
     )
@@ -309,7 +331,7 @@ def retain_uk_frs_hmrc_leaves(
         if source_signal_rows[column] == 0
     )
     return UKFRSHMRCRetainedLeavesResult(
-        dataset=result_dataset,
+        frame=result_frame,
         adult_source=adult_source,
         benefits_source=benefits_source,
         clone_id_multiplier=lineage.clone_id_multiplier,
@@ -446,9 +468,9 @@ def _materialize_source_leaves(
     return result
 
 
-def _resolve_candidate_lineage(dataset: UKNationalDataset) -> _CandidateLineage:
-    person = dataset.person
-    household = dataset.household
+def _resolve_candidate_lineage(frame: Frame) -> _CandidateLineage:
+    person = frame.table("person")
+    household = frame.table("household")
     _require_columns(
         person,
         ("person_id", "person_household_id"),

@@ -17,7 +17,7 @@ from populace.build.uk_runtime.cgt_calibration import (
     materialize_uk_cgt_calibration_frame,
     uk_cgt_annual_exempt_amount,
 )
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_frame import uk_national_frame
 from populace.frame import WeightKind
 
 
@@ -26,13 +26,14 @@ def _dataset(gains, *, time_period="2023", drop_gains=False, weights=None):
     person = pd.DataFrame(
         {
             "person_id": ids,
+            "person_benunit_id": ids,
             "person_household_id": ids,
             "capital_gains": np.asarray(gains, dtype=float),
         }
     )
     if drop_gains:
         person = person.drop(columns=["capital_gains"])
-    return UKNationalDataset(
+    return uk_national_frame(
         person=person,
         benunit=pd.DataFrame({"benunit_id": ids}),
         household=pd.DataFrame(
@@ -44,7 +45,7 @@ def _dataset(gains, *, time_period="2023", drop_gains=False, weights=None):
             }
         ),
         time_period=time_period,
-        household_weight_kind=WeightKind.IMPORTANCE,
+        weight_kind=WeightKind.IMPORTANCE,
     )
 
 

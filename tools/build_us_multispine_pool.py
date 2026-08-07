@@ -1,15 +1,39 @@
 #!/usr/bin/env python3
-"""Build the SHA-pinned, pre-calibration US multispine input pool.
+"""Build the SHA-pinned, pre-calibration US input pool.
 
-The executable order is fixed:
+The default production path is the stacked pipeline:
 
-``assemble -> clone -> impute -> derive -> seed -> simulate -> agreement``.
+``stack -> gap-fill -> PUF pass + tail -> derive -> seed -> simulate -> gates``.
+
+Both survey arms use one composition-preserving ``--sample-fraction``; PUF
+donors always remain full. The terminal completeness gate plus by-origin
+battery replace two-spine agreement. ``--legacy-two-spine`` retains the
+retiring pipeline byte-for-byte for reproducibility.
 
 Every input is local and explicitly SHA-pinned; this tool never downloads
-data. It writes a nullable input-only H5 plus a manifest and terminal agreement
-diagnostics. A failed agreement gate still leaves those diagnostic artifacts
-but returns nonzero and never marks the pool simulation-ready. Calibration is
-deliberately downstream.
+data. It writes a nullable input-only H5 plus a manifest and terminal gate
+diagnostics. A failed gate still leaves diagnostic artifacts but returns
+nonzero and never marks the pool simulation-ready. Calibration is downstream.
+
+The standard 1% local smoke rung is expected to take roughly 2--4 hours and
+stay within a 64 GiB memory envelope on a modern workstation. Most battery
+comparisons receipt ``insufficient_support`` by design at this rung; that is a
+validity-domain receipt, not a relaxed tolerance. Example (the committed
+``tools/us_stacked_pool_smoke.sh.example`` carries the same invocation):
+
+.. code-block:: console
+
+   PYTHONPATH=packages/populace-frame/src:packages/populace-fit/src:packages/populace-calibrate/src:packages/populace-build/src:packages/populace-data/src \\
+     /path/to/populace/.venv/bin/python tools/build_us_multispine_pool.py \\
+     --sample-fraction 0.01 --sample-seed 578 \\
+     --clone-attachment-fraction 1.0 --clone-attachment-seed 578 \\
+     --asec-raw-stage-h5 "$ASEC_H5" --asec-raw-stage-h5-sha256 "$ASEC_SHA" \\
+     --acs-household-zip "$ACS_H_ZIP" --acs-household-zip-sha256 "$ACS_H_SHA" \\
+     --acs-person-zip "$ACS_P_ZIP" --acs-person-zip-sha256 "$ACS_P_SHA" \\
+     --acs-rent-h5 "$RENT_H5" --acs-rent-h5-sha256 "$RENT_SHA" \\
+     --puf-h5 "$PUF_H5" --puf-h5-sha256 "$PUF_SHA" \\
+     --puf-source-year-csv "$PUF_CSV" \\
+     --puf-source-year-csv-sha256 "$PUF_CSV_SHA" --out "$OUT"
 """
 
 from __future__ import annotations
@@ -20,10 +44,12 @@ import json
 import math
 import os
 import re
+import subprocess
 import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, is_dataclass, replace
+from datetime import UTC, datetime
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -36,7 +62,13 @@ from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
-from populace.build.gates import FitWeightRecord, GateReport, weights_audit_gate
+from populace.build.gates import (
+    FitWeightRecord,
+    GateReport,
+    GateResult,
+    weights_audit_gate,
+)
+from populace.build.logbook import record_build_attempt
 from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from populace.build.us_runtime.acs_inputs import map_acs_native_inputs
 from populace.build.us_runtime.acs_pums import (
@@ -109,8 +141,21 @@ from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     US_PUF_SUPPORT_FIT_NAME,
 )
+from populace.build.us_runtime.stacked_spine import (
+    assemble_stacked_spine,
+    assert_stacked_tail_cells_preserved,
+    by_origin_battery,
+    gap_fill_stacked_spine,
+    prepare_stacked_tail_derivation,
+    run_stacked_puf_pass,
+    stacked_completeness_gate,
+    stacked_gap_fill_plan,
+    stacked_spine_authority_receipt,
+    validate_stacked_spine_frame,
+)
 from populace.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
+    spine_provenance_counts,
     validate_assembly_provenance,
 )
 from populace.build.us_runtime.take_up_contract import take_up_contract_identity
@@ -122,7 +167,9 @@ __all__ = [
     "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
     "POOL_STAGE_CHECKPOINT_SCHEMA_VERSION",
     "PoolBuildOutputs",
+    "StackedPoolBuildResult",
     "build_multispine_pool",
+    "build_stacked_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "main",
 ]
@@ -178,6 +225,19 @@ _POOL_STAGE_CHECKPOINT_FILENAMES: Mapping[str, str] = {
 _POOL_SIMULATION_OUTPUT_COLUMN = "ssi"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _BANK_IDENTITY_SIBLING_SCAN_LIMIT = 64
+_STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
+    0.01: "f001",
+    0.10: "f010",
+    1.00: "f100",
+}
+_STACKED_PIPELINE = "us-stacked-pool"
+# Version 2 binds the complete clone-2 tail provenance and attachment-descendant
+# metadata. Version-1 stacked checkpoints predate that state and must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 2
+_STACKED_RELEASE_ID_PATTERN = re.compile(
+    r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
+    r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+)
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 
@@ -192,6 +252,35 @@ class PoolBuildOutputs:
     checkpoint_root: Path
     primary_qrf_checkpoint_dir: Path
     acs_transfer_checkpoint_dir: Path
+
+
+@dataclass(frozen=True)
+class StackedPoolBuildResult:
+    """Input-only stacked pool and its two fresh terminal gate verdicts."""
+
+    frame: Frame
+    stack_receipt: Mapping[str, object]
+    assembly_receipt: Mapping[str, object]
+    provenance_counts: Mapping[str, Mapping[str, object]]
+    stage_receipts: Mapping[str, Mapping[str, object]]
+    terminal_gates: tuple[GateResult, GateResult]
+    release_id: str
+
+    @property
+    def simulation_ready(self) -> bool:
+        return all(gate.passed for gate in self.terminal_gates)
+
+
+@dataclass
+class _StackedAttemptState:
+    """Mutable terminal-attempt evidence collected for Logbook emission."""
+
+    build_id: str
+    identity_digest: str
+    input_pins_digest: str
+    phases_reached: list[str]
+    gate_verdicts: dict[str, dict[str, object]]
+    artifact_location: str | None = None
 
 
 @dataclass(frozen=True)
@@ -229,6 +318,34 @@ def _sha256_argument(value: str) -> str:
             "SHA-256 pins must be exactly 64 lowercase hexadecimal characters."
         )
     return value
+
+
+def _standard_sample_fraction(value: str) -> float:
+    try:
+        fraction = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "sample fraction must be one of 0.01, 0.10, or 1.0."
+        ) from exc
+    if fraction not in _STACKED_SAMPLE_RUNG_TOKENS:
+        raise argparse.ArgumentTypeError(
+            "sample fraction must be one of 0.01, 0.10, or 1.0."
+        )
+    return fraction
+
+
+def _unit_fraction(value: str) -> float:
+    try:
+        fraction = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "clone attachment fraction must be greater than zero and at most one."
+        ) from exc
+    if not math.isfinite(fraction) or not 0.0 < fraction <= 1.0:
+        raise argparse.ArgumentTypeError(
+            "clone attachment fraction must be greater than zero and at most one."
+        )
+    return fraction
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -320,6 +437,43 @@ def _parser() -> argparse.ArgumentParser:
             "volume to resume across fresh workers and output directories."
         ),
     )
+    parser.add_argument(
+        "--sample-fraction",
+        type=_standard_sample_fraction,
+        default=1.0,
+        help="Uniform survey-arm rung: 0.01 smoke, 0.10 dev, or 1.0 full.",
+    )
+    parser.add_argument(
+        "--sample-seed",
+        type=int,
+        default=578,
+        help="Non-negative whole-household survey sampling seed (default: 578).",
+    )
+    parser.add_argument(
+        "--clone-attachment-fraction",
+        type=_unit_fraction,
+        default=1.0,
+        help="Separate PUF clone attachment fraction (default: 1.0).",
+    )
+    parser.add_argument(
+        "--clone-attachment-seed",
+        type=int,
+        default=578,
+        help="Non-negative PUF clone attachment seed (default: 578).",
+    )
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        type=_sha256_argument,
+        help=(
+            "Optional current Logbook chain head. If omitted, "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-two-spine",
+        action="store_true",
+        help="Run the byte-compatible retiring two-spine pipeline.",
+    )
     return parser
 
 
@@ -343,6 +497,20 @@ def _output_paths(
         checkpoint_root=resolved_checkpoint_root,
         primary_qrf_checkpoint_dir=resolved_checkpoint_root / "primary-qrf",
         acs_transfer_checkpoint_dir=resolved_checkpoint_root / "acs-transfer",
+    )
+
+
+def _stacked_output_paths(
+    path: Path,
+    *,
+    checkpoint_root: Path | None = None,
+) -> PoolBuildOutputs:
+    """Use a terminal-gates sidecar without changing legacy output names."""
+
+    outputs = _output_paths(path, checkpoint_root=checkpoint_root)
+    return replace(
+        outputs,
+        agreement_diagnostics=outputs.pool_h5.with_suffix(".gates.json"),
     )
 
 
@@ -467,14 +635,7 @@ def _verify_inputs(
     args: argparse.Namespace,
     outputs: PoolBuildOutputs,
 ) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
-    source_paths = {
-        Path(args.asec_raw_stage_h5).resolve(),
-        Path(args.acs_household_zip).resolve(),
-        Path(args.acs_person_zip).resolve(),
-        Path(args.acs_rent_h5).resolve(),
-        Path(args.puf_h5).resolve(),
-        Path(args.puf_source_year_csv).resolve(),
-    }
+    source_paths = _configured_source_paths(args)
     _validate_checkpoint_path_layout(outputs, source_paths=source_paths)
 
     output_paths = {
@@ -528,6 +689,19 @@ def _verify_inputs(
         ),
     }
     return verified, acs_source_manifest
+
+
+def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
+    """Resolve the six immutable input locations without opening them."""
+
+    return {
+        Path(args.asec_raw_stage_h5).resolve(),
+        Path(args.acs_household_zip).resolve(),
+        Path(args.acs_person_zip).resolve(),
+        Path(args.acs_rent_h5).resolve(),
+        Path(args.puf_h5).resolve(),
+        Path(args.puf_source_year_csv).resolve(),
+    }
 
 
 def _validate_checkpoint_path_layout(
@@ -737,6 +911,279 @@ def _pool_checkpoint_base_identity(
             "simulation_household_batch_size": (POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE),
         },
     }
+
+
+def _stacked_rung(sample_fraction: float) -> str:
+    try:
+        return _STACKED_SAMPLE_RUNG_TOKENS[float(sample_fraction)]
+    except KeyError as exc:
+        raise ValueError(
+            "Stacked sample_fraction must be one standard rung: 0.01, 0.10, or 1.0."
+        ) from exc
+
+
+def _verified_input_pins_payload(
+    verified_inputs: Mapping[str, _VerifiedInput],
+) -> dict[str, dict[str, object]]:
+    return {
+        role: {
+            "sha256": pin.actual_sha256,
+            "size_bytes": pin.size_bytes,
+        }
+        for role, pin in sorted(verified_inputs.items())
+    }
+
+
+def _input_pins_digest(
+    verified_inputs: Mapping[str, _VerifiedInput],
+) -> str:
+    return hashlib.sha256(
+        _canonical_json_bytes(_verified_input_pins_payload(verified_inputs))
+    ).hexdigest()
+
+
+def _configured_input_pins_digest(args: argparse.Namespace) -> str:
+    payload = {
+        "acs_household": args.acs_household_zip_sha256,
+        "acs_person": args.acs_person_zip_sha256,
+        "acs_rent_donor": args.acs_rent_h5_sha256,
+        "asec_raw_stage": args.asec_raw_stage_h5_sha256,
+        "processed_puf": args.puf_h5_sha256,
+        "puf_source_year": args.puf_source_year_csv_sha256,
+    }
+    return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+
+
+def _stacked_checkpoint_base_identity(
+    verified_inputs: Mapping[str, _VerifiedInput],
+    *,
+    stack_receipt: Mapping[str, object],
+    sample_fraction: float,
+    sample_seed: int,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    policyengine_us_version: str | None = None,
+) -> dict[str, object]:
+    """Bind #599/#608 caches to the live stack and both scale controls."""
+
+    fraction_token = _stacked_rung(sample_fraction)
+    if isinstance(sample_seed, bool) or sample_seed < 0:
+        raise ValueError("sample_seed must be a non-negative integer.")
+    if isinstance(clone_attachment_seed, bool) or clone_attachment_seed < 0:
+        raise ValueError("clone_attachment_seed must be a non-negative integer.")
+    stack = _json_ready(stack_receipt)
+    if not isinstance(stack, dict):  # pragma: no cover - fixed mapping
+        raise TypeError("Stack receipt must normalize to an object.")
+    if stack.get("sample_fraction") != float(sample_fraction):
+        raise ValueError("Live stack receipt does not match sample_fraction.")
+    if stack.get("sample_seed") != sample_seed:
+        raise ValueError("Live stack receipt does not match sample_seed.")
+    return {
+        "artifact_kind": "populace_us_stacked_pool_checkpoint_identity",
+        "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": _STACKED_CHECKPOINT_MATERIALIZER_VERSION,
+        "pipeline": _STACKED_PIPELINE,
+        "period": POOL_TIME_PERIOD,
+        "model_seed": POOL_RANDOM_SEED,
+        "policyengine_us_version": (
+            policyengine_us_version
+            if policyengine_us_version is not None
+            else _policyengine_us_version()
+        ),
+        "inputs": _verified_input_pins_payload(verified_inputs),
+        "sampling": {
+            "sample_fraction": float(sample_fraction),
+            "fraction_token": fraction_token,
+            "sample_seed": sample_seed,
+            "stack_manifest_sha256": hashlib.sha256(
+                _canonical_json_bytes(stack)
+            ).hexdigest(),
+            "stack_manifest": stack,
+        },
+        "clone_attachment": {
+            "fraction": float(clone_attachment_fraction),
+            "seed": clone_attachment_seed,
+        },
+        "stacked_authority": stacked_spine_authority_receipt(),
+        "pool_code": {
+            "operator_order": [
+                "assemble_stacked_spine",
+                "prepare_multispine_source_inputs_for_clone",
+                "gap_fill_stacked_spine",
+                "run_stacked_puf_pass",
+                "complete_multispine_source_inputs",
+                "prepare_stacked_tail_derivation",
+                "derive_multispine_pool_inputs",
+                "seed_multispine_pool_inputs",
+                "materialize_multispine_agreement_outputs",
+                "stacked_completeness_gate",
+                "by_origin_battery",
+            ],
+            "pre_clone_source_operator_order": list(
+                POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+            ),
+            "post_clone_source_operator_order": list(
+                POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+            ),
+            "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
+            "take_up_contract": take_up_contract_identity(),
+            "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
+            "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
+            "acs_transfer_max_targets_per_fit": (
+                DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+            ),
+            "simulation_household_batch_size": (POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE),
+        },
+    }
+
+
+def _configured_stacked_identity(args: argparse.Namespace) -> dict[str, object]:
+    """Identity available before input verification for terminal error rows."""
+
+    fraction_token = _stacked_rung(args.sample_fraction)
+    return {
+        "artifact_kind": "populace_us_stacked_pool_configured_identity",
+        "schema_version": 1,
+        "pipeline": _STACKED_PIPELINE,
+        "period": POOL_TIME_PERIOD,
+        "expected_input_pins_digest": _configured_input_pins_digest(args),
+        "sample_fraction": float(args.sample_fraction),
+        "fraction_token": fraction_token,
+        "sample_seed": args.sample_seed,
+        "clone_attachment_fraction": float(args.clone_attachment_fraction),
+        "clone_attachment_seed": args.clone_attachment_seed,
+        "stacked_authority": stacked_spine_authority_receipt(),
+    }
+
+
+def _stacked_checkpoint_root(
+    outputs: PoolBuildOutputs,
+    configured_identity: Mapping[str, object],
+) -> Path:
+    """Route one configured build to its non-mixing discovery namespace."""
+
+    configured_digest = hashlib.sha256(
+        _canonical_json_bytes(configured_identity)
+    ).hexdigest()
+    return outputs.checkpoint_root / "stacked" / configured_digest
+
+
+def _discover_stacked_checkpoint_identity(
+    checkpoint_root: Path,
+    *,
+    verified_inputs: Mapping[str, _VerifiedInput],
+    sample_fraction: float,
+    sample_seed: int,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+) -> dict[str, object] | None:
+    """Recover a current live-stack identity before loading survey sources.
+
+    The configured namespace binds all pins and scale controls available before
+    assembly.  A stage manifest inside it supplies the realized stack receipt;
+    this function recomputes the complete identity from that receipt and accepts
+    it only when every current code, input, authority, and sampling field agrees.
+    The regular checkpoint loader subsequently authenticates the sidecar, H5,
+    frame metadata, and receipt bytes before any stage is resumed.
+    """
+
+    root = Path(checkpoint_root)
+    for stage in reversed(POOL_CHECKPOINT_STAGE_ORDER):
+        checkpoint_path = root / _POOL_STAGE_CHECKPOINT_FILENAMES[stage]
+        manifest_path = checkpoint_path.with_suffix(".manifest.json")
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = _read_json_object(manifest_path)
+            if (
+                manifest.get("artifact_kind")
+                != _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND
+                or manifest.get("schema_version")
+                != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
+                or manifest.get("materializer_version")
+                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or manifest.get("stage") != stage
+            ):
+                raise ValueError("unsupported checkpoint manifest binding")
+            stage_identity = manifest.get("identity")
+            if not isinstance(stage_identity, Mapping):
+                raise ValueError("checkpoint manifest identity is not an object")
+            if stage_identity.get("stage") != stage or stage_identity.get(
+                "stage_index"
+            ) != POOL_CHECKPOINT_STAGE_ORDER.index(stage):
+                raise ValueError("checkpoint manifest stage identity changed")
+            base_identity = dict(stage_identity)
+            del base_identity["stage"]
+            del base_identity["stage_index"]
+            sampling = base_identity.get("sampling")
+            if not isinstance(sampling, Mapping):
+                raise ValueError("checkpoint identity has no sampling object")
+            stack_manifest = sampling.get("stack_manifest")
+            if not isinstance(stack_manifest, Mapping):
+                raise ValueError("checkpoint identity has no stack manifest")
+            expected = _stacked_checkpoint_base_identity(
+                verified_inputs,
+                stack_receipt=stack_manifest,
+                sample_fraction=sample_fraction,
+                sample_seed=sample_seed,
+                clone_attachment_fraction=clone_attachment_fraction,
+                clone_attachment_seed=clone_attachment_seed,
+            )
+            if base_identity != expected:
+                raise ValueError("checkpoint base identity is stale")
+            return expected
+        except Exception as error:
+            print(
+                f"Ignored stacked checkpoint discovery manifest {manifest_path}: "
+                f"{type(error).__name__}: {error}."
+            )
+    return None
+
+
+def _stacked_realized_counts(
+    stack_receipt: Mapping[str, object],
+) -> tuple[int, int]:
+    samples = stack_receipt.get("survey_samples")
+    if not isinstance(samples, Mapping):
+        raise ValueError("Production stack receipt has no survey_samples object.")
+
+    def realized(channel: str) -> int:
+        sample = samples.get(channel)
+        if not isinstance(sample, Mapping):
+            raise ValueError(f"Production stack receipt has no {channel!r} sample.")
+        value = sample.get("realized_household_count")
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(
+                f"Production stack receipt has invalid {channel!r} realized count."
+            )
+        return value
+
+    return realized("asec"), realized("acs")
+
+
+def _new_stacked_release_id(
+    *,
+    sample_fraction: float,
+    sample_seed: int,
+    realized_asec_households: int,
+    realized_acs_households: int,
+    timestamp: datetime | None = None,
+    nonce: str | None = None,
+) -> str:
+    fraction_token = _stacked_rung(sample_fraction)
+    instant = datetime.now(UTC) if timestamp is None else timestamp.astimezone(UTC)
+    suffix = uuid.uuid4().hex[:8] if nonce is None else nonce
+    if not re.fullmatch(r"[0-9a-f]{8}", suffix):
+        raise ValueError("Stacked release nonce must be eight lowercase hex digits.")
+    release_id = (
+        f"populace-us-2024-stacked-{fraction_token}-s{sample_seed}-"
+        f"asec{realized_asec_households}-acs{realized_acs_households}-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{suffix}"
+    )
+    if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):  # pragma: no cover
+        raise AssertionError(f"Generated invalid stacked release ID {release_id!r}.")
+    return release_id
 
 
 def _pool_checkpoint_stage_identity(
@@ -1476,6 +1923,16 @@ def _split_checkpoint_stage_receipts(
             if not isinstance(identity_routing, Mapping):
                 raise ValueError("Primary QRF identity routing must be an object.")
             operational_primary["identity_routing"] = dict(identity_routing)
+        if "checkpoint_manifest_path" in primary_qrf:
+            checkpoint_manifest_path = primary_qrf.pop("checkpoint_manifest_path")
+            if (
+                not isinstance(checkpoint_manifest_path, str)
+                or not checkpoint_manifest_path
+            ):
+                raise ValueError(
+                    "Primary QRF checkpoint manifest path must be a non-empty string."
+                )
+            operational_primary["checkpoint_manifest_path"] = checkpoint_manifest_path
         if operational_primary:
             operational_impute["primary_puf_qrf"] = operational_primary
     acs_transfer = impute.get("acs_qrf_transfer")
@@ -1514,7 +1971,13 @@ def _attach_checkpoint_operational_receipts(
     if not isinstance(canonical_impute, dict):
         raise ValueError("canonical stage receipts have no impute object")
     allowed_fields = {
-        "primary_puf_qrf": frozenset({"resume_status", "identity_routing"}),
+        "primary_puf_qrf": frozenset(
+            {
+                "resume_status",
+                "identity_routing",
+                "checkpoint_manifest_path",
+            }
+        ),
         "acs_qrf_transfer": frozenset({"target_bank"}),
     }
     for section, operational_section in operational_impute.items():
@@ -1932,6 +2395,398 @@ def build_multispine_pool(
     )
 
 
+def _stacked_direction_bank_identity(
+    checkpoint_identity: Mapping[str, object],
+    *,
+    direction_name: str,
+) -> dict[str, object]:
+    return {
+        **_pool_checkpoint_stage_identity(checkpoint_identity, "transferred"),
+        "stacked_gap_fill_direction": direction_name,
+    }
+
+
+def _stacked_tail_manifest(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+) -> Mapping[str, object]:
+    impute = stage_receipts.get("impute")
+    if not isinstance(impute, Mapping):
+        raise ValueError("Stacked transferred receipts have no impute object.")
+    manifest = impute.get("puf_capital_gains_tail_transfer")
+    if not isinstance(manifest, Mapping):
+        raise ValueError(
+            "Stacked transferred receipts have no capital-gains-tail manifest."
+        )
+    validate_puf_capital_gains_tail_manifest(manifest)
+    return manifest
+
+
+def _emit_stacked_checkpoint(
+    callback: Callable[[MultispinePoolCheckpoint], None] | None,
+    *,
+    stage: str,
+    frame: Frame,
+    assembly_receipt: Mapping[str, object],
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    simulation_frame: Frame | None = None,
+) -> None:
+    if callback is None:
+        return
+    callback(
+        MultispinePoolCheckpoint(
+            stage=stage,
+            frame=frame,
+            assembly_receipt=dict(assembly_receipt),
+            stage_receipts={
+                name: dict(receipt) for name, receipt in stage_receipts.items()
+            },
+            simulation_frame=simulation_frame,
+        )
+    )
+
+
+def build_stacked_pool(
+    assembled: Frame,
+    *,
+    expected_stack_receipt: Mapping[str, object],
+    release_id: str,
+    puf_donor: pd.DataFrame | None,
+    acs_rent_donor: pd.DataFrame | None,
+    primary_qrf_checkpoint_dir: Path,
+    acs_transfer_checkpoint_dir: Path,
+    checkpoint_identity: Mapping[str, object],
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    checkpoint: Callable[[MultispinePoolCheckpoint], None] | None = None,
+    resume: MultispinePoolCheckpoint | None = None,
+    phase_reached: Callable[[str], None] | None = None,
+) -> StackedPoolBuildResult:
+    """Run the fixed stacked production pipeline across #599 boundaries."""
+
+    if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):
+        raise ValueError(f"Invalid stacked release ID {release_id!r}.")
+
+    def mark_phase(name: str) -> None:
+        if phase_reached is not None:
+            phase_reached(name)
+
+    current_stack_receipt = validate_stacked_spine_frame(
+        assembled,
+        boundary="stacked pool fresh assembly",
+    )
+    if _json_ready(current_stack_receipt) != _json_ready(expected_stack_receipt):
+        raise ValueError("Fresh stacked assembly receipt changed before execution.")
+
+    if resume is None:
+        current = canonicalize_frame_string_dtypes(
+            assembled,
+            boundary="stacked pool assembled checkpoint",
+            in_place=True,
+        )
+        assembly_receipt = current.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
+        receipts: dict[str, Mapping[str, object]] = {}
+        resume_stage: str | None = None
+        _emit_stacked_checkpoint(
+            checkpoint,
+            stage="assembled",
+            frame=current,
+            assembly_receipt=assembly_receipt,
+            stage_receipts=receipts,
+        )
+        mark_phase("assembled")
+    else:
+        current = canonicalize_frame_string_dtypes(
+            resume.frame,
+            boundary=f"stacked pool {resume.stage} resume",
+        )
+        live_stack_receipt = validate_stacked_spine_frame(
+            current,
+            boundary=f"stacked pool {resume.stage} resume",
+        )
+        if _json_ready(live_stack_receipt) != _json_ready(expected_stack_receipt):
+            raise ValueError(
+                f"Stacked {resume.stage!r} checkpoint manifest differs from the "
+                "freshly reconstructed stack identity."
+            )
+        assembly_receipt = current.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
+        if _json_ready(assembly_receipt) != _json_ready(resume.assembly_receipt):
+            raise ValueError(
+                f"Stacked {resume.stage!r} checkpoint assembly receipt changed."
+            )
+        receipts = {
+            name: dict(receipt) for name, receipt in resume.stage_receipts.items()
+        }
+        resume_stage = resume.stage
+        for completed_phase in (
+            "assembled",
+            *(
+                ("source_prepared", "gap_filled", "puf_passed", "transferred")
+                if resume.stage in {"transferred", "simulated"}
+                else ()
+            ),
+            *(
+                ("derived", "seeded", "simulated")
+                if resume.stage == "simulated"
+                else ()
+            ),
+        ):
+            mark_phase(completed_phase)
+
+    if resume_stage in {None, "assembled"}:
+        if not isinstance(puf_donor, pd.DataFrame):
+            raise TypeError(
+                "A cold or assembled-resume stacked build requires the full "
+                "PUF donor DataFrame."
+            )
+        if not isinstance(acs_rent_donor, pd.DataFrame):
+            raise TypeError(
+                "A cold or assembled-resume stacked build requires the canonical "
+                "ACS rent donor."
+            )
+        prepared = prepare_multispine_source_inputs_for_clone(
+            current,
+            acs_rent_donor=acs_rent_donor,
+        )
+        validate_stacked_spine_frame(
+            prepared.frame,
+            boundary="stacked pool source preparation output",
+        )
+        mark_phase("source_prepared")
+
+        current_base_identity_sha256 = _pool_checkpoint_identity_sha256(
+            checkpoint_identity
+        )
+        gap_fill_identity_routing = _identity_routed_bank_open_receipt(
+            acs_transfer_checkpoint_dir,
+            current_base_identity_sha256=current_base_identity_sha256,
+        )
+        target_banks: dict[str, AcsTransferTargetBankStore] = {}
+        for direction in stacked_gap_fill_plan():
+            target_banks[direction.name] = AcsTransferTargetBankStore(
+                acs_transfer_checkpoint_dir / direction.name,
+                identity=_stacked_direction_bank_identity(
+                    checkpoint_identity,
+                    direction_name=direction.name,
+                ),
+            )
+        gap_filled = gap_fill_stacked_spine(
+            prepared.frame,
+            seed=POOL_RANDOM_SEED,
+            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+            target_banks=target_banks,
+        )
+        mark_phase("gap_filled")
+
+        fit_records: list[FitWeightRecord] = []
+        for transfer in gap_filled.transfer_results.values():
+            fit_records.extend(transfer.fit_records)
+        tail_bound_diagnostics: list[dict[str, object]] = []
+        primary_qrf_identity_routing = _identity_routed_bank_open_receipt(
+            primary_qrf_checkpoint_dir,
+            current_base_identity_sha256=current_base_identity_sha256,
+        )
+        puf_result = run_stacked_puf_pass(
+            gap_filled.frame,
+            puf_donor,
+            clone_attachment_fraction=clone_attachment_fraction,
+            clone_attachment_seed=clone_attachment_seed,
+            seed=POOL_RANDOM_SEED,
+            n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+            fit_records=fit_records,
+            tail_bound_diagnostics=tail_bound_diagnostics,
+            primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        )
+        mark_phase("puf_passed")
+        weights_audit = weights_audit_gate(fit_records)
+        if not weights_audit.passed:
+            raise ValueError(
+                "Stacked imputation weights audit failed:\n  "
+                + "\n  ".join(weights_audit.failures)
+            )
+
+        puf_receipt = dict(puf_result.receipt)
+        primary_qrf_receipt = puf_receipt.pop("primary_puf_qrf")
+        if not isinstance(primary_qrf_receipt, Mapping):
+            raise ValueError("Stacked PUF pass emitted no primary-QRF receipt.")
+        primary_qrf_receipt = dict(primary_qrf_receipt)
+        primary_qrf_receipt["identity_routing"] = primary_qrf_identity_routing
+        qrf_manifest_path = _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
+        reported_manifest_path = primary_qrf_receipt.pop(
+            "checkpoint_manifest",
+            None,
+        )
+        if (
+            reported_manifest_path is not None
+            and Path(reported_manifest_path).resolve() != qrf_manifest_path.resolve()
+        ):
+            raise ValueError(
+                "Stacked PUF pass reported a different primary-QRF manifest path."
+            )
+        primary_qrf_receipt.update(
+            {
+                "checkpoint_manifest_path": str(qrf_manifest_path.resolve()),
+                "checkpoint_manifest_receipt": _read_json_object(qrf_manifest_path),
+                "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
+                "n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
+                "tail_bound_diagnostics": tail_bound_diagnostics,
+            }
+        )
+        tail_manifest = puf_receipt.pop("puf_capital_gains_tail_transfer")
+        if not isinstance(tail_manifest, Mapping):
+            raise ValueError("Stacked PUF pass emitted no tail manifest.")
+        validate_puf_capital_gains_tail_manifest(tail_manifest)
+
+        source_completion = complete_multispine_source_inputs(puf_result.frame)
+        completion_preservation = assert_stacked_tail_cells_preserved(
+            source_completion.frame,
+            tail_manifest,
+        )
+        current = canonicalize_frame_string_dtypes(
+            source_completion.frame,
+            boundary="stacked pool transferred checkpoint",
+            in_place=True,
+        )
+        validate_stacked_spine_frame(
+            current,
+            boundary="stacked pool transferred checkpoint",
+        )
+        receipts["impute"] = {
+            "source_operator_chain": {
+                "pre_gap_fill_preparation": dict(prepared.receipt),
+                "post_primary_completion": dict(source_completion.receipt),
+            },
+            "stacked_gap_fill": dict(gap_filled.receipt),
+            "primary_puf_qrf": primary_qrf_receipt,
+            "puf_capital_gains_tail_transfer": dict(tail_manifest),
+            "stacked_puf_pass": puf_receipt,
+            "tail_preservation_after_source_completion": completion_preservation,
+            "acs_qrf_transfer": {
+                "target_families": _json_ready(pool_transfer_target_families()),
+                "n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
+                "max_targets_per_fit": DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+                "target_bank": {
+                    "identity_routing": gap_fill_identity_routing,
+                    "directions": {
+                        name: bank.receipt()
+                        for name, bank in sorted(target_banks.items())
+                    },
+                },
+            },
+            "weights_audit": GateReport((weights_audit,)).to_manifest(),
+        }
+        _emit_stacked_checkpoint(
+            checkpoint,
+            stage="transferred",
+            frame=current,
+            assembly_receipt=assembly_receipt,
+            stage_receipts=receipts,
+        )
+        mark_phase("transferred")
+    else:
+        validate_stacked_spine_frame(
+            current,
+            boundary=f"stacked pool {resume_stage} persistent resume",
+        )
+
+    tail_manifest = _stacked_tail_manifest(receipts)
+    if resume_stage != "simulated":
+        derivation_input, tail_derivation_receipt = prepare_stacked_tail_derivation(
+            current
+        )
+        derived = derive_multispine_pool_inputs(derivation_input)
+        current = canonicalize_frame_string_dtypes(
+            derived.frame,
+            boundary="stacked pool derive output",
+            in_place=True,
+        )
+        validate_stacked_spine_frame(current, boundary="stacked pool derive output")
+        receipts["derive"] = {
+            "tail_derivation_preparation": tail_derivation_receipt,
+            "pool_derivation": dict(derived.receipt),
+            "tail_preservation": assert_stacked_tail_cells_preserved(
+                current,
+                tail_manifest,
+            ),
+        }
+        mark_phase("derived")
+
+        seeded = seed_multispine_pool_inputs(current)
+        current = canonicalize_frame_string_dtypes(
+            seeded.frame,
+            boundary="stacked pool seed output",
+            in_place=True,
+        )
+        validate_stacked_spine_frame(current, boundary="stacked pool seed output")
+        receipts["seed"] = {
+            **dict(seeded.receipt),
+            "tail_preservation": assert_stacked_tail_cells_preserved(
+                current,
+                tail_manifest,
+            ),
+        }
+        mark_phase("seeded")
+
+        simulated = materialize_multispine_agreement_outputs(current)
+        simulation_frame = canonicalize_frame_string_dtypes(
+            simulated.frame,
+            boundary="stacked pool simulated checkpoint",
+            in_place=True,
+        )
+        validate_stacked_spine_frame(
+            simulation_frame,
+            boundary="stacked pool simulation output",
+        )
+        receipts["simulate"] = {
+            **dict(simulated.receipt),
+            "tail_preservation": assert_stacked_tail_cells_preserved(
+                simulation_frame,
+                tail_manifest,
+            ),
+        }
+        _emit_stacked_checkpoint(
+            checkpoint,
+            stage="simulated",
+            frame=current,
+            assembly_receipt=assembly_receipt,
+            stage_receipts=receipts,
+            simulation_frame=simulation_frame,
+        )
+        mark_phase("simulated")
+    else:
+        if resume is None or resume.simulation_frame is None:
+            raise ValueError("Simulated stacked resume has no evaluation frame.")
+        simulation_frame = canonicalize_frame_string_dtypes(
+            resume.simulation_frame,
+            boundary="stacked pool simulated evaluation resume",
+        )
+        validate_stacked_spine_frame(
+            simulation_frame,
+            boundary="stacked pool simulated evaluation resume",
+        )
+        assert_stacked_tail_cells_preserved(simulation_frame, tail_manifest)
+
+    completeness = stacked_completeness_gate(simulation_frame)
+    battery = by_origin_battery(simulation_frame)
+    # Manifest conversion is itself the final canonical-authority check and
+    # deliberately happens before publication or readiness is asserted.
+    GateReport((completeness, battery)).to_manifest()
+    mark_phase("terminal_gates")
+    counts = spine_provenance_counts(
+        current,
+        boundary="stacked pool terminal input-only output",
+    )
+    return StackedPoolBuildResult(
+        frame=current,
+        stack_receipt=dict(expected_stack_receipt),
+        assembly_receipt=dict(assembly_receipt),
+        provenance_counts=counts,
+        stage_receipts=receipts,
+        terminal_gates=(completeness, battery),
+        release_id=release_id,
+    )
+
+
 def _agreement_payload(result: MultispinePoolResult) -> dict[str, object]:
     return GateReport((result.agreement_gate,)).to_manifest()
 
@@ -2009,6 +2864,161 @@ def _manifest_payload(
             "position": "downstream",
             "consumer": "k-ladder",
             "requires_manifest_simulation_ready": True,
+        },
+    }
+
+
+def _stacked_gate_payload(result: StackedPoolBuildResult) -> dict[str, object]:
+    return GateReport(result.terminal_gates).to_manifest()
+
+
+def _stacked_manifest_payload(
+    *,
+    result: StackedPoolBuildResult,
+    outputs: PoolBuildOutputs,
+    verified_inputs: Mapping[str, _VerifiedInput],
+    acs_source_manifest: AcsSourceManifest,
+    input_receipts: Mapping[str, object],
+    checkpoint_provenance: Mapping[str, object],
+    publication_run_id: str,
+    sample_fraction: float,
+    sample_seed: int,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+) -> dict[str, object]:
+    """Build the stacked-only manifest without changing the legacy envelope."""
+
+    status = "simulation_ready" if result.simulation_ready else "gate_failed"
+    puf_donor_receipt = input_receipts.get("puf_donor")
+    if not isinstance(puf_donor_receipt, Mapping):
+        raise ValueError("Stacked pool input receipts have no PUF donor object.")
+    gates = _stacked_gate_payload(result)
+    stack_manifest = _json_ready(result.stack_receipt)
+    return {
+        "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "pipeline": _STACKED_PIPELINE,
+        "release_id": result.release_id,
+        "status": status,
+        "simulation_ready": result.simulation_ready,
+        "publication_run_id": publication_run_id,
+        "calibration_applied": False,
+        "operator_order": [
+            "assemble_stacked_spine",
+            "prepare_multispine_source_inputs_for_clone",
+            "gap_fill_stacked_spine",
+            "run_stacked_puf_pass",
+            "complete_multispine_source_inputs",
+            "prepare_stacked_tail_derivation",
+            "derive_multispine_pool_inputs",
+            "seed_multispine_pool_inputs",
+            "materialize_multispine_agreement_outputs",
+            "stacked_completeness_gate",
+            "by_origin_battery",
+        ],
+        "period": POOL_TIME_PERIOD,
+        "random_seed": POOL_RANDOM_SEED,
+        "sampling": {
+            "sample_fraction": float(sample_fraction),
+            "fraction_token": _stacked_rung(sample_fraction),
+            "sample_seed": sample_seed,
+            "realized_households": {
+                channel: result.stack_receipt["survey_samples"][channel][
+                    "realized_household_count"
+                ]
+                for channel in ("asec", "acs")
+            },
+            "stack_manifest_sha256": hashlib.sha256(
+                _canonical_json_bytes(stack_manifest)
+            ).hexdigest(),
+        },
+        "clone_attachment": {
+            "fraction": float(clone_attachment_fraction),
+            "seed": clone_attachment_seed,
+        },
+        "provenance_pins": {
+            role: pin.to_manifest() for role, pin in verified_inputs.items()
+        },
+        "input_pins_digest": _input_pins_digest(verified_inputs),
+        "asec_raw_stage_checkpoint": input_receipts.get("asec_raw_stage_checkpoint"),
+        "acs_source_manifest": asdict(acs_source_manifest),
+        "acs_pums_build": input_receipts.get("acs_pums_build"),
+        "acs_native_inputs": input_receipts.get("acs_native_inputs"),
+        "puf_donor": dict(puf_donor_receipt),
+        "stack_manifest": stack_manifest,
+        "assembly_receipt": result.assembly_receipt,
+        "assembly_contract": {
+            "household_mass_shares": result.stack_receipt["household_mass_shares"],
+            "clone_safe_source_id_upper_bound": PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+            "output_household_weight_kind": result.frame.weights_for(
+                "household"
+            ).kind.value,
+            "output_household_weight_total": result.frame.weights_for(
+                "household"
+            ).total,
+            "mass_log": list(result.frame.mass_log),
+        },
+        "provenance_counts": result.provenance_counts,
+        "stage_receipts": result.stage_receipts,
+        "stage_checkpoints": checkpoint_provenance,
+        "terminal_gates": gates,
+        # Compatibility alias for existing simulation-ready manifest readers.
+        # Its contents are the stacked terminal battery, never us_spine_agreement.
+        "agreement_gate": gates,
+        "pool_h5": {
+            "path": str(outputs.pool_h5.resolve()),
+            "sha256": _file_sha256(outputs.pool_h5),
+            "size_bytes": outputs.pool_h5.stat().st_size,
+            "artifact_kind": POOL_H5_ARTIFACT_KIND,
+            "publication_run_id": publication_run_id,
+            "nullable": True,
+            "input_only": True,
+            "formula_outputs_persisted": False,
+        },
+        "agreement_diagnostics": {
+            "path": str(outputs.agreement_diagnostics.resolve()),
+            "sha256": _file_sha256(outputs.agreement_diagnostics),
+            "size_bytes": outputs.agreement_diagnostics.stat().st_size,
+            "publication_run_id": publication_run_id,
+            "semantic_kind": "stacked_terminal_gates",
+        },
+        "primary_qrf_checkpoint_dir": str(outputs.primary_qrf_checkpoint_dir.resolve()),
+        "acs_transfer_checkpoint_dir": str(
+            outputs.acs_transfer_checkpoint_dir.resolve()
+        ),
+        "calibration": {
+            "applied": False,
+            "position": "downstream",
+            "consumer": "k-ladder",
+            "requires_manifest_simulation_ready": True,
+        },
+    }
+
+
+def _stacked_publication_tombstone(
+    outputs: PoolBuildOutputs,
+    *,
+    release_id: str,
+    publication_run_id: str,
+) -> dict[str, object]:
+    return {
+        "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "pipeline": _STACKED_PIPELINE,
+        "release_id": release_id,
+        "status": "publication_in_progress",
+        "simulation_ready": False,
+        "publication_run_id": publication_run_id,
+        "message": "stacked publication in progress",
+        "pool_h5": {
+            "path": str(outputs.pool_h5.resolve()),
+            "artifact_kind": POOL_H5_ARTIFACT_KIND,
+            "publication_run_id": publication_run_id,
+        },
+        "agreement_diagnostics": {
+            "path": str(outputs.agreement_diagnostics.resolve()),
+            "publication_run_id": publication_run_id,
+            "semantic_kind": "stacked_terminal_gates",
         },
     }
 
@@ -2123,6 +3133,81 @@ def _write_outputs(
         temporary_diagnostics.unlink(missing_ok=True)
 
 
+def _write_stacked_outputs(
+    result: StackedPoolBuildResult,
+    *,
+    outputs: PoolBuildOutputs,
+    verified_inputs: Mapping[str, _VerifiedInput],
+    acs_source_manifest: AcsSourceManifest,
+    input_receipts: Mapping[str, object],
+    checkpoint_provenance: Mapping[str, object],
+    sample_fraction: float,
+    sample_seed: int,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+) -> dict[str, object]:
+    """Atomically publish the stacked input-only pool and terminal receipts."""
+
+    publication_run_id = _new_publication_run_id()
+    _atomic_write_json(
+        outputs.manifest,
+        _stacked_publication_tombstone(
+            outputs,
+            release_id=result.release_id,
+            publication_run_id=publication_run_id,
+        ),
+    )
+    temporary_h5 = _publication_temporary_path(
+        outputs.pool_h5,
+        publication_run_id=publication_run_id,
+    )
+    temporary_diagnostics = _publication_temporary_path(
+        outputs.agreement_diagnostics,
+        publication_run_id=publication_run_id,
+    )
+    gates = _stacked_gate_payload(result)
+    diagnostics = {
+        "artifact_kind": US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
+        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "pipeline": _STACKED_PIPELINE,
+        "semantic_kind": "stacked_terminal_gates",
+        "release_id": result.release_id,
+        "simulation_ready": result.simulation_ready,
+        "publication_run_id": publication_run_id,
+        "terminal_gates": gates,
+        "agreement_gate": gates,
+    }
+    try:
+        write_nullable_us_h5(
+            result.frame,
+            temporary_h5,
+            period=POOL_TIME_PERIOD,
+            artifact_kind=POOL_H5_ARTIFACT_KIND,
+            publication_run_id=publication_run_id,
+        )
+        _atomic_write_json(temporary_diagnostics, diagnostics)
+        os.replace(temporary_h5, outputs.pool_h5)
+        os.replace(temporary_diagnostics, outputs.agreement_diagnostics)
+        manifest = _stacked_manifest_payload(
+            result=result,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=acs_source_manifest,
+            input_receipts=input_receipts,
+            checkpoint_provenance=checkpoint_provenance,
+            publication_run_id=publication_run_id,
+            sample_fraction=sample_fraction,
+            sample_seed=sample_seed,
+            clone_attachment_fraction=clone_attachment_fraction,
+            clone_attachment_seed=clone_attachment_seed,
+        )
+        _atomic_write_json(outputs.manifest, manifest)
+        return manifest
+    finally:
+        temporary_h5.unlink(missing_ok=True)
+        temporary_diagnostics.unlink(missing_ok=True)
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -2210,10 +3295,9 @@ def _fsync_parent_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Build the pool and return nonzero exactly when terminal agreement is red."""
+def _main_legacy(args: argparse.Namespace) -> int:
+    """Run the retiring two-spine implementation without semantic changes."""
 
-    args = _parser().parse_args(argv)
     outputs = _output_paths(
         args.out,
         checkpoint_root=args.checkpoint_root,
@@ -2286,6 +3370,530 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Wrote simulation-ready multispine pool: {outputs.pool_h5}")
     print(f"Wrote pool manifest: {outputs.manifest}")
     return 0
+
+
+def _git_code_pin() -> str:
+    """Resolve the exact local commit without consulting the network."""
+
+    repository = Path(__file__).resolve().parents[1]
+    try:
+        pin = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repository,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("Could not resolve the local git code pin.") from exc
+    if not re.fullmatch(r"[0-9a-f]{40}", pin):
+        raise ValueError(f"Local git code pin is malformed: {pin!r}.")
+    return pin
+
+
+def _local_artifact_reference(path: Path) -> str:
+    """Render one exportable artifact reference without host-absolute paths.
+
+    Recorded rows export to a public archive, so locations anchor to the
+    owning checkout first, then the home directory, and never embed an
+    absolute host path (which would leak local usernames and layout).
+    """
+
+    resolved = path.resolve()
+    try:
+        repo_root = Path(
+            subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=Path(__file__).resolve().parents[1],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        ).resolve()
+    except (OSError, subprocess.CalledProcessError):
+        repo_root = None
+    if repo_root is not None and resolved.is_relative_to(repo_root):
+        return f"local://{resolved.relative_to(repo_root).as_posix()}"
+    home = Path.home().resolve()
+    if resolved.is_relative_to(home):
+        return f"local://~/{resolved.relative_to(home).as_posix()}"
+    return f"local://{resolved.as_posix().lstrip('/')}"
+
+
+def _logbook_predecessor(args: argparse.Namespace) -> str | None:
+    cli_value = args.logbook_prev_row_digest
+    environment_value = os.environ.get("POPULACE_LOGBOOK_PREV_ROW_DIGEST")
+    if cli_value is not None and environment_value not in {None, cli_value}:
+        raise ValueError(
+            "--logbook-prev-row-digest disagrees with POPULACE_LOGBOOK_PREV_ROW_DIGEST."
+        )
+    value = cli_value if cli_value is not None else environment_value
+    if value is not None and not _LOWERCASE_SHA256.fullmatch(value):
+        raise ValueError(
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST must be a lowercase SHA-256."
+        )
+    return value
+
+
+def _append_phase(state: _StackedAttemptState, phase: str) -> None:
+    if phase not in state.phases_reached:
+        state.phases_reached.append(phase)
+
+
+def _record_stacked_terminal_attempt(
+    *,
+    state: _StackedAttemptState,
+    outputs: PoolBuildOutputs,
+    started_at: float,
+    started_ts: datetime,
+    code_pin: str,
+    rung: str,
+    seed: int | None,
+    disposition: str,
+    predecessor: str | None,
+) -> Path:
+    result = record_build_attempt(
+        build_id=state.build_id,
+        ts=started_ts,
+        pipeline=_STACKED_PIPELINE,
+        rung=rung,
+        seed=seed,
+        code_pin=code_pin,
+        input_pins_digest=state.input_pins_digest,
+        identity_digest=state.identity_digest,
+        phases_reached=state.phases_reached,
+        gate_verdicts=state.gate_verdicts,
+        wall_seconds=time.perf_counter() - started_at,
+        cost_usd=None,
+        artifact_location=state.artifact_location,
+        disposition=disposition,
+        prediction_id=None,
+        prev_row_digest=predecessor,
+        spool_dir=outputs.pool_h5.parent / "logbook-spool",
+    )
+    return result.spool_path
+
+
+def _stacked_attempt_outputs(args: argparse.Namespace) -> PoolBuildOutputs:
+    """Construct safe terminal-spool paths before validating ``--out``."""
+
+    pool_h5 = Path(args.out)
+    fallback_name = pool_h5.name or "stacked-pool-output"
+    checkpoint_root = (
+        Path(args.checkpoint_root)
+        if args.checkpoint_root is not None
+        else pool_h5.parent / f"{fallback_name}.checkpoints"
+    )
+    return PoolBuildOutputs(
+        pool_h5=pool_h5,
+        manifest=pool_h5.parent / f"{fallback_name}.manifest.json",
+        agreement_diagnostics=pool_h5.parent / f"{fallback_name}.gates.json",
+        checkpoint_root=checkpoint_root,
+        primary_qrf_checkpoint_dir=checkpoint_root / "primary-qrf",
+        acs_transfer_checkpoint_dir=checkpoint_root / "acs-transfer",
+    )
+
+
+def _stacked_attempt_receipt_dir(
+    outputs: PoolBuildOutputs,
+    *,
+    build_id: str,
+) -> Path:
+    """Return the immutable, build-scoped receipt directory beside output."""
+
+    return outputs.pool_h5.parent / "logbook-receipts" / build_id
+
+
+def _stacked_error_receipt_path(
+    outputs: PoolBuildOutputs,
+    *,
+    build_id: str,
+) -> Path:
+    return _stacked_attempt_receipt_dir(outputs, build_id=build_id) / "error.json"
+
+
+def _stacked_terminal_gate_receipt_path(
+    outputs: PoolBuildOutputs,
+    *,
+    build_id: str,
+) -> Path:
+    return (
+        _stacked_attempt_receipt_dir(outputs, build_id=build_id) / "terminal-gates.json"
+    )
+
+
+def _write_stacked_terminal_gate_receipt(
+    result: StackedPoolBuildResult,
+    *,
+    outputs: PoolBuildOutputs,
+) -> Path:
+    """Persist the attempt's immutable terminal-gate receipt before publish."""
+
+    path = _stacked_terminal_gate_receipt_path(
+        outputs,
+        build_id=result.release_id,
+    )
+    _atomic_write_json(
+        path,
+        {
+            "artifact_kind": "populace_us_stacked_terminal_gate_receipt",
+            "schema_version": 1,
+            "pipeline": _STACKED_PIPELINE,
+            "build_id": result.release_id,
+            "terminal_gates": _stacked_gate_payload(result),
+        },
+    )
+    return path
+
+
+def _validate_stacked_seed(value: int, *, option: str) -> int:
+    """Keep build RNGs and Logbook inside the signed-64-bit contract."""
+
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 0
+        or value > 2**63 - 1
+    ):
+        raise ValueError(f"{option} must be a non-negative signed 64-bit integer.")
+    return value
+
+
+def _new_stacked_attempt_id(*, timestamp: datetime) -> str:
+    """Name a preflight attempt before its rung and realized counts validate."""
+
+    instant = timestamp.astimezone(UTC)
+    return (
+        "populace-us-2024-stacked-attempt-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _promote_stacked_attempt_identity(
+    state: _StackedAttemptState,
+    *,
+    stack_receipt: Mapping[str, object],
+    checkpoint_identity: Mapping[str, object],
+    sample_fraction: float,
+    sample_seed: int,
+    timestamp: datetime,
+) -> None:
+    """Bind terminal receipts as soon as the live stack identity is known."""
+
+    asec_count, acs_count = _stacked_realized_counts(stack_receipt)
+    build_id = _new_stacked_release_id(
+        sample_fraction=sample_fraction,
+        sample_seed=sample_seed,
+        realized_asec_households=asec_count,
+        realized_acs_households=acs_count,
+        timestamp=timestamp,
+    )
+    identity_digest = _pool_checkpoint_identity_sha256(checkpoint_identity)
+    state.build_id = build_id
+    state.identity_digest = identity_digest
+
+
+def _main_stacked(args: argparse.Namespace) -> int:
+    """Build the default stacked pipeline and emit one terminal Logbook row."""
+
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    outputs = _stacked_attempt_outputs(args)
+    code_pin = "unresolved-local-git-code-pin"
+    predecessor = args.logbook_prev_row_digest
+    rung = _stacked_rung(args.sample_fraction)
+    logbook_seed: int | None = None
+    preflight_digest = hashlib.sha256(
+        _canonical_json_bytes(
+            {
+                "pipeline": _STACKED_PIPELINE,
+                "state": "preflight",
+            }
+        )
+    ).hexdigest()
+    state = _StackedAttemptState(
+        build_id=_new_stacked_attempt_id(timestamp=started_ts),
+        identity_digest=preflight_digest,
+        input_pins_digest=preflight_digest,
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "pipeline": {
+                "verdict": "running",
+                "receipt": "pending-build-scoped-terminal-receipt",
+            }
+        },
+    )
+
+    try:
+        code_pin = _git_code_pin()
+        predecessor = _logbook_predecessor(args)
+        state.input_pins_digest = _configured_input_pins_digest(args)
+        logbook_seed = _validate_stacked_seed(
+            args.sample_seed,
+            option="--sample-seed",
+        )
+        _validate_stacked_seed(
+            args.clone_attachment_seed,
+            option="--clone-attachment-seed",
+        )
+        outputs = _stacked_output_paths(
+            args.out,
+            checkpoint_root=args.checkpoint_root,
+        )
+        state.build_id = _new_stacked_release_id(
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            realized_asec_households=0,
+            realized_acs_households=0,
+            timestamp=started_ts,
+        )
+        configured_identity = _configured_stacked_identity(args)
+        state.identity_digest = hashlib.sha256(
+            _canonical_json_bytes(configured_identity)
+        ).hexdigest()
+        _append_phase(state, "configured")
+        verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
+        state.input_pins_digest = _input_pins_digest(verified_inputs)
+        _append_phase(state, "inputs_verified")
+        stacked_checkpoint_root = _stacked_checkpoint_root(
+            outputs,
+            configured_identity,
+        )
+        outputs = replace(
+            outputs,
+            checkpoint_root=stacked_checkpoint_root,
+            primary_qrf_checkpoint_dir=stacked_checkpoint_root / "primary-qrf",
+            acs_transfer_checkpoint_dir=stacked_checkpoint_root / "acs-transfer",
+        )
+        _validate_checkpoint_path_layout(
+            outputs,
+            source_paths=_configured_source_paths(args),
+        )
+        checkpoint_identity = _discover_stacked_checkpoint_identity(
+            outputs.checkpoint_root,
+            verified_inputs=verified_inputs,
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            clone_attachment_fraction=args.clone_attachment_fraction,
+            clone_attachment_seed=args.clone_attachment_seed,
+        )
+        checkpoint_store: _PoolStageCheckpointStore | None = None
+        resume: MultispinePoolCheckpoint | None = None
+        stack_frame: Frame | None = None
+        stack_receipt: Mapping[str, object] | None = None
+        puf_donor: pd.DataFrame | None = None
+        acs_rent_donor: pd.DataFrame | None = None
+        if checkpoint_identity is not None:
+            checkpoint_store = _PoolStageCheckpointStore(
+                outputs.checkpoint_root,
+                base_identity=checkpoint_identity,
+            )
+            outputs = _with_checkpoint_identity(
+                outputs,
+                base_identity_sha256=checkpoint_store.base_identity_sha256,
+            )
+            resume = checkpoint_store.load_deepest()
+            if resume is not None:
+                sampling = checkpoint_identity.get("sampling")
+                if not isinstance(sampling, Mapping):  # pragma: no cover
+                    raise ValueError("Discovered stacked identity lost sampling.")
+                discovered_receipt = sampling.get("stack_manifest")
+                if not isinstance(discovered_receipt, Mapping):  # pragma: no cover
+                    raise ValueError("Discovered stacked identity lost its manifest.")
+                stack_receipt = dict(discovered_receipt)
+                stack_frame = resume.frame
+                _promote_stacked_attempt_identity(
+                    state,
+                    stack_receipt=stack_receipt,
+                    checkpoint_identity=checkpoint_identity,
+                    sample_fraction=args.sample_fraction,
+                    sample_seed=args.sample_seed,
+                    timestamp=started_ts,
+                )
+                _append_phase(state, "checkpoint_loaded")
+                if resume.stage == "assembled":
+                    acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
+                    puf_donor, _puf_donor_build = _load_puf_donor(args)
+                    _validate_resumed_puf_donor(
+                        puf_donor,
+                        checkpoint_store.input_receipts,
+                    )
+                    _append_phase(state, "resume_donors_loaded")
+
+        if resume is None:
+            loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
+            _append_phase(state, "sources_loaded")
+            assert_operator_free_source_frame(
+                loaded.asec,
+                label="ASEC raw-stage stacked input",
+            )
+            assert_operator_free_source_frame(
+                loaded.acs,
+                label="ACS native-mapped stacked input",
+                native_inputs=loaded.acs_native_inputs,
+            )
+            stack = assemble_stacked_spine(
+                loaded.asec,
+                loaded.acs,
+                sample_fraction=args.sample_fraction,
+                sample_seed=args.sample_seed,
+            )
+            stack_frame = stack.frame
+            stack_receipt = stack.receipt
+            puf_donor = loaded.puf_donor
+            acs_rent_donor = loaded.acs_rent_donor
+            checkpoint_identity = _stacked_checkpoint_base_identity(
+                verified_inputs,
+                stack_receipt=stack_receipt,
+                sample_fraction=args.sample_fraction,
+                sample_seed=args.sample_seed,
+                clone_attachment_fraction=args.clone_attachment_fraction,
+                clone_attachment_seed=args.clone_attachment_seed,
+            )
+            _promote_stacked_attempt_identity(
+                state,
+                stack_receipt=stack_receipt,
+                checkpoint_identity=checkpoint_identity,
+                sample_fraction=args.sample_fraction,
+                sample_seed=args.sample_seed,
+                timestamp=started_ts,
+            )
+            checkpoint_store = _PoolStageCheckpointStore(
+                outputs.checkpoint_root,
+                base_identity=checkpoint_identity,
+            )
+            outputs = _with_checkpoint_identity(
+                outputs,
+                base_identity_sha256=checkpoint_store.base_identity_sha256,
+            )
+            checkpoint_store.bind_input_receipts(_loaded_input_receipts(loaded))
+
+        if (
+            checkpoint_store is None
+            or checkpoint_identity is None
+            or stack_frame is None
+            or stack_receipt is None
+        ):  # pragma: no cover - cold/resume branches establish all four
+            raise AssertionError("Stacked checkpoint routing did not initialize.")
+
+        result = build_stacked_pool(
+            stack_frame,
+            expected_stack_receipt=stack_receipt,
+            release_id=state.build_id,
+            puf_donor=puf_donor,
+            acs_rent_donor=acs_rent_donor,
+            primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+            acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
+            checkpoint_identity=checkpoint_store.base_identity,
+            clone_attachment_fraction=args.clone_attachment_fraction,
+            clone_attachment_seed=args.clone_attachment_seed,
+            checkpoint=checkpoint_store.write,
+            resume=resume,
+            phase_reached=lambda phase: _append_phase(state, phase),
+        )
+        terminal_receipt_path = _write_stacked_terminal_gate_receipt(
+            result,
+            outputs=outputs,
+        )
+        state.gate_verdicts = {
+            gate.name: {
+                "verdict": "passed" if gate.passed else "failed",
+                "receipt": (
+                    f"{_local_artifact_reference(terminal_receipt_path)}"
+                    f"#/terminal_gates/gates/{gate.name}"
+                ),
+            }
+            for gate in result.terminal_gates
+        }
+        _append_phase(state, "terminal_receipt_written")
+        checkpoint_provenance = checkpoint_store.provenance(
+            primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+            acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
+        )
+        _write_stacked_outputs(
+            result,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=acs_source_manifest,
+            input_receipts=checkpoint_store.input_receipts,
+            checkpoint_provenance=checkpoint_provenance,
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            clone_attachment_fraction=args.clone_attachment_fraction,
+            clone_attachment_seed=args.clone_attachment_seed,
+        )
+        _append_phase(state, "publication_completed")
+        state.artifact_location = _local_artifact_reference(outputs.pool_h5)
+    except Exception as error:
+        error_path = _stacked_error_receipt_path(
+            outputs,
+            build_id=state.build_id,
+        )
+        _atomic_write_json(
+            error_path,
+            {
+                "artifact_kind": "populace_us_stacked_pool_error_receipt",
+                "schema_version": 1,
+                "pipeline": _STACKED_PIPELINE,
+                "build_id": state.build_id,
+                "phases_reached": state.phases_reached,
+                "gate_verdicts": state.gate_verdicts,
+                "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
+                "message": str(error),
+            },
+        )
+        state.gate_verdicts = {
+            **({} if set(state.gate_verdicts) == {"pipeline"} else state.gate_verdicts),
+            "pipeline_error": {
+                "verdict": "error",
+                "receipt": f"{_local_artifact_reference(error_path)}#/error_type",
+            },
+        }
+        _append_phase(state, "error")
+        _record_stacked_terminal_attempt(
+            state=state,
+            outputs=outputs,
+            started_at=started_at,
+            started_ts=started_ts,
+            code_pin=code_pin,
+            rung=rung,
+            seed=logbook_seed,
+            disposition="failed",
+            predecessor=predecessor,
+        )
+        raise
+
+    disposition = "iterating" if result.simulation_ready else "failed"
+    spool_path = _record_stacked_terminal_attempt(
+        state=state,
+        outputs=outputs,
+        started_at=started_at,
+        started_ts=started_ts,
+        code_pin=code_pin,
+        rung=rung,
+        seed=logbook_seed,
+        disposition=disposition,
+        predecessor=predecessor,
+    )
+    if not result.simulation_ready:
+        print(
+            "US stacked terminal gates failed; diagnostics and a non-ready "
+            f"manifest were written to {outputs.agreement_diagnostics} and "
+            f"{outputs.manifest}."
+        )
+        print(f"Wrote Logbook row: {spool_path}")
+        return 1
+    print(f"Wrote simulation-ready stacked pool: {outputs.pool_h5}")
+    print(f"Wrote stacked pool manifest: {outputs.manifest}")
+    print(f"Wrote Logbook row: {spool_path}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Dispatch to the stacked default or explicit legacy two-spine path."""
+
+    args = _parser().parse_args(argv)
+    if args.legacy_two_spine:
+        return _main_legacy(args)
+    return _main_stacked(args)
 
 
 if __name__ == "__main__":

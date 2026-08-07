@@ -6,12 +6,12 @@ and assembles the constraint :class:`~populace.frame.Frame`, following the
 shape of :mod:`populace.build.uk_runtime.hmrc_calibration`.
 
 Unlike the HMRC SPI surface, no simulation is needed: ``capital_gains`` is a
-persisted person-level input on the UK national dataset, so the measures read
-straight off ``dataset.person``.
+persisted person-level input on the UK national frame, so the measures read
+straight off its person table.
 
 The CGT taxpayer indicator is ``capital_gains > annual_exempt_amount``. The AEA
 is policy-dependent — it moved £12,300 -> £6,000 -> £3,000 across 2022-23 to
-2024-25 — so the default is derived from ``dataset.time_period`` through the
+2024-25 — so the default is derived from the frame's time period through the
 explicit :data:`UK_CGT_ANNUAL_EXEMPT_AMOUNTS` mapping and an unmapped period
 raises. Silently defaulting would change what "CGT taxpayer" means without
 changing the declared target value.
@@ -28,7 +28,10 @@ from populace.build.uk_runtime.fiscal_targets import (
     UK_CGT_REQUIRED_COLUMNS,
     UK_CGT_TARGET_SPECS,
 )
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_time_period,
+)
 from populace.calibrate import TargetRegistry
 from populace.frame import EntitySchema, Frame, Weights
 
@@ -94,17 +97,17 @@ def uk_cgt_annual_exempt_amount(time_period: int | str) -> float:
 
 
 def materialize_uk_cgt_calibration_frame(
-    dataset: UKNationalDataset,
+    national_frame: Frame,
     *,
     annual_exempt_amount: float | None = None,
 ) -> UKCGTTargetMaterialization:
     """Prepare the CGT measure columns and assemble the constraint frame.
 
     Args:
-        dataset: UK national dataset carrying the persisted person-level
+        national_frame: UK national frame carrying the persisted person-level
             ``capital_gains`` input and strictly positive household weights.
         annual_exempt_amount: Override for the CGT threshold. Defaults to the
-            reviewed AEA for ``dataset.time_period``.
+            reviewed AEA for the frame's time period.
 
     Returns:
         The frame, the two declared facts as a :class:`TargetRegistry`, and
@@ -117,15 +120,17 @@ def materialize_uk_cgt_calibration_frame(
     """
 
     if annual_exempt_amount is None:
-        annual_exempt_amount = uk_cgt_annual_exempt_amount(dataset.time_period)
+        annual_exempt_amount = uk_cgt_annual_exempt_amount(
+            uk_time_period(national_frame)
+        )
     if not np.isfinite(annual_exempt_amount) or annual_exempt_amount < 0.0:
         raise ValueError(
             "CGT annual exempt amount must be finite and non-negative; got "
             f"{annual_exempt_amount!r}."
         )
 
-    person = dataset.person
-    household = dataset.household
+    person = national_frame.table("person")
+    household = national_frame.table("household")
     if UK_CGT_SOURCE_COLUMN not in person:
         raise ValueError(
             "UK CGT target materialization requires the person-level "
@@ -184,10 +189,10 @@ def materialize_uk_cgt_calibration_frame(
         {
             "household": Weights(
                 household["household_weight"].to_numpy(dtype=float),
-                dataset.household_weight_kind,
+                uk_household_weight_kind(national_frame),
             )
         },
-        mass_log=dataset.mass_log,
+        mass_log=national_frame.mass_log,
     )
     return UKCGTTargetMaterialization(
         frame=frame,
