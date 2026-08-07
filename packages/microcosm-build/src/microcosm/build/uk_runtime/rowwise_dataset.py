@@ -411,7 +411,7 @@ def clone_uk_dataset_tables_with_ladder_geography(
 
 
 def clone_uk_dataset_with_ladder_geography(
-    dataset: Any | str | Path,
+    dataset: Frame | str | Path,
     ladder: UkOaLadder,
     *,
     output_path: str | Path | None = None,
@@ -423,14 +423,22 @@ def clone_uk_dataset_with_ladder_geography(
     region_column: str = "region",
     source_lineage_modulus: int | None = None,
 ) -> UKLadderRowwiseDatasetResult:
-    """Clone a UK dataset object or H5 with OA-ladder geography.
+    """Clone a UK national frame or H5 with OA-ladder geography.
 
-    The declared weight kind and any mass log are carried from the input.
-    In-memory dataset objects must declare ``household_weight_kind``; only an
-    attr-less H5 defaults to the national loader's ``WeightKind.DESIGN``
-    semantics. Unknown stored kinds fail closed.
+    The weight kind and mass log are carried from the input: a frame
+    supplies them through its typed weights and mass log (nothing can be
+    absent or silently defaulted); only an attr-less H5 defaults to the
+    national loader's ``WeightKind.DESIGN`` semantics. Unknown stored kinds
+    fail closed. The duck-typed in-memory carrier retired with the #612
+    Frame migration — an in-memory input must be a populace ``Frame``.
     """
 
+    if not isinstance(dataset, Frame | str | Path):
+        raise TypeError(
+            "ladder clone requires a populace Frame or a UK single-year H5 "
+            f"path, got {type(dataset).__name__}; the duck-typed in-memory "
+            "carrier retired with the #612 Frame migration."
+        )
     tables = _dataset_tables(dataset, source_year=source_year)
     result = clone_uk_dataset_tables_with_ladder_geography(
         person=tables["person"],
@@ -662,9 +670,7 @@ def _write_uk_ladder_rowwise_dataset(
                 f"ladder rowwise {entity} table is missing {in_memory!r}; "
                 "the clone-index lineage must reach the written artifact."
             )
-        renamed[entity] = table.rename(
-            columns={in_memory: ARTIFACT_CLONE_INDEX_COLUMN}
-        )
+        renamed[entity] = table.rename(columns={in_memory: ARTIFACT_CLONE_INDEX_COLUMN})
     # The frame's typed weights are what a frozen dataclass cannot protect
     # against table mutation, but re-run the release gate on the household
     # table actually being written so a post-gate geography mutation cannot

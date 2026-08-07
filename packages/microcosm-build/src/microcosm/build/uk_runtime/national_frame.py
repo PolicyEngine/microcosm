@@ -18,6 +18,16 @@ and appends the record itself — and must also refresh the persisted
 ``household_weight`` column, because :func:`validate_uk_national_frame`
 holds the column equal to the typed vector (the staging H5 exports the
 column, so a silent disagreement would ship the wrong weights).
+
+The ``household_weight`` column itself is a materialized export contract,
+not carrier state (``engine_tables`` regenerates it from the typed weights
+at every export boundary). Dropping it from the in-build tables — the #612
+increment-2 charter item — is assessed and deferred: this module's own
+contract makes the column load-bearing (required at construction, asserted
+equal to the typed vector at validation), the #611-owned gate modules and
+the spi/rowwise reader surface still read it, and the drop would re-open
+the #618 carrier review for no behavioural gain. It is sequenced behind the
+#611 consumer half and the reader moves, not silently abandoned.
 """
 
 from __future__ import annotations

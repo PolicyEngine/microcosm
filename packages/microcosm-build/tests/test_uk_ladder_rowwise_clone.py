@@ -111,23 +111,33 @@ def _benunit_frame() -> pd.DataFrame:
     return pd.DataFrame({"benunit_id": [101, 201, 301, 401]})
 
 
-class SeamLike:
-    time_period = "2023"
-    household_weight_kind = WeightKind.IMPORTANCE
-    mass_log = (
-        MassChangeRecord(
-            entity="household",
-            old_total=33.0,
-            new_total=33.0,
-            declared_factor=1.0,
-            reason="Toy reviewed record.",
-        ),
+def _seam_record() -> MassChangeRecord:
+    return MassChangeRecord(
+        entity="household",
+        old_total=33.0,
+        new_total=33.0,
+        declared_factor=1.0,
+        reason="Toy reviewed record.",
     )
 
-    def __init__(self) -> None:
-        self.person = _person_frame()
-        self.benunit = _benunit_frame()
-        self.household = _household_frame()
+
+def _seam_frame(
+    *,
+    person: pd.DataFrame | None = None,
+    benunit: pd.DataFrame | None = None,
+    household: pd.DataFrame | None = None,
+    mass_log: tuple[MassChangeRecord, ...] | None = None,
+):
+    from populace.build.uk_runtime import uk_national_frame
+
+    return uk_national_frame(
+        person=person if person is not None else _person_frame(),
+        benunit=benunit if benunit is not None else _benunit_frame(),
+        household=household if household is not None else _household_frame(),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(_seam_record(),) if mass_log is None else mass_log,
+    )
 
 
 def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
@@ -136,7 +146,7 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
     ladder, _ = toy_ladder
     output = tmp_path / "rowwise_ladder.h5"
     result = clone_uk_dataset_with_ladder_geography(
-        SeamLike(),
+        _seam_frame(),
         ladder,
         output_path=output,
         n_clones=2,
@@ -233,7 +243,7 @@ def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:
     ladder, _ = toy_ladder
     with pytest.raises(ValueError, match="vintage"):
         clone_uk_dataset_with_ladder_geography(
-            SeamLike(),
+            _seam_frame(),
             ladder,
             n_clones=1,
             expected_constituency_vintage="2005_pcon",
@@ -248,58 +258,55 @@ def test_ladder_clone_refuses_uncovered_region(tmp_path) -> None:
     np.savez_compressed(path, **payload)
     ladder = load_uk_oa_ladder(path)
     with pytest.raises(ValueError, match="region"):
-        clone_uk_dataset_with_ladder_geography(SeamLike(), ladder, n_clones=1)
+        clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=1)
 
 
 def test_ladder_clone_gate_failure_raises(toy_ladder) -> None:
     ladder, _ = toy_ladder
 
-    class AllLondon(SeamLike):
-        def __init__(self) -> None:
-            super().__init__()
-            self.household = self.household.assign(region="LONDON")
-            self.mass_log = ()
+    all_london = _seam_frame(
+        household=_household_frame().assign(region="LONDON"),
+        mass_log=(),
+    )
 
     # 100% London share breaches the gate's collapse bounds; the clone must
     # fail closed rather than write an artifact that fails its own gate.
     with pytest.raises(ValueError, match="[Ll]ondon"):
-        clone_uk_dataset_with_ladder_geography(AllLondon(), ladder, n_clones=1)
+        clone_uk_dataset_with_ladder_geography(all_london, ladder, n_clones=1)
 
 
 def test_ladder_clone_carries_pool_lineage(toy_ladder) -> None:
     ladder, _ = toy_ladder
 
-    class PoolLike(SeamLike):
-        mass_log = ()
-
-        def __init__(self) -> None:
-            super().__init__()
-            # A pooled input whose prior-year clone id (100000101) folds back
-            # to source household 101 under the modulus. Group ids ascend —
-            # every production producer is a Frame load, which guarantees it.
-            self.household = pd.DataFrame(
-                {
-                    "household_id": [101, 102, 103, 100000101],
-                    "household_weight": [3.0, 10.0, 10.0, 10.0],
-                    "region": [
-                        "LONDON",
-                        "SCOTLAND",
-                        "NORTHERN_IRELAND",
-                        "WALES",
-                    ],
-                }
-            )
-            self.person = pd.DataFrame(
-                {
-                    "person_id": [11, 31, 41, 21],
-                    "person_household_id": [101, 102, 103, 100000101],
-                    "person_benunit_id": [1, 3, 4, 2],
-                }
-            )
-            self.benunit = pd.DataFrame({"benunit_id": [1, 2, 3, 4]})
+    # A pooled input whose prior-year clone id (100000101) folds back
+    # to source household 101 under the modulus. Group ids ascend —
+    # every production producer is a Frame load, which guarantees it.
+    pool_frame = _seam_frame(
+        household=pd.DataFrame(
+            {
+                "household_id": [101, 102, 103, 100000101],
+                "household_weight": [3.0, 10.0, 10.0, 10.0],
+                "region": [
+                    "LONDON",
+                    "SCOTLAND",
+                    "NORTHERN_IRELAND",
+                    "WALES",
+                ],
+            }
+        ),
+        person=pd.DataFrame(
+            {
+                "person_id": [11, 31, 41, 21],
+                "person_household_id": [101, 102, 103, 100000101],
+                "person_benunit_id": [1, 3, 4, 2],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2, 3, 4]}),
+        mass_log=(),
+    )
 
     result = clone_uk_dataset_with_ladder_geography(
-        PoolLike(),
+        pool_frame,
         ladder,
         n_clones=1,
         source_lineage_modulus=100_000_000,
@@ -320,7 +327,7 @@ def test_write_round_trip_preserves_ladder_columns(toy_ladder, tmp_path) -> None
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
     ladder, _ = toy_ladder
-    result = clone_uk_dataset_with_ladder_geography(SeamLike(), ladder, n_clones=1)
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=1)
     path = write_uk_rowwise_dataset(result, tmp_path / "out.h5")
     with pd.HDFStore(path, mode="r") as store:
         household = store["household"]
@@ -486,7 +493,7 @@ def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path
 
 def test_ladder_clone_pins_per_copy_weights_and_fk_alignment(toy_ladder) -> None:
     ladder, _ = toy_ladder
-    result = clone_uk_dataset_with_ladder_geography(SeamLike(), ladder, n_clones=2)
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=2)
     household = result.frame.table("household")
     person = result.frame.table("person")
     household_clone_column = ladder_clone_index_column("household")
@@ -512,18 +519,25 @@ def test_ladder_clone_pins_per_copy_weights_and_fk_alignment(toy_ladder) -> None
 def test_ladder_clone_refuses_negative_weights(toy_ladder) -> None:
     ladder, _ = toy_ladder
 
-    class NegativeWeights(SeamLike):
-        mass_log = ()
+    from populace.build.uk_runtime import (
+        clone_uk_dataset_tables_with_ladder_geography,
+    )
 
-        def __init__(self) -> None:
-            super().__init__()
-            # Negative component hidden behind a positive aggregate.
-            self.household = self.household.assign(
-                household_weight=[-1.0, 12.0, 11.0, 11.0]
-            )
-
+    # A Frame input cannot carry a negative weight (the kernel refuses at
+    # construction), so the clone's own guard is exercised at the raw-table
+    # entry: a negative component hidden behind a positive aggregate.
     with pytest.raises(ValueError, match="non-negative"):
-        clone_uk_dataset_with_ladder_geography(NegativeWeights(), ladder, n_clones=1)
+        clone_uk_dataset_tables_with_ladder_geography(
+            person=_person_frame(),
+            benunit=_benunit_frame(),
+            household=_household_frame().assign(
+                household_weight=[-1.0, 12.0, 11.0, 11.0]
+            ),
+            ladder=ladder,
+            n_clones=1,
+            time_period="2023",
+            household_weight_kind=WeightKind.IMPORTANCE,
+        )
 
 
 def test_ladder_clone_rejects_unknown_weight_kind_h5(toy_ladder, tmp_path) -> None:
@@ -553,7 +567,7 @@ def test_write_refuses_post_gate_geography_mutation(toy_ladder, tmp_path) -> Non
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
     ladder, _ = toy_ladder
-    result = clone_uk_dataset_with_ladder_geography(SeamLike(), ladder, n_clones=1)
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=1)
     # Collapse every region code after the gate passed; Frame.table returns
     # the stored internals, so this models exactly the post-gate mutation
     # the writer must catch by re-gating the frame it actually writes.
