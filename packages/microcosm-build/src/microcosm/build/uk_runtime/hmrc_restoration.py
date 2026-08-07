@@ -234,6 +234,53 @@ class UKHMRCIncomeStageTransform:
             return ()
         return tuple(self.last_result.imputation.fit_weight_records)
 
+    def checkpoint_metadata(self) -> dict[str, object]:
+        """JSON-safe evidence the stage checkpoint carries for a resume.
+
+        The terminal gate batch audits the SPI stage's fit-weight records;
+        persisting them on the completed stage's run-context record is what
+        lets a later process re-run the gates without re-running the stage.
+        """
+
+        if self.last_result is None:
+            raise RuntimeError(
+                "checkpoint metadata requires a completed SPI restoration run."
+            )
+        return {
+            "fit_weight_records": [
+                {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+                for record in self.last_result.imputation.fit_weight_records
+            ],
+        }
+
+    def resume_from_checkpoint(
+        self,
+        metadata: Mapping[str, object],
+        frame: Frame,
+    ) -> None:
+        """Rehydrate a completed run's audit evidence from its record."""
+
+        payload = metadata.get("fit_weight_records")
+        if not isinstance(payload, list) or not all(
+            isinstance(entry, Mapping) for entry in payload
+        ):
+            raise RuntimeError(
+                "SPI restoration resume requires the checkpoint record to "
+                "carry the run's fit-weight records; a record without them "
+                "cannot feed the weights audit."
+            )
+        records = tuple(
+            FitWeightRecord(
+                fit_name=str(entry["fit_name"]),
+                weight_kind=str(entry["weight_kind"]),
+            )
+            for entry in payload
+        )
+        self.last_result = _ResumedHMRCRestoration(
+            frame=frame,
+            imputation=_ResumedImputationEvidence(fit_weight_records=records),
+        )
+
     def bind_staging_provenance(
         self,
         provenance: UKStagingProvenance,
@@ -310,6 +357,21 @@ class UKHMRCIncomeStageTransform:
             spi_prior_mass_share=self.spi_prior_mass_share,
         )
         return self.last_result.frame
+
+
+@dataclass(frozen=True)
+class _ResumedImputationEvidence:
+    """The audit slice of an SPI imputation, rehydrated from a checkpoint."""
+
+    fit_weight_records: tuple[FitWeightRecord, ...]
+
+
+@dataclass(frozen=True)
+class _ResumedHMRCRestoration:
+    """A completed SPI restoration rehydrated from its checkpoint record."""
+
+    frame: Frame
+    imputation: _ResumedImputationEvidence
 
 
 def _retained_content_identity(retained: object, attribute: str) -> str:

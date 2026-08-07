@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -321,8 +321,21 @@ def build_uk_national_dataset(
     qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
     terminal_gate_path: str | Path | None = None,
     input_coverage_path: str | Path | None = None,
+    checkpoint_dir: str | Path | None = None,
+    run_config: Mapping[str, object] | None = None,
 ) -> UKNationalBuildResult:
-    """Run ordered national stages, hard-gate the result, and stage an H5."""
+    """Run ordered national stages, hard-gate the result, and stage an H5.
+
+    Without ``checkpoint_dir`` the build is the destructive single-process
+    monolith it always was. With ``checkpoint_dir`` each stage boundary
+    persists a lossless Frame checkpoint through the outer stage runtime and
+    completed stages are resumed from their checkpoints instead of re-run —
+    which requires ``run_config``, the content-addressed identity of the run
+    (input digest, seeds, source digests): resuming under a different
+    configuration is refused by the runtime, and an unpinned resume is
+    exactly the drift hazard checkpoints exist to prevent, so a checkpointed
+    build without a ``run_config`` is refused here.
+    """
 
     requested_input_path = Path(input_h5).expanduser()
     input_path = requested_input_path.resolve()
@@ -369,19 +382,33 @@ def build_uk_national_dataset(
     assert_uk_release_input_coverage_build_stages(
         tuple(stage.name for stage in materialized_stages)
     )
+    if checkpoint_dir is not None and run_config is None:
+        raise ValueError(
+            "a checkpointed UK national build requires run_config: the "
+            "content-addressed run identity is what makes a resume safe."
+        )
     frame, provenance = load_uk_national_frame(requested_input_path)
     # Stages whose fences bind the loaded bytes (the SPI stage's
     # certified-candidate check) receive the load provenance and the loaded
     # frame explicitly — provenance travels beside the frame, never inside
-    # it, and binding the frame object lets the fence assert descent from
-    # this exact load. Bindings are single-use; the stage consumes them.
+    # it, and binding records the loaded frame's content identity so the
+    # fence can assert descent from this exact load. Bindings are
+    # single-use; the stage consumes them.
     for stage in materialized_stages:
         binder = getattr(stage.transform, "bind_staging_provenance", None)
         if callable(binder):
             binder(provenance, frame)
-    for stage in materialized_stages:
-        frame = stage.run(frame)
-        validate_uk_national_frame(frame)
+    if checkpoint_dir is None:
+        for stage in materialized_stages:
+            frame = stage.run(frame)
+            validate_uk_national_frame(frame)
+    else:
+        frame = _run_stages_checkpointed(
+            materialized_stages,
+            frame=frame,
+            checkpoint_dir=Path(checkpoint_dir),
+            run_config=run_config,
+        )
 
     # Mirrors the US final-export placement: evaluate every evidenced gate in
     # one batch after all stages and immediately before the staging writer.
@@ -423,6 +450,71 @@ def build_uk_national_dataset(
         terminal_gates=terminal_gates,
         terminal_gate_path=diagnostic_path,
     )
+
+
+def _run_stages_checkpointed(
+    stages: tuple[UKNationalStage, ...],
+    *,
+    frame: Frame,
+    checkpoint_dir: Path,
+    run_config: Mapping[str, object],
+) -> Frame:
+    """Run the national stages through the outer stage runtime.
+
+    Each boundary persists a lossless Frame checkpoint (frame metadata rides
+    the stage record, per ``uk_runtime.stage_checkpoints``); stages the run
+    context already records as complete are resumed from their checkpoints —
+    transforms that expose ``resume_from_checkpoint`` rehydrate their
+    downstream evidence (the retained-leaves descent identities, the SPI
+    fit-weight audit records) from the record instead of re-running.
+    """
+
+    from populace.build.outer_stage_runtime import (
+        Stage as OuterStage,
+    )
+    from populace.build.outer_stage_runtime import (
+        StagePipeline,
+        StageRuntime,
+    )
+    from populace.build.uk_runtime.stage_checkpoints import (
+        UK_FRAME_METADATA_KEY,
+        load_uk_stage_checkpoint,
+        uk_stage_metadata,
+    )
+
+    pipeline = StagePipeline(
+        tuple(
+            OuterStage(stage.name, f"UK national stage {stage.name}")
+            for stage in stages
+        )
+    )
+    runtime = StageRuntime(checkpoint_dir, pipeline, run_config=dict(run_config))
+    completed = set(runtime.context.completed)
+    for stage in stages:
+        if stage.name in completed:
+            loaded = load_uk_stage_checkpoint(runtime, stage.name)
+            resume = getattr(stage.transform, "resume_from_checkpoint", None)
+            if callable(resume):
+                extra = {
+                    key: value
+                    for key, value in loaded.metadata.items()
+                    if key != UK_FRAME_METADATA_KEY
+                }
+                resume(extra, loaded.frame)
+            frame = loaded.frame
+            continue
+        frame = stage.run(frame)
+        validate_uk_national_frame(frame)
+        extra_metadata: dict[str, object] = {}
+        hook = getattr(stage.transform, "checkpoint_metadata", None)
+        if callable(hook):
+            extra_metadata = dict(hook())
+        runtime.complete(
+            stage.name,
+            frame,
+            metadata=uk_stage_metadata(frame, extra=extra_metadata),
+        )
+    return frame
 
 
 def _validate_stages(stages: tuple[UKNationalStage, ...]) -> None:

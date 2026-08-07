@@ -1084,3 +1084,185 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
 
     assert staging_h5.read_bytes() == b"previous-good-artifact"
     assert list(tmp_path.glob(".staging.h5.*.tmp.h5")) == []
+
+
+def _counting_stage(name: str, calls: list[str] | None = None) -> UKNationalStage:
+    def transform(frame: Frame) -> Frame:
+        if calls is not None:
+            calls.append(name)
+        person = frame.table("person").copy()
+        person["employment_income"] = person["employment_income"] + 1.0
+        return _replace_person(frame, person)
+
+    return UKNationalStage(name=name, transform=transform)
+
+
+def _assert_same_staging_payload(left: Path, right: Path) -> None:
+    left_frame, _ = load_uk_national_frame(left)
+    right_frame, _ = load_uk_national_frame(right)
+    from populace.build.uk_runtime import uk_frame_content_identity
+
+    assert uk_frame_content_identity(left_frame) == uk_frame_content_identity(
+        right_frame
+    )
+
+
+def test_checkpointed_build_matches_the_monolith(monkeypatch, tmp_path) -> None:
+    """The checkpointed mode is the monolith plus receipts, not a variant.
+
+    Same input, same stages: the staged build's output is content-identical
+    to the monolith's, and each stage boundary leaves a resumable checkpoint.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    from populace.build.uk_runtime import national_build
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5)
+    run_config = {"input_sha256": "a" * 64, "seed": 42}
+
+    _run_national_build(
+        coverage_engine=object(),
+        input_h5=input_h5,
+        staging_h5=tmp_path / "mono.h5",
+        stages=(_counting_stage("one"), _counting_stage("two")),
+    )
+    calls: list[str] = []
+    _run_national_build(
+        coverage_engine=object(),
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staged.h5",
+        stages=(_counting_stage("one", calls), _counting_stage("two", calls)),
+        checkpoint_dir=tmp_path / "checkpoints",
+        run_config=run_config,
+    )
+    assert calls == ["one", "two"]
+    _assert_same_staging_payload(tmp_path / "mono.h5", tmp_path / "staged.h5")
+    context = json.loads(
+        (tmp_path / "checkpoints" / "stage_run_context.json").read_text()
+    )
+    assert context["completed"] == ["one", "two"]
+
+    # A full resume re-runs no transform and reproduces the same payload.
+    resumed_calls: list[str] = []
+    _run_national_build(
+        coverage_engine=object(),
+        input_h5=input_h5,
+        staging_h5=tmp_path / "resumed.h5",
+        stages=(
+            _counting_stage("one", resumed_calls),
+            _counting_stage("two", resumed_calls),
+        ),
+        checkpoint_dir=tmp_path / "checkpoints",
+        run_config=run_config,
+    )
+    assert resumed_calls == []
+    _assert_same_staging_payload(tmp_path / "mono.h5", tmp_path / "resumed.h5")
+
+
+def test_checkpointed_build_resumes_past_a_crash(monkeypatch, tmp_path) -> None:
+    """A stage crash leaves the completed prefix; the rerun picks up after it."""
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    from populace.build.uk_runtime import national_build
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5)
+    run_config = {"input_sha256": "a" * 64, "seed": 42}
+
+    def exploding(frame: Frame) -> Frame:
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _run_national_build(
+            coverage_engine=object(),
+            input_h5=input_h5,
+            staging_h5=tmp_path / "crashed.h5",
+            stages=(
+                _counting_stage("one"),
+                UKNationalStage(name="two", transform=exploding),
+            ),
+            checkpoint_dir=tmp_path / "checkpoints",
+            run_config=run_config,
+        )
+
+    calls: list[str] = []
+    _run_national_build(
+        coverage_engine=object(),
+        input_h5=input_h5,
+        staging_h5=tmp_path / "recovered.h5",
+        stages=(_counting_stage("one", calls), _counting_stage("two", calls)),
+        checkpoint_dir=tmp_path / "checkpoints",
+        run_config=run_config,
+    )
+    assert calls == ["two"]
+
+
+def test_checkpointed_build_pins_the_run_config(monkeypatch, tmp_path) -> None:
+    """Resuming under a different configuration is refused, never blended."""
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    from populace.build.uk_runtime import national_build
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5)
+
+    with pytest.raises(ValueError, match="requires run_config"):
+        _run_national_build(
+            coverage_engine=object(),
+            input_h5=input_h5,
+            staging_h5=tmp_path / "unpinned.h5",
+            stages=(_counting_stage("one"),),
+            checkpoint_dir=tmp_path / "checkpoints",
+        )
+
+    _run_national_build(
+        coverage_engine=object(),
+        input_h5=input_h5,
+        staging_h5=tmp_path / "first.h5",
+        stages=(_counting_stage("one"),),
+        checkpoint_dir=tmp_path / "checkpoints",
+        run_config={"input_sha256": "a" * 64, "seed": 42},
+    )
+    with pytest.raises(ValueError, match="new checkpoint directory"):
+        _run_national_build(
+            coverage_engine=object(),
+            input_h5=input_h5,
+            staging_h5=tmp_path / "drifted.h5",
+            stages=(_counting_stage("one"),),
+            checkpoint_dir=tmp_path / "checkpoints",
+            run_config={"input_sha256": "b" * 64, "seed": 42},
+        )

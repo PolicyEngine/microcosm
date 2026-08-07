@@ -463,3 +463,47 @@ def test_missing_code16_var2_fails_closed(tmp_path: Path) -> None:
             adult_tab_path=adult_path,
             benefits_tab_path=benefits_path,
         )
+
+
+def test_checkpoint_metadata_round_trips_the_descent_evidence(tmp_path) -> None:
+    """A fresh process resumes the retained stage from its record alone.
+
+    The rehydrated result exposes exactly the surface the SPI stage's
+    descent fence reads — evidence and both content identities — and a
+    checkpoint whose content no longer matches its recorded output identity
+    is refused as drifted.
+    """
+
+    from populace.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+
+    dataset, _source_person_ids = _candidate()
+    _write_raw_tables(tmp_path)
+    transform = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    staged = transform(dataset)
+    metadata = transform.checkpoint_metadata()
+
+    resumed = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    resumed.resume_from_checkpoint(metadata, staged)
+    assert resumed.last_result is not None
+    assert resumed.last_result.frame is staged
+    assert resumed.last_result.evidence() == transform.last_result.evidence()
+    assert resumed.last_result.input_content_identity == uk_frame_content_identity(
+        dataset
+    )
+    assert resumed.last_result.output_content_identity == uk_frame_content_identity(
+        staged
+    )
+
+    drifted = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    with pytest.raises(RuntimeError, match="drifted record"):
+        drifted.resume_from_checkpoint(metadata, dataset)
+
+    empty = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    with pytest.raises(RuntimeError, match="cannot prove descent"):
+        empty.resume_from_checkpoint({}, staged)
+
+    unrun = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    with pytest.raises(RuntimeError, match="completed retained-leaves run"):
+        unrun.checkpoint_metadata()

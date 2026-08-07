@@ -932,3 +932,37 @@ def test_restoration_rejects_unreviewed_release_parameter_overrides(
             staging_provenance=provenance,
             **kwargs,
         )
+
+
+def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
+    """A resumed SPI stage still feeds the weights audit from its record."""
+
+    from populace.build.gates import FitWeightRecord
+
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    with pytest.raises(RuntimeError, match="completed SPI restoration run"):
+        transform.checkpoint_metadata()
+
+    records = (
+        FitWeightRecord(fit_name="uk_spi_fill_qrf", weight_kind="design"),
+        FitWeightRecord(fit_name="uk_spi_income_qrf", weight_kind="design"),
+    )
+    transform.last_result = SimpleNamespace(
+        imputation=SimpleNamespace(fit_weight_records=records)
+    )
+    metadata = transform.checkpoint_metadata()
+
+    resumed = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    resumed.resume_from_checkpoint(metadata, _dataset())
+    assert resumed.fit_weight_records == records
+
+    with pytest.raises(RuntimeError, match="cannot feed the weights audit"):
+        resumed.resume_from_checkpoint({}, _dataset())

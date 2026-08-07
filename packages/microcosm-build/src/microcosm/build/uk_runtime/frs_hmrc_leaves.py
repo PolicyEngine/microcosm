@@ -13,6 +13,7 @@ mistaken for the full SPI ``OSSBEN`` or ``SRP`` concepts.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -243,6 +244,82 @@ class UKFRSHMRCRetainedLeavesStageTransform:
             benefits_tab_path=self.benefits_tab_path,
         )
         return self.last_result.frame
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        """JSON-safe evidence the stage checkpoint carries for a resume.
+
+        The SPI stage consumes the retained-leaves evidence and the descent
+        identities; persisting them on the completed stage's run-context
+        record is what lets a later process resume past this stage without
+        re-running it.
+        """
+
+        if self.last_result is None:
+            raise RuntimeError(
+                "checkpoint metadata requires a completed retained-leaves run."
+            )
+        return {
+            "evidence": self.last_result.evidence(),
+            "input_content_identity": self.last_result.input_content_identity,
+            "output_content_identity": self.last_result.output_content_identity,
+        }
+
+    def resume_from_checkpoint(
+        self,
+        metadata: Mapping[str, object],
+        frame: Frame,
+    ) -> None:
+        """Rehydrate a completed run's evidence from its checkpoint record.
+
+        ``frame`` is the stage's checkpointed output; the rehydrated result
+        exposes exactly the surface the SPI stage's descent fence reads. The
+        recorded output identity must match the loaded frame's content — a
+        mismatch means the record and the checkpoint have drifted apart, and
+        the resume fails closed.
+        """
+
+        evidence = metadata.get("evidence")
+        input_identity = metadata.get("input_content_identity")
+        output_identity = metadata.get("output_content_identity")
+        if (
+            not isinstance(evidence, Mapping)
+            or not isinstance(input_identity, str)
+            or not isinstance(output_identity, str)
+        ):
+            raise RuntimeError(
+                "retained-leaves resume requires the checkpoint record to "
+                "carry the run's evidence and content identities; a record "
+                "without them cannot prove descent."
+            )
+        if uk_frame_content_identity(frame) != output_identity:
+            raise RuntimeError(
+                "retained-leaves checkpoint content does not match its "
+                "recorded output identity; refusing to resume from a "
+                "drifted record."
+            )
+        self.last_result = _ResumedRetainedLeaves(
+            frame=frame,
+            evidence_payload=dict(evidence),
+            input_content_identity=input_identity,
+            output_content_identity=output_identity,
+        )
+
+
+@dataclass(frozen=True)
+class _ResumedRetainedLeaves:
+    """A completed retained-leaves run rehydrated from its checkpoint.
+
+    Carries exactly the surface the SPI stage consumes: the output frame,
+    the JSON-safe evidence, and the descent content identities.
+    """
+
+    frame: Frame
+    evidence_payload: dict[str, object]
+    input_content_identity: str
+    output_content_identity: str
+
+    def evidence(self) -> dict[str, object]:
+        return dict(self.evidence_payload)
 
 
 @dataclass(frozen=True)
