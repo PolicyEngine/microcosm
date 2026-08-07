@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import socket
 import subprocess
 import sys
 import zipfile
@@ -1210,6 +1209,21 @@ def _read_set(directory: Path) -> dict[str, bytes]:
     }
 
 
+def _visible_siblings(parent: Path) -> list[str]:
+    """Entries beside the publication, minus the persistent lockfile.
+
+    The publisher's advisory lockfile deliberately survives between runs
+    (unlinking a flock'd path lets a later opener lock a fresh inode
+    while a prior holder still holds the orphan), so residue assertions
+    exclude it.
+    """
+    return sorted(
+        path.name
+        for path in parent.iterdir()
+        if not path.name.endswith(".publish-lock")
+    )
+
+
 def test_publish_atomically_replaces_and_leaves_no_residue(tmp_path):
     """End-to-end replacement through whichever swap path this filesystem
     offers: the new set is live, and no staging, previous, or recovery
@@ -1225,8 +1239,7 @@ def test_publish_atomically_replaces_and_leaves_no_residue(tmp_path):
     build_cli._publish_atomically(staging, out_dir)
     assert _read_set(out_dir) == _NEW_SET
     assert not staging.exists()
-    siblings = [path.name for path in tmp_path.iterdir()]
-    assert siblings == ["out"]
+    assert _visible_siblings(tmp_path) == ["out"]
 
 
 def test_exchange_directories_swaps_in_a_single_syscall(tmp_path):
@@ -1295,7 +1308,7 @@ def test_fallback_publish_is_a_windowless_symlink_retarget(tmp_path, monkeypatch
     assert Path(destination) == out_dir
     assert out_dir.is_symlink()
     assert _read_set(out_dir) == _NEW_SET
-    siblings = sorted(path.name for path in tmp_path.iterdir())
+    siblings = _visible_siblings(tmp_path)
     assert siblings == sorted(["out", os.readlink(out_dir)])
 
 
@@ -1348,7 +1361,7 @@ module._publish_atomically(Path({str(staging)!r}), out_dir)
     assert _read_set(out_dir) == _NEW_SET
     assert not marker.exists()
     assert not initial_set.exists()
-    siblings = sorted(path.name for path in tmp_path.iterdir())
+    siblings = _visible_siblings(tmp_path)
     assert siblings == sorted(["out", os.readlink(out_dir)])
 
 
@@ -1410,7 +1423,7 @@ module._publish_atomically(Path({str(staging)!r}), out_dir)
     assert out_dir.is_symlink()
     assert _read_set(out_dir) == _NEW_SET
     assert not marker.exists()
-    siblings = sorted(path.name for path in tmp_path.iterdir())
+    siblings = _visible_siblings(tmp_path)
     assert siblings == sorted(["out", os.readlink(out_dir)])
 
 
@@ -1466,15 +1479,17 @@ module._publish_atomically(Path({str(staging)!r}), Path({str(out_dir)!r}))
     assert _read_set(out_dir) == _NEW_SET
     assert not staging.exists()
     assert not marker.exists()
-    assert [path.name for path in tmp_path.iterdir()] == ["out"]
+    assert _visible_siblings(tmp_path) == ["out"]
 
 
-def test_publisher_lock_refuses_live_and_foreign_holders_and_takes_over_stale(
-    tmp_path,
-):
-    """Concurrent publishers are refused (live same-host pid and any
-    foreign-host lock), a dead same-host holder's lock is taken over, and
-    both directories are untouched by a refused attempt."""
+def test_publisher_lock_blocks_live_holders_and_dies_with_them(tmp_path):
+    """The advisory flock refuses a concurrent publisher while its holder
+    lives, releases with the holder's death (no staleness protocol, no
+    takeover step to race — the old check-then-unlink takeover let two
+    contenders each classify the same lock stale and then delete each
+    other's fresh lock), and leaves both directories untouched by a
+    refused attempt. A leftover lockfile with no live flock never blocks:
+    its contents are diagnostics, not protocol state."""
 
     build_cli = _build_cli_module()
     out_dir = tmp_path / "out"
@@ -1484,29 +1499,259 @@ def test_publisher_lock_refuses_live_and_foreign_holders_and_takes_over_stale(
     _populate(staging, _NEW_SET)
     lock = tmp_path / ".out.publish-lock"
 
-    lock.write_text(json.dumps({"host": socket.gethostname(), "pid": os.getpid()}))
-    with pytest.raises(RuntimeError, match="Another publisher holds"):
-        build_cli._publish_atomically(staging, out_dir)
-    assert _read_set(out_dir) == _OLD_SET
-    assert _read_set(staging) == _NEW_SET
-
-    lock.write_text(json.dumps({"host": "somewhere-else", "pid": 1}))
-    with pytest.raises(RuntimeError, match="Another publisher holds"):
-        build_cli._publish_atomically(staging, out_dir)
-    lock.unlink()
-
-    dead_pid = int(
-        subprocess.run(
-            [sys.executable, "-c", "import os; print(os.getpid())"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        ).stdout.strip()
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            f"""
+import fcntl, os, sys
+fd = os.open({str(lock)!r}, os.O_CREAT | os.O_RDWR, 0o644)
+fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+print("LOCKED", flush=True)
+sys.stdin.readline()
+""",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
     )
-    lock.write_text(json.dumps({"host": socket.gethostname(), "pid": dead_pid}))
+    try:
+        assert holder.stdout.readline().strip() == "LOCKED"
+        with pytest.raises(RuntimeError, match="Another publisher holds"):
+            build_cli._publish_atomically(staging, out_dir)
+        assert _read_set(out_dir) == _OLD_SET
+        assert _read_set(staging) == _NEW_SET
+    finally:
+        holder.stdin.close()
+        holder.wait(timeout=60)
+
+    # The holder is dead; the kernel released its lock with it. The
+    # stale-looking lockfile (old payload, dead pid) must not block —
+    # and there is no unlink step for a second contender to race.
     build_cli._publish_atomically(staging, out_dir)
     assert _read_set(out_dir) == _NEW_SET
-    assert not lock.exists()
+    assert lock.exists()
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["ABSOLUTE", "out", "../escape", ".other.set-abc"],
+    ids=["absolute", "self", "parent-escape", "foreign-basename"],
+)
+def test_publish_refuses_symlinks_the_publisher_did_not_install(
+    tmp_path, target, monkeypatch
+):
+    """A public name that is a symlink pointing anywhere outside the
+    publisher's own ``.out.set-*`` namespace is refused untouched: joining
+    an absolute or ``..``-relative target under the parent resolves to the
+    target itself, which would ride straight into ``rmtree``; a self-link
+    would delete the just-installed public name."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    victim = tmp_path / "victim"
+    _populate(victim, {"precious.txt": b"do not delete"})
+    resolved = str(victim) if target == "ABSOLUTE" else target
+    out_dir = tmp_path / "out"
+    out_dir.symlink_to(resolved)
+    staging = tmp_path / ".out.staging-refused"
+    _populate(staging, _NEW_SET)
+    with pytest.raises(RuntimeError, match="not a set name owned by the publisher"):
+        build_cli._publish_atomically(staging, out_dir)
+    assert _read_set(victim) == {"precious.txt": b"do not delete"}
+    assert os.readlink(out_dir) == resolved
+    assert _read_set(staging) == _NEW_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
+def test_marker_survives_short_writes_intact(tmp_path, monkeypatch):
+    """A legal short ``os.write`` must not durably truncate the recovery
+    marker: the writer loops until every byte lands, so the marker JSON
+    parses whole even when the kernel accepts one byte per call."""
+
+    build_cli = _build_cli_module()
+    real_write = os.write
+
+    def one_byte_writes(fd, data):
+        return real_write(fd, memoryview(data)[:1])
+
+    monkeypatch.setattr(os, "write", one_byte_writes)
+    try:
+        build_cli._write_marker_durably(
+            tmp_path / "out",
+            {"mode": "exchange", "out": "out", "staging": ".out.staging-x"},
+        )
+    finally:
+        monkeypatch.undo()
+    recorded = json.loads((tmp_path / ".out.publish-recovery.json").read_text())
+    assert recorded == {"mode": "exchange", "out": "out", "staging": ".out.staging-x"}
+
+
+def test_staged_tree_is_fsynced_before_the_first_marker_write(tmp_path, monkeypatch):
+    """Recovery assumes a staged set found on disk is complete, so the
+    publisher must make the staged *contents* durable — every file and
+    directory fsynced — before the first marker-guarded step. The
+    parent-directory fsyncs elsewhere persist names, not bytes: without
+    this, a power loss can leave the new name durable and the new tree
+    hollow after the old set was already reclaimed."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-durable"
+    _populate(staging, _NEW_SET)
+    staged_inodes = {os.stat(path).st_ino for path in [staging, *staging.rglob("*")]}
+
+    events: list[tuple[str, int | None]] = []
+    real_fsync = os.fsync
+    real_marker = build_cli._write_marker_durably
+
+    def recording_fsync(fd):
+        events.append(("fsync", os.fstat(fd).st_ino))
+        return real_fsync(fd)
+
+    def recording_marker(*args, **kwargs):
+        events.append(("marker", None))
+        return real_marker(*args, **kwargs)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    monkeypatch.setattr(build_cli, "_write_marker_durably", recording_marker)
+    try:
+        build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+
+    first_marker = next(
+        index for index, event in enumerate(events) if event[0] == "marker"
+    )
+    fsynced_before_marker = {
+        inode for kind, inode in events[:first_marker] if kind == "fsync"
+    }
+    assert staged_inodes <= fsynced_before_marker
+    assert _read_set(out_dir) == _NEW_SET
+
+
+def test_retarget_interrupted_after_the_commit_rolls_forward(tmp_path, monkeypatch):
+    """An asynchronous exception arriving AFTER the retarget rename
+    commits must not undo it: the handler derives the state from the
+    filesystem — undoing here would move the live set out from under the
+    just-installed public link, leaving it dangling with no marker. The
+    new set stays live, the superseded set is disposed, the marker is
+    withdrawn, and the exception propagates."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-late"
+    _populate(staging, _NEW_SET)
+    real_rename = os.rename
+
+    def rename_then_interrupt(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        if Path(os.fspath(dst)) == out_dir:
+            raise KeyboardInterrupt  # delivered after the syscall returned
+        return result
+
+    monkeypatch.setattr(os, "rename", rename_then_interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    assert not initial_set.exists()
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert _visible_siblings(tmp_path) == sorted(["out", os.readlink(out_dir)])
+
+
+def test_migration_interrupted_after_vacating_restores_the_publication(
+    tmp_path, monkeypatch
+):
+    """An asynchronous exception landing right after the migration
+    vacates the public name — before any in-process flag could have been
+    assigned — must restore the previous publication: the handler derives
+    the interruption point from the filesystem, never from control
+    flow."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-vacate"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    real_rename = os.rename
+
+    def interrupt_after_vacate(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        if Path(os.fspath(src)) == out_dir:
+            raise KeyboardInterrupt  # after the vacating rename returned
+        return result
+
+    monkeypatch.setattr(os, "rename", interrupt_after_vacate)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    assert out_dir.is_dir() and not out_dir.is_symlink()
+    assert _read_set(out_dir) == _OLD_SET
+    assert _read_set(staging) == _NEW_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert _visible_siblings(tmp_path) == sorted(["out", staging.name])
+
+
+def test_recovery_reuses_the_marker_recorded_temp_link(tmp_path, monkeypatch):
+    """Recovery retargets through the marker-recorded ``.linktmp-*`` name
+    rather than minting a fresh one: a crash between the symlink and its
+    rename then leaves only a link the next recovery pass already knows
+    to clear — nothing unrecorded can be orphaned."""
+
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-reuse"
+    _populate(staging, _NEW_SET)
+    # Fabricate the pre-flip crash state the kill test produces live:
+    # marker written, staged set parked, public link still on the old set.
+    set_name = ".out.set-reused"
+    link_name = ".out.linktmp-reused"
+    staging.rename(tmp_path / set_name)
+    (tmp_path / ".out.publish-recovery.json").write_text(
+        json.dumps(
+            {
+                "mode": "symlink-flip",
+                "out": "out",
+                "staging": staging.name,
+                "set": set_name,
+                "link_tmp": link_name,
+                "old_set": initial_set.name,
+            }
+        )
+    )
+    build_cli = _build_cli_module()
+    real_rename = os.rename
+
+    def fail_the_retarget(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir:
+            raise OSError("interrupted again")
+        return real_rename(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "rename", fail_the_retarget)
+    try:
+        with pytest.raises(OSError, match="interrupted again"):
+            build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    leftovers = [name for name in _visible_siblings(tmp_path) if ".linktmp-" in name]
+    assert leftovers == [link_name]
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "completed the interrupted symlink retarget from the staged set"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not initial_set.exists()
+    assert [n for n in _visible_siblings(tmp_path) if ".linktmp-" in n] == []
 
 
 def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
@@ -1533,7 +1778,7 @@ def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
     assert action == "restored the previous publication"
     assert _read_set(out_dir) == _OLD_SET
     assert not marker.exists()
-    assert [path.name for path in tmp_path.iterdir()] == ["out"]
+    assert _visible_siblings(tmp_path) == ["out"]
 
 
 def test_symlink_retarget_in_process_failure_restores_staging(tmp_path, monkeypatch):
@@ -1564,8 +1809,7 @@ def test_symlink_retarget_in_process_failure_restores_staging(tmp_path, monkeypa
     assert _read_set(out_dir) == _OLD_SET
     assert _read_set(staging) == _NEW_SET
     assert not (tmp_path / ".out.publish-recovery.json").exists()
-    assert not (tmp_path / ".out.publish-lock").exists()
-    siblings = sorted(path.name for path in tmp_path.iterdir())
+    siblings = _visible_siblings(tmp_path)
     assert siblings == sorted(["out", initial_set.name, staging.name])
 
 
@@ -1598,8 +1842,7 @@ def test_legacy_migration_in_process_failure_restores_previous(tmp_path, monkeyp
     assert _read_set(out_dir) == _OLD_SET
     assert _read_set(staging) == _NEW_SET
     assert not (tmp_path / ".out.publish-recovery.json").exists()
-    assert not (tmp_path / ".out.publish-lock").exists()
-    siblings = sorted(path.name for path in tmp_path.iterdir())
+    siblings = _visible_siblings(tmp_path)
     assert siblings == sorted(["out", staging.name])
 
 

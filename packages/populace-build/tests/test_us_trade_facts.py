@@ -348,6 +348,66 @@ def _fy2025_complete_stats(as_of_date: str = "2026-07-27") -> CbpEntryStats:
     )
 
 
+def test_cbp_fiscal_year_end_day_itself_is_still_fiscal_year_to_date():
+    """An endpoint ON September 30 covers a day still in progress — the
+    year completes only once its end day has elapsed. The inclusive
+    comparison this replaces marked the year complete a day early, on
+    both the as-of and the retrieval-fallback bases."""
+
+    (on_the_end,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2025-09-30"),
+        page_sha256="dd" * 32,
+        retrieved_at="2025-10-15T00:00:00+00:00",
+    )
+    assert on_the_end["period"]["type"] == "fiscal_year_to_date"
+    assert on_the_end["period"]["as_of"] == "2025-09-30"
+
+    noteless = CbpEntryStats(
+        cells=_fy2025_complete_stats().cells, as_of_note="", as_of_date=""
+    )
+    (via_retrieval,) = build_cbp_entry_fact_rows(
+        noteless,
+        page_sha256="dd" * 32,
+        retrieved_at="2025-09-30T00:00:00+00:00",
+    )
+    assert via_retrieval["period"]["type"] == "fiscal_year_to_date"
+    assert via_retrieval["period"]["as_of"] == "2025-09-30"
+
+    (day_after,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2025-10-01"),
+        page_sha256="dd" * 32,
+        retrieved_at="2025-10-15T00:00:00+00:00",
+    )
+    assert day_after["period"] == {"type": "fiscal_year", "value": 2025}
+
+
+def test_cbp_fact_builder_refuses_future_and_malformed_retrievals():
+    """The retrieval timestamp is parsed whole — truncating to the date
+    prefix would bless ``2026-09-30T99:99:99+00:00`` — must carry a
+    timezone, and a publisher as-of endpoint later than the retrieval is
+    refused: a page cannot vouch for coverage beyond the moment it was
+    read."""
+
+    with pytest.raises(ValueError, match="not a full ISO timestamp"):
+        build_cbp_entry_fact_rows(
+            _fy2025_complete_stats(),
+            page_sha256="dd" * 32,
+            retrieved_at="2026-09-30T99:99:99+00:00",
+        )
+    with pytest.raises(ValueError, match="carries no timezone"):
+        build_cbp_entry_fact_rows(
+            _fy2025_complete_stats(),
+            page_sha256="dd" * 32,
+            retrieved_at="2026-08-05T00:00:00",
+        )
+    with pytest.raises(ValueError, match="postdates the retrieval"):
+        build_cbp_entry_fact_rows(
+            _fy2025_complete_stats(as_of_date="2026-08-24"),
+            page_sha256="dd" * 32,
+            retrieved_at="2026-08-05T00:00:00+00:00",
+        )
+
+
 def test_cbp_completed_fiscal_year_still_publishes_as_fiscal_year():
     """A fiscal year whose September 30 end predates the as-of endpoint is a
     completed annual observation and keeps the plain fiscal-year encoding."""
@@ -558,7 +618,7 @@ def test_cbp_fact_builder_refuses_non_date_coverage_endpoints():
             retrieved_at="2026-10-01T00:00:00+00:00",
         )
     noteless = CbpEntryStats(cells=stats.cells, as_of_note="", as_of_date="")
-    with pytest.raises(ValueError, match="not a real calendar date"):
+    with pytest.raises(ValueError, match="not a full ISO timestamp"):
         build_cbp_entry_fact_rows(
             noteless,
             page_sha256="dd" * 32,

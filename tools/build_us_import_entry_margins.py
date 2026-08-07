@@ -30,12 +30,19 @@ never recurs. Every destructive step is preceded by a durable (fsynced)
 recovery marker naming the directories involved, and the next build rolls
 any interruption forward (staged set intact) or back (previous
 publication restored) before doing anything else — including reclaiming a
-previous set stranded between an exchange and its cleanup. A lockfile
-serializes publishers toward the same ``--out-dir`` (concurrent
-publication is refused, with same-host stale locks of dead processes
-taken over); a failed build removes its staging directory and leaves any
-previously published artifact set byte-for-byte untouched. There is no
-state in which old and new artifacts coexist under ``--out-dir``.
+previous set stranded between an exchange and its cleanup. The staged
+tree itself is fsynced file by file before publication begins, so the
+recovery assumption — a staged set on disk is complete — holds through
+power loss. An advisory ``flock`` on a persistent lockfile serializes
+publishers toward the same ``--out-dir``: concurrent publication is
+refused, and a dead publisher's lock is released by the kernel with its
+process, so there is no staleness protocol to race. The public name is
+only ever operated on when it is a real directory or a symlink this
+publisher installed (a ``.<name>.set-*`` sibling); any other symlink is
+refused untouched. A failed build removes its staging directory and
+leaves any previously published artifact set byte-for-byte untouched.
+There is no state in which old and new artifacts coexist under
+``--out-dir``.
 
 Publishes under ``--out-dir``:
 
@@ -87,6 +94,7 @@ import argparse
 import contextlib
 import ctypes
 import errno
+import fcntl
 import hashlib
 import json
 import os
@@ -367,11 +375,15 @@ def _publish_atomically(staging: Path, out_dir: Path) -> None:
     replaced windowlessly by plain renames, so it is migrated once —
     marker-guarded, crash-recovered — to the symlink layout, after which
     the window never recurs. Every destructive step writes a durable
-    (fsynced) recovery marker first, and the publisher lockfile refuses
-    concurrent publication toward the same destination.
+    (fsynced) recovery marker first, the staged tree is fsynced file by
+    file before anything moves, and the publisher lock refuses concurrent
+    publication toward the same destination. A public name that is a
+    symlink the publisher did not install is refused untouched — its
+    target is not this publisher's to destroy.
     """
     with _publisher_lock(out_dir):
         _recover_unlocked(out_dir)
+        _fsync_tree(staging)
         if not out_dir.exists() and not out_dir.is_symlink():
             # First publication: nothing can be reading the path yet, so
             # an install onto the vacant name is atomic on its own. The
@@ -384,7 +396,13 @@ def _publish_atomically(staging: Path, out_dir: Path) -> None:
                 _publish_symlink_retarget(staging, out_dir, old_target=None)
             return
         if out_dir.is_symlink():
-            _publish_symlink_retarget(staging, out_dir, old_target=os.readlink(out_dir))
+            _publish_symlink_retarget(
+                staging,
+                out_dir,
+                old_target=_owned_sibling_name(
+                    out_dir, os.readlink(out_dir), kind="set"
+                ),
+            )
             return
         if _publish_by_exchange(staging, out_dir):
             return
@@ -448,20 +466,73 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def _fsync_tree(root: Path) -> None:
+    """Fsync every file and directory under ``root``, leaves first.
+
+    Recovery assumes a staged set found on disk is complete, so the
+    staged *contents* must be durable before the first marker-guarded
+    rename — the parent-directory fsyncs elsewhere persist names, not
+    bytes. Without this, a power loss can leave the new name durable and
+    the new tree hollow while the old set has already been reclaimed.
+    """
+    for dirpath, _dirnames, filenames in os.walk(root, topdown=False):
+        for filename in filenames:
+            fd = os.open(os.path.join(dirpath, filename), os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        _fsync_dir(Path(dirpath))
+
+
+def _write_all(fd: int, data: bytes) -> None:
+    """``os.write`` until every byte lands — a short write is legal, loss is not."""
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view) :]
+
+
+def _owned_sibling_name(out_dir: Path, name: object, *, kind: str) -> str:
+    """Admit only names this publisher itself mints beside ``out_dir``.
+
+    Everything that reaches a destructive operation *by name* — a symlink
+    target read back from the public path, a directory name read from a
+    recovery marker — must be a plain basename in the publisher's own
+    ``.<out>.<kind>-…`` namespace. Anything else (absolute paths,
+    parent-relative escapes, foreign basenames, the public name itself)
+    was not created by this publisher and is refused untouched: joining
+    an absolute target under ``parent`` would resolve *to that target*,
+    handing it to ``rmtree``.
+    """
+    text = str(name)
+    expected = f".{out_dir.name}.{kind}-"
+    if (
+        os.sep in text
+        or (os.altsep is not None and os.altsep in text)
+        or not text.startswith(expected)
+    ):
+        raise RuntimeError(
+            f"{text!r} is not a {kind} name owned by the publisher of "
+            f"{out_dir} (expected a plain {expected}* basename); refusing "
+            "to operate on it."
+        )
+    return text
+
+
 def _write_marker_durably(out_dir: Path, payload: dict[str, object]) -> None:
     """Write the recovery marker so it is on disk before anything moves.
 
     The marker is the recovery source of truth, so it must be durable
-    *before* the destructive step it guards: file bytes fsynced, then
-    renamed into the marker name, then the directory entry fsynced. A
-    power loss after any subsequent rename therefore always finds the
-    marker.
+    *before* the destructive step it guards: file bytes fully written and
+    fsynced, then renamed into the marker name, then the directory entry
+    fsynced. A power loss after any subsequent rename therefore always
+    finds the complete marker.
     """
     marker = _publish_marker_path(out_dir)
     tmp = marker.with_name(f"{marker.name}.tmp-{uuid.uuid4().hex}")
     fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     try:
-        os.write(fd, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode())
+        _write_all(fd, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode())
         os.fsync(fd)
     finally:
         os.close(fd)
@@ -480,74 +551,54 @@ def _publisher_lock_path(out_dir: Path) -> Path:
 
 @contextlib.contextmanager
 def _publisher_lock(out_dir: Path):
-    """Serialize publishers of one destination via an O_EXCL lockfile.
+    """Serialize publishers of one destination with an advisory ``flock``.
 
     Two builds publishing toward the same ``out_dir`` would interleave
     renames and corrupt each other's recovery state, so concurrent
-    publication is refused rather than attempted. A lock whose recorded
-    holder is a no-longer-running process on this host is stale and taken
-    over; locks from other hosts (liveness unknowable here) or with
-    unreadable contents require the operator to remove the lockfile by
-    hand.
+    publication is refused rather than attempted. The kernel owns
+    liveness: the lock dies with its holder's open file description, so
+    there is no staleness record to inspect, no takeover step to race
+    (deciding a path is stale and then unlinking it are two operations —
+    two contenders can each pass the first and then destroy each other's
+    fresh lock), and no orphan to clean by hand. The lockfile persists
+    between runs and is never unlinked — removing it would let a later
+    opener lock a fresh inode while a prior holder still holds the
+    orphaned one. Its contents are diagnostics for the human reading a
+    refusal, not protocol state.
     """
     lock_path = _publisher_lock_path(out_dir)
-    payload = (
-        json.dumps(
-            {
-                "host": socket.gethostname(),
-                "locked_at": datetime.now(UTC).isoformat(timespec="seconds"),
-                "pid": os.getpid(),
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n"
-    )
-    fd: int | None = None
-    for attempt in (1, 2):
-        try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            break
-        except FileExistsError:
-            if attempt == 1 and _lock_is_stale(lock_path):
-                lock_path.unlink(missing_ok=True)
-                continue
-            raise RuntimeError(
-                f"Another publisher holds {lock_path}; refusing concurrent "
-                f"publication toward {out_dir}. If its process is truly "
-                "gone (e.g. it ran on another host), remove the lockfile "
-                "by hand and re-run."
-            ) from None
-    assert fd is not None
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
     try:
         try:
-            os.write(fd, payload.encode())
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            holder = ""
+            with contextlib.suppress(OSError):
+                holder = " ".join(lock_path.read_text().split())
+            raise RuntimeError(
+                f"Another publisher holds {lock_path}"
+                + (f" ({holder})" if holder else "")
+                + f"; refusing concurrent publication toward {out_dir}."
+            ) from None
+        os.ftruncate(fd, 0)
+        _write_all(
+            fd,
+            (
+                json.dumps(
+                    {
+                        "host": socket.gethostname(),
+                        "locked_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                        "pid": os.getpid(),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode(),
+        )
         yield
     finally:
-        lock_path.unlink(missing_ok=True)
-
-
-def _lock_is_stale(lock_path: Path) -> bool:
-    """True only for a readable same-host lock whose pid no longer runs."""
-    try:
-        holder = json.loads(lock_path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return False
-    if holder.get("host") != socket.gethostname():
-        return False
-    pid = holder.get("pid")
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    return False
+        os.close(fd)
 
 
 def _exchange_supported(parent: Path) -> bool:
@@ -626,9 +677,22 @@ def _publish_symlink_retarget(
         os.symlink(set_dir.name, link_tmp)
         os.rename(link_tmp, out_dir)
     except BaseException:
-        # The public name is only touched by the final atomic rename, so
-        # the previous publication is intact; put the staged set back for
-        # the caller's cleanup and withdraw the marker.
+        # Derive what happened from the filesystem, never from control
+        # flow: an asynchronous exception (KeyboardInterrupt) can arrive
+        # AFTER the final rename commits, and undoing then would move the
+        # live set out from under the public link.
+        if out_dir.is_symlink() and os.readlink(out_dir) == set_dir.name:
+            # Committed: finish forward exactly as the success path
+            # would. The marker stays until the last step, so a second
+            # interruption inside this handler leaves recovery a
+            # complete record.
+            _fsync_dir(parent)
+            _dispose_set(out_dir, old_target)
+            _remove_marker(out_dir)
+            raise
+        # Not committed: the previous publication is intact under the
+        # public name; put the staged set back for the caller's cleanup
+        # and withdraw the marker.
         if link_tmp.is_symlink():
             link_tmp.unlink()
         if set_dir.exists() and not staging.exists():
@@ -636,15 +700,19 @@ def _publish_symlink_retarget(
         _remove_marker(out_dir)
         raise
     _fsync_dir(parent)
-    _dispose_set(parent, old_target)
+    _dispose_set(out_dir, old_target)
     _remove_marker(out_dir)
 
 
-def _dispose_set(parent: Path, name: object) -> None:
-    """Remove a superseded set directory (or stray link) by marker name."""
+def _dispose_set(out_dir: Path, name: object) -> None:
+    """Remove a superseded set directory (or stray link) by marker name.
+
+    The name is re-validated as a publisher-owned sibling basename here,
+    at the last hand before ``rmtree`` — whatever path it arrived by.
+    """
     if not name:
         return
-    target = parent / str(name)
+    target = out_dir.parent / _owned_sibling_name(out_dir, name, kind="set")
     if target.is_symlink():
         target.unlink()
     elif target.is_dir():
@@ -680,15 +748,30 @@ def _migrate_real_dir_to_symlink_layout(staging: Path, out_dir: Path) -> None:
             "previous": previous.name,
         },
     )
-    moved_away = False
     try:
         staging.rename(set_dir)
         os.symlink(set_dir.name, link_tmp)
         out_dir.rename(previous)
-        moved_away = True
         os.rename(link_tmp, out_dir)
     except BaseException:
-        if moved_away and not out_dir.exists() and not out_dir.is_symlink():
+        # Derive the interruption point from the filesystem, never from
+        # a local flag: an asynchronous exception can arrive between the
+        # vacating rename and any flag assignment, and a flag read then
+        # skips the restoration while the public name is missing.
+        if out_dir.is_symlink() and os.readlink(out_dir) == set_dir.name:
+            # Committed: only disposal was left. Marker stays until the
+            # last step so a second interruption leaves recovery a
+            # complete record.
+            _fsync_dir(parent)
+            for leftover in (previous, staging):
+                if leftover.exists():
+                    shutil.rmtree(leftover)
+            _remove_marker(out_dir)
+            raise
+        if not out_dir.exists() and not out_dir.is_symlink() and previous.exists():
+            # Inside the window: the previous publication was vacated and
+            # the new link never landed — restore it first, everything
+            # else can wait.
             previous.rename(out_dir)
         if link_tmp.is_symlink():
             link_tmp.unlink()
@@ -742,7 +825,9 @@ def _recover_unlocked(out_dir: Path) -> str | None:
 
 
 def _recover_exchange(out_dir: Path, names: dict[str, object]) -> str:
-    staging = out_dir.parent / str(names["staging"])
+    staging = out_dir.parent / _owned_sibling_name(
+        out_dir, names["staging"], kind="staging"
+    )
     if not out_dir.exists():
         raise RuntimeError(
             f"Publication marker for {out_dir} records an exchange, but "
@@ -760,14 +845,14 @@ def _recover_exchange(out_dir: Path, names: dict[str, object]) -> str:
 
 def _recover_symlink_flip(out_dir: Path, names: dict[str, object]) -> str:
     parent = out_dir.parent
-    staging = parent / str(names["staging"])
-    set_dir = parent / str(names["set"])
-    link_tmp = parent / str(names["link_tmp"])
+    staging = parent / _owned_sibling_name(out_dir, names["staging"], kind="staging")
+    set_dir = parent / _owned_sibling_name(out_dir, names["set"], kind="set")
+    link_tmp = parent / _owned_sibling_name(out_dir, names["link_tmp"], kind="linktmp")
     if link_tmp.is_symlink() or link_tmp.exists():
         link_tmp.unlink()
     if out_dir.is_symlink() and os.readlink(out_dir) == set_dir.name:
         # Crash after the retarget: only disposal was left.
-        _dispose_set(parent, names.get("old_set"))
+        _dispose_set(out_dir, names.get("old_set"))
         return "finished a symlink retarget: disposed of the superseded set"
     if staging.exists() and not set_dir.exists():
         staging.rename(set_dir)
@@ -775,19 +860,21 @@ def _recover_symlink_flip(out_dir: Path, names: dict[str, object]) -> str:
         # Nothing staged survives and the flip never happened; the
         # previous publication is intact under the public name.
         return "cleared an aborted symlink retarget (publication intact)"
-    fresh_tmp = parent / f".{out_dir.name}.linktmp-{uuid.uuid4().hex}"
-    os.symlink(set_dir.name, fresh_tmp)
-    os.rename(fresh_tmp, out_dir)
-    _dispose_set(parent, names.get("old_set"))
+    # Reuse the marker-recorded temp-link name: a crash between the
+    # symlink and its rename then leaves a link the NEXT recovery pass
+    # already knows to clear — a fresh name would orphan it unrecorded.
+    os.symlink(set_dir.name, link_tmp)
+    os.rename(link_tmp, out_dir)
+    _dispose_set(out_dir, names.get("old_set"))
     return "completed the interrupted symlink retarget from the staged set"
 
 
 def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
     parent = out_dir.parent
-    staging = parent / str(names["staging"])
-    set_dir = parent / str(names["set"])
-    link_tmp = parent / str(names["link_tmp"])
-    previous = parent / str(names["previous"])
+    staging = parent / _owned_sibling_name(out_dir, names["staging"], kind="staging")
+    set_dir = parent / _owned_sibling_name(out_dir, names["set"], kind="set")
+    link_tmp = parent / _owned_sibling_name(out_dir, names["link_tmp"], kind="linktmp")
+    previous = parent / _owned_sibling_name(out_dir, names["previous"], kind="previous")
     if link_tmp.is_symlink() or link_tmp.exists():
         link_tmp.unlink()
     if out_dir.is_symlink():
@@ -801,11 +888,12 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
     if set_dir.exists():
         # Roll forward: the staged set is complete, so finish installing
         # the symlink layout from wherever the crash left the migration.
+        # The marker-recorded temp-link name is reused so a crash here
+        # leaves nothing unrecorded.
         if out_dir.exists():
             out_dir.rename(previous)
-        fresh_tmp = parent / f".{out_dir.name}.linktmp-{uuid.uuid4().hex}"
-        os.symlink(set_dir.name, fresh_tmp)
-        os.rename(fresh_tmp, out_dir)
+        os.symlink(set_dir.name, link_tmp)
+        os.rename(link_tmp, out_dir)
         if previous.exists():
             shutil.rmtree(previous)
         return "completed the interrupted layout migration from the staged set"
@@ -821,8 +909,12 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
 
 
 def _recover_legacy_two_rename(out_dir: Path, names: dict[str, object]) -> str:
-    staging = out_dir.parent / str(names["staging"])
-    previous = out_dir.parent / str(names["previous"])
+    staging = out_dir.parent / _owned_sibling_name(
+        out_dir, names["staging"], kind="staging"
+    )
+    previous = out_dir.parent / _owned_sibling_name(
+        out_dir, names["previous"], kind="previous"
+    )
     if out_dir.exists():
         # Interrupted after the swap completed but before cleanup.
         if previous.exists():
