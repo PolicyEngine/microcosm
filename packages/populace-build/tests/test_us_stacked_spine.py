@@ -915,6 +915,36 @@ def test_strict_recipient_predictors_reject_cross_grain_source_collision() -> No
         )
 
 
+def test_strict_recipient_predictors_reject_infinite_feature() -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    person = cloned.table("person")
+    candidate = (
+        person[support_channel_column("person")].eq("acs")
+        & person[support_clone_index_column("person")].eq(1)
+        & person["age"].ge(15.0)
+    )
+    row = person.index[candidate][0]
+    person.loc[row, "employment_income_before_lsr"] = np.inf
+    person.loc[row, "WAGP"] = np.inf
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="nonfinite values.*employment"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
 @pytest.mark.parametrize(
     ("raw_source", "predictor"),
     [

@@ -306,6 +306,19 @@ def test_change_receipt_rejects_undeclared_output_mutation() -> None:
         us_qbi_reconciliation_change_receipt(frame, reconciled)
 
 
+def test_change_receipt_names_nullable_structural_source_mutation() -> None:
+    frame = _stacked_qbi_universe_frame()
+    person = frame.table("person")
+    person["self_employment_income_before_lsr"] = person[
+        "self_employment_income_before_lsr"
+    ].astype("Float64")
+    reconciled = with_us_qbi_input_reconciliation(frame)
+    reconciled.table("person").loc[10, "self_employment_income_before_lsr"] = 1.0
+
+    with pytest.raises(ValueError, match="structurally absent ACS base source"):
+        us_qbi_reconciliation_change_receipt(frame, reconciled)
+
+
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:
     person = _qbi_person(200)
     row = 100

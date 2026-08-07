@@ -282,10 +282,12 @@ def us_qbi_reconciliation_change_receipt(
     equal = before_values.eq(after_values) | (
         before_values.isna() & after_values.isna()
     )
+    equal = equal.fillna(False)
     changed_rows = ~equal.all(axis=1).to_numpy(dtype=bool)
     before_base = before_person[_SELF_EMPLOYMENT_COLUMN]
     after_base = after_person[_SELF_EMPLOYMENT_COLUMN]
     base_equal = before_base.eq(after_base) | (before_base.isna() & after_base.isna())
+    base_equal = base_equal.fillna(False)
     structural_base_changes = int(np.count_nonzero(structural & ~base_equal.to_numpy()))
     if structural_base_changes:
         raise ValueError(

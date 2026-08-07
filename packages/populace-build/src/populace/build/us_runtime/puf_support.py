@@ -3076,6 +3076,19 @@ def _require_complete_recipient_predictors(
             "The primary QRF must not zero-fill absence (populace#578); "
             "gap-fill the stacked spine before the PUF pass."
         )
+    numeric = recipient.to_numpy(dtype=np.float64)
+    nonfinite_counts = (~np.isfinite(numeric)).sum(axis=0)
+    nonfinite_offenders = {
+        str(name): int(count)
+        for name, count in zip(recipient.columns, nonfinite_counts, strict=True)
+        if int(count)
+    }
+    if nonfinite_offenders:
+        raise ValueError(
+            "PUF recipient predictor(s) have nonfinite values on recipient "
+            f"rows: {nonfinite_offenders} (of {int(len(recipient))} recipient rows). "
+            "The primary QRF requires a finite feature surface before fitting."
+        )
 
 
 def _ensure_float_output_column(
