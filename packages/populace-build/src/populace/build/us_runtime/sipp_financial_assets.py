@@ -37,6 +37,11 @@ from typing import BinaryIO
 import numpy as np
 import pandas as pd
 
+from populace.build.us_runtime.full_sipp_donor import (
+    FullSIPPDonorMutationError,
+    full_sipp_sha256,
+)
+
 __all__ = [
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS",
@@ -221,8 +226,7 @@ def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> st
 
 
 def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
+    return full_sipp_sha256(path)
 
 
 def _file_matches(
@@ -230,12 +234,24 @@ def _file_matches(
     *,
     expected_sha256: str | None,
     expected_size_bytes: int | None,
+    implicit: bool = False,
 ) -> bool:
-    if not path.is_file():
+    try:
+        if not path.is_file():
+            return False
+        if (
+            expected_size_bytes is not None
+            and path.stat().st_size != expected_size_bytes
+        ):
+            return False
+        return expected_sha256 is None or _sha256_file(path) == expected_sha256
+    except (OSError, FullSIPPDonorMutationError):
+        if not implicit:
+            raise
+        # Implicit candidates are optional fast paths. An unreadable or
+        # concurrently removed or mutated candidate must fall through to the
+        # immutable pinned fetch rather than blocking every full-SIPP consumer.
         return False
-    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
-        return False
-    return expected_sha256 is None or _sha256_file(path) == expected_sha256
 
 
 def fetch_sipp_2023_financial_asset_donor(
@@ -256,7 +272,7 @@ def fetch_sipp_2023_financial_asset_donor(
     candidates: list[Path] = []
     if local_path is not None:
         candidates.append(Path(local_path).expanduser())
-    elif cache_dir is None:
+    if cache_dir is None:
         candidates.extend(
             (
                 Path.home()
@@ -268,11 +284,12 @@ def fetch_sipp_2023_financial_asset_donor(
                 Path.home() / ".cache" / "populace" / "sipp" / _DONOR_FILENAME,
             )
         )
-    for candidate in candidates:
+    for candidate in dict.fromkeys(candidates):
         if _file_matches(
             candidate,
             expected_sha256=expected_sha256,
             expected_size_bytes=expected_size_bytes,
+            implicit=True,
         ):
             return candidate
 

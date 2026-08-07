@@ -41,8 +41,11 @@ populace#477) — and :func:`us_ssi_take_up_delivery_gate` hard-fails the
 release when an enforced band's delivered recipients miss the ledger target
 beyond :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE`, forcing
 threshold recomputation exactly once from the failed attempt's delivered
-weights. The under-18 band stays honestly fenced (scorecard-only) until the
-SIPP child qualifying-disability stage lands (populace#453/#509).
+weights. The under-18 band was honestly fenced (scorecard-only) until the SIPP
+child qualifying-disability stage landed (populace#453/#509). That stage is
+now in the fiscal build, so the sparse certified arm release-enforces all
+three bands. The dense diagnostic arm retains its adjudicated fences for the
+adult pair while continuing to hard-gate under-18.
 
 The band targets are the SSA federal-payment universe (Σ = 7,289,843 in
 December 2024). The separate SSA by-area 7,404,820 count is the broader
@@ -223,13 +226,15 @@ def _finite_float(value: object) -> float:
 #: Age bands whose delivered weighted recipients must land within
 #: :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE` of the ledger
 #: target on release weights, or the release fails
-#: (:func:`us_ssi_take_up_delivery_gate`). ``under_18`` is deliberately
-#: fenced: certified support carries no child qualifying-disability signal
-#: yet (Build N candidate capacity 177,582 against the 1,001,922 target), so
-#: enforcing it would reward saturation, not truth. The fence lifts as a
-#: deliberate roster edit when the SIPP child-disability stage lands
-#: (populace#453 / PR #509) — never as a side effect.
-US_SSI_TAKE_UP_ENFORCED_BAND_KEYS: tuple[str, ...] = ("18_64", "65_plus")
+#: (:func:`us_ssi_take_up_delivery_gate`). ``under_18`` is deliberately added
+#: by the child-disability lane (populace#453 / PR #509): the upstream stage
+#: now supplies qualifying child support, so the former scorecard-only fence
+#: is no longer truthful.
+US_SSI_TAKE_UP_ENFORCED_BAND_KEYS: tuple[str, ...] = (
+    "under_18",
+    "18_64",
+    "65_plus",
+)
 
 #: Relative envelope for the enforced-band delivery gate. Builds with
 #: truthful thresholds land the adult bands within ~2% of the SSA counts
@@ -1008,8 +1013,9 @@ def ssi_take_up_prior_basis_from_artifact(
             # would only take the reporter-rate fallback and miss again.
             # Fail at load (before the expensive solve) so the capacity
             # defect gets investigated instead of iterated (sol review
-            # finding 5). Fenced bands keep the fallback: under-18 is
-            # EXPECTED to saturate until populace#453/#509 lands.
+            # finding 5). A band can use the fallback only when it is outside
+            # the normal enforcement roster; all three current bands are
+            # enforced, including under-18 after populace#453/#509.
             raise ValueError(
                 "US SSI take-up prior basis artifact delivered candidate "
                 f"capacity {capacity!r} at or below the {target!r} target "
@@ -1645,10 +1651,10 @@ def us_ssi_take_up_delivery_gate(
     ``--ssi-take-up-prior-weight-basis`` pointing at this attempt's
     ``us_ssi_take_up.json``, recomputing the thresholds exactly once from
     the delivered weights. There is no in-build reconcile loop and no
-    per-target knob (populace#492). The under-18 band stays fenced pending
-    populace#453/#509 and is reported in the details, never enforced.
+    per-target knob (populace#492). All three SSA age bands are enforced now
+    that populace#453/#509 supplies child qualifying-disability support.
 
-    ``enforcement_fences`` fences normally-enforced bands for a specific
+    ``enforcement_fences`` can fence normally-enforced bands for a specific
     ARM with a documented adjudication (the under-18 pattern extended):
     on the dense full-pool arm, populace#508 delivered-weight recomputes
     have not landed the adult pair in band on either observed frame —
@@ -1751,12 +1757,8 @@ def us_ssi_take_up_delivery_gate(
                         fence_text
                         if fence_text is not None
                         else (
-                            "Fenced pending the SIPP child "
-                            "qualifying-disability stage (populace#453 / PR "
-                            "#509): certified support cannot truthfully "
-                            "carry the child band yet, so its miss ships in "
-                            "the scorecard — never as "
-                            "saturation-as-success."
+                            "This age band is outside the explicit release-"
+                            "enforcement roster and remains scorecard-only."
                         )
                     ),
                 }

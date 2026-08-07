@@ -81,6 +81,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "fit_weighted_acs_rent_qrf",
         "fit_vehicle_model",
         "fit_weighted_imputer",
+        "fit_weighted_logistic",
         "fit_weighted_qrf",
         "fold_into",
         "head_carry",

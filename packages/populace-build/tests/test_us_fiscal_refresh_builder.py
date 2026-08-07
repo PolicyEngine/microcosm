@@ -187,18 +187,18 @@ def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
         builder._refuse_certified_release_dir_reuse(release_dir)
 
 
-def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
-    """populace#566/#567: the dense-arm fence table must cover exactly the
-    normally-enforced bands, and every fence must carry the recompute
-    adjudication, its re-adjudication trigger, and the sparse contrast —
-    a fence without its documented reason is forbidden."""
+def test_dense_ssi_fences_cover_only_adults_and_cite_the_adjudication() -> None:
+    """The dense arm fences the adjudicated adult pair, not the child band."""
     from populace.build.us_runtime.ssi_take_up import (
         US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     )
 
     builder = _load_builder_module()
     fences = builder.US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
-    assert set(fences) == set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
+    assert set(fences) == {"18_64", "65_plus"}
+    assert set(fences) < set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
+    assert "under_18" in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS
+    assert "under_18" not in fences
     for band, text in fences.items():
         assert "populace#566/#567" in text, band
         assert "populace#508" in text, band
@@ -554,9 +554,11 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         selection_identities_sha256=None,
     )
     # 9 = the pre-#557 release-refit world; 8 = the still-older pre-#374 blend
-    # world. Both must miss against expected version 10.
+    # world; 7 is the still-older pre-#539 world. All must miss against
+    # expected materializer version 10.
     stale_identity = {**dict(identity), "materializer_version": 9}
     older_identity = {**dict(identity), "materializer_version": 8}
+    oldest_identity = {**dict(identity), "materializer_version": 7}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -577,6 +579,21 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         path,
         frame=frame,
         identity=older_identity,
+        compilation={"declared_targets": 1},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=identity,
+            target_specs=(target,),
+        )
+        is None
+    )
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=oldest_identity,
         compilation={"declared_targets": 1},
     )
     assert (
@@ -2083,6 +2100,32 @@ def test_release_gate_failures_include_health_input_signal() -> None:
     ]
 
 
+def test_release_gate_failures_include_child_disability_export_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    child_gate = builder.GateResult(
+        name="child_disability_signal",
+        passed=False,
+        failures=("age 1-4: disabled share 0.0000 outside band",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        child_disability_gate=child_gate,
+    ) == [
+        (
+            "Child-disability export signal failed: age 1-4: disabled share "
+            "0.0000 outside band"
+        ),
+    ]
+
+
 def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
     builder = _load_builder_module()
 
@@ -3435,6 +3478,28 @@ def test_release_calibration_diagnostics_include_gate_failures(
     registry = TargetRegistry((), country="us")
     profile_gate = SimpleNamespace(passed=True, failures=(), details={"n": 1})
     health_gate = SimpleNamespace(passed=True, failures=(), details={"n": 2})
+    child_disability_stage_gate = SimpleNamespace(
+        passed=True,
+        failures=(),
+        details={
+            "weighted_child_is_disabled_share_change": {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            },
+            "age_15_plus_unchanged": True,
+        },
+    )
+    child_disability_export_gate = SimpleNamespace(
+        passed=True,
+        failures=(),
+        details={
+            "age_5_14_disabled_share": 0.11,
+            "age_15_plus_unchanged": None,
+        },
+    )
     base_population_gate = SimpleNamespace(
         passed=True,
         failures=(),
@@ -3449,6 +3514,8 @@ def test_release_calibration_diagnostics_include_gate_failures(
         compilation={"dropped_target_names": []},
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
+        child_disability_stage_gate=child_disability_stage_gate,
+        child_disability_gate=child_disability_export_gate,
         base_population_gate=base_population_gate,
         support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
@@ -3472,6 +3539,28 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "passed": True,
         "failures": [],
         "details": {"n": 2},
+    }
+    assert build["child_disability_stage_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "weighted_child_is_disabled_share_change": {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            },
+            "age_15_plus_unchanged": True,
+        },
+    }
+    assert build["child_disability_export_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "age_5_14_disabled_share": 0.11,
+            "age_15_plus_unchanged": None,
+        },
     }
     assert build["base_population_scale"] == {
         "passed": True,
@@ -4266,10 +4355,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "with_us_snap_take_up_inputs",
         lambda frame, *, seed, time_period: frame,
     )
+
+    def fake_with_eligibility_inputs(frame, *, seed, time_period):
+        captured["source_stage_events"].append("eligibility_inputs")
+        return frame
+
     monkeypatch.setattr(
         builder,
         "with_us_eligibility_inputs",
-        lambda frame, *, seed, time_period: frame,
+        fake_with_eligibility_inputs,
     )
     monkeypatch.setattr(
         builder,
@@ -4472,11 +4566,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(
         builder,
-        "fetch_sipp_2023_financial_asset_donor",
-        lambda *args, **kwargs: Path("pu2023.csv"),
-    )
-    monkeypatch.setattr(
-        builder,
         "load_sipp_2023_financial_asset_donor",
         fake_load_sipp_financial_asset_donor,
     )
@@ -4485,6 +4574,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         frame, *, seed, time_period, scf_donor, sipp_donor=None
     ):
         captured["sipp_scf_wealth_blend_called"] = sipp_donor is not None
+        captured["source_stage_events"].append("sipp_scf_financial_assets")
         return frame
 
     monkeypatch.setattr(
@@ -4543,6 +4633,79 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
 
+    def fake_resolve_sipp_full_donor(path=None):
+        captured["sipp_full_donor_resolution_calls"] = (
+            int(captured.get("sipp_full_donor_resolution_calls", 0)) + 1
+        )
+        captured["sipp_full_donor_resolution_arg"] = path
+        return Path("pu2023.csv")
+
+    monkeypatch.setattr(
+        builder,
+        "resolve_sipp_2023_child_disability_donor",
+        fake_resolve_sipp_full_donor,
+    )
+
+    def fake_load_child_disability_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["child_disability_donor_path"] = path
+        captured["child_disability_donor_sha256"] = expected_sha256
+        captured["child_disability_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_child_disability_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["child_disability_stage_called"] = True
+        captured["child_disability_seed"] = seed
+        captured["child_disability_period"] = time_period
+        captured["source_stage_events"].append("child_disability")
+        return frame
+
+    def fake_child_disability_signal_gate(frame, *, input_frame=None):
+        captured["child_disability_gate_called"] = True
+        captured.setdefault("child_disability_gate_input_frames", []).append(
+            input_frame
+        )
+        is_stage_gate = input_frame is not None
+        details = {
+            "scope": "stage" if is_stage_gate else "export",
+            "age_15_plus_unchanged": True if is_stage_gate else None,
+        }
+        if is_stage_gate:
+            details["weighted_child_is_disabled_share_change"] = {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            }
+        gate = builder.GateResult(
+            name="child_disability_signal",
+            passed=True,
+            details=details,
+        )
+        captured.setdefault("child_disability_gate_results", []).append(gate)
+        return gate
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_child_disability_donor",
+        fake_load_child_disability_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_child_disability_inputs",
+        fake_with_child_disability_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_child_disability_signal_gate",
+        fake_child_disability_signal_gate,
+    )
+
     def fake_load_sipp_vehicle_donor(
         path,
         *,
@@ -4599,6 +4762,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_with_ssi_disability_criteria(frame, *, seed, time_period, sipp_donor):
         captured["ssi_disability_stage_called"] = True
         captured["ssi_disability_seed"] = seed
+        captured["source_stage_events"].append("ssi_disability_criteria")
         return frame
 
     def fake_ssi_disability_signal_gate(frame):
@@ -4732,6 +4896,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["ssi_take_up_targets"] = dict(targets)
         captured["ssi_reporter_source_ids"] = reporter_source_ids
         captured["ssi_take_up_prior_basis"] = prior_basis
+        captured["source_stage_events"].append("ssi_take_up")
         return frame, dict(fake_stage_diagnostics)
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
@@ -5014,6 +5179,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["source_stage_events"].append("materialize_target_frame")
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
 
@@ -5552,6 +5718,66 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_full_donor_resolution_calls"] == 1
+    assert captured["sipp_full_donor_resolution_arg"] is None
+    assert captured["child_disability_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["child_disability_donor_sha256"]
+        == builder.SIPP_2023_CHILD_DISABILITY_DONOR_SHA256
+    )
+    assert (
+        captured["child_disability_donor_size_bytes"]
+        == builder.SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES
+    )
+    assert captured["child_disability_stage_called"] is True
+    assert captured["child_disability_seed"] == 0
+    assert captured["child_disability_period"] == builder.PERIOD
+    assert captured["child_disability_gate_called"] is True
+    child_gate_frames = captured["child_disability_gate_input_frames"]
+    assert len(child_gate_frames) == 2
+    assert child_gate_frames[0] is not None
+    assert child_gate_frames[1] is None
+    child_gate_results = captured["child_disability_gate_results"]
+    assert len(child_gate_results) == 2
+    assert (
+        captured["diagnostics"]["child_disability_stage_gate"] is child_gate_results[0]
+    )
+    assert captured["diagnostics"]["child_disability_gate"] is child_gate_results[1]
+    assert captured["diagnostics"]["child_disability_stage_gate"].details[
+        "weighted_child_is_disabled_share_change"
+    ]["age_5_14"] == {
+        "before": 0.0,
+        "after": 0.11,
+        "absolute_change": 0.11,
+    }
+    assert (
+        captured["diagnostics"]["child_disability_stage_gate"].details[
+            "age_15_plus_unchanged"
+        ]
+        is True
+    )
+    assert (
+        captured["diagnostics"]["child_disability_gate"].details[
+            "age_15_plus_unchanged"
+        ]
+        is None
+    )
+    source_stage_events = captured["source_stage_events"]
+    assert source_stage_events.index("eligibility_inputs") < source_stage_events.index(
+        "child_disability"
+    )
+    assert source_stage_events.index("child_disability") < source_stage_events.index(
+        "sipp_scf_financial_assets"
+    )
+    assert source_stage_events.index(
+        "sipp_scf_financial_assets"
+    ) < source_stage_events.index("ssi_disability_criteria")
+    assert source_stage_events.index(
+        "ssi_disability_criteria"
+    ) < source_stage_events.index("ssi_take_up")
+    assert source_stage_events.index("ssi_take_up") < source_stage_events.index(
+        "materialize_target_frame"
+    )
     assert captured["sipp_financial_asset_donor_path"] == Path("pu2023.csv")
     assert (
         captured["sipp_financial_asset_donor_sha256"]
@@ -8239,6 +8465,28 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
                 }
             },
         ),
+        child_disability_stage_gate=builder.GateResult(
+            name="child_disability_signal",
+            passed=True,
+            details={
+                "weighted_child_is_disabled_share_change": {
+                    "age_5_14": {
+                        "before": 0.0,
+                        "after": 0.11,
+                        "absolute_change": 0.11,
+                    }
+                },
+                "age_15_plus_unchanged": True,
+            },
+        ),
+        child_disability_gate=builder.GateResult(
+            name="child_disability_signal",
+            passed=True,
+            details={
+                "age_5_14_disabled_share": 0.11,
+                "age_15_plus_unchanged": None,
+            },
+        ),
         timing={
             "target_compilation_seconds": 3.0,
             "calibration_seconds": 4.0,
@@ -8270,6 +8518,36 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "takes_up_aca_if_eligible": 2,
         "selected_marketplace_plan_benchmark_ratio": 3,
     }
+    assert build_manifest["gates"]["child_disability_stage_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "weighted_child_is_disabled_share_change": {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            },
+            "age_15_plus_unchanged": True,
+        },
+    }
+    assert build_manifest["gates"]["child_disability_export_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "age_5_14_disabled_share": 0.11,
+            "age_15_plus_unchanged": None,
+        },
+    }
+    assert (
+        manifest["build"]["child_disability_stage_signal"]
+        == build_manifest["gates"]["child_disability_stage_signal"]
+    )
+    assert (
+        manifest["build"]["child_disability_export_signal"]
+        == build_manifest["gates"]["child_disability_export_signal"]
+    )
     assert build_manifest["gates"]["base_population_scale"]["passed"]
     assert (
         build_manifest["gates"]["base_population_scale"]["details"]["relative_error"]
@@ -10040,11 +10318,11 @@ def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
 ) -> None:
     """A frozen-support change invalidates the checkpoint identity.
 
-    The assignment digest hashes positional flags, priors, and provenance,
-    but two same-length supports can share those flag bytes. The selected
-    source identities therefore remain an independent checkpoint input, and
-    even the full-pool ``None`` value must reject a pre-fix identity that
-    omitted the key entirely.
+    The assignment digest hashes positional child/general/criteria/take-up
+    vectors, priors, and provenance, but two same-length supports can share
+    those bytes. The selected source identities therefore remain an
+    independent checkpoint input, and even the full-pool ``None`` value must
+    reject a pre-fix identity that omitted the key entirely.
     """
 
     builder = _load_builder_module()
@@ -10352,16 +10630,17 @@ _SSI_BAND_TARGETS = {
 
 
 def _ssi_prior_final_artifact_payload() -> dict:
-    """A prior attempt's final us_ssi_take_up.json, schema 2 (Build N shape).
+    """A feasible prior final us_ssi_take_up.json, using schema 2.
 
     Contract strings are frozen LITERALS on purpose: this fixture documents
-    what Build N's certified artifact actually carries, so drift in the
-    module constants cannot silently redefine what the loader accepts
-    (populace#507 sol review finding 10).
+    the legacy artifact shape while giving every normally enforced band enough
+    delivered capacity for a truthful threshold. Drift in the module constants
+    cannot silently redefine what the loader accepts (populace#507 sol review
+    finding 10; populace#509 round 3).
     """
 
     bands = [
-        ("under_18", 1_001_922.0, 177_582.0, 60_000.0),
+        ("under_18", 1_001_922.0, 1_400_000.0, 60_000.0),
         ("18_64", 3_905_779.0, 6_000_000.0, 2_500_000.0),
         ("65_plus", 2_382_142.0, 3_995_000.0, 900_000.0),
     ]
@@ -10522,8 +10801,8 @@ def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     retry remedy — is unchanged.
     """
     builder = _load_builder_module()
-    # Build N's measured delivery: 65+ landed 0.98M against 2.38M — the
-    # populace#507 collapse — while under-18 stays fenced (#453/#509).
+    # Build N's measured delivery: both child and 65+ bands miss after
+    # populace#453/#509 deliberately adds under-18 to the enforced roster.
     diagnostics = _ssi_delivery_diagnostics(
         {"under_18": 120_000.0, "18_64": 4_100_000.0, "65_plus": 984_000.0}
     )
@@ -10560,7 +10839,7 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     builder = _load_builder_module()
     diagnostics = _ssi_delivery_diagnostics(
         {
-            "under_18": 120_000.0,  # fenced: an 88% miss must not fail
+            "under_18": 990_000.0,
             "18_64": 3_900_000.0,
             "65_plus": 2_350_000.0,
         }
@@ -10723,7 +11002,9 @@ def test_reform_vector_cache_context_tracks_support_and_materializer() -> None:
     assert "build_commit" not in projected
 
 
-def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:
+def test_ssi_assignment_digest_tracks_child_inputs_take_up_priors_and_basis(
+    small_frame,
+) -> None:
     """Any change to the frozen assignment must invalidate checkpoint/cache."""
 
     from populace.build.us_runtime.ssi_take_up import (
@@ -10733,10 +11014,20 @@ def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> Non
 
     builder = _load_builder_module()
 
-    def _frame_with_flags(flags):
+    def _frame_with_assignments(
+        flags,
+        *,
+        is_disabled=(False, True, False, True),
+        meets_ssi_disability_criteria=(False, False, True, True),
+    ):
         tables = {
             entity: small_frame.table(entity).copy() for entity in small_frame.entities
         }
+        tables["person"]["is_disabled"] = np.asarray(is_disabled, dtype=bool)
+        tables["person"]["meets_ssi_disability_criteria"] = np.asarray(
+            meets_ssi_disability_criteria,
+            dtype=bool,
+        )
         tables["person"]["takes_up_ssi_if_eligible"] = np.asarray(flags, dtype=bool)
         return Frame(
             tables,
@@ -10758,27 +11049,43 @@ def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> Non
         ),
     )
     baseline = builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors=priors,
         prior_basis=basis,
     )
     assert baseline == builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors=priors,
         prior_basis=basis,
     )
     assert baseline != builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, True, True, False]),
+        _frame_with_assignments([True, True, True, False]),
         assignment_priors=priors,
         prior_basis=basis,
     )
     assert baseline != builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments(
+            [True, False, True, False],
+            is_disabled=(True, True, False, True),
+        ),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_assignments(
+            [True, False, True, False],
+            meets_ssi_disability_criteria=(True, False, True, True),
+        ),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors={**priors, "65_plus": 0.9},
         prior_basis=basis,
     )
     assert baseline != builder._ssi_take_up_assignment_digest(
-        _frame_with_flags([True, False, True, False]),
+        _frame_with_assignments([True, False, True, False]),
         assignment_priors=priors,
         prior_basis=SSITakeUpPriorBasis(
             kind="release_artifact",
@@ -10786,6 +11093,110 @@ def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> Non
             source_sha256="cd" * 32,
             source_schema_version=2,
         ),
+    )
+
+
+def test_pre_round_3_v10_checkpoint_misses_new_child_assignment_digest(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    """A take-up-only v10 checkpoint cannot serve the round-3 SSI inputs."""
+
+    from populace.build.us_runtime.ssi_take_up import (
+        SSITakeUpBandPriorBasis,
+        SSITakeUpPriorBasis,
+    )
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["is_disabled"] = np.asarray([False, True, False, True], dtype=bool)
+    tables["person"]["meets_ssi_disability_criteria"] = np.asarray(
+        [False, False, True, True], dtype=bool
+    )
+    tables["person"]["takes_up_ssi_if_eligible"] = np.asarray(
+        [True, False, True, False], dtype=bool
+    )
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {
+            entity: small_frame.weights_for(entity)
+            for entity in small_frame.weighted_entities
+        },
+        small_frame.strata,
+    )
+    priors = {"under_18": 0.1, "18_64": 0.2, "65_plus": 0.3}
+    basis = SSITakeUpPriorBasis(
+        kind="current_frame",
+        bands=tuple(
+            SSITakeUpBandPriorBasis(
+                key=key,
+                candidate_capacity=100.0,
+                reporter_candidate_floor=10.0,
+            )
+            for key in priors
+        ),
+    )
+    legacy_digest = builder.hashlib.sha256(
+        frame.table("person")["takes_up_ssi_if_eligible"]
+        .to_numpy(dtype=np.uint8)
+        .tobytes()
+        + json.dumps(
+            {
+                "assignment_priors": {
+                    str(key): float(value) for key, value in priors.items()
+                },
+                "prior_weight_basis": dict(basis.provenance()),
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    current_digest = builder._ssi_take_up_assignment_digest(
+        frame,
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert legacy_digest != current_digest
+
+    identity_kwargs = {
+        "base_dataset_sha256": "base-sha",
+        "policyengine_us_version": "1.2.3",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-sha",
+        "weeks_unemployed_source_sha256": "weeks-source-sha",
+        "congressional_district_vintage_crosswalk_sha256": "crosswalk-sha",
+        "selection_identities_sha256": None,
+    }
+    legacy_identity = builder._target_frame_checkpoint_identity(
+        **identity_kwargs,
+        ssi_take_up_assignment_sha256=legacy_digest,
+    )
+    current_identity = builder._target_frame_checkpoint_identity(
+        **identity_kwargs,
+        ssi_take_up_assignment_sha256=current_digest,
+    )
+    assert legacy_identity["materializer_version"] == 10
+    assert current_identity["materializer_version"] == 10
+
+    checkpoint = tmp_path / "pre_round_3_v10_target_frame.h5"
+    builder._write_target_frame_checkpoint(
+        checkpoint,
+        frame=frame,
+        identity=legacy_identity,
+        compilation={"declared_targets": 0},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            checkpoint,
+            identity=current_identity,
+            target_specs=(),
+        )
+        is None
     )
 
 

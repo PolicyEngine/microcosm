@@ -19,9 +19,16 @@ The source transform also retains two distinctions that are easy to lose:
 The extended-CPS pipeline predicted its ASEC and PUF-support people separately,
 because the latter carried separately imputed income and asset predictors.  We
 do the same.  Direct under-65 ASEC ``SSI_VAL`` reporters are then preserved as
-positive anchors; that anchor is not copied onto the PUF channel.  An arbitrary
-pre-existing criterion column is never trusted: every run recomputes the full
-source-backed surface and uses an equality check only for idempotent return.
+positive anchors; that anchor is not copied onto the PUF channel.
+
+This stage owns the adult ``meets_ssi_disability_criteria`` surface.  After
+the adult SIPP/QRF pass, it preserves the under-15 slice assigned upstream by
+the ``child_disability`` stage's distinct receipt-anchored severity model.
+It never aliases the broader RDIS_ALT-faithful ``is_disabled`` signal into the
+SSI legal criteria.  Ages 15+ retain the archived SIPP/QRF,
+disability-signal screen, and reporter-anchor contract.  The child slice is
+already source-backed and stable; the adult slice is recomputed on every run,
+with equality used only for idempotent return.
 
 The full 2023 SIPP public-use file is the same immutable 3.73 GB artifact
 already pinned by the vehicle and voluntary-filing stages.  It contains 39,513
@@ -41,6 +48,7 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
 from populace.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
@@ -295,6 +303,7 @@ SIPP_SSI_DISABILITY_FIT_PARAMETERS: dict[str, object] = {
         "has_disability_income",
     ],
     "preserve_under_65_asec_ssi_reporters": True,
+    "preserve_under_15_child_criteria_assignment": True,
 }
 
 
@@ -350,13 +359,7 @@ def us_ssi_disability_criteria_stage_spec() -> SourceStageSpec:
 
 
 def _sha256_file(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return full_sipp_sha256(path)
 
 
 def fetch_sipp_2023_ssi_disability_donor(
@@ -1050,7 +1053,7 @@ def with_us_ssi_disability_criteria(
     sipp_donor: pd.DataFrame,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
 ) -> Frame:
-    """Recompute and materialize the source-backed person input."""
+    """Recompute the adult criterion and consume upstream child assignment."""
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US SSI disability criteria require the US schema.")
@@ -1063,6 +1066,39 @@ def with_us_ssi_disability_criteria(
         n_estimators=int(n_estimators),
     )
     person = frame.table("person")
+    missing_child_inputs = sorted({"is_disabled", _OUTPUT} - set(person))
+    if missing_child_inputs:
+        raise ValueError(
+            "US SSI disability criteria require upstream child assignment "
+            f"column(s): {missing_child_inputs}."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    child = np.isfinite(age) & (age >= 0.0) & (age < 15.0)
+    child_general = pd.to_numeric(person["is_disabled"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    child_criteria = pd.to_numeric(person[_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid_general = np.isfinite(child_general) & np.isin(
+        child_general,
+        [0.0, 1.0],
+    )
+    valid_criteria = np.isfinite(child_criteria) & np.isin(
+        child_criteria,
+        [0.0, 1.0],
+    )
+    if not valid_general[child].all() or not valid_criteria[child].all():
+        raise ValueError(
+            "US SSI disability criteria require boolean child is_disabled and "
+            "meets_ssi_disability_criteria assignments."
+        )
+    if np.any(child & child_criteria.astype(bool) & ~child_general.astype(bool)):
+        raise ValueError("US SSI child criteria must be a subset of child is_disabled.")
+    # The child stage owns this exact stable seeded severe assignment.
+    # Preserve it rather than re-drawing or copying general disability.
+    predicted = predicted.copy()
+    predicted.loc[child] = child_criteria[child].astype(bool)
     if _OUTPUT in person:
         current = pd.to_numeric(person[_OUTPUT], errors="coerce").to_numpy(
             dtype=np.float64

@@ -23,9 +23,23 @@ jobs:
         # consumer change fail here instead of being skipped until a remote build.
         run: uv sync --all-packages --extra us
       - name: Behavioral contract suite + unit tests
-        run: uv run pytest
+        run: uv run pytest -m "not engine"
       - name: Lint
         run: uv run ruff check .
+
+  engine:
+    # Exercise the real PolicyEngine bridge in one focused leg without adding
+    # the heavy optional country engine to every workspace and wheel run.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Sync workspace with the US rules engine
+        run: uv sync --all-packages --extra us
+      - name: Run real-engine tests
+        run: uv run pytest -m engine
 
   wheels:
     # The charter-mandated packaging gate: editable installs hide packaging
@@ -89,4 +103,4 @@ jobs:
       - name: Run the suite against the installed wheels
         run: |
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
-            packages/*/tests -p no:cacheprovider
+            packages/*/tests -p no:cacheprovider -m "not engine"

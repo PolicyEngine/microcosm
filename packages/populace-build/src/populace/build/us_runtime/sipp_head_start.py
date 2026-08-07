@@ -34,6 +34,7 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
 from populace.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
@@ -234,8 +235,7 @@ def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> st
 
 
 def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
+    return full_sipp_sha256(path)
 
 
 def fetch_sipp_2023_head_start_donor(

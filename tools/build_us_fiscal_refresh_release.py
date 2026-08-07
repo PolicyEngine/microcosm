@@ -70,6 +70,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
+    SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
     SIPP_2023_HEAD_START_DONOR_SHA256,
@@ -100,7 +102,6 @@ from populace.build.us_runtime import (
     fetch_org_2024_donor,
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
-    fetch_sipp_2023_financial_asset_donor,
     fetch_sipp_2023_tip_donor,
     hard_target_package_aliases,
     load_asec_2023_weeks_unemployed_source,
@@ -108,17 +109,20 @@ from populace.build.us_runtime import (
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_sipp_2023_child_disability_donor,
     load_sipp_2023_financial_asset_donor,
     load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
     load_sipp_2023_voluntary_filing_donor,
+    resolve_sipp_2023_child_disability_donor,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
     us_alimony_signal_gate,
     us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
+    us_child_disability_signal_gate,
     us_child_support_signal_gate,
     us_childcare_signal_gate,
     us_disability_benefits_signal_gate,
@@ -172,6 +176,7 @@ from populace.build.us_runtime import (
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
+    with_us_child_disability_inputs,
     with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_eligibility_inputs,
@@ -308,10 +313,10 @@ POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 # after recomputing again — the recompute moved 18-64 OUT of band while
 # improving 65+); that chain shape is now refused outright by the
 # chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
-# diagnostic arm therefore FENCES its adult bands — the under-18 pattern
-# extended: the miss ships in the scorecard as a known boundary, never as
-# an enforced contract and never as saturation-as-success. The sparse
-# certified default passes no fences and keeps hard enforcement.
+# diagnostic arm therefore FENCES its adult bands: those misses ship in the
+# scorecard as known boundaries, never as enforced contracts and never as
+# saturation-as-success. The child band remains hard-gated on both arms; the
+# sparse certified default passes no fences and hard-gates all three bands.
 # RE-ADJUDICATES when populace#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
     "Fenced for the dense diagnostic arm (populace#566/#567): "
@@ -330,14 +335,12 @@ US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
     "18_64": _US_DENSE_SSI_FENCE_ADJUDICATION,
     "65_plus": _US_DENSE_SSI_FENCE_ADJUDICATION,
 }
-assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == set(
+assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == {"18_64", "65_plus"}
+assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) < set(
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS
 ), (
-    "The dense-arm fence adjudication must cover exactly the "
-    "normally-enforced SSI bands. A new enforced band needs a dense-arm "
-    "adjudication first: fence it here with its documented reason, or "
-    "amend this assertion as the record of the decision to enforce it "
-    "on the dense arm too."
+    "The dense-arm adjudication fences exactly the adult pair while the "
+    "under-18 band remains hard-gated."
 )
 
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
@@ -375,12 +378,11 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "policyengine_us_version",
     "target_period",
     "congressional_district_vintage_crosswalk_sha256",
-    # The frozen SSI take-up assignment is a base-frame input to every
-    # materialized vector. Whether any JCT reform income-tax estimate can
-    # actually move with takes_up_ssi_if_eligible is an engine-graph
-    # question this build must not answer by assumption, so the digest
-    # invalidates reform vectors too — correctness over cache warmth
-    # (populace#507/#508 sol review round 2, finding 2).
+    # The complete frozen SSI input surface — general disability, qualifying
+    # criteria, take-up flags, priors, and basis — is a base-frame input to
+    # every materialized vector. Whether a JCT reform estimate can move with
+    # it is an engine-graph question this build must not answer by assumption,
+    # so the digest invalidates reform vectors too (populace#507/#508; #509).
     "ssi_take_up_assignment_sha256",
     # The selected identities determine which household rows the vectors
     # describe. Same-length supports can share positional SSI flag bytes, so
@@ -1265,9 +1267,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         help=(
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
-            "file that feeds financial assets, SSI disability criteria, "
-            "household vehicle count/value, and measured voluntary tax filing. "
-            "When omitted the immutable donor revision is fetched and verified."
+            "file that feeds financial assets, child disability, SSI disability "
+            "criteria, Head Start, household vehicle count/value, and measured "
+            "voluntary tax filing. "
+            "When omitted the issue-453 local path is checked before the "
+            "immutable donor revision is fetched and verified."
         ),
     )
     parser.add_argument(
@@ -2058,11 +2062,10 @@ def _target_frame_checkpoint_identity(
         "seed": int(seed),
         "target_period": int(target_period),
         "target_registry_version": str(target_registry_version),
-        # The frozen SSI take-up decisions (flags + priors + basis
-        # provenance) feed the materialized ssi target columns; a retry
-        # under a different prior basis must invalidate the checkpoint
-        # (populace#507/#508). Always present, so every pre-#507 checkpoint
-        # — built on the collapsed Build-N-class flags — also misses once.
+        # The frozen SSI inputs (general disability, qualifying criteria,
+        # take-up flags, priors, and basis provenance) feed the materialized
+        # SSI target columns. Any child assignment change or take-up retry
+        # must invalidate the checkpoint (populace#507/#508; #509 round 3).
         "ssi_take_up_assignment_sha256": str(ssi_take_up_assignment_sha256),
         # The frozen-support selection prunes the base pool before assignment
         # and materialization. Its identity-set digest is independent of the
@@ -6014,17 +6017,34 @@ def _ssi_take_up_assignment_digest(
 ) -> str:
     """Digest of the frozen SSI assignment for checkpoint/cache identity.
 
-    Covers the persisted flag vector plus the priors and basis provenance
-    that generated it, so a retry whose thresholds differ — the
-    --ssi-take-up-prior-weight-basis path — can never reuse a target-frame
-    checkpoint or materialized-column cache built on the previous flags
-    (populace#507 sol review finding 2).
+    Covers the ordered persisted ``is_disabled``,
+    ``meets_ssi_disability_criteria``, and
+    ``takes_up_ssi_if_eligible`` vectors plus the priors and basis
+    provenance that generated the take-up decision.  A child-disability
+    assignment change or a retry whose take-up thresholds differ — the
+    --ssi-take-up-prior-weight-basis path — can therefore never reuse a
+    target-frame checkpoint or materialized-column cache built on the
+    previous SSI inputs (populace#507 sol review finding 2; populace#509
+    round-3 finding 5).
     """
 
-    flags = frame.table("person")[US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]]
-    return hashlib.sha256(
-        flags.to_numpy(dtype=np.uint8).tobytes()
-        + json.dumps(
+    person = frame.table("person")
+    digest = hashlib.sha256()
+    # Domain-separate the round-3 vector contract from the pre-round-3
+    # take-up-only digest.  Extending the digest itself invalidates every
+    # affected v10 checkpoint, so a materializer-version bump would add no
+    # further protection.
+    digest.update(b"populace-us-ssi-assignment-v2\0")
+    for column in (
+        "is_disabled",
+        "meets_ssi_disability_criteria",
+        US_SSI_TAKE_UP_OUTPUT_COLUMNS[0],
+    ):
+        digest.update(column.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(person[column].to_numpy(dtype=np.uint8).tobytes())
+    digest.update(
+        json.dumps(
             {
                 "assignment_priors": {
                     str(key): float(value) for key, value in assignment_priors.items()
@@ -6033,7 +6053,8 @@ def _ssi_take_up_assignment_digest(
             },
             sort_keys=True,
         ).encode("utf-8")
-    ).hexdigest()
+    )
+    return digest.hexdigest()
 
 
 def _enforce_ssi_take_up_delivery(
@@ -6323,6 +6344,7 @@ def _release_gate_failures(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     target_registry: TargetRegistry | None = None,
@@ -6362,6 +6384,11 @@ def _release_gate_failures(
         failures.extend(
             f"Eligibility-inputs signal failed: {failure}"
             for failure in eligibility_inputs_gate.failures
+        )
+    if child_disability_gate is not None and not child_disability_gate.passed:
+        failures.extend(
+            f"Child-disability export signal failed: {failure}"
+            for failure in child_disability_gate.failures
         )
     if pregnancy_gate is not None and not pregnancy_gate.passed:
         failures.extend(
@@ -6835,6 +6862,7 @@ def _assert_release_gates(
     immigration_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     target_registry: TargetRegistry | None = None,
 ) -> None:
     failures = _release_gate_failures(
@@ -6847,6 +6875,7 @@ def _assert_release_gates(
         immigration_gate,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
+        child_disability_gate=child_disability_gate,
         target_registry=target_registry,
     )
     if failures:
@@ -6870,6 +6899,8 @@ def _write_release_calibration_diagnostics(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_stage_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     gate_failures: Iterable[str],
@@ -6988,6 +7019,24 @@ def _write_release_calibration_diagnostics(
                     "details": dict(eligibility_inputs_gate.details),
                 }
                 if eligibility_inputs_gate is not None
+                else None
+            ),
+            "child_disability_stage_signal": (
+                {
+                    "passed": child_disability_stage_gate.passed,
+                    "failures": list(child_disability_stage_gate.failures),
+                    "details": dict(child_disability_stage_gate.details),
+                }
+                if child_disability_stage_gate is not None
+                else None
+            ),
+            "child_disability_export_signal": (
+                {
+                    "passed": child_disability_gate.passed,
+                    "failures": list(child_disability_gate.failures),
+                    "details": dict(child_disability_gate.details),
+                }
+                if child_disability_gate is not None
                 else None
             ),
             "pregnancy_signal": (
@@ -7264,6 +7313,8 @@ def _build_manifests(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_stage_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
@@ -7302,6 +7353,7 @@ def _build_manifests(
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_gate=child_disability_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         target_registry=registry,
@@ -7502,6 +7554,28 @@ def _build_manifests(
             ),
             **(
                 {
+                    "child_disability_stage_signal": {
+                        "passed": child_disability_stage_gate.passed,
+                        "failures": list(child_disability_stage_gate.failures),
+                        "details": dict(child_disability_stage_gate.details),
+                    }
+                }
+                if child_disability_stage_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "child_disability_export_signal": {
+                        "passed": child_disability_gate.passed,
+                        "failures": list(child_disability_gate.failures),
+                        "details": dict(child_disability_gate.details),
+                    }
+                }
+                if child_disability_gate is not None
+                else {}
+            ),
+            **(
+                {
                     "pregnancy_signal": {
                         "passed": pregnancy_gate.passed,
                         "failures": list(pregnancy_gate.failures),
@@ -7630,6 +7704,28 @@ def _build_manifests(
                     }
                 }
                 if eligibility_inputs_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "child_disability_stage_signal": {
+                        "passed": child_disability_stage_gate.passed,
+                        "failures": list(child_disability_stage_gate.failures),
+                        "details": dict(child_disability_stage_gate.details),
+                    }
+                }
+                if child_disability_stage_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "child_disability_export_signal": {
+                        "passed": child_disability_gate.passed,
+                        "failures": list(child_disability_gate.failures),
+                        "details": dict(child_disability_gate.details),
+                    }
+                }
+                if child_disability_gate is not None
                 else {}
             ),
             **(
@@ -9174,6 +9270,54 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "child_disability_inputs",
+            message=(
+                "Imputing SIPP RDIS_ALT general child disability and the "
+                "receipt-anchored severe SSI subset for ages 0--14; age 0 "
+                "uses the nearest observed exact-age-1 general rate."
+            ),
+        )
+    # The child stage is deliberately adjacent to eligibility_inputs: it only
+    # augments that stage's ASEC is_disabled output below age 15. Resolve the
+    # shared immutable SIPP file here (explicit CLI path, requested local path,
+    # then verified remote cache) and reuse it for the later SIPP families.
+    sipp_full_donor_path = resolve_sipp_2023_child_disability_donor(
+        args.sipp_vehicle_donor
+    )
+    child_disability_donor = load_sipp_2023_child_disability_donor(
+        sipp_full_donor_path,
+        expected_sha256=SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
+    )
+    child_disability_input_frame = base_frame
+    base_frame = with_us_child_disability_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        sipp_donor=child_disability_donor,
+    )
+    child_disability_stage_gate = us_child_disability_signal_gate(
+        base_frame,
+        input_frame=child_disability_input_frame,
+    )
+    if not child_disability_stage_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "child_disability_inputs_gate",
+                status="failed",
+                message="Child-disability signal gate failed.",
+                failures=list(child_disability_stage_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Child-disability signal failed: {failure}"
+                for failure in child_disability_stage_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "education_inputs",
             message=(
                 "Carrying ASEC educational assistance and deriving AOTC "
@@ -9308,14 +9452,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         if args.scf_summary_extract is not None
         else fetch_scf_2022_summary_extract()
     )
-    # The asset blend, SSI criterion, Head Start, vehicle, and filing families
-    # share one immutable full SIPP artifact. Resolve it once; the CLI option's
-    # historical name remains stable for existing release invocations.
-    sipp_full_donor_path = (
-        Path(args.sipp_vehicle_donor)
-        if args.sipp_vehicle_donor is not None
-        else fetch_sipp_2023_financial_asset_donor()
-    )
+    # The child stage already resolved and verified the one immutable full-SIPP
+    # artifact. Every later family reuses that path; the shared fingerprint
+    # cache lets their explicit per-stage SHA contracts compare one digest
+    # without rescanning 3.73 GB.
     scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
     sipp_financial_asset_donor = load_sipp_2023_financial_asset_donor(
         sipp_full_donor_path,
@@ -9349,6 +9489,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    # Reuse the immutable full SIPP path resolved by child_disability above;
+    # this criterion still waits until SCF asset leaves are materialized.
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -9485,12 +9627,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     ssi_assignment_prior_basis = ssi_take_up_prior_basis_from_diagnostics(
         ssi_take_up_stage_diagnostics
     )
-    # populace#507 sol review finding 2: the frozen SSI decisions and their
-    # basis are materialization inputs. A retry with different flags MUST
-    # miss the previous attempt's target-frame checkpoint and target
-    # materialization cache — otherwise the solve runs against the stale
-    # SSI rows while the export carries the fresh ones (split-brain
-    # certification).
+    # The complete frozen SSI surface and its basis are materialization
+    # inputs. A child-assignment change or retry with different take-up flags
+    # MUST miss the previous target-frame checkpoint and cache — otherwise
+    # the solve runs against stale SSI rows while export carries fresh ones.
     ssi_take_up_assignment_sha256 = _ssi_take_up_assignment_digest(
         base_frame,
         assignment_priors=ssi_assignment_priors,
@@ -10343,7 +10483,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     # output: the Bernoulli-law recheck and anchor/envelope laws are
     # weight-safe, so any downstream transform that corrupted the frozen
     # decisions fails the build here instead of shipping (PR #477 review
-    # finding 3). The SSA-count miss itself stays scorecard-only.
+    # finding 3). Delivery misses are enforced separately below: all three
+    # bands on the sparse certified arm, and under-18 on the dense arm.
     final_ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_diagnostics, targets=ssi_band_targets
     )
@@ -10421,6 +10562,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         health_input_gate = None
         early_terminal_gate_failures.append(
             "Health-input signal evaluation crashed in degraded mode; "
+            f"recorded instead of masking earlier failures: {error}"
+        )
+    try:
+        child_disability_export_gate = us_child_disability_signal_gate(export_frame)
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        child_disability_export_gate = None
+        early_terminal_gate_failures.append(
+            "Child-disability signal evaluation crashed in degraded mode; "
             f"recorded instead of masking earlier failures: {error}"
         )
     try:
@@ -10596,6 +10747,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             hours_worked_gate=hours_worked_gate,
             snap_take_up_gate=snap_take_up_gate,
             eligibility_inputs_gate=eligibility_inputs_gate,
+            child_disability_gate=child_disability_export_gate,
             pregnancy_gate=pregnancy_gate,
             snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
             target_registry=registry,
@@ -10642,6 +10794,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_stage_gate=child_disability_stage_gate,
+        child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         support_value_repairs={
@@ -11229,6 +11383,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_stage_gate=child_disability_stage_gate,
+        child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         timing=timing,

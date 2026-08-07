@@ -151,6 +151,8 @@ def _frame(n: int = 20) -> Frame:
             "person_marital_unit_id": ids + 400,
             "age": np.full(n, 40.0),
             "is_female": ids % 2 == 0,
+            "is_disabled": np.zeros(n, dtype=bool),
+            "meets_ssi_disability_criteria": np.zeros(n, dtype=bool),
             "A_MARITL": np.full(n, 5),
             "employment_income_before_lsr": np.zeros(n),
             # Deliberately omit the aggregate leaves: the receiver must use
@@ -305,6 +307,10 @@ def test_stage_manifest_pins_exact_runtime_contract() -> None:
     ]
     assert dict(spec.operations[0].parameters) == SIPP_SSI_DISABILITY_READ_PARAMETERS
     assert dict(spec.operations[1].parameters) == SIPP_SSI_DISABILITY_FIT_PARAMETERS
+    assert (
+        spec.operations[1].parameters["preserve_under_15_child_criteria_assignment"]
+        is True
+    )
     assert SIPP_SSI_DISABILITY_FIT_PARAMETERS["training_sample_seed"] == (
         8_386_123_572_872_638_692
     )
@@ -539,6 +545,35 @@ def test_wrapper_heals_stale_output_and_is_idempotent(
 
     assert healed.table("person")[_OUTPUT].sum() == 2
     assert twice is healed
+
+
+def test_wrapper_preserves_every_child_stage_criteria_assignment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    monkeypatch.setattr(module, "us_ssi_disability_criteria_stage_spec", lambda: None)
+    frame = _frame()
+    person = frame.table("person").copy()
+    child_index = person.index[:4]
+    person.loc[child_index, "age"] = [5.0, 8.0, 12.0, 14.0]
+    person.loc[child_index, "is_disabled"] = [True, True, False, True]
+    person.loc[child_index, _OUTPUT] = [True, False, False, True]
+    staged = _replace_person(
+        frame,
+        **{column: person[column].to_numpy() for column in person.columns},
+    )
+
+    result = with_us_ssi_disability_criteria(
+        staged,
+        seed=123,
+        time_period=2024,
+        sipp_donor=_donor(),
+    )
+
+    np.testing.assert_array_equal(
+        result.table("person").loc[child_index, _OUTPUT].to_numpy(dtype=bool),
+        [True, False, False, True],
+    )
 
 
 def test_signal_gate_requires_each_channel_but_allows_clone_divergence(
