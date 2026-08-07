@@ -152,7 +152,11 @@ def _acs_source() -> Frame:
         persons_per_household={103: 3, 107: 2},
         weights=[float(10 * position) for position in range(1, 11)],
         extra_person_columns={"acs_native_aggregate": 15.0},
-        extra_household_columns={"puma": "0600101"},
+        extra_household_columns={
+            "puma": "0600101",
+            "TYPEHUGQ": 1,
+            "tenure_type": "RENTED",
+        },
         stratum="acs_2024_1yr",
     )
 
@@ -235,7 +239,7 @@ def test_production_sampling_is_uniform_and_composition_preserving() -> None:
         sample_seed=578,
     )
 
-    assert result.receipt["version"] == 2
+    assert result.receipt["version"] == 3
     assert result.receipt["sample_fraction"] == 0.5
     assert result.receipt["sample_seed"] == 578
     samples = result.receipt["survey_samples"]
@@ -1204,6 +1208,126 @@ def _stacked_gap_fixture() -> Frame:
         acs_sample_fraction=1.0,
         acs_sample_seed=578,
     ).frame
+
+
+def test_stacked_assembly_binds_native_acs_group_quarters_lineage() -> None:
+    stacked = _stacked_gap_fixture()
+    receipt = stacked.metadata[STACKED_SPINE_MANIFEST_KEY]["acs_native_group_quarters"]
+
+    assert receipt["version"] == 1
+    assert receipt["household_count"] == 1
+    assert receipt["person_count"] == 1
+    assert len(receipt["household_spine_source_ids_sha256"]) == 64
+    assert len(receipt["person_spine_lineages_sha256"]) == 64
+    validate_stacked_spine_frame(stacked, boundary="native ACS GQ receipt fixture")
+
+
+@pytest.mark.parametrize(
+    ("from_kind", "to_kind"),
+    ((1, 2), (2, 1)),
+)
+def test_native_acs_group_quarters_reclassification_fails_closed(
+    from_kind: int,
+    to_kind: int,
+) -> None:
+    stacked = _stacked_gap_fixture()
+    household = stacked.table("household").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    row = household.index[channel.eq("acs") & kind.eq(from_kind)][0]
+    household.loc[row, "TYPEHUGQ"] = to_kind
+    household.loc[row, "tenure_type"] = np.nan if to_kind in (2, 3) else "RENTED"
+    tables = {entity: stacked.table(entity) for entity in stacked.entities}
+    tables["household"] = household
+    corrupted = Frame(
+        tables,
+        stacked.schema,
+        {entity: stacked.weights_for(entity) for entity in stacked.weighted_entities},
+        stacked.strata,
+        mass_log=stacked.mass_log,
+        metadata=stacked.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="native ACS group-quarters household lineage differs",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="reclassified ACS GQ fixture",
+        )
+
+
+def test_acs_group_quarters_reclassification_across_clone_roles_fails_closed() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    household = attached.table("household").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    row = household.index[channel.eq("acs") & clone.eq(1) & kind.isin((2, 3))][0]
+    household.loc[row, "TYPEHUGQ"] = 1
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["household"] = household
+    corrupted = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="classification differs across clone roles",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="reclassified ACS GQ clone fixture",
+        )
+
+
+def test_acs_clone_cannot_substitute_group_quarters_support_lineage() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    household = attached.table("household").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    gq_row = household.index[channel.eq("acs") & clone.eq(1) & kind.isin((2, 3))][0]
+    housing_unit_row = household.index[channel.eq("acs") & clone.eq(1) & kind.eq(1)][0]
+    household.loc[
+        housing_unit_row,
+        support_source_id_column("household"),
+    ] = household.loc[gq_row, support_source_id_column("household")]
+    household.loc[housing_unit_row, "TYPEHUGQ"] = 2
+    household.loc[housing_unit_row, "tenure_type"] = np.nan
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["household"] = household
+    corrupted = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="support/raw household lineage pairs differ",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="substituted ACS GQ clone fixture",
+        )
 
 
 def test_gap_fill_plan_covers_declared_families_exactly() -> None:
@@ -2476,6 +2600,9 @@ def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
         tax_unit["filing_status_input"] = "SINGLE"
         for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
             tax_unit[column] = 0.0
+        household = tables["household"]
+        household["TYPEHUGQ"] = 1
+        household["tenure_type"] = "RENTED"
         return Frame(
             tables,
             US_SCHEMA,

@@ -90,6 +90,7 @@ from populace.build.us_runtime.puf_qrf_chain import (
 )
 from populace.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     US_PUF_SUPPORT_FIT_NAME,
@@ -164,12 +165,14 @@ DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES: Mapping[str, float] = {
 
 STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
 _LEGACY_STACKED_SPINE_MANIFEST_VERSION = 1
-_STACKED_SPINE_MANIFEST_VERSION = 2
+_STACKED_SPINE_MANIFEST_VERSION = 3
 _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS = {
     _LEGACY_STACKED_SPINE_MANIFEST_VERSION,
     _STACKED_SPINE_MANIFEST_VERSION,
 }
 _EXACT_COUNT_RULE = "floor(fraction * eligible)"
+_ACS_NATIVE_GQ_LINEAGE_VERSION = 1
+_ACS_NATIVE_GQ_SELECTION = "TYPEHUGQ in {2,3} on sampled native ACS rows"
 _MASS_RTOL = 1e-9
 
 #: The ratified pilot stack configuration (#578 revision): a seeded 10% ACS
@@ -300,6 +303,68 @@ def sample_acs_households(
         seed=seed,
         source_name="ACS",
     )
+
+
+def _acs_native_group_quarters_receipt(sampled_acs: Frame) -> dict[str, object]:
+    """Bind the sampled native ACS group-quarters lineage before assembly."""
+
+    household = sampled_acs.table("household")
+    person = sampled_acs.table("person")
+    missing_household = sorted(
+        {"household_id", "TYPEHUGQ", "tenure_type"} - set(household)
+    )
+    missing_person = sorted({"person_id", "person_household_id"} - set(person))
+    if missing_household or missing_person:
+        raise ValueError(
+            "Stacked ACS assembly cannot bind native group-quarters lineage; "
+            f"missing_household={missing_household}, missing_person={missing_person}."
+        )
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    invalid = ~kind.isin((1, 2, 3))
+    if invalid.any():
+        raise ValueError(
+            "Stacked ACS assembly requires every sampled household to carry a "
+            f"TYPEHUGQ 1/2/3 source classification; found {int(invalid.sum())} "
+            "invalid row(s)."
+        )
+    gq_households = kind.isin((2, 3))
+    nonnull_gq_tenure = gq_households & household["tenure_type"].notna()
+    if nonnull_gq_tenure.any():
+        raise ValueError(
+            "Stacked ACS assembly requires source-observed null tenure for every "
+            f"TYPEHUGQ 2/3 household; found {int(nonnull_gq_tenure.sum())} "
+            "nonnull row(s)."
+        )
+    household_ids = np.sort(
+        household.loc[gq_households, "household_id"].to_numpy(dtype=np.int64)
+    )
+    gq_people = person["person_household_id"].isin(household_ids)
+    person_lineages = person.loc[
+        gq_people, ["person_id", "person_household_id"]
+    ].to_numpy(dtype=np.int64)
+    if len(person_lineages):
+        person_lineages = person_lineages[
+            np.lexsort((person_lineages[:, 1], person_lineages[:, 0]))
+        ]
+    else:
+        person_lineages = person_lineages.reshape(0, 2)
+    linked_counts = person.loc[gq_people, "person_household_id"].value_counts()
+    if len(linked_counts) != len(household_ids) or not linked_counts.eq(1).all():
+        raise ValueError(
+            "Stacked ACS assembly requires exactly one native person per "
+            "TYPEHUGQ 2/3 group-quarters household."
+        )
+    return {
+        "version": _ACS_NATIVE_GQ_LINEAGE_VERSION,
+        "source_channel": ACS_STACKED_SUPPORT_CHANNEL,
+        "selection": _ACS_NATIVE_GQ_SELECTION,
+        "one_person_per_household": True,
+        "tenure_authority": "source_null_and_live_null_all_clone_roles",
+        "household_count": int(len(household_ids)),
+        "person_count": int(len(person_lineages)),
+        "household_spine_source_ids_sha256": _ids_sha256(household_ids),
+        "person_spine_lineages_sha256": _integer_rows_sha256(person_lineages),
+    }
 
 
 def _normalize_sampled_household_mass(
@@ -472,6 +537,7 @@ def assemble_stacked_spine(
             },
         }
 
+    acs_native_group_quarters = _acs_native_group_quarters_receipt(sampled_acs)
     assembled = assemble_spines(
         {
             BASE_ASEC_SUPPORT_CHANNEL: sampled_asec,
@@ -495,6 +561,7 @@ def assemble_stacked_spine(
         },
         "mass_anchor_channel": mass_anchor_channel,
         "weight_harmonization": harmonization,
+        "acs_native_group_quarters": acs_native_group_quarters,
     }
     # The assembly metadata is preserved in full and augmented with the stack
     # manifest; the mass history is carried unchanged from the same source.
@@ -622,6 +689,294 @@ def _validate_survey_sample_receipt(
             )
 
 
+def _validated_acs_native_group_quarters_masks(
+    frame: Frame,
+    manifest: Mapping[str, object],
+    *,
+    boundary: str,
+) -> tuple[pd.Series, pd.Series]:
+    """Prove live ACS GQ classifications against assembly-bound lineages."""
+
+    receipt = manifest.get("acs_native_group_quarters")
+    required_receipt_keys = {
+        "version",
+        "source_channel",
+        "selection",
+        "one_person_per_household",
+        "tenure_authority",
+        "household_count",
+        "person_count",
+        "household_spine_source_ids_sha256",
+        "person_spine_lineages_sha256",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != required_receipt_keys:
+        raise ValueError(
+            f"{boundary}: stacked spine native ACS group-quarters lineage "
+            "receipt is absent or malformed."
+        )
+    if (
+        receipt.get("version") != _ACS_NATIVE_GQ_LINEAGE_VERSION
+        or receipt.get("source_channel") != ACS_STACKED_SUPPORT_CHANNEL
+        or receipt.get("selection") != _ACS_NATIVE_GQ_SELECTION
+        or receipt.get("one_person_per_household") is not True
+        or receipt.get("tenure_authority")
+        != "source_null_and_live_null_all_clone_roles"
+    ):
+        raise ValueError(
+            f"{boundary}: stacked spine native ACS group-quarters lineage "
+            "receipt declares unsupported authority."
+        )
+    for receipt_field in ("household_count", "person_count"):
+        value = receipt.get(receipt_field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"{boundary}: stacked spine native ACS group-quarters "
+                f"{receipt_field} "
+                f"must be a non-negative integer, got {value!r}."
+            )
+    for receipt_field in (
+        "household_spine_source_ids_sha256",
+        "person_spine_lineages_sha256",
+    ):
+        value = receipt.get(receipt_field)
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise ValueError(
+                f"{boundary}: stacked spine native ACS group-quarters "
+                f"{receipt_field} "
+                "must be a lowercase SHA-256 digest."
+            )
+
+    household = frame.table("household")
+    person = frame.table("person")
+    required_household = {
+        "household_id",
+        "TYPEHUGQ",
+        "tenure_type",
+        spine_source_id_column("household"),
+        support_source_id_column("household"),
+        support_channel_column("household"),
+        support_clone_index_column("household"),
+    }
+    required_person = {
+        "person_household_id",
+        spine_source_id_column("person"),
+        support_channel_column("person"),
+        support_clone_index_column("person"),
+    }
+    missing_household = sorted(required_household - set(household))
+    missing_person = sorted(required_person - set(person))
+    if missing_household or missing_person:
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters lineage cannot be "
+            f"validated; missing_household={missing_household}, "
+            f"missing_person={missing_person}."
+        )
+
+    household_channel = household[support_channel_column("household")].astype(str)
+    household_clone = pd.to_numeric(
+        household[support_clone_index_column("household")], errors="raise"
+    ).astype("int64")
+    acs_household = household_channel.eq(ACS_STACKED_SUPPORT_CHANNEL)
+    native_acs_household = acs_household & household_clone.eq(0)
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    invalid_kind = acs_household & ~kind.isin((1, 2, 3))
+    if invalid_kind.any():
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters lineage has "
+            f"{int(invalid_kind.sum())} row(s) without TYPEHUGQ 1/2/3."
+        )
+    gq_household = acs_household & kind.isin((2, 3))
+    nonnull_gq_tenure = gq_household & household["tenure_type"].notna()
+    if nonnull_gq_tenure.any():
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters lineage has "
+            f"{int(nonnull_gq_tenure.sum())} row(s) with nonnull tenure."
+        )
+    native_gq_household = native_acs_household & gq_household
+    native_household_ids = np.sort(
+        household.loc[
+            native_gq_household,
+            spine_source_id_column("household"),
+        ].to_numpy(dtype=np.int64)
+    )
+    if (
+        len(native_household_ids) != receipt["household_count"]
+        or _ids_sha256(native_household_ids)
+        != receipt["household_spine_source_ids_sha256"]
+    ):
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters household lineage "
+            "differs from its assembly-bound count or digest."
+        )
+
+    native_support_ids = household.loc[
+        native_acs_household,
+        support_source_id_column("household"),
+    ]
+    if native_support_ids.duplicated().any():
+        raise ValueError(
+            f"{boundary}: live native ACS household support lineages are not unique."
+        )
+    native_classification = pd.Series(
+        gq_household.loc[native_acs_household].to_numpy(dtype=bool),
+        index=native_support_ids.to_numpy(dtype=np.int64),
+    )
+    native_spine_source_by_support = pd.Series(
+        household.loc[
+            native_acs_household,
+            spine_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+        index=native_support_ids.to_numpy(dtype=np.int64),
+    )
+    live_acs_support_ids = household.loc[
+        acs_household,
+        support_source_id_column("household"),
+    ]
+    expected_classification = live_acs_support_ids.map(native_classification)
+    expected_spine_source = live_acs_support_ids.map(native_spine_source_by_support)
+    if expected_classification.isna().any() or not np.array_equal(
+        expected_classification.to_numpy(dtype=bool),
+        gq_household.loc[acs_household].to_numpy(dtype=bool),
+    ):
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters classification differs across "
+            "clone roles from its assembly-bound native lineage."
+        )
+    if expected_spine_source.isna().any() or not np.array_equal(
+        expected_spine_source.to_numpy(dtype=np.int64),
+        household.loc[
+            acs_household,
+            spine_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+    ):
+        raise ValueError(
+            f"{boundary}: live ACS support/raw household lineage pairs differ "
+            "from their assembly-bound native lineage."
+        )
+    native_pairs = set(
+        zip(
+            native_support_ids.to_numpy(dtype=np.int64),
+            household.loc[
+                native_acs_household,
+                spine_source_id_column("household"),
+            ].to_numpy(dtype=np.int64),
+            strict=True,
+        )
+    )
+    for clone_role in sorted(int(value) for value in household_clone.unique()):
+        role = acs_household & household_clone.eq(clone_role)
+        role_pairs = list(
+            zip(
+                household.loc[
+                    role,
+                    support_source_id_column("household"),
+                ].to_numpy(dtype=np.int64),
+                household.loc[
+                    role,
+                    spine_source_id_column("household"),
+                ].to_numpy(dtype=np.int64),
+                strict=True,
+            )
+        )
+        if len(role_pairs) != len(set(role_pairs)):
+            raise ValueError(
+                f"{boundary}: live ACS household lineages are not unique in "
+                f"clone role {clone_role}."
+            )
+        if (
+            clone_role == PUF_TAX_DETAIL_CLONE_INDEX
+            and PUF_CLONE_ATTACHMENT_MANIFEST_KEY not in frame.metadata
+            and set(role_pairs) != native_pairs
+        ):
+            raise ValueError(
+                f"{boundary}: unreceipted ACS clone role {clone_role} does not "
+                "exactly preserve every native support/raw lineage pair."
+            )
+    attachment = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
+    if attachment is not None:
+        if not isinstance(attachment, Mapping):
+            raise ValueError(f"{boundary}: clone attachment receipt is malformed.")
+        detail = household_clone.eq(PUF_TAX_DETAIL_CLONE_INDEX)
+        selected_support_ids = np.sort(
+            household.loc[
+                detail,
+                support_source_id_column("household"),
+            ].to_numpy(dtype=np.int64)
+        )
+        if attachment.get("realized_household_count") != int(
+            len(selected_support_ids)
+        ) or attachment.get("selected_household_source_ids_sha256") != _ids_sha256(
+            selected_support_ids
+        ):
+            raise ValueError(
+                f"{boundary}: live clone-1 household lineages differ from the "
+                "attachment-bound selection count or digest."
+            )
+
+    person_channel = person[support_channel_column("person")].astype(str)
+    person_clone = pd.to_numeric(
+        person[support_clone_index_column("person")], errors="raise"
+    ).astype("int64")
+    native_gq_household_live_ids = household.loc[native_gq_household, "household_id"]
+    native_gq_person = (
+        person_channel.eq(ACS_STACKED_SUPPORT_CHANNEL)
+        & person_clone.eq(0)
+        & person["person_household_id"].isin(native_gq_household_live_ids)
+    )
+    household_spine_source_by_live_id = pd.Series(
+        household[spine_source_id_column("household")].to_numpy(dtype=np.int64),
+        index=household["household_id"].to_numpy(dtype=np.int64),
+    )
+    native_person_parent_sources = person.loc[
+        native_gq_person, "person_household_id"
+    ].map(household_spine_source_by_live_id)
+    if native_person_parent_sources.isna().any():
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters person parent lineage "
+            "cannot be resolved."
+        )
+    native_person_lineages = np.column_stack(
+        (
+            person.loc[
+                native_gq_person,
+                spine_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+            native_person_parent_sources.to_numpy(dtype=np.int64),
+        )
+    )
+    if len(native_person_lineages):
+        native_person_lineages = native_person_lineages[
+            np.lexsort((native_person_lineages[:, 1], native_person_lineages[:, 0]))
+        ]
+    else:
+        native_person_lineages = native_person_lineages.reshape(0, 2)
+    if (
+        len(native_person_lineages) != receipt["person_count"]
+        or _integer_rows_sha256(native_person_lineages)
+        != receipt["person_spine_lineages_sha256"]
+    ):
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters person lineage differs "
+            "from its assembly-bound count or digest."
+        )
+
+    gq_household_live_ids = household.loc[gq_household, "household_id"]
+    gq_person = person_channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & person[
+        "person_household_id"
+    ].isin(gq_household_live_ids)
+    linked_counts = person.loc[gq_person, "person_household_id"].value_counts()
+    if len(linked_counts) != int(gq_household.sum()) or not linked_counts.eq(1).all():
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters lineage requires exactly one "
+            "linked person per household in every clone role."
+        )
+    return gq_household, gq_person
+
+
 def validate_stacked_spine_frame(
     frame: Frame,
     *,
@@ -719,6 +1074,12 @@ def validate_stacked_spine_frame(
             boundary=boundary,
             require_normalization=version == _STACKED_SPINE_MANIFEST_VERSION,
         )
+
+    _validated_acs_native_group_quarters_masks(
+        frame,
+        manifest,
+        boundary=boundary,
+    )
 
     household = frame.table("household")
     channel_values = household[support_channel_column("household")].astype(str)
@@ -843,6 +1204,17 @@ def _harmonization_receipt(
 def _ids_sha256(ids: np.ndarray) -> str:
     payload = json.dumps(
         [int(value) for value in np.asarray(ids).tolist()],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _integer_rows_sha256(rows: np.ndarray) -> str:
+    values = np.asarray(rows, dtype=np.int64)
+    if values.ndim != 2:
+        raise ValueError("Lineage digest rows must be a two-dimensional array.")
+    payload = json.dumps(
+        [[int(value) for value in row] for row in values.tolist()],
         separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode()).hexdigest()
@@ -3244,11 +3616,20 @@ def _gap_fill_absence_rule_mask(
             f"recipient absence rule {rule.rule_id!r}."
         )
 
+    manifest = frame.metadata.get(STACKED_SPINE_MANIFEST_KEY)
+    if not isinstance(manifest, Mapping):
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} requires the stacked "
+            "assembly manifest."
+        )
+    gq_households, mask = _validated_acs_native_group_quarters_masks(
+        frame,
+        manifest,
+        boundary=f"gap-fill absence rule {rule.rule_id!r}",
+    )
     household = frame.table("household")
     person = frame.table("person")
     required_household = {
-        "household_id",
-        "TYPEHUGQ",
         "tenure_type",
         support_channel_column("household"),
     }
@@ -3266,17 +3647,6 @@ def _gap_fill_absence_rule_mask(
             f"missing_household={missing_household}, missing_person={missing_person}."
         )
 
-    household_channel = household[support_channel_column("household")].astype(str)
-    acs_households = household_channel.eq(ACS_STACKED_SUPPORT_CHANNEL)
-    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
-    invalid_kind = acs_households & ~kind.isin((1, 2, 3))
-    if invalid_kind.any():
-        raise ValueError(
-            f"Gap-fill absence rule {rule.rule_id!r} found "
-            f"{int(invalid_kind.sum())} ACS household row(s) without a valid "
-            "TYPEHUGQ 1/2/3 source classification."
-        )
-    gq_households = acs_households & kind.isin((2, 3))
     nonnull_gq_tenure = gq_households & household["tenure_type"].notna()
     if nonnull_gq_tenure.any():
         raise ValueError(
@@ -3284,17 +3654,7 @@ def _gap_fill_absence_rule_mask(
             f"{int(nonnull_gq_tenure.sum())} ACS group-quarters household row(s) "
             "with synthesized tenure."
         )
-    gq_household_ids = household.loc[gq_households, "household_id"]
     person_channel = person[support_channel_column("person")].astype(str)
-    mask = person_channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & person[
-        "person_household_id"
-    ].isin(gq_household_ids)
-    person_counts = person.loc[mask, "person_household_id"].value_counts()
-    if len(person_counts) != int(gq_households.sum()) or not person_counts.eq(1).all():
-        raise ValueError(
-            f"Gap-fill absence rule {rule.rule_id!r} requires exactly one linked "
-            "person per ACS group-quarters household."
-        )
 
     clone_index = pd.to_numeric(
         person[support_clone_index_column("person")], errors="raise"

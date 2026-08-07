@@ -110,8 +110,10 @@ are allowed only when named by the ACS native-input receipt.
    both survey arms with the single `sample_fraction` and `sample_seed`,
    restores each sample to its full-source design-weight mass, and assembles
    one origin-labeled frame. Standard rungs are `f001`, `f010`, and `f100`;
-   the manifest binds the fraction, seed, exact realized ASEC/ACS counts, and
-   selected-lineage digests. The full PUF remains a donor and is never sampled.
+   the manifest binds the fraction, seed, exact realized ASEC/ACS counts,
+   selected-lineage digests, and the sampled native ACS TYPEHUGQ 2/3 household
+   and person lineage digests. The full PUF remains a donor and is never
+   sampled.
 2. The spine-blind source-preparation chain derives the native predictors and
    pre-clone operator outputs needed by the early declared cross-origin fills.
    Historical kernels run on the raw-`PERIDNUM` CPS/ASEC availability
@@ -129,10 +131,12 @@ are allowed only when named by the ACS native-input receipt.
    absence, and native donor cells must remain byte-identical. Every declared
    target resolves through the operator-output registry to a producer channel
    and stage that must strictly precede its direction's check. ACS TYPEHUGQ
-   2/3 people remain null only when their exact live mask matches the declared
-   group-quarters structural-absence rule; filling those rows with zero or a
-   donor housing value would synthesize an unobserved housing unit. The #608
-   per-target banks sit beneath the stack-bound checkpoint identity.
+   2/3 people remain null only when their live mask matches the assembly-bound
+   native group-quarters lineage in every clone role and the declared
+   structural-absence rule; relabeling a housing unit later cannot create
+   absence authority. Filling those rows with zero or a donor housing value
+   would synthesize an unobserved housing unit. The #608 per-target banks sit
+   beneath the stack-bound checkpoint identity.
 4. `run_stacked_puf_pass(...)` attaches the separately controlled PUF clone
    arm (`clone_attachment_fraction`, default `1.0`) and runs one primary QRF
    pass across both survey origins. PUF donors stay full. The clone-2
@@ -440,11 +444,14 @@ the immutable effective-support floor are explicitly untestable and receipt
 the production tolerances.
 
 The one canonical applicability exception is ACS group-quarters rent. Its
-rule is part of the gap-fill-plan digest, requires the live
-`pre_subsidy_rent` null mask to equal linked ACS TYPEHUGQ 2/3 people across
-every clone role, and receipts those cells as recipient-exact structural
-absence. Completeness proves the exact mask; the battery excludes only the
-same clone-0 cells before applying the unchanged support floor and tolerances.
+rule is part of the gap-fill-plan digest. Assembly separately binds the native
+sampled TYPEHUGQ 2/3 household and person lineage counts and SHA-256 digests;
+each later boundary proves the live native set and every clone's classification
+against that frozen lineage. The `pre_subsidy_rent` null mask must equal those
+linked people across every clone role and receipts those cells as
+recipient-exact structural absence. Completeness proves the exact mask; the
+battery excludes only the same clone-0 cells before applying the unchanged
+support floor and tolerances.
 
 Both gates return batched `GateResult` failures. Calibration cannot consume a
 frame whose completeness or by-origin gate failed, and no source-specific
