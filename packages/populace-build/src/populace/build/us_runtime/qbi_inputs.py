@@ -274,6 +274,7 @@ def us_qbi_reconciliation_change_receipt(
             "US QBI reconciliation change receipt lacks declared person column(s): "
             f"{missing}."
         )
+    preservation = _assert_qbi_undeclared_surface_unchanged(before, after)
     base_scope, universe_receipt = _qbi_reconciliation_scope(before)
     structural = ~base_scope
     before_values = before_person.loc[:, US_QBI_RECONCILED_PERSON_COLUMNS]
@@ -295,25 +296,124 @@ def us_qbi_reconciliation_change_receipt(
         "version": 1,
         "declared_person_columns": list(US_QBI_RECONCILED_PERSON_COLUMNS),
         "recipient_source_universe": universe_receipt,
-        "input_person_values_sha256": _qbi_person_values_sha256(before_person),
-        "output_person_values_sha256": _qbi_person_values_sha256(after_person),
+        "input_person_columns": list(before_person.columns),
+        "input_person_table_sha256": _qbi_person_values_sha256(
+            before_person,
+            columns=tuple(before_person.columns),
+        ),
+        "output_declared_person_values_sha256": _qbi_person_values_sha256(
+            after_person,
+            columns=US_QBI_RECONCILED_PERSON_COLUMNS,
+        ),
         "changed_person_rows": int(changed_rows.sum()),
         "base_self_employment_changed_rows": int((~base_equal).sum()),
         "structurally_absent_base_source_changed_rows": structural_base_changes,
+        "undeclared_surface_preservation": preservation,
     }
     receipt["sha256"] = _qbi_receipt_sha256(receipt)
     return receipt
 
 
-def _qbi_person_values_sha256(person: pd.DataFrame) -> str:
+def _assert_qbi_undeclared_surface_unchanged(
+    before: Frame,
+    after: Frame,
+) -> dict[str, object]:
+    """Fail if the whole-pool kernel changed anything outside its declaration."""
+
+    if before.schema != after.schema:
+        raise ValueError("US QBI reconciliation changed the frame schema.")
+    if before.entities != after.entities:
+        raise ValueError("US QBI reconciliation changed the entity inventory.")
+    if before.links != after.links:
+        raise ValueError("US QBI reconciliation changed the link-table inventory.")
+    if before.weighted_entities != after.weighted_entities:
+        raise ValueError("US QBI reconciliation changed the weighted-entity inventory.")
+
+    person_entity = before.schema.person_entity
+    before_person = before.table(person_entity)
+    after_person = after.table(person_entity)
+    if list(before_person.columns) != list(after_person.columns):
+        raise ValueError("US QBI reconciliation changed the person-column inventory.")
+    declared = set(US_QBI_RECONCILED_PERSON_COLUMNS)
+    undeclared_person_columns = [
+        column for column in before_person.columns if column not in declared
+    ]
+    if not before_person.loc[:, undeclared_person_columns].equals(
+        after_person.loc[:, undeclared_person_columns]
+    ):
+        changed = [
+            column
+            for column in undeclared_person_columns
+            if not before_person[column].equals(after_person[column])
+        ]
+        raise ValueError(
+            f"US QBI reconciliation mutated undeclared person column(s): {changed}."
+        )
+
+    changed_entities = [
+        entity
+        for entity in before.entities
+        if entity != person_entity
+        and not before.table(entity).equals(after.table(entity))
+    ]
+    if changed_entities:
+        raise ValueError(
+            "US QBI reconciliation mutated undeclared entity table(s): "
+            f"{changed_entities}."
+        )
+    changed_links = [
+        link for link in before.links if not before.link(link).equals(after.link(link))
+    ]
+    if changed_links:
+        raise ValueError(
+            f"US QBI reconciliation mutated undeclared link table(s): {changed_links}."
+        )
+    changed_weights = []
+    for entity in before.weighted_entities:
+        before_weights = before.weights_for(entity)
+        after_weights = after.weights_for(entity)
+        if (
+            before_weights.kind != after_weights.kind
+            or before_weights.values.dtype != after_weights.values.dtype
+            or before_weights.values.shape != after_weights.values.shape
+            or before_weights.values.tobytes() != after_weights.values.tobytes()
+        ):
+            changed_weights.append(entity)
+    if changed_weights:
+        raise ValueError(
+            "US QBI reconciliation mutated undeclared weight vector(s): "
+            f"{changed_weights}."
+        )
+    if not before.strata.equals(after.strata):
+        raise ValueError("US QBI reconciliation mutated undeclared strata.")
+    if before.mass_log != after.mass_log:
+        raise ValueError("US QBI reconciliation mutated the undeclared mass log.")
+    if before.metadata != after.metadata:
+        raise ValueError("US QBI reconciliation mutated undeclared frame metadata.")
+    return {
+        "undeclared_person_columns_verified": len(undeclared_person_columns),
+        "non_person_entity_tables_verified": len(before.entities) - 1,
+        "link_tables_verified": len(before.links),
+        "weight_vectors_verified": len(before.weighted_entities),
+        "strata_verified": True,
+        "mass_log_verified": True,
+        "metadata_verified": True,
+    }
+
+
+def _qbi_person_values_sha256(
+    person: pd.DataFrame,
+    *,
+    columns: tuple[str, ...],
+) -> str:
     id_column = "person_id" if "person_id" in person else None
-    columns = [*US_QBI_RECONCILED_PERSON_COLUMNS]
-    if id_column is not None:
-        columns.insert(0, id_column)
-    values = person.loc[:, columns]
+    hashed_columns = list(columns)
+    if id_column is not None and id_column not in hashed_columns:
+        hashed_columns.insert(0, id_column)
+    values = person.loc[:, hashed_columns]
     header = {
-        "columns": columns,
-        "dtypes": [str(values[column].dtype) for column in columns],
+        "columns": hashed_columns,
+        "dtypes": [str(values[column].dtype) for column in hashed_columns],
     }
     digest = hashlib.sha256(
         json.dumps(header, sort_keys=True, separators=(",", ":")).encode()

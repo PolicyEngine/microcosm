@@ -1022,8 +1022,8 @@ def test_puf_finalize_and_derive_preserve_only_native_acs_child_sources() -> Non
         == 2
     )
     assert qbi_receipt["structurally_absent_base_source_changed_rows"] == 0
-    assert len(qbi_receipt["input_person_values_sha256"]) == 64
-    assert len(qbi_receipt["output_person_values_sha256"]) == 64
+    assert len(qbi_receipt["input_person_table_sha256"]) == 64
+    assert len(qbi_receipt["output_declared_person_values_sha256"]) == 64
 
 
 @pytest.mark.parametrize(

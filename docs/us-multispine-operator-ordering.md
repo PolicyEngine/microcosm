@@ -185,7 +185,9 @@ are allowed only when named by the ACS native-input receipt.
    blank. That narrow source exception does not suppress independent QBI
    identities: every QBI detail row is still reconciled and checked. The
    operator declares the base self-employment rewrite alongside its QBI
-   outputs and receipts pre/post value digests, changed-row counts, an exact
+   outputs and receipts a whole-person input-table digest, a declared-output
+   digest, changed-row counts, exact preservation of every undeclared entity,
+   link, weight, stratum, mass-log, and metadata surface, an exact
    structural-source exclusion count, and zero forbidden structural-source
    mutations. The tool
    retains the existing `assembled`, `transferred`, and `simulated` #599

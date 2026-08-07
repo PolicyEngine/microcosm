@@ -23,6 +23,7 @@ from populace.build.us_runtime.qbi_inputs import (
     us_qbi_inputs_signal_gate,
     us_qbi_inputs_stage_spec,
     us_qbi_inputs_summary,
+    us_qbi_reconciliation_change_receipt,
     us_qbi_reconciliation_universe_receipt,
     with_us_qbi_input_reconciliation,
 )
@@ -269,6 +270,40 @@ def test_reconciliation_rejects_native_acs_in_universe_null() -> None:
 
     with pytest.raises(ValueError, match="in_universe_null_rows=1"):
         with_us_qbi_input_reconciliation(frame)
+
+
+def test_change_receipt_binds_read_only_qbi_input_columns() -> None:
+    baseline = _stacked_qbi_universe_frame()
+    changed = _stacked_qbi_universe_frame()
+    changed.table("person").loc[0, "partnership_income"] = -500.0
+
+    baseline_output = with_us_qbi_input_reconciliation(baseline)
+    changed_output = with_us_qbi_input_reconciliation(changed)
+    baseline_receipt = us_qbi_reconciliation_change_receipt(baseline, baseline_output)
+    changed_receipt = us_qbi_reconciliation_change_receipt(changed, changed_output)
+
+    pd.testing.assert_frame_equal(
+        baseline_output.table("person").loc[:, US_QBI_OUTPUT_COLUMNS],
+        changed_output.table("person").loc[:, US_QBI_OUTPUT_COLUMNS],
+    )
+    assert (
+        baseline_receipt["output_declared_person_values_sha256"]
+        == changed_receipt["output_declared_person_values_sha256"]
+    )
+    assert (
+        baseline_receipt["input_person_table_sha256"]
+        != changed_receipt["input_person_table_sha256"]
+    )
+    assert baseline_receipt["sha256"] != changed_receipt["sha256"]
+
+
+def test_change_receipt_rejects_undeclared_output_mutation() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled = with_us_qbi_input_reconciliation(frame)
+    reconciled.table("person").loc[0, "partnership_income"] = 999.0
+
+    with pytest.raises(ValueError, match="undeclared person column"):
+        us_qbi_reconciliation_change_receipt(frame, reconciled)
 
 
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:
