@@ -23,15 +23,16 @@ from populace.build.uk_runtime import (
     clone_entity_frame,
     clone_uk_dataset_tables_with_rowwise_geography,
     clone_uk_dataset_with_rowwise_geography,
-    load_uk_national_dataset,
-    write_uk_national_dataset,
+    read_uk_single_year_weight_metadata,
+    uk_national_frame,
+    validate_uk_rowwise_dataset_tables,
+    write_uk_national_frame,
     write_uk_rowwise_dataset,
 )
 from populace.build.uk_runtime.national_build import (
     UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
-    UKNationalDataset,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.frame import Frame, MassChangeRecord, WeightKind
 
 
 def household_frame() -> pd.DataFrame:
@@ -109,13 +110,13 @@ def _write_legacy_h5(path, household: pd.DataFrame | None = None) -> None:
         )
 
 
-def _importance_dataset() -> UKNationalDataset:
-    return UKNationalDataset(
+def _importance_dataset() -> Frame:
+    return uk_national_frame(
         person=person_frame(),
         benunit=benunit_frame(),
         household=household_frame(),
         time_period="2023",
-        household_weight_kind=WeightKind.IMPORTANCE,
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -132,7 +133,7 @@ def test_clone_h5_carries_importance_weight_kind_and_mass_log(tmp_path) -> None:
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
     staging = tmp_path / "staging.h5"
-    write_uk_national_dataset(_importance_dataset(), staging)
+    write_uk_national_frame(_importance_dataset(), staging)
 
     output = tmp_path / "rowwise.h5"
     result = clone_uk_dataset_with_rowwise_geography(
@@ -153,12 +154,18 @@ def test_clone_h5_carries_importance_weight_kind_and_mass_log(tmp_path) -> None:
     assert clone_record.declared_factor == 1.0
     assert "n_clones=2" in clone_record.reason
 
-    # The national loader must accept the rowwise output and see the same
-    # weight-kind chain: carriage is proven by the seam's own reader.
-    reloaded = load_uk_national_dataset(output)
-    assert reloaded.household_weight_kind is WeightKind.IMPORTANCE
-    assert reloaded.mass_log == result.mass_log
-    assert reloaded.household["household_weight"].sum() == pytest.approx(30.0)
+    # The rowwise seam's own reader sees the same weight-kind chain, and the
+    # written bytes still satisfy the rowwise structural validator — the
+    # reader-side teeth the retired national loader used to provide here.
+    stored_kind, stored_mass_log = read_uk_single_year_weight_metadata(output)
+    assert stored_kind is WeightKind.IMPORTANCE
+    assert stored_mass_log == result.mass_log
+    with pd.HDFStore(output, mode="r") as store:
+        assert store["household"]["household_weight"].sum() == pytest.approx(30.0)
+        validate_uk_rowwise_dataset_tables(
+            store["person"], store["benunit"], store["household"]
+        )
+        assert len(store["person"]) == len(result.person)
 
 
 def test_clone_legacy_h5_defaults_design_and_writes_explicit_attrs(tmp_path) -> None:
@@ -339,7 +346,9 @@ def test_write_is_atomic_when_metadata_write_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     pytest.importorskip("tables")
-    from populace.build.uk_runtime import rowwise_dataset as module
+    # The rowwise writer routes through the national seam's shared physical
+    # writer, so the metadata-failure seam now lives there.
+    from populace.build.uk_runtime import national_build as module
 
     result = clone_uk_dataset_tables_with_rowwise_geography(
         person=person_frame(),
@@ -350,7 +359,7 @@ def test_write_is_atomic_when_metadata_write_fails(
         time_period="2023",
     )
 
-    def broken_metadata_write(path, dataset) -> None:
+    def broken_metadata_write(path, *, weight_kind, mass_log) -> None:
         raise RuntimeError("simulated metadata failure")
 
     monkeypatch.setattr(module, "_write_weight_metadata", broken_metadata_write)

@@ -1,0 +1,106 @@
+{
+  "keys_equal": true,
+  "keys_only_left": [],
+  "keys_only_right": [],
+  "left": "~/Desktop/PolicyEngine/data/ukds/acceptance/old/roundtrip_old.h5",
+  "left_sha256": "e084b0d83d03f250e082fccb726691908f7c59b35d35140ad3ee7ecb5792cece",
+  "payload_identical": true,
+  "right": "~/Desktop/PolicyEngine/data/ukds/acceptance/new/roundtrip_new.h5",
+  "right_sha256": "24395fed14719140f27927a327a569b43d14c742032032b28752e0c6e73da121",
+  "root_attrs": {
+    "attrs_only_left": [],
+    "attrs_only_right": [],
+    "attrs_with_differing_values": [],
+    "names_in_order_equal": true
+  },
+  "tables": {
+    "benunit": {
+      "column_order_equal": true,
+      "columns_only_left": [],
+      "columns_only_right": [],
+      "dtype_mismatches": {},
+      "index_dtype_equal": true,
+      "index_name_equal": true,
+      "index_type_equal": true,
+      "index_values_equal": true,
+      "payload_equal": true,
+      "row_count_equal": true,
+      "rows": {
+        "left": 618980,
+        "right": 618980
+      },
+      "stored_kind": {
+        "left": "DataFrame",
+        "right": "DataFrame"
+      },
+      "stored_kind_equal": true,
+      "value_mismatch_rows_by_column": {}
+    },
+    "household": {
+      "column_order_equal": true,
+      "columns_only_left": [],
+      "columns_only_right": [],
+      "dtype_mismatches": {},
+      "index_dtype_equal": true,
+      "index_name_equal": true,
+      "index_type_equal": true,
+      "index_values_equal": true,
+      "payload_equal": true,
+      "row_count_equal": true,
+      "rows": {
+        "left": 535080,
+        "right": 535080
+      },
+      "stored_kind": {
+        "left": "DataFrame",
+        "right": "DataFrame"
+      },
+      "stored_kind_equal": true,
+      "value_mismatch_rows_by_column": {}
+    },
+    "person": {
+      "column_order_equal": true,
+      "columns_only_left": [],
+      "columns_only_right": [],
+      "dtype_mismatches": {},
+      "index_dtype_equal": true,
+      "index_name_equal": true,
+      "index_type_equal": true,
+      "index_values_equal": true,
+      "payload_equal": true,
+      "row_count_equal": true,
+      "rows": {
+        "left": 1157100,
+        "right": 1157100
+      },
+      "stored_kind": {
+        "left": "DataFrame",
+        "right": "DataFrame"
+      },
+      "stored_kind_equal": true,
+      "value_mismatch_rows_by_column": {}
+    },
+    "time_period": {
+      "column_order_equal": true,
+      "columns_only_left": [],
+      "columns_only_right": [],
+      "dtype_mismatches": {},
+      "index_dtype_equal": true,
+      "index_name_equal": true,
+      "index_type_equal": true,
+      "index_values_equal": true,
+      "payload_equal": true,
+      "row_count_equal": true,
+      "rows": {
+        "left": 1,
+        "right": 1
+      },
+      "stored_kind": {
+        "left": "Series",
+        "right": "Series"
+      },
+      "stored_kind_equal": true,
+      "value_mismatch_rows_by_column": {}
+    }
+  }
+}

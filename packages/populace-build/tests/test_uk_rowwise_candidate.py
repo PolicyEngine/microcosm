@@ -14,11 +14,11 @@ import pytest
 from populace.build.uk_runtime import (
     assemble_uk_oa_ladder,
     ladder_target_provenance,
-    load_uk_national_dataset,
     load_uk_oa_ladder,
-    write_uk_national_dataset,
+    read_uk_single_year_weight_metadata,
+    write_uk_national_frame,
 )
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_frame import uk_national_frame
 from populace.frame import MassChangeRecord, WeightKind
 
 
@@ -165,12 +165,12 @@ def _write_staging_h5(path: Path) -> None:
         }
     )
     benunit = pd.DataFrame({"benunit_id": [101, 201, 301, 401]})
-    dataset = UKNationalDataset(
+    dataset = uk_national_frame(
         person=person,
         benunit=benunit,
         household=household,
         time_period="2023",
-        household_weight_kind=WeightKind.IMPORTANCE,
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -181,7 +181,7 @@ def _write_staging_h5(path: Path) -> None:
             ),
         ),
     )
-    write_uk_national_dataset(dataset, path)
+    write_uk_national_frame(dataset, path)
 
 
 def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
@@ -226,23 +226,27 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     assert candidate_h5.exists()
     assert expected_sidecars <= {path.name for path in output_dir.iterdir()}
 
-    candidate = load_uk_national_dataset(candidate_h5)
-    assert candidate.household_weight_kind is WeightKind.CALIBRATED
-    assert candidate.household["source_year"].unique().tolist() == [2023]
-    assert set(candidate.household["source_household_key"]) == {
+    candidate_kind, candidate_mass_log = read_uk_single_year_weight_metadata(
+        candidate_h5
+    )
+    with pd.HDFStore(candidate_h5, mode="r") as store:
+        candidate_household = store["household"]
+    assert candidate_kind is WeightKind.CALIBRATED
+    assert candidate_household["source_year"].unique().tolist() == [2023]
+    assert set(candidate_household["source_household_key"]) == {
         "2023:1",
         "2023:2",
         "2023:3",
         "2023:4",
     }
-    assert len(candidate.mass_log) == 3
+    assert len(candidate_mass_log) == 3
     calibration_records = [
         record
-        for record in candidate.mass_log
+        for record in candidate_mass_log
         if "census_households/constituency" in record.reason
     ]
-    assert calibration_records == [candidate.mass_log[-1]]
-    assert candidate.mass_log[-1].declared_factor is None
+    assert calibration_records == [candidate_mass_log[-1]]
+    assert candidate_mass_log[-1].declared_factor is None
 
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["candidate_scope"] == "adjudicated_partial"
@@ -276,7 +280,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     mass_change = manifest["weights"]["calibration_mass_change"]
     assert mass_change["old_total"] == pytest.approx(33.0)
     assert mass_change["new_total"] == pytest.approx(
-        candidate.household["household_weight"].sum()
+        candidate_household["household_weight"].sum()
     )
     assert mass_change["relative_shift"] == pytest.approx(
         (mass_change["new_total"] - 33.0) / 33.0

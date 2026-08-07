@@ -47,11 +47,12 @@ import numpy as np
 from populace.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
-from populace.build.uk_runtime.national_build import load_uk_national_dataset
+from populace.build.uk_runtime.national_build import load_uk_national_frame
 from populace.build.uk_runtime.weighted_integrity import (
     uk_dataset_input_mass_totals,
     uk_qrf_tail_concentration_columns,
 )
+from populace.frame import engine_tables
 
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never
@@ -186,11 +187,14 @@ def _measure(
     *,
     minimum_count: int,
 ) -> dict[str, object]:
-    dataset = load_uk_national_dataset(path)
-    totals = uk_dataset_input_mass_totals(dataset)
+    frame, _provenance = load_uk_national_frame(path)
+    # The gate helpers are deliberately duck-typed (#611 owns their Frame
+    # typing); the materialized mapping satisfies them today.
+    tables = engine_tables(frame)
+    totals = uk_dataset_input_mass_totals(tables)
     declared = uk_hmrc_weighted_qrf_output_columns()
     values, weights, surface = uk_qrf_tail_concentration_columns(
-        dataset,
+        tables,
         output_columns=declared,
     )
     qrf_tail = {
@@ -208,9 +212,9 @@ def _measure(
         "sha256": _sha256(path),
         "size_bytes": path.stat().st_size,
         "entity_rows": {
-            "person": len(dataset.person),
-            "benunit": len(dataset.benunit),
-            "household": len(dataset.household),
+            "person": len(tables["person"]),
+            "benunit": len(tables["benunit"]),
+            "household": len(tables["household"]),
         },
         "input_mass_totals": dict(sorted(totals.items())),
         "qrf_surface": surface,
