@@ -1622,7 +1622,12 @@ def test_legacy_two_spine_fixture_is_origin_main_byte_exact(
 
     assert order == ["impute", "derive", "seed", "simulate"]
     assert hashlib.sha256(artifact.read_bytes()).hexdigest() == (
-        "8db75afe501cde41352c7db53fc062bd7628dd5033fe578122aee5fa6eb70af4"
+        # Rebased once on the import-entry branch: frame checkpoints now
+        # record string storage and NA markers explicitly (environment-
+        # independent restores, needed once populace-build ships pyarrow),
+        # which adds two metadata fields per StringDtype column. Verified
+        # identical on CPython 3.13/3.14, Linux CI, and macOS.
+        "12e937914d739f5bd9a1a59df7b6de7ae5458f06cdc6c3b93a09ddf4ee47ecbd"
     )
 
 
@@ -1737,9 +1742,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     # legacy entrypoint against the same fixture path and publication run ID;
     # the pool tool remains unchanged through the e6be79a7 transplant base.
     assert actual == {
-        "pool_h5": "4e41275bb5f64def804b50d76c62d655184b3808283e965490e7733b55d05450",
+        # Rebased with the fixture golden above (explicit string-storage
+        # checkpoint metadata).
+        "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        "manifest": "579efdb113ff324fc42bac8ecc443a68fc9d885268f042227ebec7ea7b67e468",
+        "manifest": "94604e72e589675f89013d9d8eb9518abd32832d1ff53045fb7ae06e48c1b146",
     }
 
 
