@@ -41,6 +41,7 @@ import pickle
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
@@ -53,11 +54,37 @@ from populace.build.us_runtime.acs_transfer import (
     AcsTransferResult,
     AcsTransferTargetBank,
     TargetFamilies,
-    declared_acs_transfer_target_families,
     transfer_acs_inputs,
+)
+from populace.build.us_runtime.multispine_pool import (
+    POOL_SPINE_AGREEMENT_REGISTRY,
+    pool_transfer_target_families,
+)
+from populace.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+    transfer_puf_capital_gains_tail,
+    validate_puf_capital_gains_tail_manifest,
+)
+from populace.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_MANIFEST_FILENAME,
+    finalize_primary_puf_qrf_chain,
+    initialize_primary_puf_qrf_chain,
+    run_primary_puf_qrf_chain,
 )
 from populace.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    US_PUF_SUPPORT_FIT_NAME,
+    bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
     validate_puf_clone_attachment,
@@ -69,15 +96,18 @@ from populace.build.us_runtime.support_provenance import (
     spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
+    support_source_id_column,
     validate_assembly_provenance,
 )
-from populace.frame import US_SCHEMA, Frame
+from populace.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
 
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
     "CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY",
+    "CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY",
     "CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE",
     "CANONICAL_STACKED_DECLARED_SURFACE",
+    "CANONICAL_STACKED_GAP_FILL_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_PLAN",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "ORIGIN_BATTERY_METRIC_KINDS",
@@ -91,12 +121,15 @@ __all__ = [
     "StackedPufPassResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
+    "assert_stacked_tail_cells_preserved",
     "by_origin_battery",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
+    "prepare_stacked_tail_derivation",
     "sample_acs_households",
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
+    "stacked_spine_authority_receipt",
     "validate_stacked_spine_frame",
 ]
 
@@ -112,7 +145,12 @@ DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES: Mapping[str, float] = {
 }
 
 STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
-_STACKED_SPINE_MANIFEST_VERSION = 1
+_LEGACY_STACKED_SPINE_MANIFEST_VERSION = 1
+_STACKED_SPINE_MANIFEST_VERSION = 2
+_SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS = {
+    _LEGACY_STACKED_SPINE_MANIFEST_VERSION,
+    _STACKED_SPINE_MANIFEST_VERSION,
+}
 _EXACT_COUNT_RULE = "floor(fraction * eligible)"
 _MASS_RTOL = 1e-9
 
@@ -138,6 +176,73 @@ class StackedSpineResult:
             )
         if not isinstance(self.receipt, Mapping):
             raise TypeError("StackedSpineResult.receipt must be a mapping.")
+
+
+def _sample_survey_households(
+    source: Frame,
+    *,
+    fraction: float,
+    seed: int,
+    source_name: str,
+) -> tuple[Frame, dict[str, object]]:
+    """Draw one seeded, whole-household survey sample with a receipt."""
+
+    if not isinstance(source, Frame):
+        raise TypeError(f"{source_name} must be a Frame, got {type(source).__name__}.")
+    if source.schema != US_SCHEMA:
+        raise ValueError(
+            f"{source_name} household sampling requires the US entity schema."
+        )
+    _validate_fraction(fraction)
+    _validate_seed(seed)
+    household_channel = support_channel_column("household")
+    if household_channel in source.table("household").columns:
+        raise ValueError(
+            f"{source_name} household sampling runs before assembly; the source "
+            f"frame already carries support provenance ({household_channel!r})."
+        )
+
+    household_ids = source.table("household")["household_id"].to_numpy()
+    eligible = int(len(household_ids))
+    incoming_mass = float(source.weights_for("household").total)
+    requested = int(math.floor(fraction * eligible))
+    if requested < 1:
+        raise ValueError(
+            f"{source_name} sample fraction {fraction!r} floors to zero households "
+            f"({_EXACT_COUNT_RULE} with eligible={eligible}); the stacked "
+            "spine requires at least one sampled household."
+        )
+
+    ordered_ids = np.sort(np.asarray(household_ids, copy=True))
+    if requested == eligible:
+        selected_ids = ordered_ids
+        sampled = source
+    else:
+        rng = np.random.default_rng(seed)
+        selected_ids = np.sort(rng.choice(ordered_ids, size=requested, replace=False))
+        person_mask = (
+            source.table("person")["person_household_id"].isin(selected_ids).to_numpy()
+        )
+        sampled = source.select(person_mask)
+
+    realized_ids = np.sort(sampled.table("household")["household_id"].to_numpy())
+    if not np.array_equal(realized_ids, selected_ids):
+        raise ValueError(
+            f"{source_name} household sampling realized a different household set "
+            "than it selected; whole-household selection failed."
+        )
+    receipt: dict[str, object] = {
+        "fraction": float(fraction),
+        "seed": int(seed),
+        "eligible_household_count": eligible,
+        "requested_household_count": requested,
+        "realized_household_count": int(len(realized_ids)),
+        "exact_count_rule": _EXACT_COUNT_RULE,
+        "selected_household_ids_sha256": _ids_sha256(selected_ids),
+        "incoming_household_mass": incoming_mass,
+        "sampled_household_mass": float(sampled.weights_for("household").total),
+    }
+    return sampled, receipt
 
 
 def sample_acs_households(
@@ -171,79 +276,74 @@ def sample_acs_households(
             households, which fails closed).
     """
 
-    if not isinstance(acs, Frame):
-        raise TypeError(f"acs must be a Frame, got {type(acs).__name__}.")
-    if acs.schema != US_SCHEMA:
-        raise ValueError("ACS household sampling requires the US entity schema.")
-    _validate_fraction(fraction)
-    _validate_seed(seed)
-    household_channel = support_channel_column("household")
-    if household_channel in acs.table("household").columns:
-        raise ValueError(
-            "ACS household sampling runs before assembly; the source frame "
-            f"already carries support provenance ({household_channel!r})."
-        )
+    return _sample_survey_households(
+        acs,
+        fraction=fraction,
+        seed=seed,
+        source_name="ACS",
+    )
 
-    household_ids = acs.table("household")["household_id"].to_numpy()
-    eligible = int(len(household_ids))
-    incoming_mass = float(acs.weights_for("household").total)
-    requested = int(math.floor(fraction * eligible))
-    if requested < 1:
-        raise ValueError(
-            f"ACS sample fraction {fraction!r} floors to zero households "
-            f"({_EXACT_COUNT_RULE} with eligible={eligible}); the stacked "
-            "spine requires at least one sampled household."
-        )
 
-    ordered_ids = np.sort(np.asarray(household_ids, copy=True))
-    if requested == eligible:
-        selected_ids = ordered_ids
-        sampled = acs
-    else:
-        rng = np.random.default_rng(seed)
-        selected_ids = np.sort(rng.choice(ordered_ids, size=requested, replace=False))
-        person_mask = (
-            acs.table("person")["person_household_id"].isin(selected_ids).to_numpy()
-        )
-        sampled = acs.select(person_mask)
+def _normalize_sampled_household_mass(
+    sampled: Frame,
+    *,
+    target_mass: float,
+    source_name: str,
+) -> tuple[Frame, float]:
+    """Restore one sampled survey arm to its full-source design-weight mass."""
 
-    realized_ids = np.sort(sampled.table("household")["household_id"].to_numpy())
-    if not np.array_equal(realized_ids, selected_ids):
+    weights = sampled.weights_for("household")
+    sampled_mass = float(weights.total)
+    if not np.isfinite(sampled_mass) or sampled_mass <= 0.0:
         raise ValueError(
-            "ACS household sampling realized a different household set than "
-            "it selected; whole-household selection failed."
+            f"{source_name} sampled household mass must be positive and finite."
         )
-    receipt: dict[str, object] = {
-        "fraction": float(fraction),
-        "seed": int(seed),
-        "eligible_household_count": eligible,
-        "requested_household_count": requested,
-        "realized_household_count": int(len(realized_ids)),
-        "exact_count_rule": _EXACT_COUNT_RULE,
-        "selected_household_ids_sha256": _ids_sha256(selected_ids),
-        "incoming_household_mass": incoming_mass,
-        "sampled_household_mass": float(sampled.weights_for("household").total),
-    }
-    return sampled, receipt
+    factor = float(target_mass / sampled_mass)
+    normalized_weights = weights.with_values(weights.values * factor, weights.kind)
+    mass_policy: str | MassChange = (
+        CONSERVE_MASS
+        if np.isclose(factor, 1.0, rtol=_MASS_RTOL, atol=0.0)
+        else MassChange(
+            factor=factor,
+            reason=(
+                f"composition-preserving {source_name} survey sampling "
+                "normalization to full-source household mass"
+            ),
+        )
+    )
+    normalized = sampled.with_weights(
+        "household",
+        normalized_weights,
+        mass=mass_policy,
+    )
+    return normalized, factor
 
 
 def assemble_stacked_spine(
     asec: Frame,
     acs: Frame,
     *,
-    acs_sample_fraction: float,
-    acs_sample_seed: int,
+    acs_sample_fraction: float | None = None,
+    acs_sample_seed: int | None = None,
+    sample_fraction: float | None = None,
+    sample_seed: int | None = None,
     household_mass_shares: Mapping[str, float] | None = None,
     mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
 ) -> StackedSpineResult:
-    """Assemble ASEC plus a seeded ACS household sample into one spine.
+    """Assemble uniformly sampled ASEC and ACS survey arms into one spine.
 
-    The sample is drawn by :func:`sample_acs_households`, the combination
-    reuses the reviewed :func:`assemble_spines` seam unchanged, and the
-    resulting frame carries a stacked-spine manifest binding the sampling
-    configuration (fraction, seed), the realized selection digest, and the
-    per-arm weight-harmonization receipts to the live rows.  Origin labels
-    survive as the ordinary support-channel columns.
+    Production callers provide the single ``sample_fraction`` and
+    ``sample_seed`` scale-ladder controls.  The exact same fraction is applied
+    independently to both survey arms at whole-household grain; each sampled
+    arm is then normalized back to its full-source household mass before the
+    reviewed :func:`assemble_spines` harmonization.  This preserves each arm's
+    composition and prevents the anchor population from shrinking with the
+    rung.  PUF donors are not accepted here and therefore remain unsampled.
+
+    ``acs_sample_fraction``/``acs_sample_seed`` retain the reviewed version-1
+    pilot contract for reproducibility only: ASEC remains full and ACS alone
+    is sampled.  Supplying pilot and production controls together fails
+    closed.
 
     Returns:
         A validated :class:`StackedSpineResult` whose receipt mirrors the
@@ -255,20 +355,109 @@ def assemble_stacked_spine(
         if household_mass_shares is None
         else dict(household_mass_shares)
     )
-    sampled, sample_receipt = sample_acs_households(
-        acs,
-        fraction=acs_sample_fraction,
-        seed=acs_sample_seed,
-    )
-    asec_incoming_mass = float(asec.weights_for("household").total)
-    incoming_masses = {
-        BASE_ASEC_SUPPORT_CHANNEL: asec_incoming_mass,
-        ACS_STACKED_SUPPORT_CHANNEL: float(sample_receipt["sampled_household_mass"]),
-    }
+    uses_pilot_controls = acs_sample_fraction is not None or acs_sample_seed is not None
+    uses_production_controls = sample_fraction is not None or sample_seed is not None
+    if uses_pilot_controls == uses_production_controls:
+        raise ValueError(
+            "Provide exactly one complete sampling control pair: production "
+            "sample_fraction/sample_seed or legacy "
+            "acs_sample_fraction/acs_sample_seed."
+        )
+
+    if uses_pilot_controls:
+        if acs_sample_fraction is None or acs_sample_seed is None:
+            raise ValueError(
+                "Legacy ACS sampling requires both acs_sample_fraction and "
+                "acs_sample_seed."
+            )
+        sampled_asec = asec
+        sampled_acs, acs_sample_receipt = sample_acs_households(
+            acs,
+            fraction=acs_sample_fraction,
+            seed=acs_sample_seed,
+        )
+        incoming_masses = {
+            BASE_ASEC_SUPPORT_CHANNEL: float(
+                sampled_asec.weights_for("household").total
+            ),
+            ACS_STACKED_SUPPORT_CHANNEL: float(
+                acs_sample_receipt["sampled_household_mass"]
+            ),
+        }
+        manifest_version = _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        sampling_manifest: dict[str, object] = {
+            "acs_sample_fraction": float(acs_sample_fraction),
+            "acs_sample_seed": int(acs_sample_seed),
+            "acs_sample": acs_sample_receipt,
+        }
+    else:
+        if sample_fraction is None or sample_seed is None:
+            raise ValueError(
+                "Production stacked sampling requires both sample_fraction and "
+                "sample_seed."
+            )
+        _validate_fraction(sample_fraction)
+        _validate_seed(sample_seed)
+        sampled_asec_raw, asec_sample_receipt = _sample_survey_households(
+            asec,
+            fraction=sample_fraction,
+            seed=sample_seed,
+            source_name="ASEC",
+        )
+        sampled_acs_raw, acs_sample_receipt = _sample_survey_households(
+            acs,
+            fraction=sample_fraction,
+            seed=sample_seed,
+            source_name="ACS",
+        )
+        sampled_asec, asec_normalization = _normalize_sampled_household_mass(
+            sampled_asec_raw,
+            target_mass=float(asec.weights_for("household").total),
+            source_name="ASEC",
+        )
+        sampled_acs, acs_normalization = _normalize_sampled_household_mass(
+            sampled_acs_raw,
+            target_mass=float(acs.weights_for("household").total),
+            source_name="ACS",
+        )
+        asec_sample_receipt.update(
+            {
+                "normalization_factor": asec_normalization,
+                "normalized_household_mass": float(
+                    sampled_asec.weights_for("household").total
+                ),
+            }
+        )
+        acs_sample_receipt.update(
+            {
+                "normalization_factor": acs_normalization,
+                "normalized_household_mass": float(
+                    sampled_acs.weights_for("household").total
+                ),
+            }
+        )
+        incoming_masses = {
+            BASE_ASEC_SUPPORT_CHANNEL: float(
+                sampled_asec.weights_for("household").total
+            ),
+            ACS_STACKED_SUPPORT_CHANNEL: float(
+                sampled_acs.weights_for("household").total
+            ),
+        }
+        manifest_version = _STACKED_SPINE_MANIFEST_VERSION
+        sampling_manifest = {
+            "sample_fraction": float(sample_fraction),
+            "sample_seed": int(sample_seed),
+            "survey_samples": {
+                BASE_ASEC_SUPPORT_CHANNEL: asec_sample_receipt,
+                ACS_STACKED_SUPPORT_CHANNEL: acs_sample_receipt,
+            },
+        }
+
     assembled = assemble_spines(
         {
-            BASE_ASEC_SUPPORT_CHANNEL: asec,
-            ACS_STACKED_SUPPORT_CHANNEL: sampled,
+            BASE_ASEC_SUPPORT_CHANNEL: sampled_asec,
+            ACS_STACKED_SUPPORT_CHANNEL: sampled_acs,
         },
         household_mass_shares=shares,
         mass_anchor_channel=mass_anchor_channel,
@@ -281,10 +470,8 @@ def assemble_stacked_spine(
         incoming_masses=incoming_masses,
     )
     manifest: dict[str, object] = {
-        "version": _STACKED_SPINE_MANIFEST_VERSION,
-        "acs_sample_fraction": float(acs_sample_fraction),
-        "acs_sample_seed": int(acs_sample_seed),
-        "acs_sample": sample_receipt,
+        "version": manifest_version,
+        **sampling_manifest,
         "household_mass_shares": {
             channel: float(share) for channel, share in shares.items()
         },
@@ -313,6 +500,110 @@ def assemble_stacked_spine(
     return StackedSpineResult(frame=stacked, receipt=_json_ready(validated))
 
 
+def _validate_survey_sample_receipt(
+    frame: Frame,
+    *,
+    channel: str,
+    fraction: float,
+    seed: int,
+    sample: Mapping[str, object],
+    boundary: str,
+    require_normalization: bool,
+) -> None:
+    required_keys = {
+        "eligible_household_count",
+        "requested_household_count",
+        "realized_household_count",
+        "exact_count_rule",
+        "selected_household_ids_sha256",
+    }
+    if require_normalization:
+        required_keys.update(
+            {
+                "incoming_household_mass",
+                "sampled_household_mass",
+                "normalization_factor",
+                "normalized_household_mass",
+            }
+        )
+    missing = sorted(required_keys - set(sample))
+    if missing:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample receipt is missing {missing}."
+        )
+    if float(sample.get("fraction", float("nan"))) != fraction:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample fraction does not "
+            "match the manifest control."
+        )
+    if sample.get("seed") != seed:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample seed does not match "
+            "the manifest control."
+        )
+    if sample["exact_count_rule"] != _EXACT_COUNT_RULE:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} sample declares exact-count "
+            f"rule {sample['exact_count_rule']!r}; expected {_EXACT_COUNT_RULE!r}."
+        )
+    eligible = int(sample["eligible_household_count"])
+    requested = int(sample["requested_household_count"])
+    realized = int(sample["realized_household_count"])
+    if requested != int(math.floor(fraction * eligible)):
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} requested household count "
+            f"{requested} violates {_EXACT_COUNT_RULE} for fraction={fraction!r}, "
+            f"eligible={eligible}."
+        )
+    if realized != requested:
+        raise ValueError(
+            f"{boundary}: stacked spine {channel} realized household count "
+            f"{realized} differs from the requested count {requested}."
+        )
+
+    household = frame.table("household")
+    channel_values = household[support_channel_column("household")].astype(str)
+    clone_index = household[support_clone_index_column("household")]
+    native = channel_values.eq(channel) & clone_index.eq(0)
+    live_count = int(native.sum())
+    if live_count != realized:
+        raise ValueError(
+            f"{boundary}: live native {channel} household count {live_count} "
+            "differs from the stacked spine manifest's realized count "
+            f"{realized}."
+        )
+    live_ids = np.sort(
+        household.loc[native, spine_source_id_column("household")].to_numpy()
+    )
+    live_sha = _ids_sha256(live_ids)
+    if live_sha != sample["selected_household_ids_sha256"]:
+        raise ValueError(
+            f"{boundary}: live native {channel} household lineage digest "
+            f"{live_sha} differs from the stacked spine manifest's selection "
+            f"digest {sample['selected_household_ids_sha256']}."
+        )
+    if require_normalization:
+        incoming_mass = float(sample["incoming_household_mass"])
+        sampled_mass = float(sample["sampled_household_mass"])
+        normalization = float(sample["normalization_factor"])
+        normalized_mass = float(sample["normalized_household_mass"])
+        if not np.isclose(
+            sampled_mass * normalization,
+            normalized_mass,
+            rtol=_MASS_RTOL,
+            atol=0.0,
+        ) or not np.isclose(
+            incoming_mass,
+            normalized_mass,
+            rtol=_MASS_RTOL,
+            atol=0.0,
+        ):
+            raise ValueError(
+                f"{boundary}: stacked spine {channel} sample normalization "
+                "does not restore the full-source household mass."
+            )
+
+
 def validate_stacked_spine_frame(
     frame: Frame,
     *,
@@ -339,10 +630,10 @@ def validate_stacked_spine_frame(
         )
     if not isinstance(manifest, Mapping):
         raise ValueError(f"{boundary}: stacked spine manifest is malformed.")
-    if manifest.get("version") != _STACKED_SPINE_MANIFEST_VERSION:
+    version = manifest.get("version")
+    if version not in _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS:
         raise ValueError(
-            f"{boundary}: stacked spine manifest has unsupported version "
-            f"{manifest.get('version')!r}."
+            f"{boundary}: stacked spine manifest has unsupported version {version!r}."
         )
     assembly = frame.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
     channels = tuple(assembly["channels"])
@@ -353,75 +644,66 @@ def validate_stacked_spine_frame(
             f"{sorted(expected_channels)}; assembly declares {sorted(channels)}."
         )
 
-    fraction = manifest.get("acs_sample_fraction")
-    seed = manifest.get("acs_sample_seed")
+    if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION:
+        fraction = manifest.get("acs_sample_fraction")
+        seed = manifest.get("acs_sample_seed")
+        sample = manifest.get("acs_sample")
+        sample_receipts: Mapping[str, object] = {ACS_STACKED_SUPPORT_CHANNEL: sample}
+    else:
+        fraction = manifest.get("sample_fraction")
+        seed = manifest.get("sample_seed")
+        sample_receipts = manifest.get("survey_samples")
+    fraction_label = (
+        "acs_sample_fraction"
+        if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        else "sample_fraction"
+    )
+    seed_label = (
+        "acs_sample_seed"
+        if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        else "sample_seed"
+    )
     if not isinstance(fraction, float) or isinstance(fraction, bool):
         raise ValueError(
-            f"{boundary}: stacked spine manifest acs_sample_fraction must be "
+            f"{boundary}: stacked spine manifest {fraction_label} must be "
             f"a float, got {fraction!r}."
         )
     _validate_fraction(fraction, boundary=boundary)
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError(
-            f"{boundary}: stacked spine manifest acs_sample_seed must be a "
+            f"{boundary}: stacked spine manifest {seed_label} must be a "
             f"non-negative integer, got {seed!r}."
         )
-
-    sample = manifest.get("acs_sample")
-    if not isinstance(sample, Mapping):
-        raise ValueError(f"{boundary}: stacked spine sample receipt is absent.")
-    required_keys = (
-        "eligible_household_count",
-        "requested_household_count",
-        "realized_household_count",
-        "exact_count_rule",
-        "selected_household_ids_sha256",
+    expected_sample_channels = (
+        (ACS_STACKED_SUPPORT_CHANNEL,)
+        if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION
+        else expected_channels
     )
-    missing = [key for key in required_keys if key not in sample]
-    if missing:
+    if not isinstance(sample_receipts, Mapping) or set(sample_receipts) != set(
+        expected_sample_channels
+    ):
         raise ValueError(
-            f"{boundary}: stacked spine sample receipt is missing {missing}."
+            f"{boundary}: stacked spine sample receipts must exactly cover "
+            f"{sorted(expected_sample_channels)}."
         )
-    if sample["exact_count_rule"] != _EXACT_COUNT_RULE:
-        raise ValueError(
-            f"{boundary}: stacked spine sample declares exact-count rule "
-            f"{sample['exact_count_rule']!r}; expected {_EXACT_COUNT_RULE!r}."
-        )
-    eligible = int(sample["eligible_household_count"])
-    requested = int(sample["requested_household_count"])
-    realized = int(sample["realized_household_count"])
-    if requested != int(math.floor(fraction * eligible)):
-        raise ValueError(
-            f"{boundary}: stacked spine requested household count {requested} "
-            f"violates {_EXACT_COUNT_RULE} for fraction={fraction!r}, "
-            f"eligible={eligible}."
-        )
-    if realized != requested:
-        raise ValueError(
-            f"{boundary}: stacked spine realized household count {realized} "
-            f"differs from the requested count {requested}."
+    for channel in expected_sample_channels:
+        sample = sample_receipts[channel]
+        if not isinstance(sample, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked spine {channel} sample receipt is absent."
+            )
+        _validate_survey_sample_receipt(
+            frame,
+            channel=channel,
+            fraction=fraction,
+            seed=seed,
+            sample=sample,
+            boundary=boundary,
+            require_normalization=version == _STACKED_SPINE_MANIFEST_VERSION,
         )
 
     household = frame.table("household")
     channel_values = household[support_channel_column("household")].astype(str)
-    clone_index = household[support_clone_index_column("household")]
-    native_acs = channel_values.eq(ACS_STACKED_SUPPORT_CHANNEL) & clone_index.eq(0)
-    live_count = int(native_acs.sum())
-    if live_count != realized:
-        raise ValueError(
-            f"{boundary}: live native ACS household count {live_count} differs "
-            f"from the stacked spine manifest's realized count {realized}."
-        )
-    live_ids = np.sort(
-        household.loc[native_acs, spine_source_id_column("household")].to_numpy()
-    )
-    live_sha = _ids_sha256(live_ids)
-    if live_sha != sample["selected_household_ids_sha256"]:
-        raise ValueError(
-            f"{boundary}: live native ACS household lineage digest {live_sha} "
-            "differs from the stacked spine manifest's selection digest "
-            f"{sample['selected_household_ids_sha256']}."
-        )
 
     shares = manifest.get("household_mass_shares")
     if not isinstance(shares, Mapping) or set(shares) != set(expected_channels):
@@ -479,6 +761,20 @@ def validate_stacked_spine_frame(
                 f"{channel!r} is malformed."
             )
         live_mass = float(weights[channel_values.eq(channel).to_numpy()].sum())
+        if version == _STACKED_SPINE_MANIFEST_VERSION:
+            normalized_sample_mass = float(
+                sample_receipts[channel]["normalized_household_mass"]
+            )
+            if not np.isclose(
+                float(arm.get("incoming_mass", float("nan"))),
+                normalized_sample_mass,
+                rtol=_MASS_RTOL,
+                atol=0.0,
+            ):
+                raise ValueError(
+                    f"{boundary}: stacked spine {channel} harmonization input "
+                    "mass differs from its normalized survey-sample mass."
+                )
         allocated = float(arm["allocated_mass"])
         declared_allocation = float(arm["declared_allocation"])
         expected_allocation = float(shares[channel]) * live_anchor_mass
@@ -578,7 +874,7 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-_STACKED_AUTHORITY_VERSION = 1
+_STACKED_AUTHORITY_VERSION = 2
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 
@@ -727,6 +1023,7 @@ class _StackedAuthority:
     gap_fill_plan: tuple[GapFillDirection, ...]
     declared_surface: TargetFamilies
     metric_registry: Mapping[tuple[str, str, str, int], str]
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     support_profile: _BatterySupportProfile
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
@@ -751,6 +1048,11 @@ class _StackedAuthority:
             "metric_registry",
             _freeze_metric_registry(self.metric_registry),
         )
+        object.__setattr__(
+            self,
+            "joint_metric_registry",
+            _freeze_joint_metric_registry(self.joint_metric_registry),
+        )
         if not isinstance(self.support_profile, _BatterySupportProfile):
             raise TypeError(
                 "Stacked authority support_profile must be a _BatterySupportProfile."
@@ -760,6 +1062,7 @@ class _StackedAuthority:
             "gap_fill_plan",
             "declared_surface",
             "metric_registry",
+            "joint_metric_registry",
             "support_profile",
         }:
             raise ValueError(
@@ -809,6 +1112,35 @@ def _freeze_metric_registry(
             raise ValueError(
                 f"Origin-battery target {_battery_target_label(key)} declares "
                 f"unknown metric {metric!r}."
+            )
+        frozen[key] = metric
+    return MappingProxyType(frozen)
+
+
+def _freeze_joint_metric_registry(
+    registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
+) -> Mapping[tuple[str, str, tuple[str, ...], int], str]:
+    if not isinstance(registry, Mapping):
+        raise TypeError("The joint origin-battery metric registry must be a mapping.")
+    frozen: dict[tuple[str, str, tuple[str, ...], int], str] = {}
+    for key, metric in registry.items():
+        if (
+            not isinstance(key, tuple)
+            or len(key) != 4
+            or any(not isinstance(value, str) or not value for value in key[:2])
+            or not isinstance(key[2], tuple)
+            or len(key[2]) < 2
+            or len(set(key[2])) != len(key[2])
+            or any(not isinstance(column, str) or not column for column in key[2])
+            or isinstance(key[3], bool)
+            or not isinstance(key[3], int)
+            or key[3] < 0
+        ):
+            raise ValueError(f"Invalid joint origin-battery metric key {key!r}.")
+        if metric != "categorical_tvd":
+            raise ValueError(
+                "Joint origin-battery targets must declare categorical_tvd; "
+                f"got {metric!r} for {key!r}."
             )
         frozen[key] = metric
     return MappingProxyType(frozen)
@@ -875,6 +1207,21 @@ def _metric_registry_payload(
     ]
 
 
+def _joint_metric_registry_payload(
+    registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "entity": entity,
+            "family": family,
+            "columns": list(columns),
+            "clone_index": clone_index,
+            "metric": registry[(entity, family, columns, clone_index)],
+        }
+        for entity, family, columns, clone_index in sorted(registry)
+    ]
+
+
 def _support_profile_payload(profile: _BatterySupportProfile) -> dict[str, object]:
     return {
         "min_effective_support": profile.min_effective_support,
@@ -888,12 +1235,14 @@ def _authority_component_payloads(
     gap_fill_plan: Sequence[GapFillDirection],
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
     support_profile: _BatterySupportProfile,
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
         "declared_surface": _surface_payload(declared_surface),
         "metric_registry": _metric_registry_payload(metric_registry),
+        "joint_metric_registry": _joint_metric_registry_payload(joint_metric_registry),
         "support_profile": _support_profile_payload(support_profile),
     }
 
@@ -916,6 +1265,7 @@ def _authority_live_digests(
         gap_fill_plan=authority.gap_fill_plan,
         declared_surface=authority.declared_surface,
         metric_registry=authority.metric_registry,
+        joint_metric_registry=authority.joint_metric_registry,
         support_profile=authority.support_profile,
     )
     component_digests = {
@@ -940,16 +1290,22 @@ def _make_stacked_authority(
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
     declared_form: str,
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
+    | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
     declared_sha256: str | None = None,
 ) -> _StackedAuthority:
     frozen_plan = tuple(gap_fill_plan)
     frozen_surface = _freeze_target_families(declared_surface)
     frozen_registry = _freeze_metric_registry(metric_registry)
+    frozen_joint_registry = _freeze_joint_metric_registry(
+        {} if joint_metric_registry is None else joint_metric_registry
+    )
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
+        joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
     )
     live_components = {
@@ -968,6 +1324,7 @@ def _make_stacked_authority(
         gap_fill_plan=frozen_plan,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
+        joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
         declared_component_sha256=(
             live_components
@@ -979,9 +1336,11 @@ def _make_stacked_authority(
     )
 
 
-def _canonical_metric_registry(
+def _test_metric_registry_for_surface(
     surface: TargetFamilies,
 ) -> Mapping[tuple[str, str, str, int], str]:
+    """Choose fixture metrics only; production uses explicit declarations."""
+
     boolean_columns = {
         "estate_income_would_be_qualified",
         "farm_operations_income_would_be_qualified",
@@ -1012,14 +1371,494 @@ def _canonical_metric_registry(
     return MappingProxyType(registry)
 
 
-CANONICAL_STACKED_DECLARED_SURFACE = _freeze_target_families(
-    declared_acs_transfer_target_families()
+def _terminal_surface_from_pool_registry() -> TargetFamilies:
+    surface: dict[str, dict[str, tuple[str, ...]]] = {}
+    for spec in POOL_SPINE_AGREEMENT_REGISTRY:
+        surface.setdefault(spec.entity, {})[spec.family] = tuple(spec.columns)
+    return _freeze_target_families(surface)
+
+
+_EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
+    str, tuple[tuple[str, str, str], ...]
+] = MappingProxyType(
+    {
+        "monetary_sign_separated": (
+            ("person", "adult_care", "pre_subsidy_care_expenses"),
+            (
+                "person",
+                "derived_transfer",
+                "schedule_d_capital_gain_distributions",
+            ),
+            ("person", "housing", "pre_subsidy_rent"),
+            (
+                "person",
+                "model_required_numeric",
+                "health_insurance_premiums_without_medicare_part_b",
+            ),
+            ("person", "model_required_numeric", "hours_worked_last_week"),
+            ("person", "model_required_numeric", "other_medical_expenses"),
+            (
+                "person",
+                "model_required_numeric",
+                "over_the_counter_health_expenses",
+            ),
+            (
+                "person",
+                "model_required_numeric",
+                "tax_exempt_private_pension_income",
+            ),
+            (
+                "person",
+                "model_required_numeric",
+                "unemployment_compensation",
+            ),
+            ("person", "model_required_numeric", "veterans_benefits"),
+            ("person", "puf_tax_itemization", "taxable_interest_income"),
+            ("person", "puf_tax_itemization", "qualified_dividend_income"),
+            ("person", "puf_tax_itemization", "non_qualified_dividend_income"),
+            ("person", "puf_tax_itemization", "tax_exempt_interest_income"),
+            ("person", "puf_tax_itemization", "short_term_capital_gains"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "long_term_capital_gains_before_response",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "long_term_capital_gains_on_collectibles",
+            ),
+            ("person", "puf_tax_itemization", "non_sch_d_capital_gains"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "taxable_private_pension_income",
+            ),
+            ("person", "puf_tax_itemization", "taxable_ira_distributions"),
+            ("person", "puf_tax_itemization", "social_security_retirement"),
+            ("person", "puf_tax_itemization", "social_security_disability"),
+            ("person", "puf_tax_itemization", "social_security_dependents"),
+            ("person", "puf_tax_itemization", "social_security_survivors"),
+            ("person", "puf_tax_itemization", "alimony_income"),
+            ("person", "puf_tax_itemization", "alimony_expense"),
+            ("person", "puf_tax_itemization", "salt_refund_income"),
+            ("person", "puf_tax_itemization", "charitable_cash_donations"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "charitable_non_cash_donations",
+            ),
+            ("person", "puf_tax_itemization", "home_mortgage_interest"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "investment_interest_expense",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "investment_income_elected_form_4952",
+            ),
+            ("person", "puf_tax_itemization", "student_loan_interest"),
+            ("person", "puf_tax_itemization", "educator_expense"),
+            ("person", "puf_tax_itemization", "qualified_tuition_expenses"),
+            ("person", "puf_tax_itemization", "casualty_loss"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "unreimbursed_business_employee_expenses",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "traditional_ira_contributions_desired",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "self_employed_pension_contributions_desired",
+            ),
+            ("person", "puf_tax_itemization", "rental_income"),
+            ("person", "puf_tax_itemization", "estate_income"),
+            ("person", "puf_tax_itemization", "farm_income"),
+            ("person", "puf_tax_itemization", "farm_operations_income"),
+            ("person", "puf_tax_itemization", "farm_rent_income"),
+            ("person", "puf_tax_itemization", "miscellaneous_income"),
+            ("person", "puf_tax_itemization", "partnership_income"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "partnership_self_employment_net_earnings",
+            ),
+            ("person", "puf_tax_itemization", "qualified_bdc_income"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "qualified_reit_and_ptp_income",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_self_employment_income_before_lsr",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_unadjusted_basis_qualified_property",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_w2_wages_from_qualified_business",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "unadjusted_basis_qualified_property",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "w2_wages_from_qualified_business",
+            ),
+            ("person", "simulated_output", "ssi"),
+            (
+                "person",
+                "source_operator_child_support",
+                "child_support_expense",
+            ),
+            (
+                "person",
+                "source_operator_child_support",
+                "child_support_received",
+            ),
+            (
+                "person",
+                "source_operator_cps_carried",
+                "strike_benefits",
+            ),
+            (
+                "person",
+                "source_operator_disability_benefits",
+                "disability_benefits",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "educational_assistance",
+            ),
+            (
+                "person",
+                "source_operator_hours_worked",
+                "weekly_hours_worked_before_lsr",
+            ),
+            (
+                "person",
+                "source_operator_prior_year_income",
+                "self_employment_income_last_year",
+            ),
+            (
+                "person",
+                "source_operator_retirement_contributions",
+                "roth_401k_contributions_desired",
+            ),
+            (
+                "person",
+                "source_operator_retirement_contributions",
+                "roth_ira_contributions_desired",
+            ),
+            (
+                "person",
+                "source_operator_retirement_contributions",
+                "traditional_401k_contributions_desired",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "keogh_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "tax_exempt_ira_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "taxable_401k_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "taxable_403b_distributions",
+            ),
+            (
+                "person",
+                "source_operator_retirement_distributions",
+                "taxable_sep_distributions",
+            ),
+            (
+                "person",
+                "source_operator_weeks_unemployed",
+                "weeks_unemployed",
+            ),
+            (
+                "person",
+                "source_operator_workers_compensation",
+                "workers_compensation",
+            ),
+            (
+                "spm_unit",
+                "model_required_numeric",
+                "spm_unit_pre_subsidy_childcare_expenses",
+            ),
+            (
+                "spm_unit",
+                "source_operator_energy_subsidy",
+                "spm_unit_energy_subsidy",
+            ),
+            ("tax_unit", "puf_tax_itemization", "domestic_production_ald"),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "unrecaptured_section_1250_gain",
+            ),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "first_home_mortgage_balance",
+            ),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "first_home_mortgage_interest",
+            ),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "health_savings_account_ald",
+            ),
+        ),
+        "boolean_incidence": (
+            ("person", "adult_care", "is_incapable_of_self_care"),
+            (
+                "person",
+                "model_required_boolean",
+                "has_champva_health_coverage_at_interview",
+            ),
+            ("person", "model_required_boolean", "has_esi"),
+            (
+                "person",
+                "model_required_boolean",
+                "has_indian_health_service_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_marketplace_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_medicaid_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_other_means_tested_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_tricare_health_coverage_at_interview",
+            ),
+            (
+                "person",
+                "model_required_boolean",
+                "has_va_health_coverage_at_interview",
+            ),
+            ("person", "model_required_boolean", "is_blind"),
+            ("person", "model_required_boolean", "is_disabled"),
+            (
+                "person",
+                "model_required_boolean",
+                "is_full_time_college_student",
+            ),
+            ("person", "model_required_boolean", "is_pregnant"),
+            ("person", "model_required_boolean", "receives_wic"),
+            (
+                "person",
+                "puf_tax_itemization",
+                "estate_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "farm_operations_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "farm_rent_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "partnership_s_corp_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "rental_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "self_employment_income_would_be_qualified",
+            ),
+            (
+                "person",
+                "puf_tax_itemization",
+                "sstb_self_employment_income_would_be_qualified",
+            ),
+            ("person", "puf_tax_itemization", "business_is_sstb"),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "attends_eligible_educational_institution_for_american_opportunity_credit",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "has_american_opportunity_credit_1098_t_or_exception",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "has_american_opportunity_credit_institution_ein",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            ),
+            (
+                "person",
+                "source_operator_education_inputs",
+                "is_pursuing_credential_for_american_opportunity_credit",
+            ),
+            (
+                "person",
+                "source_operator_medicare_take_up",
+                "takes_up_medicare_if_eligible",
+            ),
+            (
+                "person",
+                "source_operator_prior_year_income",
+                "previous_year_income_available",
+            ),
+            (
+                "person",
+                "source_operator_relationship_inputs",
+                "is_separated",
+            ),
+            (
+                "person",
+                "source_operator_relationship_inputs",
+                "is_surviving_spouse",
+            ),
+            (
+                "person",
+                "source_operator_wic_claim",
+                "would_claim_wic",
+            ),
+            ("person", "take_up", "takes_up_basic_health_program_if_eligible"),
+            ("person", "take_up", "takes_up_chip_if_eligible"),
+            ("person", "take_up", "takes_up_early_head_start_if_eligible"),
+            ("person", "take_up", "takes_up_head_start_if_eligible"),
+            ("person", "take_up", "takes_up_medicaid_if_eligible"),
+            ("person", "take_up", "takes_up_ssi_if_eligible"),
+            (
+                "spm_unit",
+                "benefit_participation",
+                "takes_up_housing_assistance_if_eligible",
+            ),
+            ("spm_unit", "model_required_boolean", "is_tanf_enrolled"),
+            ("spm_unit", "model_required_boolean", "receives_snap"),
+            (
+                "spm_unit",
+                "source_operator_housing_inputs",
+                "receives_housing_assistance",
+            ),
+            ("spm_unit", "take_up", "takes_up_snap_if_eligible"),
+            ("spm_unit", "take_up", "takes_up_tanf_if_eligible"),
+            ("tax_unit", "take_up", "takes_up_aca_if_eligible"),
+            ("tax_unit", "take_up", "takes_up_dc_ptc"),
+            ("tax_unit", "take_up", "takes_up_eitc"),
+        ),
+        "categorical_tvd": (
+            ("person", "model_required_discrete", "own_children_in_household"),
+            (
+                "person",
+                "source_operator_immigration",
+                "immigration_status_str",
+            ),
+            ("person", "source_operator_immigration", "ssn_card_type"),
+            (
+                "tax_unit",
+                "puf_tax_itemization",
+                "first_home_mortgage_origination_year",
+            ),
+        ),
+    }
 )
+
+
+def _explicit_origin_battery_metric_registry(
+    surface: TargetFamilies,
+) -> Mapping[tuple[str, str, str, int], str]:
+    registry = {
+        (entity, family, column, 0): metric
+        for metric, declarations in _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS.items()
+        for entity, family, column in declarations
+    }
+    surface_keys = set(_surface_target_keys(surface))
+    missing = sorted(surface_keys - set(registry))
+    extra = sorted(set(registry) - surface_keys)
+    if missing or extra:
+        raise RuntimeError(
+            "Explicit stacked battery metrics do not exactly cover the production "
+            f"surface; missing={missing}, extra={extra}."
+        )
+    return _freeze_metric_registry(registry)
+
+
+CANONICAL_STACKED_GAP_FILL_SURFACE = _freeze_target_families(
+    pool_transfer_target_families()
+)
+CANONICAL_STACKED_DECLARED_SURFACE = _terminal_surface_from_pool_registry()
 CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
+    CANONICAL_STACKED_GAP_FILL_SURFACE
+)
+CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _explicit_origin_battery_metric_registry(
     CANONICAL_STACKED_DECLARED_SURFACE
 )
-CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _canonical_metric_registry(
-    CANONICAL_STACKED_DECLARED_SURFACE
+CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY: Mapping[
+    tuple[str, str, tuple[str, ...], int], str
+] = MappingProxyType(
+    {
+        (
+            "person",
+            "source_operator_immigration",
+            ("ssn_card_type", "immigration_status_str"),
+            0,
+        ): "categorical_tvd"
+    }
 )
 CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
     profile_id="us_stacked_origin_battery_support",
@@ -1028,9 +1867,13 @@ CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
 )
 
 _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR = CANONICAL_STACKED_DECLARED_SURFACE
+_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR = CANONICAL_STACKED_GAP_FILL_SURFACE
 _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR = CANONICAL_STACKED_GAP_FILL_PLAN
 _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+)
+_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR = (
+    CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 )
 _CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
@@ -1040,8 +1883,10 @@ _CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
 # immutable anchors. Rebinding any active reference is detected at evaluation,
 # and the live content digest is receipted rather than trusting a stale hash.
 _STACKED_DECLARED_SURFACE = CANONICAL_STACKED_DECLARED_SURFACE
+_STACKED_GAP_FILL_SURFACE = CANONICAL_STACKED_GAP_FILL_SURFACE
 _STACKED_GAP_FILL_PLAN = CANONICAL_STACKED_GAP_FILL_PLAN
 _BATTERY_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+_BATTERY_JOINT_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 _BATTERY_SUPPORT_PROFILE = CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
 
 _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
@@ -1050,6 +1895,7 @@ _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
     gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
     declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
     metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+    joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
     support_profile=_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR,
     declared_form=_CANONICAL_AUTHORITY_FORM,
 )
@@ -1060,18 +1906,24 @@ def _production_stacked_authority(
     *,
     _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
     _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_gap_surface: TargetFamilies = CANONICAL_STACKED_GAP_FILL_SURFACE,
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
     ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_joint_registry: Mapping[
+        tuple[str, str, tuple[str, ...], int], str
+    ] = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
     _canonical_profile: _BatterySupportProfile = (
         CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
     ),
 ) -> _StackedAuthority:
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
+        and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
         and _STACKED_DECLARED_SURFACE is _canonical_surface
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
+        and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
         and _BATTERY_SUPPORT_PROFILE is _canonical_profile
     )
     if identity:
@@ -1082,6 +1934,7 @@ def _production_stacked_authority(
         gap_fill_plan=_STACKED_GAP_FILL_PLAN,
         declared_surface=_STACKED_DECLARED_SURFACE,
         metric_registry=_BATTERY_METRIC_REGISTRY,
+        joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
         support_profile=_BATTERY_SUPPORT_PROFILE,
         declared_form=_CANONICAL_AUTHORITY_FORM,
         declared_component_sha256=_canonical_authority.declared_component_sha256,
@@ -1092,7 +1945,7 @@ def _production_stacked_authority(
 def _metric_registry_for_surface(
     surface: TargetFamilies,
 ) -> Mapping[tuple[str, str, str, int], str]:
-    inferred = _canonical_metric_registry(surface)
+    inferred = _test_metric_registry_for_surface(surface)
     return MappingProxyType(
         {
             key: CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.get(
@@ -1109,6 +1962,8 @@ def _make_test_stacked_authority(
     declared_surface: TargetFamilies | None = None,
     gap_fill_plan: Sequence[GapFillDirection] | None = None,
     metric_registry: Mapping[tuple[str, str, str, int], str] | None = None,
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
+    | None = None,
     support_profile: _BatterySupportProfile | None = None,
 ) -> _StackedAuthority:
     """Explicit test-only seam; every receipt is marked non-canonical."""
@@ -1124,12 +1979,25 @@ def _make_test_stacked_authority(
         if metric_registry is None
         else metric_registry
     )
+    surface_keys = set(_surface_target_keys(surface))
+    joints = (
+        {
+            key: metric
+            for key, metric in CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY.items()
+            if all(
+                (key[0], key[1], column, key[3]) in surface_keys for column in key[2]
+            )
+        }
+        if joint_metric_registry is None
+        else joint_metric_registry
+    )
     return _make_stacked_authority(
         authority_id=f"{_STACKED_AUTHORITY_ID}.test",
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=plan,
         declared_surface=surface,
         metric_registry=registry,
+        joint_metric_registry=joints,
         support_profile=(
             CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
             if support_profile is None
@@ -1143,6 +2011,18 @@ def stacked_gap_fill_plan() -> tuple[GapFillDirection, ...]:
     """Return the immutable canonical two-direction stacked gap-fill plan."""
 
     return _STACKED_GAP_FILL_PLAN
+
+
+def stacked_spine_authority_receipt() -> Mapping[str, object]:
+    """Return the live-digested canonical authority for build identity binding."""
+
+    authority = _production_stacked_authority()
+    receipt = _authority_receipt(authority)
+    _validate_production_authority_receipt(
+        receipt,
+        boundary="stacked spine authority identity",
+    )
+    return _json_ready(receipt)
 
 
 def _direction_target_index(
@@ -1215,6 +2095,14 @@ def _authority_receipt(
             "target_count": len(authority.metric_registry),
             "digest_matches_declared": component_integrity["metric_registry"],
         },
+        "joint_metric_registry": {
+            "sha256": live_components["joint_metric_registry"],
+            "declared_sha256": authority.declared_component_sha256[
+                "joint_metric_registry"
+            ],
+            "target_count": len(authority.joint_metric_registry),
+            "digest_matches_declared": component_integrity["joint_metric_registry"],
+        },
         "support_profile": {
             **support,
             "sha256": live_components["support_profile"],
@@ -1249,6 +2137,9 @@ def _authority_validation_failures(
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
     ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_joint_registry: Mapping[
+        tuple[str, str, tuple[str, ...], int], str
+    ] = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
     _canonical_profile: _BatterySupportProfile = (
         CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
     ),
@@ -1283,6 +2174,7 @@ def _authority_validation_failures(
         ("gap_fill_plan", "gap-fill plan"),
         ("declared_surface", "declared surface"),
         ("metric_registry", "metric registry"),
+        ("joint_metric_registry", "joint metric registry"),
         ("support_profile", "support profile"),
     ):
         component = receipt["components"][name]
@@ -1315,6 +2207,36 @@ def _authority_validation_failures(
             failures.append(
                 f"declared battery target {_battery_target_label(target)} must "
                 f"use authoritative metric {canonical_metric!r}, got {metric!r}."
+            )
+    for target, metric in authority.joint_metric_registry.items():
+        entity, family, columns, clone_index = target
+        missing_members = [
+            column
+            for column in columns
+            if (entity, family, column, clone_index) not in authority.metric_registry
+        ]
+        noncategorical_members = [
+            column
+            for column in columns
+            if authority.metric_registry.get((entity, family, column, clone_index))
+            not in {None, "categorical_tvd"}
+        ]
+        if missing_members:
+            failures.append(
+                f"joint battery target {_joint_battery_target_label(target)} has "
+                f"unregistered member(s) {missing_members}."
+            )
+        if noncategorical_members:
+            failures.append(
+                f"joint battery target {_joint_battery_target_label(target)} has "
+                f"non-categorical member metric(s) {noncategorical_members}."
+            )
+        canonical_metric = _canonical_joint_registry.get(target)
+        if canonical_metric is not None and metric != canonical_metric:
+            failures.append(
+                f"declared joint battery target {_joint_battery_target_label(target)} "
+                f"must use authoritative metric {canonical_metric!r}, got "
+                f"{metric!r}."
             )
     if authority.support_profile != _canonical_profile:
         failures.append(
@@ -1368,6 +2290,9 @@ def _validate_stacked_gate_manifest_details(
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
     ] = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    _canonical_joint_registry: Mapping[
+        tuple[str, str, tuple[str, ...], int], str
+    ] = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
 ) -> None:
     """Validate gate-specific receipts against the captured canonical doctrine."""
 
@@ -1402,12 +2327,16 @@ def _validate_stacked_gate_manifest_details(
             for column in columns
         }
         targets = details.get("targets")
-        if details.get("declared_targets") != 90:
-            reject("canonical completeness receipt must declare exactly 90 targets")
+        if details.get("declared_targets") != len(expected_keys):
+            reject(
+                "canonical completeness receipt must declare exactly "
+                f"{len(expected_keys)} targets"
+            )
         if not isinstance(targets, Mapping) or set(targets) != expected_labels:
             reject("canonical completeness receipt target surface mismatch")
         allowed_target_forms = {
             "observed_complete",
+            "invalid_declared_metric_values",
             "missing_declared_entity",
             "missing_declared_target",
             "origin_exact_recipient",
@@ -1432,7 +2361,12 @@ def _validate_stacked_gate_manifest_details(
             for cell, proof_receipt in proven.items():
                 if not isinstance(proof_receipt, Mapping):
                     reject(f"{label} {cell} proof receipt is not a mapping")
-                direction = direction_by_label[label]
+                direction = direction_by_label.get(label)
+                if direction is None:
+                    reject(
+                        f"{label} has no canonical gap-fill direction and cannot "
+                        "carry a proven-absence receipt"
+                    )
                 cell_channel, separator, _clone_role = str(cell).partition("/clone_")
                 if (
                     not separator
@@ -1453,7 +2387,13 @@ def _validate_stacked_gate_manifest_details(
         return
 
     if gate_name == _BATTERY_GATE_NAME:
-        expected_labels = {_battery_target_label(target) for target in expected_keys}
+        expected_labels = {
+            *(_battery_target_label(target) for target in expected_keys),
+            *(
+                _joint_battery_target_label(target)
+                for target in _canonical_joint_registry
+            ),
+        }
         expected_plan = {
             "plan_id": "stacked_gap_fill_plan",
             "version": authority["version"],
@@ -1461,12 +2401,17 @@ def _validate_stacked_gate_manifest_details(
         }
         comparisons = details.get("comparisons")
         if (
-            details.get("declared_target_count") != 90
-            or details.get("registered_target_count") != 90
+            details.get("declared_target_count") != len(expected_keys)
+            or details.get("registered_target_count") != len(expected_keys)
+            or details.get("registered_joint_target_count")
+            != len(_canonical_joint_registry)
             or details.get("missing_declared_targets") != []
             or details.get("extra_registered_targets") != []
         ):
-            reject("canonical battery coverage receipt must bind all 90 targets")
+            reject(
+                "canonical battery coverage receipt must bind all "
+                f"{len(expected_keys)} targets"
+            )
         if details.get("declared_plan") != expected_plan:
             reject("canonical battery plan receipt mismatch")
         if details.get("support_profile") != authority["components"]["support_profile"]:
@@ -1475,6 +2420,14 @@ def _validate_stacked_gate_manifest_details(
             reject("canonical battery comparison surface mismatch")
         for target, metric in _canonical_registry.items():
             label = _battery_target_label(target)
+            comparison = comparisons[label]
+            if (
+                not isinstance(comparison, Mapping)
+                or comparison.get("metric") != metric
+            ):
+                reject(f"{label} comparison must use canonical metric {metric!r}")
+        for target, metric in _canonical_joint_registry.items():
+            label = _joint_battery_target_label(target)
             comparison = comparisons[label]
             if (
                 not isinstance(comparison, Mapping)
@@ -1490,16 +2443,32 @@ _canonical_surface_keys = _surface_target_keys(
     _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
 )
 if (
-    len(_canonical_surface_keys) != 90
-    or len(set(_canonical_surface_keys)) != 90
+    len(_canonical_surface_keys) != 131
+    or len(set(_canonical_surface_keys)) != 131
+    or len(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR)) != 118
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
-    != set(_canonical_surface_keys)
+    != set(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR))
+    or not set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR)).issubset(
+        _canonical_surface_keys
+    )
     or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
     != set(_canonical_surface_keys)
+    or len(_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR) != 1
+    or any(
+        (entity, family, column, clone_index) not in _canonical_surface_keys
+        or _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR[
+            (entity, family, column, clone_index)
+        ]
+        != "categorical_tvd"
+        for entity, family, columns, clone_index in (
+            _CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR
+        )
+        for column in columns
+    )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must bind one plan, surface, and metric "
-        "for exactly 90 unique targets."
+        "Canonical stacked authority must bind an exact 118-target gap-fill "
+        "plan inside an exact 131-target terminal surface and metric registry."
     )
 
 
@@ -2062,8 +3031,9 @@ def run_stacked_puf_pass(
     n_estimators: int = 100,
     fit_records: list[FitWeightRecord] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    primary_qrf_checkpoint_dir: str | Path | None = None,
 ) -> StackedPufPassResult:
-    """Run the one PUF pass over the gap-filled stacked spine.
+    """Run the resumable primary QRF and clone-2 tail over the stacked spine.
 
     Order is the charter's: the spine must already be gap-filled (this entry
     validates the stacked manifest and refuses cloned input), the PUF clone
@@ -2073,6 +3043,56 @@ def run_stacked_puf_pass(
     must be complete (no zero-filled absence) and finalization preserves
     nulls on every cell the pass does not own.
     """
+
+    return _run_stacked_puf_pass_evaluate(
+        frame,
+        donor_tax_units,
+        clone_attachment_fraction=clone_attachment_fraction,
+        clone_attachment_seed=clone_attachment_seed,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+        seed=seed,
+        n_estimators=n_estimators,
+        fit_records=fit_records,
+        tail_bound_diagnostics=tail_bound_diagnostics,
+        primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        apply_capital_gains_tail=True,
+    )
+
+
+def _run_stacked_puf_pass_without_tail_for_test(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    **kwargs: object,
+) -> StackedPufPassResult:
+    """Fixture-only pilot seam; production always applies the clone-2 tail."""
+
+    return _run_stacked_puf_pass_evaluate(
+        frame,
+        donor_tax_units,
+        apply_capital_gains_tail=False,
+        **kwargs,
+    )
+
+
+def _run_stacked_puf_pass_evaluate(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    predictors: Sequence[str] | None = None,
+    person_outputs: Sequence[str] | None = None,
+    tax_unit_outputs: Sequence[str] | None = None,
+    seed: int = 0,
+    n_estimators: int = 100,
+    fit_records: list[FitWeightRecord] | None = None,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    primary_qrf_checkpoint_dir: str | Path | None = None,
+    apply_capital_gains_tail: bool,
+) -> StackedPufPassResult:
+    """Internal evaluator with one explicit fixture-only tail seam."""
 
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
@@ -2100,26 +3120,101 @@ def run_stacked_puf_pass(
         kwargs["person_outputs"] = tuple(person_outputs)
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
-    imputed = impute_us_puf_tax_detail_support(
-        cloned,
-        donor_tax_units,
-        seed=seed,
-        n_estimators=n_estimators,
-        fit_records=fit_records,
-        tail_bound_diagnostics=tail_bound_diagnostics,
-        require_complete_recipient_predictors=True,
-        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
-        **kwargs,
-    )
-    validate_stacked_spine_frame(imputed, boundary="stacked PUF pass output")
+    if primary_qrf_checkpoint_dir is None:
+        imputed = impute_us_puf_tax_detail_support(
+            cloned,
+            donor_tax_units,
+            seed=seed,
+            n_estimators=n_estimators,
+            fit_records=fit_records,
+            tail_bound_diagnostics=tail_bound_diagnostics,
+            require_complete_recipient_predictors=True,
+            absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            **kwargs,
+        )
+        primary_qrf_receipt: dict[str, object] = {
+            "mode": "monolithic",
+            "resume_status": "not_applicable",
+        }
+    else:
+        checkpoint_dir = Path(primary_qrf_checkpoint_dir)
+        manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
+        if manifest_path.exists():
+            resume_status = "resumed"
+        else:
+            if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
+                raise ValueError(
+                    "Stacked primary QRF checkpoint directory is nonempty but "
+                    f"has no manifest: {checkpoint_dir}."
+                )
+            initialize_primary_puf_qrf_chain(
+                cloned,
+                donor_tax_units,
+                checkpoint_dir,
+                seed=seed,
+                n_estimators=n_estimators,
+                require_complete_recipient_predictors=True,
+                absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+                **kwargs,
+            )
+            resume_status = "initialized"
+        run_primary_puf_qrf_chain(checkpoint_dir)
+        imputed, weight_kind = finalize_primary_puf_qrf_chain(
+            cloned,
+            checkpoint_dir,
+            tail_bound_diagnostics=tail_bound_diagnostics,
+        )
+        if fit_records is not None:
+            fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind))
+        primary_qrf_receipt = {
+            "mode": "checkpoint_chain",
+            "resume_status": resume_status,
+            "checkpoint_manifest": str(manifest_path.resolve()),
+        }
+
+    validate_stacked_spine_frame(imputed, boundary="stacked primary PUF output")
     validate_puf_clone_attachment(
         imputed,
-        boundary="stacked PUF pass output",
+        boundary="stacked primary PUF output",
         expected_fraction=clone_attachment_fraction,
         expected_seed=clone_attachment_seed,
     )
 
-    person = imputed.table("person")
+    if apply_capital_gains_tail:
+        output, tail_receipt = transfer_puf_capital_gains_tail(
+            imputed,
+            donor_tax_units,
+            seed=seed,
+        )
+        validate_puf_capital_gains_tail_manifest(tail_receipt)
+        tail_receipt = _bind_stacked_tail_origin_receipt(output, tail_receipt)
+        output = bind_puf_clone_attachment_tail_descendant(
+            output,
+            attachment_receipt=attachment,
+            tail_manifest=tail_receipt,
+        )
+        attachment = validate_puf_clone_attachment(
+            output,
+            boundary="stacked PUF tail descendant",
+            expected_fraction=clone_attachment_fraction,
+            expected_seed=clone_attachment_seed,
+        )
+        tail_ceiling = tail_receipt["tail_distribution_receipts"]["frame_after_stage"]
+        if not tail_ceiling["positive_mass_five_x_target_exceeded"]:
+            raise ValueError(
+                "PUF capital-gains tail transfer did not clear its declared "
+                "five-times positive-mass target: "
+                f"{tail_ceiling['positive_mass_five_x_ceiling']} <= "
+                f"{tail_ceiling['positive_mass_five_x_target']}."
+            )
+        tail_status = "applied"
+    else:
+        output = imputed
+        tail_receipt = None
+        tail_status = "fixture_only_skipped"
+    validate_stacked_spine_frame(output, boundary="stacked PUF pass output")
+
+    person = output.table("person")
     channel = person[support_channel_column("person")].astype(str)
     clone_index = person[support_clone_index_column("person")]
     recipients_by_origin = {
@@ -2127,16 +3222,525 @@ def run_stacked_puf_pass(
         for origin in sorted(channel.unique())
     }
     return StackedPufPassResult(
-        frame=imputed,
+        frame=output,
         receipt={
             "clone_attachment": _json_ready(attachment),
             "doctrines": {
                 "require_complete_recipient_predictors": True,
                 "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
             },
+            "primary_puf_qrf": primary_qrf_receipt,
+            "puf_capital_gains_tail_transfer": tail_receipt,
+            "tail_status": tail_status,
             "recipient_person_rows_by_origin": recipients_by_origin,
         },
     )
+
+
+def _bind_stacked_tail_origin_receipt(
+    frame: Frame,
+    tail_manifest: Mapping[str, object],
+) -> dict[str, object]:
+    """Bind clone-2 origin counts at the stacked provenance-owner boundary."""
+
+    validate_stacked_spine_frame(frame, boundary="stacked tail origin binding")
+    validate_puf_capital_gains_tail_manifest(tail_manifest)
+    household = frame.table("household")
+    clone_index = pd.to_numeric(
+        household[support_clone_index_column("household")], errors="raise"
+    ).astype("int64")
+    source_channel_counts = {
+        str(channel): int(count)
+        for channel, count in sorted(
+            household.loc[
+                clone_index.eq(2),
+                support_channel_column("household"),
+            ]
+            .astype(str)
+            .value_counts()
+            .items()
+        )
+    }
+    if not source_channel_counts:
+        raise ValueError("Stacked tail origin binding found no clone-2 households.")
+
+    bound = _json_ready(tail_manifest)
+    bound.pop("manifest_sha256", None)
+    clone_receipt = bound.get("clone")
+    if not isinstance(clone_receipt, dict):
+        raise ValueError("Stacked tail clone provenance receipt is malformed.")
+    if clone_receipt.pop("support_channel", None) != (
+        PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL
+    ):
+        raise ValueError("Stacked tail support-role provenance is malformed.")
+    clone_receipt.update(
+        {
+            "provenance_schema_version": 2,
+            "support_role": PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
+            "source_channels": source_channel_counts,
+        }
+    )
+    bound["manifest_sha256"] = _canonical_sha256(bound)
+    validate_puf_capital_gains_tail_manifest(bound)
+    return bound
+
+
+def prepare_stacked_tail_derivation(frame: Frame) -> tuple[Frame, dict[str, object]]:
+    """Clear the clone-2 Schedule-D leaf so derive recomputes it from the tail."""
+
+    validate_stacked_spine_frame(frame, boundary="stacked tail derivation entry")
+    person = frame.table("person").copy()
+    clone_column = support_clone_index_column("person")
+    clone_two = pd.to_numeric(person[clone_column], errors="raise").eq(2)
+    if not clone_two.any():
+        raise ValueError(
+            "Stacked tail derivation requires clone-2 rows from the capital-gains "
+            "tail pass."
+        )
+    column = "schedule_d_capital_gain_distributions"
+    if column not in person:
+        previously_observed = 0
+    else:
+        previously_observed = int(person.loc[clone_two, column].notna().sum())
+        person.loc[clone_two, column] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    prepared = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return prepared, {
+        "column": column,
+        "clone_index": 2,
+        "cleared_rows": int(clone_two.sum()),
+        "previously_observed_rows": previously_observed,
+        "column_was_present": column in frame.table("person"),
+        "reason": "rederive_from_clone_2_tail_owned_parents",
+    }
+
+
+def assert_stacked_tail_cells_preserved(
+    frame: Frame,
+    tail_manifest: Mapping[str, object],
+) -> dict[str, object]:
+    """Prove the complete clone-2 tail state and recipient QRF cells survived."""
+
+    validate_stacked_spine_frame(frame, boundary="stacked tail preservation")
+    validate_puf_capital_gains_tail_manifest(tail_manifest)
+    attachment = validate_puf_clone_attachment(
+        frame,
+        boundary="stacked tail preservation attachment",
+    )
+    transform = attachment.get("post_attachment_transform")
+    if not isinstance(transform, Mapping) or transform.get(
+        "tail_manifest_sha256"
+    ) != tail_manifest.get("manifest_sha256"):
+        raise ValueError(
+            "Stacked tail preservation attachment is not bound to the supplied "
+            "tail manifest."
+        )
+    records = tail_manifest.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("Stacked tail preservation requires nonempty records.")
+
+    person = frame.table("person")
+    tax_unit = frame.table("tax_unit")
+    household = frame.table("household")
+    person_clone_column = support_clone_index_column("person")
+    tax_unit_clone_column = support_clone_index_column("tax_unit")
+    household_clone_column = support_clone_index_column("household")
+    person_clone = pd.to_numeric(person[person_clone_column], errors="raise").astype(
+        "int64"
+    )
+    tax_unit_clone = pd.to_numeric(
+        tax_unit[tax_unit_clone_column], errors="raise"
+    ).astype("int64")
+    household_clone = pd.to_numeric(
+        household[household_clone_column], errors="raise"
+    ).astype("int64")
+
+    expected_tail_tax_unit_ids = sorted(
+        int(record["tail_tax_unit_id"]) for record in records
+    )
+    expected_tail_household_ids = sorted(
+        int(record["tail_household_id"]) for record in records
+    )
+    live_tail_tax_unit_ids = sorted(
+        tax_unit.loc[tax_unit_clone.eq(2), "tax_unit_id"].astype(int).tolist()
+    )
+    live_tail_household_ids = sorted(
+        household.loc[household_clone.eq(2), "household_id"].astype(int).tolist()
+    )
+    if live_tail_tax_unit_ids != expected_tail_tax_unit_ids:
+        raise ValueError(
+            "Stacked tail live clone-2 tax-unit IDs differ from the manifest."
+        )
+    if live_tail_household_ids != expected_tail_household_ids:
+        raise ValueError(
+            "Stacked tail live clone-2 household IDs differ from the manifest."
+        )
+    applied = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN]
+    live_applied_ids = sorted(
+        tax_unit.loc[applied.eq(True), "tax_unit_id"].astype(int).tolist()  # noqa: E712
+    )
+    if live_applied_ids != expected_tail_tax_unit_ids:
+        raise ValueError(
+            "Stacked tail applied-provenance tax-unit IDs differ from the manifest."
+        )
+
+    clone_receipt = tail_manifest.get("clone")
+    if not isinstance(clone_receipt, Mapping):
+        raise ValueError("Stacked tail clone provenance receipt is malformed.")
+    if clone_receipt.get("support_role") != PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL:
+        raise ValueError("Stacked tail clone support-role provenance is malformed.")
+    live_source_channel_counts = {
+        str(channel): int(count)
+        for channel, count in sorted(
+            household.loc[
+                household_clone.eq(2),
+                support_channel_column("household"),
+            ]
+            .astype(str)
+            .value_counts()
+            .items()
+        )
+    }
+    if clone_receipt.get("source_channels") != live_source_channel_counts:
+        raise ValueError(
+            "Stacked tail clone source-channel counts differ from the live frame."
+        )
+
+    household_weight_by_id = pd.Series(
+        frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(dtype=np.int64),
+    )
+    tax_unit_weight_by_id = pd.Series(
+        frame.resolve_weights("tax_unit").values,
+        index=tax_unit["tax_unit_id"].to_numpy(dtype=np.int64),
+    )
+
+    observed_state: list[dict[str, object]] = []
+    tail_owned_cell_count = 0
+
+    def assert_float_exact(
+        actual_value: object,
+        expected_value: object,
+        *,
+        label: str,
+    ) -> float:
+        expected = np.float64(expected_value)
+        actual = np.float64(actual_value)
+        if actual.tobytes() != expected.tobytes():
+            raise ValueError(
+                f"Stacked tail-owned {label} changed: expected {expected!r}, "
+                f"got {actual!r}."
+            )
+        return float(actual)
+
+    for record in records:
+        if not isinstance(record, Mapping) or not isinstance(
+            record.get("joint_vector"), Mapping
+        ):
+            raise ValueError("Stacked tail preservation found a malformed record.")
+        joint_vector = record["joint_vector"]
+        tail_household_id = int(record["tail_household_id"])
+        recipient_household_id = int(record["recipient_household_id"])
+        tail_tax_unit_id = int(record["tail_tax_unit_id"])
+        recipient_tax_unit_id = int(record["recipient_tax_unit_id"])
+        tail_person_id = int(record["tail_person_id"])
+
+        tail_household_rows = household.loc[
+            household["household_id"].eq(tail_household_id)
+        ]
+        recipient_household_rows = household.loc[
+            household["household_id"].eq(recipient_household_id)
+        ]
+        tail_tax_unit_rows = tax_unit.loc[tax_unit["tax_unit_id"].eq(tail_tax_unit_id)]
+        recipient_tax_unit_rows = tax_unit.loc[
+            tax_unit["tax_unit_id"].eq(recipient_tax_unit_id)
+        ]
+        for label, rows in (
+            ("tail household", tail_household_rows),
+            ("recipient household", recipient_household_rows),
+            ("tail tax unit", tail_tax_unit_rows),
+            ("recipient tax unit", recipient_tax_unit_rows),
+        ):
+            if len(rows) != 1:
+                raise ValueError(
+                    f"Stacked tail preservation expected one {label} row; "
+                    f"found {len(rows)}."
+                )
+        tail_household_row = tail_household_rows.iloc[0]
+        recipient_household_row = recipient_household_rows.iloc[0]
+        tail_tax_unit_row = tail_tax_unit_rows.iloc[0]
+        recipient_tax_unit_row = recipient_tax_unit_rows.iloc[0]
+        lineage_expectations = (
+            (
+                "tail household",
+                tail_household_row,
+                household_clone_column,
+                2,
+                support_source_id_column("household"),
+                record["recipient_household_source_id"],
+            ),
+            (
+                "recipient household",
+                recipient_household_row,
+                household_clone_column,
+                1,
+                support_source_id_column("household"),
+                record["recipient_household_source_id"],
+            ),
+            (
+                "tail tax unit",
+                tail_tax_unit_row,
+                tax_unit_clone_column,
+                2,
+                support_source_id_column("tax_unit"),
+                record["recipient_tax_unit_source_id"],
+            ),
+            (
+                "recipient tax unit",
+                recipient_tax_unit_row,
+                tax_unit_clone_column,
+                1,
+                support_source_id_column("tax_unit"),
+                record["recipient_tax_unit_source_id"],
+            ),
+        )
+        for (
+            label,
+            row,
+            clone_column,
+            clone_role,
+            source_column,
+            source_id,
+        ) in lineage_expectations:
+            if int(row[clone_column]) != clone_role or int(row[source_column]) != int(
+                source_id
+            ):
+                raise ValueError(f"Stacked tail {label} lineage changed.")
+
+        tail_weight = assert_float_exact(
+            household_weight_by_id.loc[tail_household_id],
+            record["assigned_weight"],
+            label=f"clone-2 household weight for household_id={tail_household_id}",
+        )
+        recipient_weight = assert_float_exact(
+            household_weight_by_id.loc[recipient_household_id],
+            record["recipient_household_weight_after"],
+            label=(
+                "clone-1 residual household weight for "
+                f"household_id={recipient_household_id}"
+            ),
+        )
+        assert_float_exact(
+            tax_unit_weight_by_id.loc[tail_tax_unit_id],
+            record["assigned_weight"],
+            label=f"clone-2 tax-unit weight for tax_unit_id={tail_tax_unit_id}",
+        )
+        assert_float_exact(
+            tax_unit_weight_by_id.loc[recipient_tax_unit_id],
+            record["recipient_household_weight_after"],
+            label=(
+                "clone-1 residual tax-unit weight for "
+                f"tax_unit_id={recipient_tax_unit_id}"
+            ),
+        )
+        observed_state.extend(
+            [
+                {
+                    "kind": "weight",
+                    "role": "tail",
+                    "household_id": tail_household_id,
+                    "value": tail_weight,
+                },
+                {
+                    "kind": "weight",
+                    "role": "recipient",
+                    "household_id": recipient_household_id,
+                    "value": recipient_weight,
+                },
+            ]
+        )
+
+        provenance_expectations = (
+            (PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, True),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+                int(record["donor_source_id"]),
+            ),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+                bool(record["donor_is_synthetic"]),
+            ),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+                int(record["donor_filing_status_code"]),
+            ),
+            (
+                PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+                int(record["donor_agi_band_index"]),
+            ),
+        )
+        for column, expected in provenance_expectations:
+            actual = tail_tax_unit_row[column]
+            if actual != expected or type(actual) is not type(expected):
+                # Pandas scalar integer/bool types are valid exact scalar
+                # representations even though their Python types differ.
+                if isinstance(expected, bool):
+                    matches = (
+                        isinstance(actual, (bool, np.bool_))
+                        and bool(actual) == expected
+                    )
+                else:
+                    matches = (
+                        isinstance(actual, (int, np.integer))
+                        and int(actual) == expected
+                    )
+                if not matches:
+                    raise ValueError(
+                        f"Stacked tail provenance {column} for "
+                        f"tax_unit_id={tail_tax_unit_id} changed."
+                    )
+            observed_state.append(
+                {
+                    "kind": "provenance",
+                    "column": column,
+                    "tax_unit_id": tail_tax_unit_id,
+                    "value": bool(actual)
+                    if isinstance(expected, bool)
+                    else int(actual),
+                }
+            )
+        transfer_weight = assert_float_exact(
+            tail_tax_unit_row[PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN],
+            record["assigned_weight"],
+            label=(f"transfer-weight provenance for tax_unit_id={tail_tax_unit_id}"),
+        )
+        observed_state.append(
+            {
+                "kind": "provenance",
+                "column": PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+                "tax_unit_id": tail_tax_unit_id,
+                "value": transfer_weight,
+            }
+        )
+
+        tail_people = person.loc[person["person_tax_unit_id"].eq(tail_tax_unit_id)]
+        if tail_people.empty or not person_clone.loc[tail_people.index].eq(2).all():
+            raise ValueError(
+                f"Stacked tail tax_unit_id={tail_tax_unit_id} has malformed people."
+            )
+        if int(tail_people["person_id"].eq(tail_person_id).sum()) != 1:
+            raise ValueError(
+                f"Stacked tail carrier person_id={tail_person_id} is not unique."
+            )
+        for _, row in tail_people.iterrows():
+            person_id = int(row["person_id"])
+            carrier = person_id == tail_person_id
+            for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
+                if column not in row:
+                    raise ValueError(
+                        f"Stacked tail-owned column person.{column} is absent."
+                    )
+                actual = assert_float_exact(
+                    row[column],
+                    joint_vector[column] if carrier else 0.0,
+                    label=f"cell person.{column} for person_id={person_id}",
+                )
+                observed_state.append(
+                    {
+                        "kind": "cell",
+                        "entity": "person",
+                        "column": column,
+                        "id": person_id,
+                        "value": actual,
+                    }
+                )
+                tail_owned_cell_count += 1
+        for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
+            if column not in tail_tax_unit_row:
+                raise ValueError(
+                    f"Stacked tail-owned column tax_unit.{column} is absent."
+                )
+            actual = assert_float_exact(
+                tail_tax_unit_row[column],
+                joint_vector[column],
+                label=f"cell tax_unit.{column} for tax_unit_id={tail_tax_unit_id}",
+            )
+            observed_state.append(
+                {
+                    "kind": "cell",
+                    "entity": "tax_unit",
+                    "column": column,
+                    "id": tail_tax_unit_id,
+                    "value": actual,
+                }
+            )
+            tail_owned_cell_count += 1
+
+    preserved_nonowned = 0
+    for entity, owned_columns, qrf_outputs in (
+        (
+            "person",
+            frozenset(PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
+            PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+        ),
+        (
+            "tax_unit",
+            frozenset(PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS),
+            PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        ),
+    ):
+        table = frame.table(entity)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)], errors="raise"
+        ).astype("int64")
+        # Raw spine IDs may legally collide across ASEC and ACS.  Clone
+        # parentage is defined by the assembly-unique pre-clone support ID,
+        # which the clone operators preserve across clone roles.
+        source_id = support_source_id_column(entity)
+        primary = table.loc[clone_index.eq(1)].set_index(source_id, drop=False)
+        tail = table.loc[clone_index.eq(2)].set_index(source_id, drop=False)
+        missing_sources = sorted(set(tail.index) - set(primary.index))
+        if missing_sources:
+            raise ValueError(
+                f"Stacked tail {entity} clone-2 source rows have no clone-1 "
+                f"parent: {missing_sources}."
+            )
+        for column in sorted(set(qrf_outputs) - owned_columns):
+            if column not in table:
+                continue
+            expected = primary.loc[tail.index, column].reset_index(drop=True)
+            actual = tail[column].reset_index(drop=True)
+            expected.name = column
+            actual.name = column
+            if _canonical_donor_series_payload(
+                actual,
+                boundary=f"stacked tail actual {entity}.{column}",
+            ) != _canonical_donor_series_payload(
+                expected,
+                boundary=f"stacked tail expected {entity}.{column}",
+            ):
+                raise ValueError(
+                    f"Stacked tail recipient-owned QRF column {entity}.{column} "
+                    "changed on clone 2."
+                )
+            preserved_nonowned += int(len(actual))
+
+    return {
+        "passed": True,
+        "record_count": len(records),
+        "tail_owned_cell_count": tail_owned_cell_count,
+        "tail_owned_state_count": len(observed_state),
+        "recipient_owned_qrf_cell_count": preserved_nonowned,
+        "tail_owned_cells_sha256": _canonical_sha256(observed_state),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2180,6 +3784,66 @@ class AbsenceProof:
             or self.clone_index < 0
         ):
             raise ValueError("AbsenceProof.clone_index must be a non-negative integer.")
+
+
+def _declared_metric_invalidity(
+    series: pd.Series,
+    *,
+    metric: str,
+    scope: np.ndarray,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Return invalid rows under one declared metric, never inferred dtype."""
+
+    if metric not in ORIGIN_BATTERY_METRIC_KINDS:
+        raise ValueError(f"Unknown declared metric {metric!r}.")
+    if scope.dtype != np.bool_ or scope.ndim != 1 or len(scope) != len(series):
+        raise ValueError("Declared-metric validity scope must be an aligned mask.")
+    invalid = np.zeros(len(series), dtype=bool)
+    positions = np.flatnonzero(scope & ~series.isna().to_numpy(dtype=bool))
+    counts = {
+        "non_numeric_rows": 0,
+        "non_finite_rows": 0,
+        "outside_boolean_domain_rows": 0,
+        "invalid_categorical_rows": 0,
+    }
+    if not len(positions):
+        return invalid, counts
+
+    scoped = series.iloc[positions]
+    if metric == "categorical_tvd":
+        local_invalid = np.zeros(len(scoped), dtype=bool)
+        for index, value in enumerate(scoped.to_numpy(dtype=object)):
+            valid = bool(pd.api.types.is_scalar(value))
+            if valid:
+                try:
+                    hash(value)
+                except TypeError:
+                    valid = False
+            if valid and isinstance(value, (float, np.floating)):
+                valid = bool(np.isfinite(value))
+            local_invalid[index] = not valid
+        invalid[positions] = local_invalid
+        counts["invalid_categorical_rows"] = int(local_invalid.sum())
+        return invalid, counts
+
+    numeric = pd.to_numeric(scoped, errors="coerce").to_numpy(dtype=np.float64)
+    non_numeric = np.isnan(numeric)
+    non_finite = np.isinf(numeric)
+    local_invalid = non_numeric | non_finite
+    counts["non_numeric_rows"] = int(non_numeric.sum())
+    counts["non_finite_rows"] = int(non_finite.sum())
+    if metric == "boolean_incidence":
+        outside_boolean = np.isfinite(numeric) & ~np.isin(numeric, (0.0, 1.0))
+        local_invalid |= outside_boolean
+        counts["outside_boolean_domain_rows"] = int(outside_boolean.sum())
+    invalid[positions] = local_invalid
+    return invalid, counts
+
+
+def _nonzero_invalidity_counts(counts: Mapping[str, int]) -> dict[str, int]:
+    """Keep invalidity receipts compact and canonical-JSON safe."""
+
+    return {key: int(value) for key, value in counts.items() if int(value)}
 
 
 def stacked_completeness_gate(
@@ -2287,6 +3951,12 @@ def _stacked_completeness_gate_evaluate(
         ] = proof.reason
 
     target_receipts: dict[str, dict[str, object]] = {}
+    metric_by_target = {
+        (entity, family, column): metric
+        for (entity, family, column, _clone_index), metric in (
+            authority.metric_registry.items()
+        )
+    }
     authority_sha256 = authority_receipt["sha256"]
     plan_sha256 = authority_receipt["components"]["gap_fill_plan"]["sha256"]
     surface_sha256 = authority_receipt["components"]["declared_surface"]["sha256"]
@@ -2318,6 +3988,9 @@ def _stacked_completeness_gate_evaluate(
             table[support_clone_index_column(entity)],
             errors="raise",
         ).astype("int64")
+        positive_weight = (
+            np.asarray(frame.resolve_weights(entity).values, dtype=np.float64) > 0.0
+        )
         for family, targets in families.items():
             for target in targets:
                 label = f"{entity}/{family}/{target}"
@@ -2334,11 +4007,48 @@ def _stacked_completeness_gate_evaluate(
                     }
                     continue
                 null_mask = table[target].isna()
+                metric = metric_by_target[(entity, family, target)]
+                invalid_mask, invalidity = _declared_metric_invalidity(
+                    table[target],
+                    metric=metric,
+                    scope=positive_weight,
+                )
+                invalid_rows = int(invalid_mask.sum())
+                invalid_by_origin_role: dict[str, int] = {}
+                if invalid_rows:
+                    invalid_by_origin_role = {
+                        f"{cell_channel}/clone_{int(cell_clone)}": int(count)
+                        for (cell_channel, cell_clone), count in (
+                            pd.DataFrame(
+                                {
+                                    "channel": channel.loc[invalid_mask],
+                                    "clone_index": clone_index.loc[invalid_mask],
+                                }
+                            )
+                            .groupby(["channel", "clone_index"], sort=True)
+                            .size()
+                            .items()
+                        )
+                    }
+                    failures.append(
+                        f"{label}: declared {metric} metric has {invalid_rows} "
+                        "invalid positive-weight value(s), including "
+                        f"{_nonzero_invalidity_counts(invalidity)} (by "
+                        f"origin/role: {invalid_by_origin_role})."
+                    )
                 if not null_mask.any():
                     target_receipts[label] = {
-                        "status": "complete",
+                        "status": ("invalid_values" if invalid_rows else "complete"),
                         "null_rows": 0,
-                        **authority_binding("observed_complete"),
+                        "metric": metric,
+                        "invalid_rows": invalid_rows,
+                        "invalidity": _nonzero_invalidity_counts(invalidity),
+                        "invalid_by_origin_role": invalid_by_origin_role,
+                        **authority_binding(
+                            "invalid_declared_metric_values"
+                            if invalid_rows
+                            else "observed_complete"
+                        ),
                     }
                     continue
                 proofs = proof_index.get((entity, target), {})
@@ -2420,11 +4130,25 @@ def _stacked_completeness_gate_evaluate(
                 else:
                     target_authority_form = "mixed_proven_absence"
                 target_receipts[label] = {
-                    "status": "proven_absent" if not unproven else "unproven",
+                    "status": (
+                        "unproven"
+                        if unproven
+                        else "invalid_values"
+                        if invalid_rows
+                        else "proven_absent"
+                    ),
                     "null_rows": int(null_mask.sum()),
+                    "metric": metric,
+                    "invalid_rows": invalid_rows,
+                    "invalidity": _nonzero_invalidity_counts(invalidity),
+                    "invalid_by_origin_role": invalid_by_origin_role,
                     "proven": proven,
                     "unproven": unproven,
-                    **authority_binding(target_authority_form),
+                    **authority_binding(
+                        "invalid_declared_metric_values"
+                        if invalid_rows and not unproven
+                        else target_authority_form
+                    ),
                 }
     return GateResult(
         name=_COMPLETENESS_GATE_NAME,
@@ -2454,7 +4178,7 @@ class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
 
     Production never accepts these specs from a caller: it consumes the
-    immutable 90-column canonical registry. The explicit test-authority seam
+    immutable 131-column canonical registry. The explicit test-authority seam
     groups its digested registry into specs so the comparison engine can reuse
     the same loop. ``clone_index`` scopes a fixture comparison to one clone
     role: 0 compares native rows and 1 compares a PUF arm.
@@ -2506,7 +4230,7 @@ class OriginBatterySpec:
 def by_origin_battery(
     frame: Frame,
 ) -> GateResult:
-    """Run the canonical 90-target by-origin battery."""
+    """Run the canonical 131-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,
@@ -2555,8 +4279,9 @@ def _by_origin_battery_evaluate(
 ) -> GateResult:
     """Compare declared statistics between origins within the one spine.
 
-    Replaces the retired spine-vs-spine agreement: the same comparisons,
-    scoped to gap-filled families, with per-family DECLARED metrics.  The
+    Replaces the retired spine-vs-spine agreement: the same comparisons over
+    the complete terminal production surface, with per-column DECLARED
+    metrics.  The
     tolerances are the chartered ones — incidence ratios within
     ``[0.8, 1.25]``, conditional-quantile envelopes within ``0.25``,
     categorical total-variation within ``0.25`` — deliberately NOT widened.
@@ -2599,6 +4324,7 @@ def _by_origin_battery_evaluate(
         "authority": authority_receipt,
         "declared_target_count": len(declared_target_set),
         "registered_target_count": len(registered_targets),
+        "registered_joint_target_count": len(authority.joint_metric_registry),
         "missing_declared_targets": [
             _battery_target_label(target) for target in missing_targets
         ],
@@ -2668,6 +4394,41 @@ def _by_origin_battery_evaluate(
                     "null_rows": scoped_nulls,
                 }
                 continue
+            invalid_mask, invalidity = _declared_metric_invalidity(
+                series,
+                metric=metric,
+                scope=scope,
+            )
+            invalid_rows = int(invalid_mask.sum())
+            if invalid_rows:
+                invalid_counts = _nonzero_invalidity_counts(invalidity)
+                failures.append(
+                    f"{label}: declared {metric} metric has {invalid_rows} "
+                    "invalid value(s) inside the comparison scope, including "
+                    f"{invalid_counts}."
+                )
+                comparisons[label] = {
+                    "status": "invalid_values",
+                    "metric": metric,
+                    "invalid_rows": invalid_rows,
+                    "invalidity": invalid_counts,
+                }
+                continue
+            values: np.ndarray | None = None
+            if metric != "categorical_tvd":
+                values = _battery_numeric_values(
+                    label,
+                    series,
+                    metric=metric,
+                    scope=scope,
+                    failures=failures,
+                )
+                if values is None:
+                    comparisons[label] = {
+                        "status": "invalid_values",
+                        "metric": metric,
+                    }
+                    continue
             support = {
                 "asec": int(left_rows.sum()),
                 "acs": int(right_rows.sum()),
@@ -2692,18 +4453,8 @@ def _by_origin_battery_evaluate(
                     comparisons=comparisons,
                 )
                 continue
-            values = _battery_numeric_values(
-                label,
-                series,
-                metric=metric,
-                failures=failures,
-            )
-            if values is None:
-                comparisons[label] = {
-                    "status": "invalid_values",
-                    "metric": metric,
-                }
-                continue
+            if values is None:  # pragma: no cover - categorical continued above
+                raise AssertionError("Numeric battery metric has no values.")
             if metric in {"boolean_incidence", "rare_incidence"}:
                 _battery_incidence_comparison(
                     label=label,
@@ -2728,6 +4479,67 @@ def _by_origin_battery_evaluate(
                         authority.support_profile.min_effective_support
                     ),
                 )
+    for target, metric in authority.joint_metric_registry.items():
+        entity, family, columns, clone_role = target
+        label = _joint_battery_target_label(target)
+        table = frame.table(entity)
+        missing_columns = sorted(set(columns) - set(table.columns))
+        if missing_columns:
+            failures.append(
+                f"{label}: registered column(s) are absent from the frame: "
+                f"{missing_columns}."
+            )
+            comparisons[label] = {
+                "status": "missing_column",
+                "metric": metric,
+                "missing_columns": missing_columns,
+            }
+            continue
+        channel = table[support_channel_column(entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).astype("int64")
+        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+        scope = clone_index.eq(clone_role).to_numpy() & (weights > 0.0)
+        left_rows = scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+        right_rows = scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
+        scoped_nulls = int(table.loc[:, list(columns)].isna().any(axis=1)[scope].sum())
+        if scoped_nulls:
+            failures.append(
+                f"{label}: {scoped_nulls} null tuple(s) inside the comparison "
+                "scope; the battery runs only on completed surfaces."
+            )
+            comparisons[label] = {
+                "status": "null_in_scope",
+                "metric": metric,
+                "null_rows": scoped_nulls,
+            }
+            continue
+        support = {"asec": int(left_rows.sum()), "acs": int(right_rows.sum())}
+        if min(support.values()) < authority.support_profile.min_effective_support:
+            comparisons[label] = {
+                "status": "insufficient_support",
+                "metric": metric,
+                "scope_rows": support,
+            }
+            untestable.append(label)
+            continue
+        tested += 1
+        tuples = pd.Series(
+            list(table.loc[:, list(columns)].itertuples(index=False, name=None)),
+            index=table.index,
+            dtype=object,
+        )
+        _battery_categorical_comparison(
+            label=label,
+            series=tuples,
+            left_rows=left_rows,
+            right_rows=right_rows,
+            weights=weights,
+            failures=failures,
+            comparisons=comparisons,
+        )
     return GateResult(
         name=_BATTERY_GATE_NAME,
         passed=not failures,
@@ -2756,20 +4568,39 @@ def _battery_target_label(target: tuple[str, str, str, int]) -> str:
     return f"{entity}/{family}/{column}[clone_{clone_index}]"
 
 
+def _joint_battery_target_label(
+    target: tuple[str, str, tuple[str, ...], int],
+) -> str:
+    entity, family, columns, clone_index = target
+    return f"{entity}/{family}/joint[{','.join(columns)}][clone_{clone_index}]"
+
+
 def _battery_numeric_values(
     label: str,
     series: pd.Series,
     *,
     metric: str,
+    scope: np.ndarray,
     failures: list[str],
 ) -> np.ndarray | None:
+    values = np.zeros(len(series), dtype=np.float64)
     try:
-        values = pd.to_numeric(series, errors="raise").to_numpy(dtype=np.float64)
+        values[scope] = pd.to_numeric(
+            series.iloc[np.flatnonzero(scope)],
+            errors="raise",
+        ).to_numpy(dtype=np.float64)
     except (TypeError, ValueError):
         failures.append(f"{label}: declared {metric} metric requires numeric values.")
         return None
+    non_finite = ~np.isfinite(values[scope])
+    if non_finite.any():
+        failures.append(
+            f"{label}: declared {metric} metric requires finite numeric values; "
+            f"found {int(non_finite.sum())} non-finite value(s)."
+        )
+        return None
     if metric == "boolean_incidence":
-        invalid = ~np.isin(values, (0.0, 1.0))
+        invalid = ~np.isin(values[scope], (0.0, 1.0))
         if invalid.any():
             failures.append(
                 f"{label}: declared boolean incidence requires values in "
@@ -2969,6 +4800,8 @@ def _battery_quantile_envelope_distance(
     left: np.ndarray,
     right: np.ndarray,
 ) -> float:
+    if not np.isfinite(left).all() or not np.isfinite(right).all():
+        raise ValueError("Battery quantile envelopes require finite values.")
     denominator = np.abs(left) + np.abs(right)
     distances = np.divide(
         2.0 * np.abs(left - right),
@@ -2976,4 +4809,7 @@ def _battery_quantile_envelope_distance(
         out=np.zeros_like(denominator),
         where=denominator > 0.0,
     )
-    return float(np.max(distances))
+    distance = float(np.max(distances))
+    if not math.isfinite(distance):
+        raise ValueError("Battery quantile-envelope distance must be finite.")
+    return distance

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Standard #624 1% smoke rung. Planning envelope: 2-4 hours, <=64 GiB RAM.
+# Most by-origin comparisons receipt insufficient_support by design at 1%.
+set -euo pipefail
+
+: "${POPULACE_MAIN:?set to the main populace clone}"
+: "${ASEC_H5:?}"
+: "${ASEC_SHA:?}"
+: "${ACS_H_ZIP:?}"
+: "${ACS_H_SHA:?}"
+: "${ACS_P_ZIP:?}"
+: "${ACS_P_SHA:?}"
+: "${RENT_H5:?}"
+: "${RENT_SHA:?}"
+: "${PUF_H5:?}"
+: "${PUF_SHA:?}"
+: "${PUF_CSV:?}"
+: "${PUF_CSV_SHA:?}"
+: "${OUT:?}"
+
+env \
+  PYTHONPATH=packages/populace-frame/src:packages/populace-fit/src:packages/populace-calibrate/src:packages/populace-build/src:packages/populace-data/src \
+  "${POPULACE_MAIN}/.venv/bin/python" tools/build_us_multispine_pool.py \
+  --sample-fraction 0.01 \
+  --sample-seed 578 \
+  --clone-attachment-fraction 1.0 \
+  --clone-attachment-seed 578 \
+  --asec-raw-stage-h5 "${ASEC_H5}" \
+  --asec-raw-stage-h5-sha256 "${ASEC_SHA}" \
+  --acs-household-zip "${ACS_H_ZIP}" \
+  --acs-household-zip-sha256 "${ACS_H_SHA}" \
+  --acs-person-zip "${ACS_P_ZIP}" \
+  --acs-person-zip-sha256 "${ACS_P_SHA}" \
+  --acs-rent-h5 "${RENT_H5}" \
+  --acs-rent-h5-sha256 "${RENT_SHA}" \
+  --puf-h5 "${PUF_H5}" \
+  --puf-h5-sha256 "${PUF_SHA}" \
+  --puf-source-year-csv "${PUF_CSV}" \
+  --puf-source-year-csv-sha256 "${PUF_CSV_SHA}" \
+  --out "${OUT}"

@@ -201,13 +201,12 @@ class GateReport:
                     )
                     or (
                         isinstance(components, Mapping)
-                        and set(components)
-                        == {
+                        and {
                             "gap_fill_plan",
                             "declared_surface",
                             "metric_registry",
                             "support_profile",
-                        }
+                        }.issubset(components)
                     )
                 )
             ) or (
