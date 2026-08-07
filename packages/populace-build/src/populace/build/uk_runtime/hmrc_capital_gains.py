@@ -35,6 +35,7 @@ from populace.build.uk_runtime.ods_tables import ODSTable, read_ods_tables
 
 __all__ = [
     "HMRCCapitalGainsBandTotal",
+    "HMRCCapitalGainsIncomeTotal",
     "HMRC_CGT_BUILD_PERIOD",
     "HMRC_CGT_GAIN_BAND_LOWER_BOUNDS",
     "HMRC_CGT_INCOME_BAND_LOWER_BOUNDS",
@@ -165,6 +166,21 @@ class HMRCCapitalGainsBandTotal:
 
 
 @dataclass(frozen=True)
+class HMRCCapitalGainsIncomeTotal:
+    """One published All-row total for a band of taxable income.
+
+    The column totals come from the published All row rather than summing the
+    ten cells above it, so a column containing suppressed cells still has its
+    full published taxpayer count. An allocation can reconcile suppressed
+    cells against these instead of inventing a count for them.
+    """
+
+    income_lower_bound: int
+    individuals: float | None
+    gains: float | None
+
+
+@dataclass(frozen=True)
 class HMRCCapitalGainsSourceProvenance:
     """What was read, and what it hashed to when read."""
 
@@ -182,6 +198,7 @@ class HMRCCapitalGainsJointDistribution:
 
     cells: tuple[HMRCCapitalGainsCell, ...]
     band_totals: tuple[HMRCCapitalGainsBandTotal, ...]
+    income_totals: tuple[HMRCCapitalGainsIncomeTotal, ...]
     source: HMRCCapitalGainsSourceProvenance
     total_individuals: float
     total_gains: float
@@ -222,6 +239,15 @@ class HMRCCapitalGainsJointDistribution:
             if total.gain_lower_bound == gain_lower_bound:
                 return total
         raise KeyError(f"No published band total for gains from {gain_lower_bound}.")
+
+    def income_total(self, income_lower_bound: int) -> HMRCCapitalGainsIncomeTotal:
+        """Return one published column total by its income band bound."""
+        for total in self.income_totals:
+            if total.income_lower_bound == income_lower_bound:
+                return total
+        raise KeyError(
+            f"No published income total for incomes from {income_lower_bound}."
+        )
 
 
 def _fingerprint(path: Path) -> tuple[str, int]:
@@ -403,6 +429,27 @@ def materialize_hmrc_capital_gains_joint_distribution(
             f"{HMRC_CGT_SOURCE_LABEL} sheet {sheet_name} does not close with "
             f"an {_ALL_ROW_LABEL!r} row at row {all_row}."
         )
+    income_totals = []
+    for index, income_lower_bound in enumerate(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS):
+        count_column = 1 + 2 * index
+        where = (
+            f"{HMRC_CGT_SOURCE_LABEL} sheet {sheet_name} All row column {count_column}"
+        )
+        column_individuals = _numeric(table.cell(all_row, count_column), label=where)
+        column_gains = _numeric(
+            table.cell(all_row, count_column + 1), label=f"{where} amount"
+        )
+        income_totals.append(
+            HMRCCapitalGainsIncomeTotal(
+                income_lower_bound=income_lower_bound,
+                individuals=(
+                    None
+                    if column_individuals is None
+                    else column_individuals * _COUNT_UNIT
+                ),
+                gains=None if column_gains is None else column_gains * _AMOUNT_UNIT,
+            )
+        )
     total_column = 1 + 2 * len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)
     total_individuals = _numeric(
         table.cell(all_row, total_column), label=f"{sheet_name} total individuals"
@@ -427,6 +474,7 @@ def materialize_hmrc_capital_gains_joint_distribution(
     return HMRCCapitalGainsJointDistribution(
         cells=tuple(cells),
         band_totals=tuple(band_totals),
+        income_totals=tuple(income_totals),
         source=HMRCCapitalGainsSourceProvenance(
             local_path=path.resolve(),
             sha256=sha256,

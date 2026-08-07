@@ -54,8 +54,16 @@ def _synthetic_rows(*, notes: int = _NOTE_ROWS, suppress: bool = False):
         for income_index in range(len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS))
         if not (suppress and band_index == 0 and income_index == 0)
     )
-    rows.append(["All"] + [0.0] * (2 * len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)))
-    rows[-1].extend([1.0, published_amount])
+    all_row: list[object] = ["All"]
+    for income_index in range(len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)):
+        column_count = 0.0
+        column_amount = 0.0
+        for band_index in range(len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)):
+            column_count += float(band_index + income_index + 1)
+            column_amount += float(10 * (band_index + 1) + income_index)
+        all_row.extend([column_count, column_amount])
+    all_row.extend([1.0, published_amount])
+    rows.append(all_row)
     return rows
 
 
@@ -114,6 +122,21 @@ def test_reports_suppressed_cells_as_unknown_rather_than_zero(tmp_path, ods) -> 
     assert cell.individuals_suppressed
     assert cell.gains is None
     assert cell.gains_suppressed
+
+
+def test_income_totals_come_from_the_published_all_row(tmp_path, ods) -> None:
+    """Column totals cover suppressed cells, like the row totals do."""
+    distribution = _load(_synthetic_ods(ods, tmp_path, suppress=True))
+
+    column = distribution.income_total(0)
+
+    assert column.individuals is not None and column.individuals > 0
+    cell_sum = sum(
+        cell.individuals
+        for cell in distribution.cells
+        if cell.income_lower_bound == 0 and cell.individuals is not None
+    )
+    assert column.individuals > cell_sum
 
 
 def test_band_totals_come_from_the_published_row_pair(tmp_path, ods) -> None:
