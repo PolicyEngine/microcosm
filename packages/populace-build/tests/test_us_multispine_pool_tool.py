@@ -133,6 +133,8 @@ def _many_household_source_frame(
             for entity in US_SCHEMA.group_entities
         },
     }
+    if measured_offset:
+        tables["household"]["TYPEHUGQ"] = 1
     return Frame(
         tables,
         US_SCHEMA,

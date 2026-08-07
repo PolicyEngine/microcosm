@@ -239,7 +239,7 @@ def test_production_sampling_is_uniform_and_composition_preserving() -> None:
         sample_seed=578,
     )
 
-    assert result.receipt["version"] == 3
+    assert result.receipt["version"] == 4
     assert result.receipt["sample_fraction"] == 0.5
     assert result.receipt["sample_seed"] == 578
     samples = result.receipt["survey_samples"]
@@ -1327,6 +1327,125 @@ def test_acs_clone_cannot_substitute_group_quarters_support_lineage() -> None:
         validate_stacked_spine_frame(
             corrupted,
             boundary="substituted ACS GQ clone fixture",
+        )
+
+
+def test_acs_housing_unit_cannot_substitute_group_quarters_raw_identity() -> None:
+    filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    household = filled.table("household").copy()
+    person = filled.table("person").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    acs_native = channel.eq("acs") & clone.eq(0)
+    person_counts = person["person_household_id"].value_counts()
+    one_person_households = household["household_id"].map(person_counts).eq(1)
+    housing_unit_row = household.index[acs_native & kind.eq(1) & one_person_households][
+        0
+    ]
+    gq_row = household.index[acs_native & kind.isin((2, 3))][0]
+    housing_unit_id = household.loc[housing_unit_row, "household_id"]
+    gq_id = household.loc[gq_row, "household_id"]
+    housing_unit_person = person.index[
+        person["person_household_id"].eq(housing_unit_id)
+    ][0]
+    gq_person = person.index[person["person_household_id"].eq(gq_id)][0]
+
+    for column in ("TYPEHUGQ", "tenure_type", spine_source_id_column("household")):
+        housing_unit_value = household.loc[housing_unit_row, column]
+        household.loc[housing_unit_row, column] = household.loc[gq_row, column]
+        household.loc[gq_row, column] = housing_unit_value
+    housing_unit_person_source = person.loc[
+        housing_unit_person, spine_source_id_column("person")
+    ]
+    person.loc[housing_unit_person, spine_source_id_column("person")] = person.loc[
+        gq_person, spine_source_id_column("person")
+    ]
+    person.loc[gq_person, spine_source_id_column("person")] = housing_unit_person_source
+    housing_unit_rent = person.loc[housing_unit_person, "pre_subsidy_rent"]
+    person.loc[housing_unit_person, "pre_subsidy_rent"] = np.nan
+    person.loc[gq_person, "pre_subsidy_rent"] = housing_unit_rent
+
+    tables = {entity: filled.table(entity) for entity in filled.entities}
+    tables["household"] = household
+    tables["person"] = person
+    corrupted = Frame(
+        tables,
+        filled.schema,
+        {entity: filled.weights_for(entity) for entity in filled.weighted_entities},
+        filled.strata,
+        mass_log=filled.mass_log,
+        metadata=filled.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="support/raw/classification mapping differs",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="substituted native ACS GQ identity fixture",
+        )
+
+
+def test_acs_clone_person_cannot_substitute_group_quarters_parent() -> None:
+    filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    attached = clone_us_frame_for_puf_support(
+        filled,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    household = attached.table("household")
+    person = attached.table("person").copy()
+    household_channel = household[support_channel_column("household")].astype(str)
+    household_clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    clone_one = household_channel.eq("acs") & household_clone.eq(1)
+    person_counts = person["person_household_id"].value_counts()
+    one_person_households = household["household_id"].map(person_counts).eq(1)
+    housing_unit_id = household.loc[
+        clone_one & kind.eq(1) & one_person_households,
+        "household_id",
+    ].iloc[0]
+    gq_id = household.loc[clone_one & kind.isin((2, 3)), "household_id"].iloc[0]
+    housing_unit_person = person.index[
+        person["person_household_id"].eq(housing_unit_id)
+    ][0]
+    gq_person = person.index[person["person_household_id"].eq(gq_id)][0]
+
+    person.loc[housing_unit_person, "person_household_id"] = gq_id
+    person.loc[gq_person, "person_household_id"] = housing_unit_id
+    housing_unit_rent = person.loc[housing_unit_person, "pre_subsidy_rent"]
+    person.loc[housing_unit_person, "pre_subsidy_rent"] = np.nan
+    person.loc[gq_person, "pre_subsidy_rent"] = housing_unit_rent
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["person"] = person
+    corrupted = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person support/raw/parent/classification lineages differ",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="substituted clone ACS GQ parent fixture",
         )
 
 
@@ -3516,6 +3635,42 @@ def test_fresh_gate_result_cannot_forge_structural_rent_absence() -> None:
         GateReport((forged,)).to_manifest()
 
 
+@pytest.mark.parametrize(
+    "evaluate",
+    (stacked_completeness_gate, by_origin_battery),
+    ids=("completeness", "battery"),
+)
+def test_canonical_structural_receipt_cannot_be_grafted_between_evaluations(
+    evaluate: object,
+) -> None:
+    columns = {
+        "taxable_interest_income": (
+            np.asarray([100.0] * 8),
+            np.asarray([100.0] * 11),
+        )
+    }
+    no_gq = evaluate(_battery_frame(columns))
+    one_gq = evaluate(_battery_frame(columns, acs_group_quarters=True))
+    assert no_gq.passed, no_gq.failures
+    assert one_gq.passed, one_gq.failures
+
+    # Every field in the replacement receipt is canonical: it came from a
+    # real evaluation of the same gate and authority.  It still cannot stand
+    # in for the evaluator's evidence about another frame.
+    with pytest.raises(TypeError, match="init=False"):
+        replace(
+            no_gq,
+            details=deepcopy(dict(one_gq.details)),
+            _stacked_authority_seal=b"caller-recomputed-seal",
+        )
+    forged = replace(no_gq, details=deepcopy(dict(one_gq.details)))
+    with pytest.raises(
+        ValueError,
+        match="was not sealed by its evaluator.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
 def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None:
     frame = _battery_frame(
         {
@@ -3776,7 +3931,11 @@ def _with_declared_battery_defaults(
     )
 
 
-def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
+def _battery_frame(
+    columns: dict[str, tuple[np.ndarray, np.ndarray]],
+    *,
+    acs_group_quarters: bool = False,
+) -> Frame:
     """A stacked frame with hand-set asec/acs person columns.
 
     ``columns`` maps a column name to its (asec values, acs values) pair.
@@ -3801,11 +3960,16 @@ def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
         person = frame.table("person").copy()
         for column, values in columns.items():
             person[column] = values[position]
+        if position == 1 and acs_group_quarters:
+            person.loc[person.index[0], "pre_subsidy_rent"] = np.nan
         tables = {entity: frame.table(entity) for entity in frame.entities}
         tables["person"] = person
         household = tables["household"].copy()
         household["TYPEHUGQ"] = np.ones(len(household), dtype=np.int64)
         household["tenure_type"] = "RENTED"
+        if position == 1 and acs_group_quarters:
+            household.loc[household.index[0], "TYPEHUGQ"] = 2
+            household.loc[household.index[0], "tenure_type"] = np.nan
         tables["household"] = household
         return Frame(
             tables,

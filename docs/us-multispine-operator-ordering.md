@@ -111,9 +111,10 @@ are allowed only when named by the ACS native-input receipt.
    restores each sample to its full-source design-weight mass, and assembles
    one origin-labeled frame. Standard rungs are `f001`, `f010`, and `f100`;
    the manifest binds the fraction, seed, exact realized ASEC/ACS counts,
-   selected-lineage digests, and the sampled native ACS TYPEHUGQ 2/3 household
-   and person lineage digests. The full PUF remains a donor and is never
-   sampled.
+   selected-lineage digests, the complete ordered native ACS household and
+   person support/raw/parent/classification mappings, and the sampled native
+   ACS TYPEHUGQ 2/3 household and person lineage digests. The full PUF remains
+   a donor and is never sampled.
 2. The spine-blind source-preparation chain derives the native predictors and
    pre-clone operator outputs needed by the early declared cross-origin fills.
    Historical kernels run on the raw-`PERIDNUM` CPS/ASEC availability
@@ -436,8 +437,10 @@ The completeness gate and by-origin battery run after simulation and before
 publication or calibration. Their authority bundle freezes the complete
 declared surface, gap-fill plan, per-column metric registry, joint metrics,
 and support profile; live content digests are recomputed at evaluation and
-manifest emission. Production entrypoints accept no caller-supplied surface,
-metric, or tolerance authority.
+manifest emission. Each canonical result is also sealed to the exact evidence
+snapshot minted by its evaluator, so even another internally valid canonical
+receipt cannot be grafted onto it. Production entrypoints accept no
+caller-supplied surface, metric, or tolerance authority.
 
 Each declared comparison uses positive record weights and exactly one named
 metric: boolean/rare incidence, monetary sign-separated incidence plus
@@ -450,13 +453,16 @@ the production tolerances.
 
 The one canonical applicability exception is ACS group-quarters rent. Its
 rule is part of the gap-fill-plan digest. Assembly separately binds the native
-sampled TYPEHUGQ 2/3 household and person lineage counts and SHA-256 digests;
-each later boundary proves the live native set and every clone's classification
-against that frozen lineage. The `pre_subsidy_rent` null mask must equal those
-linked people across every clone role and receipts those cells as
-recipient-exact structural absence. Completeness proves the exact mask; the
-battery excludes only the same clone-0 cells before applying the unchanged
-support floor and tolerances.
+sampled TYPEHUGQ 2/3 household and person lineage counts and SHA-256 digests,
+plus complete ordered native mappings of household support/raw/classification
+and person support/raw/parent/classification identity. Each later boundary
+proves the live native set and full native mapping, then expands those mappings
+to every clone and proves exact person coverage of each clone's receipted
+household selection. The `pre_subsidy_rent` null mask must equal those linked
+people across every clone role and receipts those cells as recipient-exact
+structural absence. Completeness proves the exact mask; the battery excludes
+only the same clone-0 cells before applying the unchanged support floor and
+tolerances.
 
 Both gates return batched `GateResult` failures. Calibration cannot consume a
 frame whose completeness or by-origin gate failed, and no source-specific
