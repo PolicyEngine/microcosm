@@ -135,6 +135,13 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parse_args(argv)
     _validate_cli_args(args)
+    if _CONSERVE_MASS:
+        raise NotImplementedError(
+            "the candidate manifest's calibration_mass_change block reads "
+            "the kernel's free-mass record; a conserve-mass doctrine run "
+            "appends no record and needs its own reviewed manifest shape "
+            "before this constant may flip."
+        )
     input_h5 = _require_file(args.input_h5, label="--input-h5")
     ladder_path = _require_file(args.ladder, label="--ladder")
     out_dir = args.out.expanduser().resolve()

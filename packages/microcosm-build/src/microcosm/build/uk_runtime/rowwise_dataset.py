@@ -298,6 +298,27 @@ def clone_uk_dataset_tables_with_ladder_geography(
         household_id_column="household_id",
         household_weight_column="household_weight",
     )
+    # The artifact's clone_index names the rowwise clone dimension. A
+    # candidate-tier clone_index inherited from the staging input (SPI/pool
+    # lineage) is replaced, exactly as the pre-Frame clone overwrote the
+    # column in place — dropped here so the per-entity in-memory names
+    # cannot collide with it at the writer's rename. The reserved
+    # {entity}_clone_index names have no legitimate producer and fail
+    # closed rather than being silently overwritten.
+    tables = {
+        "person": person_frame,
+        "benunit": benunit_frame,
+        "household": household_frame,
+    }
+    for entity, table in tables.items():
+        reserved = ladder_clone_index_column(entity)
+        if reserved in table.columns:
+            raise ValueError(
+                f"input {entity} table already carries the reserved in-memory "
+                f"clone column {reserved!r}; the ladder clone owns that name."
+            )
+        if ARTIFACT_CLONE_INDEX_COLUMN in table.columns:
+            table.drop(columns=[ARTIFACT_CLONE_INDEX_COLUMN], inplace=True)
     if source_lineage_modulus is not None:
         household_frame = apply_uk_source_lineage_modulus(
             household_frame,
@@ -430,12 +451,12 @@ def clone_uk_dataset_with_ladder_geography(
     absent or silently defaulted); only an attr-less H5 defaults to the
     national loader's ``WeightKind.DESIGN`` semantics. Unknown stored kinds
     fail closed. The duck-typed in-memory carrier retired with the #612
-    Frame migration — an in-memory input must be a populace ``Frame``.
+    Frame migration — an in-memory input must be a microcosm ``Frame``.
     """
 
     if not isinstance(dataset, Frame | str | Path):
         raise TypeError(
-            "ladder clone requires a populace Frame or a UK single-year H5 "
+            "ladder clone requires a microcosm Frame or a UK single-year H5 "
             f"path, got {type(dataset).__name__}; the duck-typed in-memory "
             "carrier retired with the #612 Frame migration."
         )

@@ -43,7 +43,7 @@ UK_LOCAL_TARGET_LOSS_CAP = 10.0
 
 #: Declared weight-ratio stretch bound for the UK local solve.
 #:
-#: populace#493 adjudication record (2026-08-07): the bound stays 100.0,
+#: microcosm#493 adjudication record (2026-08-07): the bound stays 100.0,
 #: recorded against the US design bound of 5.0 (the ACS local and fiscal
 #: refresh defaults; realized max ratio 4.994 in production) and the US
 #: exact-k ladder's 20.0. The UK value is not yet a measured-fit choice —

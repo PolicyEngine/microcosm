@@ -128,7 +128,7 @@ def _seam_frame(
     household: pd.DataFrame | None = None,
     mass_log: tuple[MassChangeRecord, ...] | None = None,
 ):
-    from populace.build.uk_runtime import uk_national_frame
+    from microcosm.build.uk_runtime import uk_national_frame
 
     return uk_national_frame(
         person=person if person is not None else _person_frame(),
@@ -519,7 +519,7 @@ def test_ladder_clone_pins_per_copy_weights_and_fk_alignment(toy_ladder) -> None
 def test_ladder_clone_refuses_negative_weights(toy_ladder) -> None:
     ladder, _ = toy_ladder
 
-    from populace.build.uk_runtime import (
+    from microcosm.build.uk_runtime import (
         clone_uk_dataset_tables_with_ladder_geography,
     )
 
@@ -612,3 +612,49 @@ def test_dry_run_bottom_covers_every_toy_area(monkeypatch, toy_ladder, tmp_path)
     # fail here loudly instead of silently weakening the comparison.
     assert constituency["n_areas"] <= builder.EXPECTED_SUPPORT_BOTTOM_AREAS
     assert len(constituency["bottom"]) == constituency["n_areas"]
+
+
+def test_inherited_clone_index_is_replaced_like_the_pre_frame_writer(
+    toy_ladder, tmp_path
+) -> None:
+    """The production staging input carries a candidate-tier clone_index.
+
+    The rowwise artifact's clone_index names the rowwise clone dimension;
+    the inherited SPI/pool-tier column is replaced exactly as the pre-Frame
+    clone overwrote it in place — never left to collide with the per-entity
+    in-memory names at the writer's rename (the adversarial-review blocker:
+    pandas rename happily creates duplicate labels).
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    ladder, _ = toy_ladder
+    inherited = _seam_frame(
+        household=_household_frame().assign(clone_index=[7, 8, 9, 3]),
+    )
+    output = tmp_path / "inherited.h5"
+    result = clone_uk_dataset_with_ladder_geography(
+        inherited,
+        ladder,
+        output_path=output,
+        n_clones=2,
+        seed=7,
+        expected_constituency_vintage="2024_pcon",
+    )
+
+    household = result.frame.table("household")
+    assert set(household[ladder_clone_index_column("household")]) == {0, 1}
+    assert "clone_index" not in household.columns
+    with pd.HDFStore(output, mode="r") as store:
+        stored = store["household"]
+        assert stored.columns.tolist().count("clone_index") == 1
+        assert set(stored["clone_index"]) == {0, 1}
+
+
+def test_reserved_in_memory_clone_names_fail_closed(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+    poisoned = _seam_frame(
+        household=_household_frame().assign(household_clone_index=[1, 1, 1, 1]),
+    )
+    with pytest.raises(ValueError, match="reserved in-memory clone column"):
+        clone_uk_dataset_with_ladder_geography(poisoned, ladder, n_clones=1)

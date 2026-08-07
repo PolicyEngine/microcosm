@@ -1763,6 +1763,7 @@ def calibrate(
             "epochs": epochs,
             "learning_rate": learning_rate,
             "mass": mass,
+            "mass_reason": mass_reason,
             "max_weight_ratio": max_weight_ratio,
             "target_records": target_records,
             "l1_lambda": l1_lambda,

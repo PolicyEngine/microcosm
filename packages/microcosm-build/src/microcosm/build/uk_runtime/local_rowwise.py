@@ -41,6 +41,7 @@ from microcosm.calibrate.solve import (
     FREE_MASS,
     calibrate,
     default_target_loss_scales,
+    relative_error_loss,
 )
 from microcosm.calibrate.target import Target, TargetSet
 from microcosm.frame import Frame, WeightKind
@@ -585,6 +586,18 @@ def solve_uk_rowwise_weights_under_doctrine(
         target_loss_scales=scales,
         target_frame=problem.target_frame,
     )
+    # Reported in float64 from the compiled estimates (the trajectory head
+    # is a float32 optimizer value), matching the pre-migration solver's
+    # reported precision; final_loss is already the float64 closing loss.
+    initial_loss = float(
+        relative_error_loss(
+            initial_estimates,
+            targets_vec,
+            target_loss_weights=None,
+            target_loss_scales=scales,
+            target_loss_cap=doctrine.target_loss_cap,
+        )
+    )
 
     # The kernel product carries the CALIBRATED transition and the mass
     # record; the UK carrier additionally persists the weight column, so the
@@ -609,7 +622,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         initial_weights=np.asarray(result.initial_weights, dtype=np.float64),
         diagnostics=diagnostics,
         loss_trajectory=np.asarray(result.loss_trajectory, dtype=np.float64),
-        initial_loss=float(result.initial_loss),
+        initial_loss=initial_loss,
         final_loss=float(result.final_loss),
         n_nonzero=int(result.n_nonzero),
         past_cap_census=census,
