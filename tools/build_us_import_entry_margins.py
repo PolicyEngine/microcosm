@@ -656,11 +656,17 @@ def _publish_by_exchange(staging: Path, out_dir: Path) -> bool:
     try:
         exchanged = _exchange_directories(staging, out_dir)
     except BaseException:
-        # A failed exchange syscall moves nothing; the marker guards no
-        # destructive step any more.
-        _remove_marker(out_dir)
+        # An asynchronous exception can arrive AFTER the syscall
+        # committed, so "moved nothing" cannot be assumed here. Make
+        # whatever happened durable and leave the marker in place: the
+        # exchange recovery handles both sides of the ambiguity (exactly
+        # one complete set answers to the public name; the staging name
+        # holds the other for disposal).
+        _fsync_dir(out_dir.parent)
         raise
     if not exchanged:
+        # The syscall itself reported no exchange: nothing moved, and
+        # the marker guards no destructive step any more.
         _remove_marker(out_dir)
         return False
     _fsync_dir(out_dir.parent)
@@ -726,11 +732,15 @@ def _publish_symlink_retarget(
             raise
         # Not committed: the previous publication is intact under the
         # public name; put the staged set back for the caller's cleanup
-        # and withdraw the marker.
+        # and withdraw the marker. The rollback renames must be durable
+        # before the marker goes — losing the set->staging rename to a
+        # power loss after a durable marker removal would strand a
+        # .set-* orphan nothing records.
         if link_tmp.is_symlink():
             link_tmp.unlink()
         if set_dir.exists() and not staging.exists():
             set_dir.rename(staging)
+        _fsync_dir(parent)
         _remove_marker(out_dir)
         raise
     _fsync_dir(parent)
@@ -821,6 +831,9 @@ def _migrate_real_dir_to_symlink_layout(staging: Path, out_dir: Path) -> None:
             link_tmp.unlink()
         if set_dir.exists() and not staging.exists():
             set_dir.rename(staging)
+        # Same discipline as the retarget rollback: every rollback
+        # mutation durable before the marker recording it is removed.
+        _fsync_dir(parent)
         _remove_marker(out_dir)
         raise
     _fsync_dir(parent)

@@ -1755,6 +1755,140 @@ def test_recovery_reuses_the_marker_recorded_temp_link(tmp_path, monkeypatch):
     assert [n for n in _visible_siblings(tmp_path) if ".linktmp-" in n] == []
 
 
+def test_exchange_interrupted_after_the_syscall_preserves_the_marker(
+    tmp_path, monkeypatch
+):
+    """An asynchronous exception can arrive AFTER the exchange syscall
+    committed, so the handler must not assume nothing moved: it makes
+    whatever happened durable and LEAVES the marker for recovery — which
+    resolves the ambiguity either way (one complete set answers to the
+    public name; the staging name holds the other for disposal)."""
+
+    build_cli = _build_cli_module()
+    if not build_cli._exchange_supported(tmp_path):
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-lateexchange"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[str] = []
+    real_exchange = build_cli._exchange_directories
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def exchange_then_interrupt(source, target):
+        result = real_exchange(source, target)
+        events.append("exchange")
+        raise KeyboardInterrupt  # delivered after the syscall returned
+
+    def recording_fsync_dir(path):
+        events.append("fsync_dir")
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append("remove_marker")
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(build_cli, "_exchange_directories", exchange_then_interrupt)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    # The exchange happened; the handler fsynced and did NOT remove the
+    # marker — recovery owns the ambiguity.
+    assert "remove_marker" not in events[events.index("exchange") :]
+    assert "fsync_dir" in events[events.index("exchange") :]
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    assert marker_path.exists()
+    assert _read_set(out_dir) == _NEW_SET
+    assert _read_set(staging) == _OLD_SET
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "removed the displaced set left by an interrupted exchange"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not staging.exists()
+    assert not marker_path.exists()
+
+
+@pytest.mark.parametrize("mode", ["retarget", "migrate"])
+def test_rollback_renames_are_durable_before_the_marker_goes(
+    tmp_path, monkeypatch, mode
+):
+    """The in-process rollback paths rename the parked set back to its
+    staging name and then remove the marker: a parent fsync must land in
+    between, or a power loss keeping the durable marker removal while
+    losing the rename would strand a ``.set-*`` orphan nothing
+    records."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-rollback"
+    if mode == "retarget":
+        _symlink_layout(tmp_path, _OLD_SET)
+    else:
+        out_dir.mkdir()
+        _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[tuple[str, str]] = []
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    failed: list[bool] = []
+
+    def failing_public_rename(src, dst, *args, **kwargs):
+        # Fail only the FIRST public-name rename (the commit attempt);
+        # the migration handler's restore rename targets the public name
+        # too and must succeed.
+        if Path(os.fspath(dst)) == out_dir and not failed:
+            failed.append(True)
+            raise OSError("simulated rename failure")
+        result = real_rename(src, dst, *args, **kwargs)
+        events.append(("rename", os.fspath(dst)))
+        return result
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(os, "rename", failing_public_rename)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        with pytest.raises(OSError, match="simulated rename failure"):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    rollback = max(
+        index
+        for index, (kind, path) in enumerate(events)
+        if kind == "rename" and Path(path) == staging
+    )
+    removal = next(
+        index
+        for index, (kind, _path) in enumerate(events)
+        if kind == "remove_marker" and index > rollback
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[rollback + 1 : removal]
+    ), "no parent fsync between the rollback rename and the marker removal"
+    assert _read_set(staging) == _NEW_SET
+    assert _read_set(out_dir) == _OLD_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
 def test_publisher_lock_refuses_a_symlinked_lockfile(tmp_path):
     """A symlink planted at the lock name must not hand the publisher an
     arbitrary file to truncate and overwrite: the open is no-follow and
