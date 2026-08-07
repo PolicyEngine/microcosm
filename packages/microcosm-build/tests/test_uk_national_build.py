@@ -1100,7 +1100,7 @@ def _counting_stage(name: str, calls: list[str] | None = None) -> UKNationalStag
 def _assert_same_staging_payload(left: Path, right: Path) -> None:
     left_frame, _ = load_uk_national_frame(left)
     right_frame, _ = load_uk_national_frame(right)
-    from populace.build.uk_runtime import uk_frame_content_identity
+    from microcosm.build.uk_runtime import uk_frame_content_identity
 
     assert uk_frame_content_identity(left_frame) == uk_frame_content_identity(
         right_frame
@@ -1116,7 +1116,7 @@ def test_checkpointed_build_matches_the_monolith(monkeypatch, tmp_path) -> None:
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from populace.build.uk_runtime import national_build
+    from microcosm.build.uk_runtime import national_build
 
     monkeypatch.setattr(
         national_build,
@@ -1176,7 +1176,7 @@ def test_checkpointed_build_resumes_past_a_crash(monkeypatch, tmp_path) -> None:
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from populace.build.uk_runtime import national_build
+    from microcosm.build.uk_runtime import national_build
 
     monkeypatch.setattr(
         national_build,
@@ -1225,7 +1225,7 @@ def test_checkpointed_build_pins_the_run_config(monkeypatch, tmp_path) -> None:
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from populace.build.uk_runtime import national_build
+    from microcosm.build.uk_runtime import national_build
 
     monkeypatch.setattr(
         national_build,

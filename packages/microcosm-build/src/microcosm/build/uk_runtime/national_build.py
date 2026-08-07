@@ -469,14 +469,14 @@ def _run_stages_checkpointed(
     fit-weight audit records) from the record instead of re-running.
     """
 
-    from populace.build.outer_stage_runtime import (
+    from microcosm.build.outer_stage_runtime import (
         Stage as OuterStage,
     )
-    from populace.build.outer_stage_runtime import (
+    from microcosm.build.outer_stage_runtime import (
         StagePipeline,
         StageRuntime,
     )
-    from populace.build.uk_runtime.stage_checkpoints import (
+    from microcosm.build.uk_runtime.stage_checkpoints import (
         UK_FRAME_METADATA_KEY,
         load_uk_stage_checkpoint,
         uk_stage_metadata,

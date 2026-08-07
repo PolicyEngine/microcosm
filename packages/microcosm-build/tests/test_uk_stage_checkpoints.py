@@ -116,3 +116,42 @@ def test_plain_runtime_load_still_strands_uk_metadata(tmp_path: Path) -> None:
     bare = resumed.load("retain")
     with pytest.raises(ValueError, match="time_period"):
         validate_uk_national_frame(bare.frame)
+
+
+def test_nested_frame_metadata_round_trips_through_the_stage_record(
+    tmp_path: Path,
+) -> None:
+    """Frozen nested metadata is thawed for the record, not refused."""
+
+    import numpy as np
+
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1],
+                    "person_household_id": [101],
+                    "person_benunit_id": [11],
+                }
+            ),
+            "benunit": pd.DataFrame({"benunit_id": [11]}),
+            "household": pd.DataFrame(
+                {"household_id": [101], "household_weight": [10.0]}
+            ),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.array([10.0], dtype=np.float64), WeightKind.DESIGN)},
+        metadata={
+            "time_period": "2023",
+            "provenance": {"sources": ["frs", "spi"], "tier": "frs"},
+        },
+    )
+    runtime = _runtime(tmp_path)
+    runtime.complete("retain", frame, metadata=uk_stage_metadata(frame))
+
+    loaded = load_uk_stage_checkpoint(_runtime(tmp_path), "retain")
+    restored = loaded.frame.metadata
+    assert restored["provenance"]["tier"] == "frs"
+    assert list(restored["provenance"]["sources"]) == ["frs", "spi"]

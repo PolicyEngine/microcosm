@@ -85,3 +85,32 @@ def test_identity_moves_with_every_content_dimension(variant: dict) -> None:
 def test_identity_requires_a_frame() -> None:
     with pytest.raises(TypeError, match="microcosm Frame"):
         uk_frame_content_identity(object())  # type: ignore[arg-type]
+
+
+def test_identity_moves_with_strata() -> None:
+    """Strata are part of the content (the v2 digest closes the v1 gap)."""
+
+    import numpy as np
+
+    from microcosm.frame import EntitySchema, Frame, Weights
+
+    def _stratified(labels):
+        return Frame(
+            {
+                "person": pd.DataFrame(
+                    {"person_id": [1, 2], "person_household_id": [1, 1]}
+                ),
+                "household": pd.DataFrame({"household_id": [1]}),
+            },
+            EntitySchema(group_entities=("household",)),
+            {
+                "household": Weights(
+                    np.array([1.0], dtype=np.float64), WeightKind.DESIGN
+                )
+            },
+            pd.Series(labels, dtype=object),
+        )
+
+    assert uk_frame_content_identity(
+        _stratified(["s1", "s1"])
+    ) != uk_frame_content_identity(_stratified(["s1", "s2"]))

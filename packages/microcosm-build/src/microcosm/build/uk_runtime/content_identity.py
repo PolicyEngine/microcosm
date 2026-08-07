@@ -28,7 +28,7 @@ from microcosm.frame import Frame
 
 __all__ = ["uk_frame_content_identity"]
 
-_IDENTITY_HEADER = "populace-uk-frame-content-identity:v1"
+_IDENTITY_HEADER = "populace-uk-frame-content-identity:v2"
 
 
 def uk_frame_content_identity(frame: Frame) -> str:
@@ -36,9 +36,12 @@ def uk_frame_content_identity(frame: Frame) -> str:
 
     Covers, in deterministic order: the entity set, each entity table's
     column order, dtypes, index, and cell values, each weighted entity's
-    typed weight kind and vector, the mass log, and the frame metadata.
-    Structural-only changes (a renamed column, a reordered column) move the
-    identity just as value changes do.
+    typed weight kind and vector, the strata labels, the mass log, and the
+    frame metadata. Structural-only changes (a renamed column, a reordered
+    column) move the identity just as value changes do. Link tables are
+    outside the digest: the UK national schema declares none
+    (``validate_uk_national_frame`` enforces linklessness) — extend this
+    before reusing it on a linked schema.
     """
 
     if not isinstance(frame, Frame):
@@ -65,6 +68,13 @@ def uk_frame_content_identity(frame: Frame) -> str:
         weights = frame.weights_for(entity)
         digest.update(f"\x00weights\x1f{entity}\x1f{weights.kind.name}".encode())
         digest.update(np.ascontiguousarray(weights.values, dtype=np.float64).tobytes())
+    strata = frame.strata
+    digest.update(b"\x00strata")
+    digest.update(
+        np.ascontiguousarray(
+            pd.util.hash_pandas_object(strata, index=True).to_numpy()
+        ).tobytes()
+    )
     mass_log_payload = [
         {
             "entity": record.entity,

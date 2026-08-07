@@ -237,9 +237,11 @@ class UKHMRCIncomeStageTransform:
     def checkpoint_metadata(self) -> dict[str, object]:
         """JSON-safe evidence the stage checkpoint carries for a resume.
 
-        The terminal gate batch audits the SPI stage's fit-weight records;
-        persisting them on the completed stage's run-context record is what
-        lets a later process re-run the gates without re-running the stage.
+        Everything a later process consumes without re-running the stage:
+        the fit-weight records the terminal weights audit reads, and the
+        aggregate family evidence and replay-report payload the national
+        driver writes as stage sidecars (the adversarial-review blocker: a
+        resumed run must still produce byte-identical evidence reports).
         """
 
         if self.last_result is None:
@@ -251,6 +253,8 @@ class UKHMRCIncomeStageTransform:
                 {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
                 for record in self.last_result.imputation.fit_weight_records
             ],
+            "evidence": self.last_result.evidence(),
+            "replay_payload": self.last_result.replay_report.to_payload(),
         }
 
     def resume_from_checkpoint(
@@ -258,16 +262,22 @@ class UKHMRCIncomeStageTransform:
         metadata: Mapping[str, object],
         frame: Frame,
     ) -> None:
-        """Rehydrate a completed run's audit evidence from its record."""
+        """Rehydrate a completed run's evidence surface from its record."""
 
         payload = metadata.get("fit_weight_records")
-        if not isinstance(payload, list) or not all(
-            isinstance(entry, Mapping) for entry in payload
+        evidence = metadata.get("evidence")
+        replay_payload = metadata.get("replay_payload")
+        if (
+            not isinstance(payload, list)
+            or not all(isinstance(entry, Mapping) for entry in payload)
+            or not isinstance(evidence, Mapping)
+            or not isinstance(replay_payload, Mapping)
         ):
             raise RuntimeError(
                 "SPI restoration resume requires the checkpoint record to "
-                "carry the run's fit-weight records; a record without them "
-                "cannot feed the weights audit."
+                "carry the run's fit-weight records, family evidence, and "
+                "replay payload; a record without them cannot feed the "
+                "weights audit or the driver's stage reports."
             )
         records = tuple(
             FitWeightRecord(
@@ -279,7 +289,13 @@ class UKHMRCIncomeStageTransform:
         self.last_result = _ResumedHMRCRestoration(
             frame=frame,
             imputation=_ResumedImputationEvidence(fit_weight_records=records),
+            evidence_payload=dict(evidence),
+            replay_payload=dict(replay_payload),
         )
+        # The rehydration consumes the single-use binding: the stage will
+        # not run, so a binding must not outlive the resume either.
+        self.staging_provenance = None
+        self.bound_input_identity = None
 
     def bind_staging_provenance(
         self,
@@ -368,10 +384,21 @@ class _ResumedImputationEvidence:
 
 @dataclass(frozen=True)
 class _ResumedHMRCRestoration:
-    """A completed SPI restoration rehydrated from its checkpoint record."""
+    """A completed SPI restoration rehydrated from its checkpoint record.
+
+    Exposes the full surface a national build consumes downstream: the
+    fit-weight audit records, the aggregate family evidence, and the replay
+    payload the driver writes verbatim (its content came from the real
+    report's ``to_payload()`` at completion time).
+    """
 
     frame: Frame
     imputation: _ResumedImputationEvidence
+    evidence_payload: dict[str, object]
+    replay_payload: dict[str, object]
+
+    def evidence(self) -> dict[str, object]:
+        return dict(self.evidence_payload)
 
 
 def _retained_content_identity(retained: object, attribute: str) -> str:

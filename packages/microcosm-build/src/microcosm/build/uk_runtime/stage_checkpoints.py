@@ -45,7 +45,9 @@ def uk_stage_metadata(
     """
 
     validate_uk_national_frame(frame)
-    metadata: dict[str, object] = {UK_FRAME_METADATA_KEY: dict(frame.metadata)}
+    metadata: dict[str, object] = {
+        UK_FRAME_METADATA_KEY: _thawed(frame.metadata),
+    }
     if extra is not None:
         if UK_FRAME_METADATA_KEY in extra:
             raise ValueError(
@@ -54,6 +56,21 @@ def uk_stage_metadata(
             )
         metadata.update(extra)
     return metadata
+
+
+def _thawed(value: object) -> object:
+    """Deep-thaw frozen frame metadata into plain JSON-shaped values.
+
+    ``Frame.metadata`` freezes nested mappings/sequences into private
+    frozen types the stage runtime's JSON normalization refuses with an
+    unhelpful error; the checkpoint record wants the plain shapes.
+    """
+
+    if hasattr(value, "items"):
+        return {str(key): _thawed(item) for key, item in value.items()}
+    if isinstance(value, list | tuple | set | frozenset):
+        return [_thawed(item) for item in value]
+    return value
 
 
 def load_uk_stage_checkpoint(

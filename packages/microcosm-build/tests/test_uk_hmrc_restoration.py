@@ -937,7 +937,7 @@ def test_restoration_rejects_unreviewed_release_parameter_overrides(
 def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
     """A resumed SPI stage still feeds the weights audit from its record."""
 
-    from populace.build.gates import FitWeightRecord
+    from microcosm.build.gates import FitWeightRecord
 
     transform = UKHMRCIncomeStageTransform(
         spi_tab_path=tmp_path / "put2223uk.tab",
@@ -951,8 +951,12 @@ def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
         FitWeightRecord(fit_name="uk_spi_fill_qrf", weight_kind="design"),
         FitWeightRecord(fit_name="uk_spi_income_qrf", weight_kind="design"),
     )
+    evidence = {"stage": "hmrc_spi_income", "post_draw_identity_rows": 3}
+    replay_payload = {"summary": {"status": "comparisons_passed"}, "facts": {}}
     transform.last_result = SimpleNamespace(
-        imputation=SimpleNamespace(fit_weight_records=records)
+        imputation=SimpleNamespace(fit_weight_records=records),
+        evidence=lambda: dict(evidence),
+        replay_report=SimpleNamespace(to_payload=lambda: dict(replay_payload)),
     )
     metadata = transform.checkpoint_metadata()
 
@@ -961,8 +965,20 @@ def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
         hmrc_ods_path=tmp_path / "hmrc.ods",
         certified_candidate=_candidate_identity(tmp_path),
     )
+    # A resume consumes the single-use binding: the stage will not run.
+    resumed.bind_staging_provenance(
+        UKStagingProvenance(
+            source_h5=(tmp_path / "populace_uk_2023.h5").resolve(),
+            fingerprint=_TEST_SOURCE_FINGERPRINT,
+        ),
+        _dataset(),
+    )
     resumed.resume_from_checkpoint(metadata, _dataset())
     assert resumed.fit_weight_records == records
+    assert resumed.last_result.evidence() == evidence
+    assert resumed.last_result.replay_payload == replay_payload
+    assert resumed.staging_provenance is None
+    assert resumed.bound_input_identity is None
 
     with pytest.raises(RuntimeError, match="cannot feed the weights audit"):
         resumed.resume_from_checkpoint({}, _dataset())

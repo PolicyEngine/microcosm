@@ -474,7 +474,7 @@ def test_checkpoint_metadata_round_trips_the_descent_evidence(tmp_path) -> None:
     is refused as drifted.
     """
 
-    from populace.build.uk_runtime.content_identity import (
+    from microcosm.build.uk_runtime.content_identity import (
         uk_frame_content_identity,
     )
 
