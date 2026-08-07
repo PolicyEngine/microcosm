@@ -59,6 +59,7 @@ from populace.build.us_runtime.stacked_spine import (
     sample_acs_households,
     stacked_completeness_gate,
     stacked_gap_fill_plan,
+    transfer_stacked_post_puf_inputs,
     validate_stacked_spine_frame,
 )
 from populace.build.us_runtime.support_provenance import (
@@ -945,6 +946,7 @@ _GAP_FILL_TEST_PLAN = (
 def test_production_entrypoints_take_no_authority_parameters() -> None:
     production_entrypoints = (
         gap_fill_stacked_spine,
+        transfer_stacked_post_puf_inputs,
         stacked_completeness_gate,
         by_origin_battery,
     )
@@ -975,6 +977,7 @@ def test_production_entrypoints_take_no_authority_parameters() -> None:
 
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
     plan = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
+    post_puf_surface = stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     joint_registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
@@ -983,6 +986,8 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
     assert isinstance(plan, tuple)
     with pytest.raises(TypeError):
         plan[0].target_families["person"]["model_required_numeric"] = ()
+    with pytest.raises(TypeError):
+        post_puf_surface["person"]["puf_tax_itemization"] = ()
     with pytest.raises(TypeError):
         surface["person"]["model_required_numeric"] = ()
     with pytest.raises(TypeError):
@@ -1046,8 +1051,19 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for family, targets in families.items()
         for target in targets
     }
-    assert len(gap_targets) == 118
-    assert gap_targets < surface_targets
+    post_puf_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    assert len(gap_targets) == 48
+    assert len(post_puf_targets) == 70
+    assert gap_targets.isdisjoint(post_puf_targets)
+    assert len(gap_targets | post_puf_targets) == 118
+    assert gap_targets | post_puf_targets < surface_targets
     assert not {
         "bank_account_assets",
         "bond_assets",
@@ -1174,7 +1190,7 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     assert set(housing.target_families) == {"person"}
     assert housing.target_families["person"] == {"housing": ("pre_subsidy_rent",)}
 
-    declared = pool_transfer_target_families()
+    declared = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
     recombined: dict[str, dict[str, tuple[str, ...]]] = {}
     for direction in plan:
         for entity, families in direction.target_families.items():
@@ -1184,6 +1200,28 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
         entity: {family: tuple(targets) for family, targets in families.items()}
         for entity, families in declared.items()
     }
+    early_keys = {
+        (entity, family, target)
+        for entity, families in recombined.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    late_keys = {
+        (entity, family, target)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    full_keys = {
+        (entity, family, target)
+        for entity, families in pool_transfer_target_families().items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    assert early_keys.isdisjoint(late_keys)
+    assert early_keys | late_keys == full_keys
 
 
 def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
@@ -1496,6 +1534,106 @@ def test_gap_fill_rejects_cloned_frames() -> None:
     cloned = clone_us_frame_for_puf_support(_stacked_gap_fixture())
     with pytest.raises(ValueError, match="before clone operators"):
         _gap_fill_with_test_authority(cloned, plan=_GAP_FILL_TEST_PLAN, seed=578)
+
+
+def _post_puf_transfer_fixture() -> Frame:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=0.75,
+        clone_attachment_seed=578,
+    )
+    person = attached.table("person").copy()
+    donor_rows = person[support_channel_column("person")].astype(str).eq(
+        "asec"
+    ) & person[support_clone_index_column("person")].eq(1)
+    person["is_pregnant"] = pd.Series(
+        pd.NA,
+        index=person.index,
+        dtype="boolean",
+    )
+    person.loc[donor_rows, "is_pregnant"] = np.resize(
+        np.asarray([True, False]),
+        int(donor_rows.sum()),
+    )
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+
+def test_post_puf_transfer_uses_complete_asec_clone_one_donors() -> None:
+    frame = _post_puf_transfer_fixture()
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    before = frame.table("person")["is_pregnant"].copy(deep=True)
+    result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+        frame,
+        authority=authority,
+        seed=578,
+        n_estimators=10,
+    )
+
+    person = result.frame.table("person")
+    donor_rows = person[support_channel_column("person")].astype(str).eq(
+        "asec"
+    ) & person[support_clone_index_column("person")].eq(1)
+    assert person["is_pregnant"].notna().all()
+    pd.testing.assert_series_equal(
+        person.loc[donor_rows, "is_pregnant"],
+        before.loc[donor_rows],
+    )
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
+    assert receipt["authorized_null_rows"] == int((~donor_rows).sum())
+    assert receipt["imputed_rows"] == int((~donor_rows).sum())
+    assert receipt["unmodeled_rows"] == 0
+    assert receipt["residual_null_rows"] == 0
+
+
+def test_post_puf_transfer_rejects_incomplete_declared_donors() -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    donor_rows = person[support_channel_column("person")].astype(str).eq(
+        "asec"
+    ) & person[support_clone_index_column("person")].eq(1)
+    person.loc[person.index[donor_rows][0], "is_pregnant"] = pd.NA
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    incomplete = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"post_puf_transfer/person/model_required_boolean/is_pregnant:.*"
+        r"donors must observe every declared target",
+    ):
+        stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+            incomplete,
+            authority=authority,
+            seed=578,
+            n_estimators=10,
+        )
 
 
 def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
@@ -2386,6 +2524,38 @@ def test_completeness_gate_empty_plan_cannot_launder_canonical_target() -> None:
     )
 
 
+def test_completeness_gate_cannot_launder_post_puf_transfer_target() -> None:
+    frame = _post_puf_transfer_fixture()
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    result = stacked_spine_module._stacked_completeness_gate_with_test_authority(
+        frame,
+        authority=authority,
+        absence_proofs=tuple(
+            AbsenceProof(
+                entity="person",
+                column="is_pregnant",
+                channel="*",
+                clone_index=clone_index,
+                reason="POST-PUF WILDCARD LAUNDER",
+            )
+            for clone_index in (0, 1)
+        ),
+    )
+
+    assert not result.passed
+    assert any(
+        "person/model_required_boolean/is_pregnant" in failure
+        and "zero-residual post-PUF transfer contract" in failure
+        and "absence proofs are forbidden" in failure
+        for failure in result.failures
+    )
+
+
 def test_completeness_gate_empty_surface_is_terminal() -> None:
     authority = stacked_spine_module._make_test_stacked_authority(
         declared_surface={},
@@ -2488,10 +2658,12 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
         == authority
     )
     plan_sha256 = authority["components"]["gap_fill_plan"]["sha256"]
+    post_puf_sha256 = authority["components"]["post_puf_transfer_surface"]["sha256"]
     surface_sha256 = authority["components"]["declared_surface"]["sha256"]
     for receipt in canonical.details["targets"].values():
         assert receipt["authority_form"] == "observed_complete"
         assert receipt["plan_sha256"] == plan_sha256
+        assert receipt["post_puf_surface_sha256"] == post_puf_sha256
         assert receipt["surface_sha256"] == surface_sha256
 
     stacked = _stacked_gap_fixture()
@@ -2579,6 +2751,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         authority_id="us_stacked_spine_authority",
         version=1,
         gap_fill_plan=(),
+        post_puf_transfer_surface={},
         declared_surface=surface,
         metric_registry={
             ("person", "test_only", "unemployment_compensation", 0): (
@@ -2614,6 +2787,7 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
         authority_id="us_stacked_spine_authority",
         version=1,
         gap_fill_plan=(),
+        post_puf_transfer_surface={},
         declared_surface=surface,
         metric_registry={
             ("person", "test_only", "unemployment_compensation", 0): (
@@ -2626,11 +2800,15 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
     rebound = {
         "_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR": forged.declared_surface,
         "_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR": forged.gap_fill_plan,
+        "_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR": (
+            forged.post_puf_transfer_surface
+        ),
         "_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR": forged.metric_registry,
         "_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR": (forged.support_profile),
         "_CANONICAL_STACKED_AUTHORITY_ANCHOR": forged,
         "_STACKED_DECLARED_SURFACE": forged.declared_surface,
         "_STACKED_GAP_FILL_PLAN": forged.gap_fill_plan,
+        "_STACKED_POST_PUF_TRANSFER_SURFACE": forged.post_puf_transfer_surface,
         "_BATTERY_METRIC_REGISTRY": forged.metric_registry,
         "_BATTERY_SUPPORT_PROFILE": forged.support_profile,
     }
@@ -2654,6 +2832,7 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
         "support_threshold",
         "surface_count",
         "direction_count",
+        "post_puf_target_count",
         "target_binding",
     ),
 )
@@ -2677,6 +2856,8 @@ def test_stacked_manifest_rejects_pre_emission_nested_receipt_mutation(
         authority["components"]["declared_surface"]["target_count"] = 0
     elif mutation == "direction_count":
         authority["components"]["gap_fill_plan"]["direction_count"] = 0
+    elif mutation == "post_puf_target_count":
+        authority["components"]["post_puf_transfer_surface"]["target_count"] = 0
     else:
         target = next(iter(result.details["targets"].values()))
         target["authority_form"] = "wildcard_no_declared_donor_plan"
@@ -2783,6 +2964,9 @@ def test_fresh_gate_result_cannot_forge_a_donor_origin_proof() -> None:
     binding = {
         "authority_sha256": authority["sha256"],
         "plan_sha256": authority["components"]["gap_fill_plan"]["sha256"],
+        "post_puf_surface_sha256": authority["components"]["post_puf_transfer_surface"][
+            "sha256"
+        ],
         "surface_sha256": authority["components"]["declared_surface"]["sha256"],
     }
     label = "person/puf_tax_itemization/taxable_interest_income"
@@ -2909,10 +3093,17 @@ def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
         GateReport((stripped,)).to_manifest()
 
 
-def test_stripped_five_component_authority_cannot_escape_under_a_renamed_gate() -> None:
+def test_stripped_six_component_authority_cannot_escape_under_a_renamed_gate() -> None:
     authority = stacked_spine_module.stacked_spine_authority_receipt()
     components = deepcopy(dict(authority["components"]))
-    assert "joint_metric_registry" in components
+    assert set(components) == {
+        "gap_fill_plan",
+        "post_puf_transfer_surface",
+        "declared_surface",
+        "metric_registry",
+        "joint_metric_registry",
+        "support_profile",
+    }
     stripped = GateResult(
         name="renamed_stacked_battery",
         passed=True,

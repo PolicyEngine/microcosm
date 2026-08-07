@@ -127,8 +127,10 @@ __all__ = [
     "derive_multispine_pool_inputs",
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
-    "pool_transfer_target_families",
     "pool_input_surface",
+    "pool_post_puf_transfer_target_families",
+    "pool_pre_clone_gap_fill_target_families",
+    "pool_transfer_target_families",
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
     "run_multispine_pool_path",
@@ -568,6 +570,63 @@ def pool_transfer_target_families() -> TargetFamilies:
         for entity, targets in additions.items():
             plan.setdefault(entity, {})[f"source_operator_{family}"] = targets
     return plan
+
+
+def _partition_pool_transfer_target_families(
+    target_families: TargetFamilies,
+) -> tuple[TargetFamilies, TargetFamilies]:
+    """Split the legacy transfer surface at its declared producer boundary.
+
+    Targets emitted by a pre-clone source operator are eligible for the early
+    cross-origin gap-fill. Every other target is produced only by the primary
+    PUF pass or post-clone source completion and therefore belongs to the
+    post-PUF transfer. The partition preserves the legacy entity, family, and
+    target order so fit identities stay deterministic.
+    """
+
+    pre_clone_outputs = {
+        (entity, column)
+        for operator_name in POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            POOL_OPERATOR_CONTRACTS[operator_name].family
+        ].items()
+        for column in columns
+    }
+    early: dict[str, dict[str, tuple[str, ...]]] = {}
+    late: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, families in target_families.items():
+        for family, targets in families.items():
+            early_targets = tuple(
+                target for target in targets if (entity, target) in pre_clone_outputs
+            )
+            late_targets = tuple(
+                target
+                for target in targets
+                if (entity, target) not in pre_clone_outputs
+            )
+            if early_targets:
+                early.setdefault(entity, {})[family] = early_targets
+            if late_targets:
+                late.setdefault(entity, {})[family] = late_targets
+    return early, late
+
+
+def pool_pre_clone_gap_fill_target_families() -> TargetFamilies:
+    """Return targets available after native pre-clone source preparation."""
+
+    early, _late = _partition_pool_transfer_target_families(
+        pool_transfer_target_families()
+    )
+    return early
+
+
+def pool_post_puf_transfer_target_families() -> TargetFamilies:
+    """Return targets first available after PUF and source completion."""
+
+    _early, late = _partition_pool_transfer_target_families(
+        pool_transfer_target_families()
+    )
+    return late
 
 
 def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:

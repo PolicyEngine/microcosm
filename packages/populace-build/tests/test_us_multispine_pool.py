@@ -42,6 +42,8 @@ from populace.build.us_runtime.multispine_pool import (
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
     pool_input_surface,
+    pool_post_puf_transfer_target_families,
+    pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
@@ -827,6 +829,32 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
         == "74fd985208c62ee51a96c161ee2766118e4d92020ce2897bf2942e2625db9484"
     )
+
+
+def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> None:
+    def keys(target_families):
+        return {
+            (entity, family, target)
+            for entity, families in target_families.items()
+            for family, targets in families.items()
+            for target in targets
+        }
+
+    full = keys(pool_transfer_target_families())
+    early = keys(pool_pre_clone_gap_fill_target_families())
+    late = keys(pool_post_puf_transfer_target_families())
+
+    assert len(early) == 48
+    assert len(late) == 70
+    assert early.isdisjoint(late)
+    assert early | late == full
+    assert ("person", "source_operator_cps_carried", "strike_benefits") in early
+    assert ("person", "model_required_boolean", "is_pregnant") in late
+    assert (
+        "tax_unit",
+        "puf_tax_itemization",
+        "health_savings_account_ald",
+    ) in late
 
 
 def test_pool_input_surface_normalizes_all_four_source_registries() -> None:

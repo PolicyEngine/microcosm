@@ -22,6 +22,8 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
+import populace.build.us_runtime.multispine_pool as multispine_pool_module
+import populace.build.us_runtime.stacked_spine as stacked_spine_module
 from populace.build.gates import GateReport, GateResult
 from populace.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
@@ -36,6 +38,7 @@ from populace.build.us_runtime.operator_boundary import (
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
 )
+from populace.build.us_runtime.stacked_spine import GapFillDirection
 from populace.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
@@ -154,6 +157,17 @@ def _replace_person(
         mass_log=frame.mass_log,
         metadata=frame.metadata if preserve_metadata else None,
     )
+
+
+def _with_fixture_pre_clone_strike_benefits(frame: Frame) -> Frame:
+    """Fixture producer for one real pre-clone operator-owned target."""
+
+    person = frame.table("person").copy()
+    assert "strike_benefits" not in person
+    channel = person[support_channel_column("person")].astype(str)
+    person["strike_benefits"] = np.nan
+    person.loc[channel.eq("asec"), "strike_benefits"] = 125.0
+    return _replace_person(frame, person)
 
 
 def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
@@ -839,27 +853,55 @@ def _install_stacked_entrypoint_stubs(
 
     monkeypatch.setattr(pool_tool, "build_stacked_pool", build_stacked_pool)
 
-    def prepare(frame: Frame, *, acs_rent_donor: pd.DataFrame):
+    def fixture_pre_clone_source_chain(
+        frame: Frame,
+        *,
+        phase: str,
+        operator_names: tuple[str, ...],
+        operators: Mapping[str, object],
+        **_kwargs: object,
+    ) -> PoolStageOutput:
         order.append("prepare")
-        assert len(acs_rent_donor) == 1
-        return PoolStageOutput(frame, {"fixture": "prepare"})
+        assert phase == "pre_clone"
+        assert operator_names
+        assert set(operator_names) == set(operators)
+        return PoolStageOutput(
+            _with_fixture_pre_clone_strike_benefits(frame),
+            {"fixture": "pre_clone_source_chain"},
+        )
 
     monkeypatch.setattr(
-        pool_tool,
-        "prepare_multispine_source_inputs_for_clone",
-        prepare,
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        fixture_pre_clone_source_chain,
     )
     directions = (
-        SimpleNamespace(name="asec_survey_to_acs"),
-        SimpleNamespace(name="acs_housing_to_asec"),
+        GapFillDirection(
+            name="asec_survey_to_acs",
+            recipient_channel="acs",
+            donor_channel="asec",
+            target_families={
+                "person": {
+                    "source_operator_cps_carried": ("strike_benefits",),
+                }
+            },
+        ),
     )
     monkeypatch.setattr(pool_tool, "stacked_gap_fill_plan", lambda: directions)
 
     def gap_fill(frame: Frame, **kwargs):
         order.append("gap")
-        assert set(kwargs["target_banks"]) == {
-            "asec_survey_to_acs",
-            "acs_housing_to_asec",
+        assert set(kwargs["target_banks"]) == {"asec_survey_to_acs"}
+        counts = stacked_spine_module._verify_gap_fill_activation_authority(
+            frame,
+            direction=directions[0],
+        )
+        assert counts == {
+            ("person", "strike_benefits"): {
+                "authorized_null_rows": 1,
+                "recipient_rows": 1,
+                "donor_rows": 1,
+            }
         }
         return SimpleNamespace(
             frame=frame,
@@ -911,6 +953,21 @@ def _install_stacked_entrypoint_stubs(
         return PoolStageOutput(frame, {"fixture": "complete"})
 
     monkeypatch.setattr(pool_tool, "complete_multispine_source_inputs", complete)
+
+    def post_puf_transfer(frame: Frame, **kwargs: object):
+        order.append("post_puf_transfer")
+        assert kwargs["target_bank"] is not None
+        return SimpleNamespace(
+            frame=frame,
+            receipt={"fixture": "post_puf_transfer"},
+            transfer_result=SimpleNamespace(fit_records=()),
+        )
+
+    monkeypatch.setattr(
+        pool_tool,
+        "transfer_stacked_post_puf_inputs",
+        post_puf_transfer,
+    )
     monkeypatch.setattr(
         pool_tool,
         "assert_stacked_tail_cells_preserved",
@@ -979,6 +1036,51 @@ def _install_stacked_entrypoint_stubs(
     return order, len(puf_donor)
 
 
+def test_stacked_operator_target_requires_preparation_before_activation_authority(
+    pool_tool: ModuleType,
+) -> None:
+    stacked = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(),
+        _many_household_source_frame(measured_offset=1_000.0),
+        sample_fraction=0.01,
+        sample_seed=578,
+    ).frame
+    direction = GapFillDirection(
+        name="asec_survey_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
+        target_families={
+            "person": {
+                "source_operator_cps_carried": ("strike_benefits",),
+            }
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"asec_survey_to_acs/person/source_operator_cps_carried/"
+            r"strike_benefits: declared gap-fill target column is absent"
+        ),
+    ):
+        stacked_spine_module._verify_gap_fill_activation_authority(
+            stacked,
+            direction=direction,
+        )
+
+    prepared = _with_fixture_pre_clone_strike_benefits(stacked)
+    assert stacked_spine_module._verify_gap_fill_activation_authority(
+        prepared,
+        direction=direction,
+    ) == {
+        ("person", "strike_benefits"): {
+            "authorized_null_rows": 1,
+            "recipient_rows": 1,
+            "donor_rows": 1,
+        }
+    }
+
+
 @pytest.mark.parametrize(
     ("terminal", "expected_code", "disposition"),
     [
@@ -1032,6 +1134,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "gap",
             "puf",
             "complete",
+            "post_puf_transfer",
             "tail_prepare",
             "derive",
             "seed",
@@ -1413,7 +1516,7 @@ def test_stacked_materializer_v1_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 2
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 3
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -1492,6 +1595,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "gap",
         "puf",
         "complete",
+        "post_puf_transfer",
         "tail_prepare",
         "derive",
         "seed",
@@ -1522,6 +1626,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "gap",
         "puf",
         "complete",
+        "post_puf_transfer",
         "tail_prepare",
         "derive",
         "seed",

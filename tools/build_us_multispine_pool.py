@@ -142,6 +142,8 @@ from populace.build.us_runtime.puf_support import (
     US_PUF_SUPPORT_FIT_NAME,
 )
 from populace.build.us_runtime.stacked_spine import (
+    CANONICAL_STACKED_GAP_FILL_SURFACE,
+    CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE,
     assemble_stacked_spine,
     assert_stacked_tail_cells_preserved,
     by_origin_battery,
@@ -151,6 +153,7 @@ from populace.build.us_runtime.stacked_spine import (
     stacked_completeness_gate,
     stacked_gap_fill_plan,
     stacked_spine_authority_receipt,
+    transfer_stacked_post_puf_inputs,
     validate_stacked_spine_frame,
 )
 from populace.build.us_runtime.support_provenance import (
@@ -231,9 +234,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 2 binds the complete clone-2 tail provenance and attachment-descendant
-# metadata. Version-1 stacked checkpoints predate that state and must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 2
+# Version 3 binds the staged post-PUF transfer and its target bank. Earlier
+# stacked checkpoints either predate that stage or its complete clone-2 tail
+# provenance and must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 3
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -1012,6 +1016,7 @@ def _stacked_checkpoint_base_identity(
                 "gap_fill_stacked_spine",
                 "run_stacked_puf_pass",
                 "complete_multispine_source_inputs",
+                "transfer_stacked_post_puf_inputs",
                 "prepare_stacked_tail_derivation",
                 "derive_multispine_pool_inputs",
                 "seed_multispine_pool_inputs",
@@ -2406,6 +2411,16 @@ def _stacked_direction_bank_identity(
     }
 
 
+def _stacked_post_puf_bank_identity(
+    checkpoint_identity: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        **_pool_checkpoint_stage_identity(checkpoint_identity, "transferred"),
+        "stacked_transfer_stage": "post_puf_source_completion",
+        "stacked_transfer_name": "asec_clone_1_to_missing",
+    }
+
+
 def _stacked_tail_manifest(
     stage_receipts: Mapping[str, Mapping[str, object]],
 ) -> Mapping[str, object]:
@@ -2598,12 +2613,6 @@ def build_stacked_pool(
             primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
         )
         mark_phase("puf_passed")
-        weights_audit = weights_audit_gate(fit_records)
-        if not weights_audit.passed:
-            raise ValueError(
-                "Stacked imputation weights audit failed:\n  "
-                + "\n  ".join(weights_audit.failures)
-            )
 
         puf_receipt = dict(puf_result.receipt)
         primary_qrf_receipt = puf_receipt.pop("primary_puf_qrf")
@@ -2642,8 +2651,30 @@ def build_stacked_pool(
             source_completion.frame,
             tail_manifest,
         )
-        current = canonicalize_frame_string_dtypes(
+        post_puf_target_bank = AcsTransferTargetBankStore(
+            acs_transfer_checkpoint_dir / "post_puf_transfer",
+            identity=_stacked_post_puf_bank_identity(checkpoint_identity),
+        )
+        post_puf_transfer = transfer_stacked_post_puf_inputs(
             source_completion.frame,
+            seed=POOL_RANDOM_SEED,
+            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+            target_bank=post_puf_target_bank,
+        )
+        fit_records.extend(post_puf_transfer.transfer_result.fit_records)
+        weights_audit = weights_audit_gate(fit_records)
+        if not weights_audit.passed:
+            raise ValueError(
+                "Stacked imputation weights audit failed:\n  "
+                + "\n  ".join(weights_audit.failures)
+            )
+        post_puf_preservation = assert_stacked_tail_cells_preserved(
+            post_puf_transfer.frame,
+            tail_manifest,
+        )
+        current = canonicalize_frame_string_dtypes(
+            post_puf_transfer.frame,
             boundary="stacked pool transferred checkpoint",
             in_place=True,
         )
@@ -2657,12 +2688,19 @@ def build_stacked_pool(
                 "post_primary_completion": dict(source_completion.receipt),
             },
             "stacked_gap_fill": dict(gap_filled.receipt),
+            "stacked_post_puf_transfer": dict(post_puf_transfer.receipt),
             "primary_puf_qrf": primary_qrf_receipt,
             "puf_capital_gains_tail_transfer": dict(tail_manifest),
             "stacked_puf_pass": puf_receipt,
             "tail_preservation_after_source_completion": completion_preservation,
+            "tail_preservation_after_post_puf_transfer": post_puf_preservation,
             "acs_qrf_transfer": {
-                "target_families": _json_ready(pool_transfer_target_families()),
+                "target_families": {
+                    "early_gap_fill": _json_ready(CANONICAL_STACKED_GAP_FILL_SURFACE),
+                    "post_puf_transfer": _json_ready(
+                        CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+                    ),
+                },
                 "n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
                 "max_targets_per_fit": DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
                 "target_bank": {
@@ -2671,6 +2709,7 @@ def build_stacked_pool(
                         name: bank.receipt()
                         for name, bank in sorted(target_banks.items())
                     },
+                    "post_puf_transfer": post_puf_target_bank.receipt(),
                 },
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),

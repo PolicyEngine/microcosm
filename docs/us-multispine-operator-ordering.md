@@ -112,8 +112,10 @@ are allowed only when named by the ACS native-input receipt.
    one origin-labeled frame. Standard rungs are `f001`, `f010`, and `f100`;
    the manifest binds the fraction, seed, exact realized ASEC/ACS counts, and
    selected-lineage digests. The full PUF remains a donor and is never sampled.
-2. The spine-blind source-preparation chain derives the native predictors
-   needed by the declared cross-origin fills. No population operator selects
+2. The spine-blind source-preparation chain derives the native predictors and
+   pre-clone operator outputs needed by the early declared cross-origin fills.
+   Targets produced only by the later PUF pass or source-completion chain are
+   excluded from this early authority surface. No population operator selects
    behavior from the source-channel labels.
 3. `gap_fill_stacked_spine(...)` runs the two immutable directions over the
    same frame: ASEC survey fields fill ACS nulls and ACS housing fills ASEC
@@ -125,20 +127,25 @@ are allowed only when named by the ACS native-input receipt.
    pass across both survey origins. PUF donors stay full. The clone-2
    capital-gains-tail operator runs inside this pass; exact tail-owned and
    QRF-owned cells are checked after source completion and every later phase.
-5. The transferred checkpoint records the gap-fill banks, primary-QRF bank,
-   tail manifest, weights audit, stack-manifest digest, fraction/seed, and
-   clone controls. The same identity regime governs cold and resumed builds.
-6. Schedule-D preparation, deterministic derivation, seeded inputs, and
+5. The post-clone source-completion chain runs, then the declared post-PUF
+   transfer fills the targets first materialized by that chain or the PUF pass.
+   Its complete donor is the ASEC-origin PUF-detail role; recipient nulls are
+   never synthesized before this stage, and zero residual nulls are required.
+6. The transferred checkpoint records the early gap-fill banks, post-PUF
+   transfer bank, primary-QRF bank, tail manifest, weights audit,
+   stack-manifest digest, fraction/seed, and clone controls. The same identity
+   regime governs cold and resumed builds.
+7. Schedule-D preparation, deterministic derivation, seeded inputs, and
    batched simulation run on the transferred stack. The tool retains the
    existing `assembled`, `transferred`, and `simulated` #599 boundaries.
-7. A fresh `us_stacked_completeness` gate proves every declared input is
+8. A fresh `us_stacked_completeness` gate proves every declared input is
    observed or has exact source-by-role absence authority. The terminal
    `us_by_origin_battery` then evaluates all 131 declared targets (114 person,
    9 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
    immutable live-digested per-column metric registry. Metric choice never
    dispatches from physical dtype. At small rungs, comparisons outside the
    validity domain receipt `insufficient_support`; tolerances do not widen.
-8. Only after both gates run does publication write the nullable H5,
+9. Only after both gates run does publication write the nullable H5,
    diagnostics, and readiness manifest. Success, failed gate, and exception
    paths each append a durable Logbook spool row beside the output, with the
    fraction token, seed, code/input/identity pins, phases, gate-receipt
@@ -286,6 +293,7 @@ source ingestion and faithful schema harmonization
     -> banked cross-origin gap-fill
     -> one PUF QRF pass plus clone-2 capital-gains tail
     -> source completion
+    -> banked post-PUF transfer of newly materialized targets
     -> derive
     -> seed take-up and other stochastic inputs
     -> simulate

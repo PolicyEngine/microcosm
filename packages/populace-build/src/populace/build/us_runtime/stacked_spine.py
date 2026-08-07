@@ -58,6 +58,8 @@ from populace.build.us_runtime.acs_transfer import (
 )
 from populace.build.us_runtime.multispine_pool import (
     POOL_SPINE_AGREEMENT_REGISTRY,
+    pool_post_puf_transfer_target_families,
+    pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
@@ -92,6 +94,7 @@ from populace.build.us_runtime.puf_support import (
 from populace.build.us_runtime.spine_assembly import assemble_spines
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_CLONE_INDEX,
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_source_id_column,
     support_channel_column,
@@ -109,6 +112,7 @@ __all__ = [
     "CANONICAL_STACKED_DECLARED_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_PLAN",
+    "CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "ORIGIN_BATTERY_METRIC_KINDS",
     "STACKED_PILOT_ACS_SAMPLE_FRACTION",
@@ -119,6 +123,7 @@ __all__ = [
     "GapFillResult",
     "OriginBatterySpec",
     "StackedPufPassResult",
+    "StackedPostPufTransferResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
     "assert_stacked_tail_cells_preserved",
@@ -130,6 +135,7 @@ __all__ = [
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
     "stacked_spine_authority_receipt",
+    "transfer_stacked_post_puf_inputs",
     "validate_stacked_spine_frame",
 ]
 
@@ -874,7 +880,7 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-_STACKED_AUTHORITY_VERSION = 2
+_STACKED_AUTHORITY_VERSION = 3
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 
@@ -1021,6 +1027,7 @@ class _StackedAuthority:
     authority_id: str
     version: int
     gap_fill_plan: tuple[GapFillDirection, ...]
+    post_puf_transfer_surface: TargetFamilies
     declared_surface: TargetFamilies
     metric_registry: Mapping[tuple[str, str, str, int], str]
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
@@ -1038,6 +1045,11 @@ class _StackedAuthority:
         if any(not isinstance(direction, GapFillDirection) for direction in plan):
             raise TypeError("Stacked authority plans require GapFillDirection values.")
         object.__setattr__(self, "gap_fill_plan", plan)
+        object.__setattr__(
+            self,
+            "post_puf_transfer_surface",
+            _freeze_target_families(self.post_puf_transfer_surface),
+        )
         object.__setattr__(
             self,
             "declared_surface",
@@ -1060,6 +1072,7 @@ class _StackedAuthority:
         component_digests = dict(self.declared_component_sha256)
         if set(component_digests) != {
             "gap_fill_plan",
+            "post_puf_transfer_surface",
             "declared_surface",
             "metric_registry",
             "joint_metric_registry",
@@ -1233,6 +1246,7 @@ def _support_profile_payload(profile: _BatterySupportProfile) -> dict[str, objec
 def _authority_component_payloads(
     *,
     gap_fill_plan: Sequence[GapFillDirection],
+    post_puf_transfer_surface: TargetFamilies,
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
@@ -1240,6 +1254,12 @@ def _authority_component_payloads(
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
+        "post_puf_transfer_surface": {
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "recipient_selection": "all_non_donor_rows",
+            "target_families": _surface_payload(post_puf_transfer_surface),
+        },
         "declared_surface": _surface_payload(declared_surface),
         "metric_registry": _metric_registry_payload(metric_registry),
         "joint_metric_registry": _joint_metric_registry_payload(joint_metric_registry),
@@ -1263,6 +1283,7 @@ def _authority_live_digests(
 ) -> tuple[dict[str, str], str]:
     payloads = _authority_component_payloads(
         gap_fill_plan=authority.gap_fill_plan,
+        post_puf_transfer_surface=authority.post_puf_transfer_surface,
         declared_surface=authority.declared_surface,
         metric_registry=authority.metric_registry,
         joint_metric_registry=authority.joint_metric_registry,
@@ -1286,6 +1307,7 @@ def _make_stacked_authority(
     authority_id: str,
     version: int,
     gap_fill_plan: Sequence[GapFillDirection],
+    post_puf_transfer_surface: TargetFamilies,
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
@@ -1296,6 +1318,7 @@ def _make_stacked_authority(
     declared_sha256: str | None = None,
 ) -> _StackedAuthority:
     frozen_plan = tuple(gap_fill_plan)
+    frozen_post_puf_surface = _freeze_target_families(post_puf_transfer_surface)
     frozen_surface = _freeze_target_families(declared_surface)
     frozen_registry = _freeze_metric_registry(metric_registry)
     frozen_joint_registry = _freeze_joint_metric_registry(
@@ -1303,6 +1326,7 @@ def _make_stacked_authority(
     )
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
+        post_puf_transfer_surface=frozen_post_puf_surface,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
@@ -1322,6 +1346,7 @@ def _make_stacked_authority(
         authority_id=authority_id,
         version=version,
         gap_fill_plan=frozen_plan,
+        post_puf_transfer_surface=frozen_post_puf_surface,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
@@ -1839,7 +1864,10 @@ def _explicit_origin_battery_metric_registry(
 
 
 CANONICAL_STACKED_GAP_FILL_SURFACE = _freeze_target_families(
-    pool_transfer_target_families()
+    pool_pre_clone_gap_fill_target_families()
+)
+CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE = _freeze_target_families(
+    pool_post_puf_transfer_target_families()
 )
 CANONICAL_STACKED_DECLARED_SURFACE = _terminal_surface_from_pool_registry()
 CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
@@ -1869,6 +1897,9 @@ CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
 _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR = CANONICAL_STACKED_DECLARED_SURFACE
 _CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR = CANONICAL_STACKED_GAP_FILL_SURFACE
 _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR = CANONICAL_STACKED_GAP_FILL_PLAN
+_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR = (
+    CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+)
 _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
 )
@@ -1885,6 +1916,7 @@ _CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
 _STACKED_DECLARED_SURFACE = CANONICAL_STACKED_DECLARED_SURFACE
 _STACKED_GAP_FILL_SURFACE = CANONICAL_STACKED_GAP_FILL_SURFACE
 _STACKED_GAP_FILL_PLAN = CANONICAL_STACKED_GAP_FILL_PLAN
+_STACKED_POST_PUF_TRANSFER_SURFACE = CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
 _BATTERY_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
 _BATTERY_JOINT_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 _BATTERY_SUPPORT_PROFILE = CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
@@ -1893,6 +1925,7 @@ _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
     authority_id=_STACKED_AUTHORITY_ID,
     version=_STACKED_AUTHORITY_VERSION,
     gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
+    post_puf_transfer_surface=(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR),
     declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
     metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
     joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
@@ -1907,6 +1940,9 @@ def _production_stacked_authority(
     _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
     _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
     _canonical_gap_surface: TargetFamilies = CANONICAL_STACKED_GAP_FILL_SURFACE,
+    _canonical_post_puf_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    ),
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
@@ -1921,6 +1957,7 @@ def _production_stacked_authority(
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
+        and _STACKED_POST_PUF_TRANSFER_SURFACE is _canonical_post_puf_surface
         and _STACKED_DECLARED_SURFACE is _canonical_surface
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
         and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
@@ -1932,6 +1969,7 @@ def _production_stacked_authority(
         authority_id=_STACKED_AUTHORITY_ID,
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=_STACKED_GAP_FILL_PLAN,
+        post_puf_transfer_surface=_STACKED_POST_PUF_TRANSFER_SURFACE,
         declared_surface=_STACKED_DECLARED_SURFACE,
         metric_registry=_BATTERY_METRIC_REGISTRY,
         joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
@@ -1961,6 +1999,7 @@ def _make_test_stacked_authority(
     *,
     declared_surface: TargetFamilies | None = None,
     gap_fill_plan: Sequence[GapFillDirection] | None = None,
+    post_puf_transfer_surface: TargetFamilies | None = None,
     metric_registry: Mapping[tuple[str, str, str, int], str] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
@@ -1995,6 +2034,9 @@ def _make_test_stacked_authority(
         authority_id=f"{_STACKED_AUTHORITY_ID}.test",
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=plan,
+        post_puf_transfer_surface=(
+            {} if post_puf_transfer_surface is None else post_puf_transfer_surface
+        ),
         declared_surface=surface,
         metric_registry=registry,
         joint_metric_registry=joints,
@@ -2082,6 +2124,19 @@ def _authority_receipt(
             "direction_count": len(authority.gap_fill_plan),
             "digest_matches_declared": component_integrity["gap_fill_plan"],
         },
+        "post_puf_transfer_surface": {
+            "sha256": live_components["post_puf_transfer_surface"],
+            "declared_sha256": authority.declared_component_sha256[
+                "post_puf_transfer_surface"
+            ],
+            "target_count": len(
+                _surface_target_keys(authority.post_puf_transfer_surface)
+            ),
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "recipient_selection": "all_non_donor_rows",
+            "digest_matches_declared": component_integrity["post_puf_transfer_surface"],
+        },
         "declared_surface": {
             "sha256": live_components["declared_surface"],
             "declared_sha256": authority.declared_component_sha256["declared_surface"],
@@ -2148,11 +2203,15 @@ def _authority_validation_failures(
     failures: list[str] = []
     surface_targets = _surface_target_keys(authority.declared_surface)
     plan_targets = _plan_target_keys(authority.gap_fill_plan)
+    post_puf_targets = _surface_target_keys(authority.post_puf_transfer_surface)
     duplicate_surface_targets = sorted(
         target for target, count in Counter(surface_targets).items() if count > 1
     )
     duplicate_plan_targets = sorted(
         target for target, count in Counter(plan_targets).items() if count > 1
+    )
+    duplicate_post_puf_targets = sorted(
+        target for target, count in Counter(post_puf_targets).items() if count > 1
     )
     if duplicate_surface_targets:
         failures.append(
@@ -2170,8 +2229,32 @@ def _authority_validation_failures(
             )
             + "."
         )
+    if duplicate_post_puf_targets:
+        failures.append(
+            "post-PUF transfer surface repeats target(s): "
+            + ", ".join(
+                _battery_target_label(target) for target in duplicate_post_puf_targets
+            )
+            + "."
+        )
+    overlap = sorted(set(plan_targets) & set(post_puf_targets))
+    if overlap:
+        failures.append(
+            "early gap-fill and post-PUF transfer surfaces overlap: "
+            + ", ".join(_battery_target_label(target) for target in overlap)
+            + "."
+        )
+    outside_declared = sorted(set(post_puf_targets) - set(surface_targets))
+    if outside_declared:
+        failures.append(
+            "post-PUF transfer targets are absent from the declared terminal "
+            "surface: "
+            + ", ".join(_battery_target_label(target) for target in outside_declared)
+            + "."
+        )
     for name, label in (
         ("gap_fill_plan", "gap-fill plan"),
+        ("post_puf_transfer_surface", "post-PUF transfer surface"),
         ("declared_surface", "declared surface"),
         ("metric_registry", "metric registry"),
         ("joint_metric_registry", "joint metric registry"),
@@ -2306,6 +2389,9 @@ def _validate_stacked_gate_manifest_details(
     _validate_production_authority_receipt(authority, boundary=boundary)
     authority_sha256 = authority["sha256"]
     plan_sha256 = authority["components"]["gap_fill_plan"]["sha256"]
+    post_puf_surface_sha256 = authority["components"]["post_puf_transfer_surface"][
+        "sha256"
+    ]
     surface_sha256 = authority["components"]["declared_surface"]["sha256"]
     expected_keys = _surface_target_keys(_canonical_surface)
 
@@ -2349,6 +2435,8 @@ def _validate_stacked_gate_manifest_details(
             if (
                 target_receipt.get("authority_sha256") != authority_sha256
                 or target_receipt.get("plan_sha256") != plan_sha256
+                or target_receipt.get("post_puf_surface_sha256")
+                != post_puf_surface_sha256
                 or target_receipt.get("surface_sha256") != surface_sha256
             ):
                 reject(f"{label} target receipt is not bound to canonical authority")
@@ -2374,6 +2462,8 @@ def _validate_stacked_gate_manifest_details(
                     or proof_receipt.get("authority_form") != "origin_exact_recipient"
                     or proof_receipt.get("authority_sha256") != authority_sha256
                     or proof_receipt.get("plan_sha256") != plan_sha256
+                    or proof_receipt.get("post_puf_surface_sha256")
+                    != post_puf_surface_sha256
                     or proof_receipt.get("surface_sha256") != surface_sha256
                     or proof_receipt.get("declared_direction") != direction.name
                     or proof_receipt.get("declared_donor_channel")
@@ -2442,15 +2532,27 @@ def _validate_stacked_gate_manifest_details(
 _canonical_surface_keys = _surface_target_keys(
     _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
 )
+_canonical_early_transfer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR)
+)
+_canonical_late_transfer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR)
+)
+_canonical_full_transfer_keys = set(
+    _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
+)
 if (
     len(_canonical_surface_keys) != 131
     or len(set(_canonical_surface_keys)) != 131
-    or len(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR)) != 118
+    or len(_canonical_early_transfer_keys) != 48
+    or len(_canonical_late_transfer_keys) != 70
+    or _canonical_early_transfer_keys & _canonical_late_transfer_keys
+    or _canonical_early_transfer_keys | _canonical_late_transfer_keys
+    != _canonical_full_transfer_keys
+    or len(_canonical_full_transfer_keys) != 118
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
-    != set(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR))
-    or not set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR)).issubset(
-        _canonical_surface_keys
-    )
+    != _canonical_early_transfer_keys
+    or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
     or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
     != set(_canonical_surface_keys)
     or len(_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR) != 1
@@ -2467,8 +2569,9 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must bind an exact 118-target gap-fill "
-        "plan inside an exact 131-target terminal surface and metric registry."
+        "Canonical stacked authority must partition the exact 118-target "
+        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
+        "inside an exact 131-target terminal surface and metric registry."
     )
 
 
@@ -3003,6 +3106,327 @@ def _verify_gap_fill_outcome(
             for record in result.fit_records
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Post-PUF transfer of outputs that do not exist at the early gap-fill stage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StackedPostPufTransferResult:
+    """The completed stacked frame plus late-transfer provenance."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+    transfer_result: AcsTransferResult
+
+
+def transfer_stacked_post_puf_inputs(
+    frame: Frame,
+    *,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
+) -> StackedPostPufTransferResult:
+    """Transfer canonical late-produced inputs after source completion."""
+
+    return _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=_production_stacked_authority(),
+        production=True,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+    )
+
+
+def _transfer_stacked_post_puf_inputs_with_test_authority(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
+) -> StackedPostPufTransferResult:
+    """Explicit non-production seam for fixture-sized late surfaces."""
+
+    _validate_test_authority(authority, boundary="post-PUF transfer test seam")
+    return _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=authority,
+        production=False,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+    )
+
+
+def _transfer_stacked_post_puf_inputs_evaluate(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    production: bool,
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+    target_bank: AcsTransferTargetBank | None,
+) -> StackedPostPufTransferResult:
+    """Run the late transfer from the one role carrying every declared target."""
+
+    authority_receipt = _authority_receipt(authority)
+    authority_failures = _authority_validation_failures(
+        authority,
+        production=production,
+    )
+    if authority_failures:
+        raise ValueError(
+            "Stacked post-PUF transfer authority validation failed:\n  "
+            + "\n  ".join(authority_failures)
+        )
+    if production:
+        _validate_production_authority_receipt(
+            authority_receipt,
+            boundary="stacked post-PUF transfer entry",
+        )
+    validate_stacked_spine_frame(frame, boundary="stacked post-PUF transfer entry")
+    validate_puf_clone_attachment(
+        frame,
+        boundary="stacked post-PUF transfer attachment",
+    )
+    surface = authority.post_puf_transfer_surface
+    if not _surface_target_keys(surface):
+        raise ValueError("Stacked post-PUF transfer requires at least one target.")
+
+    pre_counts = _verify_post_puf_transfer_activation_authority(
+        frame,
+        target_families=surface,
+    )
+    donor = _post_puf_donor_projection(frame)
+    donor_snapshot = {
+        entity: _post_puf_targets_snapshot(
+            frame,
+            entity=entity,
+            targets=tuple(
+                target for targets in families.values() for target in targets
+            ),
+        )
+        for entity, families in surface.items()
+    }
+    transfer = transfer_acs_inputs(
+        frame,
+        donor,
+        target_families=surface,
+        donor_channel=None,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+    )
+    target_receipts = _verify_post_puf_transfer_outcome(
+        transfer.frame,
+        target_families=surface,
+        pre_counts=pre_counts,
+        donor_snapshot=donor_snapshot,
+        result=transfer,
+    )
+    validate_stacked_spine_frame(
+        transfer.frame,
+        boundary="stacked post-PUF transfer output",
+    )
+    return StackedPostPufTransferResult(
+        frame=transfer.frame,
+        receipt={
+            "authority": authority_receipt,
+            "donor_selection": "owner_projection_of_asec_origin_clone_1",
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "recipient_selection": "all_non_donor_rows",
+            "resolved_donor_channel": transfer.resolved_donor_channel,
+            "targets": target_receipts,
+            "fit_records": [
+                {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+                for record in transfer.fit_records
+            ],
+        },
+        transfer_result=transfer,
+    )
+
+
+def _post_puf_role_mask(frame: Frame, *, entity: str) -> pd.Series:
+    table = frame.table(entity)
+    return table[support_channel_column(entity)].astype(str).eq(
+        BASE_ASEC_SUPPORT_CHANNEL
+    ) & pd.to_numeric(
+        table[support_clone_index_column(entity)],
+        errors="raise",
+    ).eq(PUF_TAX_DETAIL_CLONE_INDEX)
+
+
+def _post_puf_donor_projection(frame: Frame) -> Frame:
+    person_mask = _post_puf_role_mask(frame, entity=frame.schema.person_entity)
+    if not person_mask.any():
+        raise ValueError(
+            "Stacked post-PUF transfer has no ASEC-origin clone-1 donor rows."
+        )
+    return frame.select(person_mask.to_numpy(dtype=bool))
+
+
+def _post_puf_targets_snapshot(
+    frame: Frame,
+    *,
+    entity: str,
+    targets: Sequence[str],
+) -> pd.DataFrame:
+    table = frame.table(entity)
+    donor_rows = _post_puf_role_mask(frame, entity=entity)
+    present = [target for target in targets if target in table.columns]
+    return table.loc[donor_rows, present].copy(deep=True)
+
+
+def _verify_post_puf_transfer_activation_authority(
+    frame: Frame,
+    *,
+    target_families: TargetFamilies,
+) -> dict[tuple[str, str], dict[str, int]]:
+    """Require the declared late surface on complete ASEC clone-1 donors."""
+
+    failures: list[str] = []
+    counts: dict[tuple[str, str], dict[str, int]] = {}
+    for entity, families in target_families.items():
+        table = frame.table(entity)
+        donor_rows = _post_puf_role_mask(frame, entity=entity)
+        recipient_rows = ~donor_rows
+        donor_count = int(donor_rows.sum())
+        recipient_count = int(recipient_rows.sum())
+        if donor_count == 0:
+            failures.append(
+                f"post_puf_transfer/{entity}: declared ASEC clone-1 donor role "
+                "has no live rows."
+            )
+        for family, targets in families.items():
+            for target in targets:
+                label = f"post_puf_transfer/{entity}/{family}/{target}"
+                if target not in table.columns:
+                    failures.append(
+                        f"{label}: declared post-PUF transfer target column is "
+                        "absent from the stacked spine."
+                    )
+                    continue
+                null_mask = table[target].isna()
+                donor_nulls = int((null_mask & donor_rows).sum())
+                if donor_nulls:
+                    failures.append(
+                        f"{label}: ASEC clone-1 donor role has {donor_nulls} "
+                        "null cell(s); donors must observe every declared target."
+                    )
+                counts[(entity, target)] = {
+                    "authorized_null_rows": int((null_mask & recipient_rows).sum()),
+                    "recipient_rows": recipient_count,
+                    "donor_rows": donor_count,
+                }
+    if failures:
+        raise ValueError(
+            "Stacked post-PUF transfer activation authority failed:\n  "
+            + "\n  ".join(failures)
+        )
+    return counts
+
+
+def _verify_post_puf_transfer_outcome(
+    frame: Frame,
+    *,
+    target_families: TargetFamilies,
+    pre_counts: Mapping[tuple[str, str], Mapping[str, int]],
+    donor_snapshot: Mapping[str, pd.DataFrame],
+    result: AcsTransferResult,
+) -> dict[str, dict[str, int]]:
+    """Prove late donors were preserved and every authorized null was filled."""
+
+    failures: list[str] = []
+    imputed_by_target = {
+        (record.entity, record.column): record for record in result.imputed_inputs
+    }
+    target_receipts: dict[str, dict[str, int]] = {}
+    for entity, families in target_families.items():
+        table = frame.table(entity)
+        donor_rows = _post_puf_role_mask(frame, entity=entity)
+        recipient_rows = ~donor_rows
+        targets = tuple(
+            target for family_targets in families.values() for target in family_targets
+        )
+        donor_after = _post_puf_targets_snapshot(
+            frame,
+            entity=entity,
+            targets=targets,
+        )
+        for family, family_targets in families.items():
+            for target in family_targets:
+                label = f"post_puf_transfer/{entity}/{family}/{target}"
+                before = donor_snapshot[entity].get(target)
+                after = donor_after.get(target)
+                if (
+                    before is None
+                    or after is None
+                    or _canonical_donor_series_payload(
+                        before,
+                        boundary=f"{label} donor identity before transfer",
+                    )
+                    != _canonical_donor_series_payload(
+                        after,
+                        boundary=f"{label} donor identity after transfer",
+                    )
+                ):
+                    failures.append(
+                        f"{label}: donor byte identity failed for ASEC clone-1; "
+                        "canonical donor payload changed during transfer."
+                    )
+                null_mask = table[target].isna()
+                donor_nulls = int((null_mask & donor_rows).sum())
+                residual_nulls = int((null_mask & recipient_rows).sum())
+                record = imputed_by_target.get((entity, target))
+                imputed = record.imputed_recipient_rows if record else 0
+                unmodeled = record.unmodeled_recipient_rows if record else 0
+                authorized = pre_counts[(entity, target)]["authorized_null_rows"]
+                if donor_nulls:
+                    failures.append(
+                        f"{label}: {donor_nulls} donor null cell(s) appeared "
+                        "during transfer."
+                    )
+                if residual_nulls != unmodeled:
+                    failures.append(
+                        f"{label}: residual-null equation failed: "
+                        f"residual_null_rows={residual_nulls} != "
+                        f"unmodeled_rows={unmodeled}."
+                    )
+                if authorized != imputed + unmodeled:
+                    failures.append(
+                        f"{label}: activation accounting equation failed: "
+                        f"authorized_null_rows={authorized} != "
+                        f"imputed_rows={imputed} + unmodeled_rows={unmodeled}."
+                    )
+                if unmodeled or residual_nulls:
+                    failures.append(
+                        f"{label}: declared post-PUF transfer left "
+                        f"unmodeled_rows={unmodeled}, "
+                        f"residual_null_rows={residual_nulls}; zero are allowed."
+                    )
+                target_receipts[f"{entity}/{family}/{target}"] = {
+                    "authorized_null_rows": authorized,
+                    "imputed_rows": imputed,
+                    "unmodeled_rows": unmodeled,
+                    "residual_null_rows": residual_nulls,
+                }
+    if failures:
+        raise ValueError(
+            "Stacked post-PUF transfer outcome verification failed:\n  "
+            + "\n  ".join(failures)
+        )
+    return target_receipts
 
 
 # ---------------------------------------------------------------------------
@@ -3887,6 +4311,9 @@ def _stacked_completeness_gate_evaluate(
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_post_puf_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    ),
 ) -> GateResult:
     """Prove every declared target is filled or carries absence authority.
 
@@ -3938,6 +4365,19 @@ def _stacked_completeness_gate_evaluate(
                 key = (entity, target)
                 canonical_direction_keys.add(key)
                 declared_directions[key] = direction
+    declared_post_puf_keys = {
+        (entity, target)
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for targets in families.values()
+        for target in targets
+    }
+    canonical_post_puf_keys = {
+        (entity, target)
+        for entity, families in _canonical_post_puf_surface.items()
+        for targets in families.values()
+        for target in targets
+    }
+    post_puf_keys = declared_post_puf_keys | canonical_post_puf_keys
 
     proof_index: dict[tuple[str, str], dict[tuple[str, int], str]] = {}
     for proof in absence_proofs:
@@ -3959,6 +4399,9 @@ def _stacked_completeness_gate_evaluate(
     }
     authority_sha256 = authority_receipt["sha256"]
     plan_sha256 = authority_receipt["components"]["gap_fill_plan"]["sha256"]
+    post_puf_surface_sha256 = authority_receipt["components"][
+        "post_puf_transfer_surface"
+    ]["sha256"]
     surface_sha256 = authority_receipt["components"]["declared_surface"]["sha256"]
 
     def authority_binding(authority_form: str) -> dict[str, object]:
@@ -3966,6 +4409,7 @@ def _stacked_completeness_gate_evaluate(
             "authority_form": authority_form,
             "authority_sha256": authority_sha256,
             "plan_sha256": plan_sha256,
+            "post_puf_surface_sha256": post_puf_surface_sha256,
             "surface_sha256": surface_sha256,
         }
 
@@ -4053,6 +4497,7 @@ def _stacked_completeness_gate_evaluate(
                     continue
                 proofs = proof_index.get((entity, target), {})
                 declared_direction = declared_directions.get((entity, target))
+                post_puf_target = (entity, target) in post_puf_keys
                 null_channels = channel.loc[null_mask]
                 null_clones = clone_index.loc[null_mask]
                 unproven: dict[str, int] = {}
@@ -4068,6 +4513,15 @@ def _stacked_completeness_gate_evaluate(
                     cell_clone = int(cell_clone)
                     reason = proofs.get((cell_channel, cell_clone))
                     authority_form = "origin_exact"
+                    if post_puf_target:
+                        if reason is not None or (_ANY_CHANNEL, cell_clone) in proofs:
+                            failures.append(
+                                f"{label}: absence authority is forbidden because "
+                                "the declared post-PUF transfer requires zero "
+                                f"residual nulls; found {int(count)} null cell(s) "
+                                f"on {cell_channel}/clone_{cell_clone}."
+                            )
+                        reason = None
                     if declared_direction is not None and reason is not None:
                         if cell_channel != declared_direction.recipient_channel:
                             failures.append(
@@ -4080,7 +4534,11 @@ def _stacked_completeness_gate_evaluate(
                             reason = None
                         else:
                             authority_form = "origin_exact_recipient"
-                    if reason is None and declared_direction is None:
+                    if (
+                        reason is None
+                        and declared_direction is None
+                        and not post_puf_target
+                    ):
                         reason = proofs.get((_ANY_CHANNEL, cell_clone))
                         authority_form = "wildcard_no_declared_donor_plan"
                     key = f"{cell_channel}/clone_{cell_clone}"
@@ -4096,6 +4554,12 @@ def _stacked_completeness_gate_evaluate(
                                 f"{declared_direction.donor_channel!r} and recipient "
                                 f"{declared_direction.recipient_channel!r}; wildcard "
                                 "authority is forbidden."
+                            )
+                        elif post_puf_target:
+                            failures.append(
+                                f"{label}: {int(count)} null cell(s) on {key} "
+                                "violate the zero-residual post-PUF transfer "
+                                "contract; absence proofs are forbidden."
                             )
                     else:
                         proof_receipt: dict[str, object] = {
