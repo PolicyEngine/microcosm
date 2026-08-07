@@ -995,6 +995,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_te
     expected_code: int | None,
     disposition: str,
 ) -> None:
+    pytest.importorskip("tables")
     """Exercise the real tool, stack assembly, orchestrator, and publication shell."""
     order, full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
@@ -1156,6 +1157,7 @@ def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -1407,6 +1409,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")
     order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -1515,6 +1518,7 @@ def test_stacked_resume_error_uses_realized_stack_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
