@@ -1779,7 +1779,7 @@ def test_exchange_interrupted_after_the_syscall_preserves_the_marker(
     real_remove_marker = build_cli._remove_marker
 
     def exchange_then_interrupt(source, target):
-        result = real_exchange(source, target)
+        assert real_exchange(source, target)
         events.append("exchange")
         raise KeyboardInterrupt  # delivered after the syscall returned
 
@@ -1813,6 +1813,57 @@ def test_exchange_interrupted_after_the_syscall_preserves_the_marker(
     assert _read_set(out_dir) == _NEW_SET
     assert not staging.exists()
     assert not marker_path.exists()
+
+
+def test_marker_removal_bounds_prior_cleanups_durably(tmp_path, monkeypatch):
+    """``_remove_marker`` fsyncs the parent BEFORE unlinking the marker,
+    so every cleanup since the marker was written (displaced-set
+    deletion, temp-link unlinks, rollback renames) is durable before the
+    no-recovery-needed commit point can be. On the exchange success path
+    the prior ordering was ``backup_deleted -> marker_unlinked`` with no
+    boundary — a power loss could keep the durable marker removal and
+    lose the deletion, stranding a markerless orphan."""
+
+    build_cli = _build_cli_module()
+    if not build_cli._exchange_supported(tmp_path):
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-boundary"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[str] = []
+    real_fsync_dir = build_cli._fsync_dir
+    real_rmtree = shutil.rmtree
+    real_unlink = Path.unlink
+
+    def recording_fsync_dir(path):
+        events.append("fsync_dir")
+        return real_fsync_dir(path)
+
+    def recording_rmtree(path, *args, **kwargs):
+        events.append("rmtree")
+        return real_rmtree(path, *args, **kwargs)
+
+    def recording_unlink(self, *args, **kwargs):
+        if self.name.endswith("publish-recovery.json"):
+            events.append("marker_unlink")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(shutil, "rmtree", recording_rmtree)
+    monkeypatch.setattr(Path, "unlink", recording_unlink)
+    try:
+        build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    assert _read_set(out_dir) == _NEW_SET
+    cleanup = events.index("rmtree")
+    marker_unlink = events.index("marker_unlink", cleanup)
+    assert "fsync_dir" in events[cleanup + 1 : marker_unlink], (
+        "no parent fsync between the displaced-set deletion and the marker unlink"
+    )
 
 
 @pytest.mark.parametrize("mode", ["retarget", "migrate"])

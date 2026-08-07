@@ -550,6 +550,17 @@ def _write_marker_durably(out_dir: Path, payload: dict[str, object]) -> None:
 
 
 def _remove_marker(out_dir: Path) -> None:
+    """Withdraw the marker — the commit point that says "no recovery needed".
+
+    Every mutation performed since the marker was written must be on
+    disk before its removal can be: the parent is fsynced BEFORE the
+    unlink (bounding all prior renames, deletions, and link cleanups —
+    a cleanup that evaporates in a power loss after a durable marker
+    removal would leave a markerless orphan), and again after it
+    (bounding the removal itself). This makes every call site correct
+    by construction rather than by per-site discipline.
+    """
+    _fsync_dir(out_dir.parent)
     _publish_marker_path(out_dir).unlink(missing_ok=True)
     _fsync_dir(out_dir.parent)
 
