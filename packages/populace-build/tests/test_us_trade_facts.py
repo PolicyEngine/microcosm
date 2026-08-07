@@ -381,6 +381,31 @@ def test_cbp_fiscal_year_end_day_itself_is_still_fiscal_year_to_date():
     assert day_after["period"] == {"type": "fiscal_year", "value": 2025}
 
 
+def test_cbp_retrieval_offsets_roll_to_utc_and_same_day_endpoints_pass():
+    """The retrieval instant is taken in UTC: a local timestamp past
+    midnight on October 1 whose UTC instant is still September 30 keeps
+    the year fiscal-year-to-date (and keeps a same-UTC-day publisher
+    endpoint valid). An as-of endpoint equal to the retrieval's UTC date
+    is coverage up to the moment of reading, not a claim from the
+    future."""
+
+    # 2025-10-01T02:00+05:00 is 2025-09-30T21:00Z: still the end day.
+    (rolled,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2025-09-30"),
+        page_sha256="dd" * 32,
+        retrieved_at="2025-10-01T02:00:00+05:00",
+    )
+    assert rolled["period"]["type"] == "fiscal_year_to_date"
+    assert rolled["period"]["as_of"] == "2025-09-30"
+
+    (same_day,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2026-07-27"),
+        page_sha256="dd" * 32,
+        retrieved_at="2026-07-27T23:59:59+00:00",
+    )
+    assert same_day["period"] == {"type": "fiscal_year", "value": 2025}
+
+
 def test_cbp_fact_builder_refuses_future_and_malformed_retrievals():
     """The retrieval timestamp is parsed whole — truncating to the date
     prefix would bless ``2026-09-30T99:99:99+00:00`` — must carry a
