@@ -19,7 +19,10 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRCIncomeBandTargetRecord,
     HMRCIncomeTargetSet,
 )
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_time_period,
+)
 from populace.build.uk_runtime.spi_income import derive_hmrc_income_auxiliaries
 from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYED_INCOME_COLUMN,
@@ -35,7 +38,7 @@ from populace.calibrate import (
     TargetSpec,
     calibrate,
 )
-from populace.frame import EntitySchema, Frame, WeightKind, Weights
+from populace.frame import EntitySchema, Frame, WeightKind, Weights, engine_tables
 
 __all__ = [
     "DEFAULT_HMRC_CALIBRATION_EPOCHS",
@@ -87,7 +90,7 @@ class UKHMRCIncomeCalibration:
 
 
 def materialize_uk_hmrc_calibration_frame(
-    dataset: UKNationalDataset,
+    frame: Frame,
     source_targets: HMRCIncomeTargetSet,
     *,
     simulation_factory: Callable[[Any], Any] | None = None,
@@ -104,16 +107,16 @@ def materialize_uk_hmrc_calibration_frame(
     mapping and MicroSeries weights while values align back to stable IDs.
     """
 
-    _validate_materialization_inputs(dataset, source_targets)
-    person = dataset.person.copy()
-    household = dataset.household.copy()
+    _validate_materialization_inputs(frame, source_targets)
+    person = frame.table("person").copy()
+    household = frame.table("household").copy()
 
-    simulation_input = _uk_single_year_dataset(dataset)
+    simulation_input = _uk_single_year_dataset(frame)
     factory = simulation_factory or _default_simulation_factory
     simulation = factory(simulation_input)
     calculated = simulation.calculate_dataframe(
         list(_SIMULATED_PERSON_COLUMNS),
-        period=dataset.time_period,
+        period=uk_time_period(frame),
         map_to="person",
         use_weights=True,
     )
@@ -283,7 +286,7 @@ def materialize_uk_hmrc_calibration_frame(
         axis=1,
     )
     calibration_household = household[["household_id"]].copy()
-    frame = Frame(
+    calibration_frame = Frame(
         {
             "person": calibration_person,
             "household": calibration_household,
@@ -292,10 +295,10 @@ def materialize_uk_hmrc_calibration_frame(
         {
             "household": Weights(
                 household["household_weight"].to_numpy(dtype=float),
-                dataset.household_weight_kind,
+                uk_household_weight_kind(frame),
             )
         },
-        mass_log=dataset.mass_log,
+        mass_log=frame.mass_log,
     )
     registry = TargetRegistry(target_specs, country="uk")
     if len(registry) != HMRC_SPI_TARGET_RECORD_COUNT:
@@ -304,7 +307,7 @@ def materialize_uk_hmrc_calibration_frame(
             f"{HMRC_SPI_TARGET_RECORD_COUNT} facts; got {len(registry)}."
         )
     return UKHMRCTargetMaterialization(
-        frame=frame,
+        frame=calibration_frame,
         registry=registry,
         source_targets=source_targets,
         taxpayer_rows=int(taxpayers.sum()),
@@ -382,23 +385,26 @@ def calibrate_uk_hmrc_income(
 
 
 def _validate_materialization_inputs(
-    dataset: UKNationalDataset,
+    frame: Frame,
     source_targets: HMRCIncomeTargetSet,
 ) -> None:
-    if dataset.household_weight_kind is not WeightKind.IMPORTANCE:
+    if uk_household_weight_kind(frame) is not WeightKind.IMPORTANCE:
         raise ValueError(
             "HMRC target materialization requires rebuilt importance weights."
         )
-    weights = pd.to_numeric(dataset.household["household_weight"], errors="coerce")
+    weights = pd.to_numeric(
+        frame.table("household")["household_weight"], errors="coerce"
+    )
     if weights.isna().any() or not weights.gt(0.0).all():
         raise ValueError(
             "HMRC target materialization requires every household prior weight "
             "to be strictly positive."
         )
-    if source_targets.source.build_period != dataset.time_period:
+    time_period = uk_time_period(frame)
+    if source_targets.source.build_period != time_period:
         raise ValueError(
             "HMRC target source period does not match the UK build period: "
-            f"{source_targets.source.build_period!r} != {dataset.time_period!r}."
+            f"{source_targets.source.build_period!r} != {time_period!r}."
         )
     if len(source_targets.targets) != HMRC_SPI_TARGET_RECORD_COUNT:
         raise ValueError(
@@ -421,18 +427,19 @@ def _validate_materialization_inputs(
         )
 
 
-def _uk_single_year_dataset(dataset: UKNationalDataset) -> Any:
+def _uk_single_year_dataset(frame: Frame) -> Any:
     try:
         from policyengine_uk.data import UKSingleYearDataset
     except ImportError as exc:  # pragma: no cover - runtime dependency diagnostic
         raise ImportError(
             "HMRC target materialization requires policyengine-uk."
         ) from exc
+    tables = engine_tables(frame)
     return UKSingleYearDataset(
-        person=dataset.person.copy(),
-        benunit=dataset.benunit.copy(),
-        household=dataset.household.copy(),
-        fiscal_year=int(dataset.time_period),
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        fiscal_year=int(uk_time_period(frame)),
     )
 
 

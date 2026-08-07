@@ -537,3 +537,27 @@ class TestSelect:
         assert set(selected.strata.unique()) == {"b"}
         assert selected.weights_for("household").values.tolist() == [200.0]
         assert selected.stratum_mass()["b"] == 600.0
+
+
+def test_revalidate_catches_post_construction_corruption(make_bundle) -> None:
+    """table()/person return stored internals, so in-place mutation can break
+    what construction proved; revalidate must fail closed on the same state
+    construction would reject."""
+
+    bundle = make_bundle()
+    bundle.revalidate()  # clean state passes
+
+    bundle.person.loc[0, "person_household_id"] = 999_999
+    with pytest.raises(ValueError):
+        bundle.revalidate()
+    bundle.person.loc[0, "person_household_id"] = bundle.person.loc[
+        1, "person_household_id"
+    ]
+    bundle.revalidate()
+
+    household = bundle.table("household")
+    household.sort_values(
+        "household_id", ascending=False, inplace=True, ignore_index=True
+    )
+    with pytest.raises(ValueError):
+        bundle.revalidate()

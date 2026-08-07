@@ -21,9 +21,9 @@ from populace.build.uk_runtime.frs_hmrc_leaves import (
     retain_uk_frs_hmrc_leaves,
 )
 from populace.build.uk_runtime.national_build import (
-    UKNationalDataset,
     UKNationalStage,
 )
+from populace.build.uk_runtime.national_frame import uk_national_frame
 from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -33,9 +33,10 @@ from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
 )
+from populace.frame import Frame
 
 
-def _candidate() -> tuple[UKNationalDataset, np.ndarray]:
+def _candidate() -> tuple[Frame, np.ndarray]:
     raw_households = {
         1: (1001, 1002),
         2: (2001,),
@@ -119,16 +120,23 @@ def _candidate() -> tuple[UKNationalDataset, np.ndarray]:
                         "expected_source_person_id": source_person_id,
                     }
                 )
-    household = pd.DataFrame(household_rows).sample(
-        frac=1.0, random_state=4, ignore_index=True
+    # Frame requires group ids sorted ascending (it raises, never reorders),
+    # so the group tables sort; the person table stays SHUFFLED, which keeps
+    # this fixture's teeth: person row i never corresponds positionally to
+    # household row i, so lineage resolution must stay id-keyed — the
+    # 2024-25 FRS bug class this candidate exists to catch.
+    household = pd.DataFrame(household_rows).sort_values(
+        "household_id", ignore_index=True
     )
     person = pd.DataFrame(person_rows).sample(
         frac=1.0, random_state=7, ignore_index=True
     )
     source_person_ids = person.pop("expected_source_person_id").to_numpy(dtype=int)
-    benunit = pd.DataFrame({"benunit_id": person["person_benunit_id"].copy()})
+    benunit = pd.DataFrame(
+        {"benunit_id": person["person_benunit_id"].copy()}
+    ).sort_values("benunit_id", ignore_index=True)
     return (
-        UKNationalDataset(
+        uk_national_frame(
             person=person,
             benunit=benunit,
             household=household,
@@ -215,7 +223,7 @@ def test_retains_source_faithful_leaves_across_all_candidate_descendants(
         benefits_tab_path=benefits_path,
     )
 
-    actual = result.dataset.person.loc[:, list(FRS_HMRC_RETAINED_LEAF_COLUMNS)]
+    actual = result.frame.person.loc[:, list(FRS_HMRC_RETAINED_LEAF_COLUMNS)]
     assert np.array_equal(
         actual.to_numpy(), _expected_leaves(source_person_ids).to_numpy()
     )
@@ -271,7 +279,7 @@ def test_partial_leaves_never_populate_full_ossben_or_srp_columns(
         SPI_HMRC_OTHER_INCOME_COLUMN,
         SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     }
-    assert forbidden.isdisjoint(result.dataset.person.columns)
+    assert forbidden.isdisjoint(result.frame.person.columns)
     assert (
         FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE[
             FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN
@@ -292,7 +300,7 @@ def test_incpben_is_an_honest_structural_zero_when_code17_is_unobserved(
         benefits_tab_path=benefits_path,
     )
 
-    assert (result.dataset.person[FRS_HMRC_INCPBEN_COLUMN] == 0.0).all()
+    assert (result.frame.person[FRS_HMRC_INCPBEN_COLUMN] == 0.0).all()
     assert FRS_HMRC_INCPBEN_COLUMN in result.structural_zero_columns
     assert result.evidence()["retained_leaves"][FRS_HMRC_INCPBEN_COLUMN][
         "structural_zero"
@@ -313,7 +321,7 @@ def test_future_code17_observation_flows_without_a_schema_change(
 
     expected = np.where(source_person_ids == 2001, 3.0 * FRS_WEEKS_IN_YEAR, 0.0)
     assert np.array_equal(
-        result.dataset.person[FRS_HMRC_INCPBEN_COLUMN].to_numpy(), expected
+        result.frame.person[FRS_HMRC_INCPBEN_COLUMN].to_numpy(), expected
     )
     assert FRS_HMRC_INCPBEN_COLUMN not in result.structural_zero_columns
 
@@ -333,7 +341,7 @@ def test_transform_is_national_stage_compatible_and_retains_evidence(
 
     assert set(FRS_HMRC_RETAINED_LEAF_COLUMNS).issubset(staged.person.columns)
     assert transform.last_result is not None
-    assert transform.last_result.dataset is staged
+    assert transform.last_result.frame is staged
 
 
 def test_raw_source_identity_must_exist_on_candidate_base(tmp_path: Path) -> None:
@@ -355,12 +363,16 @@ def test_candidate_clone_identity_mismatch_fails_closed(tmp_path: Path) -> None:
     dataset, _source_person_ids = _candidate()
     adult_path, benefits_path = _write_raw_tables(tmp_path)
     person = dataset.person.copy()
-    clone_households = set(
-        dataset.household.loc[dataset.household["clone_index"] == 1, "household_id"]
-    )
+    household = dataset.table("household")
+    clone_households = set(household.loc[household["clone_index"] == 1, "household_id"])
     tampered_row = person["person_household_id"].isin(clone_households).idxmax()
     person.loc[tampered_row, "person_id"] += 500
-    tampered = dataset.with_tables(person=person)
+    tampered = uk_national_frame(
+        person=person,
+        benunit=dataset.table("benunit"),
+        household=household,
+        time_period="2023",
+    )
 
     with pytest.raises(ValueError, match="person IDs do not reverse"):
         retain_uk_frs_hmrc_leaves(

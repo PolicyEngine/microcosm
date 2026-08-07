@@ -31,6 +31,8 @@ from populace.build.us_runtime.puf_qrf_chain import (
     run_primary_puf_qrf_target,
 )
 from populace.build.us_runtime.puf_support import (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     clone_us_frame_for_puf_support,
@@ -462,6 +464,157 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
             staged_raw[target].to_numpy().view(np.uint64),
         )
     run_primary_puf_qrf_chain(checkpoint_dir)
+
+
+def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    checkpoint_dir = tmp_path / "primary_qrf"
+    manifest = initialize_primary_puf_qrf_chain(
+        _expanded_frame(),
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+
+    expected_controls = {
+        "require_complete_recipient_predictors": True,
+        "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    }
+    assert {name: manifest[name] for name in expected_controls} == expected_controls
+    for filename in (
+        puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME,
+        puf_qrf_chain_module.PRIMARY_QRF_RECIPIENT_FILENAME,
+    ):
+        checkpoint = load_frame_checkpoint(checkpoint_dir / filename)
+        assert {
+            name: checkpoint.metadata[name] for name in expected_controls
+        } == expected_controls
+
+    target_path = run_primary_puf_qrf_target(checkpoint_dir, 0)
+    with h5py.File(target_path, mode="r") as h5:
+        target_receipt = json.loads(bytes(h5["metadata_json"][...]).decode())
+    assert {
+        name: target_receipt[name] for name in expected_controls
+    } == expected_controls
+
+    manifest_path = checkpoint_dir / "manifest.json"
+    tampered_manifest = dict(manifest)
+    tampered_manifest["absent_cells"] = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL
+    manifest_path.write_text(json.dumps(tampered_manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="doctrine controls"):
+        run_primary_puf_qrf_target(checkpoint_dir, 1)
+
+
+def test_primary_qrf_chain_stacked_finalization_preserves_unowned_nulls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    frame.table("person")["taxable_interest_income"] = np.nan
+    frame.table("tax_unit")["domestic_production_ald"] = np.nan
+    checkpoint_dir = tmp_path / "primary_qrf"
+    initialize_primary_puf_qrf_chain(
+        frame,
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(checkpoint_dir, target_index)
+
+    finalized, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+
+    assert weight_kind == "design"
+    person = finalized.table("person")
+    person_clone = person["person_support_clone_index"]
+    assert person.loc[person_clone.eq(0), "taxable_interest_income"].isna().all()
+    assert person.loc[person_clone.eq(1), "taxable_interest_income"].notna().all()
+    tax_unit = finalized.table("tax_unit")
+    tax_unit_clone = tax_unit["tax_unit_support_clone_index"]
+    assert tax_unit.loc[tax_unit_clone.eq(0), "domestic_production_ald"].isna().all()
+    assert tax_unit.loc[tax_unit_clone.eq(1), "domestic_production_ald"].notna().all()
+
+
+def test_primary_qrf_chain_legacy_v5_manifest_defaults_remain_loadable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    frame.table("person")["taxable_interest_income"] = np.nan
+    checkpoint_dir = tmp_path / "legacy_primary_qrf"
+    manifest = initialize_primary_puf_qrf_chain(
+        frame,
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+    )
+    assert "require_complete_recipient_predictors" not in manifest
+    assert "absent_cells" not in manifest
+    for filename in (
+        puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME,
+        puf_qrf_chain_module.PRIMARY_QRF_RECIPIENT_FILENAME,
+    ):
+        metadata = load_frame_checkpoint(checkpoint_dir / filename).metadata
+        assert "require_complete_recipient_predictors" not in metadata
+        assert "absent_cells" not in metadata
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(checkpoint_dir, target_index)
+
+    finalized, _weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+
+    person = finalized.table("person")
+    native = person["person_support_clone_index"].eq(0)
+    assert person.loc[native, "taxable_interest_income"].eq(0.0).all()
+
+
+def test_primary_qrf_chain_rejects_incomplete_stacked_predictors(
+    tmp_path: Path,
+) -> None:
+    frame = _expanded_frame()
+    tax_unit = frame.table("tax_unit")
+    puf_row = tax_unit.index[tax_unit["tax_unit_support_clone_index"].eq(1)][0]
+    tax_unit.loc[puf_row, "filing_status_input"] = np.nan
+
+    with pytest.raises(
+        ValueError,
+        match="missing values before coercion.*puf_predictor_filing_status_code",
+    ):
+        initialize_primary_puf_qrf_chain(
+            frame,
+            _donor(),
+            tmp_path / "primary_qrf",
+            predictors=_PREDICTORS,
+            person_outputs=_PERSON_OUTPUTS,
+            tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+            n_estimators=2,
+            seed=3,
+            require_complete_recipient_predictors=True,
+            absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        )
 
 
 def test_primary_qrf_rejects_stale_donor_construction_schema_versions(

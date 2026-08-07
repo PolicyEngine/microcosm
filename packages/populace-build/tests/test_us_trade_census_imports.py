@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 from pathlib import Path
@@ -111,6 +112,32 @@ def test_reconciliation_is_exact_on_publisher_totals():
     failures = _reconcile_against_census_totals(tampered, totals, "2026-03")
     assert len(failures) == 1
     assert "con_val_mo" in failures[0]
+
+
+def test_reconciliation_gates_active_detail_without_published_total():
+    """Coverage is part of the reconciliation: iterating only published
+    total keys let active detail pass unreconciled whenever its '-' row
+    was missing. Active detail without a total must fail; a zero-carrier
+    detail row without a total stays agreement-by-absence."""
+
+    countries, _ = parse_imports_response(_fixture_bytes(), "2026-03", "31")
+    failures = _reconcile_against_census_totals(countries, [], "2026-03")
+    assert len(failures) == 1
+    assert "no published '-' total row" in failures[0]
+    assert "3103110000" in failures[0]
+
+    zero_carrier = dict(countries[0])
+    for measure in ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo"):
+        zero_carrier[measure] = 0
+    for measure in ("con_qy1_mo", "gen_qy1_mo"):
+        zero_carrier[measure] = 0
+    assert _reconcile_against_census_totals([zero_carrier], [], "2026-03") == ()
+
+    quantity_only = dict(zero_carrier)
+    quantity_only["gen_qy1_mo"] = 5
+    failures = _reconcile_against_census_totals([quantity_only], [], "2026-03")
+    assert len(failures) == 1
+    assert "no published '-' total row" in failures[0]
 
 
 def test_assemble_bridges_fail_closed_and_types_margins():
@@ -258,10 +285,17 @@ def test_month_range_and_key_elision():
     assert "time=2026-01" in elided
 
 
-def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(tmp_path):
-    """Reuse is not retrieval: resuming over a warm cache must reuse the
-    split marker verbatim — original retrieved_at, no sidecar rewrite —
-    and must succeed against a read-only cache directory."""
+def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(
+    tmp_path, monkeypatch
+):
+    """Reuse is not retrieval: resuming over a warm split-tree cache must
+    reuse the split marker verbatim — original retrieved_at — and issue
+    zero write calls. The spy intercepts every write primitive the module
+    can reach (Path.write_text / Path.write_bytes / writable open), which
+    a directory-permission probe cannot prove: a read-only *directory*
+    still lets 0644 sidecars be rewritten in place, and a rewrite within
+    the marker's one-second timestamp precision reproduces identical
+    bytes, passing any byte-snapshot comparison."""
 
     def fake_fetch(url: str):
         commodity = url.split("I_COMMODITY=")[1].split("&")[0]
@@ -287,18 +321,37 @@ def test_cache_reuse_preserves_marker_provenance_and_needs_no_writes(tmp_path):
     def refusing_fetch(url: str):
         raise AssertionError(f"resume must not fetch, asked for {url}")
 
-    tmp_path.chmod(0o555)
-    try:
-        resumed = fetch_imports_month(
-            "2026-03",
-            "test-key",
-            cache_dir=tmp_path,
-            chapters=("31",),
-            fetch=refusing_fetch,
-            throttle_seconds=0.0,
-        )
-    finally:
-        tmp_path.chmod(0o755)
+    writes: list[str] = []
+    real_open = builtins.open
+
+    def spy_write_text(self, data, *args, **kwargs):
+        writes.append(f"write_text:{self}")
+        return len(data)
+
+    def spy_write_bytes(self, data, *args, **kwargs):
+        writes.append(f"write_bytes:{self}")
+        return len(data)
+
+    def spy_open(file, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in ("w", "a", "x", "+")):
+            writes.append(f"open[{mode}]:{file}")
+            raise AssertionError(f"resume opened {file!r} writable ({mode!r})")
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", spy_write_text)
+    monkeypatch.setattr(Path, "write_bytes", spy_write_bytes)
+    monkeypatch.setattr(builtins, "open", spy_open)
+    resumed = fetch_imports_month(
+        "2026-03",
+        "test-key",
+        cache_dir=tmp_path,
+        chapters=("31",),
+        fetch=refusing_fetch,
+        throttle_seconds=0.0,
+    )
+    monkeypatch.undo()
+
+    assert writes == []
     assert resumed.country_rows == warm.country_rows
     resumed_marker = next(
         entry for entry in resumed.manifest_entries if entry.get("superseded_by_split")

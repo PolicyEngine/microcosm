@@ -37,6 +37,7 @@ from populace.frame.adapters._policyengine_us_source_index import (
     _index_policyengine_us_sources as _build_policyengine_us_source_index,
 )
 from populace.frame.bundle import Frame
+from populace.frame.materialize import engine_tables
 from populace.frame.rules import ExportContract
 from populace.frame.schema import EntitySchema, VariableMetadata
 from populace.frame.units import US_SCHEMA
@@ -809,11 +810,11 @@ class PolicyEngineUSEngine:
                 f"PolicyEngine-US adapter requires the US entities "
                 f"{list(expected)}; bundle has {list(bundle.entities)}."
             )
-        tables = {name: bundle.table(name).copy() for name in expected}
-        tables["household"][_HOUSEHOLD_WEIGHT_COLUMN] = bundle.weights_for(
-            "household"
-        ).values
-        return tables
+        # The export contract materializes household weights only, so the
+        # entity set is pinned rather than inherited from the bundle's
+        # weighted entities.
+        tables = engine_tables(bundle, weighted_entities=("household",))
+        return {name: tables[name] for name in expected}
 
     def _build_dataset(
         self, tables: Mapping[str, pd.DataFrame], period: int | str

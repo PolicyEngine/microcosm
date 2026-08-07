@@ -2,7 +2,7 @@
   "cbp_fact_rows": 4,
   "census_total_rows": 325524,
   "census_totals_parquet_sha256": "62f9fd431e86c14525c4e30fb3456670e5591c8e9720e9395ddec17edc4480d8",
-  "consumer_manifest_sha256": "d7e1359eeec9a9b48f0dcd28838b7385567024faae88a9f1c005350e40f7e17c",
+  "consumer_manifest_sha256": "75dc57a69f44731718078bfc2bdfbed926eff14903fa90f25fdf35f2dbd73da0",
   "detail_parquet_sha256": {
     "2025-01": "9716424ea436f9eef5ab9073fb51a61e6b148578726cea0a603062797779dd76",
     "2025-02": "71e5425adf910d8445942e2291beb28166789d8da67a4296f0a8f340582d5ce3",
@@ -30,9 +30,9 @@
   "district_fact_rows": 1584,
   "district_parquet_sha256": "5d508ba6cd8c719567060dcde5885ad58beb654563cf1df0254e9230edd3f652",
   "district_rows": 792,
-  "extracted_at": "2026-08-05T15:01:32+00:00",
+  "extracted_at": "2026-08-05T23:34:50+00:00",
   "fact_rows": 302318,
-  "facts_sha256": "a2510a680c36353e3367c9831c2deb9b11e84bc909d9bbcbe18793c7d80ca044",
+  "facts_sha256": "7cd155161ebb77ea4b5145a1d5f61c5e28a85345ea0a18dad729a34afa8179f8",
   "margin_rows": 3070851,
   "margins_parquet_sha256": "f7f88f5824112d1a9c6beaaf4addc9b15f795f6ba6d6e4447e72957731c29607",
   "reconciliation_evidence_sha256": {
@@ -77,7 +77,7 @@
     "2026-06": 0
   },
   "source": "census_imdb_bulk",
-  "source_manifest_sha256": "7c74a38dbfba7d83d42b5b721bb63ea4ab0dad858b89cc98de2f252655d88a40",
+  "source_manifest_sha256": "629bd269f1fe529cb0d6d9e6009cec9dc8a913a02a0515ab8f52bf008a1dc21a",
   "window": {
     "end": "2026-06",
     "months": 18,

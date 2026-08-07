@@ -96,6 +96,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
+        # Stacked-spine pilot (#578 revision): stacking, gap-fill donor
+        # routing, activation authority, the completeness gate, and the
+        # by-origin battery are origin-aware by charter.
+        "stacked_spine.py",
         "support_provenance.py",  # Centralized provenance compatibility.
         "warm_start_selection.py",  # Provenance reporting and recovery.
     }
@@ -236,6 +240,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spine_agreement.py",
         "spine_assembly.py",
         "spm_resources.py",
+        "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
@@ -3126,6 +3131,14 @@ def _frame_metadata_drops(source: str) -> tuple[str, ...]:
             and metadata.attr == "metadata"
             and ast.dump(metadata.value) == ast.dump(mass_log.value)
         )
+        if isinstance(metadata, ast.Dict):
+            same_source = any(
+                key is None
+                and isinstance(value, ast.Attribute)
+                and value.attr == "metadata"
+                and ast.dump(value.value) == ast.dump(mass_log.value)
+                for key, value in zip(metadata.keys, metadata.values, strict=True)
+            )
         if not same_source:
             drops.append(
                 f"line {node.lineno}: Frame carrying {ast.unparse(mass_log)} "
@@ -3248,8 +3261,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 59, (
-            f"{tool.name} must reach the pinned 59-module runtime graph; "
+        assert len(runtime_graph) == 60, (
+            f"{tool.name} must reach the pinned 60-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

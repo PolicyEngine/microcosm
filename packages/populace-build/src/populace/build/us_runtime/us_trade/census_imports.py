@@ -436,17 +436,35 @@ def _reconcile_against_census_totals(
 
     The dollar measures are published as integer USD, so the country detail
     must sum exactly to the published total; any difference means dropped,
-    duplicated, or misparsed detail and fails the ingest.
+    duplicated, or misparsed detail and fails the ingest. Coverage is part
+    of the check: iterating only the published total keys would let active
+    detail pass unreconciled whenever its ``-`` row is missing (a totals
+    slice holding nothing but unrelated zero carriers reconciles nothing),
+    so an HTS10 with active detail and no published total is itself a
+    failure. Zero-carrier detail without a total stays agreement-by-absence.
     """
+    dollar_measures = ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo")
+    quantity_measures = ("con_qy1_mo", "gen_qy1_mo")
     sums: dict[tuple[str, str], int] = {}
+    detail_active: dict[str, bool] = {}
     for row in country_rows:
-        for measure in ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo"):
-            key = (str(row["hts10"]), measure)
-            sums[key] = sums.get(key, 0) + int(row[measure])  # type: ignore[arg-type]
+        hts10 = str(row["hts10"])
+        active = detail_active.get(hts10, False)
+        for measure in dollar_measures:
+            key = (hts10, measure)
+            value = int(row[measure])  # type: ignore[arg-type]
+            sums[key] = sums.get(key, 0) + value
+            active = active or value != 0
+        for measure in quantity_measures:
+            quantity = row.get(measure)
+            active = active or (quantity is not None and int(quantity) != 0)  # type: ignore[arg-type]
+        detail_active[hts10] = active
     failures: list[str] = []
+    total_keys = set()
     for row in total_rows:
-        for measure in ("con_val_mo", "gen_val_mo", "cal_dut_mo", "dut_val_mo"):
-            hts10 = str(row["hts10"])
+        hts10 = str(row["hts10"])
+        total_keys.add(hts10)
+        for measure in dollar_measures:
             published = int(row[measure])  # type: ignore[arg-type]
             summed = sums.get((hts10, measure), 0)
             if summed != published:
@@ -454,6 +472,12 @@ def _reconcile_against_census_totals(
                     f"{month} HTS {hts10} {measure}: country detail sums to "
                     f"{summed}, published total is {published}."
                 )
+    for hts10 in sorted(detail_active):
+        if detail_active[hts10] and hts10 not in total_keys:
+            failures.append(
+                f"{month} HTS {hts10}: active country detail has no "
+                "published '-' total row to reconcile against."
+            )
     return tuple(failures)
 
 

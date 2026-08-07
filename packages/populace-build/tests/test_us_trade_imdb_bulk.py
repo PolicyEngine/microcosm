@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -1208,6 +1210,21 @@ def _read_set(directory: Path) -> dict[str, bytes]:
     }
 
 
+def _visible_siblings(parent: Path) -> list[str]:
+    """Entries beside the publication, minus the persistent lockfile.
+
+    The publisher's advisory lockfile deliberately survives between runs
+    (unlinking a flock'd path lets a later opener lock a fresh inode
+    while a prior holder still holds the orphan), so residue assertions
+    exclude it.
+    """
+    return sorted(
+        path.name
+        for path in parent.iterdir()
+        if not path.name.endswith(".publish-lock")
+    )
+
+
 def test_publish_atomically_replaces_and_leaves_no_residue(tmp_path):
     """End-to-end replacement through whichever swap path this filesystem
     offers: the new set is live, and no staging, previous, or recovery
@@ -1223,8 +1240,7 @@ def test_publish_atomically_replaces_and_leaves_no_residue(tmp_path):
     build_cli._publish_atomically(staging, out_dir)
     assert _read_set(out_dir) == _NEW_SET
     assert not staging.exists()
-    siblings = [path.name for path in tmp_path.iterdir()]
-    assert siblings == ["out"]
+    assert _visible_siblings(tmp_path) == ["out"]
 
 
 def test_exchange_directories_swaps_in_a_single_syscall(tmp_path):
@@ -1245,16 +1261,67 @@ def test_exchange_directories_swaps_in_a_single_syscall(tmp_path):
     assert (second / "who.txt").read_bytes() == b"first"
 
 
-def test_marker_swap_interrupted_between_renames_recovers_forward(tmp_path):
-    """Kill the fallback swap between its two renames — the window sol's
-    review flagged — then prove the next build's recovery pass republishes
-    the staged set and removes every intermediate."""
+def _symlink_layout(tmp_path: Path, files: dict[str, bytes]) -> Path:
+    """Install ``out`` as a symlink to a populated versioned set."""
+    initial_set = tmp_path / ".out.set-initial"
+    _populate(initial_set, files)
+    (tmp_path / "out").symlink_to(initial_set.name)
+    return initial_set
 
+
+def test_fallback_publish_is_a_windowless_symlink_retarget(tmp_path, monkeypatch):
+    """Without an exchange, publication installs a symlink layout and
+    every republication retargets it with ONE rename of the public name;
+    the spy proves the published path resolves before and after every
+    rename the publisher issues — there is no ENOENT window and no
+    ordering that removes ``out`` before its replacement is in place."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
     out_dir = tmp_path / "out"
-    staging = tmp_path / ".out.staging-interrupted"
-    out_dir.mkdir()
-    staging.mkdir()
-    _populate(out_dir, _OLD_SET)
+
+    first_staging = tmp_path / ".out.staging-first"
+    _populate(first_staging, _OLD_SET)
+    build_cli._publish_atomically(first_staging, out_dir)
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _OLD_SET
+
+    second_staging = tmp_path / ".out.staging-second"
+    _populate(second_staging, _NEW_SET)
+    real_rename = os.rename
+    public_renames: list[tuple[str, str]] = []
+
+    def spying_rename(src, dst, *args, **kwargs):
+        assert os.path.exists(out_dir), "public path missing before a rename"
+        result = real_rename(src, dst, *args, **kwargs)
+        assert os.path.exists(out_dir), "public path missing after a rename"
+        if Path(os.fspath(dst)) == out_dir or Path(os.fspath(src)) == out_dir:
+            public_renames.append((os.fspath(src), os.fspath(dst)))
+        return result
+
+    monkeypatch.setattr(os, "rename", spying_rename)
+    build_cli._publish_atomically(second_staging, out_dir)
+    monkeypatch.undo()
+
+    assert len(public_renames) == 1
+    source, destination = public_renames[0]
+    assert ".linktmp-" in Path(source).name
+    assert Path(destination) == out_dir
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    siblings = _visible_siblings(tmp_path)
+    assert siblings == sorted(["out", os.readlink(out_dir)])
+
+
+def test_fallback_crash_before_the_retarget_leaves_publication_present(tmp_path):
+    """Kill the fallback at the retarget attempt itself: the previous
+    publication must still be fully readable under the public name (the
+    r2 fallback had already renamed it away at this point — the ENOENT
+    window), and recovery must finish the retarget from the marker."""
+
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-crash"
     _populate(staging, _NEW_SET)
     script = f"""
 import importlib.util, os
@@ -1263,36 +1330,1463 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+module._exchange_directories = lambda *args: False
 
-original_rename = Path.rename
+out_dir = Path({str(out_dir)!r})
+real_rename = os.rename
 
-def dying_rename(self, target):
-    if self.name.startswith(".out.staging-"):
-        os._exit(9)  # the process dies between the two renames
-    return original_rename(self, target)
+def dying_rename(src, dst, *args, **kwargs):
+    if Path(os.fspath(dst)) == out_dir:
+        os._exit(9)  # dies at the one operation that touches the public name
+    return real_rename(src, dst, *args, **kwargs)
 
-Path.rename = dying_rename
-module._publish_with_recovery_marker(
-    Path({str(staging)!r}), Path({str(out_dir)!r})
-)
+os.rename = dying_rename
+module._publish_atomically(Path({str(staging)!r}), out_dir)
 """
     result = subprocess.run(
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
     )
     assert result.returncode == 9, result.stderr
-    # The stranded state sol described: no publication under the public
-    # name, the previous set under .previous-*, the staged set intact.
-    assert not out_dir.exists()
-    assert staging.exists()
+    # The refutation of the r2 window: the crash point left the previous
+    # publication untouched and readable under the public name.
+    assert out_dir.is_symlink()
+    assert os.readlink(out_dir) == initial_set.name
+    assert _read_set(out_dir) == _OLD_SET
     marker = tmp_path / ".out.publish-recovery.json"
-    assert marker.exists()
+    assert json.loads(marker.read_text())["mode"] == "symlink-flip"
 
     build_cli = _build_cli_module()
     action = build_cli._recover_interrupted_publication(out_dir)
-    assert action == "completed the interrupted publication from staging"
+    assert action == "completed the interrupted symlink retarget from the staged set"
+    assert out_dir.is_symlink()
     assert _read_set(out_dir) == _NEW_SET
     assert not marker.exists()
-    assert [path.name for path in tmp_path.iterdir()] == ["out"]
+    assert not initial_set.exists()
+    siblings = _visible_siblings(tmp_path)
+    assert siblings == sorted(["out", os.readlink(out_dir)])
+
+
+@pytest.mark.parametrize("kill_on", ["retarget", "vacate"])
+def test_legacy_migration_crash_recovers_forward_to_symlink_layout(tmp_path, kill_on):
+    """The one-time legacy migration (real directory, no exchange) is the
+    only windowed transition left. Kill it before the window opens
+    ('vacate': the publication is still present) and inside the window
+    ('retarget': the public name is briefly absent); both states must
+    roll forward to the symlink layout at the next build."""
+
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-migrate"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    predicate = (
+        "Path(os.fspath(dst)) == out_dir"
+        if kill_on == "retarget"
+        else "Path(os.fspath(src)) == out_dir"
+    )
+    script = f"""
+import importlib.util, os
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module._exchange_directories = lambda *args: False
+
+out_dir = Path({str(out_dir)!r})
+real_rename = os.rename
+
+def dying_rename(src, dst, *args, **kwargs):
+    if {predicate}:
+        os._exit(9)
+    return real_rename(src, dst, *args, **kwargs)
+
+os.rename = dying_rename
+module._publish_atomically(Path({str(staging)!r}), out_dir)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 9, result.stderr
+    marker = tmp_path / ".out.publish-recovery.json"
+    assert json.loads(marker.read_text())["mode"] == "migrate"
+    if kill_on == "vacate":
+        # Killed before the window: the old publication never moved.
+        assert out_dir.is_dir() and not out_dir.is_symlink()
+        assert _read_set(out_dir) == _OLD_SET
+    else:
+        # Killed inside the window: the marker-guarded absent state.
+        assert not out_dir.exists() and not out_dir.is_symlink()
+
+    build_cli = _build_cli_module()
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "completed the interrupted layout migration from the staged set"
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    assert not marker.exists()
+    siblings = _visible_siblings(tmp_path)
+    assert siblings == sorted(["out", os.readlink(out_dir)])
+
+
+def test_exchange_interrupted_before_cleanup_reclaims_displaced_set(tmp_path):
+    """A hard exit between the exchange and its cleanup used to strand the
+    displaced previous publication under ``.staging-*`` with nothing
+    recording it. The marker now names the staging path BEFORE the
+    exchange — it survives the crash that follows the syscall — and
+    recovery reclaims the orphan."""
+
+    build_cli = _build_cli_module()
+    if not build_cli._exchange_supported(tmp_path):
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-exchange"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    script = f"""
+import importlib.util, os, shutil
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+real_rmtree = shutil.rmtree
+
+def dying_rmtree(path, *args, **kwargs):
+    if Path(os.fspath(path)).name.startswith(".out.staging-"):
+        os._exit(9)  # dies after the exchange, before disposing the old set
+    return real_rmtree(path, *args, **kwargs)
+
+shutil.rmtree = dying_rmtree
+module._publish_atomically(Path({str(staging)!r}), Path({str(out_dir)!r}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 9, result.stderr
+    # The exchange happened: the new set is live and the displaced old
+    # set sits under the staging name, which the pre-exchange marker
+    # recorded.
+    assert _read_set(out_dir) == _NEW_SET
+    assert _read_set(staging) == _OLD_SET
+    marker = tmp_path / ".out.publish-recovery.json"
+    recorded = json.loads(marker.read_text())
+    assert recorded["mode"] == "exchange"
+    assert recorded["staging"] == staging.name
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "removed the displaced set left by an interrupted exchange"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not staging.exists()
+    assert not marker.exists()
+    assert _visible_siblings(tmp_path) == ["out"]
+
+
+def test_publisher_lock_blocks_live_holders_and_dies_with_them(tmp_path):
+    """The advisory flock refuses a concurrent publisher while its holder
+    lives, releases with the holder's death (no staleness protocol, no
+    takeover step to race — the old check-then-unlink takeover let two
+    contenders each classify the same lock stale and then delete each
+    other's fresh lock), and leaves both directories untouched by a
+    refused attempt. A leftover lockfile with no live flock never blocks:
+    its contents are diagnostics, not protocol state."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-locked"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    lock = tmp_path / ".out.publish-lock"
+
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            f"""
+import fcntl, os, sys
+fd = os.open({str(lock)!r}, os.O_CREAT | os.O_RDWR, 0o644)
+fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+print("LOCKED", flush=True)
+sys.stdin.readline()
+""",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout.readline().strip() == "LOCKED"
+        with pytest.raises(RuntimeError, match="Another publisher holds"):
+            build_cli._publish_atomically(staging, out_dir)
+        assert _read_set(out_dir) == _OLD_SET
+        assert _read_set(staging) == _NEW_SET
+    finally:
+        holder.stdin.close()
+        holder.wait(timeout=60)
+
+    # The holder is dead; the kernel released its lock with it. The
+    # stale-looking lockfile (old payload, dead pid) must not block —
+    # and there is no unlink step for a second contender to race.
+    build_cli._publish_atomically(staging, out_dir)
+    assert _read_set(out_dir) == _NEW_SET
+    assert lock.exists()
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["ABSOLUTE", "out", "../escape", ".other.set-abc"],
+    ids=["absolute", "self", "parent-escape", "foreign-basename"],
+)
+def test_publish_refuses_symlinks_the_publisher_did_not_install(
+    tmp_path, target, monkeypatch
+):
+    """A public name that is a symlink pointing anywhere outside the
+    publisher's own ``.out.set-*`` namespace is refused untouched: joining
+    an absolute or ``..``-relative target under the parent resolves to the
+    target itself, which would ride straight into ``rmtree``; a self-link
+    would delete the just-installed public name."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    victim = tmp_path / "victim"
+    _populate(victim, {"precious.txt": b"do not delete"})
+    resolved = str(victim) if target == "ABSOLUTE" else target
+    out_dir = tmp_path / "out"
+    out_dir.symlink_to(resolved)
+    staging = tmp_path / ".out.staging-refused"
+    _populate(staging, _NEW_SET)
+    with pytest.raises(RuntimeError, match="not a set name owned by the publisher"):
+        build_cli._publish_atomically(staging, out_dir)
+    assert _read_set(victim) == {"precious.txt": b"do not delete"}
+    assert os.readlink(out_dir) == resolved
+    assert _read_set(staging) == _NEW_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
+def test_marker_survives_short_writes_intact(tmp_path, monkeypatch):
+    """A legal short ``os.write`` must not durably truncate the recovery
+    marker: the writer loops until every byte lands, so the marker JSON
+    parses whole even when the kernel accepts one byte per call."""
+
+    build_cli = _build_cli_module()
+    real_write = os.write
+
+    def one_byte_writes(fd, data):
+        return real_write(fd, memoryview(data)[:1])
+
+    monkeypatch.setattr(os, "write", one_byte_writes)
+    try:
+        build_cli._write_marker_durably(
+            tmp_path / "out",
+            {"mode": "exchange", "out": "out", "staging": ".out.staging-x"},
+        )
+    finally:
+        monkeypatch.undo()
+    recorded = json.loads((tmp_path / ".out.publish-recovery.json").read_text())
+    assert recorded == {"mode": "exchange", "out": "out", "staging": ".out.staging-x"}
+
+
+def test_staged_tree_is_fsynced_before_the_first_marker_write(tmp_path, monkeypatch):
+    """Recovery assumes a staged set found on disk is complete, so the
+    publisher must make the staged *contents* durable — every file and
+    directory fsynced — before the first marker-guarded step. The
+    parent-directory fsyncs elsewhere persist names, not bytes: without
+    this, a power loss can leave the new name durable and the new tree
+    hollow after the old set was already reclaimed."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-durable"
+    _populate(staging, _NEW_SET)
+    staged_inodes = {os.stat(path).st_ino for path in [staging, *staging.rglob("*")]}
+
+    events: list[tuple[str, int | None]] = []
+    real_fsync = os.fsync
+    real_marker = build_cli._write_marker_durably
+
+    def recording_fsync(fd):
+        events.append(("fsync", os.fstat(fd).st_ino))
+        return real_fsync(fd)
+
+    def recording_marker(*args, **kwargs):
+        events.append(("marker", None))
+        return real_marker(*args, **kwargs)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    monkeypatch.setattr(build_cli, "_write_marker_durably", recording_marker)
+    try:
+        build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+
+    first_marker = next(
+        index for index, event in enumerate(events) if event[0] == "marker"
+    )
+    fsynced_before_marker = {
+        inode for kind, inode in events[:first_marker] if kind == "fsync"
+    }
+    assert staged_inodes <= fsynced_before_marker
+    assert _read_set(out_dir) == _NEW_SET
+
+
+def test_retarget_interrupted_after_the_commit_rolls_forward(tmp_path, monkeypatch):
+    """An asynchronous exception arriving AFTER the retarget rename
+    commits must not undo it: the handler derives the state from the
+    filesystem — undoing here would move the live set out from under the
+    just-installed public link, leaving it dangling with no marker. The
+    new set stays live, the superseded set is disposed, the marker is
+    withdrawn, and the exception propagates."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-late"
+    _populate(staging, _NEW_SET)
+    real_rename = os.rename
+
+    def rename_then_interrupt(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        if Path(os.fspath(dst)) == out_dir:
+            raise KeyboardInterrupt  # delivered after the syscall returned
+        return result
+
+    monkeypatch.setattr(os, "rename", rename_then_interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    assert not initial_set.exists()
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert _visible_siblings(tmp_path) == sorted(["out", os.readlink(out_dir)])
+
+
+def test_migration_interrupted_after_vacating_restores_the_publication(
+    tmp_path, monkeypatch
+):
+    """An asynchronous exception landing right after the migration
+    vacates the public name — before any in-process flag could have been
+    assigned — must restore the previous publication: the handler derives
+    the interruption point from the filesystem, never from control
+    flow."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-vacate"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    real_rename = os.rename
+
+    def interrupt_after_vacate(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        if Path(os.fspath(src)) == out_dir:
+            raise KeyboardInterrupt  # after the vacating rename returned
+        return result
+
+    monkeypatch.setattr(os, "rename", interrupt_after_vacate)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    assert out_dir.is_dir() and not out_dir.is_symlink()
+    assert _read_set(out_dir) == _OLD_SET
+    assert _read_set(staging) == _NEW_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert _visible_siblings(tmp_path) == sorted(["out", staging.name])
+
+
+def test_recovery_reuses_the_marker_recorded_temp_link(tmp_path, monkeypatch):
+    """Recovery retargets through the marker-recorded ``.linktmp-*`` name
+    rather than minting a fresh one: a crash between the symlink and its
+    rename then leaves only a link the next recovery pass already knows
+    to clear — nothing unrecorded can be orphaned."""
+
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-reuse"
+    _populate(staging, _NEW_SET)
+    # Fabricate the pre-flip crash state the kill test produces live:
+    # marker written, staged set parked, public link still on the old set.
+    set_name = ".out.set-reused"
+    link_name = ".out.linktmp-reused"
+    staging.rename(tmp_path / set_name)
+    (tmp_path / ".out.publish-recovery.json").write_text(
+        json.dumps(
+            {
+                "mode": "symlink-flip",
+                "out": "out",
+                "staging": staging.name,
+                "set": set_name,
+                "link_tmp": link_name,
+                "old_set": initial_set.name,
+            }
+        )
+    )
+    build_cli = _build_cli_module()
+    real_rename = os.rename
+
+    def fail_the_retarget(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir:
+            raise OSError("interrupted again")
+        return real_rename(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "rename", fail_the_retarget)
+    try:
+        with pytest.raises(OSError, match="interrupted again"):
+            build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    leftovers = [name for name in _visible_siblings(tmp_path) if ".linktmp-" in name]
+    assert leftovers == [link_name]
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "completed the interrupted symlink retarget from the staged set"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not initial_set.exists()
+    assert [n for n in _visible_siblings(tmp_path) if ".linktmp-" in n] == []
+
+
+def test_exchange_interrupted_after_the_syscall_preserves_the_marker(
+    tmp_path, monkeypatch
+):
+    """An asynchronous exception can arrive AFTER the exchange syscall
+    committed, so the handler must not assume nothing moved: it makes
+    whatever happened durable and LEAVES the marker for recovery — which
+    resolves the ambiguity either way (one complete set answers to the
+    public name; the staging name holds the other for disposal)."""
+
+    build_cli = _build_cli_module()
+    if not build_cli._exchange_supported(tmp_path):
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-lateexchange"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[str] = []
+    real_exchange = build_cli._exchange_directories
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def exchange_then_interrupt(source, target):
+        assert real_exchange(source, target)
+        events.append("exchange")
+        raise KeyboardInterrupt  # delivered after the syscall returned
+
+    def recording_fsync_dir(path):
+        events.append("fsync_dir")
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append("remove_marker")
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(build_cli, "_exchange_directories", exchange_then_interrupt)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    # The exchange happened; the handler fsynced and did NOT remove the
+    # marker — recovery owns the ambiguity.
+    assert "remove_marker" not in events[events.index("exchange") :]
+    assert "fsync_dir" in events[events.index("exchange") :]
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    assert marker_path.exists()
+    assert _read_set(out_dir) == _NEW_SET
+    assert _read_set(staging) == _OLD_SET
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "removed the displaced set left by an interrupted exchange"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not staging.exists()
+    assert not marker_path.exists()
+
+
+def test_marker_removal_bounds_prior_cleanups_durably(tmp_path, monkeypatch):
+    """``_remove_marker`` fsyncs the parent BEFORE unlinking the marker,
+    so every cleanup since the marker was written (displaced-set
+    deletion, temp-link unlinks, rollback renames) is durable before the
+    no-recovery-needed commit point can be. On the exchange success path
+    the prior ordering was ``backup_deleted -> marker_unlinked`` with no
+    boundary — a power loss could keep the durable marker removal and
+    lose the deletion, stranding a markerless orphan."""
+
+    build_cli = _build_cli_module()
+    if not build_cli._exchange_supported(tmp_path):
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-boundary"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[str] = []
+    real_fsync_dir = build_cli._fsync_dir
+    real_rmtree = shutil.rmtree
+    real_unlink = Path.unlink
+
+    def recording_fsync_dir(path):
+        events.append("fsync_dir")
+        return real_fsync_dir(path)
+
+    def recording_rmtree(path, *args, **kwargs):
+        events.append("rmtree")
+        return real_rmtree(path, *args, **kwargs)
+
+    def recording_unlink(self, *args, **kwargs):
+        if self.name.endswith("publish-recovery.json"):
+            events.append("marker_unlink")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(shutil, "rmtree", recording_rmtree)
+    monkeypatch.setattr(Path, "unlink", recording_unlink)
+    try:
+        build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    assert _read_set(out_dir) == _NEW_SET
+    cleanup = events.index("rmtree")
+    marker_unlink = events.index("marker_unlink", cleanup)
+    assert "fsync_dir" in events[cleanup + 1 : marker_unlink], (
+        "no parent fsync between the displaced-set deletion and the marker unlink"
+    )
+
+
+@pytest.mark.parametrize("mode", ["retarget", "migrate"])
+def test_rollback_renames_are_durable_before_the_marker_goes(
+    tmp_path, monkeypatch, mode
+):
+    """The in-process rollback paths rename the parked set back to its
+    staging name and then remove the marker: a parent fsync must land in
+    between, or a power loss keeping the durable marker removal while
+    losing the rename would strand a ``.set-*`` orphan nothing
+    records."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-rollback"
+    if mode == "retarget":
+        _symlink_layout(tmp_path, _OLD_SET)
+    else:
+        out_dir.mkdir()
+        _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[tuple[str, str]] = []
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    failed: list[bool] = []
+
+    def failing_public_rename(src, dst, *args, **kwargs):
+        # Fail only the FIRST public-name rename (the commit attempt);
+        # the migration handler's restore rename targets the public name
+        # too and must succeed.
+        if Path(os.fspath(dst)) == out_dir and not failed:
+            failed.append(True)
+            raise OSError("simulated rename failure")
+        result = real_rename(src, dst, *args, **kwargs)
+        events.append(("rename", os.fspath(dst)))
+        return result
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(os, "rename", failing_public_rename)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        with pytest.raises(OSError, match="simulated rename failure"):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    rollback = max(
+        index
+        for index, (kind, path) in enumerate(events)
+        if kind == "rename" and Path(path) == staging
+    )
+    removal = next(
+        index
+        for index, (kind, _path) in enumerate(events)
+        if kind == "remove_marker" and index > rollback
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[rollback + 1 : removal]
+    ), "no parent fsync between the rollback rename and the marker removal"
+    assert _read_set(staging) == _NEW_SET
+    assert _read_set(out_dir) == _OLD_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
+def test_publisher_lock_refuses_a_symlinked_lockfile(tmp_path):
+    """A symlink planted at the lock name must not hand the publisher an
+    arbitrary file to truncate and overwrite: the open is no-follow and
+    the referent stays byte-for-byte untouched."""
+
+    build_cli = _build_cli_module()
+    victim = tmp_path / "victim.json"
+    victim.write_bytes(b'{"precious": true}\n')
+    (tmp_path / ".out.publish-lock").symlink_to(victim.name)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-lockdodge"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    with pytest.raises(RuntimeError, match="refusing to lock through it"):
+        build_cli._publish_atomically(staging, out_dir)
+    assert victim.read_bytes() == b'{"precious": true}\n'
+    assert _read_set(out_dir) == _OLD_SET
+    assert _read_set(staging) == _NEW_SET
+
+
+@pytest.mark.parametrize("mode", ["symlink-flip", "migrate", "exchange", "legacy"])
+def test_recovery_refuses_public_names_the_protocol_cannot_have_produced(
+    tmp_path, mode
+):
+    """A valid marker must not let recovery mutate a public name in a
+    state its protocol cannot reach: a foreign symlink under a flip or
+    migration marker (r5: the migration judged ANY symlink committed and
+    discarded the previous set), or a symlink under the exchange/legacy
+    protocols, which only ever move real directories. Recovery refuses,
+    every named directory survives untouched, and the marker is
+    preserved for the operator."""
+
+    build_cli = _build_cli_module()
+    victim = tmp_path / "victim"
+    _populate(victim, {"precious.txt": b"do not delete"})
+    out_dir = tmp_path / "out"
+    out_dir.symlink_to(victim.name)
+    survivors = {}
+    marker_mode = "legacy-two-rename" if mode == "legacy" else mode
+    marker: dict[str, object] = {"mode": marker_mode, "out": "out"}
+    if mode == "symlink-flip":
+        survivors["set"] = tmp_path / ".out.set-pending"
+        _populate(survivors["set"], _NEW_SET)
+        marker |= {
+            "staging": ".out.staging-gone",
+            "set": survivors["set"].name,
+            "link_tmp": ".out.linktmp-gone",
+            "old_set": ".out.set-old",
+        }
+    elif mode == "migrate":
+        survivors["set"] = tmp_path / ".out.set-pending"
+        survivors["previous"] = tmp_path / ".out.previous-real"
+        _populate(survivors["set"], _NEW_SET)
+        _populate(survivors["previous"], _OLD_SET)
+        marker |= {
+            "staging": ".out.staging-gone",
+            "set": survivors["set"].name,
+            "link_tmp": ".out.linktmp-gone",
+            "previous": survivors["previous"].name,
+        }
+    elif mode == "exchange":
+        survivors["staging"] = tmp_path / ".out.staging-displaced"
+        _populate(survivors["staging"], _OLD_SET)
+        marker |= {"staging": survivors["staging"].name}
+    else:
+        survivors["staging"] = tmp_path / ".out.staging-swap"
+        survivors["previous"] = tmp_path / ".out.previous-swap"
+        _populate(survivors["staging"], _NEW_SET)
+        _populate(survivors["previous"], _OLD_SET)
+        marker |= {
+            "staging": survivors["staging"].name,
+            "previous": survivors["previous"].name,
+        }
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(json.dumps(marker))
+
+    with pytest.raises(RuntimeError, match="refusing to recover|not a real directory"):
+        build_cli._recover_interrupted_publication(out_dir)
+    assert _read_set(victim) == {"precious.txt": b"do not delete"}
+    assert os.readlink(out_dir) == victim.name
+    for survivor in survivors.values():
+        assert survivor.exists()
+    assert marker_path.exists()
+
+
+def test_set_name_is_durable_before_any_rename_touches_the_public_name(
+    tmp_path, monkeypatch
+):
+    """Two renames in one directory carry no ordering guarantee through
+    power loss: the set name must be fsynced durable before the public
+    name is touched, on both the retarget and the migration — otherwise
+    a surviving public link can point at a set name that never made it
+    to disk."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+
+    def run(prepare, staging_name):
+        events: list[tuple[str, str]] = []
+        out_dir = tmp_path / "out"
+        prepare(out_dir)
+        staging = tmp_path / staging_name
+        _populate(staging, _NEW_SET)
+
+        def recording_rename(src, dst, *args, **kwargs):
+            events.append(("rename", os.fspath(src), os.fspath(dst)))
+            return real_rename(src, dst, *args, **kwargs)
+
+        def recording_fsync_dir(path):
+            events.append(("fsync_dir", os.fspath(path), ""))
+            return real_fsync_dir(path)
+
+        monkeypatch.setattr(os, "rename", recording_rename)
+        monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+        try:
+            build_cli._publish_atomically(staging, out_dir)
+        finally:
+            monkeypatch.setattr(os, "rename", real_rename)
+            monkeypatch.setattr(build_cli, "_fsync_dir", real_fsync_dir)
+        set_rename = next(
+            index
+            for index, (kind, _src, dst) in enumerate(events)
+            if kind == "rename" and ".set-" in Path(dst).name
+        )
+        # The FIRST rename that touches the public name in any role, in
+        # the whole event stream — the migration's vacating rename has
+        # it as the source, and an unsafe mutation BEFORE the set rename
+        # must fail the ordering assertion, not escape the window.
+        first_public_mutation = next(
+            index
+            for index, (kind, src, dst) in enumerate(events)
+            if kind == "rename" and (Path(src) == out_dir or Path(dst) == out_dir)
+        )
+        assert first_public_mutation > set_rename, (
+            "the public name was touched before the set rename"
+        )
+        assert any(
+            kind == "fsync_dir" and Path(first) == tmp_path
+            for kind, first, _ in events[set_rename + 1 : first_public_mutation]
+        ), "no parent fsync between the set rename and the first public mutation"
+        assert _read_set(out_dir) == _NEW_SET
+        shutil.rmtree(out_dir.parent / os.readlink(out_dir))
+        out_dir.unlink()
+
+    # Retarget path: an existing symlink layout is republished.
+    def prepare_retarget(out_dir):
+        _symlink_layout(tmp_path, _OLD_SET)
+
+    run(prepare_retarget, ".out.staging-order-flip")
+
+    # Migration path: a legacy real directory converts on an
+    # exchange-less filesystem; the vacating rename also touches the
+    # public name, so the fsync must come before it too.
+    def prepare_migration(out_dir):
+        out_dir.mkdir()
+        _populate(out_dir, _OLD_SET)
+
+    run(prepare_migration, ".out.staging-order-migrate")
+
+
+def test_recovery_heals_the_torn_state_where_the_link_outran_the_set(tmp_path):
+    """Power loss can persist the public-name rename while the set rename
+    is lost: on disk the public link points at a set name that does not
+    exist and the staged set still sits under its staging name. Recovery
+    normalizes staging into the set name first, so the committed branch
+    heals this torn state instead of discarding anything."""
+
+    build_cli = _build_cli_module()
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-torn"
+    _populate(staging, _NEW_SET)
+    set_name = ".out.set-torn"
+    # Fabricate the torn state: link retargeted, set rename lost.
+    out_dir.unlink()
+    out_dir.symlink_to(set_name)
+    (tmp_path / ".out.publish-recovery.json").write_text(
+        json.dumps(
+            {
+                "mode": "symlink-flip",
+                "out": "out",
+                "staging": staging.name,
+                "set": set_name,
+                "link_tmp": ".out.linktmp-torn",
+                "old_set": initial_set.name,
+            }
+        )
+    )
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "finished a symlink retarget: disposed of the superseded set"
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    assert not initial_set.exists()
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert _visible_siblings(tmp_path) == sorted(["out", set_name])
+
+
+def test_migration_recovery_reuses_the_marker_recorded_temp_link(tmp_path, monkeypatch):
+    """The migration's recovery path retargets through the marker-recorded
+    ``.linktmp-*`` name too: a crash mid-recovery leaves only a link the
+    next pass already knows to clear."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    set_name = ".out.set-migrate-reuse"
+    link_name = ".out.linktmp-migrate-reuse"
+    _populate(tmp_path / set_name, _NEW_SET)
+    (tmp_path / ".out.publish-recovery.json").write_text(
+        json.dumps(
+            {
+                "mode": "migrate",
+                "out": "out",
+                "staging": ".out.staging-migrate-reuse",
+                "set": set_name,
+                "link_tmp": link_name,
+                "previous": ".out.previous-migrate-reuse",
+            }
+        )
+    )
+    real_rename = os.rename
+
+    def fail_the_retarget(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir:
+            raise OSError("interrupted again")
+        return real_rename(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "rename", fail_the_retarget)
+    try:
+        with pytest.raises(OSError, match="interrupted again"):
+            build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    leftovers = [name for name in _visible_siblings(tmp_path) if ".linktmp-" in name]
+    assert leftovers == [link_name]
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "completed the interrupted layout migration from the staged set"
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    assert [n for n in _visible_siblings(tmp_path) if ".linktmp-" in n] == []
+
+
+@pytest.mark.parametrize("mode", ["migrate", "legacy"])
+def test_recovery_refuses_regular_files_at_the_public_name(tmp_path, mode):
+    """The symlink guards are not enough: a regular FILE at the public
+    name also is not a state these directory-moving protocols can
+    produce. Judging it committed (legacy) or vacating it into
+    ``previous`` (migration) would destroy real data behind it."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    out_dir.write_bytes(b"a foreign regular file")
+    survivors = []
+    if mode == "migrate":
+        set_dir = tmp_path / ".out.set-pending"
+        _populate(set_dir, _NEW_SET)
+        survivors.append(set_dir)
+        marker: dict[str, object] = {
+            "mode": "migrate",
+            "out": "out",
+            "staging": ".out.staging-gone",
+            "set": set_dir.name,
+            "link_tmp": ".out.linktmp-gone",
+            "previous": ".out.previous-gone",
+        }
+    else:
+        staging = tmp_path / ".out.staging-swap"
+        previous = tmp_path / ".out.previous-swap"
+        _populate(staging, _NEW_SET)
+        _populate(previous, _OLD_SET)
+        survivors += [staging, previous]
+        marker = {
+            "mode": "legacy-two-rename",
+            "out": "out",
+            "staging": staging.name,
+            "previous": previous.name,
+        }
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(json.dumps(marker))
+    with pytest.raises(RuntimeError, match="refusing to recover over it"):
+        build_cli._recover_interrupted_publication(out_dir)
+    assert out_dir.read_bytes() == b"a foreign regular file"
+    for survivor in survivors:
+        assert survivor.exists()
+    assert marker_path.exists()
+
+
+@pytest.mark.parametrize("mode", ["symlink-flip", "migrate"])
+def test_recovery_refuses_indirect_symlinks_at_the_set_name(tmp_path, mode):
+    """``is_dir()`` follows symlinks: with ``out -> .out.set-x`` and
+    ``.out.set-x -> victim``, the committed judgment would dispose the
+    real old publication while the public name resolves into foreign
+    territory. A symlink at the SET name refuses outright."""
+
+    build_cli = _build_cli_module()
+    victim = tmp_path / "victim"
+    _populate(victim, {"precious.txt": b"do not delete"})
+    old_set = tmp_path / ".out.set-old"
+    _populate(old_set, _OLD_SET)
+    set_name = ".out.set-indirect"
+    (tmp_path / set_name).symlink_to(victim.name)
+    out_dir = tmp_path / "out"
+    out_dir.symlink_to(set_name)
+    marker: dict[str, object] = {
+        "mode": mode,
+        "out": "out",
+        "staging": ".out.staging-gone",
+        "set": set_name,
+        "link_tmp": ".out.linktmp-gone",
+    }
+    previous = tmp_path / ".out.previous-real"
+    if mode == "symlink-flip":
+        marker["old_set"] = old_set.name
+    else:
+        _populate(previous, _OLD_SET)
+        marker["previous"] = previous.name
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(json.dumps(marker))
+    with pytest.raises(RuntimeError, match="does not hold a real directory"):
+        build_cli._recover_interrupted_publication(out_dir)
+    assert _read_set(victim) == {"precious.txt": b"do not delete"}
+    assert _read_set(old_set) == _OLD_SET
+    assert os.readlink(tmp_path / set_name) == victim.name
+    if mode == "migrate":
+        assert _read_set(previous) == _OLD_SET
+    assert marker_path.exists()
+
+
+def test_flip_recovery_refuses_when_the_link_outran_everything(tmp_path):
+    """``out -> set`` with the set gone from BOTH its set and staging
+    names is unrecoverable: 'publication intact' would be a lie (the
+    link dangles) and clearing the marker would strand the old set
+    behind it. Recovery raises and preserves the marker."""
+
+    build_cli = _build_cli_module()
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    set_name = ".out.set-vanished"
+    out_dir.unlink()
+    out_dir.symlink_to(set_name)
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(
+        json.dumps(
+            {
+                "mode": "symlink-flip",
+                "out": "out",
+                "staging": ".out.staging-vanished",
+                "set": set_name,
+                "link_tmp": ".out.linktmp-vanished",
+                "old_set": initial_set.name,
+            }
+        )
+    )
+    with pytest.raises(RuntimeError, match="cannot be recovered automatically"):
+        build_cli._recover_interrupted_publication(out_dir)
+    assert _read_set(initial_set) == _OLD_SET
+    assert os.readlink(out_dir) == set_name
+    assert marker_path.exists()
+
+
+@pytest.mark.parametrize("mode", ["symlink-flip", "migrate", "exchange", "legacy"])
+def test_committed_recovery_fsyncs_before_deleting_the_backup(
+    tmp_path, monkeypatch, mode
+):
+    """Every mode's committed branch must make the OBSERVED state durable
+    before any backup is deleted: recovery can run seconds after a live
+    crash with the decisive rename still in page cache, and a second
+    power loss after the deletion persisted but the rename did not would
+    leave the publication lost with the backup already gone."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    if mode == "symlink-flip":
+        initial_set = _symlink_layout(tmp_path, _OLD_SET)
+        new_set = tmp_path / ".out.set-committed"
+        _populate(new_set, _NEW_SET)
+        out_dir.unlink()
+        out_dir.symlink_to(new_set.name)
+        marker: dict[str, object] = {
+            "mode": mode,
+            "out": "out",
+            "staging": ".out.staging-committed",
+            "set": new_set.name,
+            "link_tmp": ".out.linktmp-committed",
+            "old_set": initial_set.name,
+        }
+        expected_action = "finished a symlink retarget: disposed of the superseded set"
+    elif mode == "migrate":
+        new_set = tmp_path / ".out.set-committed"
+        previous = tmp_path / ".out.previous-committed"
+        _populate(new_set, _NEW_SET)
+        _populate(previous, _OLD_SET)
+        out_dir.symlink_to(new_set.name)
+        marker = {
+            "mode": mode,
+            "out": "out",
+            "staging": ".out.staging-committed",
+            "set": new_set.name,
+            "link_tmp": ".out.linktmp-committed",
+            "previous": previous.name,
+        }
+        expected_action = "finished the layout migration: disposed of the previous set"
+    elif mode == "exchange":
+        displaced = tmp_path / ".out.staging-displaced"
+        out_dir.mkdir()
+        _populate(out_dir, _NEW_SET)
+        _populate(displaced, _OLD_SET)
+        marker = {"mode": mode, "out": "out", "staging": displaced.name}
+        expected_action = "removed the displaced set left by an interrupted exchange"
+    else:
+        swapped_out = tmp_path / ".out.previous-swapped"
+        leftover_staging = tmp_path / ".out.staging-leftover"
+        out_dir.mkdir()
+        _populate(out_dir, _NEW_SET)
+        _populate(swapped_out, _OLD_SET)
+        _populate(leftover_staging, _NEW_SET)
+        marker = {
+            "mode": "legacy-two-rename",
+            "out": "out",
+            "staging": leftover_staging.name,
+            "previous": swapped_out.name,
+        }
+        expected_action = "removed leftover swap directories"
+    (tmp_path / ".out.publish-recovery.json").write_text(json.dumps(marker))
+
+    events: list[tuple[str, str]] = []
+    real_fsync_dir = build_cli._fsync_dir
+    real_rmtree = shutil.rmtree
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_rmtree(path, *args, **kwargs):
+        events.append(("rmtree", os.fspath(path)))
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(shutil, "rmtree", recording_rmtree)
+    try:
+        action = build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert action == expected_action
+    first_rmtree = next(
+        index for index, (kind, _path) in enumerate(events) if kind == "rmtree"
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[:first_rmtree]
+    ), "no parent fsync before the first backup deletion"
+    assert _read_set(out_dir) == _NEW_SET
+
+
+@pytest.mark.parametrize("mode", ["symlink-flip", "migrate"])
+@pytest.mark.parametrize("planted", ["set-file", "staging-file"])
+def test_recovery_never_treats_files_at_staging_or_set_names_as_sets(
+    tmp_path, mode, planted
+):
+    """The staging and set names may only ever hold real directories: a
+    regular file at the set name must refuse (it would be retargeted
+    into publication while the old set is deleted), and a regular file
+    at the staging name must never be normalized into the set name —
+    the intact old publication stays exactly as it is."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    set_name = ".out.set-planted"
+    staging_name = ".out.staging-planted"
+    old_set_name = None
+    if mode == "symlink-flip":
+        initial_set = _symlink_layout(tmp_path, _OLD_SET)
+        old_set_name = initial_set.name
+    else:
+        out_dir.mkdir()
+        _populate(out_dir, _OLD_SET)
+    if planted == "set-file":
+        (tmp_path / set_name).write_bytes(b"a foreign regular file")
+    else:
+        (tmp_path / staging_name).write_bytes(b"a foreign regular file")
+    marker: dict[str, object] = {
+        "mode": mode,
+        "out": "out",
+        "staging": staging_name,
+        "set": set_name,
+        "link_tmp": ".out.linktmp-planted",
+    }
+    if mode == "symlink-flip":
+        marker["old_set"] = old_set_name
+    else:
+        marker["previous"] = ".out.previous-planted"
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(json.dumps(marker))
+
+    if planted == "set-file":
+        with pytest.raises(RuntimeError, match="does not hold a real directory"):
+            build_cli._recover_interrupted_publication(out_dir)
+        assert (tmp_path / set_name).read_bytes() == b"a foreign regular file"
+        assert marker_path.exists()
+    else:
+        # The file must not be renamed into the set name; the old
+        # publication is judged intact and the foreign file is ignored.
+        action = build_cli._recover_interrupted_publication(out_dir)
+        assert "intact" in action
+        assert (tmp_path / staging_name).read_bytes() == b"a foreign regular file"
+        assert not (tmp_path / set_name).exists()
+    assert _read_set(out_dir) == _OLD_SET
+
+
+@pytest.mark.parametrize("old_state", ["missing", "file", "indirect"])
+def test_flip_intact_verdict_checks_what_the_link_resolves_to(tmp_path, old_state):
+    """'Publication intact' may not rest on the link's target string:
+    when the old set behind ``out -> old_set`` is missing, a regular
+    file, or an indirect symlink, removing the marker would bless a
+    dangling or foreign publication. Recovery raises and preserves the
+    marker."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    old_name = ".out.set-old"
+    if old_state == "file":
+        (tmp_path / old_name).write_bytes(b"a foreign regular file")
+    elif old_state == "indirect":
+        victim = tmp_path / "victim"
+        _populate(victim, {"precious.txt": b"do not delete"})
+        (tmp_path / old_name).symlink_to(victim.name)
+    out_dir.symlink_to(old_name)
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(
+        json.dumps(
+            {
+                "mode": "symlink-flip",
+                "out": "out",
+                "staging": ".out.staging-gone",
+                "set": ".out.set-gone",
+                "link_tmp": ".out.linktmp-gone",
+                "old_set": old_name,
+            }
+        )
+    )
+    with pytest.raises(RuntimeError, match="not a real directory"):
+        build_cli._recover_interrupted_publication(out_dir)
+    assert os.readlink(out_dir) == old_name
+    assert marker_path.exists()
+    if old_state == "indirect":
+        assert _read_set(tmp_path / "victim") == {"precious.txt": b"do not delete"}
+
+
+@pytest.mark.parametrize("mode", ["migrate", "legacy"])
+def test_restore_rename_is_durable_before_the_marker_is_removed(
+    tmp_path, monkeypatch, mode
+):
+    """Restoring ``previous -> out`` must fsync before the marker goes: a
+    second power loss that persists the marker deletion but not the
+    restore rename would leave the public name absent with no recovery
+    state at all."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    previous = tmp_path / ".out.previous-restore"
+    _populate(previous, _OLD_SET)
+    if mode == "migrate":
+        marker: dict[str, object] = {
+            "mode": "migrate",
+            "out": "out",
+            "staging": ".out.staging-gone",
+            "set": ".out.set-gone",
+            "link_tmp": ".out.linktmp-gone",
+            "previous": previous.name,
+        }
+    else:
+        marker = {
+            "mode": "legacy-two-rename",
+            "out": "out",
+            "staging": ".out.staging-gone",
+            "previous": previous.name,
+        }
+    (tmp_path / ".out.publish-recovery.json").write_text(json.dumps(marker))
+
+    events: list[tuple[str, str]] = []
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def recording_rename(src, dst, *args, **kwargs):
+        events.append(("rename", os.fspath(dst)))
+        return real_rename(src, dst, *args, **kwargs)
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(os, "rename", recording_rename)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        action = build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert action == "restored the previous publication"
+    restore = next(
+        index
+        for index, (kind, path) in enumerate(events)
+        if kind == "rename" and Path(path) == out_dir
+    )
+    removal = next(
+        index for index, (kind, _path) in enumerate(events) if kind == "remove_marker"
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[restore + 1 : removal]
+    ), "no parent fsync between the restore rename and the marker removal"
+    assert _read_set(out_dir) == _OLD_SET
+
+
+def test_migration_live_failure_restore_is_durable_before_the_marker(
+    tmp_path, monkeypatch
+):
+    """The IN-PROCESS migration failure handler restores previous -> out
+    and then removes the marker: the restore must be fsynced in between,
+    or a power loss after the marker deletion persisted could lose the
+    restore with no recovery state left."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-livefail"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[tuple[str, str]] = []
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def interrupt_after_vacate(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        events.append(("rename", os.fspath(dst)))
+        if Path(os.fspath(src)) == out_dir:
+            raise KeyboardInterrupt
+        return result
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(os, "rename", interrupt_after_vacate)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    restore = next(
+        index
+        for index, (kind, path) in enumerate(events)
+        if kind == "rename" and Path(path) == out_dir
+    )
+    # The failed exchange attempt withdraws its own marker before the
+    # migration starts; the removal that matters is the one AFTER the
+    # handler's restore.
+    removal = next(
+        index
+        for index, (kind, _path) in enumerate(events)
+        if kind == "remove_marker" and index > restore
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[restore + 1 : removal]
+    ), "no parent fsync between the handler's restore and the marker removal"
+    assert _read_set(out_dir) == _OLD_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
+def test_interrupted_restore_retry_fsyncs_before_clearing_the_marker(
+    tmp_path, monkeypatch
+):
+    """A recovery pass interrupted right after its restore rename leaves
+    the marker in place; the RETRY then finds a healthy-looking public
+    directory and takes the 'publication intact' path — which must fsync
+    before the marker is cleared, because the restore it is blessing may
+    still be sitting in page cache."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    previous = tmp_path / ".out.previous-interrupted"
+    _populate(previous, _OLD_SET)
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(
+        json.dumps(
+            {
+                "mode": "migrate",
+                "out": "out",
+                "staging": ".out.staging-gone",
+                "set": ".out.set-gone",
+                "link_tmp": ".out.linktmp-gone",
+                "previous": previous.name,
+            }
+        )
+    )
+    real_rename = os.rename
+
+    def interrupt_after_restore(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        if Path(os.fspath(dst)) == out_dir:
+            raise KeyboardInterrupt
+        return result
+
+    monkeypatch.setattr(os, "rename", interrupt_after_restore)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert marker_path.exists(), "the interrupted pass must leave the marker"
+    assert _read_set(out_dir) == _OLD_SET
+
+    events: list[tuple[str, str]] = []
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        action = build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert action == "cleared an aborted layout migration (publication intact)"
+    removal = next(
+        index for index, (kind, _path) in enumerate(events) if kind == "remove_marker"
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[:removal]
+    ), "no parent fsync before the retry cleared the marker"
+    assert not marker_path.exists()
+    assert _read_set(out_dir) == _OLD_SET
+
+
+def test_recovery_retarget_fsyncs_the_set_before_touching_the_public_name(
+    tmp_path, monkeypatch
+):
+    """The set-before-link durability ordering holds on the RECOVERY
+    retarget too: after normalizing staging into the set name, a parent
+    fsync must land before the rename that retargets the public name."""
+
+    build_cli = _build_cli_module()
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-reflip"
+    _populate(staging, _NEW_SET)
+    set_name = ".out.set-reflip"
+    (tmp_path / ".out.publish-recovery.json").write_text(
+        json.dumps(
+            {
+                "mode": "symlink-flip",
+                "out": "out",
+                "staging": staging.name,
+                "set": set_name,
+                "link_tmp": ".out.linktmp-reflip",
+                "old_set": initial_set.name,
+            }
+        )
+    )
+    events: list[tuple[str, str, str]] = []
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+
+    def recording_rename(src, dst, *args, **kwargs):
+        events.append(("rename", os.fspath(src), os.fspath(dst)))
+        return real_rename(src, dst, *args, **kwargs)
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path), ""))
+        return real_fsync_dir(path)
+
+    monkeypatch.setattr(os, "rename", recording_rename)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    try:
+        action = build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert action == "completed the interrupted symlink retarget from the staged set"
+    set_rename = next(
+        index
+        for index, (kind, _src, dst) in enumerate(events)
+        if kind == "rename" and Path(dst).name == set_name
+    )
+    first_public_mutation = next(
+        index
+        for index, (kind, src, dst) in enumerate(events)
+        if kind == "rename" and (Path(src) == out_dir or Path(dst) == out_dir)
+    )
+    assert first_public_mutation > set_rename, (
+        "recovery touched the public name before the normalization rename"
+    )
+    assert any(
+        kind == "fsync_dir" and Path(first) == tmp_path
+        for kind, first, _ in events[set_rename + 1 : first_public_mutation]
+    ), "no parent fsync between the normalization rename and the public retarget"
+    assert _read_set(out_dir) == _NEW_SET
+
+
+def test_unreadable_staging_subtree_aborts_before_any_marker(tmp_path, monkeypatch):
+    """`_fsync_tree` re-raises traversal failures: an unreadable staged
+    subtree aborts publication before any marker is written — silently
+    skipping it would publish a set the durability pass never saw."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-unreadable"
+    _populate(staging, _NEW_SET)
+    sealed = staging / "sealed"
+    sealed.mkdir()
+    (sealed / "inner.txt").write_bytes(b"unreachable")
+    sealed.chmod(0o000)
+    try:
+        with pytest.raises(PermissionError):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        sealed.chmod(0o755)
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert not out_dir.exists() and not out_dir.is_symlink()
 
 
 def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
@@ -1319,35 +2813,72 @@ def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
     assert action == "restored the previous publication"
     assert _read_set(out_dir) == _OLD_SET
     assert not marker.exists()
-    assert [path.name for path in tmp_path.iterdir()] == ["out"]
+    assert _visible_siblings(tmp_path) == ["out"]
 
 
-def test_marker_swap_in_process_failure_restores_previous(tmp_path, monkeypatch):
-    """A second-rename failure inside the process rolls straight back:
-    the previous publication returns under the public name and the marker
-    is removed."""
+def test_symlink_retarget_in_process_failure_restores_staging(tmp_path, monkeypatch):
+    """A retarget failure inside the process leaves the previous
+    publication untouched under the public name (it was never moved),
+    puts the staged set back under its staging name for the caller's
+    cleanup, and withdraws the marker."""
 
     build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-fails"
+    _populate(staging, _NEW_SET)
+    real_rename = os.rename
+
+    def failing_rename(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir:
+            raise OSError("simulated rename failure")
+        return real_rename(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "rename", failing_rename)
+    with pytest.raises(OSError, match="simulated rename failure"):
+        build_cli._publish_atomically(staging, out_dir)
+    monkeypatch.undo()
+    assert out_dir.is_symlink()
+    assert os.readlink(out_dir) == initial_set.name
+    assert _read_set(out_dir) == _OLD_SET
+    assert _read_set(staging) == _NEW_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    siblings = _visible_siblings(tmp_path)
+    assert siblings == sorted(["out", initial_set.name, staging.name])
+
+
+def test_legacy_migration_in_process_failure_restores_previous(tmp_path, monkeypatch):
+    """A retarget failure inside the migration rolls straight back: the
+    previous publication returns under the public name, the staged set
+    returns under its staging name, and the marker is removed."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
     out_dir = tmp_path / "out"
     staging = tmp_path / ".out.staging-fails"
     out_dir.mkdir()
-    staging.mkdir()
     _populate(out_dir, _OLD_SET)
     _populate(staging, _NEW_SET)
-    original_rename = Path.rename
+    real_rename = os.rename
+    failed = []
 
-    def failing_rename(self, target):
-        if self.name.startswith(".out.staging-"):
+    def failing_once(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir and not failed:
+            failed.append(True)
             raise OSError("simulated rename failure")
-        return original_rename(self, target)
+        return real_rename(src, dst, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "rename", failing_rename)
+    monkeypatch.setattr(os, "rename", failing_once)
     with pytest.raises(OSError, match="simulated rename failure"):
-        build_cli._publish_with_recovery_marker(staging, out_dir)
+        build_cli._publish_atomically(staging, out_dir)
     monkeypatch.undo()
+    assert out_dir.is_dir() and not out_dir.is_symlink()
     assert _read_set(out_dir) == _OLD_SET
-    assert staging.exists()
+    assert _read_set(staging) == _NEW_SET
     assert not (tmp_path / ".out.publish-recovery.json").exists()
+    siblings = _visible_siblings(tmp_path)
+    assert siblings == sorted(["out", staging.name])
 
 
 def test_cbp_page_retrieval_timestamp_is_captured_at_the_request(tmp_path, monkeypatch):

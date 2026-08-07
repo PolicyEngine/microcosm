@@ -348,6 +348,97 @@ def _fy2025_complete_stats(as_of_date: str = "2026-07-27") -> CbpEntryStats:
     )
 
 
+def test_cbp_fiscal_year_end_day_itself_is_still_fiscal_year_to_date():
+    """An endpoint ON September 30 covers a day still in progress — the
+    year completes only once its end day has elapsed. The inclusive
+    comparison this replaces marked the year complete a day early, on
+    both the as-of and the retrieval-fallback bases."""
+
+    (on_the_end,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2025-09-30"),
+        page_sha256="dd" * 32,
+        retrieved_at="2025-10-15T00:00:00+00:00",
+    )
+    assert on_the_end["period"]["type"] == "fiscal_year_to_date"
+    assert on_the_end["period"]["as_of"] == "2025-09-30"
+
+    noteless = CbpEntryStats(
+        cells=_fy2025_complete_stats().cells, as_of_note="", as_of_date=""
+    )
+    (via_retrieval,) = build_cbp_entry_fact_rows(
+        noteless,
+        page_sha256="dd" * 32,
+        retrieved_at="2025-09-30T00:00:00+00:00",
+    )
+    assert via_retrieval["period"]["type"] == "fiscal_year_to_date"
+    assert via_retrieval["period"]["as_of"] == "2025-09-30"
+
+    (day_after,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2025-10-01"),
+        page_sha256="dd" * 32,
+        retrieved_at="2025-10-15T00:00:00+00:00",
+    )
+    assert day_after["period"] == {"type": "fiscal_year", "value": 2025}
+
+
+def test_cbp_retrieval_offsets_roll_to_utc_and_same_day_endpoints_pass():
+    """The retrieval instant is taken in UTC: a local timestamp past
+    midnight on October 1 whose UTC instant is still September 30 keeps
+    the year fiscal-year-to-date (and keeps a same-UTC-day publisher
+    endpoint valid). An as-of endpoint equal to the retrieval's UTC date
+    is coverage up to the moment of reading, not a claim from the
+    future."""
+
+    # 2025-10-01T02:00+05:00 is 2025-09-30T21:00Z: still the end day. The
+    # stats are noteless so the RETRIEVAL conversion drives the endpoint —
+    # a local-date reading (October 1) would mark the year complete.
+    noteless_rollover = CbpEntryStats(
+        cells=_fy2025_complete_stats().cells, as_of_note="", as_of_date=""
+    )
+    (rolled,) = build_cbp_entry_fact_rows(
+        noteless_rollover,
+        page_sha256="dd" * 32,
+        retrieved_at="2025-10-01T02:00:00+05:00",
+    )
+    assert rolled["period"]["type"] == "fiscal_year_to_date"
+    assert rolled["period"]["as_of"] == "2025-09-30"
+    assert rolled["period"]["as_of_basis"] == "retrieval_date"
+
+    (same_day,) = build_cbp_entry_fact_rows(
+        _fy2025_complete_stats(as_of_date="2026-07-27"),
+        page_sha256="dd" * 32,
+        retrieved_at="2026-07-27T23:59:59+00:00",
+    )
+    assert same_day["period"] == {"type": "fiscal_year", "value": 2025}
+
+
+def test_cbp_fact_builder_refuses_future_and_malformed_retrievals():
+    """The retrieval timestamp is parsed whole — truncating to the date
+    prefix would bless ``2026-09-30T99:99:99+00:00`` — must carry a
+    timezone, and a publisher as-of endpoint later than the retrieval is
+    refused: a page cannot vouch for coverage beyond the moment it was
+    read."""
+
+    with pytest.raises(ValueError, match="not a full ISO timestamp"):
+        build_cbp_entry_fact_rows(
+            _fy2025_complete_stats(),
+            page_sha256="dd" * 32,
+            retrieved_at="2026-09-30T99:99:99+00:00",
+        )
+    with pytest.raises(ValueError, match="carries no timezone"):
+        build_cbp_entry_fact_rows(
+            _fy2025_complete_stats(),
+            page_sha256="dd" * 32,
+            retrieved_at="2026-08-05T00:00:00",
+        )
+    with pytest.raises(ValueError, match="postdates the retrieval"):
+        build_cbp_entry_fact_rows(
+            _fy2025_complete_stats(as_of_date="2026-08-24"),
+            page_sha256="dd" * 32,
+            retrieved_at="2026-08-05T00:00:00+00:00",
+        )
+
+
 def test_cbp_completed_fiscal_year_still_publishes_as_fiscal_year():
     """A fiscal year whose September 30 end predates the as-of endpoint is a
     completed annual observation and keeps the plain fiscal-year encoding."""
@@ -488,6 +579,82 @@ def test_cbp_no_as_of_wording_anywhere_is_a_genuine_no_note_page():
     stats = parse_cbp_trade_stats(_fixture_with_note("Revenue collection statistics."))
     assert stats.as_of_note == ""
     assert stats.as_of_date == ""
+
+
+def test_cbp_entity_encoded_note_wording_is_read_not_fail_open():
+    """The r3 probe: ``updated&nbsp;as of`` renders identically to
+    ``updated as of`` but is byte-different, and the pre-fix scan saw
+    neither sentinel nor note — so an October retrieval emitted all four
+    FY2026 cells as completed fiscal years. Entity-encoded wording must
+    parse exactly like its rendering, keeping the FYTD labeling."""
+
+    stats = parse_cbp_trade_stats(
+        _fixture_with_note("FY 2026 and FY 2025 is updated&nbsp;as of July 27, 2026.")
+    )
+    assert stats.as_of_date == "2026-07-27"
+    rows = build_cbp_entry_fact_rows(
+        stats,
+        page_sha256="dd" * 32,
+        retrieved_at="2026-10-01T00:00:00+00:00",
+    )
+    assert len(rows) == 4
+    for row in rows:
+        assert row["period"]["type"] == "fiscal_year_to_date"
+        assert row["period"]["as_of"] == "2026-07-27"
+        assert row["period"]["as_of_basis"] == "publisher_as_of_note"
+
+    # The fail-closed side of the same hole: entity-encoded as-of wording
+    # the strict pattern cannot read must still trip the sentinel and
+    # raise — never scan as "no note" and fall back to the retrieval date.
+    with pytest.raises(ValueError, match="cannot read"):
+        parse_cbp_trade_stats(
+            _fixture_with_note("Data is updated&#160;as of the latest revision.")
+        )
+
+
+def test_cbp_impossible_as_of_dates_fail_closed():
+    """September 31 must never become a coverage endpoint: the pre-fix
+    f-string minted '2026-09-31', which sorts after the FY2026 end and
+    classified the in-progress year as complete."""
+
+    with pytest.raises(ValueError, match="impossible calendar date"):
+        parse_cbp_trade_stats(
+            _fixture_with_note(
+                "FY 2026 and FY 2025 is updated as of September 31, 2026."
+            )
+        )
+    with pytest.raises(ValueError, match="impossible calendar date"):
+        parse_cbp_trade_stats(
+            _fixture_with_note(
+                "FY 2026 and FY 2025 is updated as of February 29, 2026."
+            )
+        )
+
+
+def test_cbp_fact_builder_refuses_non_date_coverage_endpoints():
+    """Defense in depth at the consumer: an impossible as-of date on a
+    hand-built stats object, or a malformed retrieval timestamp, must be
+    refused — completeness is a calendar comparison, not a string one."""
+
+    stats = parse_cbp_trade_stats(CBP_FIXTURE.read_bytes())
+    doctored = CbpEntryStats(
+        cells=stats.cells,
+        as_of_note=stats.as_of_note,
+        as_of_date="2026-09-31",
+    )
+    with pytest.raises(ValueError, match="not a real calendar date"):
+        build_cbp_entry_fact_rows(
+            doctored,
+            page_sha256="dd" * 32,
+            retrieved_at="2026-10-01T00:00:00+00:00",
+        )
+    noteless = CbpEntryStats(cells=stats.cells, as_of_note="", as_of_date="")
+    with pytest.raises(ValueError, match="not a full ISO timestamp"):
+        build_cbp_entry_fact_rows(
+            noteless,
+            page_sha256="dd" * 32,
+            retrieved_at="not-a-timestamp",
+        )
 
 
 def test_cbp_note_without_date_is_refused_by_the_fact_builder():

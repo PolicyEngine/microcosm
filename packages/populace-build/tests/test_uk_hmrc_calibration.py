@@ -20,14 +20,18 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRCIncomeSourceProvenance,
     HMRCIncomeTargetSet,
 )
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
+)
 from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
     SPI_HMRC_OTHER_INCOME_COLUMN,
     SPI_HMRC_PAY_COLUMN,
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.frame import Frame, MassChangeRecord, WeightKind
 
 
 def _name(
@@ -42,7 +46,7 @@ def _name(
     )
 
 
-def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTargetSet]:
+def _feasible_dataset_and_targets() -> tuple[Frame, HMRCIncomeTargetSet]:
     rows: list[dict[str, object]] = []
     records: list[HMRCIncomeBandTargetRecord] = []
     upper_bounds = (*HMRC_SPI_INCOME_BAND_LOWER_BOUNDS[1:], None)
@@ -95,7 +99,7 @@ def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTarget
 
     person = pd.DataFrame(rows)
     ids = np.arange(1, len(person) + 1, dtype="int64")
-    dataset = UKNationalDataset(
+    dataset = uk_national_frame(
         person=person,
         benunit=pd.DataFrame({"benunit_id": ids}),
         household=pd.DataFrame(
@@ -105,7 +109,7 @@ def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTarget
             }
         ),
         time_period="2023",
-        household_weight_kind=WeightKind.IMPORTANCE,
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -128,6 +132,25 @@ def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTarget
         table_names=("Table_3_6", "Table_3_7"),
     )
     return dataset, HMRCIncomeTargetSet(source=source, targets=tuple(records))
+
+
+def _with(
+    frame: Frame,
+    *,
+    person: pd.DataFrame | None = None,
+    household: pd.DataFrame | None = None,
+    time_period: str | None = None,
+) -> Frame:
+    """Rebuild the national frame with selected tables replaced."""
+
+    return uk_national_frame(
+        person=frame.table("person") if person is None else person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household") if household is None else household,
+        time_period=uk_time_period(frame) if time_period is None else time_period,
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+    )
 
 
 class _FakeSimulation:
@@ -208,7 +231,7 @@ def test_state_pension_targets_use_the_same_srp_auxiliary_as_band_income() -> No
     dataset, targets = _feasible_dataset_and_targets()
     person = dataset.person.copy()
     person["state_pension_reported"] = 9_999_999.0
-    dataset = dataset.with_tables(person=person)
+    dataset = _with(dataset, person=person)
 
     materialized = materialize_uk_hmrc_calibration_frame(
         dataset,
@@ -262,7 +285,7 @@ def test_materialization_fails_closed_when_one_component_has_no_band_support() -
     person = dataset.person.copy()
     mask = person["other_investment_income"] > 0
     person.loc[mask, "other_investment_income"] = 0.0
-    broken = dataset.with_tables(person=person)
+    broken = _with(dataset, person=person)
 
     with pytest.raises(ValueError, match="no strictly positive-mass support"):
         materialize_uk_hmrc_calibration_frame(
@@ -274,9 +297,9 @@ def test_materialization_fails_closed_when_one_component_has_no_band_support() -
 
 def test_materialization_requires_strictly_positive_household_prior() -> None:
     dataset, targets = _feasible_dataset_and_targets()
-    household = dataset.household.copy()
+    household = dataset.table("household").copy()
     household.loc[0, "household_weight"] = 0.0
-    broken = dataset.with_tables(household=household)
+    broken = _with(dataset, household=household)
 
     with pytest.raises(ValueError, match="every household prior weight"):
         materialize_uk_hmrc_calibration_frame(
@@ -288,7 +311,7 @@ def test_materialization_requires_strictly_positive_household_prior() -> None:
 
 def test_materialization_rejects_wrong_mapped_period() -> None:
     dataset, targets = _feasible_dataset_and_targets()
-    broken = dataset.with_tables(time_period="2024")
+    broken = _with(dataset, time_period="2024")
 
     with pytest.raises(ValueError, match="does not match"):
         materialize_uk_hmrc_calibration_frame(
@@ -303,7 +326,7 @@ def test_materialization_rejects_tax_free_interest_above_gross() -> None:
     dataset, targets = _feasible_dataset_and_targets()
     person = dataset.person.copy()
     person.loc[0, "tax_free_savings_income"] = 1.0
-    broken = dataset.with_tables(person=person)
+    broken = _with(dataset, person=person)
 
     with pytest.raises(ValueError, match="gross savings_interest_income"):
         materialize_uk_hmrc_calibration_frame(

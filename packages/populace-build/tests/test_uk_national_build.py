@@ -8,21 +8,30 @@ import pytest
 
 from populace.build.gates import FitWeightRecord, GateReport, GateResult
 from populace.build.uk_runtime.national_build import (
-    UKNationalDataset,
     UKNationalStage,
     build_uk_national_dataset,
-    load_uk_national_dataset,
+    load_uk_national_frame,
+)
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+    uk_time_period,
 )
 from populace.build.uk_runtime.terminal_gates import (
+    UK_TERMINAL_GATE_SIGNING_KEY_ENV,
     UKReleaseParityEvidence,
 )
 from populace.build.uk_runtime.terminal_gates import (
     uk_terminal_gate_report as real_uk_terminal_gate_report,
 )
-from populace.frame import MassChangeRecord, WeightKind
+from populace.build.uk_runtime.terminal_gates import (
+    write_uk_terminal_gate_report as real_write_uk_terminal_gate_report,
+)
+from populace.frame import Frame, MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
 TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
+TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 
 def _run_national_build(**kwargs):
@@ -30,6 +39,27 @@ def _run_national_build(**kwargs):
         release_id=TEST_UK_RELEASE_ID,
         calibration_diagnostics_sha256=TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
         **kwargs,
+    )
+
+
+def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
+    """Rebuild the frame with the person table replaced (mass untouched)."""
+
+    return uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
+    monkeypatch.setenv(
+        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY,
     )
 
 
@@ -180,14 +210,108 @@ def _failing_gate() -> GateResult:
     )
 
 
+def test_driver_validates_the_uk_residue_after_each_stage(
+    monkeypatch, tmp_path
+) -> None:
+    """The driver's post-stage validate is load-bearing, not decorative.
+
+    A stage returning ``frame.with_weights(...)`` with a stale exported
+    ``household_weight`` column constructs a perfectly valid Frame — the
+    kernel permits the column when typed weights exist — so only the
+    driver's ``validate_uk_national_frame`` call can stop the wrong weights
+    from shipping. The stage-side rejection tests all raise inside the
+    stage's own frame construction; this one can only fail at the driver
+    seam.
+    """
+
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+    from populace.frame import CONSERVE_MASS, Weights
+
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+
+    def redistribute_without_refreshing_column(frame: Frame) -> Frame:
+        weights = frame.weights_for("household")
+        return frame.with_weights(
+            "household",
+            Weights(values=weights.values[::-1].copy(), kind=weights.kind),
+            mass=CONSERVE_MASS,
+        )
+
+    with pytest.raises(ValueError, match="refresh the exported column"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staging.h5",
+            stages=(
+                UKNationalStage("stale_column", redistribute_without_refreshing_column),
+            ),
+            coverage_engine=object(),
+        )
+
+
+def test_gate_evidence_reproduces_the_legacy_attr_surface() -> None:
+    """_uk_gate_evidence exposes exactly what the duck-typed gates read.
+
+    The gate modules stay deliberately duck-typed until #611 types them on
+    Frame; the evidence adapter must therefore carry the metadata attrs
+    (kind, period, mass log) the coverage gate's hmrc family getattr-reads,
+    with the typed weights materialized authoritatively into the tables.
+    """
+
+    from populace.build.uk_runtime import national_build
+
+    mass_log = (
+        MassChangeRecord(
+            entity="household",
+            old_total=2.0,
+            new_total=2.0,
+            declared_factor=1.0,
+            reason="Toy reviewed record.",
+        ),
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [10],
+                "person_benunit_id": [100],
+                "person_household_id": [1],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [100]}),
+        household=pd.DataFrame({"household_id": [1], "household_weight": [2.0]}),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=mass_log,
+    )
+
+    evidence = national_build._uk_gate_evidence(frame)
+
+    assert evidence.household_weight_kind is WeightKind.IMPORTANCE
+    assert evidence.time_period == "2023"
+    assert evidence.mass_log == mass_log
+    assert evidence.household["household_weight"].tolist() == [2.0]
+    pd.testing.assert_frame_equal(evidence.person, frame.person)
+    # The same getattr surface the gates use resolves to real values, never
+    # the silent fallbacks a plain table mapping produced.
+    assert getattr(evidence, "household_weight_kind", None) is not None
+    assert str(getattr(evidence, "time_period", "")) == "2023"
+    assert tuple(getattr(evidence, "mass_log", ())) == mass_log
+
+
 class _RecordedFitStage:
     fit_weight_records = (
         FitWeightRecord("uk_spi_2022_23_income", "design"),
         FitWeightRecord("uk_frs_only_spi_fill", "importance"),
     )
 
-    def __call__(self, dataset: UKNationalDataset) -> UKNationalDataset:
-        return dataset
+    def __call__(self, frame: Frame) -> Frame:
+        return frame
 
 
 def test_national_build_runs_preflight_stages_gate_then_staging_write(
@@ -202,25 +326,32 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     _write_toy_h5(input_h5)
     events: list[str] = []
 
-    def stage_transform(dataset: UKNationalDataset) -> UKNationalDataset:
+    def stage_transform(frame: Frame) -> Frame:
         events.append("stage:income")
-        person = dataset.person.copy()
+        person = frame.table("person").copy()
         person["employment_income"] = 50_000.0
-        return dataset.with_tables(person=person)
+        return _replace_person(frame, person)
 
     def assert_current(**_kwargs) -> None:
         events.append("manifest_preflight")
 
-    def coverage_gate(dataset, _engine):
+    def coverage_gate(evidence, _engine):
         events.append("final_coverage_gate")
-        assert dataset.person["employment_income"].tolist() == [50_000.0]
+        assert evidence.person["employment_income"].tolist() == [50_000.0]
+        # The gate battery's evidence carries the frame's metadata surface —
+        # the coverage gate's hmrc family reads these attrs, and a bare table
+        # mapping silently fails them to ''/() (caught by the first
+        # credentialed acceptance build, not by CI's toy stages).
+        assert evidence.time_period == "2023"
+        assert evidence.household_weight_kind is WeightKind.DESIGN
+        assert evidence.mass_log == ()
         return _passing_gate()
 
-    real_writer = national_build.write_uk_national_dataset
+    real_writer = national_build.write_uk_national_frame
 
-    def recording_writer(dataset, path):
+    def recording_writer(frame, path):
         events.append("staging_write")
-        return real_writer(dataset, path)
+        return real_writer(frame, path)
 
     monkeypatch.setattr(
         national_build,
@@ -234,7 +365,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     )
     monkeypatch.setattr(
         national_build,
-        "write_uk_national_dataset",
+        "write_uk_national_frame",
         recording_writer,
     )
 
@@ -257,12 +388,12 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     assert result.terminal_gates.passed is True
     assert result.terminal_gate_path == coverage_json.resolve()
     assert result.input_coverage_path == result.terminal_gate_path
-    assert result.dataset.source_h5 == input_h5.resolve()
+    assert result.provenance.source_h5 == input_h5.resolve()
     assert staging_h5.exists()
-    staged = load_uk_national_dataset(staging_h5)
-    assert staged.source_h5 == staging_h5.resolve()
+    staged, staged_provenance = load_uk_national_frame(staging_h5)
+    assert staged_provenance.source_h5 == staging_h5.resolve()
     assert staged.person["employment_income"].tolist() == [50_000.0]
-    assert staged.household["household_weight"].tolist() == [2.0]
+    assert staged.table("household")["household_weight"].tolist() == [2.0]
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
@@ -304,6 +435,62 @@ def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
         b'    "passed": true\n  },\n  "schema_version": 1\n}\n'
     )
     assert legacy_json.read_bytes() == expected
+
+
+def test_legacy_input_coverage_alias_fails_closed_without_signing_key(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The compatibility output cannot bypass the signed terminal writer."""
+
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build, terminal_gates
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    legacy_json = tmp_path / "input_coverage.json"
+    _write_two_row_h5(input_h5)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_terminal_gate_report",
+        real_uk_terminal_gate_report,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "write_uk_terminal_gate_report",
+        real_write_uk_terminal_gate_report,
+    )
+    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+
+    with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=staging_h5,
+            coverage_engine=object(),
+            input_coverage_path=legacy_json,
+        )
+
+    assert not staging_h5.exists()
+    payload = json.loads(legacy_json.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 3
+    assert payload["passed"] is False
+    assert payload["attestation"]["signature"] is None
+    assert payload["attestation"]["signing_key_sha256"] is None
 
 
 def test_national_build_gate_failure_writes_diagnostic_not_h5(
@@ -353,7 +540,7 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
     default_terminal_json = staging_h5.with_suffix(".terminal_gates.json")
     _write_toy_h5(input_h5)
     events: list[str] = []
-    real_loader = national_build.load_uk_national_dataset
+    real_loader = national_build.load_uk_national_frame
     real_report_writer = national_build.write_uk_terminal_gate_report
 
     def preflight(**_kwargs) -> None:
@@ -385,7 +572,7 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
         "assert_uk_release_input_coverage_build_stages",
         stage_contract,
     )
-    monkeypatch.setattr(national_build, "load_uk_national_dataset", load)
+    monkeypatch.setattr(national_build, "load_uk_national_frame", load)
     monkeypatch.setattr(national_build, "uk_release_input_coverage_gate", evaluate)
     monkeypatch.setattr(
         national_build,
@@ -638,10 +825,10 @@ def test_national_build_rejects_duplicate_stage_names_before_running(
     _write_toy_h5(input_h5)
     called = False
 
-    def transform(dataset: UKNationalDataset) -> UKNationalDataset:
+    def transform(frame: Frame) -> Frame:
         nonlocal called
         called = True
-        return dataset
+        return frame
 
     monkeypatch.setattr(
         national_build,
@@ -677,10 +864,10 @@ def test_national_build_manifest_failure_removes_stale_outputs_before_stages(
     coverage_json.write_text('{"stale_success": true}\n')
     stage_called = False
 
-    def stage_transform(dataset: UKNationalDataset) -> UKNationalDataset:
+    def stage_transform(frame: Frame) -> Frame:
         nonlocal stage_called
         stage_called = True
-        return dataset
+        return frame
 
     def reject_manifest(**_kwargs) -> None:
         raise ValueError("manifest drift")
@@ -719,12 +906,13 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
         lambda **_kwargs: None,
     )
 
-    def break_links(dataset: UKNationalDataset) -> UKNationalDataset:
-        person = dataset.person.copy()
+    def break_links(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
         person["person_household_id"] = 999
-        return dataset.with_tables(person=person)
+        return _replace_person(frame, person)
 
-    with pytest.raises(ValueError, match="absent from household"):
+    # Frame construction inside the stage is where the invariant now lives.
+    with pytest.raises(ValueError, match="absent from the table"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
@@ -738,20 +926,23 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
     [
         (
             "missing_period",
-            lambda dataset: UKNationalDataset(
-                person=dataset.person,
-                benunit=dataset.benunit,
-                household=dataset.household,
+            lambda frame: uk_national_frame(
+                person=frame.table("person"),
+                benunit=frame.table("benunit"),
+                household=frame.table("household"),
                 time_period=None,
             ),
             "time_period must be a non-empty string",
         ),
         (
             "zero_population",
-            lambda dataset: dataset.with_tables(
-                household=dataset.household.assign(household_weight=0.0)
+            lambda frame: uk_national_frame(
+                person=frame.table("person"),
+                benunit=frame.table("benunit"),
+                household=frame.table("household").assign(household_weight=0.0),
+                time_period=uk_time_period(frame),
             ),
-            "retain at least one positive value",
+            "Weights cannot be all zero",
         ),
     ],
 )
@@ -827,22 +1018,26 @@ def test_national_build_accepts_hugging_face_style_h5_symlink(
     )
 
     assert result.input_h5 == cached_blob.resolve()
-    assert result.dataset.source_h5 == cached_blob.resolve()
+    assert result.provenance.source_h5 == cached_blob.resolve()
     assert staging_h5.is_file()
 
 
 def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     pytest.importorskip("tables")
     policyengine_data = pytest.importorskip("policyengine_uk.data")
-    from populace.build.uk_runtime.national_build import write_uk_national_dataset
+    from populace.build.uk_runtime.national_build import write_uk_national_frame
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
-    dataset = load_uk_national_dataset(input_h5)
-    assert dataset.source_h5 == input_h5.resolve()
-    dataset = dataset.with_tables(
-        household_weight_kind=WeightKind.IMPORTANCE,
+    frame, provenance = load_uk_national_frame(input_h5)
+    assert provenance.source_h5 == input_h5.resolve()
+    frame = uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        time_period=uk_time_period(frame),
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -853,13 +1048,12 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
             ),
         ),
     )
-    assert dataset.source_h5 == input_h5.resolve()
 
-    write_uk_national_dataset(dataset, staging_h5)
+    write_uk_national_frame(frame, staging_h5)
 
-    round_tripped = load_uk_national_dataset(staging_h5)
-    assert round_tripped.household_weight_kind is WeightKind.IMPORTANCE
-    assert round_tripped.mass_log == dataset.mass_log
+    round_tripped, _staging_provenance = load_uk_national_frame(staging_h5)
+    assert uk_household_weight_kind(round_tripped) is WeightKind.IMPORTANCE
+    assert round_tripped.mass_log == frame.mass_log
 
     loaded = policyengine_data.UKSingleYearDataset(file_path=str(staging_h5))
     assert loaded.time_period == "2023"
@@ -876,7 +1070,7 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
-    dataset = load_uk_national_dataset(input_h5)
+    frame, _provenance = load_uk_national_frame(input_h5)
     staging_h5.write_bytes(b"previous-good-artifact")
 
     def fail_store(path, *_args, **_kwargs):
@@ -886,7 +1080,7 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
     monkeypatch.setattr(national_build.pd, "HDFStore", fail_store)
 
     with pytest.raises(OSError, match="simulated HDF write failure"):
-        national_build.write_uk_national_dataset(dataset, staging_h5)
+        national_build.write_uk_national_frame(frame, staging_h5)
 
     assert staging_h5.read_bytes() == b"previous-good-artifact"
     assert list(tmp_path.glob(".staging.h5.*.tmp.h5")) == []

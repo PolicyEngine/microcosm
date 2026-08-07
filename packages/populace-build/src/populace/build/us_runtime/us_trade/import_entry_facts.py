@@ -33,7 +33,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -403,6 +403,31 @@ def build_district_entry_fact_rows(
     return rows
 
 
+def _retrieval_date(retrieved_at: str) -> date:
+    """Parse the full retrieval timestamp, refusing anything malformed.
+
+    Truncating to the first ten characters would bless
+    ``2026-09-30T99:99:99+00:00``; only a complete timezone-aware
+    timestamp names the retrieval instant these coverage comparisons
+    rely on. The calendar date is taken in UTC.
+    """
+    try:
+        parsed = datetime.fromisoformat(retrieved_at)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"CBP retrieval timestamp {retrieved_at!r} is not a full ISO "
+            "timestamp; refusing to classify fiscal-year completeness "
+            "against it."
+        ) from error
+    if parsed.tzinfo is None:
+        raise ValueError(
+            f"CBP retrieval timestamp {retrieved_at!r} carries no "
+            "timezone; refusing to classify fiscal-year completeness "
+            "against a naive instant."
+        )
+    return parsed.astimezone(UTC).date()
+
+
 def build_cbp_entry_fact_rows(
     stats: CbpEntryStats,
     *,
@@ -419,7 +444,10 @@ def build_cbp_entry_fact_rows(
     period carries the explicit ``as_of`` endpoint, its record set lives in
     a separate ``…fytd…`` family, and both feed into the fact keys — so a
     partial-year count can never be selected, summed, or compared as a
-    completed annual total.
+    completed annual total. The retrieval timestamp must parse as one
+    complete timezone-aware instant, and a publisher endpoint later than
+    the retrieval is refused — a page cannot vouch for coverage beyond
+    the moment it was read.
     """
     if stats.as_of_note and not stats.as_of_date:
         # The parser fails closed on unreadable notes, so this state can
@@ -430,11 +458,36 @@ def build_cbp_entry_fact_rows(
             "CBP stats carry an as-of note without a parsed as-of date; "
             "refusing the retrieval-date fallback."
         )
-    coverage_endpoint = stats.as_of_date or retrieved_at[:10]
-    coverage_basis = "publisher_as_of_note" if stats.as_of_date else "retrieval_date"
+    retrieved_date = _retrieval_date(retrieved_at)
+    if stats.as_of_date:
+        try:
+            # Completeness is a calendar comparison, never a lexical one:
+            # an impossible endpoint ("2026-09-31" sorts after the FY2026
+            # end but names no day) must be refused, not compared.
+            endpoint = date.fromisoformat(stats.as_of_date)
+        except ValueError as error:
+            raise ValueError(
+                f"CBP coverage endpoint {stats.as_of_date!r} is not a real "
+                "calendar date; refusing to classify fiscal-year "
+                "completeness against it."
+            ) from error
+        if endpoint > retrieved_date:
+            raise ValueError(
+                f"CBP as-of endpoint {stats.as_of_date!r} postdates the "
+                f"retrieval ({retrieved_at!r}); a page cannot vouch for "
+                "coverage beyond the moment it was read."
+            )
+        coverage_basis = "publisher_as_of_note"
+    else:
+        endpoint = retrieved_date
+        coverage_basis = "retrieval_date"
+    coverage_endpoint = endpoint.isoformat()
     rows: list[dict[str, Any]] = []
     for cell in stats.exact_cells():
-        complete = fiscal_year_end(cell.fiscal_year) <= coverage_endpoint
+        # Strict: the fiscal year is complete only once its September 30
+        # end day has ELAPSED. An endpoint ON September 30 covers a day
+        # still in progress, so that year stays fiscal-year-to-date.
+        complete = date.fromisoformat(fiscal_year_end(cell.fiscal_year)) < endpoint
         if complete:
             period: dict[str, Any] = {
                 "type": "fiscal_year",

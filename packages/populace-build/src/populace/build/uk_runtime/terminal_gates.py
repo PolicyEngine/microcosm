@@ -3,9 +3,10 @@
 The national builder evaluates this battery once, after every source stage and
 immediately before writing its staging H5.  Every evaluator runs even when an
 earlier evaluator fails, so one expensive build produces one complete named
-failure report.  Evidence that does not exist yet is omitted: in particular,
-future weighted-integrity and delivered-take-up gates are not represented by
-placeholder passes.
+failure report.  Evidence that does not exist yet is omitted: gates whose
+evidence or reviewed thresholds are absent (the parity trio, the
+weighted-integrity pair, the future delivered-take-up gates) are not
+represented by placeholder passes.
 """
 
 from __future__ import annotations
@@ -41,6 +42,17 @@ from populace.build.uk_runtime.diagnostics import uk_weight_summary
 from populace.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
+from populace.build.uk_runtime.weighted_integrity import (
+    UK_INPUT_MASS_PARITY_GATE_NAME,
+    UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
+    UKInputMassParityPolicy,
+    UKInputMassReference,
+    UKQRFTailConcentrationPolicy,
+    uk_dataset_input_mass_totals,
+    uk_input_mass_parity_gate,
+    uk_qrf_tail_concentration_columns,
+    uk_qrf_tail_concentration_gate,
+)
 
 __all__ = [
     "UK_ALLOWED_EXTRA_EXPORT_COLUMNS",
@@ -58,10 +70,15 @@ __all__ = [
     "UK_REFERENCE_DATASET_NAME",
     "UK_REVIEWED_EXPORT_EXCLUSIONS",
     "UK_TERMINAL_GATE_SCHEMA_VERSION",
+    "UKInputMassParityPolicy",
+    "UKInputMassReference",
+    "UKQRFTailConcentrationPolicy",
     "UKReleaseParityEvidence",
     "UKZeroWeightStratumDeclaration",
     "uk_degenerate_release_surface_gate",
     "uk_export_surface_gate",
+    "uk_input_mass_parity_gate",
+    "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
     "uk_terminal_gate_report",
@@ -71,8 +88,8 @@ __all__ = [
     "write_uk_terminal_gate_report",
 ]
 
-UK_TERMINAL_GATE_SCHEMA_VERSION = 2
-UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 4
+UK_TERMINAL_GATE_SCHEMA_VERSION = 3
+UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 5
 UK_TERMINAL_GATE_PRODUCER = (
     "populace.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
@@ -101,6 +118,8 @@ _UK_ALWAYS_APPLICABLE_GATE_NAMES = (
 )
 _UK_HMRC_GATE_NAMES = ("weights_audit",)
 _UK_PARITY_GATE_NAMES = ("export_surface", "target_surface", "target_fit")
+_UK_INPUT_MASS_GATE_NAMES = (UK_INPUT_MASS_PARITY_GATE_NAME,)
+_UK_QRF_TAIL_GATE_NAMES = (UK_QRF_TAIL_CONCENTRATION_GATE_NAME,)
 _UK_WEIGHT_SUMMARY_FIELDS = (
     "n_records",
     "positive_weight_records",
@@ -333,6 +352,21 @@ def _policy_mapping(value: object) -> object:
     }
 
 
+def _weighted_integrity_policy_payload(policy: object) -> object:
+    """Project an armed weighted-integrity policy into the sealed payload.
+
+    ``None`` records that the gate is unarmed; an unexpected type is recorded
+    (not raised) so the policy digest still seals what the caller supplied
+    while the evaluator fails closed with the named type error.
+    """
+
+    if policy is None:
+        return None
+    if isinstance(policy, (UKInputMassParityPolicy, UKQRFTailConcentrationPolicy)):
+        return policy.policy_payload()
+    return {"invalid_type": f"{type(policy).__module__}.{type(policy).__qualname__}"}
+
+
 def _terminal_gate_policy_payload(
     *,
     builtin_coverage_evaluator: bool,
@@ -340,6 +374,8 @@ def _terminal_gate_policy_payload(
     zero_weight_declarations: Sequence[object],
     minimum_ess_fraction: object,
     maximum_max_to_median_ratio: object,
+    input_mass_policy: object = None,
+    qrf_tail_policy: object = None,
 ) -> dict[str, object]:
     declarations: list[dict[str, object]] = []
     for declaration in zero_weight_declarations:
@@ -387,6 +423,8 @@ def _terminal_gate_policy_payload(
         "reviewed_export_exclusions": dict(
             sorted(UK_REVIEWED_EXPORT_EXCLUSIONS.items())
         ),
+        "input_mass_parity": _weighted_integrity_policy_payload(input_mass_policy),
+        "qrf_tail_concentration": _weighted_integrity_policy_payload(qrf_tail_policy),
     }
 
 
@@ -552,7 +590,14 @@ class _AttestedUKTerminalGateReport(GateReport):
                 "UK terminal evidence must include the release_dataset digest."
             )
         unknown_evidence = sorted(
-            evidence_names - {"release_dataset", "hmrc_spi_income", "release_parity"}
+            evidence_names
+            - {
+                "release_dataset",
+                "hmrc_spi_income",
+                "release_parity",
+                "input_mass_parity",
+                "qrf_tail_concentration",
+            }
         )
         if unknown_evidence:
             raise ValueError(
@@ -563,6 +608,10 @@ class _AttestedUKTerminalGateReport(GateReport):
             expected_names.extend(_UK_HMRC_GATE_NAMES)
         if "release_parity" in evidence_names:
             expected_names.extend(_UK_PARITY_GATE_NAMES)
+        if "input_mass_parity" in evidence_names:
+            expected_names.extend(_UK_INPUT_MASS_GATE_NAMES)
+        if "qrf_tail_concentration" in evidence_names:
+            expected_names.extend(_UK_QRF_TAIL_GATE_NAMES)
         if names != tuple(expected_names):
             raise ValueError(
                 "UK terminal gate membership must follow the attested evidence "
@@ -622,6 +671,12 @@ class _AttestedUKTerminalGateReport(GateReport):
     @property
     def evaluated_gates(self) -> tuple[str, ...]:
         return tuple(result.name for result in self.results)
+
+    @property
+    def passed(self) -> bool:
+        """True iff the sealed terminal report is publishable."""
+
+        return bool(self.report_payload()["passed"])
 
     def _current_attestation_sha256(self) -> str:
         return _canonical_sha256(
@@ -683,6 +738,80 @@ def _parity_evidence_payload(evidence: object) -> dict[str, object]:
         "candidate_targets": list(evidence.candidate_targets),
         "reference_targets": list(evidence.reference_targets),
         "target_relative_errors": dict(evidence.target_relative_errors),
+    }
+
+
+def _input_mass_evidence_payload(reference: object) -> dict[str, object]:
+    """Bind the attestation to the frozen input-mass reference.
+
+    An armed gate with no reference still produces a digest — recording the
+    absence the evaluator fails closed on — so the report cannot silently
+    drop the stage.
+    """
+
+    if reference is None:
+        return {"reference": None}
+    if not isinstance(reference, UKInputMassReference):
+        return {
+            "invalid_type": (
+                f"{type(reference).__module__}.{type(reference).__qualname__}"
+            )
+        }
+    return {
+        "reference": {
+            "identity": dict(reference.identity),
+            "totals": {name: float(total) for name, total in reference.totals.items()},
+        }
+    }
+
+
+def _json_tree(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_tree(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_tree(item) for item in value]
+    return _json_scalar(value)
+
+
+_UK_QRF_TAIL_EVIDENCE_FIELDS = (
+    "columns_checked",
+    "top_k",
+    "max_top_share",
+    "min_nonzero_records",
+    "top_share",
+    "carrier_counts",
+    "thin_columns",
+    "surface",
+)
+
+
+def _qrf_tail_evidence_payload(results: Sequence[GateResult]) -> dict[str, object]:
+    """Bind the attestation to the evaluated QRF tail observables.
+
+    Like ``_release_dataset_evidence_payload``, this projects the gate's own
+    recorded observables (per-column top shares, carrier counts, and the
+    manifest-derived surface) rather than hashing raw column arrays, giving
+    consumers an independently reconstructible digest. Erroring gates
+    project missing fields as null so a failed report can still be written.
+    """
+
+    gate = next(
+        (
+            result
+            for result in results
+            if result.name == UK_QRF_TAIL_CONCENTRATION_GATE_NAME
+        ),
+        None,
+    )
+    details = gate.details if gate is not None else {}
+    return {
+        "tail_concentration": {
+            field: _json_tree(details.get(field))
+            for field in _UK_QRF_TAIL_EVIDENCE_FIELDS
+        }
     }
 
 
@@ -1189,6 +1318,9 @@ def uk_terminal_gate_report(
     fit_weight_records: Iterable[FitWeightRecord] | None = None,
     require_fit_weight_records: bool = False,
     parity_evidence: UKReleaseParityEvidence | None = None,
+    input_mass_reference: UKInputMassReference | None = None,
+    input_mass_policy: UKInputMassParityPolicy | None = None,
+    qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
 ) -> GateReport:
     """Evaluate every evidenced UK terminal gate and seal its provenance."""
 
@@ -1291,6 +1423,45 @@ def uk_terminal_gate_report(
             )
         )
 
+    input_mass_armed = input_mass_reference is not None or input_mass_policy is not None
+    if input_mass_armed:
+
+        def input_mass_evaluator() -> GateResult:
+            if input_mass_reference is None:
+                raise ValueError(
+                    "input_mass_parity is armed but no UKInputMassReference "
+                    "was supplied; a missing frozen reference is not a "
+                    "passing gate."
+                )
+            if input_mass_policy is None:
+                raise ValueError(
+                    "input_mass_parity is armed without reviewed thresholds; "
+                    "supply a UKInputMassParityPolicy measured per the #609 "
+                    "measurement pass."
+                )
+            return uk_input_mass_parity_gate(
+                uk_dataset_input_mass_totals(dataset),
+                input_mass_reference,
+                policy=input_mass_policy,
+            )
+
+        evaluators.append((UK_INPUT_MASS_PARITY_GATE_NAME, input_mass_evaluator))
+
+    if qrf_tail_policy is not None:
+
+        def qrf_tail_evaluator() -> GateResult:
+            if not isinstance(qrf_tail_policy, UKQRFTailConcentrationPolicy):
+                raise TypeError("qrf_tail_policy must be UKQRFTailConcentrationPolicy.")
+            values, weights, surface = uk_qrf_tail_concentration_columns(dataset)
+            return uk_qrf_tail_concentration_gate(
+                values,
+                weights,
+                policy=qrf_tail_policy,
+                surface=surface,
+            )
+
+        evaluators.append((UK_QRF_TAIL_CONCENTRATION_GATE_NAME, qrf_tail_evaluator))
+
     names = [name for name, _evaluator in evaluators]
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
@@ -1311,6 +1482,14 @@ def uk_terminal_gate_report(
         evidence_sha256["release_parity"] = _canonical_sha256(
             _parity_evidence_payload(parity_evidence)
         )
+    if input_mass_armed:
+        evidence_sha256["input_mass_parity"] = _canonical_sha256(
+            _input_mass_evidence_payload(input_mass_reference)
+        )
+    if qrf_tail_policy is not None:
+        evidence_sha256["qrf_tail_concentration"] = _canonical_sha256(
+            _qrf_tail_evidence_payload(results)
+        )
     policy_sha256 = _canonical_sha256(
         _terminal_gate_policy_payload(
             builtin_coverage_evaluator=builtin_coverage_evaluator,
@@ -1318,6 +1497,8 @@ def uk_terminal_gate_report(
             zero_weight_declarations=zero_weight_declarations,
             minimum_ess_fraction=minimum_ess_fraction,
             maximum_max_to_median_ratio=maximum_max_to_median_ratio,
+            input_mass_policy=input_mass_policy,
+            qrf_tail_policy=qrf_tail_policy,
         )
     )
     unsigned_attestation = _unsigned_terminal_gate_attestation(
