@@ -883,7 +883,10 @@ def _recover_exchange(out_dir: Path, names: dict[str, object]) -> str:
         )
     # Whether or not the exchange happened, exactly one complete set
     # answers to the public name and the other sits under the staging
-    # name for disposal.
+    # name for disposal. Make the observed exchange durable before the
+    # displaced set is deleted — a second power loss must not be able to
+    # revert the exchange after its other side is already gone.
+    _fsync_dir(out_dir.parent)
     if staging.exists():
         shutil.rmtree(staging)
     return "removed the displaced set left by an interrupted exchange"
@@ -919,19 +922,46 @@ def _recover_symlink_flip(out_dir: Path, names: dict[str, object]) -> str:
         )
     if link_tmp.is_symlink() or link_tmp.exists():
         link_tmp.unlink()
-    if staging.exists() and not set_dir.exists():
+    if staging.exists() and not staging.is_symlink() and not set_dir.exists():
         # Normalize first so the committed check below also heals the
         # torn power-loss state where the public rename persisted but the
         # set rename did not.
         staging.rename(set_dir)
         _fsync_dir(parent)
-    if public_target == set_dir.name and set_dir.is_dir():
-        # Crash after the retarget: only disposal was left.
+    if set_dir.is_symlink():
+        # A symlink at the set name is not a publisher state, and
+        # ``is_dir()`` would follow it — an indirect route to judging a
+        # foreign target "committed" and deleting the real publication.
+        raise RuntimeError(
+            f"Publication marker for {out_dir} records a symlink retarget "
+            "whose set name holds a symlink, which the retarget cannot "
+            "have produced; refusing to recover over it. Resolve by hand "
+            "and remove the marker."
+        )
+    if public_target == set_dir.name:
+        if not set_dir.is_dir():
+            # The public link outran a set that no longer exists anywhere
+            # (not even under the staging name): nothing here can restore
+            # a publication, and "intact" would be a lie.
+            raise RuntimeError(
+                f"Publication marker for {out_dir} records a symlink "
+                "retarget whose public link points at a set that no "
+                "longer exists; the publication cannot be recovered "
+                "automatically."
+            )
+        # Crash after the retarget: only disposal was left. Make the
+        # observed public rename durable BEFORE deleting the backup — a
+        # second power loss must not be able to lose the rename after
+        # the old set and marker are already gone.
+        _fsync_dir(parent)
         _dispose_set(out_dir, old_set_name)
         return "finished a symlink retarget: disposed of the superseded set"
     if not set_dir.exists():
         # Nothing staged survives and the flip never happened; the
-        # previous publication is intact under the public name.
+        # previous publication is intact under the public name (or, on a
+        # first publication, nothing was ever published).
+        if old_set_name is None:
+            return "cleared an aborted symlink retarget (nothing published yet)"
         return "cleared an aborted symlink retarget (publication intact)"
     # Reuse the marker-recorded temp-link name: a crash between the
     # symlink and its rename then leaves a link the NEXT recovery pass
@@ -961,14 +991,35 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
             "cannot have installed; refusing to recover over it. Resolve "
             "by hand and remove the marker."
         )
+    if not out_dir.is_symlink() and out_dir.exists() and not out_dir.is_dir():
+        # The migration moves real directories and installs one symlink;
+        # a regular file (or anything else) at the public name is not a
+        # state it can produce, and renaming it into ``previous`` would
+        # eventually feed it to the disposal path.
+        raise RuntimeError(
+            f"Publication marker for {out_dir} records a layout "
+            "migration, but the public name is not a directory or a "
+            "publisher symlink; refusing to recover over it. Resolve by "
+            "hand and remove the marker."
+        )
     if link_tmp.is_symlink() or link_tmp.exists():
         link_tmp.unlink()
-    if staging.exists() and not set_dir.exists():
+    if staging.exists() and not staging.is_symlink() and not set_dir.exists():
         # Normalize first so the committed check below also heals the
         # torn power-loss state where the final rename persisted but the
         # set rename did not.
         staging.rename(set_dir)
         _fsync_dir(parent)
+    if set_dir.is_symlink():
+        # ``is_dir()`` follows symlinks; a symlink at the set name is an
+        # indirect route to judging a foreign target "committed" and
+        # deleting the real previous publication.
+        raise RuntimeError(
+            f"Publication marker for {out_dir} records a layout "
+            "migration whose set name holds a symlink, which the "
+            "migration cannot have produced; refusing to recover over "
+            "it. Resolve by hand and remove the marker."
+        )
     if out_dir.is_symlink():
         if not set_dir.is_dir():
             raise RuntimeError(
@@ -977,7 +1028,11 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
                 "longer exists; the publication cannot be recovered "
                 "automatically."
             )
-        # Crash after the migration's final rename: only disposal was left.
+        # Crash after the migration's final rename: only disposal was
+        # left. Make the observed public rename durable BEFORE deleting
+        # the backups — a second power loss must not be able to lose the
+        # rename after the previous set and marker are already gone.
+        _fsync_dir(parent)
         for leftover in (previous, staging):
             if leftover.exists():
                 shutil.rmtree(leftover)
@@ -997,6 +1052,13 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
             shutil.rmtree(previous)
         return "completed the interrupted layout migration from the staged set"
     if previous.exists():
+        if previous.is_symlink() or not previous.is_dir():
+            raise RuntimeError(
+                f"Publication marker for {out_dir} records a layout "
+                "migration whose previous-publication name is not a real "
+                "directory; refusing to restore from it. Resolve by hand "
+                "and remove the marker."
+            )
         previous.rename(out_dir)
         return "restored the previous publication"
     if out_dir.exists():
@@ -1014,28 +1076,45 @@ def _recover_legacy_two_rename(out_dir: Path, names: dict[str, object]) -> str:
     previous = out_dir.parent / _owned_sibling_name(
         out_dir, names["previous"], kind="previous"
     )
-    if out_dir.is_symlink():
+    if out_dir.is_symlink() or (out_dir.exists() and not out_dir.is_dir()):
         # The retired two-rename protocol only ever moved real
-        # directories; a symlink at the public name was not its doing.
+        # directories; a symlink or regular file at the public name was
+        # not its doing — judging a file "committed" here would delete
+        # both the previous publication and the staged set behind it.
         raise RuntimeError(
             f"Publication marker for {out_dir} follows the retired "
-            "two-rename protocol, but the public name is a symlink that "
-            "protocol cannot have installed; refusing to recover over "
-            "it. Resolve by hand and remove the marker."
+            "two-rename protocol, but the public name is not a real "
+            "directory that protocol can have produced; refusing to "
+            "recover over it. Resolve by hand and remove the marker."
         )
     if out_dir.exists():
-        # Interrupted after the swap completed but before cleanup.
+        # Interrupted after the swap completed but before cleanup. Make
+        # the observed state durable before deleting the backups.
+        _fsync_dir(out_dir.parent)
         if previous.exists():
             shutil.rmtree(previous)
         if staging.exists():
             shutil.rmtree(staging)
         return "removed leftover swap directories"
     if staging.exists():
+        if staging.is_symlink() or not staging.is_dir():
+            raise RuntimeError(
+                f"Publication marker for {out_dir} names a staged set "
+                "that is not a real directory; refusing to publish from "
+                "it. Resolve by hand and remove the marker."
+            )
         staging.rename(out_dir)
+        _fsync_dir(out_dir.parent)
         if previous.exists():
             shutil.rmtree(previous)
         return "completed the interrupted publication from staging"
     if previous.exists():
+        if previous.is_symlink() or not previous.is_dir():
+            raise RuntimeError(
+                f"Publication marker for {out_dir} names a previous "
+                "publication that is not a real directory; refusing to "
+                "restore from it. Resolve by hand and remove the marker."
+            )
         previous.rename(out_dir)
         return "restored the previous publication"
     raise RuntimeError(

@@ -389,14 +389,20 @@ def test_cbp_retrieval_offsets_roll_to_utc_and_same_day_endpoints_pass():
     is coverage up to the moment of reading, not a claim from the
     future."""
 
-    # 2025-10-01T02:00+05:00 is 2025-09-30T21:00Z: still the end day.
+    # 2025-10-01T02:00+05:00 is 2025-09-30T21:00Z: still the end day. The
+    # stats are noteless so the RETRIEVAL conversion drives the endpoint —
+    # a local-date reading (October 1) would mark the year complete.
+    noteless_rollover = CbpEntryStats(
+        cells=_fy2025_complete_stats().cells, as_of_note="", as_of_date=""
+    )
     (rolled,) = build_cbp_entry_fact_rows(
-        _fy2025_complete_stats(as_of_date="2025-09-30"),
+        noteless_rollover,
         page_sha256="dd" * 32,
         retrieved_at="2025-10-01T02:00:00+05:00",
     )
     assert rolled["period"]["type"] == "fiscal_year_to_date"
     assert rolled["period"]["as_of"] == "2025-09-30"
+    assert rolled["period"]["as_of_basis"] == "retrieval_date"
 
     (same_day,) = build_cbp_entry_fact_rows(
         _fy2025_complete_stats(as_of_date="2026-07-27"),
