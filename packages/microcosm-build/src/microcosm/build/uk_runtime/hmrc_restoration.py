@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -219,7 +220,7 @@ class UKHMRCIncomeStageTransform:
         default=None,
         init=False,
     )
-    bound_frame: Frame | None = field(
+    bound_input_identity: str | None = field(
         default=None,
         init=False,
         repr=False,
@@ -242,10 +243,11 @@ class UKHMRCIncomeStageTransform:
 
         Provenance travels beside the frame, never inside it, so the driver
         hands both to the one stage whose fence binds the loaded bytes to the
-        verified certified candidate. Binding the frame object restores the
-        descent guarantee the retired carrier's loader-attached fields gave:
-        the fence can require that the pipeline it sits in started from this
-        exact loaded object, not merely that a matching load happened once.
+        verified certified candidate. Binding records the loaded frame's
+        content identity — derived here, inside the attesting code — so the
+        fence can require that the pipeline it sits in started from a frame
+        whose full content matches what the driver loaded, a guarantee that
+        survives a process boundary where object identity cannot.
         """
 
         if not isinstance(provenance, UKStagingProvenance):
@@ -253,15 +255,15 @@ class UKHMRCIncomeStageTransform:
         if not isinstance(frame, Frame):
             raise TypeError("bound frame must be a microcosm Frame.")
         self.staging_provenance = provenance
-        self.bound_frame = frame
+        self.bound_input_identity = uk_frame_content_identity(frame)
 
     def __call__(self, frame: Frame) -> Frame:
         # Single-use: a binding never outlives the run that consumes it, so
         # a stale binding from an earlier build can never fence a later one.
         staging_provenance = self.staging_provenance
-        bound_frame = self.bound_frame
+        bound_input_identity = self.bound_input_identity
         self.staging_provenance = None
-        self.bound_frame = None
+        self.bound_input_identity = None
         retained = (
             None
             if self.retained_leaves_transform is None
@@ -272,19 +274,29 @@ class UKHMRCIncomeStageTransform:
                 "HMRC replay requires the raw-FRS retained-leaves stage to run "
                 "immediately before the SPI stage."
             )
-        if retained.frame is not frame:
+        # Descent fence A, content-addressed: the frame this stage received
+        # must carry the exact content the retained-leaves stage produced.
+        # Same-object is the free fast path; a rehydrated (checkpointed)
+        # frame passes by content; a substituted or tampered frame does not.
+        if retained.frame is not frame and _retained_content_identity(
+            retained, "output_content_identity"
+        ) != uk_frame_content_identity(frame):
             raise RuntimeError(
                 "HMRC replay raw-FRS evidence is not bound to the frame "
                 "received from the immediately preceding retained-leaves stage."
             )
-        if bound_frame is not None:
-            retained_input = getattr(self.retained_leaves_transform, "last_input", None)
-            if retained_input is not bound_frame:
-                raise RuntimeError(
-                    "HMRC replay pipeline did not start from the frame the "
-                    "driver loaded and bound; the certified-candidate fence "
-                    "refuses a substituted input."
-                )
+        # Descent fence B: the frame the retained-leaves stage consumed must
+        # carry the exact content of the frame the driver loaded and bound.
+        if (
+            bound_input_identity is not None
+            and _retained_content_identity(retained, "input_content_identity")
+            != bound_input_identity
+        ):
+            raise RuntimeError(
+                "HMRC replay pipeline did not start from the frame the "
+                "driver loaded and bound; the certified-candidate fence "
+                "refuses a substituted input."
+            )
         self.last_result = restore_uk_hmrc_income_family(
             frame,
             spi_tab_path=self.spi_tab_path,
@@ -298,6 +310,24 @@ class UKHMRCIncomeStageTransform:
             spi_prior_mass_share=self.spi_prior_mass_share,
         )
         return self.last_result.frame
+
+
+def _retained_content_identity(retained: object, attribute: str) -> str:
+    """Read a content identity off a retained-leaves result, failing closed.
+
+    A retained result without content identities cannot prove descent, so
+    the fence refuses it instead of silently downgrading to a weaker check
+    (the microcosm#617 lesson: absence is a refusal, never a default).
+    """
+
+    identity = getattr(retained, attribute, None)
+    if not isinstance(identity, str) or not identity:
+        raise RuntimeError(
+            "HMRC replay retained-leaves evidence carries no "
+            f"{attribute}; the descent fence refuses a result that cannot "
+            "prove which frames its run consumed and produced."
+        )
+    return identity
 
 
 def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdentity:

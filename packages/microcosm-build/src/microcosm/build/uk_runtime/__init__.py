@@ -9,6 +9,9 @@ from microcosm.build.uk_runtime.cgt_calibration import (
     materialize_uk_cgt_calibration_frame,
     uk_cgt_annual_exempt_amount,
 )
+from microcosm.build.uk_runtime.content_identity import (
+    uk_frame_content_identity,
+)
 from microcosm.build.uk_runtime.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_TARGET_GEOGRAPHY_LEVELS,
@@ -670,6 +673,7 @@ __all__ = [
     "uk_firm_source_data_from_frames",
     "uk_firm_source_data_from_ledger_facts",
     "uk_calibration_diagnostics_payload",
+    "uk_frame_content_identity",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
     "uk_release_input_coverage_gate",

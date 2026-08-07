@@ -10,6 +10,7 @@ import pytest
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.uk_runtime import hmrc_restoration
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
@@ -93,6 +94,20 @@ def _dataset() -> Frame:
                 "household_weight": [10.0],
             }
         ),
+        time_period=HMRC_SPI_BUILD_PERIOD,
+    )
+
+
+def _tampered_dataset() -> Frame:
+    """A frame that differs from :func:`_dataset` by one payload value."""
+
+    frame = _dataset()
+    person = frame.table("person").copy()
+    person[FRS_HMRC_PAY_COLUMN] = [20_001.0]
+    return uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
         time_period=HMRC_SPI_BUILD_PERIOD,
     )
 
@@ -728,9 +743,23 @@ def test_stage_transform_requires_retained_leaf_stage_and_forwards_evidence(
     with pytest.raises(RuntimeError, match="retained-leaves stage"):
         transform(dataset)
 
-    stale_result = SimpleNamespace(
-        frame=_dataset(),
+    # A retained result that cannot prove its content lineage fails closed
+    # rather than downgrading to a weaker check.
+    unprovable = SimpleNamespace(
+        frame=_tampered_dataset(),
         evidence=lambda: _FRS_SOURCE_EVIDENCE,
+    )
+    transform.retained_leaves_transform = SimpleNamespace(last_result=unprovable)
+    with pytest.raises(RuntimeError, match="carries no output_content_identity"):
+        transform(dataset)
+
+    # A retained result whose recorded output differs from the received
+    # frame's content is a substitution and is refused.
+    tampered = _tampered_dataset()
+    stale_result = SimpleNamespace(
+        frame=tampered,
+        evidence=lambda: _FRS_SOURCE_EVIDENCE,
+        output_content_identity=uk_frame_content_identity(tampered),
     )
     transform.retained_leaves_transform = SimpleNamespace(last_result=stale_result)
     with pytest.raises(RuntimeError, match="not bound to the frame"):
@@ -763,12 +792,12 @@ def test_stage_transform_binding_is_single_use_and_asserts_descent(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The provenance binding restores the retired carrier's descent fence.
+    """The provenance binding carries the descent fence by content identity.
 
-    Binding couples the provenance to the exact loaded frame; the stage
-    consumes the binding on use, so a stale binding can never fence a later
-    run, and a pipeline whose first stage consumed a substituted frame
-    fails closed even when a matching load once happened.
+    Binding records the loaded frame's content identity; the stage consumes
+    the binding on use, so a stale binding can never fence a later run, and
+    a pipeline whose first stage consumed a content-different frame fails
+    closed even when a matching load once happened.
     """
 
     loaded = _dataset()
@@ -791,23 +820,27 @@ def test_stage_transform_binding_is_single_use_and_asserts_descent(
         )[1],
     )
 
-    # Descent violation: the pipeline's first stage consumed a frame other
-    # than the one the driver loaded and bound.
-    substituted = _dataset()
+    # Descent violation: the pipeline's first stage consumed a frame whose
+    # content differs from the one the driver loaded and bound.
+    substituted = _tampered_dataset()
     transform.retained_leaves_transform = SimpleNamespace(
         last_result=SimpleNamespace(
-            frame=loaded, evidence=lambda: _FRS_SOURCE_EVIDENCE
+            frame=loaded,
+            evidence=lambda: _FRS_SOURCE_EVIDENCE,
+            input_content_identity=uk_frame_content_identity(substituted),
+            output_content_identity=uk_frame_content_identity(loaded),
         ),
-        last_input=substituted,
     )
     transform.bind_staging_provenance(provenance, loaded)
     with pytest.raises(RuntimeError, match="did not start from the frame"):
         transform(loaded)
     assert transform.staging_provenance is None
-    assert transform.bound_frame is None
+    assert transform.bound_input_identity is None
 
     # Descent-consistent run forwards the bound provenance exactly once...
-    transform.retained_leaves_transform.last_input = loaded
+    transform.retained_leaves_transform.last_result.input_content_identity = (
+        uk_frame_content_identity(loaded)
+    )
     transform.bind_staging_provenance(provenance, loaded)
     assert transform(loaded) is loaded
     assert forwarded == [provenance]
@@ -816,6 +849,56 @@ def test_stage_transform_binding_is_single_use_and_asserts_descent(
     # restore then fails closed on staging_provenance=None).
     assert transform(loaded) is loaded
     assert forwarded == [provenance, None]
+
+
+def test_stage_transform_descent_fence_is_content_addressed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The descent fence survives a process boundary by construction.
+
+    A content-identical frame that is a different Python object — the shape
+    a checkpoint rehydration produces — passes both fences; a tampered
+    frame with the same structure fails them. Object identity is only a
+    fast path, never the guarantee.
+    """
+
+    loaded = _dataset()
+    provenance = UKStagingProvenance(
+        source_h5=(tmp_path / "populace_uk_2023.h5").resolve(),
+        fingerprint=_TEST_SOURCE_FINGERPRINT,
+    )
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "restore_uk_hmrc_income_family",
+        lambda frame, **kwargs: SimpleNamespace(frame=frame),
+    )
+
+    # Rehydration shape: the received frame and the bound input are fresh,
+    # content-identical reconstructions, not the original objects.
+    stage_output = _dataset()
+    transform.retained_leaves_transform = SimpleNamespace(
+        last_result=SimpleNamespace(
+            frame=stage_output,
+            evidence=lambda: _FRS_SOURCE_EVIDENCE,
+            input_content_identity=uk_frame_content_identity(_dataset()),
+            output_content_identity=uk_frame_content_identity(stage_output),
+        ),
+    )
+    transform.bind_staging_provenance(provenance, loaded)
+    rehydrated = _dataset()
+    assert rehydrated is not stage_output
+    assert transform(rehydrated) is rehydrated
+
+    # Tampered payload with identical structure: fence A refuses it.
+    transform.bind_staging_provenance(provenance, loaded)
+    with pytest.raises(RuntimeError, match="not bound to the frame"):
+        transform(_tampered_dataset())
 
 
 @pytest.mark.parametrize(

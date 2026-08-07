@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -149,7 +150,16 @@ class UKFRSRawTableIdentity:
 
 @dataclass(frozen=True)
 class UKFRSHMRCRetainedLeavesResult:
-    """National frame plus raw-source and lineage evidence."""
+    """National frame plus raw-source and lineage evidence.
+
+    ``input_content_identity`` and ``output_content_identity`` are the
+    content identities (:func:`uk_frame_content_identity`) of the frame this
+    stage consumed and the frame it produced, derived inside the attesting
+    run. The SPI stage's descent fence compares against them, so the
+    guarantee survives a process boundary: a checkpoint-rehydrated frame is
+    content-identical to the one that was checkpointed, while a substituted
+    or tampered frame is not.
+    """
 
     frame: Frame
     adult_source: UKFRSRawTableIdentity
@@ -161,6 +171,8 @@ class UKFRSHMRCRetainedLeavesResult:
     candidate_people: int
     source_signal_rows: dict[str, int]
     structural_zero_columns: tuple[str, ...]
+    input_content_identity: str
+    output_content_identity: str
 
     def evidence(self) -> dict[str, object]:
         """Return aggregate, JSON-safe evidence for a national build driver."""
@@ -206,11 +218,6 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         default=None,
         init=False,
     )
-    last_input: Frame | None = field(
-        default=None,
-        init=False,
-        repr=False,
-    )
 
     @classmethod
     def from_raw_frs_directory(
@@ -226,10 +233,10 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         )
 
     def __call__(self, frame: Frame) -> Frame:
-        # Recorded so the SPI stage's fence can assert descent: the frame
-        # this stage consumed must be the very object the driver loaded
-        # and bound its provenance to.
-        self.last_input = frame
+        # The result records the content identities of the frame this stage
+        # consumed and produced, so the SPI stage's fence can assert descent
+        # from the frame the driver loaded and bound — including across a
+        # process boundary, where object identity cannot travel.
         self.last_result = retain_uk_frs_hmrc_leaves(
             frame,
             adult_tab_path=self.adult_tab_path,
@@ -265,6 +272,7 @@ def retain_uk_frs_hmrc_leaves(
     """Read two raw FRS tables and retain the adjudicated HMRC constituents."""
 
     validate_uk_national_frame(frame)
+    input_content_identity = uk_frame_content_identity(frame)
     time_period = uk_time_period(frame)
     if time_period not in {FRS_SOURCE_BUILD_PERIOD, FRS_SOURCE_VINTAGE}:
         raise ValueError(
@@ -341,6 +349,8 @@ def retain_uk_frs_hmrc_leaves(
         candidate_people=len(person),
         source_signal_rows=source_signal_rows,
         structural_zero_columns=structural_zero_columns,
+        input_content_identity=input_content_identity,
+        output_content_identity=uk_frame_content_identity(result_frame),
     )
 
 
