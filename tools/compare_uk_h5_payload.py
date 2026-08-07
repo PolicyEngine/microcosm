@@ -23,6 +23,7 @@ could not be read (reported with exception text suppressed).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -52,6 +53,14 @@ def sdc_count(count: int, *, minimum: int) -> int | str:
     if count == 0 or count >= minimum:
         return count
     return f"< {minimum}"
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _paths_alias(left: Path, right: Path) -> bool:
@@ -126,10 +135,22 @@ def compare_tables(
     for column in left.columns:
         if column not in right.columns:
             continue
-        left_dtype = str(left[column].dtype)
-        right_dtype = str(right[column].dtype)
-        if left_dtype != right_dtype:
-            dtype_mismatches[column] = {"left": left_dtype, "right": right_dtype}
+        left_dtype = left[column].dtype
+        right_dtype = right[column].dtype
+        # Compare the dtype OBJECTS: two categorical dtypes both stringify
+        # to "category" while differing in categories or the ordered flag.
+        try:
+            dtypes_equal = bool(left_dtype == right_dtype)
+        except TypeError:
+            dtypes_equal = False
+        if not dtypes_equal:
+            mismatch = {"left": str(left_dtype), "right": str(right_dtype)}
+            if mismatch["left"] == mismatch["right"]:
+                mismatch["note"] = (
+                    "dtypes differ beyond their string names "
+                    "(e.g. categorical categories or ordered flag)"
+                )
+            dtype_mismatches[column] = mismatch
         if len(left) == len(right):
             equal = _series_equal_mask(left[column], right[column])
             differing = int((~equal).sum())
@@ -235,6 +256,10 @@ def compare_uk_h5_payload(
     )
     report: dict[str, Any] = {
         "left": str(left_path),
+        # Digest-bind the verdict to the exact bytes compared, so a committed
+        # receipt is verifiable offline against named artifacts.
+        "left_sha256": _sha256(left_path),
+        "right_sha256": _sha256(right_path),
         "right": str(right_path),
         "keys_equal": bool(left_keys == right_keys),
         "keys_only_left": sorted(set(left_keys) - set(right_keys)),

@@ -125,6 +125,32 @@ class Frame:
         self._validate_weights()
         self._validate_reserved_weight_columns()
 
+    def revalidate(self) -> None:
+        """Re-run every constructor invariant against the current state.
+
+        :meth:`table` and :attr:`person` return the stored tables, not
+        copies, so a caller that mutates them in place can silently break
+        the invariants construction proved. Seams that hand a long-lived
+        bundle across trust boundaries (a build loop between stages, a
+        writer before export) call this to fail closed on post-construction
+        corruption instead of shipping it.
+
+        Raises:
+            TypeError, ValueError: Exactly as construction would on the
+                same state — missing or extra tables, broken linkage,
+                duplicated or unsorted ids, cross-entity column collisions,
+                invalid weights or reserved weight columns, or strata that
+                no longer align with the person index.
+        """
+
+        self._strata = self._validated_strata(self._strata)
+        self._validate_tables()
+        self._validate_linkage()
+        self._validate_links()
+        self._validate_global_columns()
+        self._validate_weights()
+        self._validate_reserved_weight_columns()
+
     # ------------------------------------------------------------------
     # Validation (constructor invariants)
     # ------------------------------------------------------------------

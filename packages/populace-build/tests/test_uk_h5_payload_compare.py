@@ -160,6 +160,39 @@ def test_sdc_floor_is_unlowerable_at_every_entry_point() -> None:
         COMPARATOR.compare_uk_h5_payload(Path("a.h5"), Path("b.h5"), minimum=0)
 
 
+def test_categorical_dtypes_compare_beyond_their_string_names() -> None:
+    """Two categorical dtypes both stringify to 'category'; a differing
+    ordered flag (or category set) must still fail the dtype check."""
+
+    left = pd.DataFrame(
+        {"region": pd.Categorical(["a", "b"], categories=["a", "b"], ordered=False)}
+    )
+    right = pd.DataFrame(
+        {"region": pd.Categorical(["a", "b"], categories=["a", "b"], ordered=True)}
+    )
+
+    report = COMPARATOR.compare_tables(left, right, minimum=10)
+
+    assert report["payload_equal"] is False
+    assert "region" in report["dtype_mismatches"]
+    assert "beyond their string names" in report["dtype_mismatches"]["region"]["note"]
+
+
+def test_report_binds_input_digests(tmp_path: Path) -> None:
+    """The verdict is digest-bound so a committed receipt verifies offline."""
+
+    pytest.importorskip("tables")
+    import hashlib
+
+    left = _write(tmp_path / "left.h5", _tables())
+    right = _write(tmp_path / "right.h5", _tables())
+
+    report = COMPARATOR.compare_uk_h5_payload(left, right, minimum=10)
+
+    assert report["left_sha256"] == hashlib.sha256(left.read_bytes()).hexdigest()
+    assert report["right_sha256"] == hashlib.sha256(right.read_bytes()).hexdigest()
+
+
 def test_int64_values_above_float_precision_are_not_equated() -> None:
     """A float64 cast equates int64 values past 2**53 — the magnitude regime
     rowwise id multiplication grows toward. Raw integer comparison must not."""

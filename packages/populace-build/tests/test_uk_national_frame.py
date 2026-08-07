@@ -168,6 +168,64 @@ def test_validate_rejects_mass_log_total_disagreement() -> None:
         validate_uk_national_frame(frame)
 
 
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        lambda f: f.table("person").__setitem__("person_household_id", 999),
+        lambda f: f.table("person").loc.__setitem__((0, "person_id"), 2),
+        lambda f: f.table("benunit").loc.__setitem__((0, "benunit_id"), 201),
+        lambda f: f.table("household").sort_values(
+            "household_id", ascending=False, inplace=True, ignore_index=True
+        ),
+        lambda f: f.table("person").__setitem__("region", "LONDON"),
+        lambda f: f.table("person").drop(columns=["person_benunit_id"], inplace=True),
+    ],
+    ids=[
+        "dangling_household_membership",
+        "duplicate_person_id",
+        "duplicate_benunit_id",
+        "unsorted_household_ids",
+        "cross_entity_column_collision",
+        "missing_membership_column",
+    ],
+)
+def test_validate_fails_closed_on_post_construction_corruption(corrupt) -> None:
+    """Frame.table returns stored internals; a stage mutating them in place
+    must be caught at the next seam, exactly as the retired shadow-carrier
+    validator caught it — never validated through and shipped."""
+
+    frame = _frame()
+    corrupt(frame)
+    with pytest.raises((ValueError, KeyError)):
+        validate_uk_national_frame(frame)
+
+
+def test_validate_rejects_non_household_typed_weights() -> None:
+    """The staging artifact exports household_weight alone; a frame carrying
+    other typed weights would materialize reserved columns the UK loader
+    itself rejects."""
+
+    frame = Frame(
+        tables={
+            "person": person_frame(),
+            "benunit": benunit_frame(),
+            "household": household_frame(),
+        },
+        schema=UK_NATIONAL_SCHEMA,
+        weights={
+            "household": Weights(
+                values=np.array([10.0, 20.0, 30.0]), kind=WeightKind.DESIGN
+            ),
+            "person": Weights(
+                values=np.array([1.0, 1.0, 1.0, 1.0]), kind=WeightKind.DESIGN
+            ),
+        },
+        metadata={"time_period": "2023"},
+    )
+    with pytest.raises(ValueError, match="household typed weights only"):
+        validate_uk_national_frame(frame)
+
+
 def test_weight_only_update_must_refresh_the_exported_column() -> None:
     frame = _frame()
 

@@ -291,7 +291,11 @@ def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:
     output_path = Path(path)
     if output_path.suffix != ".h5":
         raise ValueError("UK national staging path must end with '.h5'.")
-    tables = engine_tables(frame)
+    # The export contract is pinned, not inherited: household weights are the
+    # one materialized vector, so a frame that somehow reached this point
+    # with other typed weights cannot grow reserved columns the UK loader
+    # rejects (validate_uk_national_frame refuses such frames anyway).
+    tables = engine_tables(frame, weighted_entities=("household",))
     return _write_uk_single_year_tables(
         person=tables["person"],
         benunit=tables["benunit"],

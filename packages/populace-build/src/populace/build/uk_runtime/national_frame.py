@@ -145,21 +145,39 @@ def uk_household_weight_kind(frame: Frame) -> WeightKind:
 
 
 def validate_uk_national_frame(frame: Frame) -> None:
-    """The UK residue on top of Frame's own construction-time validation.
+    """Structural revalidation plus the UK residue, at every seam.
 
-    Frame already enforced linkage, column uniqueness, and weight health when
-    the frame was built; this checks what only the UK contract knows: the
-    entity set, the time-period metadata, agreement between the persisted
-    ``household_weight`` column and the typed vector, and agreement between
-    the weight total and the latest household :class:`MassChangeRecord`.
+    ``Frame.table`` returns the stored tables, not copies, so a stage that
+    mutates them in place can break the invariants construction proved —
+    the retired shadow-carrier validator rechecked structure at every seam,
+    and this validator must be no weaker: it re-runs every constructor
+    invariant via :meth:`Frame.revalidate`, then checks what only the UK
+    contract knows — the exact export schema (person/benunit/household,
+    household-only typed weights, no links), the time-period metadata,
+    agreement between the persisted ``household_weight`` column and the
+    typed vector, and agreement between the weight total and the latest
+    household :class:`MassChangeRecord`.
     """
 
     if not isinstance(frame, Frame):
         raise TypeError("UK national stages must operate on Frame instances.")
+    frame.revalidate()
     if tuple(frame.entities) != UK_NATIONAL_SCHEMA.entities:
         raise ValueError(
             f"UK national frame entities must be {UK_NATIONAL_SCHEMA.entities}; "
             f"got {tuple(frame.entities)}."
+        )
+    if tuple(frame.weighted_entities) != ("household",):
+        raise ValueError(
+            "UK national frames carry household typed weights only; got "
+            f"explicit weights for {tuple(frame.weighted_entities)}. The "
+            "staging artifact exports household_weight alone, and the loader "
+            "rejects any other reserved weight column."
+        )
+    if frame.schema.links:
+        raise ValueError(
+            "UK national frames declare no links; the staging writer "
+            "persists entity tables only and would silently drop them."
         )
     uk_time_period(frame)
     weights = frame.weights_for("household")

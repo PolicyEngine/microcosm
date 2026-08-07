@@ -249,9 +249,7 @@ def test_driver_validates_the_uk_residue_after_each_stage(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(
-                UKNationalStage(
-                    "stale_column", redistribute_without_refreshing_column
-                ),
+                UKNationalStage("stale_column", redistribute_without_refreshing_column),
             ),
             coverage_engine=object(),
         )
