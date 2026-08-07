@@ -7,86 +7,55 @@ import torch
 
 import microcosm.build.uk_runtime.local_solver as local_solver
 from microcosm.build.uk_runtime import (
-    build_stacked_local_matrix,
-    solve_stacked_local_weights,
+    build_uk_rowwise_local_matrix,
+    solve_prepared_local_weights,
 )
 
 
-def test_solve_stacked_local_weights_reduces_loss_and_reports_diagnostics() -> None:
-    metrics = pd.DataFrame({"population": [1.0, 1.0]}, index=[101, 102])
-    targets = pd.DataFrame({"code": ["E001", "S001"], "population": [1.5, 0.5]})
-    problem = build_stacked_local_matrix(
-        metrics,
-        targets,
-        area_codes=["E001", "S001"],
-        household_ids=[101, 102],
-    )
+def _problem():
+    metrics = pd.DataFrame({"population": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    assigned = pd.Series(["E001", "E001", "S001"], index=[101, 102, 103])
+    targets = pd.DataFrame({"code": ["E001", "S001"], "population": [2.0, 0.5]})
+    return build_uk_rowwise_local_matrix(metrics, assigned, targets)
 
-    result = solve_stacked_local_weights(
-        problem,
-        [1.0, 1.0],
+
+def test_solve_prepared_local_weights_reduces_loss_and_reports_diagnostics() -> None:
+    problem = _problem()
+
+    result = solve_prepared_local_weights(
+        matrix=problem.matrix,
+        targets=problem.targets,
+        target_frame=problem.target_frame,
+        initial_weights=np.ones(3),
         epochs=80,
         learning_rate=0.2,
         max_weight_ratio=10.0,
         seed=1,
     )
 
-    assert result.weights.shape == (4,)
-    assert result.initial_weights.tolist() == [0.5, 0.5, 0.5, 0.5]
+    assert result.weights.shape == (3,)
+    assert result.initial_weights.tolist() == [1.0, 1.0, 1.0]
     assert result.final_loss < result.initial_loss
-    assert result.n_nonzero == 4
+    assert result.n_nonzero == 3
     assert result.diagnostics["area_code"].tolist() == ["E001", "S001"]
-    np.testing.assert_allclose(result.diagnostics["target"], [1.5, 0.5])
+    np.testing.assert_allclose(result.diagnostics["target"], [2.0, 0.5])
 
 
-def test_solve_stacked_local_weights_uses_explicit_positive_floor() -> None:
-    metrics = pd.DataFrame({"population": [1.0, 1.0]}, index=[101, 102])
-    targets = pd.DataFrame({"code": ["E001"], "population": [1.0]})
-    problem = build_stacked_local_matrix(
-        metrics,
-        targets,
-        area_codes=["E001"],
-        household_ids=[101, 102],
-    )
-
-    result = solve_stacked_local_weights(
-        problem,
-        [0.0, 1.0],
-        epochs=5,
-        min_initial_weight=1e-3,
-    )
-
-    assert result.initial_weights.tolist() == [1e-3, 1.0]
-
-
-def test_solve_stacked_local_weights_rejects_nonpositive_initial_weights() -> None:
-    metrics = pd.DataFrame({"population": [1.0, 1.0]}, index=[101, 102])
-    targets = pd.DataFrame({"code": ["E001"], "population": [1.0]})
-    problem = build_stacked_local_matrix(
-        metrics,
-        targets,
-        area_codes=["E001"],
-        household_ids=[101, 102],
-    )
+def test_solve_prepared_local_weights_rejects_nonpositive_initial_weights() -> None:
+    problem = _problem()
 
     with pytest.raises(ValueError, match="strictly positive"):
-        solve_stacked_local_weights(
-            problem,
-            [0.0, 1.0],
+        solve_prepared_local_weights(
+            matrix=problem.matrix,
+            targets=problem.targets,
+            target_frame=problem.target_frame,
+            initial_weights=np.array([0.0, 1.0, 1.0]),
             epochs=5,
-            min_initial_weight=0.0,
         )
 
 
-def test_solve_stacked_local_weights_uses_budget_search(monkeypatch) -> None:
-    metrics = pd.DataFrame({"population": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
-    targets = pd.DataFrame({"code": ["E001"], "population": [2.0]})
-    problem = build_stacked_local_matrix(
-        metrics,
-        targets,
-        area_codes=["E001"],
-        household_ids=[101, 102, 103],
-    )
+def test_solve_prepared_local_weights_uses_budget_search(monkeypatch) -> None:
+    problem = _problem()
     calls = []
 
     def fake_budget_search(
@@ -112,14 +81,18 @@ def test_solve_stacked_local_weights_uses_budget_search(monkeypatch) -> None:
         fake_budget_search,
     )
 
-    low = solve_stacked_local_weights(
-        problem,
-        [1.0, 1.0, 1.0],
+    low = solve_prepared_local_weights(
+        matrix=problem.matrix,
+        targets=problem.targets,
+        target_frame=problem.target_frame,
+        initial_weights=np.ones(3),
         target_records=1,
     )
-    high = solve_stacked_local_weights(
-        problem,
-        [1.0, 1.0, 1.0],
+    high = solve_prepared_local_weights(
+        matrix=problem.matrix,
+        targets=problem.targets,
+        target_frame=problem.target_frame,
+        initial_weights=np.ones(3),
         target_records=3,
     )
 
@@ -135,15 +108,14 @@ def test_solve_stacked_local_weights_uses_budget_search(monkeypatch) -> None:
         ({"target_records": 1, "budget_iters": 0}, "budget_iters"),
     ],
 )
-def test_solve_stacked_local_weights_validates_budget_controls(kwargs, match) -> None:
-    metrics = pd.DataFrame({"population": [1.0, 1.0]}, index=[101, 102])
-    targets = pd.DataFrame({"code": ["E001"], "population": [1.0]})
-    problem = build_stacked_local_matrix(
-        metrics,
-        targets,
-        area_codes=["E001"],
-        household_ids=[101, 102],
-    )
+def test_solve_prepared_local_weights_validates_budget_controls(kwargs, match) -> None:
+    problem = _problem()
 
     with pytest.raises(ValueError, match=match):
-        solve_stacked_local_weights(problem, [1.0, 1.0], **kwargs)
+        solve_prepared_local_weights(
+            matrix=problem.matrix,
+            targets=problem.targets,
+            target_frame=problem.target_frame,
+            initial_weights=np.ones(3),
+            **kwargs,
+        )

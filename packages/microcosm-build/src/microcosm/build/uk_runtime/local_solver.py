@@ -1,4 +1,13 @@
-"""Solver wrapper for UK stacked local-geography weights."""
+"""Solve core for UK rowwise local-geography weights.
+
+The rowwise path (one weight per cloned household, each household assigned
+to exactly one area) is the single UK local-solve story. The pre-ladder
+stacked research harness — an ``areas x households`` cross-product solve
+with no production caller — was removed with microcosm#612 increment 2; its
+weight vector was longer than any entity table, so it could never route
+through the public ``microcosm.calibrate`` front door this path is
+migrating onto.
+"""
 
 from __future__ import annotations
 
@@ -11,10 +20,6 @@ import pandas as pd
 import torch
 from scipy import sparse as sp
 
-from microcosm.build.uk_runtime.local_geography import (
-    StackedLocalMatrix,
-    stacked_design_weights,
-)
 from microcosm.calibrate.solve import (
     _optimize as _calibrate_optimize,
 )
@@ -32,7 +37,7 @@ from microcosm.calibrate.solve import (
 
 @dataclass(frozen=True)
 class StackedLocalSolveResult:
-    """Solved stacked local weights and diagnostics.
+    """Solved local weights and diagnostics.
 
     ``past_cap_census`` is the microcosm#492 observability diagnostic: which
     target rows sat past the loss cap at initialization and at the final
@@ -140,61 +145,6 @@ def past_cap_census(
     }
 
 
-def solve_stacked_local_weights(
-    problem: StackedLocalMatrix,
-    base_weights: Sequence[float],
-    *,
-    epochs: int = 512,
-    learning_rate: float = 0.15,
-    max_weight_ratio: float | None = 100.0,
-    conserve_mass: bool = False,
-    target_records: int | None = None,
-    l0_lambda: float = 0.0,
-    min_initial_weight: float = 1e-4,
-    target_loss_weights: Sequence[float] | None = None,
-    target_loss_scales: Sequence[float] | None = None,
-    target_loss_cap: float = 10.0,
-    budget_iters: int = 10,
-    seed: int = 0,
-) -> StackedLocalSolveResult:
-    """Solve stacked local-area weights for a Microcosm UK local build.
-
-    ``base_weights`` are split evenly across each area stack. The
-    ``min_initial_weight`` floor is explicit because the torch log-weight
-    optimizer requires strictly positive starting weights; callers that need
-    exact zero-preserving design weights can use
-    :func:`microcosm.build.uk_runtime.local_geography.stacked_design_weights` directly.
-    """
-
-    initial_weights = stacked_design_weights(
-        base_weights,
-        problem.n_areas,
-        min_weight=min_initial_weight,
-    )
-    if len(initial_weights) != problem.matrix.shape[1]:
-        raise ValueError(
-            "base_weights expanded to the wrong stacked length: "
-            f"{len(initial_weights)} vs {problem.matrix.shape[1]}."
-        )
-    return solve_prepared_local_weights(
-        matrix=problem.matrix,
-        targets=problem.targets,
-        target_frame=problem.target_frame,
-        initial_weights=initial_weights,
-        epochs=epochs,
-        learning_rate=learning_rate,
-        max_weight_ratio=max_weight_ratio,
-        conserve_mass=conserve_mass,
-        target_records=target_records,
-        l0_lambda=l0_lambda,
-        target_loss_weights=target_loss_weights,
-        target_loss_scales=target_loss_scales,
-        target_loss_cap=target_loss_cap,
-        budget_iters=budget_iters,
-        seed=seed,
-    )
-
-
 def solve_prepared_local_weights(
     *,
     matrix: sp.csr_matrix,
@@ -213,12 +163,11 @@ def solve_prepared_local_weights(
     budget_iters: int = 10,
     seed: int = 0,
 ) -> StackedLocalSolveResult:
-    """Shared solve core: prepared initial weights against a target matrix.
+    """Solve core: prepared initial weights against a target matrix.
 
-    Both local shapes route here — the stacked path after splitting base
-    weights across areas, and the rowwise path with the household base
-    weights directly (a rowwise household exists in exactly one area, so
-    there is nothing to split). The past-cap census rides on every result.
+    The rowwise path routes here with the household base weights directly —
+    a rowwise household exists in exactly one area, so there is nothing to
+    split. The past-cap census rides on every result.
     """
 
     constraint_matrix = matrix

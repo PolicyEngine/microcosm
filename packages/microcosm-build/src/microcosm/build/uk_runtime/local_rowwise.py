@@ -7,8 +7,7 @@ support only from the households assigned there. The matrix builder fails
 closed when an assigned area is missing from the target surface — local
 misses are support or target work, never silent exclusion — and the solve
 runs under the reviewed :data:`UK_LOCAL_SOLVE_DOCTRINE` with no per-target
-parameters and no doctrine injection point, mirroring
-:func:`solve_uk_local_weights_under_doctrine`.
+parameters and no doctrine injection point.
 """
 
 from __future__ import annotations
@@ -235,6 +234,35 @@ def build_uk_rowwise_local_matrix(
     )
 
 
+def _require_uniform_target_surface(problem: UKRowwiseLocalMatrix) -> None:
+    """Refuse a target surface whose rows repeat an (area, metric) cell.
+
+    ``build_uk_rowwise_local_matrix`` constructs unique rows by design; a
+    hand-built matrix that duplicates a row would double that cell's weight
+    in the uniform loss — a per-target knob smuggled through the surface.
+    """
+
+    frame = problem.target_frame
+    required = {"area_type", "area_code", "metric"}
+    if not required <= set(frame.columns):
+        missing = sorted(required - set(frame.columns))
+        raise ValueError(
+            f"doctrine solve requires target_frame column(s) {missing} to "
+            "verify surface uniqueness."
+        )
+    duplicated = frame.duplicated(["area_type", "area_code", "metric"])
+    if duplicated.any():
+        rows = frame.loc[
+            duplicated, ["area_type", "area_code", "metric"]
+        ].drop_duplicates()
+        examples = [tuple(map(str, row)) for row in rows.head(5).to_numpy()]
+        raise ValueError(
+            "doctrine solve refuses a non-uniform target surface: duplicate "
+            f"(area_type, area_code, metric) row(s) {examples} would act as "
+            "implicit per-target weights."
+        )
+
+
 def solve_uk_rowwise_weights_under_doctrine(
     problem: UKRowwiseLocalMatrix,
     base_weights: Sequence[float],
@@ -262,10 +290,6 @@ def solve_uk_rowwise_weights_under_doctrine(
     :func:`rowwise_calibration_mass_record` to the dataset's mass log first;
     the writer's chain-currency fence refuses an unrecorded mass change.
     """
-
-    from microcosm.build.uk_runtime.local_doctrine import (
-        _require_uniform_target_surface,
-    )
 
     doctrine = UK_LOCAL_SOLVE_DOCTRINE
     _require_uniform_target_surface(problem)

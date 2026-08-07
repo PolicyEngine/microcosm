@@ -167,35 +167,6 @@ def test_rowwise_area_support_summary_reports_all_target_areas() -> None:
     assert rows["E001"].effective_sample_size == pytest.approx(1.0)
 
 
-def test_solver_refactor_preserves_stacked_behaviour() -> None:
-    # Regression guard for the shared-core refactor: the stacked path still
-    # splits base weights across areas and solves identically shaped output.
-    from microcosm.build.uk_runtime import (
-        build_stacked_local_matrix,
-        solve_stacked_local_weights,
-    )
-
-    metrics = pd.DataFrame({"population": [1.0, 1.0]}, index=[101, 102])
-    targets = pd.DataFrame({"code": ["E001", "S001"], "population": [1.5, 0.5]})
-    problem = build_stacked_local_matrix(
-        metrics,
-        targets,
-        area_codes=["E001", "S001"],
-        household_ids=[101, 102],
-    )
-    result = solve_stacked_local_weights(
-        problem,
-        [1.0, 1.0],
-        epochs=40,
-        learning_rate=0.2,
-        max_weight_ratio=10.0,
-        seed=1,
-    )
-    assert result.weights.shape == (4,)
-    assert result.initial_weights.tolist() == [0.5, 0.5, 0.5, 0.5]
-    assert result.past_cap_census is not None
-
-
 def test_matrix_builder_fails_closed_on_unreachable_nonzero_targets() -> None:
     # A target area with no assigned households cannot be hit; a nonzero
     # target there must refuse at build time, while a zero target is fine.
