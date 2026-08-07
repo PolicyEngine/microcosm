@@ -13,19 +13,29 @@ remains an independent cross-check leg
 (``tools/crosscheck_us_import_margins_api.py``).
 
 Publication is atomic at the directory level: everything is built into a
-hidden staging sibling of ``--out-dir`` and the destination directory is
-replaced only after every artifact, gate, and report has been produced.
-On macOS and Linux the replacement is a single-syscall directory exchange
-(``renamex_np(RENAME_SWAP)`` / ``renameat2(RENAME_EXCHANGE)``), so a
-reader holding the published path never observes it missing and no crash
-point leaves ``--out-dir`` absent. Filesystems without an exchange fall
-back to a two-rename swap guarded by a durable recovery marker: the
-marker records both directory names before the first rename, and the next
-build rolls an interrupted swap forward (staged set intact) or back
-(previous publication restored) before doing anything else. A failed
-build removes its staging directory and leaves any previously published
-artifact set byte-for-byte untouched — there is no state in which old and
-new artifacts coexist under ``--out-dir``.
+hidden staging sibling of ``--out-dir`` and the destination is replaced
+only after every artifact, gate, and report has been produced. On macOS
+and Linux a real-directory layout is replaced by a single-syscall
+directory exchange (``renamex_np(RENAME_SWAP)`` /
+``renameat2(RENAME_EXCHANGE)``), so a reader holding the published path
+never observes it missing and no crash point leaves ``--out-dir`` absent.
+Where no exchange exists the layout is symlink-based instead: the public
+name is a symlink to a hidden versioned set directory, and publication
+retargets it with one atomic ``rename`` of a prepared sibling link — the
+public name never vacates on this path either, on any POSIX filesystem.
+The only windowed transition is the one-time migration of a legacy real
+directory on an exchange-less filesystem (plain renames cannot atomically
+replace a populated directory); it installs the symlink layout so it
+never recurs. Every destructive step is preceded by a durable (fsynced)
+recovery marker naming the directories involved, and the next build rolls
+any interruption forward (staged set intact) or back (previous
+publication restored) before doing anything else — including reclaiming a
+previous set stranded between an exchange and its cleanup. A lockfile
+serializes publishers toward the same ``--out-dir`` (concurrent
+publication is refused, with same-host stale locks of dead processes
+taken over); a failed build removes its staging directory and leaves any
+previously published artifact set byte-for-byte untouched. There is no
+state in which old and new artifacts coexist under ``--out-dir``.
 
 Publishes under ``--out-dir``:
 
@@ -74,12 +84,14 @@ published in that case).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import ctypes
 import errno
 import hashlib
 import json
 import os
 import shutil
+import socket
 import sys
 import urllib.request
 import uuid
@@ -339,26 +351,44 @@ def _publish_atomically(staging: Path, out_dir: Path) -> None:
     """Replace ``out_dir`` with the staged artifact set in one transition.
 
     Consumers only ever observe the previous complete publication or the
-    new complete publication, never a mixture. Where the OS offers an
-    atomic directory exchange the swap is a single syscall — there is no
-    instant at which ``out_dir`` does not exist, so a reader can never see
-    ``ENOENT`` and no crash point strands either artifact set. Filesystems
-    without an exchange fall back to a marker-guarded two-rename swap
-    whose interruption states are all recovered by
-    :func:`_recover_interrupted_publication` at the next build.
+    new complete publication, never a mixture — and, outside the one-time
+    legacy migration below, never a missing path. Steady states:
+
+    - real-directory layout where the OS can exchange (macOS/Linux): a
+      single-syscall directory exchange;
+    - symlink layout (what exchange-less publication installs): the
+      public name is a symlink to a versioned set directory, retargeted
+      by one atomic rename of a prepared sibling link — windowless on
+      any POSIX filesystem;
+    - first publication: one rename (or symlink install) onto the vacant
+      name, layout chosen by probing whether this filesystem exchanges.
+
+    A legacy real directory on a filesystem without exchange cannot be
+    replaced windowlessly by plain renames, so it is migrated once —
+    marker-guarded, crash-recovered — to the symlink layout, after which
+    the window never recurs. Every destructive step writes a durable
+    (fsynced) recovery marker first, and the publisher lockfile refuses
+    concurrent publication toward the same destination.
     """
-    _recover_interrupted_publication(out_dir)
-    if not out_dir.exists():
-        # First publication: nothing can be reading the path yet and a
-        # plain same-directory rename is atomic on its own.
-        staging.rename(out_dir)
-        return
-    if _exchange_directories(staging, out_dir):
-        # Single-syscall swap succeeded; ``staging`` now holds the
-        # previous publication.
-        shutil.rmtree(staging)
-        return
-    _publish_with_recovery_marker(staging, out_dir)
+    with _publisher_lock(out_dir):
+        _recover_unlocked(out_dir)
+        if not out_dir.exists() and not out_dir.is_symlink():
+            # First publication: nothing can be reading the path yet, so
+            # an install onto the vacant name is atomic on its own. The
+            # layout is chosen for the filesystem so that exchange-less
+            # deployments start symlink-based and never need migrating.
+            if _exchange_supported(out_dir.parent):
+                staging.rename(out_dir)
+                _fsync_dir(out_dir.parent)
+            else:
+                _publish_symlink_retarget(staging, out_dir, old_target=None)
+            return
+        if out_dir.is_symlink():
+            _publish_symlink_retarget(staging, out_dir, old_target=os.readlink(out_dir))
+            return
+        if _publish_by_exchange(staging, out_dir):
+            return
+        _migrate_real_dir_to_symlink_layout(staging, out_dir)
 
 
 #: macOS <sys/stdio.h> RENAME_SWAP and Linux <linux/fs.h> RENAME_EXCHANGE:
@@ -409,56 +439,388 @@ def _publish_marker_path(out_dir: Path) -> Path:
     return out_dir.parent / f".{out_dir.name}.publish-recovery.json"
 
 
-def _publish_with_recovery_marker(staging: Path, out_dir: Path) -> None:
-    """Two-rename swap guarded by a durable recovery marker.
+def _fsync_dir(path: Path) -> None:
+    """Flush a directory's entry table so completed renames survive power loss."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
-    Without an atomic exchange there is a window between the two renames
-    in which ``out_dir`` does not exist, and a crash inside it strands the
-    previous publication under its ``.previous-*`` name. The marker
-    records all three directory names before the first rename and is
-    removed only after the swap completes, so
-    :func:`_recover_interrupted_publication` can roll any interruption
-    forward or back; an in-process failure of the second rename restores
-    the previous publication immediately.
+
+def _write_marker_durably(out_dir: Path, payload: dict[str, object]) -> None:
+    """Write the recovery marker so it is on disk before anything moves.
+
+    The marker is the recovery source of truth, so it must be durable
+    *before* the destructive step it guards: file bytes fsynced, then
+    renamed into the marker name, then the directory entry fsynced. A
+    power loss after any subsequent rename therefore always finds the
+    marker.
     """
-    previous = out_dir.parent / f".{out_dir.name}.previous-{uuid.uuid4().hex}"
     marker = _publish_marker_path(out_dir)
-    marker.write_text(
+    tmp = marker.with_name(f"{marker.name}.tmp-{uuid.uuid4().hex}")
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    try:
+        os.write(fd, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode())
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    tmp.rename(marker)
+    _fsync_dir(marker.parent)
+
+
+def _remove_marker(out_dir: Path) -> None:
+    _publish_marker_path(out_dir).unlink(missing_ok=True)
+    _fsync_dir(out_dir.parent)
+
+
+def _publisher_lock_path(out_dir: Path) -> Path:
+    return out_dir.parent / f".{out_dir.name}.publish-lock"
+
+
+@contextlib.contextmanager
+def _publisher_lock(out_dir: Path):
+    """Serialize publishers of one destination via an O_EXCL lockfile.
+
+    Two builds publishing toward the same ``out_dir`` would interleave
+    renames and corrupt each other's recovery state, so concurrent
+    publication is refused rather than attempted. A lock whose recorded
+    holder is a no-longer-running process on this host is stale and taken
+    over; locks from other hosts (liveness unknowable here) or with
+    unreadable contents require the operator to remove the lockfile by
+    hand.
+    """
+    lock_path = _publisher_lock_path(out_dir)
+    payload = (
         json.dumps(
             {
-                "out": out_dir.name,
-                "staging": staging.name,
-                "previous": previous.name,
+                "host": socket.gethostname(),
+                "locked_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                "pid": os.getpid(),
             },
             indent=2,
             sort_keys=True,
         )
         + "\n"
     )
-    out_dir.rename(previous)
+    fd: int | None = None
+    for attempt in (1, 2):
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            break
+        except FileExistsError:
+            if attempt == 1 and _lock_is_stale(lock_path):
+                lock_path.unlink(missing_ok=True)
+                continue
+            raise RuntimeError(
+                f"Another publisher holds {lock_path}; refusing concurrent "
+                f"publication toward {out_dir}. If its process is truly "
+                "gone (e.g. it ran on another host), remove the lockfile "
+                "by hand and re-run."
+            ) from None
+    assert fd is not None
     try:
-        staging.rename(out_dir)
+        try:
+            os.write(fd, payload.encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        yield
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def _lock_is_stale(lock_path: Path) -> bool:
+    """True only for a readable same-host lock whose pid no longer runs."""
+    try:
+        holder = json.loads(lock_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if holder.get("host") != socket.gethostname():
+        return False
+    pid = holder.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
+def _exchange_supported(parent: Path) -> bool:
+    """Probe whether this directory's filesystem can exchange directories."""
+    probe_a = parent / f".exchange-probe-a-{uuid.uuid4().hex}"
+    probe_b = parent / f".exchange-probe-b-{uuid.uuid4().hex}"
+    probe_a.mkdir()
+    probe_b.mkdir()
+    try:
+        return _exchange_directories(probe_a, probe_b)
+    finally:
+        probe_a.rmdir()
+        probe_b.rmdir()
+
+
+def _publish_by_exchange(staging: Path, out_dir: Path) -> bool:
+    """Single-syscall exchange publish of a real-directory layout.
+
+    The marker records the staging name *before* the exchange: the
+    syscall parks the displaced previous publication under that name, so
+    a hard exit between the exchange and its cleanup leaves a marker
+    pointing at the orphan and recovery reclaims it. Returns ``False``
+    with both directories untouched when the platform or filesystem
+    cannot exchange.
+    """
+    _write_marker_durably(
+        out_dir,
+        {"mode": "exchange", "out": out_dir.name, "staging": staging.name},
+    )
+    try:
+        exchanged = _exchange_directories(staging, out_dir)
     except BaseException:
-        previous.rename(out_dir)
-        marker.unlink()
+        # A failed exchange syscall moves nothing; the marker guards no
+        # destructive step any more.
+        _remove_marker(out_dir)
         raise
+    if not exchanged:
+        _remove_marker(out_dir)
+        return False
+    _fsync_dir(out_dir.parent)
+    shutil.rmtree(staging)
+    _remove_marker(out_dir)
+    return True
+
+
+def _publish_symlink_retarget(
+    staging: Path, out_dir: Path, *, old_target: str | None
+) -> None:
+    """Windowless publish on the symlink layout: one rename retargets it.
+
+    The staged set is parked under a versioned ``.set-*`` name, a sibling
+    temp link is pointed at it, and the only operation ever performed on
+    the public name is the atomic ``os.rename`` of that link over it —
+    there is no instant at which ``out_dir`` is missing, on any POSIX
+    filesystem. With ``old_target=None`` the same steps install the
+    layout onto a vacant name (first publication). A crash at any point
+    leaves the prior publication readable; recovery finishes the retarget
+    from the marker and disposes of the superseded set.
+    """
+    parent = out_dir.parent
+    set_dir = parent / f".{out_dir.name}.set-{uuid.uuid4().hex}"
+    link_tmp = parent / f".{out_dir.name}.linktmp-{uuid.uuid4().hex}"
+    _write_marker_durably(
+        out_dir,
+        {
+            "mode": "symlink-flip",
+            "out": out_dir.name,
+            "staging": staging.name,
+            "set": set_dir.name,
+            "link_tmp": link_tmp.name,
+            "old_set": old_target,
+        },
+    )
+    try:
+        staging.rename(set_dir)
+        os.symlink(set_dir.name, link_tmp)
+        os.rename(link_tmp, out_dir)
+    except BaseException:
+        # The public name is only touched by the final atomic rename, so
+        # the previous publication is intact; put the staged set back for
+        # the caller's cleanup and withdraw the marker.
+        if link_tmp.is_symlink():
+            link_tmp.unlink()
+        if set_dir.exists() and not staging.exists():
+            set_dir.rename(staging)
+        _remove_marker(out_dir)
+        raise
+    _fsync_dir(parent)
+    _dispose_set(parent, old_target)
+    _remove_marker(out_dir)
+
+
+def _dispose_set(parent: Path, name: object) -> None:
+    """Remove a superseded set directory (or stray link) by marker name."""
+    if not name:
+        return
+    target = parent / str(name)
+    if target.is_symlink():
+        target.unlink()
+    elif target.is_dir():
+        shutil.rmtree(target)
+    elif target.exists():
+        target.unlink()
+
+
+def _migrate_real_dir_to_symlink_layout(staging: Path, out_dir: Path) -> None:
+    """One-time windowed migration of a legacy real directory, guarded.
+
+    Plain POSIX renames cannot atomically replace a populated directory,
+    so converting a legacy real-directory publication on an exchange-less
+    filesystem necessarily passes through an instant with no public name:
+    rename the old set away, rename the prepared link in. The marker is
+    durable before anything moves and every interruption state rolls
+    forward or back at the next build; the migration installs the symlink
+    layout, so the window never recurs. An in-process failure of the
+    final rename restores the previous publication immediately.
+    """
+    parent = out_dir.parent
+    set_dir = parent / f".{out_dir.name}.set-{uuid.uuid4().hex}"
+    link_tmp = parent / f".{out_dir.name}.linktmp-{uuid.uuid4().hex}"
+    previous = parent / f".{out_dir.name}.previous-{uuid.uuid4().hex}"
+    _write_marker_durably(
+        out_dir,
+        {
+            "mode": "migrate",
+            "out": out_dir.name,
+            "staging": staging.name,
+            "set": set_dir.name,
+            "link_tmp": link_tmp.name,
+            "previous": previous.name,
+        },
+    )
+    moved_away = False
+    try:
+        staging.rename(set_dir)
+        os.symlink(set_dir.name, link_tmp)
+        out_dir.rename(previous)
+        moved_away = True
+        os.rename(link_tmp, out_dir)
+    except BaseException:
+        if moved_away and not out_dir.exists() and not out_dir.is_symlink():
+            previous.rename(out_dir)
+        if link_tmp.is_symlink():
+            link_tmp.unlink()
+        if set_dir.exists() and not staging.exists():
+            set_dir.rename(staging)
+        _remove_marker(out_dir)
+        raise
+    _fsync_dir(parent)
     shutil.rmtree(previous)
-    marker.unlink()
+    _remove_marker(out_dir)
 
 
 def _recover_interrupted_publication(out_dir: Path) -> str | None:
-    """Complete or roll back a marker-guarded swap that was interrupted.
+    """Complete or roll back an interrupted publication, under the lock.
 
     Returns a description of the action taken, or ``None`` when there is
-    no marker. The staged set was complete before the swap began (nothing
-    is ever swapped in earlier), so an interruption with the staged set
-    still on disk rolls *forward*; only when the staged set is gone is the
-    previous publication restored.
+    no marker. The staged set was complete before any swap began (nothing
+    is ever published earlier), so an interruption with the staged set
+    still on disk rolls *forward*; only when the staged set is gone is
+    the previous publication restored.
     """
-    marker = _publish_marker_path(out_dir)
-    if not marker.exists():
+    if not _publish_marker_path(out_dir).exists():
         return None
-    names = json.loads(marker.read_text())
+    with _publisher_lock(out_dir):
+        return _recover_unlocked(out_dir)
+
+
+def _recover_unlocked(out_dir: Path) -> str | None:
+    marker_path = _publish_marker_path(out_dir)
+    if not marker_path.exists():
+        return None
+    names = json.loads(marker_path.read_text())
+    # Markers written before the symlink-layout fallback carry no mode
+    # and follow the retired two-rename protocol.
+    mode = str(names.get("mode", "legacy-two-rename"))
+    if mode == "exchange":
+        action = _recover_exchange(out_dir, names)
+    elif mode == "symlink-flip":
+        action = _recover_symlink_flip(out_dir, names)
+    elif mode == "migrate":
+        action = _recover_migration(out_dir, names)
+    elif mode == "legacy-two-rename":
+        action = _recover_legacy_two_rename(out_dir, names)
+    else:
+        raise RuntimeError(
+            f"Publication marker {marker_path} carries unknown mode "
+            f"{mode!r}; refusing to guess at recovery."
+        )
+    _remove_marker(out_dir)
+    return action
+
+
+def _recover_exchange(out_dir: Path, names: dict[str, object]) -> str:
+    staging = out_dir.parent / str(names["staging"])
+    if not out_dir.exists():
+        raise RuntimeError(
+            f"Publication marker for {out_dir} records an exchange, but "
+            "the published path is missing; an exchange cannot vacate the "
+            "name, so this state was not produced by the publisher and "
+            "cannot be recovered automatically."
+        )
+    # Whether or not the exchange happened, exactly one complete set
+    # answers to the public name and the other sits under the staging
+    # name for disposal.
+    if staging.exists():
+        shutil.rmtree(staging)
+    return "removed the displaced set left by an interrupted exchange"
+
+
+def _recover_symlink_flip(out_dir: Path, names: dict[str, object]) -> str:
+    parent = out_dir.parent
+    staging = parent / str(names["staging"])
+    set_dir = parent / str(names["set"])
+    link_tmp = parent / str(names["link_tmp"])
+    if link_tmp.is_symlink() or link_tmp.exists():
+        link_tmp.unlink()
+    if out_dir.is_symlink() and os.readlink(out_dir) == set_dir.name:
+        # Crash after the retarget: only disposal was left.
+        _dispose_set(parent, names.get("old_set"))
+        return "finished a symlink retarget: disposed of the superseded set"
+    if staging.exists() and not set_dir.exists():
+        staging.rename(set_dir)
+    if not set_dir.exists():
+        # Nothing staged survives and the flip never happened; the
+        # previous publication is intact under the public name.
+        return "cleared an aborted symlink retarget (publication intact)"
+    fresh_tmp = parent / f".{out_dir.name}.linktmp-{uuid.uuid4().hex}"
+    os.symlink(set_dir.name, fresh_tmp)
+    os.rename(fresh_tmp, out_dir)
+    _dispose_set(parent, names.get("old_set"))
+    return "completed the interrupted symlink retarget from the staged set"
+
+
+def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
+    parent = out_dir.parent
+    staging = parent / str(names["staging"])
+    set_dir = parent / str(names["set"])
+    link_tmp = parent / str(names["link_tmp"])
+    previous = parent / str(names["previous"])
+    if link_tmp.is_symlink() or link_tmp.exists():
+        link_tmp.unlink()
+    if out_dir.is_symlink():
+        # Crash after the migration's final rename: only disposal was left.
+        for leftover in (previous, staging):
+            if leftover.exists():
+                shutil.rmtree(leftover)
+        return "finished the layout migration: disposed of the previous set"
+    if staging.exists() and not set_dir.exists():
+        staging.rename(set_dir)
+    if set_dir.exists():
+        # Roll forward: the staged set is complete, so finish installing
+        # the symlink layout from wherever the crash left the migration.
+        if out_dir.exists():
+            out_dir.rename(previous)
+        fresh_tmp = parent / f".{out_dir.name}.linktmp-{uuid.uuid4().hex}"
+        os.symlink(set_dir.name, fresh_tmp)
+        os.rename(fresh_tmp, out_dir)
+        if previous.exists():
+            shutil.rmtree(previous)
+        return "completed the interrupted layout migration from the staged set"
+    if previous.exists():
+        previous.rename(out_dir)
+        return "restored the previous publication"
+    if out_dir.exists():
+        return "cleared an aborted layout migration (publication intact)"
+    raise RuntimeError(
+        f"Publication marker for {out_dir} names directories that no "
+        "longer exist; the publication cannot be recovered automatically."
+    )
+
+
+def _recover_legacy_two_rename(out_dir: Path, names: dict[str, object]) -> str:
     staging = out_dir.parent / str(names["staging"])
     previous = out_dir.parent / str(names["previous"])
     if out_dir.exists():
@@ -467,22 +829,20 @@ def _recover_interrupted_publication(out_dir: Path) -> str | None:
             shutil.rmtree(previous)
         if staging.exists():
             shutil.rmtree(staging)
-        action = "removed leftover swap directories"
-    elif staging.exists():
+        return "removed leftover swap directories"
+    if staging.exists():
         staging.rename(out_dir)
         if previous.exists():
             shutil.rmtree(previous)
-        action = "completed the interrupted publication from staging"
-    elif previous.exists():
+        return "completed the interrupted publication from staging"
+    if previous.exists():
         previous.rename(out_dir)
-        action = "restored the previous publication"
-    else:
-        raise RuntimeError(
-            f"Publication marker {marker} names directories that no longer "
-            "exist; the publication cannot be recovered automatically."
-        )
-    marker.unlink()
-    return action
+        return "restored the previous publication"
+    raise RuntimeError(
+        f"Publication marker {_publish_marker_path(out_dir)} names "
+        "directories that no longer exist; the publication cannot be "
+        "recovered automatically."
+    )
 
 
 def _load_download_manifest(path: Path | None) -> dict[tuple[str, str], str]:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import socket
 import subprocess
 import sys
 import zipfile
@@ -1245,16 +1247,67 @@ def test_exchange_directories_swaps_in_a_single_syscall(tmp_path):
     assert (second / "who.txt").read_bytes() == b"first"
 
 
-def test_marker_swap_interrupted_between_renames_recovers_forward(tmp_path):
-    """Kill the fallback swap between its two renames — the window sol's
-    review flagged — then prove the next build's recovery pass republishes
-    the staged set and removes every intermediate."""
+def _symlink_layout(tmp_path: Path, files: dict[str, bytes]) -> Path:
+    """Install ``out`` as a symlink to a populated versioned set."""
+    initial_set = tmp_path / ".out.set-initial"
+    _populate(initial_set, files)
+    (tmp_path / "out").symlink_to(initial_set.name)
+    return initial_set
 
+
+def test_fallback_publish_is_a_windowless_symlink_retarget(tmp_path, monkeypatch):
+    """Without an exchange, publication installs a symlink layout and
+    every republication retargets it with ONE rename of the public name;
+    the spy proves the published path resolves before and after every
+    rename the publisher issues — there is no ENOENT window and no
+    ordering that removes ``out`` before its replacement is in place."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
     out_dir = tmp_path / "out"
-    staging = tmp_path / ".out.staging-interrupted"
-    out_dir.mkdir()
-    staging.mkdir()
-    _populate(out_dir, _OLD_SET)
+
+    first_staging = tmp_path / ".out.staging-first"
+    _populate(first_staging, _OLD_SET)
+    build_cli._publish_atomically(first_staging, out_dir)
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _OLD_SET
+
+    second_staging = tmp_path / ".out.staging-second"
+    _populate(second_staging, _NEW_SET)
+    real_rename = os.rename
+    public_renames: list[tuple[str, str]] = []
+
+    def spying_rename(src, dst, *args, **kwargs):
+        assert os.path.exists(out_dir), "public path missing before a rename"
+        result = real_rename(src, dst, *args, **kwargs)
+        assert os.path.exists(out_dir), "public path missing after a rename"
+        if Path(os.fspath(dst)) == out_dir or Path(os.fspath(src)) == out_dir:
+            public_renames.append((os.fspath(src), os.fspath(dst)))
+        return result
+
+    monkeypatch.setattr(os, "rename", spying_rename)
+    build_cli._publish_atomically(second_staging, out_dir)
+    monkeypatch.undo()
+
+    assert len(public_renames) == 1
+    source, destination = public_renames[0]
+    assert ".linktmp-" in Path(source).name
+    assert Path(destination) == out_dir
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    siblings = sorted(path.name for path in tmp_path.iterdir())
+    assert siblings == sorted(["out", os.readlink(out_dir)])
+
+
+def test_fallback_crash_before_the_retarget_leaves_publication_present(tmp_path):
+    """Kill the fallback at the retarget attempt itself: the previous
+    publication must still be fully readable under the public name (the
+    r2 fallback had already renamed it away at this point — the ENOENT
+    window), and recovery must finish the retarget from the marker."""
+
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-crash"
     _populate(staging, _NEW_SET)
     script = f"""
 import importlib.util, os
@@ -1263,36 +1316,197 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+module._exchange_directories = lambda *args: False
 
-original_rename = Path.rename
+out_dir = Path({str(out_dir)!r})
+real_rename = os.rename
 
-def dying_rename(self, target):
-    if self.name.startswith(".out.staging-"):
-        os._exit(9)  # the process dies between the two renames
-    return original_rename(self, target)
+def dying_rename(src, dst, *args, **kwargs):
+    if Path(os.fspath(dst)) == out_dir:
+        os._exit(9)  # dies at the one operation that touches the public name
+    return real_rename(src, dst, *args, **kwargs)
 
-Path.rename = dying_rename
-module._publish_with_recovery_marker(
-    Path({str(staging)!r}), Path({str(out_dir)!r})
-)
+os.rename = dying_rename
+module._publish_atomically(Path({str(staging)!r}), out_dir)
 """
     result = subprocess.run(
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
     )
     assert result.returncode == 9, result.stderr
-    # The stranded state sol described: no publication under the public
-    # name, the previous set under .previous-*, the staged set intact.
-    assert not out_dir.exists()
-    assert staging.exists()
+    # The refutation of the r2 window: the crash point left the previous
+    # publication untouched and readable under the public name.
+    assert out_dir.is_symlink()
+    assert os.readlink(out_dir) == initial_set.name
+    assert _read_set(out_dir) == _OLD_SET
     marker = tmp_path / ".out.publish-recovery.json"
-    assert marker.exists()
+    assert json.loads(marker.read_text())["mode"] == "symlink-flip"
 
     build_cli = _build_cli_module()
     action = build_cli._recover_interrupted_publication(out_dir)
-    assert action == "completed the interrupted publication from staging"
+    assert action == "completed the interrupted symlink retarget from the staged set"
+    assert out_dir.is_symlink()
     assert _read_set(out_dir) == _NEW_SET
     assert not marker.exists()
+    assert not initial_set.exists()
+    siblings = sorted(path.name for path in tmp_path.iterdir())
+    assert siblings == sorted(["out", os.readlink(out_dir)])
+
+
+@pytest.mark.parametrize("kill_on", ["retarget", "vacate"])
+def test_legacy_migration_crash_recovers_forward_to_symlink_layout(tmp_path, kill_on):
+    """The one-time legacy migration (real directory, no exchange) is the
+    only windowed transition left. Kill it before the window opens
+    ('vacate': the publication is still present) and inside the window
+    ('retarget': the public name is briefly absent); both states must
+    roll forward to the symlink layout at the next build."""
+
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-migrate"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    predicate = (
+        "Path(os.fspath(dst)) == out_dir"
+        if kill_on == "retarget"
+        else "Path(os.fspath(src)) == out_dir"
+    )
+    script = f"""
+import importlib.util, os
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module._exchange_directories = lambda *args: False
+
+out_dir = Path({str(out_dir)!r})
+real_rename = os.rename
+
+def dying_rename(src, dst, *args, **kwargs):
+    if {predicate}:
+        os._exit(9)
+    return real_rename(src, dst, *args, **kwargs)
+
+os.rename = dying_rename
+module._publish_atomically(Path({str(staging)!r}), out_dir)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 9, result.stderr
+    marker = tmp_path / ".out.publish-recovery.json"
+    assert json.loads(marker.read_text())["mode"] == "migrate"
+    if kill_on == "vacate":
+        # Killed before the window: the old publication never moved.
+        assert out_dir.is_dir() and not out_dir.is_symlink()
+        assert _read_set(out_dir) == _OLD_SET
+    else:
+        # Killed inside the window: the marker-guarded absent state.
+        assert not out_dir.exists() and not out_dir.is_symlink()
+
+    build_cli = _build_cli_module()
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "completed the interrupted layout migration from the staged set"
+    assert out_dir.is_symlink()
+    assert _read_set(out_dir) == _NEW_SET
+    assert not marker.exists()
+    siblings = sorted(path.name for path in tmp_path.iterdir())
+    assert siblings == sorted(["out", os.readlink(out_dir)])
+
+
+def test_exchange_interrupted_before_cleanup_reclaims_displaced_set(tmp_path):
+    """A hard exit between the exchange and its cleanup used to strand the
+    displaced previous publication under ``.staging-*`` with nothing
+    recording it. The marker now names the staging path BEFORE the
+    exchange — it survives the crash that follows the syscall — and
+    recovery reclaims the orphan."""
+
+    build_cli = _build_cli_module()
+    if not build_cli._exchange_supported(tmp_path):
+        pytest.skip("no atomic directory exchange on this platform/filesystem")
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-exchange"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    script = f"""
+import importlib.util, os, shutil
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("build_cli", {str(BUILD_CLI)!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+real_rmtree = shutil.rmtree
+
+def dying_rmtree(path, *args, **kwargs):
+    if Path(os.fspath(path)).name.startswith(".out.staging-"):
+        os._exit(9)  # dies after the exchange, before disposing the old set
+    return real_rmtree(path, *args, **kwargs)
+
+shutil.rmtree = dying_rmtree
+module._publish_atomically(Path({str(staging)!r}), Path({str(out_dir)!r}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 9, result.stderr
+    # The exchange happened: the new set is live and the displaced old
+    # set sits under the staging name, which the pre-exchange marker
+    # recorded.
+    assert _read_set(out_dir) == _NEW_SET
+    assert _read_set(staging) == _OLD_SET
+    marker = tmp_path / ".out.publish-recovery.json"
+    recorded = json.loads(marker.read_text())
+    assert recorded["mode"] == "exchange"
+    assert recorded["staging"] == staging.name
+
+    action = build_cli._recover_interrupted_publication(out_dir)
+    assert action == "removed the displaced set left by an interrupted exchange"
+    assert _read_set(out_dir) == _NEW_SET
+    assert not staging.exists()
+    assert not marker.exists()
     assert [path.name for path in tmp_path.iterdir()] == ["out"]
+
+
+def test_publisher_lock_refuses_live_and_foreign_holders_and_takes_over_stale(
+    tmp_path,
+):
+    """Concurrent publishers are refused (live same-host pid and any
+    foreign-host lock), a dead same-host holder's lock is taken over, and
+    both directories are untouched by a refused attempt."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-locked"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+    lock = tmp_path / ".out.publish-lock"
+
+    lock.write_text(json.dumps({"host": socket.gethostname(), "pid": os.getpid()}))
+    with pytest.raises(RuntimeError, match="Another publisher holds"):
+        build_cli._publish_atomically(staging, out_dir)
+    assert _read_set(out_dir) == _OLD_SET
+    assert _read_set(staging) == _NEW_SET
+
+    lock.write_text(json.dumps({"host": "somewhere-else", "pid": 1}))
+    with pytest.raises(RuntimeError, match="Another publisher holds"):
+        build_cli._publish_atomically(staging, out_dir)
+    lock.unlink()
+
+    dead_pid = int(
+        subprocess.run(
+            [sys.executable, "-c", "import os; print(os.getpid())"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout.strip()
+    )
+    lock.write_text(json.dumps({"host": socket.gethostname(), "pid": dead_pid}))
+    build_cli._publish_atomically(staging, out_dir)
+    assert _read_set(out_dir) == _NEW_SET
+    assert not lock.exists()
 
 
 def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
@@ -1322,32 +1536,71 @@ def test_marker_swap_recovery_restores_previous_when_staging_is_gone(tmp_path):
     assert [path.name for path in tmp_path.iterdir()] == ["out"]
 
 
-def test_marker_swap_in_process_failure_restores_previous(tmp_path, monkeypatch):
-    """A second-rename failure inside the process rolls straight back:
-    the previous publication returns under the public name and the marker
-    is removed."""
+def test_symlink_retarget_in_process_failure_restores_staging(tmp_path, monkeypatch):
+    """A retarget failure inside the process leaves the previous
+    publication untouched under the public name (it was never moved),
+    puts the staged set back under its staging name for the caller's
+    cleanup, and withdraws the marker."""
 
     build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    initial_set = _symlink_layout(tmp_path, _OLD_SET)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-fails"
+    _populate(staging, _NEW_SET)
+    real_rename = os.rename
+
+    def failing_rename(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir:
+            raise OSError("simulated rename failure")
+        return real_rename(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "rename", failing_rename)
+    with pytest.raises(OSError, match="simulated rename failure"):
+        build_cli._publish_atomically(staging, out_dir)
+    monkeypatch.undo()
+    assert out_dir.is_symlink()
+    assert os.readlink(out_dir) == initial_set.name
+    assert _read_set(out_dir) == _OLD_SET
+    assert _read_set(staging) == _NEW_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert not (tmp_path / ".out.publish-lock").exists()
+    siblings = sorted(path.name for path in tmp_path.iterdir())
+    assert siblings == sorted(["out", initial_set.name, staging.name])
+
+
+def test_legacy_migration_in_process_failure_restores_previous(tmp_path, monkeypatch):
+    """A retarget failure inside the migration rolls straight back: the
+    previous publication returns under the public name, the staged set
+    returns under its staging name, and the marker is removed."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
     out_dir = tmp_path / "out"
     staging = tmp_path / ".out.staging-fails"
     out_dir.mkdir()
-    staging.mkdir()
     _populate(out_dir, _OLD_SET)
     _populate(staging, _NEW_SET)
-    original_rename = Path.rename
+    real_rename = os.rename
+    failed = []
 
-    def failing_rename(self, target):
-        if self.name.startswith(".out.staging-"):
+    def failing_once(src, dst, *args, **kwargs):
+        if Path(os.fspath(dst)) == out_dir and not failed:
+            failed.append(True)
             raise OSError("simulated rename failure")
-        return original_rename(self, target)
+        return real_rename(src, dst, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "rename", failing_rename)
+    monkeypatch.setattr(os, "rename", failing_once)
     with pytest.raises(OSError, match="simulated rename failure"):
-        build_cli._publish_with_recovery_marker(staging, out_dir)
+        build_cli._publish_atomically(staging, out_dir)
     monkeypatch.undo()
+    assert out_dir.is_dir() and not out_dir.is_symlink()
     assert _read_set(out_dir) == _OLD_SET
-    assert staging.exists()
+    assert _read_set(staging) == _NEW_SET
     assert not (tmp_path / ".out.publish-recovery.json").exists()
+    assert not (tmp_path / ".out.publish-lock").exists()
+    siblings = sorted(path.name for path in tmp_path.iterdir())
+    assert siblings == sorted(["out", staging.name])
 
 
 def test_cbp_page_retrieval_timestamp_is_captured_at_the_request(tmp_path, monkeypatch):
