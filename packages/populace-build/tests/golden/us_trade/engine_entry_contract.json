@@ -1,0 +1,47 @@
+{
+  "contract": "us:policies/cbp/us-tariff-duty/composition input surface",
+  "source": {
+    "repo": "TheAxiomFoundation/axiom-oracles",
+    "commit": "8b580e778a0ad134b93d563b5f8ae17980a29008",
+    "file": "axiom_oracles/suites/us_tariff_panel.py",
+    "file_sha256": "68b6f976e68af25eed828c1f0a3721cf90e71ae73c5ade1ab8726e839481f4df",
+    "note": "The axiom_inputs mapping this cross-engine panel suite feeds the composed tariff spine (the exact keys under us:policies/cbp/us-tariff-duty/composition#input.*), plus the per-unit probe date. Copied by hand from the pinned file; the sha256 lets any reviewer re-derive it."
+  },
+  "inputs": {
+    "customs_value": {
+      "entries_column": "customs_value",
+      "axiom_input": "us:policies/cbp/us-tariff-duty/composition#input.customs_value",
+      "type": "positive integer dollars"
+    },
+    "shipment_value": {
+      "entries_column": "shipment_value",
+      "axiom_input": "us:policies/cbp/us-tariff-duty/composition#input.shipment_value",
+      "type": "positive integer dollars",
+      "constraint": "equal to customs_value (documented P2 assumption; no separate shipment-value margin exists)"
+    },
+    "hts_number": {
+      "entries_column": "hts_number",
+      "axiom_input": "us:policies/cbp/us-tariff-duty/composition#input.hts_number",
+      "type": "string",
+      "format": "dotted HTS-10, \\d{4}\\.\\d{2}\\.\\d{2}\\.\\d{2}"
+    },
+    "country_of_origin": {
+      "entries_column": "country_of_origin",
+      "axiom_input": "us:policies/cbp/us-tariff-duty/composition#input.country_of_origin",
+      "type": "string",
+      "format": "two uppercase letters: ISO 3166-1 alpha-2, or the Census Schedule C conventions GZ/WE/KV carried through the vendored bridge"
+    },
+    "is_postal_shipment": {
+      "entries_column": "is_postal_shipment",
+      "axiom_input": "us:policies/cbp/us-tariff-duty/composition#input.is_postal_shipment",
+      "type": "bool",
+      "constraint": "uniformly False (documented P2 gap: no public postal split at the margin grain)"
+    },
+    "evaluation_date": {
+      "entries_column": "entry_date",
+      "axiom_input": "per-unit probe date (the suite evaluates each unit as of a date)",
+      "type": "date",
+      "constraint": "engine-domain months require entry_date >= 2026-02-15 (composition effective_from)"
+    }
+  }
+}
