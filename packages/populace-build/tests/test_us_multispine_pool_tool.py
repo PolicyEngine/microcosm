@@ -1040,11 +1040,22 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_te
             "battery",
             "publish",
         ]
-        assert row.artifact_location == str((tmp_path / "stacked-pool.h5").resolve())
+        # Exported rows must never embed host-absolute paths; pytest tmp
+        # directories live outside both the checkout and home on supported
+        # platforms, so the reference lands on the stripped-absolute form.
+        assert row.artifact_location == (
+            "local://"
+            + (tmp_path / "stacked-pool.h5").resolve().as_posix().lstrip("/")
+        )
+        expected_receipt_prefix = (
+            "local://"
+            + (tmp_path / "ledger-receipts" / row.build_id)
+            .resolve()
+            .as_posix()
+            .lstrip("/")
+        )
         assert all(
-            verdict["receipt"].startswith(
-                str((tmp_path / "ledger-receipts" / row.build_id).resolve())
-            )
+            verdict["receipt"].startswith(expected_receipt_prefix)
             for verdict in row.gate_verdicts.values()
         )
         manifest = json.loads(
@@ -1108,12 +1119,30 @@ def test_stacked_preflight_errors_emit_one_chronicle_row(
     )
     assert row.artifact_location is None
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
-    error_path = Path(
-        row.gate_verdicts["pipeline_error"]["receipt"].split("#", maxsplit=1)[0]
+    error_path = _receipt_file_from_reference(
+        row.gate_verdicts["pipeline_error"]["receipt"]
     )
     assert error_path.is_file()
     assert error_path.parent == tmp_path / "ledger-receipts" / row.build_id
     assert order == []
+
+
+def _receipt_file_from_reference(reference: str) -> Path:
+    """Map one exported ``local://`` receipt reference back to a real file.
+
+    Rows never embed host-absolute paths, so tests reconstruct the file
+    location from the reference's anchor: ``~/`` means home, and the
+    stripped-absolute fallback (the only form pytest tmp paths produce)
+    re-roots at ``/``.
+    """
+
+    location = reference.split("#", maxsplit=1)[0]
+    assert location.startswith("local://")
+    tail = location.removeprefix("local://")
+    assert not tail.startswith("/")
+    if tail.startswith("~/"):
+        return Path.home() / tail[2:]
+    return Path("/") / tail
 
 
 def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
@@ -1145,8 +1174,8 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
         "fixture_battery",
         "pipeline_error",
     }
-    terminal_path = Path(
-        row.gate_verdicts["fixture_battery"]["receipt"].split("#", maxsplit=1)[0]
+    terminal_path = _receipt_file_from_reference(
+        row.gate_verdicts["fixture_battery"]["receipt"]
     )
     assert terminal_path.is_file()
     assert stale_h5.read_bytes() == b"prior-build-artifact"
@@ -1166,8 +1195,8 @@ def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
     )
     assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
     first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
-    first_receipt = Path(
-        first_row.gate_verdicts["fixture_battery"]["receipt"].split("#", maxsplit=1)[0]
+    first_receipt = _receipt_file_from_reference(
+        first_row.gate_verdicts["fixture_battery"]["receipt"]
     )
     first_bytes = first_receipt.read_bytes()
 
@@ -1191,8 +1220,8 @@ def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
     second_row = next(
         row for row in rows if row.prev_row_digest == first_row.row_digest
     )
-    second_receipt = Path(
-        second_row.gate_verdicts["fixture_battery"]["receipt"].split("#", maxsplit=1)[0]
+    second_receipt = _receipt_file_from_reference(
+        second_row.gate_verdicts["fixture_battery"]["receipt"]
     )
     assert second_receipt != first_receipt
     assert first_receipt.read_bytes() == first_bytes
@@ -3840,3 +3869,28 @@ def test_assembly_receipt_loss_surfaces_unchanged_through_tool(
             seed=no_op,
             simulate=no_op,
         )
+
+
+def test_local_artifact_reference_never_embeds_host_absolute_paths(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """Exported row locations anchor to checkout, then home, never ``/``."""
+
+    repo_file = Path(pool_tool.__file__).resolve()
+    repo_reference = pool_tool._local_artifact_reference(repo_file)
+    assert repo_reference == "local://tools/build_us_multispine_pool.py"
+
+    home_path = Path.home() / "populace-test-unwritten" / "artifact.h5"
+    home_reference = pool_tool._local_artifact_reference(home_path)
+    assert home_reference == (
+        "local://~/populace-test-unwritten/artifact.h5"
+    )
+
+    outside_path = (tmp_path / "artifact.h5").resolve()
+    outside_reference = pool_tool._local_artifact_reference(outside_path)
+    assert outside_reference == f"local://{outside_path.as_posix().lstrip('/')}"
+
+    for reference in (repo_reference, home_reference, outside_reference):
+        assert not reference.startswith("local:///")
+        assert "local://Users/" not in reference

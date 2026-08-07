@@ -236,7 +236,7 @@ class ChronicleRow:
     def to_mapping(self) -> dict[str, Any]:
         """Return the normalized JSON row in #628 database-column order."""
 
-        return {
+        mapping = {
             "build_id": self.build_id,
             "ts": self.ts,
             "pipeline": self.pipeline,
@@ -255,6 +255,12 @@ class ChronicleRow:
             "prev_row_digest": self.prev_row_digest,
             "row_digest": self.row_digest,
         }
+        # ``frozen=True`` prevents attribute replacement but a caller can
+        # still mutate nested JSON containers.  Re-authenticate immediately
+        # before every serialization boundary so neither such a mutation nor
+        # direct dataclass construction can persist an invalid row.
+        ChronicleRow.from_mapping(mapping)
+        return mapping
 
     def to_json_line(self) -> str:
         """Serialize one portable compact JSON row."""

@@ -3390,6 +3390,34 @@ def _git_code_pin() -> str:
     return pin
 
 
+def _local_artifact_reference(path: Path) -> str:
+    """Render one exportable artifact reference without host-absolute paths.
+
+    Recorded rows export to a public archive, so locations anchor to the
+    owning checkout first, then the home directory, and never embed an
+    absolute host path (which would leak local usernames and layout).
+    """
+
+    resolved = path.resolve()
+    try:
+        repo_root = Path(
+            subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=Path(__file__).resolve().parents[1],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        ).resolve()
+    except (OSError, subprocess.CalledProcessError):
+        repo_root = None
+    if repo_root is not None and resolved.is_relative_to(repo_root):
+        return f"local://{resolved.relative_to(repo_root).as_posix()}"
+    home = Path.home().resolve()
+    if resolved.is_relative_to(home):
+        return f"local://~/{resolved.relative_to(home).as_posix()}"
+    return f"local://{resolved.as_posix().lstrip('/')}"
+
+
 def _chronicle_predecessor(args: argparse.Namespace) -> str | None:
     cli_value = args.chronicle_prev_row_digest
     environment_value = os.environ.get("POPULACE_CHRONICLE_PREV_ROW_DIGEST")
@@ -3770,7 +3798,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             gate.name: {
                 "verdict": "passed" if gate.passed else "failed",
                 "receipt": (
-                    f"{terminal_receipt_path.resolve()}"
+                    f"{_local_artifact_reference(terminal_receipt_path)}"
                     f"#/terminal_gates/gates/{gate.name}"
                 ),
             }
@@ -3794,7 +3822,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             clone_attachment_seed=args.clone_attachment_seed,
         )
         _append_phase(state, "publication_completed")
-        state.artifact_location = str(outputs.pool_h5.resolve())
+        state.artifact_location = _local_artifact_reference(outputs.pool_h5)
     except Exception as error:
         error_path = _stacked_error_receipt_path(
             outputs,
@@ -3817,7 +3845,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             **({} if set(state.gate_verdicts) == {"pipeline"} else state.gate_verdicts),
             "pipeline_error": {
                 "verdict": "error",
-                "receipt": f"{error_path.resolve()}#/error_type",
+                "receipt": f"{_local_artifact_reference(error_path)}#/error_type",
             },
         }
         _append_phase(state, "error")
