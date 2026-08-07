@@ -63,7 +63,17 @@ UK_TIME_PERIOD_METADATA_KEY = "time_period"
 
 @dataclass(frozen=True)
 class _UKSourceFileFingerprint:
-    """Cheap stable-file identity used to bind a prior hash to an H5 load."""
+    """Cheap stable-file identity used to bind a prior hash to an H5 load.
+
+    Scope-reduced by #612 increment 3: stat identity (device/inode/mtime)
+    cannot survive a file copy or a machine move, so it no longer carries
+    any *run* identity — that role belongs to content addressing
+    (``uk_frame_content_identity`` in the descent fences, the checkpointed
+    build's content-addressed run config). What stays here is exactly what
+    stat identity is good at: the mid-read race guard (the file must not
+    change while it is being loaded) and re-binding the certified-candidate
+    hash to the same on-disk file within one process.
+    """
 
     device: int
     inode: int

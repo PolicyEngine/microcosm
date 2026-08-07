@@ -129,6 +129,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
     parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        help=(
+            "Persist a lossless Frame checkpoint at every stage boundary and "
+            "resume completed stages from it (#612 increment 3). The run is "
+            "pinned by a content-addressed run config (input digest, seed, "
+            "QRF estimators, raw-source digests); rerunning the same command "
+            "against the same directory resumes, a changed configuration is "
+            "refused. Omit for the destructive single-process build."
+        ),
+    )
+    parser.add_argument(
         "--input-mass-reference-json",
         type=Path,
         help=(
@@ -336,6 +348,12 @@ def main() -> int:
             if legacy_input_coverage_path is not None
             else {"terminal_gate_path": terminal_gate_path}
         )
+        checkpoint_arguments: dict[str, object] = {}
+        if args.checkpoint_dir is not None:
+            checkpoint_arguments = {
+                "checkpoint_dir": args.checkpoint_dir,
+                "run_config": _staging_run_config(args, candidate=candidate),
+            }
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
@@ -353,6 +371,7 @@ def main() -> int:
             ),
             **gate_path_argument,
             **weighted_integrity_arguments,
+            **checkpoint_arguments,
         )
     except RuntimeError as error:
         if (
@@ -419,6 +438,43 @@ def main() -> int:
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
+
+
+def _staging_run_config(
+    args: argparse.Namespace,
+    *,
+    candidate: object,
+) -> dict[str, object]:
+    """The content-addressed identity of a checkpointed staging run.
+
+    Everything that determines the stage outputs is pinned by content, not
+    by path or stat: the verified certified-candidate digest, the raw-source
+    digests, the seeds, and the release coordinates. The stage runtime
+    refuses to resume a checkpoint directory under a different config, so a
+    drifted input or parameter can never blend into an old run's prefix.
+    """
+
+    def _digest(path: str | Path) -> dict[str, object]:
+        info = _artifact_info(path)
+        return {"sha256": info["sha256"], "size_bytes": info["size_bytes"]}
+
+    return {
+        "build_kind": "uk_national_staging_dataset",
+        "release_id": str(args.release_id),
+        "calibration_diagnostics_sha256": str(args.calibration_diagnostics_sha256),
+        "seed": int(args.seed),
+        "qrf_estimators": int(args.qrf_estimators),
+        "certified_candidate": {
+            "sha256": str(candidate.sha256),
+            "size_bytes": int(candidate.size_bytes),
+        },
+        "sources": {
+            "adult_tab": _digest(Path(args.frs_raw_dir) / "adult.tab"),
+            "benefits_tab": _digest(Path(args.frs_raw_dir) / "benefits.tab"),
+            "spi_tab": _digest(args.spi_tab),
+            "hmrc_ods": _digest(args.hmrc_ods),
+        },
+    }
 
 
 def _artifact_info(path: str | Path) -> dict[str, str | int]:
