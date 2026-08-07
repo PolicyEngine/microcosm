@@ -184,16 +184,34 @@ def test_household_money_income_sums_person_and_household_columns():
     )
     persons = pd.DataFrame(
         {
-            "person_household_id": [1, 1, 2],
-            "employment_income_before_lsr": [10.0, 20.0, 7.0],
-            "self_employment_income_before_lsr": [0.0, 1.0, 0.0],
-            "taxable_interest_income": [0.0, 0.0, 2.0],
-            "social_security_retirement": [0.0, 0.0, 3.0],
+            "person_household_id": [1, 1, 2, 2],
+            "age": [40.0, 35.0, 50.0, 10.0],
+            "employment_income_before_lsr": [10.0, 20.0, 7.0, 99.0],
+            "self_employment_income_before_lsr": [0.0, 1.0, 0.0, 0.0],
+            "taxable_interest_income": [0.0, 0.0, 2.0, 0.0],
+            "social_security_retirement": [0.0, 0.0, 3.0, 0.0],
         }
     )
     resolution = resolve_money_income_recipe(persons.columns, households.columns)
     income = household_acs_money_income(households, persons, resolution)
+    # The 10-year-old's 99.0 is outside the ACS money-income universe.
     np.testing.assert_allclose(income, [36.0, 12.0])
+
+
+def test_household_money_income_requires_age():
+    households = pd.DataFrame({"household_id": [1]})
+    persons = pd.DataFrame(
+        {
+            "person_household_id": [1],
+            "employment_income_before_lsr": [1.0],
+            "self_employment_income_before_lsr": [0.0],
+            "taxable_interest_income": [0.0],
+            "social_security_retirement": [0.0],
+        }
+    )
+    resolution = resolve_money_income_recipe(persons.columns, households.columns)
+    with pytest.raises(ValueError, match="aged 15 and over"):
+        household_acs_money_income(households, persons, resolution)
 
 
 def _frame_and_facts(tmp_path):
@@ -230,8 +248,25 @@ def _frame_and_facts(tmp_path):
             value=50_000.0,
             aggregation="median",
         ),
-        # District 003 has facts but no assigned households.
+        # District 003 has the same fact surface but no assigned households.
         _fact(geo_id="610U900US49003", value=10.0),
+        _fact(
+            geo_id="610U900US49003",
+            value=4.0,
+            constraints=_income_constraints(None, 10_000),
+        ),
+        _fact(
+            geo_id="610U900US49003",
+            value=6.0,
+            constraints=_income_constraints(10_000, None),
+        ),
+        _fact(
+            geo_id="610U900US49003",
+            concept="census_acs.person_count",
+            entity="person",
+            value=3.0,
+            constraints=_age_constraints(0, 5),
+        ),
     ]
     return households, persons, _write_facts(tmp_path, rows)
 
@@ -302,3 +337,99 @@ def test_recipe_is_declared_and_ordered():
         "social_security",
     ]
     assert all(component.required for component in SLD_ACS_MONEY_INCOME_RECIPE[:4])
+
+
+def test_group_quarters_rows_support_population_but_not_households(tmp_path):
+    households = pd.DataFrame(
+        {
+            "household_id": [1, 2],
+            "state_fips": [49, 49],
+            "sld_upper_code": ["001", "001"],
+            "TYPEHUGQ": [1.0, 3.0],  # row 2 is a noninstitutional GQ person
+        }
+    )
+    persons = pd.DataFrame(
+        {
+            "person_household_id": [1, 2],
+            "age": [30.0, 22.0],
+            "employment_income_before_lsr": [5_000.0, 5_000.0],
+            "self_employment_income_before_lsr": [0.0, 0.0],
+            "taxable_interest_income": [0.0, 0.0],
+            "social_security_retirement": [0.0, 0.0],
+        }
+    )
+    rows = [
+        _fact(value=1.0),
+        _fact(value=1.0, constraints=_income_constraints(None, 10_000)),
+        _fact(
+            concept="census_acs.person_count",
+            entity="person",
+            value=2.0,
+            constraints=_age_constraints(18, 65),
+        ),
+    ]
+    facts = load_sld_target_facts(_write_facts(tmp_path, rows))
+    build = build_sld_district_problems(
+        households,
+        persons,
+        base_weights=np.array([10.0, 10.0]),
+        facts=facts,
+        area_type="sldu",
+    )
+    assert build.gq_marker_present
+    assert build.n_group_quarters_rows == 1
+    problem = build.problems[0]
+    by_metric = dict(zip(problem.target_frame["metric"], problem.matrix, strict=True))
+    # Age band counts both persons; household universes exclude the GQ row.
+    np.testing.assert_allclose(by_metric["age_18_to_64"], [1.0, 1.0])
+    np.testing.assert_allclose(by_metric["households"], [1.0, 0.0])
+    np.testing.assert_allclose(by_metric["income_under_10000"], [1.0, 0.0])
+
+
+def test_asymmetric_fact_surface_is_refused(tmp_path):
+    rows = [
+        _fact(value=1.0),
+        _fact(geo_id="610U900US49002", value=1.0),
+        _fact(
+            geo_id="610U900US49002",
+            value=1.0,
+            constraints=_income_constraints(None, 10_000),
+        ),
+    ]
+    facts = load_sld_target_facts(_write_facts(tmp_path, rows))
+    households = pd.DataFrame(
+        {
+            "household_id": [1],
+            "state_fips": [49],
+            "sld_upper_code": ["001"],
+        }
+    )
+    persons = pd.DataFrame(
+        {
+            "person_household_id": [1],
+            "age": [30.0],
+            "employment_income_before_lsr": [1.0],
+            "self_employment_income_before_lsr": [0.0],
+            "taxable_interest_income": [0.0],
+            "social_security_retirement": [0.0],
+        }
+    )
+    with pytest.raises(ValueError, match="asymmetric fact surface"):
+        build_sld_district_problems(
+            households,
+            persons,
+            base_weights=np.array([10.0]),
+            facts=facts,
+            area_type="sldu",
+        )
+
+
+def test_unknown_constraint_variables_are_refused(tmp_path):
+    rows = [
+        _fact(
+            value=1.0,
+            constraints=[{"variable": "race", "operator": "==", "value": "white"}],
+        )
+    ]
+    with pytest.raises(ValueError, match="no binding rule"):
+        load_sld_target_facts(_write_facts(tmp_path, rows))

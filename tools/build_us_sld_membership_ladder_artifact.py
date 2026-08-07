@@ -238,6 +238,14 @@ def main(argv: list[str] | None = None) -> None:
         cd_by_block=cd_by_block,
         tract_to_puma=tract_to_puma,
     )
+    source_population = sum(block_population.values())
+    dropped_population = int(arrays["dropped_population"][0])
+    if source_population and dropped_population > 0.001 * source_population:
+        raise SystemExit(
+            f"{dropped_population:,} of {source_population:,} source persons "
+            "live in blocks with no district assignment in either chamber — "
+            "the SLD BEF coverage is incomplete for the selected states."
+        )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **arrays)
     ladder = load_us_sld_membership_ladder(args.out)
@@ -247,8 +255,13 @@ def main(argv: list[str] | None = None) -> None:
         "n_tract_rows": int(len(ladder.tract_geoid)),
         "n_cell_rows": int(len(ladder.cell_puma)),
         "population": int(ladder.tract_population.sum()),
+        "source_population": int(source_population),
         "n_assigned_blocks": int(arrays["n_assigned_blocks"][0]),
         "n_blocks_without_cd": int(arrays["n_blocks_without_cd"][0]),
+        "n_dropped_blocks": int(arrays["n_dropped_blocks"][0]),
+        "dropped_population": dropped_population,
+        "boundary_vintage": ladder.boundary_vintage,
+        "source_kind": ladder.source_kind,
         "n_upper_districts": sum(
             len(codes) for codes in ladder.district_codes("upper").values()
         ),

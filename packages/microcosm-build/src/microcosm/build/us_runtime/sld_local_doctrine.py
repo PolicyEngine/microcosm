@@ -37,6 +37,7 @@ from populace.build.us_runtime.sld_local_solver import (
 
 __all__ = [
     "US_SLD_LOCAL_MAX_WEIGHT_RATIO",
+    "US_SLD_LOCAL_MIN_INITIAL_WEIGHT",
     "US_SLD_LOCAL_SOLVE_DOCTRINE",
     "US_SLD_LOCAL_TARGET_LOSS_CAP",
     "UsSldLocalSolveDoctrine",
@@ -50,6 +51,12 @@ US_SLD_LOCAL_TARGET_LOSS_CAP = 10.0
 
 #: Declared weight-ratio stretch bound vs the artifact-weight anchor.
 US_SLD_LOCAL_MAX_WEIGHT_RATIO = 100.0
+
+#: Fixed numerical floor for non-positive anchor weights (the log-weight
+#: optimizer needs strictly positive starts). Part of the doctrine surface:
+#: callers cannot vary it, and the count of floored anchors is recorded per
+#: district so a floored solve is never silently "within ratio".
+US_SLD_LOCAL_MIN_INITIAL_WEIGHT = 1e-4
 
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
 _ALLOWED_TARGET_WEIGHT_RULES = ("uniform",)
@@ -123,6 +130,7 @@ class UsSldLocalSolveDoctrine:
             "scale_rule": self.scale_rule,
             "target_weight_rule": self.target_weight_rule,
             "anchor_rule": self.anchor_rule,
+            "min_initial_weight": US_SLD_LOCAL_MIN_INITIAL_WEIGHT,
         }
 
 
@@ -153,7 +161,6 @@ def solve_us_sld_district_weights_under_doctrine(
     *,
     epochs: int = 512,
     learning_rate: float = 0.15,
-    min_initial_weight: float = 1e-4,
     seed: int = 0,
 ) -> SldDistrictSolveResult:
     """Solve one district as the uniform operator with declared bounds.
@@ -172,7 +179,7 @@ def solve_us_sld_district_weights_under_doctrine(
         learning_rate=learning_rate,
         max_weight_ratio=doctrine.max_weight_ratio,
         target_loss_cap=doctrine.target_loss_cap,
-        min_initial_weight=min_initial_weight,
+        min_initial_weight=US_SLD_LOCAL_MIN_INITIAL_WEIGHT,
         seed=seed,
     )
 
@@ -182,7 +189,6 @@ def solve_us_sld_chamber_under_doctrine(
     *,
     epochs: int = 512,
     learning_rate: float = 0.15,
-    min_initial_weight: float = 1e-4,
     seed: int = 0,
 ) -> SldChamberSolveResult:
     """Solve a whole chamber under the reviewed doctrine constants."""
@@ -195,6 +201,6 @@ def solve_us_sld_chamber_under_doctrine(
         learning_rate=learning_rate,
         max_weight_ratio=doctrine.max_weight_ratio,
         target_loss_cap=doctrine.target_loss_cap,
-        min_initial_weight=min_initial_weight,
+        min_initial_weight=US_SLD_LOCAL_MIN_INITIAL_WEIGHT,
         seed=seed,
     )

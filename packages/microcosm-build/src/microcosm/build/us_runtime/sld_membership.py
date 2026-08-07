@@ -130,6 +130,16 @@ def parse_national_sld24_bef(
     return result
 
 
+#: The boundary vintage this module's assignment semantics target. A ladder
+#: artifact must declare the same value in its embedded metadata — a stale
+#: or differently-sourced NPZ with the right array names is refused, not
+#: silently reported as 2024.
+SLD_MEMBERSHIP_BOUNDARY_VINTAGE = "2024_state_legislative_districts"
+
+#: The pinned source family the boundary vintage comes from.
+SLD_MEMBERSHIP_SOURCE_KIND = "census_2024_sld_bef"
+
+
 @dataclass(frozen=True)
 class UsSldMembershipLadder:
     """Block-population overlap tables for 2024-vintage SLD membership.
@@ -137,7 +147,9 @@ class UsSldMembershipLadder:
     ``tract_*`` arrays hold one row per ``tract x (sldu, sldl)`` combination;
     ``cell_*`` arrays one row per ``(puma, cd, county) x (sldu, sldl)``
     combination. ``population`` is the 2020 P.L. 94-171 block population the
-    combination carries; draws are proportional to it.
+    combination carries; draws are proportional to it. ``boundary_vintage``
+    and ``source_kind`` are the artifact's own declaration, validated at
+    load against this module's constants.
     """
 
     tract_geoid: np.ndarray
@@ -150,6 +162,8 @@ class UsSldMembershipLadder:
     cell_sldu: np.ndarray
     cell_sldl: np.ndarray
     cell_population: np.ndarray
+    boundary_vintage: str = SLD_MEMBERSHIP_BOUNDARY_VINTAGE
+    source_kind: str = SLD_MEMBERSHIP_SOURCE_KIND
 
     def district_codes(self, chamber: str) -> dict[str, frozenset[str]]:
         """Observed district codes per state FIPS for one chamber."""
@@ -175,7 +189,13 @@ def _string_array(values: np.ndarray, *, label: str) -> np.ndarray:
 
 
 def load_us_sld_membership_ladder(path: str | Path) -> UsSldMembershipLadder:
-    """Load and validate the membership-ladder NPZ artifact."""
+    """Load and validate the membership-ladder NPZ artifact.
+
+    The artifact must embed ``meta_boundary_vintage`` and
+    ``meta_source_kind`` matching this module's constants: array names alone
+    do not prove the districts are the 2024-BEF vintage the ACS targets
+    tabulate on.
+    """
     with np.load(Path(path), allow_pickle=False) as arrays:
         required = (
             "tract_geoid",
@@ -188,10 +208,25 @@ def load_us_sld_membership_ladder(path: str | Path) -> UsSldMembershipLadder:
             "cell_sldu",
             "cell_sldl",
             "cell_population",
+            "meta_boundary_vintage",
+            "meta_source_kind",
         )
         missing = [name for name in required if name not in arrays]
         if missing:
             raise ValueError(f"Membership ladder is missing arrays: {missing}.")
+        boundary_vintage = str(np.asarray(arrays["meta_boundary_vintage"]).item())
+        source_kind = str(np.asarray(arrays["meta_source_kind"]).item())
+        if boundary_vintage != SLD_MEMBERSHIP_BOUNDARY_VINTAGE:
+            raise ValueError(
+                f"Membership ladder declares boundary vintage "
+                f"{boundary_vintage!r}; this module assigns "
+                f"{SLD_MEMBERSHIP_BOUNDARY_VINTAGE!r} districts."
+            )
+        if source_kind != SLD_MEMBERSHIP_SOURCE_KIND:
+            raise ValueError(
+                f"Membership ladder declares source kind {source_kind!r}; "
+                f"expected {SLD_MEMBERSHIP_SOURCE_KIND!r}."
+            )
         ladder = UsSldMembershipLadder(
             tract_geoid=arrays["tract_geoid"].astype(np.int64),
             tract_sldu=_string_array(arrays["tract_sldu"], label="tract_sldu"),
@@ -203,6 +238,8 @@ def load_us_sld_membership_ladder(path: str | Path) -> UsSldMembershipLadder:
             cell_sldu=_string_array(arrays["cell_sldu"], label="cell_sldu"),
             cell_sldl=_string_array(arrays["cell_sldl"], label="cell_sldl"),
             cell_population=arrays["cell_population"].astype(np.int64),
+            boundary_vintage=boundary_vintage,
+            source_kind=source_kind,
         )
     if len(ladder.tract_geoid) == 0 or len(ladder.cell_puma) == 0:
         raise ValueError("Membership ladder tables must be non-empty.")
@@ -241,16 +278,18 @@ def _draw(
     indices: np.ndarray,
     populations: np.ndarray,
     generator: np.random.Generator,
-) -> int:
+) -> int | None:
+    """Population-weighted draw; ``None`` when the cell has no population.
+
+    Draws are population-proportional by doctrine — a zero-population cell
+    is not support, so the caller falls through to the next coarser
+    conditioning level instead of drawing uniformly from it.
+    """
     weights = populations[indices].astype(np.float64)
     total = weights.sum()
     if total <= 0:
-        # A conditioning cell whose blocks all carry zero 2020 population
-        # still names real districts; draw uniformly rather than refusing.
-        probabilities = np.full(len(indices), 1.0 / len(indices))
-    else:
-        probabilities = weights / total
-    return int(generator.choice(indices, p=probabilities))
+        return None
+    return int(generator.choice(indices, p=weights / total))
 
 
 def assign_us_sld_membership(
@@ -263,10 +302,17 @@ def assign_us_sld_membership(
 
     Requires ``state_fips``; conditions on ``tract_geoid`` where present and
     non-null, else on ``puma`` / ``congressional_district_geoid`` /
-    ``county_fips`` as available. Returns a copy with the
-    :data:`SLD_MEMBERSHIP_COLUMNS` appended. Rows are processed in a fixed
-    order (stable index order) from one seeded generator, so results are
-    reproducible from ``seed``.
+    ``county_fips`` as available. Geography components that name a
+    different state than the row's ``state_fips`` are ignored (the drawn
+    district always belongs to the row's own state — district codes repeat
+    across states, so a cross-state key would otherwise assign a
+    plausible-looking wrong district). Zero-population conditioning cells
+    fall through to the next coarser level.
+
+    Returns a copy with the :data:`SLD_MEMBERSHIP_COLUMNS` appended. Rows
+    are processed in a fixed order (stable index order) from one seeded
+    generator, so results are reproducible from ``seed`` given identical
+    input bytes and row order.
     """
     if "state_fips" not in households.columns:
         raise ValueError("households must carry state_fips.")
@@ -280,27 +326,36 @@ def assign_us_sld_membership(
     cell_puma_cd = _GroupIndex.build(ladder.cell_puma, ladder.cell_cd)
     cell_puma = _GroupIndex.build(ladder.cell_puma)
 
-    def _tract_value(row: pd.Series) -> int | None:
+    def _tract_value(row: pd.Series, state: int) -> int | None:
         if "tract_geoid" not in row.index:
             return None
         value = row["tract_geoid"]
         if pd.isna(value) or value in ("", 0):
             return None
-        return int(value)
+        tract = int(value)
+        return tract if tract // 10**9 == state else None
 
-    def _int_value(row: pd.Series, column: str) -> int | None:
+    def _int_value(
+        row: pd.Series,
+        column: str,
+        *,
+        state: int,
+        state_divisor: int,
+    ) -> int | None:
         if column not in row.index:
             return None
         value = row[column]
         if pd.isna(value) or value in ("", 0):
             return None
-        return int(value)
+        number = int(value)
+        return number if number // state_divisor == state else None
 
     upper_codes: list[str] = []
     lower_codes: list[str] = []
     methods: list[str] = []
     for _, row in households.iterrows():
-        tract = _tract_value(row)
+        state = int(row["state_fips"])
+        tract = _tract_value(row, state)
         chosen: int | None = None
         method = "unassigned"
         if tract is not None and (tract,) in tract_index.groups:
@@ -311,13 +366,19 @@ def assign_us_sld_membership(
             else:
                 chosen = _draw(indices, ladder.tract_population, generator)
                 method = "tract_split_draw"
-            upper_codes.append(str(ladder.tract_sldu[chosen]))
-            lower_codes.append(str(ladder.tract_sldl[chosen]))
-            methods.append(method)
-            continue
-        puma = _int_value(row, "puma")
-        cd = _int_value(row, "congressional_district_geoid")
-        county = _int_value(row, "county_fips")
+            if chosen is not None:
+                upper_codes.append(str(ladder.tract_sldu[chosen]))
+                lower_codes.append(str(ladder.tract_sldl[chosen]))
+                methods.append(method)
+                continue
+        puma = _int_value(row, "puma", state=state, state_divisor=100_000)
+        cd = _int_value(
+            row,
+            "congressional_district_geoid",
+            state=state,
+            state_divisor=100,
+        )
+        county = _int_value(row, "county_fips", state=state, state_divisor=1_000)
         fallbacks: list[tuple[str, _GroupIndex, tuple]] = []
         if puma is not None:
             if cd is not None and county is not None:
@@ -327,13 +388,17 @@ def assign_us_sld_membership(
             if cd is not None:
                 fallbacks.append(("puma_cd_draw", cell_puma_cd, (puma, cd)))
             fallbacks.append(("puma_draw", cell_puma, (puma,)))
+        chosen = None
         for fallback_method, index, key in fallbacks:
             if key in index.groups:
-                chosen = _draw(
+                drawn = _draw(
                     index.groups[key],
                     ladder.cell_population,
                     generator,
                 )
+                if drawn is None:
+                    continue
+                chosen = drawn
                 method = fallback_method
                 break
         if chosen is None:
@@ -341,6 +406,12 @@ def assign_us_sld_membership(
             lower_codes.append("")
             methods.append("unassigned")
         else:
+            drawn_state = int(ladder.cell_county[chosen]) // 1_000
+            if drawn_state != state:  # pragma: no cover - defense in depth
+                raise ValueError(
+                    f"drawn cell belongs to state {drawn_state:02d} for a "
+                    f"state {state:02d} row; the ladder keys are corrupt."
+                )
             upper_codes.append(str(ladder.cell_sldu[chosen]))
             lower_codes.append(str(ladder.cell_sldl[chosen]))
             methods.append(method)
@@ -381,10 +452,28 @@ def us_sld_membership_gate(
     unknown_methods = set(method_counts) - set(SLD_ASSIGNMENT_METHODS)
     if unknown_methods:
         failures.append(f"unknown assignment methods: {sorted(unknown_methods)}")
-    unassigned_share = float((methods == "unassigned").mean())
+    unassigned_mask = methods == "unassigned"
+    unassigned_share = float(unassigned_mask.mean())
+    if "household_weight" in assigned.columns:
+        weights = pd.to_numeric(assigned["household_weight"], errors="coerce").fillna(
+            0.0
+        )
+        total_weight = float(weights.sum())
+        unassigned_weight_share = (
+            float(weights[unassigned_mask].sum()) / total_weight
+            if total_weight > 0
+            else 0.0
+        )
+    else:
+        unassigned_weight_share = unassigned_share
     if unassigned_share > max_unassigned_share:
         failures.append(
-            f"unassigned share {unassigned_share:.4%} exceeds "
+            f"unassigned row share {unassigned_share:.4%} exceeds "
+            f"{max_unassigned_share:.4%}"
+        )
+    if unassigned_weight_share > max_unassigned_share:
+        failures.append(
+            f"unassigned weight share {unassigned_weight_share:.4%} exceeds "
             f"{max_unassigned_share:.4%}"
         )
 
@@ -393,23 +482,41 @@ def us_sld_membership_gate(
     lower_by_state = ladder.district_codes("lower")
     invalid_upper = 0
     invalid_lower = 0
+    missing_upper = 0
     missing_lower_outside_unicameral = 0
-    for state, upper, lower, method in zip(
+    unexpected_lower_in_unicameral = 0
+    tract_degraded = 0
+    has_tract = (
+        assigned["tract_geoid"]
+        if "tract_geoid" in assigned.columns
+        else pd.Series([None] * len(assigned), index=assigned.index)
+    )
+    for state, upper, lower, method, tract in zip(
         states,
         assigned["sld_upper_code"].astype(str),
         assigned["sld_lower_code"].astype(str),
         methods,
+        has_tract,
         strict=True,
     ):
         if method == "unassigned":
             continue
-        if upper and upper not in upper_by_state.get(state, frozenset()):
+        if method.startswith("puma") and tract is not None and not pd.isna(tract):
+            if tract not in ("", 0):
+                tract_degraded += 1
+        if not upper:
+            missing_upper += 1
+        elif upper not in upper_by_state.get(state, frozenset()):
             invalid_upper += 1
         if lower:
-            if lower not in lower_by_state.get(state, frozenset()):
+            if state in NO_LOWER_CHAMBER_STATE_FIPS:
+                unexpected_lower_in_unicameral += 1
+            elif lower not in lower_by_state.get(state, frozenset()):
                 invalid_lower += 1
         elif state not in NO_LOWER_CHAMBER_STATE_FIPS:
             missing_lower_outside_unicameral += 1
+    if missing_upper:
+        failures.append(f"{missing_upper} assigned rows lack an upper-chamber code")
     if invalid_upper:
         failures.append(
             f"{invalid_upper} rows carry an upper-chamber code outside their "
@@ -425,9 +532,16 @@ def us_sld_membership_gate(
             f"{missing_lower_outside_unicameral} assigned rows lack a "
             "lower-chamber code outside the no-lower-chamber states"
         )
+    if unexpected_lower_in_unicameral:
+        failures.append(
+            f"{unexpected_lower_in_unicameral} rows carry a lower-chamber "
+            "code in a state with no lower chamber"
+        )
     details = {
         "method_counts": {key: int(value) for key, value in method_counts.items()},
         "unassigned_share": unassigned_share,
+        "unassigned_weight_share": unassigned_weight_share,
+        "tract_degraded_rows": int(tract_degraded),
         "n_rows": int(len(assigned)),
     }
     return UsSldMembershipGate(
@@ -457,10 +571,14 @@ def assemble_us_sld_membership_ladder(
     overlap_cells: dict[tuple[int, int, int, str, str], int] = {}
     n_blocks = 0
     n_no_cd = 0
+    n_dropped_blocks = 0
+    dropped_population = 0
     for block, population in block_population.items():
         sldu = sldu_by_block.get(block, "")
         sldl = sldl_by_block.get(block, "")
         if not sldu and not sldl:
+            n_dropped_blocks += 1
+            dropped_population += int(population)
             continue
         tract = block // 10**4
         county = int(block // 10**10)
@@ -502,6 +620,10 @@ def assemble_us_sld_membership_ladder(
         ),
         "n_assigned_blocks": np.array([n_blocks], dtype=np.int64),
         "n_blocks_without_cd": np.array([n_no_cd], dtype=np.int64),
+        "n_dropped_blocks": np.array([n_dropped_blocks], dtype=np.int64),
+        "dropped_population": np.array([dropped_population], dtype=np.int64),
+        "meta_boundary_vintage": np.array(SLD_MEMBERSHIP_BOUNDARY_VINTAGE),
+        "meta_source_kind": np.array(SLD_MEMBERSHIP_SOURCE_KIND),
     }
 
 

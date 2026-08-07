@@ -63,19 +63,34 @@ class MoneyIncomeComponent:
 
 #: The declared ACS money-income analog. Component definitions follow the
 #: Census money-income concept the B19001/B19013 universes tabulate
-#: (income in the past 12 months of household members). ``required``
-#: components must resolve to at least one present column or the recipe
-#: refuses to bind.
+#: (income in the past 12 months of household members aged 15 and over —
+#: the ACS universe; the under-15 exclusion is applied at measurement).
+#: ``required`` components must resolve to at least one present column or
+#: the recipe refuses to bind. Column choices verified against the
+#: policyengine-us variable definitions: ``employment_income`` already
+#: includes tips (``tip_income`` is a memo leg — adding it would double
+#: count); SSTB self-employment is disjoint from non-SSTB
+#: (``sstb_self_employment_income`` "treated separately"); farm
+#: self-employment is ``farm_operations_income`` (Schedule F) — the model's
+#: ``farm_income`` is Schedule J income averaging, "separate from
+#: self-employment income", and is deliberately not a component.
 SLD_ACS_MONEY_INCOME_RECIPE: tuple[MoneyIncomeComponent, ...] = (
     MoneyIncomeComponent(
         name="wages_salary_tips",
-        columns=("employment_income_before_lsr", "tip_income"),
-        acs_definition="wage or salary income (incl. commissions, bonuses, tips)",
+        columns=("employment_income_before_lsr",),
+        acs_definition=(
+            "wage or salary income (incl. commissions, bonuses, tips; the "
+            "model input already includes tip income)"
+        ),
         required=True,
     ),
     MoneyIncomeComponent(
         name="self_employment",
-        columns=("self_employment_income_before_lsr", "farm_income"),
+        columns=(
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr",
+            "farm_operations_income",
+        ),
         acs_definition="net self-employment income (own nonfarm and farm business)",
         required=True,
     ),
@@ -164,13 +179,27 @@ SLD_ACS_MONEY_INCOME_DECLARED_OMISSIONS: Mapping[str, str] = {
     ),
 }
 
-#: Flows the ACS money-income concept itself excludes.
+#: Flows the ACS money-income concept itself excludes, plus model columns
+#: deliberately kept out of the recipe with the reason stated.
 SLD_ACS_MONEY_INCOME_EXCLUSIONS: Mapping[str, str] = {
     "capital_gains": "ACS money income excludes capital gains and losses",
     "in_kind_transfers": (
         "SNAP, housing subsidies, and other in-kind transfers are not money income"
     ),
     "tax_credits": "refundable tax credits are not ACS money income",
+    "tip_income_column": (
+        "the model's employment_income input already includes tips; adding "
+        "the tip_income memo column would double count"
+    ),
+    "farm_income_column": (
+        "the model's farm_income is Schedule J income averaging, separate "
+        "from self-employment; farm self-employment enters via "
+        "farm_operations_income"
+    ),
+    "under_15_income": (
+        "ACS money income counts persons aged 15 and over; income carried "
+        "by younger household members is excluded from the analog"
+    ),
 }
 
 
@@ -239,23 +268,39 @@ def resolve_money_income_recipe(
     )
 
 
+#: ACS money income counts income of persons aged 15 and over.
+ACS_MONEY_INCOME_MINIMUM_AGE = 15.0
+
+
 def household_acs_money_income(
     households: pd.DataFrame,
     persons: pd.DataFrame,
     resolution: MoneyIncomeRecipeResolution,
 ) -> np.ndarray:
-    """The ACS money-income analog per household row, in household order."""
+    """The ACS money-income analog per household row, in household order.
+
+    Person-level components count only members aged 15 and over — the ACS
+    money-income universe. ``persons`` must carry ``age`` for that filter.
+    """
     if "household_id" not in households.columns:
         raise ValueError("households must carry household_id.")
     if "person_household_id" not in persons.columns:
         raise ValueError("persons must carry person_household_id.")
     total = pd.Series(0.0, index=households["household_id"].to_numpy())
     if resolution.person_columns:
+        if "age" not in persons.columns:
+            raise ValueError(
+                "persons must carry age: ACS money income counts members "
+                "aged 15 and over only."
+            )
+        of_income_age = (
+            persons["age"].to_numpy(dtype=np.float64) >= ACS_MONEY_INCOME_MINIMUM_AGE
+        )
         person_sum = (
-            persons[list(resolution.person_columns)]
+            persons.loc[of_income_age, list(resolution.person_columns)]
             .astype(np.float64)
             .sum(axis=1)
-            .groupby(persons["person_household_id"].to_numpy())
+            .groupby(persons.loc[of_income_age, "person_household_id"].to_numpy())
             .sum()
         )
         total = total.add(person_sum, fill_value=0.0)
@@ -426,6 +471,19 @@ def load_sld_target_facts(path: str | Path) -> SldTargetFacts:
                 f"line {line_number}: calibration facts must aggregate as "
                 f"sum, got {aggregation!r} for {concept}."
             )
+        unsupported = sorted(
+            {
+                str(constraint.get("variable"))
+                for constraint in constraints
+                if str(constraint.get("variable")) not in ("age", "household_income")
+            }
+        )
+        if unsupported:
+            raise ValueError(
+                f"line {line_number}: constraint variable(s) {unsupported} "
+                "have no binding rule; compiling the fact without them would "
+                "silently widen its universe."
+            )
         metric = _metric_for(concept, entity, constraints)
         income_lower, income_upper = _bounds(constraints, "household_income")
         age_lower, age_upper = _bounds(constraints, "age")
@@ -475,6 +533,26 @@ def _metric_sort_key(row: pd.Series) -> tuple:
     return (order.get(family, 9), float(lower), metric)
 
 
+#: ACS PUMS TYPEHUGQ codes for group-quarters placeholder records. These
+#: rows are population (S0101's universe) but not households (the
+#: B19001/B19013 universe).
+GROUP_QUARTERS_TYPEHUGQ_CODES = (2, 3)
+
+
+def household_universe_mask(households: pd.DataFrame) -> np.ndarray:
+    """True where a row is a housing-unit household in the ACS sense.
+
+    ACS-spine group-quarters placeholder rows (``TYPEHUGQ`` 2/3) carry one
+    person each and belong to the population universe only. Rows without a
+    ``TYPEHUGQ`` column (donor spine, older artifact shapes) are housing
+    units by construction.
+    """
+    if "TYPEHUGQ" not in households.columns:
+        return np.ones(len(households), dtype=bool)
+    kind = pd.to_numeric(households["TYPEHUGQ"], errors="coerce")
+    return ~kind.isin(GROUP_QUARTERS_TYPEHUGQ_CODES).to_numpy()
+
+
 @dataclass(frozen=True)
 class SldProblemBuild:
     """Compiled district problems plus everything deliberately not compiled."""
@@ -484,6 +562,9 @@ class SldProblemBuild:
     zero_support_districts: tuple[str, ...]
     money_income: np.ndarray
     recipe_resolution: MoneyIncomeRecipeResolution
+    is_household: np.ndarray
+    n_group_quarters_rows: int
+    gq_marker_present: bool
 
 
 def build_sld_district_problems(
@@ -502,6 +583,13 @@ def build_sld_district_problems(
     ``person_household_id`` and ``age``. Districts with facts but no
     assigned households are returned as ``zero_support_districts`` — a
     support finding, never a silent drop.
+
+    Universes: age-band rows count every member (total population, the
+    S0101 universe); the household count and income-bracket rows are
+    indicators on housing-unit households only (the B19001 universe), so
+    group-quarters rows carry zero in them while still supporting the
+    population targets. Every district of a chamber must carry the same
+    metric set — an asymmetric fact surface is a broken input, refused.
     """
     membership_column = {
         "sldu": "sld_upper_code",
@@ -527,17 +615,55 @@ def build_sld_district_problems(
         if not facts.validation.empty
         else facts.validation
     )
+    if not chamber_facts.empty:
+        metric_sets = chamber_facts.groupby("area_code")["metric"].agg(
+            lambda values: tuple(sorted(values))
+        )
+        if metric_sets.nunique() > 1:
+            counts = metric_sets.value_counts()
+            minority = metric_sets[metric_sets != counts.index[0]]
+            raise ValueError(
+                "asymmetric fact surface: district(s) "
+                f"{sorted(minority.index.tolist())[:5]} carry a different "
+                "metric set than the rest of the chamber."
+            )
     resolution = resolve_money_income_recipe(
         persons.columns,
         households.columns,
     )
     money_income = household_acs_money_income(households, persons, resolution)
+    is_household = household_universe_mask(households)
+    gq_marker_present = "TYPEHUGQ" in households.columns
 
     ages = persons["age"].to_numpy(dtype=np.float64)
     person_household = persons["person_household_id"].to_numpy()
     household_ids = households["household_id"].to_numpy()
     state_by_row = households["state_fips"].map(lambda value: f"{int(value):02d}")
     membership = households[membership_column].astype(str)
+
+    # One pass over the frame: positional indices per (state, district), and
+    # person rows resolved to household positions once — district compiles
+    # then slice, never rescan (the national run is ~6.8k districts).
+    district_key = state_by_row.str.cat(membership, sep=":")
+    rows_by_district = {
+        key: indices.to_numpy()
+        for key, indices in pd.RangeIndex(len(households))
+        .to_series()
+        .groupby(district_key.to_numpy())
+        .groups.items()
+    }
+    position_by_household_id = pd.Series(
+        np.arange(len(households)),
+        index=household_ids,
+    )
+    person_household_position = position_by_household_id.reindex(
+        person_household
+    ).to_numpy()
+    if np.isnan(person_household_position).any():
+        raise ValueError(
+            "persons reference household ids absent from the household table."
+        )
+    person_household_position = person_household_position.astype(np.int64)
 
     problems: list[SldDistrictProblem] = []
     zero_support: list[str] = []
@@ -552,35 +678,35 @@ def build_sld_district_problems(
             )
         ]
         area_code = str(ordered["area_code"].iloc[0])
-        mask = ((state_by_row == state_fips) & (membership == district_code)).to_numpy()
-        if not mask.any():
+        indices = rows_by_district.get(f"{state_fips}:{district_code}")
+        if indices is None or len(indices) == 0:
             zero_support.append(area_code)
             continue
-        district_household_ids = household_ids[mask]
-        id_set = set(district_household_ids.tolist())
-        person_mask = np.fromiter(
-            (household in id_set for household in person_household),
-            dtype=bool,
-            count=len(person_household),
-        )
-        district_income = money_income[mask]
+        district_household_ids = household_ids[indices]
+        district_income = money_income[indices]
+        district_is_household = is_household[indices].astype(np.float64)
+        n_rows = len(indices)
+        # Person counts per (district row, age band) via one bincount per
+        # band over positions remapped into the district's row space.
+        position_in_district = np.full(len(households), -1, dtype=np.int64)
+        position_in_district[indices] = np.arange(n_rows)
+        person_district_position = position_in_district[person_household_position]
+        in_district_person = person_district_position >= 0
         rows: list[np.ndarray] = []
         for fact in ordered.itertuples():
             metric = str(fact.metric)
             if metric.startswith("age_"):
                 lower = 0.0 if pd.isna(fact.age_lower) else float(fact.age_lower)
                 upper = np.inf if pd.isna(fact.age_upper) else float(fact.age_upper)
-                in_band = person_mask & (ages >= lower) & (ages < upper)
-                counts = (
-                    pd.Series(1.0, index=person_household[in_band])
-                    .groupby(level=0)
-                    .sum()
-                )
+                in_band = in_district_person & (ages >= lower) & (ages < upper)
                 rows.append(
-                    counts.reindex(district_household_ids, fill_value=0.0).to_numpy()
+                    np.bincount(
+                        person_district_position[in_band],
+                        minlength=n_rows,
+                    ).astype(np.float64)
                 )
             elif metric == "households":
-                rows.append(np.ones(int(mask.sum())))
+                rows.append(district_is_household.copy())
             elif metric.startswith("income_"):
                 lower = (
                     -np.inf if pd.isna(fact.income_lower) else float(fact.income_lower)
@@ -589,9 +715,8 @@ def build_sld_district_problems(
                     np.inf if pd.isna(fact.income_upper) else float(fact.income_upper)
                 )
                 rows.append(
-                    ((district_income >= lower) & (district_income < upper)).astype(
-                        np.float64
-                    )
+                    district_is_household
+                    * ((district_income >= lower) & (district_income < upper))
                 )
             else:
                 raise ValueError(f"no binding rule for metric {metric!r}.")
@@ -607,7 +732,7 @@ def build_sld_district_problems(
                     ["area_type", "area_code", "metric", "entity", "concept"]
                 ].reset_index(drop=True),
                 household_ids=district_household_ids,
-                base_weights=base_weights[mask],
+                base_weights=base_weights[indices],
             )
         )
     return SldProblemBuild(
@@ -616,4 +741,7 @@ def build_sld_district_problems(
         zero_support_districts=tuple(zero_support),
         money_income=money_income,
         recipe_resolution=resolution,
+        is_household=is_household,
+        n_group_quarters_rows=int((~is_household).sum()),
+        gq_marker_present=gq_marker_present,
     )

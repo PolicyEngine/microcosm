@@ -126,6 +126,7 @@ class SldDistrictSolveResult:
     final_loss: float
     fraction_within_10pct: float
     realized_max_weight_ratio: float
+    realized_max_weight_ratio_vs_artifact: float
     effective_sample_size: float
     n_floored_base_weights: int
     past_cap_census: Mapping[str, Any]
@@ -297,6 +298,15 @@ def solve_sld_district_weights(
     )
     with np.errstate(divide="ignore", invalid="ignore"):
         ratios = np.where(initial_weights > 0, weights / initial_weights, np.inf)
+        # The enforced bound anchors at the (possibly floored) optimizer
+        # start; the artifact-anchor ratio is reported alongside so a
+        # floored solve is never presented as within-ratio vs the artifact.
+        artifact_ratios = np.where(
+            problem.base_weights > 0,
+            weights / np.where(problem.base_weights > 0, problem.base_weights, 1.0),
+            np.nan,
+        )
+    finite_artifact_ratios = artifact_ratios[np.isfinite(artifact_ratios)]
     return SldDistrictSolveResult(
         problem=problem,
         weights=np.asarray(weights, dtype=np.float64),
@@ -306,6 +316,11 @@ def solve_sld_district_weights(
         final_loss=float(final_loss),
         fraction_within_10pct=float((np.abs(relative_errors) <= 0.1).mean()),
         realized_max_weight_ratio=float(np.max(ratios)),
+        realized_max_weight_ratio_vs_artifact=(
+            float(np.max(finite_artifact_ratios))
+            if len(finite_artifact_ratios)
+            else float("nan")
+        ),
         effective_sample_size=float(effective_sample_size(weights)),
         n_floored_base_weights=int(floored.sum()),
         past_cap_census=census,
@@ -398,6 +413,9 @@ def solve_sld_chamber(
             ],
             "realized_max_weight_ratio": [
                 result.realized_max_weight_ratio for result in results
+            ],
+            "realized_max_weight_ratio_vs_artifact": [
+                result.realized_max_weight_ratio_vs_artifact for result in results
             ],
             "effective_sample_size": [
                 result.effective_sample_size for result in results

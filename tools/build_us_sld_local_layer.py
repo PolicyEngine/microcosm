@@ -18,8 +18,14 @@ Inputs:
   (``tools/build_us_sld_membership_ladder_artifact.py``).
 
 The run scopes itself to the states the facts cover (the pilot is one
-state), and the summary JSON records input shas, gate details, and the
-doctrine so the run is reproducible and auditable.
+state), and the summary JSON records input shas, gate details, software
+identity, and the doctrine so the run is reproducible and auditable.
+
+Memory note: fixed-format pandas stores (the published buildo local
+release) cannot column-select, so the person table is read in full before
+subsetting — budget roughly the artifact's on-disk size in RAM for a
+national run. Table-format and packaged variable/year layouts column-select
+and stay lean.
 """
 
 from __future__ import annotations
@@ -58,12 +64,40 @@ HOUSEHOLD_COLUMNS = (
     "county_fips",
     "tract_geoid",
     "household_weight",
+    "TYPEHUGQ",
 )
 PERSON_ID_COLUMNS = ("person_household_id", "age")
 
 
 def _log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
+
+
+def _environment_record() -> dict[str, str]:
+    """Software identity for the sidecar (DESIGN.md provenance posture)."""
+    import subprocess
+    import sys as _sys
+
+    import pandas as _pd
+    import torch as _torch
+
+    try:
+        git_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).resolve().parent,
+        ).stdout.strip()
+    except Exception:
+        git_sha = "unknown"
+    return {
+        "git_sha": git_sha,
+        "python": _sys.version.split()[0],
+        "numpy": np.__version__,
+        "pandas": _pd.__version__,
+        "torch": _torch.__version__,
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -214,6 +248,13 @@ def run_us_sld_local_layer(
     if facts.calibration.empty:
         raise SystemExit(f"No SLD calibration facts in {facts_path}.")
     ladder = load_us_sld_membership_ladder(ladder_path)
+    fact_vintages = set(facts.geography_vintages) - {""}
+    if fact_vintages != {ladder.boundary_vintage}:
+        raise SystemExit(
+            f"SLD facts declare boundary vintage(s) {sorted(fact_vintages)} "
+            f"but the membership ladder is {ladder.boundary_vintage!r}; "
+            "targets and membership must share one declared vintage."
+        )
 
     fact_states = sorted(set(facts.calibration["state_fips"]))
     _log(f"Facts cover state(s) {fact_states}; scoping the layer to them")
@@ -242,6 +283,9 @@ def run_us_sld_local_layer(
     zero_support: dict[str, tuple[str, ...]] = {}
     recipe_resolution = None
     money_income = None
+    is_household = None
+    gq_marker_present = False
+    n_group_quarters_rows = 0
     for area_type in ("sldu", "sldl"):
         chamber_facts = facts.calibration[facts.calibration["area_type"] == area_type]
         if chamber_facts.empty:
@@ -258,6 +302,9 @@ def run_us_sld_local_layer(
         if recipe_resolution is None:
             recipe_resolution = build.recipe_resolution
             money_income = build.money_income
+            is_household = build.is_household
+            gq_marker_present = build.gq_marker_present
+            n_group_quarters_rows = build.n_group_quarters_rows
         if not build.problems:
             _log(f"No solvable {area_type} districts; skipping the chamber")
             continue
@@ -273,14 +320,34 @@ def run_us_sld_local_layer(
     if not chambers:
         raise SystemExit("No chamber had solvable districts.")
     assert recipe_resolution is not None and money_income is not None
+    assert is_household is not None
 
-    money_income_by_household_id = dict(
-        zip(
+    # The mapping covers the household universe only: group-quarters rows
+    # are outside the B19001/B19013 universes and must not enter the
+    # median comparison.
+    money_income_by_household_id = {
+        household: float(value)
+        for household, value, in_universe in zip(
             assigned["household_id"].tolist(),
-            [float(value) for value in money_income],
+            money_income,
+            is_household,
             strict=True,
         )
-    )
+        if in_universe
+    }
+    household_universe_record = {
+        "gq_marker_present": bool(gq_marker_present),
+        "n_group_quarters_rows": int(n_group_quarters_rows),
+        "statement": (
+            "household counts and income brackets bind on housing-unit "
+            "households only (ACS TYPEHUGQ 1); group-quarters rows support "
+            "the population age bands"
+            if gq_marker_present
+            else "no TYPEHUGQ marker on this artifact: every row was "
+            "treated as a housing-unit household"
+        ),
+    }
+    environment_record = _environment_record()
     shas = write_sld_sidecar(
         out_dir,
         chambers=chambers,
@@ -290,6 +357,8 @@ def run_us_sld_local_layer(
         doctrine_record=US_SLD_LOCAL_SOLVE_DOCTRINE.as_record(),
         zero_support_districts=zero_support,
         money_income_by_household_id=money_income_by_household_id,
+        household_universe_record=household_universe_record,
+        environment_record=environment_record,
     )
     summary = {
         "schema_version": 1,
@@ -306,6 +375,12 @@ def run_us_sld_local_layer(
         },
         "scope_states": fact_states,
         "membership_gate": gate.details,
+        "household_universe": household_universe_record,
+        "environment": environment_record,
+        "ladder_vintage": {
+            "boundary_vintage": ladder.boundary_vintage,
+            "source_kind": ladder.source_kind,
+        },
         "doctrine": US_SLD_LOCAL_SOLVE_DOCTRINE.as_record(),
         "chambers": [
             {
@@ -354,6 +429,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+    if args.epochs < 1:
+        raise SystemExit("--epochs must be at least 1.")
+    if args.learning_rate <= 0:
+        raise SystemExit("--learning-rate must be positive.")
     from populace.build.us_runtime.sld_local_targets import (
         SLD_ACS_MONEY_INCOME_RECIPE,
     )

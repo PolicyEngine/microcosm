@@ -13,9 +13,15 @@
   "doctrine": {
     "anchor_rule": "artifact_calibrated_weights",
     "max_weight_ratio": 100.0,
+    "min_initial_weight": 0.0001,
     "scale_rule": "default_target_loss_scales",
     "target_loss_cap": 10.0,
     "target_weight_rule": "uniform"
+  },
+  "household_universe": {
+    "gq_marker_present": true,
+    "n_group_quarters_rows": 1617,
+    "statement": "household counts and income brackets bind on housing-unit households only (ACS TYPEHUGQ 1); group-quarters rows support the population age bands"
   },
   "income_instrument": {
     "recipe": {
@@ -35,8 +41,11 @@
       ],
       "declared_exclusions": {
         "capital_gains": "ACS money income excludes capital gains and losses",
+        "farm_income_column": "the model's farm_income is Schedule J income averaging, separate from self-employment; farm self-employment enters via farm_operations_income",
         "in_kind_transfers": "SNAP, housing subsidies, and other in-kind transfers are not money income",
-        "tax_credits": "refundable tax credits are not ACS money income"
+        "tax_credits": "refundable tax credits are not ACS money income",
+        "tip_income_column": "the model's employment_income input already includes tips; adding the tip_income memo column would double count",
+        "under_15_income": "ACS money income counts persons aged 15 and over; income carried by younger household members is excluded from the analog"
       },
       "declared_omissions": {
         "public_assistance_cash": "TANF cash assistance is engine-computed, not an artifact input; omitted from the bracket instrument",
@@ -45,9 +54,9 @@
       "household_columns": [],
       "person_columns": [
         "employment_income_before_lsr",
-        "tip_income",
         "self_employment_income_before_lsr",
-        "farm_income",
+        "sstb_self_employment_income_before_lsr",
+        "farm_operations_income",
         "taxable_interest_income",
         "tax_exempt_interest_income",
         "qualified_dividend_income",
@@ -75,7 +84,7 @@
         "child_support_received"
       ]
     },
-    "statement": "Income brackets bind on a declared ACS money-income analog built from artifact input columns; the published median household income (B19013) is validation-only \u2014 a linear reweighting operator cannot honestly target a median."
+    "statement": "Income brackets bind on a declared ACS money-income analog built from artifact input columns (members aged 15 and over); the published median household income (B19013) is validation-only \u2014 a linear reweighting operator cannot honestly target a median."
   },
   "membership_assignment": {
     "method_counts": {
@@ -84,8 +93,10 @@
       "tract_exact": 490,
       "tract_split_draw": 371
     },
-    "statement": "District membership is derived at the 2024 boundary vintage: exact or population-weighted within-tract lookup for rows carrying certified tract geography, seeded block-overlap draws conditional on (PUMA, congressional district, county) for ACS-spine rows.",
-    "unassigned_share": 0.0
+    "statement": "District membership is derived at the 2024 boundary vintage: exact or population-weighted within-tract lookup for rows carrying certified tract geography, seeded block-overlap draws for ACS-spine rows conditional on (PUMA, congressional district, county) where that cell has block support, degrading through declared coarser conditioning (PUMA+county, PUMA+CD, PUMA) where it does not; the realized method mix below is the honest record. Rows whose certified tract is absent from the ladder also degrade to the seeded path and are counted.",
+    "tract_degraded_rows": 0,
+    "unassigned_share": 0.0,
+    "unassigned_weight_share": 0.0
   },
   "small_area_tails": {
     "census_rollups": [
@@ -102,19 +113,19 @@
       },
       {
         "area_type": "sldl",
-        "escaped": 23,
+        "escaped": 22,
         "frozen": 0,
         "n_districts": 75,
         "n_targets": 2625,
         "past_at_final": 0,
-        "past_at_init": 23,
+        "past_at_init": 22,
         "pushed_out": 0,
         "worst_districts": []
       }
     ],
     "min_effective_sample_size": {
-      "sldl": 29.941564545226694,
-      "sldu": 56.40827209461011
+      "sldl": 20.847489669885586,
+      "sldu": 52.818939056306085
     },
     "thin_district_row_threshold": 150,
     "thin_districts": [

@@ -214,6 +214,7 @@ def test_doctrine_constants_are_pinned():
         "scale_rule": "default_target_loss_scales",
         "target_weight_rule": "uniform",
         "anchor_rule": "artifact_calibrated_weights",
+        "min_initial_weight": 1e-4,
     }
 
 
@@ -241,6 +242,7 @@ def test_doctrine_solve_signatures_are_structurally_knob_free():
             "target_loss_cap",
             "target_loss_weights",
             "target_loss_scales",
+            "min_initial_weight",
             "doctrine",
         }, function.__name__
 

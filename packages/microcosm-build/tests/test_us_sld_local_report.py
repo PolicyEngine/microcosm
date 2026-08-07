@@ -244,6 +244,39 @@ def test_sidecar_writer_emits_hashed_bundle(tmp_path):
     assert shas == shas_again
 
 
+def test_sidecar_hashes_match_on_disk_bytes(tmp_path):
+    import hashlib
+
+    chambers = _chambers()
+    incomes = {
+        int(household): 40_000.0
+        for chamber in chambers
+        for result in chamber.district_results
+        for household in result.problem.household_ids
+    }
+    shas = write_sld_sidecar(
+        tmp_path,
+        chambers=chambers,
+        facts=_facts(),
+        recipe_resolution=resolve_money_income_recipe(
+            [
+                "employment_income_before_lsr",
+                "self_employment_income_before_lsr",
+                "taxable_interest_income",
+                "social_security_retirement",
+            ],
+            [],
+        ),
+        membership_gate_details={"method_counts": {}, "unassigned_share": 0.0},
+        doctrine_record=US_SLD_LOCAL_SOLVE_DOCTRINE.as_record(),
+        zero_support_districts={"sldu": ()},
+        money_income_by_household_id=incomes,
+    )
+    for filename, declared in shas.items():
+        actual = hashlib.sha256((tmp_path / filename).read_bytes()).hexdigest()
+        assert actual == declared, filename
+
+
 def test_boundaries_json_is_stable_and_serializable(tmp_path):
     statement = honest_boundaries_statement(
         chambers=_chambers(),
@@ -261,5 +294,5 @@ def test_boundaries_json_is_stable_and_serializable(tmp_path):
         doctrine_record=US_SLD_LOCAL_SOLVE_DOCTRINE.as_record(),
         zero_support_districts={},
     )
-    encoded = json.dumps(statement, sort_keys=True)
-    assert json.loads(encoded) == json.loads(encoded)
+    encoded = json.dumps(statement, sort_keys=True, allow_nan=False)
+    assert json.dumps(json.loads(encoded), sort_keys=True, allow_nan=False) == encoded

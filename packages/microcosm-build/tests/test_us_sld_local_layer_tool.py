@@ -42,6 +42,8 @@ def _write_ladder(tmp_path: Path) -> Path:
         cell_sldu=np.array(["001", "001", "002"]),
         cell_sldl=np.array(["010", "010", "011"]),
         cell_population=np.array([1000, 600, 400], dtype=np.int64),
+        meta_boundary_vintage=np.array("2024_state_legislative_districts"),
+        meta_source_kind=np.array("census_2024_sld_bef"),
     )
     return path
 

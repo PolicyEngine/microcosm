@@ -61,13 +61,32 @@ MEDIAN_REVIEW_THRESHOLD = 0.15
 
 def achieved_vs_target_table(
     chambers: list[SldChamberSolveResult],
+    zero_support_facts: Mapping[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
-    """Every calibrated cell of every district, one row per target."""
+    """Every calibrated cell of every district, one row per target.
+
+    Zero-support districts appear too — with null estimates and
+    ``district_status == "zero_support"`` — so "every district" means every
+    district with facts, not every district the solve could reach.
+    """
     frames = [
-        result.diagnostics
+        result.diagnostics.assign(district_status="solved")
         for chamber in chambers
         for result in chamber.district_results
     ]
+    for fact_rows in (zero_support_facts or {}).values():
+        if fact_rows is None or len(fact_rows) == 0:
+            continue
+        frame = fact_rows[
+            ["area_type", "area_code", "metric", "entity", "concept", "value"]
+        ].copy()
+        frame = frame.rename(columns={"value": "target"})
+        frame["initial_estimate"] = np.nan
+        frame["final_estimate"] = np.nan
+        frame["relative_error"] = np.nan
+        frame["abs_relative_error"] = np.nan
+        frame["district_status"] = "zero_support"
+        frames.append(frame)
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
@@ -77,8 +96,12 @@ def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     """The weight-0.5 crossing of the sorted value distribution."""
     values = np.asarray(values, dtype=np.float64)
     weights = np.asarray(weights, dtype=np.float64)
+    if values.ndim != 1 or weights.ndim != 1:
+        raise ValueError("values and weights must be one-dimensional.")
     if values.shape != weights.shape or values.size == 0:
         raise ValueError("values and weights must align and be non-empty.")
+    if not np.isfinite(values).all() or not np.isfinite(weights).all():
+        raise ValueError("values and weights must be finite.")
     if (weights < 0).any() or weights.sum() <= 0:
         raise ValueError("weights must be non-negative with positive total.")
     order = np.argsort(values, kind="stable")
@@ -106,13 +129,25 @@ def median_income_validation(
             key = (result.problem.area_type, result.problem.area_code)
             if key not in by_area:
                 continue
-            incomes = np.array(
-                [
-                    float(money_income_by_household_id[household])
-                    for household in result.problem.household_ids
-                ]
+            # The mapping covers household-universe rows only; rows outside
+            # it (group-quarters placeholders) are not part of the B19013
+            # universe and carry no weight in the comparison.
+            pairs = [
+                (float(money_income_by_household_id[household]), float(weight))
+                for household, weight in zip(
+                    result.problem.household_ids,
+                    result.weights,
+                    strict=True,
+                )
+                if household in money_income_by_household_id
+            ]
+            if not pairs:
+                continue
+            incomes = np.array([income for income, _ in pairs])
+            achieved = weighted_median(
+                incomes,
+                np.array([weight for _, weight in pairs]),
             )
-            achieved = weighted_median(incomes, result.weights)
             published_value = by_area[key]
             gap = achieved - published_value
             relative_gap = gap / published_value if published_value else np.inf
@@ -120,6 +155,10 @@ def median_income_validation(
                 {
                     "area_type": result.problem.area_type,
                     "area_code": result.problem.area_code,
+                    "n_household_rows": len(pairs),
+                    "n_excluded_rows": int(
+                        len(result.problem.household_ids) - len(pairs)
+                    ),
                     "published_median": published_value,
                     "achieved_median": achieved,
                     "gap": gap,
@@ -132,25 +171,56 @@ def median_income_validation(
 
 def statewide_coherence_report(
     chambers: list[SldChamberSolveResult],
+    zero_support_facts: Mapping[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
-    """Per (area_type, state, metric): targets vs artifact vs solved sums."""
+    """Per (area_type, state, metric): targets vs artifact vs solved sums.
+
+    ``zero_support_facts`` maps area_type to the calibration-fact rows of
+    districts that had no assigned households; their target mass appears in
+    ``zero_support_target_sum`` so the statewide picture never silently
+    shrinks to the solvable subset.
+    """
     rows: list[dict[str, Any]] = []
+    zero_support = zero_support_facts if zero_support_facts is not None else {}
     for chamber in chambers:
         accumulator: dict[tuple[str, str], dict[str, float]] = {}
         for result in chamber.district_results:
             state = result.problem.state_fips
-            initial = result.problem.matrix @ result.initial_weights
+            # The artifact column is the TRUE base-weight mass — never the
+            # floored optimizer anchor.
+            artifact = result.problem.matrix @ np.asarray(
+                result.problem.base_weights, dtype=np.float64
+            )
             solved = result.problem.matrix @ result.weights
             for index, metric in enumerate(
                 result.problem.target_frame["metric"].astype(str)
             ):
                 cell = accumulator.setdefault(
                     (state, metric),
-                    {"target": 0.0, "artifact": 0.0, "solved": 0.0},
+                    {
+                        "target": 0.0,
+                        "artifact": 0.0,
+                        "solved": 0.0,
+                        "zero_support_target": 0.0,
+                        "n_zero_support": 0,
+                    },
                 )
                 cell["target"] += float(result.problem.targets[index])
-                cell["artifact"] += float(initial[index])
+                cell["artifact"] += float(artifact[index])
                 cell["solved"] += float(solved[index])
+        for row in zero_support.get(chamber.area_type, pd.DataFrame()).itertuples():
+            cell = accumulator.setdefault(
+                (str(row.state_fips), str(row.metric)),
+                {
+                    "target": 0.0,
+                    "artifact": 0.0,
+                    "solved": 0.0,
+                    "zero_support_target": 0.0,
+                    "n_zero_support": 0,
+                },
+            )
+            cell["zero_support_target"] += float(row.value)
+            cell["n_zero_support"] += 1
         for (state, metric), sums in sorted(accumulator.items()):
             rows.append(
                 {
@@ -158,6 +228,8 @@ def statewide_coherence_report(
                     "state_fips": state,
                     "metric": metric,
                     "district_target_sum": sums["target"],
+                    "zero_support_target_sum": sums["zero_support_target"],
+                    "n_zero_support_targets": sums["n_zero_support"],
                     "artifact_weight_sum": sums["artifact"],
                     "solved_weight_sum": sums["solved"],
                     "solved_vs_target_ratio": (
@@ -181,6 +253,7 @@ def honest_boundaries_statement(
     membership_gate_details: Mapping[str, Any],
     doctrine_record: Mapping[str, Any],
     zero_support_districts: Mapping[str, tuple[str, ...]],
+    household_universe_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The declared-boundaries record generated into the sidecar."""
     thin = [
@@ -226,21 +299,32 @@ def honest_boundaries_statement(
                 "District membership is derived at the 2024 boundary "
                 "vintage: exact or population-weighted within-tract lookup "
                 "for rows carrying certified tract geography, seeded "
-                "block-overlap draws conditional on (PUMA, congressional "
-                "district, county) for ACS-spine rows."
+                "block-overlap draws for ACS-spine rows conditional on "
+                "(PUMA, congressional district, county) where that cell has "
+                "block support, degrading through declared coarser "
+                "conditioning (PUMA+county, PUMA+CD, PUMA) where it does "
+                "not; the realized method mix below is the honest record. "
+                "Rows whose certified tract is absent from the ladder also "
+                "degrade to the seeded path and are counted."
             ),
             "method_counts": dict(membership_gate_details.get("method_counts", {})),
             "unassigned_share": membership_gate_details.get("unassigned_share"),
+            "unassigned_weight_share": membership_gate_details.get(
+                "unassigned_weight_share"
+            ),
+            "tract_degraded_rows": membership_gate_details.get("tract_degraded_rows"),
         },
         "income_instrument": {
             "statement": (
                 "Income brackets bind on a declared ACS money-income analog "
-                "built from artifact input columns; the published median "
-                "household income (B19013) is validation-only — a linear "
-                "reweighting operator cannot honestly target a median."
+                "built from artifact input columns (members aged 15 and "
+                "over); the published median household income (B19013) is "
+                "validation-only — a linear reweighting operator cannot "
+                "honestly target a median."
             ),
             "recipe": recipe_resolution.as_record(),
         },
+        "household_universe": dict(household_universe_record or {}),
         "doctrine": dict(doctrine_record),
         "small_area_tails": {
             "census_rollups": [chamber.census_rollup for chamber in chambers],
@@ -285,12 +369,37 @@ def render_boundaries_markdown(statement: Mapping[str, Any]) -> str:
     counts = statement["membership_assignment"]["method_counts"]
     for method, count in sorted(counts.items()):
         lines.append(f"- {method}: {count:,}")
+    unassigned = statement["membership_assignment"].get("unassigned_share")
+    weight_share = statement["membership_assignment"].get("unassigned_weight_share")
+    degraded = statement["membership_assignment"].get("tract_degraded_rows")
+    if unassigned is not None:
+        lines.append(f"- unassigned row share: {unassigned:.4%}")
+    if weight_share is not None:
+        lines.append(f"- unassigned weight share: {weight_share:.4%}")
+    if degraded is not None:
+        lines.append(f"- certified-tract rows degraded to seeded draws: {degraded:,}")
+    universe = statement.get("household_universe") or {}
+    if universe:
+        lines += ["", "## Household universe", ""]
+        for key, value in sorted(universe.items()):
+            lines.append(f"- {key}: {value}")
     lines += ["", "## Income instrument", ""]
     lines.append(statement["income_instrument"]["statement"])
     recipe = statement["income_instrument"]["recipe"]
     lines += ["", "Declared omissions:"]
     for name, reason in sorted(recipe["declared_omissions"].items()):
         lines.append(f"- {name}: {reason}")
+    lines += ["", "Declared exclusions:"]
+    for name, reason in sorted(recipe["declared_exclusions"].items()):
+        lines.append(f"- {name}: {reason}")
+    if recipe.get("absent_columns"):
+        lines.append(
+            "- artifact columns absent from the recipe resolution: "
+            + ", ".join(recipe["absent_columns"])
+        )
+    lines += ["", "## Doctrine", ""]
+    for key, value in sorted(statement["doctrine"].items()):
+        lines.append(f"- {key}: {value}")
     lines += ["", "## Small-area tails", ""]
     tails = statement["small_area_tails"]
     for rollup in tails["census_rollups"]:
@@ -303,6 +412,11 @@ def render_boundaries_markdown(statement: Mapping[str, Any]) -> str:
         f"- Thin districts (< {tails['thin_district_row_threshold']} rows): "
         f"{len(tails['thin_districts'])}"
     )
+    for area_type, ess in sorted(tails["min_effective_sample_size"].items()):
+        lines.append(f"- minimum effective sample size ({area_type}): {ess:,.1f}")
+    for area_type, codes in sorted(tails["zero_support_districts"].items()):
+        if codes:
+            lines.append(f"- zero-support districts ({area_type}): {', '.join(codes)}")
     lines += ["", "## Consumption", "", statement["consumption"]["statement"], ""]
     return "\n".join(lines)
 
@@ -321,6 +435,8 @@ def write_sld_sidecar(
     doctrine_record: Mapping[str, Any],
     zero_support_districts: Mapping[str, tuple[str, ...]],
     money_income_by_household_id: Mapping[Any, float],
+    household_universe_record: Mapping[str, Any] | None = None,
+    environment_record: Mapping[str, Any] | None = None,
 ) -> dict[str, str]:
     """Write the sidecar bundle; returns filename -> sha256.
 
@@ -334,6 +450,14 @@ def write_sld_sidecar(
     out.mkdir(parents=True, exist_ok=True)
     shas: dict[str, str] = {}
 
+    zero_support_facts: dict[str, pd.DataFrame] = {}
+    for area_type, codes in zero_support_districts.items():
+        if codes and not facts.calibration.empty:
+            zero_support_facts[area_type] = facts.calibration[
+                (facts.calibration["area_type"] == area_type)
+                & (facts.calibration["area_code"].isin(list(codes)))
+            ]
+
     long_weights = pd.concat(
         [chamber.long_weights for chamber in chambers],
         ignore_index=True,
@@ -346,7 +470,9 @@ def write_sld_sidecar(
     shas["sld_local_weights.csv.gz"] = _sha256_bytes(weights_bytes)
 
     achieved_bytes = gzip.compress(
-        achieved_vs_target_table(chambers).to_csv(index=False).encode("utf-8"),
+        achieved_vs_target_table(chambers, zero_support_facts)
+        .to_csv(index=False)
+        .encode("utf-8"),
         mtime=0,
     )
     (out / "sld_achieved_vs_target.csv.gz").write_bytes(achieved_bytes)
@@ -357,10 +483,13 @@ def write_sld_sidecar(
         facts,
         money_income_by_household_id,
     )
-    coherence = statewide_coherence_report(chambers)
+    coherence = statewide_coherence_report(chambers, zero_support_facts)
     diagnostics = {
         "schema_version": 1,
         "doctrine": dict(doctrine_record),
+        "environment": dict(environment_record or {}),
+        "membership_gate": dict(membership_gate_details),
+        "household_universe": dict(household_universe_record or {}),
         "target_facts": {
             "source_path": facts.source_path,
             "source_sha256": facts.source_sha256,
@@ -392,6 +521,7 @@ def write_sld_sidecar(
         membership_gate_details=membership_gate_details,
         doctrine_record=doctrine_record,
         zero_support_districts=zero_support_districts,
+        household_universe_record=household_universe_record,
     )
     statement_bytes = (json.dumps(statement, indent=2, sort_keys=True) + "\n").encode(
         "utf-8"

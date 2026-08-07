@@ -22,7 +22,9 @@ def _ladder() -> UsSldMembershipLadder:
 
     Tract 49049000100 lies wholly in (005, 040); tract 49049000200 splits
     60/40 between (005, 040) and (006, 041). The Nebraska tract exercises
-    the unicameral no-lower-chamber path (sldl == "").
+    the unicameral no-lower-chamber path (sldl == ""). Keys follow the
+    national conventions (puma = state*100000+puma5, cd = state*100+district,
+    county = state*1000+county).
     """
     return UsSldMembershipLadder(
         tract_geoid=np.array(
@@ -32,13 +34,32 @@ def _ladder() -> UsSldMembershipLadder:
         tract_sldu=np.array(["005", "005", "006", "010"]),
         tract_sldl=np.array(["040", "040", "041", ""]),
         tract_population=np.array([1000, 600, 400, 500], dtype=np.int64),
-        cell_puma=np.array([4901, 4901, 4901, 3101], dtype=np.int64),
+        cell_puma=np.array([4904901, 4904901, 4904901, 3103101], dtype=np.int64),
         cell_cd=np.array([4903, 4903, 4903, 3102], dtype=np.int64),
         cell_county=np.array([49049, 49049, 49049, 31055], dtype=np.int64),
         cell_sldu=np.array(["005", "005", "006", "010"]),
         cell_sldl=np.array(["040", "040", "041", ""]),
         cell_population=np.array([1000, 600, 400, 500], dtype=np.int64),
     )
+
+
+def _save_ladder(path, ladder: UsSldMembershipLadder, **overrides) -> None:
+    arrays = {
+        "tract_geoid": ladder.tract_geoid,
+        "tract_sldu": ladder.tract_sldu,
+        "tract_sldl": ladder.tract_sldl,
+        "tract_population": ladder.tract_population,
+        "cell_puma": ladder.cell_puma,
+        "cell_cd": ladder.cell_cd,
+        "cell_county": ladder.cell_county,
+        "cell_sldu": ladder.cell_sldu,
+        "cell_sldl": ladder.cell_sldl,
+        "cell_population": ladder.cell_population,
+        "meta_boundary_vintage": np.array("2024_state_legislative_districts"),
+        "meta_source_kind": np.array("census_2024_sld_bef"),
+    }
+    arrays.update(overrides)
+    np.savez(path, **arrays)
 
 
 def test_parse_national_sld24_bef_parses_and_drops_unassigned():
@@ -72,28 +93,16 @@ def test_parse_national_sld24_bef_refuses_wrong_header_and_chamber():
 def test_load_refuses_unconserved_population(tmp_path):
     ladder = _ladder()
     path = tmp_path / "ladder.npz"
-    np.savez(
-        path,
-        tract_geoid=ladder.tract_geoid,
-        tract_sldu=ladder.tract_sldu,
-        tract_sldl=ladder.tract_sldl,
-        tract_population=ladder.tract_population,
-        cell_puma=ladder.cell_puma,
-        cell_cd=ladder.cell_cd,
-        cell_county=ladder.cell_county,
-        cell_sldu=ladder.cell_sldu,
-        cell_sldl=ladder.cell_sldl,
-        cell_population=ladder.cell_population + 1,
-    )
+    _save_ladder(path, ladder, cell_population=ladder.cell_population + 1)
     with pytest.raises(ValueError, match="not conserved"):
         load_us_sld_membership_ladder(path)
 
 
-def test_load_round_trips_a_valid_artifact(tmp_path):
+def test_load_refuses_missing_or_wrong_vintage_metadata(tmp_path):
     ladder = _ladder()
-    path = tmp_path / "ladder.npz"
+    bare = tmp_path / "bare.npz"
     np.savez(
-        path,
+        bare,
         tract_geoid=ladder.tract_geoid,
         tract_sldu=ladder.tract_sldu,
         tract_sldl=ladder.tract_sldl,
@@ -105,6 +114,22 @@ def test_load_round_trips_a_valid_artifact(tmp_path):
         cell_sldl=ladder.cell_sldl,
         cell_population=ladder.cell_population,
     )
+    with pytest.raises(ValueError, match="meta_boundary_vintage"):
+        load_us_sld_membership_ladder(bare)
+    stale = tmp_path / "stale.npz"
+    _save_ladder(
+        stale,
+        ladder,
+        meta_boundary_vintage=np.array("2020_baf"),
+    )
+    with pytest.raises(ValueError, match="boundary vintage"):
+        load_us_sld_membership_ladder(stale)
+
+
+def test_load_round_trips_a_valid_artifact(tmp_path):
+    ladder = _ladder()
+    path = tmp_path / "ladder.npz"
+    _save_ladder(path, ladder)
     loaded = load_us_sld_membership_ladder(path)
     assert loaded.tract_geoid.tolist() == ladder.tract_geoid.tolist()
     assert loaded.district_codes("upper")["49"] == frozenset({"005", "006"})
@@ -149,7 +174,7 @@ def test_assign_acs_rows_condition_on_puma_cd_county_with_fallbacks():
     households = pd.DataFrame(
         {
             "state_fips": [49, 49, 49, 49],
-            "puma": [4901, 4901, 4901, 4999],
+            "puma": [4904901, 4904901, 4904901, 4904999],
             "congressional_district_geoid": [4903, 4999, None, 4903],
             "county_fips": [49049, 49049, None, 49049],
         }
@@ -163,6 +188,55 @@ def test_assign_acs_rows_condition_on_puma_cd_county_with_fallbacks():
     ]
     assert assigned["sld_upper_code"][0] in {"005", "006"}
     assert assigned["sld_upper_code"][3] == ""
+
+
+def test_assign_ignores_cross_state_geography_components():
+    """A wrong-state PUMA/CD/county must never yield a same-code district.
+
+    District codes repeat across states (California also has an 005), so a
+    cross-state key that happens to exist elsewhere would otherwise assign
+    a plausible-looking wrong district — the reviewed exploit.
+    """
+    households = pd.DataFrame(
+        {
+            "state_fips": [49],
+            # A California-convention PUMA/CD/county on a Utah row.
+            "puma": [600101],
+            "congressional_district_geoid": [652],
+            "county_fips": [6037],
+        }
+    )
+    assigned = assign_us_sld_membership(households, _ladder(), seed=0)
+    assert assigned["sld_assignment_method"].tolist() == ["unassigned"]
+    assert assigned["sld_upper_code"][0] == ""
+
+
+def test_assign_falls_through_zero_population_cells():
+    ladder = UsSldMembershipLadder(
+        tract_geoid=np.array([49049000100], dtype=np.int64),
+        tract_sldu=np.array(["005"]),
+        tract_sldl=np.array(["040"]),
+        tract_population=np.array([100], dtype=np.int64),
+        cell_puma=np.array([4904901, 4904901], dtype=np.int64),
+        cell_cd=np.array([4903, 4904], dtype=np.int64),
+        cell_county=np.array([49049, 49049], dtype=np.int64),
+        cell_sldu=np.array(["005", "006"]),
+        cell_sldl=np.array(["040", "041"]),
+        cell_population=np.array([0, 100], dtype=np.int64),
+    )
+    households = pd.DataFrame(
+        {
+            "state_fips": [49],
+            "puma": [4904901],
+            "congressional_district_geoid": [4903],
+            "county_fips": [49049],
+        }
+    )
+    assigned = assign_us_sld_membership(households, ladder, seed=0)
+    # The exact (puma, cd, county) cell exists but has zero population, so
+    # the draw falls through to (puma, county), which has support.
+    assert assigned["sld_assignment_method"].tolist() == ["puma_county_draw"]
+    assert assigned["sld_upper_code"][0] == "006"
 
 
 def test_assign_nebraska_rows_carry_empty_lower_codes():
@@ -231,7 +305,7 @@ def test_gate_flags_excess_unassigned_share():
     )
     gate = us_sld_membership_gate(assigned, _ladder())
     assert not gate.passed
-    assert any("unassigned share" in failure for failure in gate.failures)
+    assert any("unassigned row share" in failure for failure in gate.failures)
 
 
 def test_assemble_builds_conserved_overlap_tables():
