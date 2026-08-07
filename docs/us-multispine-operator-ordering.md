@@ -112,9 +112,9 @@ are allowed only when named by the ACS native-input receipt.
    one origin-labeled frame. Standard rungs are `f001`, `f010`, and `f100`;
    the manifest binds the fraction, seed, exact realized ASEC/ACS counts,
    selected-lineage digests, the complete ordered native ACS household and
-   person support/raw/parent/classification mappings, and the sampled native
-   ACS TYPEHUGQ 2/3 household and person lineage digests. The full PUF remains
-   a donor and is never sampled.
+   person support/raw/household-parent/classification mappings, and the sampled
+   native ACS TYPEHUGQ 2/3 household and person lineage digests. The full PUF
+   remains a donor and is never sampled.
 2. The spine-blind source-preparation chain derives the native predictors and
    pre-clone operator outputs needed by the early declared cross-origin fills.
    Historical kernels run on the raw-`PERIDNUM` CPS/ASEC availability
@@ -455,14 +455,16 @@ The one canonical applicability exception is ACS group-quarters rent. Its
 rule is part of the gap-fill-plan digest. Assembly separately binds the native
 sampled TYPEHUGQ 2/3 household and person lineage counts and SHA-256 digests,
 plus complete ordered native mappings of household support/raw/classification
-and person support/raw/parent/classification identity. Each later boundary
-proves the live native set and full native mapping, then expands those mappings
-to every clone and proves exact person coverage of each clone's receipted
-household selection. The `pre_subsidy_rent` null mask must equal those linked
-people across every clone role and receipts those cells as recipient-exact
-structural absence. Completeness proves the exact mask; the battery excludes
-only the same clone-0 cells before applying the unchanged support floor and
-tolerances.
+and person support/raw/household-parent/classification identity. Each later
+boundary proves the live native set and full native mapping, then expands those
+mappings to every clone and proves exact person coverage of each clone's
+receipted household selection. Clone roles are lifecycle-exact in every entity:
+unattached `{0}`, full or partial PUF detail `{0, 1}`, or tail-descendant
+`{0, 1, 2}` backed by its fully validated attachment receipt. The
+`pre_subsidy_rent` null mask must equal those linked people across every clone
+role and receipts those cells as recipient-exact structural absence.
+Completeness proves the exact mask; the battery excludes only the same clone-0
+cells before applying the unchanged support floor and tolerances.
 
 Both gates return batched `GateResult` failures. Calibration cannot consume a
 frame whose completeness or by-origin gate failed, and no source-specific

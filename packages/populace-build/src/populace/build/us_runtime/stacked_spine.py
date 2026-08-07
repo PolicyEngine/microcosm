@@ -1306,6 +1306,76 @@ def _validated_acs_native_group_quarters_masks(
     return gq_household, gq_person
 
 
+def _validate_stacked_clone_role_lifecycle(
+    frame: Frame,
+    *,
+    boundary: str,
+) -> None:
+    """Require one exact clone-role set authorized by the live lifecycle."""
+
+    role_sets: dict[str, set[int]] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        clone_column = support_clone_index_column(entity)
+        if clone_column not in table:
+            raise ValueError(
+                f"{boundary}: live stacked {entity} rows lack {clone_column!r}."
+            )
+        numeric = pd.to_numeric(table[clone_column], errors="raise")
+        if numeric.isna().any() or not np.equal(numeric, np.floor(numeric)).all():
+            raise ValueError(
+                f"{boundary}: live stacked {entity} clone roles must be integers."
+            )
+        role_sets[entity] = set(numeric.to_numpy(dtype=np.int64).tolist())
+
+    household_roles = role_sets["household"]
+    attachment = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
+    if attachment is None:
+        if household_roles == {0}:
+            expected_roles = {0}
+        elif household_roles == {0, PUF_TAX_DETAIL_CLONE_INDEX}:
+            validate_puf_clone_attachment(
+                frame,
+                boundary=f"{boundary} full clone identity",
+                expected_fraction=1.0,
+                # Full-clone frames intentionally carry no attachment
+                # metadata, so the seed is not part of frame identity.  The
+                # validator uses this value only in its returned receipt.
+                expected_seed=0,
+            )
+            expected_roles = {0, PUF_TAX_DETAIL_CLONE_INDEX}
+        else:
+            raise ValueError(
+                f"{boundary}: unreceipted stacked clone roles "
+                f"{sorted(household_roles)} are unauthorized."
+            )
+    else:
+        validated_attachment = validate_puf_clone_attachment(
+            frame,
+            boundary=f"{boundary} clone attachment",
+        )
+        version = validated_attachment.get("version")
+        if version == 1:
+            expected_roles = {0, PUF_TAX_DETAIL_CLONE_INDEX}
+        elif version == 2:
+            expected_roles = {0, PUF_TAX_DETAIL_CLONE_INDEX, 2}
+        else:  # pragma: no cover - the attachment validator rejects this first.
+            raise ValueError(
+                f"{boundary}: clone attachment authorizes no known role lifecycle."
+            )
+
+    inconsistent = {
+        entity: sorted(roles)
+        for entity, roles in role_sets.items()
+        if roles != expected_roles
+    }
+    if inconsistent:
+        raise ValueError(
+            f"{boundary}: stacked clone roles must exactly equal "
+            f"{sorted(expected_roles)} in every entity; got {inconsistent}."
+        )
+
+
 def validate_stacked_spine_frame(
     frame: Frame,
     *,
@@ -1345,6 +1415,7 @@ def validate_stacked_spine_frame(
             f"{boundary}: stacked spine requires exactly the channels "
             f"{sorted(expected_channels)}; assembly declares {sorted(channels)}."
         )
+    _validate_stacked_clone_role_lifecycle(frame, boundary=boundary)
 
     if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION:
         fraction = manifest.get("acs_sample_fraction")
@@ -5251,7 +5322,18 @@ def _run_stacked_puf_pass_evaluate(
             seed=seed,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
-        tail_receipt = _bind_stacked_tail_origin_receipt(output, tail_receipt)
+        # The tail producer creates clone role 2 before its final origin
+        # receipt can be added to the tail manifest.  Bind the producer's
+        # original manifest into a provisional attachment first, so no
+        # unreceipted clone role crosses the stacked validation boundary used
+        # to derive that origin receipt.  Rebind once more to the final tail
+        # digest below.
+        provisional = bind_puf_clone_attachment_tail_descendant(
+            output,
+            attachment_receipt=attachment,
+            tail_manifest=tail_receipt,
+        )
+        tail_receipt = _bind_stacked_tail_origin_receipt(provisional, tail_receipt)
         output = bind_puf_clone_attachment_tail_descendant(
             output,
             attachment_receipt=attachment,

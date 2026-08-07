@@ -1322,7 +1322,7 @@ def test_acs_clone_cannot_substitute_group_quarters_support_lineage() -> None:
 
     with pytest.raises(
         ValueError,
-        match="support/raw household lineage pairs differ",
+        match=("full-clone identity failed|support/raw household lineage pairs differ"),
     ):
         validate_stacked_spine_frame(
             corrupted,
@@ -2414,6 +2414,63 @@ def test_clone_attachment_manifest_mutation_fails_closed() -> None:
     )
     with pytest.raises(ValueError, match="violates floor"):
         validate_puf_clone_attachment(tampered, boundary="tampered attachment")
+
+
+def test_stacked_validator_rejects_an_unreceipted_clone_role() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    tables = {entity: attached.table(entity).copy() for entity in attached.entities}
+    for entity, table in tables.items():
+        clone_column = support_clone_index_column(entity)
+        table.loc[table[clone_column].eq(1), clone_column] = 3
+    relabeled = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(ValueError, match="unreceipted stacked clone roles.*3"):
+        validate_stacked_spine_frame(
+            relabeled,
+            boundary="unreceipted clone-role fixture",
+        )
+
+
+def test_stacked_validator_rejects_a_partial_attachment_receipt() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+    )
+    canonical = attached.metadata[PUF_CLONE_ATTACHMENT_MANIFEST_KEY]
+    malformed = Frame(
+        {entity: attached.table(entity) for entity in attached.entities},
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata={
+            **attached.metadata,
+            PUF_CLONE_ATTACHMENT_MANIFEST_KEY: {
+                "realized_household_count": canonical["realized_household_count"],
+                "selected_household_source_ids_sha256": canonical[
+                    "selected_household_source_ids_sha256"
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="clone attachment manifest is malformed"):
+        validate_stacked_spine_frame(
+            malformed,
+            boundary="partial attachment receipt fixture",
+        )
 
 
 def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
