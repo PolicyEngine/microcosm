@@ -51,6 +51,8 @@ from microcosm.build.uk_runtime import (
     rowwise_calibration_mass_record,
     solve_uk_rowwise_weights_under_doctrine,
     uk_geography_ladder_gate,
+    uk_household_weight_kind,
+    uk_national_frame,
     uk_time_period,
     write_uk_rowwise_dataset,
 )
@@ -234,15 +236,25 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     assert_kind_transition(
-        clone.household_weight_kind,
+        uk_household_weight_kind(clone.frame),
         WeightKind.CALIBRATED,
+    )
+    # #618 idiom: hard-construct the calibrated frame with the refreshed
+    # household_weight column and the appended calibration record (the
+    # kernel transition above is asserted explicitly; the calibrate() front
+    # door will own both once the solve migrates onto it).
+    calibrated_frame = uk_national_frame(
+        person=clone.frame.table("person"),
+        benunit=clone.frame.table("benunit"),
+        household=calibrated_household,
+        time_period=uk_time_period(clone.frame),
+        weight_kind=WeightKind.CALIBRATED,
+        mass_log=(*clone.frame.mass_log, calibration_record),
     )
     candidate = dataclasses.replace(
         clone,
-        household=calibrated_household,
+        frame=calibrated_frame,
         gate=candidate_gate,
-        household_weight_kind=WeightKind.CALIBRATED,
-        mass_log=(*clone.mass_log, calibration_record),
         output_path=None,
     )
     support = rowwise_area_support_summary(
@@ -310,7 +322,7 @@ def _build_bound_problem(
             "assignment and targets must come from the same loaded UK OA ladder object."
         )
     clone = assignment.result
-    household = clone.household.reset_index(drop=True)
+    household = clone.frame.table("household").reset_index(drop=True)
     household_index = pd.Index(
         household["household_id"],
         name="household_id",
@@ -358,9 +370,9 @@ def _dry_run_plan(
         },
         "parameters": _parameters(args, source_year=source_year),
         "shapes": {
-            "person": list(clone.person.shape),
-            "benunit": list(clone.benunit.shape),
-            "household": list(clone.household.shape),
+            "person": list(clone.frame.table("person").shape),
+            "benunit": list(clone.frame.table("benunit").shape),
+            "household": list(clone.frame.table("household").shape),
             "local_matrix": list(problem.matrix.shape),
         },
         "target_count": int(len(problem.targets)),
@@ -479,23 +491,23 @@ def _manifest(
         "outputs": dict(outputs),
         "gate": _gate_payload(candidate.gate, phase="post_calibration"),
         "weights": {
-            "household_weight_kind": candidate.household_weight_kind.value,
+            "household_weight_kind": uk_household_weight_kind(candidate.frame).value,
             "household_weight_kind_chain": [
                 {
                     "stage": "staging",
-                    "kind": clone.household_weight_kind.value,
+                    "kind": uk_household_weight_kind(clone.frame).value,
                 },
                 {
                     "stage": "ladder_clone",
-                    "kind": clone.household_weight_kind.value,
+                    "kind": uk_household_weight_kind(clone.frame).value,
                 },
                 {
                     "stage": "rowwise_calibration",
-                    "kind": candidate.household_weight_kind.value,
+                    "kind": uk_household_weight_kind(candidate.frame).value,
                 },
             ],
-            "mass_log_records_before_calibration": len(clone.mass_log),
-            "mass_log_records": len(candidate.mass_log),
+            "mass_log_records_before_calibration": len(clone.frame.mass_log),
+            "mass_log_records": len(candidate.frame.mass_log),
             "calibration_mass_change": {
                 "entity": str(calibration_record.entity),
                 "old_total": old_total,

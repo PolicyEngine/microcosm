@@ -293,6 +293,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_reviewed_exclusions,
 )
 from microcosm.build.uk_runtime.rowwise_dataset import (
+    ARTIFACT_CLONE_INDEX_COLUMN,
     BENUNIT_ID_COLUMNS,
     HOUSEHOLD_ID_COLUMNS,
     MASS_CONSERVATION_RELATIVE_TOLERANCE,
@@ -306,6 +307,7 @@ from microcosm.build.uk_runtime.rowwise_dataset import (
     clone_uk_dataset_tables_with_rowwise_geography,
     clone_uk_dataset_with_ladder_geography,
     clone_uk_dataset_with_rowwise_geography,
+    ladder_clone_index_column,
     read_uk_single_year_weight_metadata,
     validate_uk_ladder_rowwise_dataset_tables,
     validate_uk_rowwise_dataset_tables,
@@ -393,6 +395,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 )
 
 __all__ = [
+    "ARTIFACT_CLONE_INDEX_COLUMN",
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_DOCTRINE",
@@ -401,6 +404,7 @@ __all__ = [
     "UK_CGT_SOURCE_COLUMN",
     "UK_CGT_TAXPAYER_COUNT_COLUMN",
     "UKCGTTargetMaterialization",
+    "ladder_clone_index_column",
     "materialize_uk_cgt_calibration_frame",
     "uk_cgt_annual_exempt_amount",
     "UK_CGT_REQUIRED_COLUMNS",
