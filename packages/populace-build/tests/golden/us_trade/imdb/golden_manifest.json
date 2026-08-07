@@ -1,0 +1,131 @@
+{
+  "archives": {
+    "IMDB2501": {
+      "filename": "IMDB2501.ZIP",
+      "lay_members": {
+        "IMP_COMM": {
+          "member": "Documentation/IMP_COMM.lay",
+          "sha256": "a1daec97d78fea90faaae2db9663c79498dfedfea577dc029df37ae564cb6ab6"
+        },
+        "IMP_CTY": {
+          "member": "Documentation/IMP_CTY.lay",
+          "sha256": "b74ec3523faf231e2b92322c759db50afe0b53c45f15a0bcd01889780a742535"
+        },
+        "IMP_DE": {
+          "member": "Documentation/IMP_DE.lay",
+          "sha256": "5d60f6ac1f870da7a411b8537afa33f3c8d34479bd558ba718c2894ad8d1b426"
+        },
+        "IMP_DETL": {
+          "member": "Documentation/IMP_DETL.lay",
+          "sha256": "5e44059c456c280db7402a436bb18d1ae6f5f1450a2b29c1efc3306c0c79dd6f"
+        }
+      },
+      "members": {
+        "IMP_COMM": {
+          "line_count": 16625,
+          "member": "IMP_COMM.txt",
+          "selected_lines": [
+            1,
+            2
+          ]
+        },
+        "IMP_CTY": {
+          "line_count": 229,
+          "member": "imp_CTY.txt",
+          "selected_lines": [
+            1,
+            2
+          ]
+        },
+        "IMP_DE": {
+          "line_count": 44,
+          "member": "IMP_DE.txt",
+          "selected_lines": [
+            1,
+            2
+          ]
+        },
+        "IMP_DETL": {
+          "line_count": 727251,
+          "member": "IMP_DETL.txt",
+          "selected_lines": [
+            1,
+            2,
+            4,
+            406,
+            45146,
+            727030
+          ]
+        }
+      },
+      "month": "2025-01",
+      "sha256": "3ef6ae71d00e40398d03482a96a1b8d691df3887bf537392854de1b65c5117ef",
+      "size_bytes": 138816157,
+      "url": "https://www.census.gov/trade/downloads/2025/Merch/im_m/IMDB2501.ZIP"
+    },
+    "IMDB2606": {
+      "filename": "IMDB2606.ZIP",
+      "lay_members": {
+        "IMP_COMM": {
+          "member": "Documentation/IMP_COMM.lay",
+          "sha256": "a1daec97d78fea90faaae2db9663c79498dfedfea577dc029df37ae564cb6ab6"
+        },
+        "IMP_CTY": {
+          "member": "Documentation/IMP_CTY.lay",
+          "sha256": "b74ec3523faf231e2b92322c759db50afe0b53c45f15a0bcd01889780a742535"
+        },
+        "IMP_DE": {
+          "member": "Documentation/IMP_DE.lay",
+          "sha256": "5d60f6ac1f870da7a411b8537afa33f3c8d34479bd558ba718c2894ad8d1b426"
+        },
+        "IMP_DETL": {
+          "member": "Documentation/IMP_DETL.lay",
+          "sha256": "5e44059c456c280db7402a436bb18d1ae6f5f1450a2b29c1efc3306c0c79dd6f"
+        }
+      },
+      "members": {
+        "IMP_COMM": {
+          "line_count": 18506,
+          "member": "IMP_COMM.TXT",
+          "selected_lines": [
+            1,
+            2
+          ]
+        },
+        "IMP_CTY": {
+          "line_count": 232,
+          "member": "IMP_CTY.TXT",
+          "selected_lines": [
+            1,
+            2
+          ]
+        },
+        "IMP_DE": {
+          "line_count": 44,
+          "member": "IMP_DE.TXT",
+          "selected_lines": [
+            1,
+            2
+          ]
+        },
+        "IMP_DETL": {
+          "line_count": 2193719,
+          "member": "IMP_DETL.TXT",
+          "selected_lines": [
+            1,
+            2,
+            12,
+            858,
+            114092,
+            2193492
+          ]
+        }
+      },
+      "month": "2026-06",
+      "sha256": "a074a5e31da8b005ffd65e2be756ee9d9888f68a4ad2f5c1a6e704160779012d",
+      "size_bytes": 204721869,
+      "url": "https://www.census.gov/trade/downloads/2026/Merch/im_m/IMDB2606.ZIP"
+    }
+  },
+  "note": "Raw-record goldens + official record layouts extracted verbatim from the named Census IMDB archives. expected_values.json is the production parse of raw_records.jsonl and is hand-verifiable against the .lay positions. Line numbers are 1-indexed over CRLF-split member lines."
+}

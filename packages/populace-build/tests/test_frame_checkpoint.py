@@ -318,3 +318,60 @@ def test_frame_checkpoint_rejects_nonfinite_external_metadata(tmp_path: Path) ->
             _checkpoint_frame(),
             metadata={"peak_rss": np.nan},
         )
+
+
+def test_string_dtype_restores_python_storage_under_pyarrow_default(
+    tmp_path: Path,
+) -> None:
+    """A checkpoint restores one physical string dtype in every environment.
+
+    ``str(StringDtype)`` collapses to "str"/"string", which pandas resolves
+    to the environment-default storage — pyarrow wherever pyarrow is
+    installed. The spec records storage explicitly, so a checkpoint written
+    with canonical python-storage strings restores python storage even when
+    the reading environment defaults to pyarrow.
+    """
+    pytest.importorskip("pyarrow")
+    frame = _checkpoint_frame()
+    canonical = pd.StringDtype(storage="python", na_value=np.nan)
+    person = frame.table("person")
+    person["canonical_label"] = pd.Series(
+        ["alpha", "beta", "gamma"], index=person.index, dtype=canonical
+    )
+    path = tmp_path / "strings.h5"
+    write_frame_checkpoint(path, frame)
+
+    with pd.option_context("mode.string_storage", "pyarrow"):
+        restored = load_frame_checkpoint(path).frame
+        dtype = restored.table("person")["canonical_label"].dtype
+        assert isinstance(dtype, pd.StringDtype)
+        assert dtype.storage == "python"
+        assert dtype == canonical
+
+
+def test_legacy_string_specs_restore_python_storage() -> None:
+    """Specs written before storage was recorded restore deterministically."""
+    resolved = frame_checkpoint_module._declared_dtype(
+        {"dtype": "str", "encoding": "object_scalars_v1"},
+        path=Path("legacy.h5"),
+        label="person.label",
+    )
+    assert isinstance(resolved, pd.StringDtype)
+    assert resolved.storage == "python"
+    assert resolved.na_value is not pd.NA
+
+    resolved_na = frame_checkpoint_module._declared_dtype(
+        {"dtype": "string", "encoding": "object_scalars_v1"},
+        path=Path("legacy.h5"),
+        label="person.label",
+    )
+    assert isinstance(resolved_na, pd.StringDtype)
+    assert resolved_na.storage == "python"
+    assert resolved_na.na_value is pd.NA
+
+    with pytest.raises(ValueError, match="unknown string storage"):
+        frame_checkpoint_module._declared_dtype(
+            {"dtype": "str", "string_storage": "bogus"},
+            path=Path("legacy.h5"),
+            label="person.label",
+        )

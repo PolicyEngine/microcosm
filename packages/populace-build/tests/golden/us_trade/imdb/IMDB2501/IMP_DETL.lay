@@ -1,0 +1,111 @@
+
+	                     
+FILENAME: IMP_DETL.TXT
+
+*************************************************
+
+FIELD NO 	FIELD NAME     	DESCRIPTION
+
+ 01-10     	commodity	10-Digit Harmonized Tariff Schedule (HTS) Code
+ 
+ 11-14     	cty_code        4-Digit Country Code
+
+ 15-16		cty_subco	2-Digit Country Subcode
+ 
+ 17-18     	dist_entry      2-Digit District of Entry Code
+
+ 19-20     	dist_unlad      2-Digit District of Unlading Code
+
+ 21-22		rate_prov	2-Digit Rate Provision Code
+ 
+ 23-26     	year            4-Digit Statistical Year
+ 
+ 27-28	     	month           2-Digit Statistical Month
+
+ 29-43     	cards_mo       	15-Digit Card Count
+
+ 44-58     	con_qy1_mo	15-Digit Imports for Consumption, Quantity 1
+
+ 59-73     	con_qy2_mo      15-Digit Imports for Consumption, Quantity 2
+
+ 74-88     	con_val_mo      15-Digit Imports for Consumption, Total Value
+
+ 89-103     	dut_val_mo      15-Digit Imports for Consumption, Dutiable Value
+
+ 104-118     	cal_dut_mo      15-Digit Imports for Consumption, Calculated Duty
+
+ 119-133     	con_cha_mo      15-Digit Imports for Consumption, Charges
+ 
+ 134-148     	con_cif_mo      15-Digit Imports for Consumption, CIF Value
+
+ 149-163     	gen_qy1_mo	15-Digit General Imports, Quantity 1
+
+ 164-178     	gen_qy2_mo      15-Digit General Imports, Quantity 2
+
+ 179-193     	gen_val_mo      15-Digit General Imports, Total Value
+
+ 194-208     	gen_cha_mo      15-Digit General Imports, Charges
+ 
+ 209-223     	gen_cif_mo      15-Digit General Imports, CIF Value
+
+ 224-238     	air_val_mo      15-Digit Air Value
+
+ 239-253     	air_wgt_mo 	15-Digit Air Shipping Weight 
+
+ 254-268 	air_cha_mo 	15-Digit Air Charges 
+
+ 269-283    	ves_val_mo 	15-Digit Vessel Value 
+
+ 284-298    	ves_wgt_mo 	15-Digit Vessel Shipping Weight 
+ 
+ 299-313	ves_cha_mo 	15-Digit Vessel Charges
+
+ 314-328    	cnt_val_mo 	15-Digit Containerized Vessel Value
+
+ 329-343 	cnt_wgt_mo 	15-Digit Containerized Vessel Shipping Weight 
+ 
+ 344-358 	cnt_cha_mo 	15-Digit Containerized Vessel Charges 
+ 
+ 359-373 	cards_yr 	15-Digit Year-to-Date Card Count 
+ 
+ 374-388 	con_qy1_yr 	15-Digit Year-to-Date Imports for Consumption, Quantity 1 
+ 
+ 389-403 	con_qy2_yr 	15-Digit Year-to-Date Imports for Consumption, Quantity 2  
+
+ 404-418 	con_val_yr 	15-Digit Year-to-Date Imports for Consumption, Total Value 
+
+ 419-433 	dut_val_yr 	15-Digit Year-to-Date Imports for Consumption, Dutiable Value 
+	
+ 434-448 	cal_dut_yr 	15-Digit Year-to-Date Imports for Consumption, Calculated Duty 
+
+ 449-463 	con_cha_yr 	15-Digit Year-to-Date Imports for Consumption, Charges  
+
+ 464-478 	con_cif_yr 	15-Digit Year-to-Date Imports for Consumption, CIF Value 
+
+ 479-493 	gen_qy1_yr 	15-Digit Year-to-Date General Imports, Quantity 1 
+
+ 494-508 	gen_qy2_yr 	15-Digit Year-to-Date General Imports, Quantity 2 
+
+ 509-523 	gen_val_yr 	15-Digit Year-to-Date General Imports, Total Value 
+
+ 524-538 	gen_cha_yr 	15-Digit Year-to-Date General Imports, Charges 
+
+ 539-553 	gen_cif_yr 	15-Digit Year-to-Date General Imports, CIF Value 
+
+ 554-568 	air_val_yr 	15-Digit Year-to-Date Air Value 
+
+ 569-583 	air_wgt_yr 	15-Digit Year-to-Date Air Shipping Weight 
+
+ 584-598 	air_cha_yr 	15-Digit Year-to-Date Air Charges 
+
+ 599-613 	ves_val_yr 	15-Digit Year-to-Date Vessel Value 
+
+ 614-628 	ves_wgt_yr 	15-Digit Year-to-Date Vessel Shipping Weight 
+
+ 629-643 	ves_cha_yr 	15-Digit Year-to-Date Vessel Charges 
+
+ 644-658 	cnt_val_yr 	15-Digit Year-to-Date Containerized Vessel Value 
+
+ 659-673 	cnt_wgt_yr 	15-Digit Year-to-Date Containerized Vessel Shipping Weight 
+
+ 674-688 	cnt_cha_yr 	15-Digit Year-to-Date Containerized Vessel Charges 

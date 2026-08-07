@@ -1,0 +1,403 @@
+{
+  "axes": {
+    "IMP_COMM.txt": {
+      "control_key_count": 18811,
+      "control_member": "IMP_COMM.txt",
+      "control_only_key_count": 0,
+      "control_only_keys": [],
+      "control_rows": 18811,
+      "detail_key_count": 18811,
+      "detail_only_key_count": 0,
+      "detail_only_keys": [],
+      "duplicate_control_key_count": 0,
+      "duplicate_control_keys": [],
+      "key": "hts10",
+      "keys_matched": 18811,
+      "measures": {
+        "air_cha_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 1306495128,
+          "published_total": 1306495128
+        },
+        "air_val_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 91625107479,
+          "published_total": 91625107479
+        },
+        "air_wgt_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 500240523,
+          "published_total": 500240523
+        },
+        "cal_dut_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 25198445672,
+          "published_total": 25198445672
+        },
+        "cards_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 9822256,
+          "published_total": 9822256
+        },
+        "cnt_cha_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 3533467411,
+          "published_total": 3533467411
+        },
+        "cnt_val_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 71359452244,
+          "published_total": 71359452244
+        },
+        "cnt_wgt_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 15709576324,
+          "published_total": 15709576324
+        },
+        "con_cha_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 6728870925,
+          "published_total": 6728870925
+        },
+        "con_cif_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 264112596077,
+          "published_total": 264112596077
+        },
+        "con_qy1_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 89317938511,
+          "published_total": 89317938511
+        },
+        "con_qy2_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 11031016399,
+          "published_total": 11031016399
+        },
+        "con_val_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 257383725152,
+          "published_total": 257383725152
+        },
+        "dut_val_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 105338575371,
+          "published_total": 105338575371
+        },
+        "gen_cha_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 6805089909,
+          "published_total": 6805089909
+        },
+        "gen_cif_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 267829856889,
+          "published_total": 267829856889
+        },
+        "gen_qy1_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 90606099642,
+          "published_total": 90606099642
+        },
+        "gen_qy2_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 11060962879,
+          "published_total": 11060962879
+        },
+        "gen_val_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 261024766980,
+          "published_total": 261024766980
+        },
+        "ves_cha_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 4404889712,
+          "published_total": 4404889712
+        },
+        "ves_val_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 93509796801,
+          "published_total": 93509796801
+        },
+        "ves_wgt_mo": {
+          "cells_compared": 18811,
+          "cells_matched": 18811,
+          "detail_total": 40458640535,
+          "published_total": 40458640535
+        }
+      }
+    },
+    "IMP_CTY.txt": {
+      "control_key_count": 231,
+      "control_member": "IMP_CTY.txt",
+      "control_only_key_count": 0,
+      "control_only_keys": [],
+      "control_rows": 231,
+      "detail_key_count": 231,
+      "detail_only_key_count": 0,
+      "detail_only_keys": [],
+      "duplicate_control_key_count": 0,
+      "duplicate_control_keys": [],
+      "key": "cty_code",
+      "keys_matched": 231,
+      "measures": {
+        "air_cha_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 1306495128,
+          "published_total": 1306495128
+        },
+        "air_val_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 91625107479,
+          "published_total": 91625107479
+        },
+        "air_wgt_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 500240523,
+          "published_total": 500240523
+        },
+        "cal_dut_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 25198445672,
+          "published_total": 25198445672
+        },
+        "cards_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 9822256,
+          "published_total": 9822256
+        },
+        "cnt_cha_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 3533467411,
+          "published_total": 3533467411
+        },
+        "cnt_val_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 71359452244,
+          "published_total": 71359452244
+        },
+        "cnt_wgt_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 15709576324,
+          "published_total": 15709576324
+        },
+        "con_cha_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 6728870925,
+          "published_total": 6728870925
+        },
+        "con_cif_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 264112596077,
+          "published_total": 264112596077
+        },
+        "con_val_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 257383725152,
+          "published_total": 257383725152
+        },
+        "dut_val_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 105338575371,
+          "published_total": 105338575371
+        },
+        "gen_cha_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 6805089909,
+          "published_total": 6805089909
+        },
+        "gen_cif_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 267829856889,
+          "published_total": 267829856889
+        },
+        "gen_val_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 261024766980,
+          "published_total": 261024766980
+        },
+        "ves_cha_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 4404889712,
+          "published_total": 4404889712
+        },
+        "ves_val_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 93509796801,
+          "published_total": 93509796801
+        },
+        "ves_wgt_mo": {
+          "cells_compared": 231,
+          "cells_matched": 231,
+          "detail_total": 40458640535,
+          "published_total": 40458640535
+        }
+      }
+    },
+    "IMP_DE.txt": {
+      "control_key_count": 44,
+      "control_member": "IMP_DE.txt",
+      "control_only_key_count": 0,
+      "control_only_keys": [],
+      "control_rows": 44,
+      "detail_key_count": 44,
+      "detail_only_key_count": 0,
+      "detail_only_keys": [],
+      "duplicate_control_key_count": 0,
+      "duplicate_control_keys": [],
+      "key": "dist_entry",
+      "keys_matched": 44,
+      "measures": {
+        "air_cha_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 1306495128,
+          "published_total": 1306495128
+        },
+        "air_val_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 91625107479,
+          "published_total": 91625107479
+        },
+        "air_wgt_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 500240523,
+          "published_total": 500240523
+        },
+        "cal_dut_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 25198445672,
+          "published_total": 25198445672
+        },
+        "cards_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 9822256,
+          "published_total": 9822256
+        },
+        "cnt_cha_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 3533467411,
+          "published_total": 3533467411
+        },
+        "cnt_val_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 71359452244,
+          "published_total": 71359452244
+        },
+        "cnt_wgt_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 15709576324,
+          "published_total": 15709576324
+        },
+        "con_cha_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 6728870925,
+          "published_total": 6728870925
+        },
+        "con_cif_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 264112596077,
+          "published_total": 264112596077
+        },
+        "con_val_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 257383725152,
+          "published_total": 257383725152
+        },
+        "dut_val_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 105338575371,
+          "published_total": 105338575371
+        },
+        "gen_cha_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 6805089909,
+          "published_total": 6805089909
+        },
+        "gen_cif_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 267829856889,
+          "published_total": 267829856889
+        },
+        "gen_val_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 261024766980,
+          "published_total": 261024766980
+        },
+        "ves_cha_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 4404889712,
+          "published_total": 4404889712
+        },
+        "ves_val_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 93509796801,
+          "published_total": 93509796801
+        },
+        "ves_wgt_mo": {
+          "cells_compared": 44,
+          "cells_matched": 44,
+          "detail_total": 40458640535,
+          "published_total": 40458640535
+        }
+      }
+    }
+  },
+  "failure_count": 0,
+  "failures": [],
+  "month": "2025-11"
+}

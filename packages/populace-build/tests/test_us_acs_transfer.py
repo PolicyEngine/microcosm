@@ -225,7 +225,13 @@ def _recipient_frame() -> Frame:
             ],
             # Native ACS mapping wins even though the donor offers this PUF leaf.
             "taxable_interest_income": [11.0, 12.0, 13.0, 14.0, 15.0, 16.0],
-            "native_label": ["a", "b", "c", "d", "e", "f"],
+            # Pinned to the canonical storage: bare lists infer the
+            # environment-default string storage (pyarrow when installed),
+            # which would force the no-op canonicalization rewrite these
+            # tests assert never happens.
+            "native_label": pd.array(
+                ["a", "b", "c", "d", "e", "f"], dtype=CANONICAL_STRING_DTYPE
+            ),
         },
         index=pd.Index(np.arange(501, 507), name="acs_person_row"),
     )
@@ -240,7 +246,10 @@ def _recipient_frame() -> Frame:
         {
             "household_id": np.asarray([1_100, 1_200, 1_300], dtype=np.int64),
             "state_fips": [6, 36, 36],
-            "tenure_type": ["OWNED_WITH_MORTGAGE", "RENTED", "RENTED"],
+            "tenure_type": pd.array(
+                ["OWNED_WITH_MORTGAGE", "RENTED", "RENTED"],
+                dtype=CANONICAL_STRING_DTYPE,
+            ),
         },
         index=pd.Index([701, 702, 703], name="acs_household_row"),
     )
