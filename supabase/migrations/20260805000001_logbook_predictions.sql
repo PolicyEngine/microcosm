@@ -1,13 +1,13 @@
--- Seed the Chronicle prediction history harvested for populace#628.
+-- Seed the Logbook prediction history harvested for populace#628.
 --
 -- Keep the source records as JSON so heterogeneous predicted and actual
 -- values retain their original JSON types.  The timestamp fields are cast to
--- Chronicle's timestamptz columns when the recordset is expanded.
+-- Logbook's timestamptz columns when the recordset is expanded.
 
 WITH prediction_seed AS (
     SELECT *
     FROM jsonb_to_recordset(
-        $chronicle_predictions$
+        $logbook_predictions$
         [
           {"id":"p001","ts":"2026-08-03T07:30-04:00","claim":"run 6 pool build completes in 6-8h from dispatch","type":"interval_hours","predicted":[6,8],"resolved":"2026-08-03T17:24-04:00","outcome":"MISS","actual":"8h timeout kill mid-transfer; transfer phase alone >7.5h","note":"inherited the run-5 era estimate without re-deriving from stage structure"},
           {"id":"p002","ts":"2026-08-03T09:45-04:00","claim":"run 6 agreement verdict by 16:00-21:30 ET Sun[Mon]","type":"time_window","resolved":"2026-08-03T17:24-04:00","outcome":"MISS","actual":"attempt 4 timeout-killed 17:23; no verdict that day"},
@@ -31,7 +31,7 @@ WITH prediction_seed AS (
           {"id":"p019","ts":"2026-08-05T21:45-04:00","claim":"first 1% smoke build completes end-to-end CLEAN (all phases incl. export; gates fire; battery receipts insufficient_support as designed) on first attempt","type":"binary","p":0.35,"outcome":"OPEN","note":"first contact of the full stacked pipeline with real data at any scale; the smoke rung exists precisely because this number is low"},
           {"id":"p016-resolution","ts":"2026-08-05T23:05-04:00","resolves":"p016","outcome":"MISS","actual":"no pilot build ran Wed evening — the architecture went through two more review rounds (correctly) and the adoption lane is still building; the 22:00 deadline assumed three serial unknowns would all break favorably","note":"p=0.5 was overconfident given three serial dependencies; the 0.35 discipline on p019 reflects the correction"}
         ]
-        $chronicle_predictions$::jsonb
+        $logbook_predictions$::jsonb
     ) AS source(
         id text,
         ts timestamptz,
@@ -46,7 +46,7 @@ WITH prediction_seed AS (
         note text
     )
 )
-INSERT INTO chronicle.predictions (
+INSERT INTO logbook.predictions (
     id,
     ts,
     claim,

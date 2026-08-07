@@ -1,4 +1,4 @@
-"""End-to-end guard for the checked-in #628 Chronicle backfill."""
+"""End-to-end guard for the checked-in #628 Logbook backfill."""
 
 from __future__ import annotations
 
@@ -6,19 +6,19 @@ import hashlib
 from collections import Counter
 from pathlib import Path
 
-from populace.build.chronicle import (
+from populace.build.logbook import (
     canonical_json_bytes,
-    load_chronicle_file,
+    load_logbook_file,
     load_spool_rows,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
-ARCHIVE = ROOT / "chronicle.jsonl"
-SPOOL = ROOT / "ledger-spool"
+ARCHIVE = ROOT / "logbook.jsonl"
+SPOOL = ROOT / "logbook-spool"
 
 
 def test_backfill_archive_and_operator_spool_match_end_to_end() -> None:
-    rows = load_chronicle_file(ARCHIVE)
+    rows = load_logbook_file(ARCHIVE)
     spool_rows = load_spool_rows(SPOOL)
 
     assert len(rows) == 26
@@ -36,7 +36,7 @@ def test_backfill_archive_and_operator_spool_match_end_to_end() -> None:
 
 
 def test_backfill_contains_all_hf_releases_and_three_run_era_rows() -> None:
-    rows = load_chronicle_file(ARCHIVE)
+    rows = load_logbook_file(ARCHIVE)
     release_rows = [row for row in rows if row.pipeline == "us-2024-release"]
     run_rows = [row for row in rows if row.pipeline == "us-pool-inc2"]
 
@@ -55,7 +55,7 @@ def test_backfill_contains_all_hf_releases_and_three_run_era_rows() -> None:
 
 
 def test_run_era_backfill_marks_inferences_and_prediction_links() -> None:
-    run5, run6, run7 = load_chronicle_file(ARCHIVE)[-3:]
+    run5, run6, run7 = load_logbook_file(ARCHIVE)[-3:]
 
     assert [run5.cost_usd, run6.cost_usd, run7.cost_usd] == [122, 65, 47.5]
     assert [run5.prediction_id, run6.prediction_id, run7.prediction_id] == [

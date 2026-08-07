@@ -1,4 +1,4 @@
--- Chronicle: the append-only build and prediction ledger.
+-- Logbook: the append-only build and prediction ledger.
 --
 -- The build hash contract is deliberately implemented in SQL as well as in
 -- the Python client.  Canonical JSON is UTF-8, compact, object-key sorted in
@@ -15,7 +15,7 @@ CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 -- IF NOT EXISTS leaves an already-installed extension in its original schema.
--- Chronicle hard-qualifies digest() below, so normalize a relocatable pgcrypto
+-- Logbook hard-qualifies digest() below, so normalize a relocatable pgcrypto
 -- installation instead of depending on the database's prior search path.
 DO $pgcrypto_schema$
 DECLARE
@@ -34,12 +34,12 @@ BEGIN
 END;
 $pgcrypto_schema$;
 
-CREATE SCHEMA IF NOT EXISTS chronicle;
+CREATE SCHEMA IF NOT EXISTS logbook;
 
-CREATE DOMAIN chronicle.sha256_hex AS text
+CREATE DOMAIN logbook.sha256_hex AS text
     CHECK (VALUE ~ '^[0-9a-f]{64}$');
 
-CREATE TYPE chronicle.build_disposition AS ENUM (
+CREATE TYPE logbook.build_disposition AS ENUM (
     'iterating',
     'billed',
     'published',
@@ -51,14 +51,14 @@ CREATE TYPE chronicle.build_disposition AS ENUM (
 
 -- Python's str.strip() recognizes these 29 Unicode whitespace code points.
 -- Keep direct database inserts on the same nonempty/trimmed text contract as
--- the fail-closed Chronicle client.
-CREATE OR REPLACE FUNCTION chronicle.nonempty_trimmed_text(p_value text)
+-- the fail-closed Logbook client.
+CREATE OR REPLACE FUNCTION logbook.nonempty_trimmed_text(p_value text)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
 STRICT
 PARALLEL SAFE
-SET search_path = pg_catalog, chronicle
+SET search_path = pg_catalog, logbook
 AS $function$
     SELECT p_value <> '' AND p_value = btrim(
         p_value,
@@ -68,23 +68,23 @@ AS $function$
     )
 $function$;
 
-CREATE TABLE chronicle.predictions (
-    id text PRIMARY KEY CHECK (chronicle.nonempty_trimmed_text(id)),
+CREATE TABLE logbook.predictions (
+    id text PRIMARY KEY CHECK (logbook.nonempty_trimmed_text(id)),
     ts timestamptz NOT NULL CHECK (isfinite(ts)),
     claim text CHECK (
-        claim IS NULL OR chronicle.nonempty_trimmed_text(claim)
+        claim IS NULL OR logbook.nonempty_trimmed_text(claim)
     ),
     type text CHECK (
-        type IS NULL OR chronicle.nonempty_trimmed_text(type)
+        type IS NULL OR logbook.nonempty_trimmed_text(type)
     ),
     predicted jsonb,
     p numeric CHECK (p IS NULL OR (p >= 0 AND p <= 1)),
     resolved timestamptz CHECK (resolved IS NULL OR isfinite(resolved)),
     resolves text CHECK (
         resolves IS NULL
-        OR chronicle.nonempty_trimmed_text(resolves)
+        OR logbook.nonempty_trimmed_text(resolves)
     ),
-    outcome text NOT NULL CHECK (chronicle.nonempty_trimmed_text(outcome)),
+    outcome text NOT NULL CHECK (logbook.nonempty_trimmed_text(outcome)),
     actual jsonb,
     note text,
     CONSTRAINT predictions_event_shape CHECK (
@@ -103,23 +103,23 @@ CREATE TABLE chronicle.predictions (
         resolves IS NULL OR resolves <> id
     ),
     CONSTRAINT predictions_resolves_fk FOREIGN KEY (resolves)
-        REFERENCES chronicle.predictions (id)
+        REFERENCES logbook.predictions (id)
         ON UPDATE RESTRICT
         ON DELETE RESTRICT
         DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE INDEX predictions_resolves_idx
-    ON chronicle.predictions (resolves)
+    ON logbook.predictions (resolves)
     WHERE resolves IS NOT NULL;
 
-CREATE OR REPLACE FUNCTION chronicle.valid_build_phases(p_value jsonb)
+CREATE OR REPLACE FUNCTION logbook.valid_build_phases(p_value jsonb)
 RETURNS boolean
 LANGUAGE plpgsql
 IMMUTABLE
 STRICT
 PARALLEL SAFE
-SET search_path = pg_catalog, chronicle
+SET search_path = pg_catalog, logbook
 AS $function$
 DECLARE
     item jsonb;
@@ -138,7 +138,7 @@ BEGIN
             RETURN false;
         END IF;
         phase := item #>> '{}';
-        IF NOT chronicle.nonempty_trimmed_text(phase)
+        IF NOT logbook.nonempty_trimmed_text(phase)
             OR phase = ANY(phases_seen)
         THEN
             RETURN false;
@@ -149,13 +149,13 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION chronicle.valid_gate_verdicts(p_value jsonb)
+CREATE OR REPLACE FUNCTION logbook.valid_gate_verdicts(p_value jsonb)
 RETURNS boolean
 LANGUAGE plpgsql
 IMMUTABLE
 STRICT
 PARALLEL SAFE
-SET search_path = pg_catalog, chronicle
+SET search_path = pg_catalog, logbook
 AS $function$
 DECLARE
     member record;
@@ -167,7 +167,7 @@ BEGIN
     END IF;
     FOR member IN SELECT key, value FROM jsonb_each(p_value)
     LOOP
-        IF NOT chronicle.nonempty_trimmed_text(member.key)
+        IF NOT logbook.nonempty_trimmed_text(member.key)
             OR jsonb_typeof(member.value) <> 'object'
             OR jsonb_typeof(member.value -> 'verdict') IS DISTINCT FROM 'string'
             OR jsonb_typeof(member.value -> 'receipt') IS DISTINCT FROM 'string'
@@ -176,8 +176,8 @@ BEGIN
         END IF;
         verdict := member.value ->> 'verdict';
         receipt_pointer := member.value ->> 'receipt';
-        IF NOT chronicle.nonempty_trimmed_text(verdict)
-            OR NOT chronicle.nonempty_trimmed_text(receipt_pointer)
+        IF NOT logbook.nonempty_trimmed_text(verdict)
+            OR NOT logbook.nonempty_trimmed_text(receipt_pointer)
         THEN
             RETURN false;
         END IF;
@@ -186,35 +186,35 @@ BEGIN
 END;
 $function$;
 
-CREATE TABLE chronicle.builds (
+CREATE TABLE logbook.builds (
     build_id text PRIMARY KEY CHECK (
-        chronicle.nonempty_trimmed_text(build_id)
+        logbook.nonempty_trimmed_text(build_id)
         AND build_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$'
     ),
     ts timestamptz NOT NULL CHECK (isfinite(ts)),
-    pipeline text NOT NULL CHECK (chronicle.nonempty_trimmed_text(pipeline)),
+    pipeline text NOT NULL CHECK (logbook.nonempty_trimmed_text(pipeline)),
     rung text NOT NULL,
     seed bigint CHECK (seed IS NULL OR seed >= 0),
-    code_pin text NOT NULL CHECK (chronicle.nonempty_trimmed_text(code_pin)),
-    input_pins_digest chronicle.sha256_hex NOT NULL,
-    identity_digest chronicle.sha256_hex NOT NULL,
+    code_pin text NOT NULL CHECK (logbook.nonempty_trimmed_text(code_pin)),
+    input_pins_digest logbook.sha256_hex NOT NULL,
+    identity_digest logbook.sha256_hex NOT NULL,
     phases_reached jsonb NOT NULL
-        CHECK (chronicle.valid_build_phases(phases_reached)),
+        CHECK (logbook.valid_build_phases(phases_reached)),
     gate_verdicts jsonb NOT NULL
-        CHECK (chronicle.valid_gate_verdicts(gate_verdicts)),
+        CHECK (logbook.valid_gate_verdicts(gate_verdicts)),
     wall_seconds numeric,
     cost_usd numeric,
     artifact_location text CHECK (
         artifact_location IS NULL
-        OR chronicle.nonempty_trimmed_text(artifact_location)
+        OR logbook.nonempty_trimmed_text(artifact_location)
     ),
-    disposition chronicle.build_disposition NOT NULL,
+    disposition logbook.build_disposition NOT NULL,
     prediction_id text CHECK (
         prediction_id IS NULL
-        OR chronicle.nonempty_trimmed_text(prediction_id)
+        OR logbook.nonempty_trimmed_text(prediction_id)
     ),
-    prev_row_digest chronicle.sha256_hex,
-    row_digest chronicle.sha256_hex NOT NULL,
+    prev_row_digest logbook.sha256_hex,
+    row_digest logbook.sha256_hex NOT NULL,
     CONSTRAINT builds_rung_fraction_token CHECK (
         rung IN ('f001', 'f010', 'f100')
     ),
@@ -234,13 +234,13 @@ CREATE TABLE chronicle.builds (
         )
     ),
     CONSTRAINT builds_prediction_fk FOREIGN KEY (prediction_id)
-        REFERENCES chronicle.predictions (id)
+        REFERENCES logbook.predictions (id)
         ON UPDATE RESTRICT
         ON DELETE RESTRICT
         DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT builds_row_digest_unique UNIQUE (row_digest),
     CONSTRAINT builds_predecessor_fk FOREIGN KEY (prev_row_digest)
-        REFERENCES chronicle.builds (row_digest)
+        REFERENCES logbook.builds (row_digest)
         ON UPDATE RESTRICT
         ON DELETE RESTRICT
         DEFERRABLE INITIALLY IMMEDIATE
@@ -250,29 +250,29 @@ CREATE TABLE chronicle.builds (
 -- trigger's unique-tail check, this prevents a fork even if concurrent writers
 -- race to append after the same build.
 CREATE UNIQUE INDEX builds_unique_predecessor
-    ON chronicle.builds (prev_row_digest)
+    ON logbook.builds (prev_row_digest)
     WHERE prev_row_digest IS NOT NULL;
 
 -- The trigger enforces this too; the index keeps the single-genesis invariant
 -- declarative if a privileged operator ever disables triggers temporarily.
 CREATE UNIQUE INDEX builds_single_genesis
-    ON chronicle.builds ((1))
+    ON logbook.builds ((1))
     WHERE prev_row_digest IS NULL;
 
-CREATE INDEX builds_ts_idx ON chronicle.builds (ts, build_id);
+CREATE INDEX builds_ts_idx ON logbook.builds (ts, build_id);
 CREATE INDEX builds_disposition_ts_idx
-    ON chronicle.builds (disposition, ts, build_id);
+    ON logbook.builds (disposition, ts, build_id);
 CREATE INDEX builds_prediction_id_idx
-    ON chronicle.builds (prediction_id)
+    ON logbook.builds (prediction_id)
     WHERE prediction_id IS NOT NULL;
 
-CREATE OR REPLACE FUNCTION chronicle.canonical_json_text(p_value jsonb)
+CREATE OR REPLACE FUNCTION logbook.canonical_json_text(p_value jsonb)
 RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
 STRICT
 PARALLEL SAFE
-SET search_path = pg_catalog, chronicle
+SET search_path = pg_catalog, logbook
 AS $function$
 DECLARE
     value_kind text;
@@ -296,7 +296,7 @@ BEGIN
             rendered := rendered
                 || to_jsonb(member.key)::text
                 || ':'
-                || chronicle.canonical_json_text(member.value);
+                || logbook.canonical_json_text(member.value);
             first_member := false;
         END LOOP;
         RETURN rendered || '}';
@@ -315,7 +315,7 @@ BEGIN
                 rendered := rendered || ',';
             END IF;
             rendered := rendered
-                || chronicle.canonical_json_text(member.value);
+                || logbook.canonical_json_text(member.value);
             first_member := false;
         END LOOP;
         RETURN rendered || ']';
@@ -339,14 +339,14 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION chronicle.build_hash_payload(
-    p_build chronicle.builds
+CREATE OR REPLACE FUNCTION logbook.build_hash_payload(
+    p_build logbook.builds
 )
 RETURNS jsonb
 LANGUAGE sql
 STABLE
 STRICT
-SET search_path = pg_catalog, chronicle
+SET search_path = pg_catalog, logbook
 AS $function$
     SELECT jsonb_build_object(
         'artifact_location', p_build.artifact_location,
@@ -370,39 +370,39 @@ AS $function$
     )
 $function$;
 
-CREATE OR REPLACE FUNCTION chronicle.expected_build_row_digest(
-    p_build chronicle.builds
+CREATE OR REPLACE FUNCTION logbook.expected_build_row_digest(
+    p_build logbook.builds
 )
-RETURNS chronicle.sha256_hex
+RETURNS logbook.sha256_hex
 LANGUAGE sql
 STABLE
 STRICT
-SET search_path = pg_catalog, chronicle, extensions
+SET search_path = pg_catalog, logbook, extensions
 AS $function$
     SELECT encode(
         extensions.digest(
             convert_to(
-                chronicle.canonical_json_text(
-                    chronicle.build_hash_payload(p_build)
+                logbook.canonical_json_text(
+                    logbook.build_hash_payload(p_build)
                 ) || coalesce(p_build.prev_row_digest::text, ''),
                 'UTF8'
             ),
             'sha256'
         ),
         'hex'
-    )::chronicle.sha256_hex
+    )::logbook.sha256_hex
 $function$;
 
-CREATE OR REPLACE FUNCTION chronicle.enforce_build_chain()
+CREATE OR REPLACE FUNCTION logbook.enforce_build_chain()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, chronicle, extensions
+SET search_path = pg_catalog, logbook, extensions
 AS $function$
 DECLARE
-    computed_digest chronicle.sha256_hex;
-    existing_build chronicle.builds%ROWTYPE;
-    expected_predecessor chronicle.sha256_hex;
+    computed_digest logbook.sha256_hex;
+    existing_build logbook.builds%ROWTYPE;
+    expected_predecessor logbook.sha256_hex;
     build_count bigint;
     tail_count bigint;
 BEGIN
@@ -410,10 +410,10 @@ BEGIN
     -- both observe and append after the same tail.
     PERFORM pg_advisory_xact_lock(628, 20260805);
 
-    computed_digest := chronicle.expected_build_row_digest(NEW);
+    computed_digest := logbook.expected_build_row_digest(NEW);
     IF NEW.row_digest IS NOT NULL AND NEW.row_digest <> computed_digest THEN
         RAISE EXCEPTION
-            'Chronicle build % supplied row_digest %, expected %',
+            'Logbook build % supplied row_digest %, expected %',
             NEW.build_id,
             NEW.row_digest,
             computed_digest
@@ -426,54 +426,54 @@ BEGIN
     -- while refusing a reused build_id whose immutable content diverges.
     SELECT *
     INTO existing_build
-    FROM chronicle.builds
+    FROM logbook.builds
     WHERE build_id = NEW.build_id;
 
     IF FOUND THEN
-        IF chronicle.build_hash_payload(existing_build)
-                IS DISTINCT FROM chronicle.build_hash_payload(NEW)
+        IF logbook.build_hash_payload(existing_build)
+                IS DISTINCT FROM logbook.build_hash_payload(NEW)
             OR existing_build.prev_row_digest
                 IS DISTINCT FROM NEW.prev_row_digest
             OR existing_build.row_digest IS DISTINCT FROM NEW.row_digest
         THEN
             RAISE EXCEPTION
-                'Chronicle build_id % already exists with divergent content',
+                'Logbook build_id % already exists with divergent content',
                 NEW.build_id
                 USING ERRCODE = '23505';
         END IF;
         RETURN NEW;
     END IF;
 
-    SELECT count(*) INTO build_count FROM chronicle.builds;
+    SELECT count(*) INTO build_count FROM logbook.builds;
 
     IF build_count = 0 THEN
         IF NEW.prev_row_digest IS NOT NULL THEN
             RAISE EXCEPTION
-                'Chronicle genesis build % must have null prev_row_digest, got %',
+                'Logbook genesis build % must have null prev_row_digest, got %',
                 NEW.build_id,
                 NEW.prev_row_digest
                 USING ERRCODE = '23514';
         END IF;
     ELSE
-        SELECT count(*), min(candidate.row_digest::text)::chronicle.sha256_hex
+        SELECT count(*), min(candidate.row_digest::text)::logbook.sha256_hex
         INTO tail_count, expected_predecessor
-        FROM chronicle.builds AS candidate
+        FROM logbook.builds AS candidate
         WHERE NOT EXISTS (
             SELECT 1
-            FROM chronicle.builds AS successor
+            FROM logbook.builds AS successor
             WHERE successor.prev_row_digest = candidate.row_digest
         );
 
         IF tail_count <> 1 THEN
             RAISE EXCEPTION
-                'Chronicle chain is corrupt: expected one tail, found %',
+                'Logbook chain is corrupt: expected one tail, found %',
                 tail_count
                 USING ERRCODE = '23514';
         END IF;
 
         IF NEW.prev_row_digest IS DISTINCT FROM expected_predecessor THEN
             RAISE EXCEPTION
-                'Chronicle build % has prev_row_digest %, current tail is %',
+                'Logbook build % has prev_row_digest %, current tail is %',
                 NEW.build_id,
                 NEW.prev_row_digest,
                 expected_predecessor
@@ -486,16 +486,16 @@ END;
 $function$;
 
 CREATE TRIGGER builds_enforce_chain_before_insert
-BEFORE INSERT ON chronicle.builds
+BEFORE INSERT ON logbook.builds
 FOR EACH ROW
-EXECUTE FUNCTION chronicle.enforce_build_chain();
+EXECUTE FUNCTION logbook.enforce_build_chain();
 
 -- Only the explicitly safe build projection is exposed.  In particular, the
 -- view carries neither cost_usd nor gate_verdicts (where private failure
 -- diagnostics and receipt detail can live).  Artifact locations are public
 -- only after publication or certification; failed-build locations may expose
 -- private runtime paths.
-CREATE VIEW chronicle.builds_public
+CREATE VIEW logbook.builds_public
 WITH (security_barrier = true)
 AS
 SELECT
@@ -518,7 +518,7 @@ SELECT
     prediction_id,
     prev_row_digest,
     row_digest
-FROM chronicle.builds;
+FROM logbook.builds;
 
 -- Custom PostgREST roles.  They are NOLOGIN group roles: Supabase JWTs may
 -- select the insert-only writer or private read-only exporter through
@@ -527,102 +527,102 @@ FROM chronicle.builds;
 DO $roles$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_roles WHERE rolname = 'chronicle_writer'
+        SELECT 1 FROM pg_roles WHERE rolname = 'logbook_writer'
     ) THEN
         EXECUTE
-            'CREATE ROLE chronicle_writer NOLOGIN NOINHERIT NOBYPASSRLS';
+            'CREATE ROLE logbook_writer NOLOGIN NOINHERIT NOBYPASSRLS';
     END IF;
     IF NOT EXISTS (
-        SELECT 1 FROM pg_roles WHERE rolname = 'chronicle_exporter'
+        SELECT 1 FROM pg_roles WHERE rolname = 'logbook_exporter'
     ) THEN
         EXECUTE
-            'CREATE ROLE chronicle_exporter NOLOGIN NOINHERIT NOBYPASSRLS';
+            'CREATE ROLE logbook_exporter NOLOGIN NOINHERIT NOBYPASSRLS';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles
-        WHERE rolname = 'chronicle_break_glass_admin'
+        WHERE rolname = 'logbook_break_glass_admin'
     ) THEN
         EXECUTE
-            'CREATE ROLE chronicle_break_glass_admin '
+            'CREATE ROLE logbook_break_glass_admin '
             'NOLOGIN NOINHERIT NOBYPASSRLS';
     END IF;
 END;
 $roles$;
 
-REVOKE ALL ON SCHEMA chronicle FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA chronicle FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA chronicle FROM PUBLIC;
+REVOKE ALL ON SCHEMA logbook FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA logbook FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA logbook FROM PUBLIC;
 
-GRANT USAGE ON SCHEMA chronicle
-    TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
-GRANT USAGE ON TYPE chronicle.sha256_hex, chronicle.build_disposition
-    TO chronicle_writer, chronicle_exporter, chronicle_break_glass_admin;
+GRANT USAGE ON SCHEMA logbook
+    TO logbook_writer, logbook_exporter, logbook_break_glass_admin;
+GRANT USAGE ON TYPE logbook.sha256_hex, logbook.build_disposition
+    TO logbook_writer, logbook_exporter, logbook_break_glass_admin;
 GRANT EXECUTE ON FUNCTION
-    chronicle.nonempty_trimmed_text(text),
-    chronicle.valid_build_phases(jsonb),
-    chronicle.valid_gate_verdicts(jsonb)
-    TO chronicle_writer, chronicle_break_glass_admin;
-GRANT INSERT ON chronicle.builds, chronicle.predictions
-    TO chronicle_writer;
+    logbook.nonempty_trimmed_text(text),
+    logbook.valid_build_phases(jsonb),
+    logbook.valid_gate_verdicts(jsonb)
+    TO logbook_writer, logbook_break_glass_admin;
+GRANT INSERT ON logbook.builds, logbook.predictions
+    TO logbook_writer;
 -- The client's only INSERT shape is PostgREST's idempotent replay
 -- (?on_conflict=build_id + resolution=ignore-duplicates), which plans as
 -- INSERT ... ON CONFLICT (build_id) DO NOTHING. PostgreSQL requires
 -- plan-time SELECT privilege on the conflict-target column, and FORCE RLS
 -- additionally requires a SELECT policy for the conflict check. The
 -- column ACL keeps every other column (cost_usd included) unreadable.
-GRANT SELECT (build_id) ON chronicle.builds
-    TO chronicle_writer;
-GRANT SELECT ON chronicle.builds
-    TO chronicle_exporter;
+GRANT SELECT (build_id) ON logbook.builds
+    TO logbook_writer;
+GRANT SELECT ON logbook.builds
+    TO logbook_exporter;
 GRANT SELECT, INSERT, UPDATE, DELETE
-    ON chronicle.builds, chronicle.predictions
-    TO chronicle_break_glass_admin;
-GRANT SELECT ON chronicle.builds_public
-    TO chronicle_break_glass_admin;
+    ON logbook.builds, logbook.predictions
+    TO logbook_break_glass_admin;
+GRANT SELECT ON logbook.builds_public
+    TO logbook_break_glass_admin;
 
-ALTER TABLE chronicle.builds ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chronicle.builds FORCE ROW LEVEL SECURITY;
-ALTER TABLE chronicle.predictions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chronicle.predictions FORCE ROW LEVEL SECURITY;
+ALTER TABLE logbook.builds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE logbook.builds FORCE ROW LEVEL SECURITY;
+ALTER TABLE logbook.predictions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE logbook.predictions FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY builds_writer_insert
-    ON chronicle.builds
+    ON logbook.builds
     FOR INSERT
-    TO chronicle_writer
+    TO logbook_writer
     WITH CHECK (true);
 
 -- Row visibility for the writer is still bounded by the column ACL above:
 -- this policy only lets the ON CONFLICT (build_id) check run under FORCE
 -- ROW LEVEL SECURITY.
 CREATE POLICY builds_writer_conflict_select
-    ON chronicle.builds
+    ON logbook.builds
     FOR SELECT
-    TO chronicle_writer
+    TO logbook_writer
     USING (true);
 
 CREATE POLICY predictions_writer_insert
-    ON chronicle.predictions
+    ON logbook.predictions
     FOR INSERT
-    TO chronicle_writer
+    TO logbook_writer
     WITH CHECK (true);
 
 CREATE POLICY builds_exporter_select
-    ON chronicle.builds
+    ON logbook.builds
     FOR SELECT
-    TO chronicle_exporter
+    TO logbook_exporter
     USING (true);
 
 CREATE POLICY builds_break_glass_all
-    ON chronicle.builds
+    ON logbook.builds
     FOR ALL
-    TO chronicle_break_glass_admin
+    TO logbook_break_glass_admin
     USING (true)
     WITH CHECK (true);
 
 CREATE POLICY predictions_break_glass_all
-    ON chronicle.predictions
+    ON logbook.predictions
     FOR ALL
-    TO chronicle_break_glass_admin
+    TO logbook_break_glass_admin
     USING (true)
     WITH CHECK (true);
 
@@ -638,43 +638,43 @@ BEGIN
     LOOP
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = api_role) THEN
             EXECUTE format(
-                'GRANT USAGE ON SCHEMA chronicle TO %I', api_role
+                'GRANT USAGE ON SCHEMA logbook TO %I', api_role
             );
             EXECUTE format(
-                'GRANT SELECT ON chronicle.builds_public TO %I', api_role
+                'GRANT SELECT ON logbook.builds_public TO %I', api_role
             );
         END IF;
     END LOOP;
 
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         EXECUTE
-            'REVOKE ALL ON SCHEMA chronicle FROM service_role';
+            'REVOKE ALL ON SCHEMA logbook FROM service_role';
         EXECUTE
-            'REVOKE ALL ON chronicle.builds, chronicle.predictions, '
-            'chronicle.builds_public FROM service_role';
+            'REVOKE ALL ON logbook.builds, logbook.predictions, '
+            'logbook.builds_public FROM service_role';
     END IF;
 
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
         EXECUTE
-            'GRANT chronicle_writer, chronicle_exporter TO authenticator';
+            'GRANT logbook_writer, logbook_exporter TO authenticator';
     END IF;
 END;
 $supabase_roles$;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA chronicle
+ALTER DEFAULT PRIVILEGES IN SCHEMA logbook
     REVOKE ALL ON TABLES FROM PUBLIC;
-ALTER DEFAULT PRIVILEGES IN SCHEMA chronicle
+ALTER DEFAULT PRIVILEGES IN SCHEMA logbook
     REVOKE ALL ON FUNCTIONS FROM PUBLIC;
 
-COMMENT ON SCHEMA chronicle IS
-    'Chronicle append-only build and prediction ledger.';
-COMMENT ON TABLE chronicle.builds IS
+COMMENT ON SCHEMA logbook IS
+    'Logbook append-only build and prediction ledger.';
+COMMENT ON TABLE logbook.builds IS
     'Immutable build attempts linked in one advisory-locked SHA-256 chain.';
-COMMENT ON TABLE chronicle.predictions IS
+COMMENT ON TABLE logbook.predictions IS
     'Prediction ledger rows matching the populace prediction JSONL schema.';
-COMMENT ON VIEW chronicle.builds_public IS
+COMMENT ON VIEW logbook.builds_public IS
     'Public-safe build projection without cost or gate/failure diagnostics.';
-COMMENT ON FUNCTION chronicle.canonical_json_text(jsonb) IS
+COMMENT ON FUNCTION logbook.canonical_json_text(jsonb) IS
     'Compact sorted-key JSON with PostgreSQL numeric values in plain-decimal form.';
-COMMENT ON FUNCTION chronicle.expected_build_row_digest(chronicle.builds) IS
+COMMENT ON FUNCTION logbook.expected_build_row_digest(logbook.builds) IS
     'SHA-256 of canonical build content followed by its raw predecessor digest.';

@@ -1,48 +1,79 @@
-"""Local-only Logbook spool rows compatible with the #628 build trace.
+"""Durable, append-only Logbook client for terminal build attempts.
 
-This module is the direct-write fallback for build tools whose branch base
-does not yet contain the full :mod:`populace.build.logbook` client. It
-implements the exact 17-field row schema and hash contract from populace#628,
-but deliberately has no remote client: a successful call validates one
-terminal build-attempt row and durably writes ``<row_digest>.json`` beneath
-the caller's spool directory.
+``record_build_attempt`` is the adoption seam owned by populace#616. Callers
+provide a complete terminal attempt receipt and the digest of the chain head
+they are extending. Logbook validates and hashes the receipt, durably writes
+``<row_digest>.json`` beneath the caller's spool directory, and only then makes
+a best-effort Supabase REST insert.
+
+Remote availability is never part of build correctness. If either
+``POPULACE_LEDGER_URL`` or ``POPULACE_LEDGER_KEY`` is absent, the validated row
+stays in spool-only mode without error. Network and HTTP failures are returned
+as receipt data and never raised. Local validation and durable-spool failures
+remain fatal: callers must not claim an attempt was recorded if its local row
+was invalid or could not be persisted.
 
 The caller owns chain coordination and must provide ``prev_row_digest`` for
-the logbook head it extends. The row digest is
+the ledger head it extends. The row digest is
 
 ``sha256(canonical JSON of all non-chain fields || prev_row_digest)``
 
 where the predecessor is lowercase ASCII, or the empty string for genesis.
-Local validation and durable-spool failures are fatal. Writes use the house
-pattern: file fsync, atomic rename, then containing-directory fsync.
+Writes use the house pattern: file fsync, atomic rename, then containing-
+directory fsync. ``reconcile_spool`` retries rows in predecessor order with
+PostgREST ignore-duplicate semantics and removes only server-acknowledged rows.
+Export local rows before reconciliation; if that ordering is missed,
+``tools/logbook.py export --remote`` recovers the private rows with a
+distinct read-only exporter credential.
+
+The Supabase key must identify the migration's ``logbook_writer`` role, not
+the service role. Hosted Supabase projects should additionally provide the
+project gateway key as ``POPULACE_LEDGER_API_KEY``; single-key deployments may
+omit it. The ``logbook`` schema must also be enabled in the hosted project's
+PostgREST exposed-schema setting. This module deliberately wires no build
+tool; adoption remains in populace#616.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import math
 import os
 import re
+import threading
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 __all__ = [
     "BUILD_DISPOSITIONS",
     "LOGBOOK_ROW_FIELDS",
     "LOGBOOK_RUNGS",
+    "LogbookExportResult",
     "LogbookRow",
     "LogbookWriteResult",
+    "ReconcileResult",
     "canonical_json_bytes",
     "compute_row_digest",
+    "export_rows",
+    "load_logbook_file",
+    "load_spool_rows",
     "load_logbook_row",
+    "order_rows_by_chain",
+    "reconcile_spool",
     "record_build_attempt",
+    "render_markdown",
 ]
 
 
@@ -60,6 +91,7 @@ BUILD_DISPOSITIONS = frozenset(
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
 LOGBOOK_RUNGS = frozenset({"f001", "f010", "f100"})
+LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 LOGBOOK_ROW_FIELDS = frozenset(
     {
         "build_id",
@@ -82,6 +114,8 @@ LOGBOOK_ROW_FIELDS = frozenset(
     }
 )
 _HASH_EXCLUDED_FIELDS = frozenset({"prev_row_digest", "row_digest"})
+_ARCHIVE_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+_ARCHIVE_THREAD_LOCKS_GUARD = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -280,10 +314,31 @@ class LogbookRow:
 
 @dataclass(frozen=True)
 class LogbookWriteResult:
-    """Receipt for one durable local Logbook spool write."""
+    """Receipt for one durable local write and best-effort remote insert."""
 
     row: LogbookRow
     spool_path: Path
+    posted: bool = False
+    remote_error: str | None = None
+
+
+@dataclass(frozen=True)
+class ReconcileResult:
+    """Receipt for one ordered spool reconciliation pass."""
+
+    attempted: int
+    posted: int
+    retained: int
+    errors: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LogbookExportResult:
+    """Receipt for one content-append to the git archive."""
+
+    existing: int
+    appended: int
+    tail_digest: str | None
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -338,8 +393,15 @@ def record_build_attempt(
     prev_row_digest: str | None,
     row_digest: str | None = None,
     spool_dir: str | Path = "logbook-spool",
+    timeout: float = 10.0,
 ) -> LogbookWriteResult:
-    """Validate and durably spool one terminal attempt without network I/O."""
+    """Validate, durably spool, then best-effort insert one terminal attempt.
+
+    The complete row, including ``prev_row_digest``, is supplied by the caller
+    so chain coordination is explicit. A missing URL or key selects spool-only
+    mode. Remote failures are reported in ``remote_error`` and never raised;
+    validation and local persistence errors do raise.
+    """
 
     row = LogbookRow.create(
         build_id=build_id,
@@ -362,7 +424,22 @@ def record_build_attempt(
     )
     spool_path = Path(spool_dir) / f"{row.row_digest}.json"
     _atomic_write_row(spool_path, row)
-    return LogbookWriteResult(row=row, spool_path=spool_path)
+    config = _remote_config()
+    if config is None:
+        return LogbookWriteResult(row=row, spool_path=spool_path)
+    posted, error = _post_build_row(
+        row,
+        ledger_url=config[0],
+        ledger_key=config[1],
+        ledger_api_key=config[2],
+        timeout=timeout,
+    )
+    return LogbookWriteResult(
+        row=row,
+        spool_path=spool_path,
+        posted=posted,
+        remote_error=error,
+    )
 
 
 def load_logbook_row(path: str | Path) -> LogbookRow:
@@ -380,6 +457,441 @@ def load_logbook_row(path: str | Path) -> LogbookRow:
             f"{row.build_id}: {spool_path.name}."
         )
     return row
+
+
+def load_spool_rows(spool_dir: str | Path) -> tuple[LogbookRow, ...]:
+    """Load and chain-order every completed JSON row in a spool directory."""
+
+    directory = Path(spool_dir)
+    if not directory.exists():
+        return ()
+    if not directory.is_dir():
+        raise ValueError(f"Logbook spool path is not a directory: {directory}.")
+    rows = tuple(load_logbook_row(path) for path in sorted(directory.glob("*.json")))
+    return order_rows_by_chain(rows)
+
+
+def order_rows_by_chain(
+    rows: Sequence[LogbookRow],
+) -> tuple[LogbookRow, ...]:
+    """Return one complete chain or suffix, rejecting forks and disconnection."""
+
+    if not rows:
+        return ()
+    by_digest: dict[str, LogbookRow] = {}
+    build_ids: set[str] = set()
+    successors: dict[str, LogbookRow] = {}
+    for row in rows:
+        if row.row_digest in by_digest:
+            raise ValueError(f"Duplicate Logbook row_digest: {row.row_digest}.")
+        if row.build_id in build_ids:
+            raise ValueError(f"Duplicate Logbook build_id: {row.build_id}.")
+        by_digest[row.row_digest] = row
+        build_ids.add(row.build_id)
+        predecessor = row.prev_row_digest
+        if predecessor is not None:
+            if predecessor in successors:
+                first = successors[predecessor]
+                raise ValueError(
+                    "Logbook chain forks after "
+                    f"{predecessor}: {first.build_id}, {row.build_id}."
+                )
+            successors[predecessor] = row
+
+    roots = [
+        row
+        for row in rows
+        if row.prev_row_digest is None or row.prev_row_digest not in by_digest
+    ]
+    if len(roots) != 1:
+        raise ValueError(
+            "Logbook rows must form one connected chain; "
+            f"found {len(roots)} roots among {len(rows)} rows."
+        )
+
+    ordered: list[LogbookRow] = []
+    current = roots[0]
+    while True:
+        ordered.append(current)
+        successor = successors.get(current.row_digest)
+        if successor is None:
+            break
+        current = successor
+    if len(ordered) != len(rows):
+        unseen = sorted(set(by_digest) - {row.row_digest for row in ordered})
+        raise ValueError(
+            "Logbook rows contain a cycle or disconnected component; "
+            f"unseen digests={unseen}."
+        )
+    return tuple(ordered)
+
+
+def reconcile_spool(
+    spool_dir: str | Path = "logbook-spool",
+    *,
+    timeout: float = 10.0,
+) -> ReconcileResult:
+    """Retry a spool suffix in chain order and remove acknowledged rows only.
+
+    Export the spool to the git archive first.  A read-only live-store export
+    remains available to operators if reconciliation happens first.
+    """
+
+    rows = load_spool_rows(spool_dir)
+    config = _remote_config()
+    if config is None or not rows:
+        return ReconcileResult(
+            attempted=0,
+            posted=0,
+            retained=len(rows),
+            errors=(),
+        )
+
+    directory = Path(spool_dir)
+    attempted = 0
+    posted = 0
+    removed = 0
+    errors: list[str] = []
+    for row in rows:
+        attempted += 1
+        success, error = _post_build_row(
+            row,
+            ledger_url=config[0],
+            ledger_key=config[1],
+            ledger_api_key=config[2],
+            timeout=timeout,
+        )
+        if not success:
+            errors.append(f"{row.build_id}: {error or 'remote insert failed'}")
+            break
+        posted += 1
+        path = directory / f"{row.row_digest}.json"
+        try:
+            path.unlink()
+            removed += 1
+            _fsync_parent_directory(directory)
+        except OSError as exc:
+            errors.append(
+                f"{row.build_id}: remote insert succeeded but spool cleanup "
+                f"failed: {exc}"
+            )
+            break
+    return ReconcileResult(
+        attempted=attempted,
+        posted=posted,
+        retained=len(rows) - removed,
+        errors=tuple(errors),
+    )
+
+
+def load_logbook_file(path: str | Path) -> tuple[LogbookRow, ...]:
+    """Load and validate a genesis-rooted Logbook JSONL archive."""
+
+    archive = Path(path)
+    if not archive.exists():
+        raise ValueError(f"Logbook archive does not exist: {archive}.")
+    rows = _load_jsonl_rows(archive)
+    _validate_ordered_chain(rows, expected_predecessor=None)
+    return rows
+
+
+def export_rows(
+    path: str | Path,
+    candidates: Sequence[LogbookRow],
+) -> LogbookExportResult:
+    """Content-append a verified chain suffix, failing closed on divergence."""
+
+    archive = Path(path)
+    with _exclusive_archive_lock(archive):
+        return _export_rows_locked(archive, candidates)
+
+
+def _export_rows_locked(
+    archive: Path,
+    candidates: Sequence[LogbookRow],
+) -> LogbookExportResult:
+    """Append while the archive's stable parent-directory lock is held."""
+
+    if archive.exists():
+        original = archive.read_bytes()
+        existing = _load_jsonl_bytes(archive, original)
+        _validate_ordered_chain(existing, expected_predecessor=None)
+    else:
+        existing = ()
+        original = b""
+
+    ordered = order_rows_by_chain(candidates)
+    existing_by_id = {row.build_id: row for row in existing}
+    new_rows: list[LogbookRow] = []
+    saw_new = False
+    for row in ordered:
+        archived = existing_by_id.get(row.build_id)
+        if archived is not None:
+            if saw_new:
+                raise ValueError(
+                    f"Logbook candidate chain returns to archived row {row.build_id} "
+                    "after its new suffix begins."
+                )
+            if archived != row:
+                raise ValueError(
+                    f"Logbook candidate diverges from archived row {row.build_id}."
+                )
+            continue
+        saw_new = True
+        new_rows.append(row)
+
+    predecessor = existing[-1].row_digest if existing else None
+    _validate_ordered_chain(tuple(new_rows), expected_predecessor=predecessor)
+    if new_rows:
+        if original and not original.endswith(b"\n"):
+            raise ValueError(f"Logbook archive {archive} does not end with a newline.")
+        addition = "".join(row.to_json_line() for row in new_rows).encode("utf-8")
+        _atomic_write_bytes(archive, original + addition)
+    elif archive.exists():
+        # A previous atomic replacement may have become visible before its
+        # parent-directory fsync failed.  An exact retry must complete that
+        # durability boundary instead of returning early.
+        _fsync_file_and_parent(archive)
+
+    tail = new_rows[-1].row_digest if new_rows else predecessor
+    return LogbookExportResult(
+        existing=len(existing),
+        appended=len(new_rows),
+        tail_digest=tail,
+    )
+
+
+def render_markdown(
+    rows: Sequence[LogbookRow],
+    *,
+    rung: str | None = None,
+    dispositions: set[str] | None = None,
+) -> str:
+    """Render the public-safe Logbook projection as a Markdown table."""
+
+    if rung is not None:
+        _validate_rung(rung)
+    if dispositions is not None:
+        invalid = dispositions - BUILD_DISPOSITIONS
+        if invalid:
+            raise ValueError(f"Unknown Logbook dispositions: {sorted(invalid)}.")
+    selected = [
+        row
+        for row in rows
+        if (rung is None or row.rung == rung)
+        and (dispositions is None or row.disposition in dispositions)
+    ]
+    lines = [
+        "| Timestamp (UTC) | Build | Pipeline | Rung | Disposition | Artifact |",
+        "|---|---|---|---|---|---|",
+    ]
+    for row in selected:
+        public_artifact = (
+            row.artifact_location
+            if row.disposition in {"published", "certified"}
+            else None
+        )
+        values = (
+            row.ts,
+            row.build_id,
+            row.pipeline,
+            row.rung,
+            row.disposition,
+            public_artifact or "—",
+        )
+        lines.append(
+            "| " + " | ".join(_markdown_cell(value) for value in values) + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _load_jsonl_rows(path: Path) -> tuple[LogbookRow, ...]:
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"Cannot read Logbook rows from {path}: {exc}.") from exc
+    return _load_jsonl_bytes(path, content)
+
+
+def _load_jsonl_bytes(path: Path, content: bytes) -> tuple[LogbookRow, ...]:
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Cannot read Logbook rows from {path}: {exc}.") from exc
+    if not text:
+        return ()
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    rows: list[LogbookRow] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            raise ValueError(
+                f"Invalid Logbook row {line_number} (blank) in {path}: "
+                "blank lines are not allowed."
+            )
+        build_id = "unknown"
+        try:
+            value = json.loads(line)
+            if isinstance(value, Mapping):
+                build_id = str(value.get("build_id", build_id))
+            rows.append(LogbookRow.from_mapping(value))
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid Logbook row {line_number} ({build_id}) in {path}: {exc}"
+            ) from exc
+    return tuple(rows)
+
+
+def _validate_ordered_chain(
+    rows: Sequence[LogbookRow],
+    *,
+    expected_predecessor: str | None,
+) -> None:
+    predecessor = expected_predecessor
+    build_ids: set[str] = set()
+    for position, row in enumerate(rows, start=1):
+        if row.build_id in build_ids:
+            raise ValueError(
+                f"Logbook chain repeats build_id {row.build_id} at row {position}."
+            )
+        if row.prev_row_digest != predecessor:
+            context = "genesis" if predecessor is None else "current archive tail"
+            raise ValueError(
+                f"Logbook chain diverges at row {position} ({row.build_id}): "
+                f"prev_row_digest={row.prev_row_digest!r}, expected {context} "
+                f"{predecessor!r}."
+            )
+        build_ids.add(row.build_id)
+        predecessor = row.row_digest
+
+
+def _markdown_cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+@contextmanager
+def _exclusive_archive_lock(path: Path) -> Iterator[None]:
+    """Serialize atomic archive replacements without leaving a lock artifact."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    directory = path.parent.resolve()
+    with _ARCHIVE_THREAD_LOCKS_GUARD:
+        thread_lock = _ARCHIVE_THREAD_LOCKS.setdefault(
+            directory,
+            threading.Lock(),
+        )
+    with thread_lock:
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        descriptor = os.open(directory, flags)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Refuse redirects so credential headers never cross an origin boundary."""
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        del req, fp, code, msg, headers, newurl
+        return None
+
+
+_NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler())
+
+
+def urlopen(request: Request, *, timeout: float) -> Any:
+    """Open one Logbook request without following HTTP redirects."""
+
+    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
+
+
+def _remote_config() -> tuple[str, str, str] | None:
+    url = os.environ.get("POPULACE_LEDGER_URL")
+    key = os.environ.get("POPULACE_LEDGER_KEY")
+    if not url or not key:
+        return None
+    api_key = os.environ.get(LEDGER_API_KEY_ENV) or key
+    return url, key, api_key
+
+
+def _validate_remote_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError("Logbook URL must have a host and no embedded credentials")
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and loopback):
+        raise ValueError("Logbook URL must use HTTPS (HTTP is loopback-only)")
+
+
+def _builds_endpoint(url: str) -> str:
+    _validate_remote_url(url)
+    base = url.rstrip("/")
+    if base.endswith("/rest/v1/builds"):
+        endpoint = base
+    elif base.endswith("/rest/v1"):
+        endpoint = f"{base}/builds"
+    else:
+        endpoint = f"{base}/rest/v1/builds"
+    return f"{endpoint}?{urlencode({'on_conflict': 'build_id'})}"
+
+
+def _post_build_row(
+    row: LogbookRow,
+    *,
+    ledger_url: str,
+    ledger_key: str,
+    ledger_api_key: str,
+    timeout: float,
+) -> tuple[bool, str | None]:
+    if timeout <= 0:
+        return False, "timeout must be greater than zero"
+    try:
+        request = Request(
+            _builds_endpoint(ledger_url),
+            data=row.to_json_line().rstrip("\n").encode("utf-8"),
+            method="POST",
+            headers={
+                "apikey": ledger_api_key,
+                "Authorization": f"Bearer {ledger_key}",
+                "Content-Profile": "logbook",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=ignore-duplicates,return=minimal",
+            },
+        )
+        with urlopen(request, timeout=timeout) as response:
+            status = getattr(response, "status", 200)
+            if not 200 <= status < 300:
+                return False, f"Supabase returned HTTP {status}"
+    except HTTPError as exc:
+        try:
+            body = exc.read(1_024).decode("utf-8", errors="replace").strip()
+        except OSError:
+            body = ""
+        detail = f": {body}" if body else ""
+        return False, f"Supabase returned HTTP {exc.code}{detail}"
+    except OSError as exc:
+        return False, f"Supabase insert failed: {exc}"
+    except Exception as exc:  # pragma: no cover - defensive build-safety boundary
+        return False, f"Supabase insert failed: {type(exc).__name__}: {exc}"
+    return True, None
 
 
 def _canonical_json_text(value: Any) -> str:
@@ -450,8 +962,10 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
 
 
 def _validate_rung(value: str) -> str:
-    if value not in LOGBOOK_RUNGS:
-        raise ValueError(f"rung must be one of {sorted(LOGBOOK_RUNGS)}, got {value!r}.")
+    if not isinstance(value, str) or value not in LOGBOOK_RUNGS:
+        raise ValueError(
+            "rung must be a #624 fraction token: 'f001', 'f010', or 'f100'."
+        )
     return value
 
 
@@ -572,6 +1086,22 @@ def _atomic_write_row(path: Path, row: LogbookRow) -> None:
     try:
         with temporary.open("w", encoding="utf-8") as stream:
             stream.write(row.to_json_line())
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        _fsync_parent_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    """Durably replace one file with exact bytes using the house pattern."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("wb") as stream:
+            stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)

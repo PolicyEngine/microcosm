@@ -1,4 +1,4 @@
-"""Contracts for Chronicle's checked-in git archive."""
+"""Contracts for Logbook's checked-in git archive."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-import populace.build.chronicle as chronicle
-from populace.build.chronicle import (
-    ChronicleRow,
+import populace.build.logbook as logbook
+from populace.build.logbook import (
+    LogbookRow,
     export_rows,
-    load_chronicle_file,
+    load_logbook_file,
     render_markdown,
 )
 
@@ -24,8 +24,8 @@ def _row(
     predecessor: str | None,
     disposition: str = "failed",
     artifact: str | None = None,
-) -> ChronicleRow:
-    return ChronicleRow.create(
+) -> LogbookRow:
+    return LogbookRow.create(
         build_id=build_id,
         ts="2026-08-05T12:00:00Z",
         pipeline="archive-fixture",
@@ -51,7 +51,7 @@ def _row(
 
 
 def test_export_appends_only_a_contiguous_suffix(tmp_path: Path) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     first = _row("archive-1", predecessor=None)
     second = _row("archive-2", predecessor=first.row_digest)
 
@@ -62,13 +62,13 @@ def test_export_appends_only_a_contiguous_suffix(tmp_path: Path) -> None:
     assert (initial.existing, initial.appended) == (0, 1)
     assert (appended.existing, appended.appended) == (1, 1)
     assert (replay.existing, replay.appended) == (2, 0)
-    assert load_chronicle_file(archive) == (first, second)
+    assert load_logbook_file(archive) == (first, second)
 
 
 def test_export_fails_closed_when_suffix_does_not_extend_tail(
     tmp_path: Path,
 ) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     first = _row("archive-1", predecessor=None)
     export_rows(archive, [first])
     original = archive.read_bytes()
@@ -84,12 +84,12 @@ def test_competing_exports_are_serialized_without_losing_a_suffix(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     first = _row("archive-1", predecessor=None)
     left = _row("archive-left", predecessor=first.row_digest)
     right = _row("archive-right", predecessor=first.row_digest)
     export_rows(archive, [first])
-    real_export = chronicle._export_rows_locked
+    real_export = logbook._export_rows_locked
     first_entered = threading.Event()
     second_entered = threading.Event()
     release_first = threading.Event()
@@ -98,8 +98,8 @@ def test_competing_exports_are_serialized_without_losing_a_suffix(
 
     def observed_export(
         path: Path,
-        candidates: list[ChronicleRow],
-    ) -> chronicle.ChronicleExportResult:
+        candidates: list[LogbookRow],
+    ) -> logbook.LogbookExportResult:
         nonlocal entries
         with entry_lock:
             entries += 1
@@ -111,7 +111,7 @@ def test_competing_exports_are_serialized_without_losing_a_suffix(
             second_entered.set()
         return real_export(path, candidates)
 
-    monkeypatch.setattr(chronicle, "_export_rows_locked", observed_export)
+    monkeypatch.setattr(logbook, "_export_rows_locked", observed_export)
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = executor.submit(export_rows, archive, [left])
         assert first_entered.wait(timeout=2)
@@ -124,11 +124,11 @@ def test_competing_exports_are_serialized_without_losing_a_suffix(
 
     assert first_receipt.appended == 1
     assert second_entered.is_set()
-    assert load_chronicle_file(archive) == (first, left)
+    assert load_logbook_file(archive) == (first, left)
 
 
 def test_export_reauthenticates_mutable_nested_row_state(tmp_path: Path) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     row = _row("archive-1", predecessor=None)
     row.gate_verdicts["terminal"]["verdict"] = "tampered"
 
@@ -142,9 +142,9 @@ def test_export_retry_completes_parent_fsync_after_interrupted_replace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     row = _row("archive-1", predecessor=None)
-    real_fsync_parent = chronicle._fsync_parent_directory
+    real_fsync_parent = logbook._fsync_parent_directory
     parent_fsync_calls = 0
 
     def fail_first_parent_fsync(path: Path) -> None:
@@ -155,14 +155,14 @@ def test_export_retry_completes_parent_fsync_after_interrupted_replace(
         real_fsync_parent(path)
 
     monkeypatch.setattr(
-        chronicle,
+        logbook,
         "_fsync_parent_directory",
         fail_first_parent_fsync,
     )
 
     with pytest.raises(OSError, match="injected directory fsync failure"):
         export_rows(archive, [row])
-    assert load_chronicle_file(archive) == (row,)
+    assert load_logbook_file(archive) == (row,)
 
     retry = export_rows(archive, [row])
 
@@ -171,7 +171,7 @@ def test_export_retry_completes_parent_fsync_after_interrupted_replace(
 
 
 def test_mid_row_tamper_names_the_row(tmp_path: Path) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     first = _row("archive-1", predecessor=None)
     second = _row("archive-2", predecessor=first.row_digest)
     third = _row("archive-3", predecessor=second.row_digest)
@@ -183,7 +183,7 @@ def test_mid_row_tamper_names_the_row(tmp_path: Path) -> None:
     archive.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match=r"row 2 \(archive-2\).*row_digest"):
-        load_chronicle_file(archive)
+        load_logbook_file(archive)
 
 
 def test_render_filters_and_uses_public_safe_projection() -> None:

@@ -1,4 +1,4 @@
-"""CLI contracts for the append-only Chronicle archive."""
+"""CLI contracts for the append-only Logbook archive."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from populace.build.chronicle import ChronicleRow, load_chronicle_file
+from populace.build.logbook import LogbookRow, load_logbook_file
 
 ROOT = Path(__file__).resolve().parents[3]
-CLI_PATH = ROOT / "tools/chronicle.py"
+CLI_PATH = ROOT / "tools/logbook.py"
 
 
 @pytest.fixture(autouse=True)
-def _no_inherited_chronicle_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_inherited_logbook_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_EXPORT_KEY", raising=False)
@@ -31,13 +31,13 @@ def _row(
     minute: int,
     rung: str = "f010",
     disposition: str = "failed",
-) -> ChronicleRow:
+) -> LogbookRow:
     artifact = (
         f"hf://datasets/policyengine/populace-us@{build_id}"
         if disposition in {"published", "certified"}
         else None
     )
-    return ChronicleRow.create(
+    return LogbookRow.create(
         build_id=build_id,
         ts=f"2026-08-05T12:{minute:02d}:00Z",
         pipeline="fixture-pipeline",
@@ -62,7 +62,7 @@ def _row(
     )
 
 
-def _chain() -> tuple[ChronicleRow, ChronicleRow, ChronicleRow]:
+def _chain() -> tuple[LogbookRow, LogbookRow, LogbookRow]:
     first = _row("fixture-build-1", predecessor=None, minute=1)
     second = _row(
         "fixture-build-2",
@@ -81,12 +81,12 @@ def _chain() -> tuple[ChronicleRow, ChronicleRow, ChronicleRow]:
     return first, second, third
 
 
-def _write_jsonl(path: Path, rows: tuple[ChronicleRow, ...]) -> None:
+def _write_jsonl(path: Path, rows: tuple[LogbookRow, ...]) -> None:
     path.write_text("".join(row.to_json_line() for row in rows), encoding="utf-8")
 
 
 def _load_cli() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("chronicle_cli", CLI_PATH)
+    spec = importlib.util.spec_from_file_location("logbook_cli", CLI_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -96,20 +96,20 @@ def _load_cli() -> ModuleType:
 def test_cli_defaults_to_the_ratified_root_paths() -> None:
     cli = _load_cli()
 
-    assert cli.DEFAULT_ARCHIVE == ROOT / "chronicle.jsonl"
-    assert cli.DEFAULT_SOURCE == ROOT / "ledger-spool"
+    assert cli.DEFAULT_ARCHIVE == ROOT / "logbook.jsonl"
+    assert cli.DEFAULT_SOURCE == ROOT / "logbook-spool"
 
 
 def test_cli_validate_and_filtered_render(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     _write_jsonl(archive, _chain())
     cli = _load_cli()
 
     assert cli.main(["validate", "--archive", str(archive)]) == 0
-    assert "validated 3 Chronicle rows" in capsys.readouterr().out
+    assert "validated 3 Logbook rows" in capsys.readouterr().out
 
     assert (
         cli.main(
@@ -137,7 +137,7 @@ def test_cli_export_appends_jsonl_source_suffix_idempotently(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     first, second, third = _chain()
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     source = tmp_path / "source.jsonl"
     _write_jsonl(archive, (first,))
     _write_jsonl(source, (first, second, third))
@@ -151,12 +151,12 @@ def test_cli_export_appends_jsonl_source_suffix_idempotently(
         str(source),
     ]
     assert cli.main(command) == 0
-    assert "exported 2 new Chronicle rows" in capsys.readouterr().out
-    assert load_chronicle_file(archive) == (first, second, third)
+    assert "exported 2 new Logbook rows" in capsys.readouterr().out
+    assert load_logbook_file(archive) == (first, second, third)
 
     assert cli.main(command) == 0
-    assert "exported 0 new Chronicle rows" in capsys.readouterr().out
-    assert load_chronicle_file(archive) == (first, second, third)
+    assert "exported 0 new Logbook rows" in capsys.readouterr().out
+    assert load_logbook_file(archive) == (first, second, third)
 
 
 def test_cli_export_chain_orders_a_spool_directory(
@@ -171,7 +171,7 @@ def test_cli_export_chain_orders_a_spool_directory(
             row.to_json_line(),
             encoding="utf-8",
         )
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     cli = _load_cli()
 
     assert (
@@ -187,8 +187,8 @@ def test_cli_export_chain_orders_a_spool_directory(
         == 0
     )
 
-    assert "exported 3 new Chronicle rows" in capsys.readouterr().out
-    assert load_chronicle_file(archive) == rows
+    assert "exported 3 new Logbook rows" in capsys.readouterr().out
+    assert load_logbook_file(archive) == rows
 
 
 def test_cli_export_divergence_fails_closed_without_modifying_archive(
@@ -196,7 +196,7 @@ def test_cli_export_divergence_fails_closed_without_modifying_archive(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     first, _, _ = _chain()
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     _write_jsonl(archive, (first,))
     before = archive.read_bytes()
     divergent = _row(
@@ -221,7 +221,7 @@ def test_cli_export_divergence_fails_closed_without_modifying_archive(
         == 1
     )
 
-    assert "chronicle export failed" in capsys.readouterr().err
+    assert "logbook export failed" in capsys.readouterr().err
     assert archive.read_bytes() == before
 
 
@@ -230,7 +230,7 @@ class _RemoteResponse:
 
     def __init__(
         self,
-        rows: tuple[ChronicleRow, ...],
+        rows: tuple[LogbookRow, ...],
         *,
         start: int = 0,
         total: int | None = None,
@@ -255,7 +255,7 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     rows = _chain()
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     cli = _load_cli()
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
     monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt-must-not-be-used")
@@ -272,10 +272,10 @@ def test_cli_remote_export_uses_distinct_read_only_key(
 
     assert cli.main(["export", "--remote", "--archive", str(archive)]) == 0
 
-    assert "exported 3 new Chronicle rows" in capsys.readouterr().out
-    assert load_chronicle_file(archive) == rows
+    assert "exported 3 new Logbook rows" in capsys.readouterr().out
+    assert load_logbook_file(archive) == rows
     request = requests[0]
-    assert request.headers["Accept-profile"] == "chronicle"
+    assert request.headers["Accept-profile"] == "logbook"
     assert request.headers["Apikey"] == "project-api-key"
     assert request.headers["Authorization"] == "Bearer exporter-jwt"
     query = parse_qs(urlparse(request.full_url).query)
@@ -295,7 +295,7 @@ def test_cli_remote_export_refuses_the_writer_key(
     monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
 
     result = cli.main(
-        ["export", "--remote", "--archive", str(tmp_path / "chronicle.jsonl")]
+        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
     )
 
     assert result == 1
@@ -307,7 +307,7 @@ def test_cli_remote_export_paginates_before_chain_ordering(
     tmp_path: Path,
 ) -> None:
     rows = _chain()
-    archive = tmp_path / "chronicle.jsonl"
+    archive = tmp_path / "logbook.jsonl"
     cli = _load_cli()
     monkeypatch.setattr(cli, "REMOTE_PAGE_SIZE", 2)
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
@@ -332,7 +332,7 @@ def test_cli_remote_export_paginates_before_chain_ordering(
     assert cli.main(["export", "--remote", "--archive", str(archive)]) == 0
 
     assert offsets == [0, 2]
-    assert load_chronicle_file(archive) == rows
+    assert load_logbook_file(archive) == rows
 
 
 def test_cli_remote_export_rejects_insecure_origin(
@@ -351,7 +351,7 @@ def test_cli_remote_export_rejects_insecure_origin(
     monkeypatch.setattr(cli, "urlopen", unexpected_request)
 
     result = cli.main(
-        ["export", "--remote", "--archive", str(tmp_path / "chronicle.jsonl")]
+        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
     )
 
     assert result == 1

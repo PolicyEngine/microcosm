@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -12,12 +13,24 @@ import pytest
 import populace.build.logbook as logbook
 from populace.build.logbook import (
     LOGBOOK_ROW_FIELDS,
-    LOGBOOK_RUNGS,
     LogbookRow,
     canonical_json_bytes,
     load_logbook_row,
+    reconcile_spool,
     record_build_attempt,
 )
+
+ROOT = Path(__file__).resolve().parents[3]
+MIGRATION = ROOT / "supabase/migrations/20260805000000_logbook.sql"
+
+
+@pytest.fixture(autouse=True)
+def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests never inherit operator Logbook credentials."""
+
+    monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
 
 
 def _row_kwargs(**overrides: object) -> dict[str, object]:
@@ -62,6 +75,82 @@ def test_row_schema_json_round_trip_matches_628_golden() -> None:
     )
 
 
+def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
+    sql = MIGRATION.read_text(encoding="utf-8")
+    builds = sql.split("CREATE TABLE logbook.builds (", 1)[1].split("\n);", 1)[0]
+    for field in LOGBOOK_ROW_FIELDS:
+        assert re.search(rf"^    {field}\s", builds, flags=re.MULTILINE), field
+
+    payload = sql.split("CREATE OR REPLACE FUNCTION logbook.build_hash_payload", 1)[
+        1
+    ].split("$function$;", 1)[0]
+    payload_fields = set(re.findall(r"'([a-z_]+)',\s+p_build\.", payload))
+    payload_fields.add("ts")
+    assert payload_fields == LOGBOOK_ROW_FIELDS - {
+        "prev_row_digest",
+        "row_digest",
+    }
+    assert "ALTER EXTENSION pgcrypto SET SCHEMA extensions" in sql
+    assert "trim_scale((p_value #>> '{}')::numeric)::text" in sql
+    assert "rung IN ('f001', 'f010', 'f100')" in sql
+    assert "CHECK (logbook.valid_build_phases(phases_reached))" in builds
+    assert "CHECK (logbook.valid_gate_verdicts(gate_verdicts))" in builds
+    assert "phases_reached jsonb NOT NULL DEFAULT" not in builds
+    assert "gate_verdicts jsonb NOT NULL DEFAULT" not in builds
+    function_grants = sql.split("GRANT EXECUTE ON FUNCTION", 1)[1].split(
+        "GRANT INSERT ON", 1
+    )[0]
+    assert "logbook.nonempty_trimmed_text(text)" in function_grants
+    assert "logbook.valid_build_phases(jsonb)" in function_grants
+    assert "logbook.valid_gate_verdicts(jsonb)" in function_grants
+    assert "TO logbook_writer, logbook_break_glass_admin" in function_grants
+
+    # PostgREST's idempotent replay plans as INSERT ... ON CONFLICT
+    # (build_id) DO NOTHING, which needs plan-time SELECT on the conflict
+    # column and, under FORCE RLS, a writer SELECT policy. Without both,
+    # every POST from the writer fails with 42501 and the live store
+    # silently receives nothing.
+    assert re.search(
+        r"GRANT SELECT \(build_id\) ON logbook\.builds\s+TO logbook_writer;",
+        sql,
+    )
+    assert re.search(
+        r"CREATE POLICY builds_writer_conflict_select\s+"
+        r"ON logbook\.builds\s+"
+        r"FOR SELECT\s+"
+        r"TO logbook_writer\s+"
+        r"USING \(true\);",
+        sql,
+    )
+
+    text_helper = sql.split(
+        "CREATE OR REPLACE FUNCTION logbook.nonempty_trimmed_text",
+        1,
+    )[1].split("$function$;", 1)[0]
+    sql_whitespace = {
+        int(codepoint, 16) for codepoint in re.findall(r"\\([0-9A-F]{4})", text_helper)
+    }
+    python_whitespace = {
+        codepoint for codepoint in range(0x110000) if chr(codepoint).isspace()
+    }
+    assert sql_whitespace == python_whitespace
+
+    public_view = sql.split("CREATE VIEW logbook.builds_public", 1)[1].split(
+        "FROM logbook.builds;", 1
+    )[0]
+    assert "cost_usd" not in public_view
+    assert "gate_verdicts" not in public_view
+    assert "WHEN disposition IN ('published', 'certified')" in public_view
+    assert "ELSE NULL" in public_view
+    assert "GRANT INSERT ON logbook.builds, logbook.predictions" in sql
+    assert "TO logbook_writer" in sql
+    assert "GRANT SELECT ON logbook.builds" in sql
+    assert "TO logbook_exporter" in sql
+    assert "CREATE POLICY builds_exporter_select" in sql
+    assert "CREATE POLICY predictions_exporter_select" not in sql
+    assert "GRANT logbook_writer, logbook_exporter TO authenticator" in sql
+
+
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
     value = {"z": 1.0, "a": ["é", 1e-3, None], "n": -0.0}
 
@@ -91,9 +180,9 @@ def test_canonical_json_rejects_postgresql_incompatible_nul(
         ("ts", "2026-08-04T19:06:00", "UTC offset"),
         ("pipeline", " fixture ", "pipeline"),
         ("pipeline", "fixture\x00pipeline", "NUL"),
-        ("rung", "1/10", "rung must be one of"),
-        ("rung", "0.1", "rung must be one of"),
-        ("rung", "f020", "rung must be one of"),
+        ("rung", "1/10", "#624 fraction token"),
+        ("rung", "0.1", "#624 fraction token"),
+        ("rung", "f020", "#624 fraction token"),
         ("seed", True, "seed"),
         ("seed", -1, "seed"),
         ("code_pin", "", "code_pin"),
@@ -156,7 +245,7 @@ def test_published_row_requires_an_artifact_location() -> None:
         LogbookRow.create(**_row_kwargs(disposition="published"))
 
 
-@pytest.mark.parametrize("rung", sorted(LOGBOOK_RUNGS))
+@pytest.mark.parametrize("rung", ["f001", "f010", "f100"])
 def test_standard_scale_rungs_are_accepted(rung: str) -> None:
     assert LogbookRow.create(**_row_kwargs(rung=rung)).rung == rung
 
@@ -290,3 +379,199 @@ def test_nested_tuple_gate_data_normalizes_for_exact_retry(tmp_path: Path) -> No
     assert second == first
     assert second.row.gate_verdicts["agreement"]["bounds"] == [1, 2]
     assert second.row.gate_verdicts["agreement"]["nested"] == [{"values": [3, 4]}]
+
+
+def test_missing_remote_environment_is_spool_only(tmp_path: Path) -> None:
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert result.spool_path.exists()
+    assert result.posted is False
+    assert result.remote_error is None
+
+
+class _Response:
+    status = 201
+
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+def test_remote_insert_happens_after_spool_and_uses_logbook_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    requests: list[object] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _Response:
+        requests.append(request)
+        assert timeout == 3.0
+        assert len(list(tmp_path.glob("*.json"))) == 1
+        return _Response()
+
+    monkeypatch.setattr(logbook, "urlopen", fake_urlopen)
+
+    result = record_build_attempt(
+        **_row_kwargs(),
+        spool_dir=tmp_path,
+        timeout=3.0,
+    )
+
+    assert result.posted is True
+    assert result.remote_error is None
+    request = requests[0]
+    assert request.full_url == (
+        "https://fixture.supabase.co/rest/v1/builds?on_conflict=build_id"
+    )
+    assert request.method == "POST"
+    assert request.headers["Apikey"] == "project-api-key"
+    assert request.headers["Authorization"] == "Bearer writer-jwt"
+    assert request.headers["Content-profile"] == "logbook"
+    assert request.headers["Prefer"] == ("resolution=ignore-duplicates,return=minimal")
+    assert json.loads(request.data) == result.row.to_mapping()
+
+
+def test_remote_failure_never_blocks_a_build_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+
+    def fail(*_args: object, **_kwargs: object) -> _Response:
+        raise OSError("offline")
+
+    monkeypatch.setattr(logbook, "urlopen", fail)
+
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert result.posted is False
+    assert result.remote_error == "Supabase insert failed: offline"
+    assert load_logbook_row(result.spool_path) == result.row
+
+
+def test_insecure_remote_url_never_blocks_a_build_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "http://not-loopback.example")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+
+    assert result.posted is False
+    assert "must use HTTPS" in (result.remote_error or "")
+    assert load_logbook_row(result.spool_path) == result.row
+
+
+def test_remote_redirects_are_never_followed() -> None:
+    handler = logbook._NoRedirectHandler()
+    request = logbook.Request(
+        "https://fixture.supabase.co/rest/v1/builds",
+        headers={"Authorization": "Bearer writer-jwt"},
+    )
+
+    redirected = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "http://attacker.example/collect",
+    )
+
+    assert redirected is None
+
+
+def test_reconcile_posts_in_chain_order_and_removes_acknowledged_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+    second = record_build_attempt(
+        **_row_kwargs(
+            build_id="fixture-build-2",
+            prev_row_digest=first.row.row_digest,
+        ),
+        spool_dir=tmp_path,
+    )
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co/rest/v1")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    posted_ids: list[str] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _Response:
+        del timeout
+        posted_ids.append(json.loads(request.data)["build_id"])
+        return _Response()
+
+    monkeypatch.setattr(logbook, "urlopen", fake_urlopen)
+
+    receipt = reconcile_spool(tmp_path)
+
+    assert posted_ids == [first.row.build_id, second.row.build_id]
+    assert receipt == logbook.ReconcileResult(2, 2, 0, ())
+    assert list(tmp_path.glob("*.json")) == []
+
+
+def test_reconcile_stops_at_first_failure_and_retains_chain_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+    second = record_build_attempt(
+        **_row_kwargs(
+            build_id="fixture-build-2",
+            prev_row_digest=first.row.row_digest,
+        ),
+        spool_dir=tmp_path,
+    )
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    attempts = 0
+
+    def fake_urlopen(request: object, *, timeout: float) -> _Response:
+        nonlocal attempts
+        del request, timeout
+        attempts += 1
+        if attempts == 2:
+            raise OSError("offline")
+        return _Response()
+
+    monkeypatch.setattr(logbook, "urlopen", fake_urlopen)
+
+    receipt = reconcile_spool(tmp_path)
+
+    assert receipt.attempted == 2
+    assert receipt.posted == 1
+    assert receipt.retained == 1
+    assert "fixture-build-2" in receipt.errors[0]
+    assert not first.spool_path.exists()
+    assert second.spool_path.exists()
+
+
+def test_reconcile_reports_remote_ack_when_cleanup_fsync_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    monkeypatch.setattr(logbook, "urlopen", lambda *_args, **_kwargs: _Response())
+
+    def fail_parent_fsync(_path: Path) -> None:
+        raise OSError("injected cleanup fsync failure")
+
+    monkeypatch.setattr(logbook, "_fsync_parent_directory", fail_parent_fsync)
+
+    receipt = reconcile_spool(tmp_path)
+
+    assert receipt.attempted == 1
+    assert receipt.posted == 1
+    assert receipt.retained == 0
+    assert "cleanup fsync failure" in receipt.errors[0]
+    assert not result.spool_path.exists()

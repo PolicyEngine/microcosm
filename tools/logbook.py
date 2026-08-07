@@ -1,6 +1,6 @@
-"""Export, validate, and render the append-only Chronicle build archive.
+"""Export, validate, and render the append-only Logbook build archive.
 
-Remote export uses a distinct, read-only ``chronicle_exporter`` JWT supplied
+Remote export uses a distinct, read-only ``logbook_exporter`` JWT supplied
 as ``POPULACE_LEDGER_EXPORT_KEY`` plus the hosted project's gateway key in
 ``POPULACE_LEDGER_API_KEY``.  It never reuses the insert-only writer key.
 """
@@ -16,12 +16,12 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request
 
-from populace.build.chronicle import (
-    CHRONICLE_ROW_FIELDS,
-    ChronicleRow,
+from populace.build.logbook import (
+    LOGBOOK_ROW_FIELDS,
+    LogbookRow,
     _validate_remote_url,
     export_rows,
-    load_chronicle_file,
+    load_logbook_file,
     load_spool_rows,
     order_rows_by_chain,
     render_markdown,
@@ -29,8 +29,8 @@ from populace.build.chronicle import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ARCHIVE = ROOT / "chronicle.jsonl"
-DEFAULT_SOURCE = ROOT / "ledger-spool"
+DEFAULT_ARCHIVE = ROOT / "logbook.jsonl"
+DEFAULT_SOURCE = ROOT / "logbook-spool"
 REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
 REMOTE_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 REMOTE_PAGE_SIZE = 500
@@ -38,7 +38,7 @@ REMOTE_PAGE_SIZE = 500
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Operate the append-only Populace Chronicle archive."
+        description="Operate the append-only Populace Logbook archive."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -50,14 +50,14 @@ def _parser() -> argparse.ArgumentParser:
         "--archive",
         type=Path,
         default=DEFAULT_ARCHIVE,
-        help=f"Chronicle JSONL archive (default: {DEFAULT_ARCHIVE}).",
+        help=f"Logbook JSONL archive (default: {DEFAULT_ARCHIVE}).",
     )
     source = export.add_mutually_exclusive_group()
     source.add_argument(
         "--source",
         type=Path,
         help=(
-            "Completed spool directory or genesis-rooted Chronicle JSONL source "
+            "Completed spool directory or genesis-rooted Logbook JSONL source "
             f"(default: {DEFAULT_SOURCE})."
         ),
     )
@@ -79,22 +79,22 @@ def _parser() -> argparse.ArgumentParser:
         "--archive",
         type=Path,
         default=DEFAULT_ARCHIVE,
-        help=f"Chronicle JSONL archive (default: {DEFAULT_ARCHIVE}).",
+        help=f"Logbook JSONL archive (default: {DEFAULT_ARCHIVE}).",
     )
 
     render = subparsers.add_parser(
         "render",
-        help="Render public-safe Chronicle columns as a Markdown table.",
+        help="Render public-safe Logbook columns as a Markdown table.",
     )
     render.add_argument(
         "--archive",
         type=Path,
         default=DEFAULT_ARCHIVE,
-        help=f"Chronicle JSONL archive (default: {DEFAULT_ARCHIVE}).",
+        help=f"Logbook JSONL archive (default: {DEFAULT_ARCHIVE}).",
     )
     render.add_argument(
         "--rung",
-        help="Include only this Chronicle rung token (f001, f010, or f100).",
+        help="Include only this Logbook rung token (f001, f010, or f100).",
     )
     render.add_argument(
         "--disposition",
@@ -104,13 +104,13 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _source_rows(path: Path) -> tuple[ChronicleRow, ...]:
+def _source_rows(path: Path) -> tuple[LogbookRow, ...]:
     if path.is_dir():
         return load_spool_rows(path)
-    return load_chronicle_file(path)
+    return load_logbook_file(path)
 
 
-def _remote_rows() -> tuple[ChronicleRow, ...]:
+def _remote_rows() -> tuple[LogbookRow, ...]:
     ledger_url = os.environ.get("POPULACE_LEDGER_URL")
     export_key = os.environ.get(REMOTE_EXPORT_KEY_ENV)
     api_key = os.environ.get(REMOTE_API_KEY_ENV)
@@ -120,7 +120,7 @@ def _remote_rows() -> tuple[ChronicleRow, ...]:
             f"{REMOTE_EXPORT_KEY_ENV}, and {REMOTE_API_KEY_ENV}"
         )
 
-    rows: list[ChronicleRow] = []
+    rows: list[LogbookRow] = []
     offset = 0
     while True:
         endpoint = _remote_builds_endpoint(
@@ -132,7 +132,7 @@ def _remote_rows() -> tuple[ChronicleRow, ...]:
             endpoint,
             headers={
                 "Accept": "application/json",
-                "Accept-Profile": "chronicle",
+                "Accept-Profile": "logbook",
                 "apikey": api_key,
                 "Authorization": f"Bearer {export_key}",
                 "Prefer": "count=exact",
@@ -141,17 +141,17 @@ def _remote_rows() -> tuple[ChronicleRow, ...]:
         with urlopen(request, timeout=30.0) as response:
             status = getattr(response, "status", 200)
             if not 200 <= status < 300:
-                raise RuntimeError(f"Chronicle live store returned HTTP {status}")
+                raise RuntimeError(f"Logbook live store returned HTTP {status}")
             page = _decode_remote_page(response.read())
             total = _content_range_total(getattr(response, "headers", {}))
-        rows.extend(ChronicleRow.from_mapping(item) for item in page)
+        rows.extend(LogbookRow.from_mapping(item) for item in page)
         offset += len(page)
         if total is not None and offset >= total:
             break
         if not page:
             if total is not None:
                 raise RuntimeError(
-                    "Chronicle live store ended before its declared row count"
+                    "Logbook live store ended before its declared row count"
                 )
             break
     return order_rows_by_chain(rows)
@@ -168,7 +168,7 @@ def _remote_builds_endpoint(url: str, *, offset: int, limit: int) -> str:
         endpoint = f"{base}/rest/v1/builds"
     query = urlencode(
         {
-            "select": ",".join(sorted(CHRONICLE_ROW_FIELDS)),
+            "select": ",".join(sorted(LOGBOOK_ROW_FIELDS)),
             "order": "ts.asc,build_id.asc",
             "limit": str(limit),
             "offset": str(offset),
@@ -181,9 +181,9 @@ def _decode_remote_page(payload: bytes) -> list[dict[str, Any]]:
     try:
         value = json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Chronicle live store returned invalid JSON: {exc}") from exc
+        raise ValueError(f"Logbook live store returned invalid JSON: {exc}") from exc
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-        raise ValueError("Chronicle live store response must be an array of rows")
+        raise ValueError("Logbook live store response must be an array of rows")
     return value
 
 
@@ -198,29 +198,29 @@ def _content_range_total(headers: Any) -> int | None:
         parsed = int(total)
     except ValueError as exc:
         raise ValueError(
-            f"Chronicle live store returned invalid Content-Range {content_range!r}"
+            f"Logbook live store returned invalid Content-Range {content_range!r}"
         ) from exc
     if parsed < 0:
         raise ValueError(
-            f"Chronicle live store returned invalid Content-Range {content_range!r}"
+            f"Logbook live store returned invalid Content-Range {content_range!r}"
         )
     return parsed
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one Chronicle command and return its process exit code."""
+    """Run one Logbook command and return its process exit code."""
 
     args = _parser().parse_args(argv)
     try:
         if args.command == "validate":
-            rows = load_chronicle_file(args.archive)
+            rows = load_logbook_file(args.archive)
             noun = "row" if len(rows) == 1 else "rows"
             tail = rows[-1].row_digest if rows else "none"
-            print(f"validated {len(rows)} Chronicle {noun}; tail={tail}")
+            print(f"validated {len(rows)} Logbook {noun}; tail={tail}")
             return 0
 
         if args.command == "render":
-            rows = load_chronicle_file(args.archive)
+            rows = load_logbook_file(args.archive)
             dispositions = (
                 set(args.disposition) if args.disposition is not None else None
             )
@@ -242,13 +242,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             receipt = export_rows(args.archive, candidates)
             print(
-                f"exported {receipt.appended} new Chronicle rows "
+                f"exported {receipt.appended} new Logbook rows "
                 f"({receipt.existing} already archived); "
                 f"tail={receipt.tail_digest or 'none'}"
             )
             return 0
     except (OSError, RuntimeError, ValueError) as exc:
-        print(f"chronicle {args.command} failed: {exc}", file=sys.stderr)
+        print(f"logbook {args.command} failed: {exc}", file=sys.stderr)
         return 1
     raise AssertionError(f"Unhandled command: {args.command}")
 
