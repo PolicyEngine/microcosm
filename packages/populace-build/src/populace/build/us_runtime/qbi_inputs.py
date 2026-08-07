@@ -32,7 +32,6 @@ from populace.build.us_runtime.acs_income_universe import (
 from populace.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     has_support_role_metadata,
-    support_channel_column,
     support_clone_index_column,
     support_role_series,
 )
@@ -186,9 +185,8 @@ def _qbi_reconciliation_scope(
     """Return active rows and an exact native-ACS source-universe receipt."""
 
     person = frame.table("person")
-    channel_column = support_channel_column("person")
     clone_column = support_clone_index_column("person")
-    if channel_column not in person or clone_column not in person:
+    if clone_column not in person:
         receipt: dict[str, object] = {
             "version": 1,
             "policy": "all_rows_without_stacked_clone_provenance",

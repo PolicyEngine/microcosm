@@ -89,6 +89,8 @@ _RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
 # reviewed contract change.
 _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
+        # Declares and receipts exact ACS source universes; never mutates rows.
+        "acs_income_universe.py",
         "base_pool.py",  # Legacy late-spine assembly.
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
@@ -172,6 +174,8 @@ _SPINE_BLIND_OPERATOR_MODULES = (
 _OTHER_US_RUNTIME_MODULES = frozenset(
     {
         "__init__.py",
+        # Exact source-universe validator/receipt owner; no population treatment.
+        "acs_income_universe.py",
         "acs_inputs.py",
         "acs_multispine.py",
         "acs_pums.py",
@@ -3261,8 +3265,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 60, (
-            f"{tool.name} must reach the pinned 60-module runtime graph; "
+        assert len(runtime_graph) == 61, (
+            f"{tool.name} must reach the pinned 61-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
