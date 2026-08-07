@@ -152,6 +152,7 @@ from populace.build.us_runtime.stacked_spine import (
     run_stacked_puf_pass,
     stacked_completeness_gate,
     stacked_gap_fill_plan,
+    stacked_gap_fill_producer_schedule_receipt,
     stacked_spine_authority_receipt,
     transfer_stacked_post_puf_inputs,
     validate_stacked_post_puf_transfer_receipt,
@@ -235,10 +236,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 4 binds target-specific producer authority for the staged post-PUF
-# transfer. Earlier checkpoints either predate that stage, its complete clone-2
-# tail provenance, or its fail-closed producer-role registry and must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 4
+# Version 5 reorients the early housing bank to its actual ASEC producer and
+# binds the channel-aware producer-precedence schedule. Earlier checkpoints
+# carry stale direction authority and target-bank identities and must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 5
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -1027,6 +1028,9 @@ def _stacked_checkpoint_base_identity(
             ],
             "pre_clone_source_operator_order": list(
                 POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+            ),
+            "gap_fill_producer_schedule": (
+                stacked_gap_fill_producer_schedule_receipt()
             ),
             "post_clone_source_operator_order": list(
                 POOL_POST_CLONE_SOURCE_OPERATOR_ORDER

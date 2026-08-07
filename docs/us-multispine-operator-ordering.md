@@ -114,13 +114,24 @@ are allowed only when named by the ACS native-input receipt.
    selected-lineage digests. The full PUF remains a donor and is never sampled.
 2. The spine-blind source-preparation chain derives the native predictors and
    pre-clone operator outputs needed by the early declared cross-origin fills.
+   Historical kernels run on the raw-`PERIDNUM` CPS/ASEC availability
+   projection and merge only their declared outputs back into the stack. In
+   particular, the pinned ACS rent artifact trains `with_us_housing_inputs`,
+   which materializes `pre_subsidy_rent` on ASEC; native ACS `RNTP`/`GRNTP`
+   remain predictors and are not relabeled as that model input.
    Targets produced only by the later PUF pass or source-completion chain are
    excluded from this early authority surface. No population operator selects
    behavior from the source-channel labels.
 3. `gap_fill_stacked_spine(...)` runs the two immutable directions over the
-   same frame: ASEC survey fields fill ACS nulls and ACS housing fills ASEC
-   nulls. Activation authority is source-and-role exact, observed zero is not
-   absence, native donor cells must remain byte-identical, and the #608
+   same frame: ASEC survey fields fill ACS nulls, then ASEC-produced housing
+   rent fills ACS housing-unit nulls in a separately banked direction.
+   Activation authority is source-and-role exact, observed zero is not
+   absence, and native donor cells must remain byte-identical. Every declared
+   target resolves through the operator-output registry to a producer channel
+   and stage that must strictly precede its direction's check. ACS TYPEHUGQ
+   2/3 people remain null only when their exact live mask matches the declared
+   group-quarters structural-absence rule; filling those rows with zero or a
+   donor housing value would synthesize an unobserved housing unit. The #608
    per-target banks sit beneath the stack-bound checkpoint identity.
 4. `run_stacked_puf_pass(...)` attaches the separately controlled PUF clone
    arm (`clone_attachment_fraction`, default `1.0`) and runs one primary QRF
@@ -139,10 +150,11 @@ are allowed only when named by the ACS native-input receipt.
    are required.
 6. The transferred checkpoint records the early gap-fill banks, post-PUF
    transfer bank, primary-QRF bank, tail manifest, weights audit,
-   stack-manifest digest, fraction/seed, and clone controls. The same identity
-   regime governs cold and resumed builds. Checkpoint emission, resume, and
-   final publication each reject the post-PUF receipt unless it carries the
-   exact canonical stacked authority; NON-CANONICAL test receipts cannot ship.
+   stack-manifest digest, fraction/seed, clone controls, and the channel-aware
+   producer-precedence schedule. The same identity regime governs cold and
+   resumed builds. Checkpoint emission, resume, and final publication each
+   reject the post-PUF receipt unless it carries the exact canonical stacked
+   authority; NON-CANONICAL test receipts cannot ship.
 7. Schedule-D preparation, deterministic derivation, seeded inputs, and
    batched simulation run on the transferred stack. The tool retains the
    existing `assembled`, `transferred`, and `simulated` #599 boundaries.
@@ -151,8 +163,11 @@ are allowed only when named by the ACS native-input receipt.
    `us_by_origin_battery` then evaluates all 131 declared targets (114 person,
    9 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
    immutable live-digested per-column metric registry. Metric choice never
-   dispatches from physical dtype. At small rungs, comparisons outside the
-   validity domain receipt `insufficient_support`; tolerances do not widen.
+   dispatches from physical dtype. A digest-bound structural-absence rule may
+   remove only its exact proven cells from a comparison's applicability scope;
+   any additional null or filled structural cell is terminal. At small rungs,
+   comparisons outside the validity domain receipt `insufficient_support`;
+   tolerances do not widen.
 9. Only after both gates run does publication write the nullable H5,
    diagnostics, and readiness manifest. Success, failed gate, and exception
    paths each append a durable Logbook spool row beside the output, with the
@@ -423,6 +438,13 @@ use `0.25`. A one-sided supported hole fails. Small-rung comparisons below
 the immutable effective-support floor are explicitly untestable and receipt
 `insufficient_support`; they do not silently pass as tested and do not alter
 the production tolerances.
+
+The one canonical applicability exception is ACS group-quarters rent. Its
+rule is part of the gap-fill-plan digest, requires the live
+`pre_subsidy_rent` null mask to equal linked ACS TYPEHUGQ 2/3 people across
+every clone role, and receipts those cells as recipient-exact structural
+absence. Completeness proves the exact mask; the battery excludes only the
+same clone-0 cells before applying the unchanged support floor and tolerances.
 
 Both gates return batched `GateResult` failures. Calibration cannot consume a
 frame whose completeness or by-origin gate failed, and no source-specific

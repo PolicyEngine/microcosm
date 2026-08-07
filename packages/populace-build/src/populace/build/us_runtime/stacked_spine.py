@@ -57,12 +57,17 @@ from populace.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from populace.build.us_runtime.multispine_pool import (
+    POOL_OPERATOR_CONTRACTS,
+    POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
     pool_post_puf_puf_producer_target_families,
     pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
     pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
+)
+from populace.build.us_runtime.operator_boundary import (
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from populace.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -123,6 +128,7 @@ __all__ = [
     "STACKED_PILOT_ACS_SAMPLE_SEED",
     "STACKED_SPINE_MANIFEST_KEY",
     "AbsenceProof",
+    "GapFillAbsenceRule",
     "GapFillDirection",
     "GapFillResult",
     "OriginBatterySpec",
@@ -138,6 +144,7 @@ __all__ = [
     "sample_acs_households",
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
+    "stacked_gap_fill_producer_schedule_receipt",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
     "validate_stacked_post_puf_transfer_receipt",
@@ -882,12 +889,20 @@ def _json_ready(value: object) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
-_GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
+_GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-_STACKED_AUTHORITY_VERSION = 4
+_STACKED_AUTHORITY_VERSION = 5
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
+_PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
+_POST_GAP_FILL_STAGE = "after_gap_fill_stacked_spine"
+_ACS_GQ_RENT_ABSENCE_RULE_ID = "acs_native_group_quarters_without_housing_unit"
+_ACS_GQ_RENT_ABSENCE_SELECTION = "acs_typehugq_2_or_3_person"
+_ACS_GQ_RENT_ABSENCE_REASON = (
+    "ACS TYPEHUGQ 2/3 rows have no observed housing unit; rent must remain "
+    "structurally absent rather than be synthesized as zero or donor housing."
+)
 
 
 def _freeze_target_families(target_families: TargetFamilies) -> TargetFamilies:
@@ -919,6 +934,30 @@ def _freeze_target_families(target_families: TargetFamilies) -> TargetFamilies:
 
 
 @dataclass(frozen=True)
+class GapFillAbsenceRule:
+    """One digest-bound exact recipient-universe rule for structural nulls."""
+
+    rule_id: str
+    entity: str
+    column: str
+    selection: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("rule_id", self.rule_id),
+            ("entity", self.entity),
+            ("column", self.column),
+            ("selection", self.selection),
+            ("reason", self.reason),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"GapFillAbsenceRule.{label} must be a non-empty string."
+                )
+
+
+@dataclass(frozen=True)
 class GapFillDirection:
     """One declared cross-origin fill: recipient origin <- donor origin.
 
@@ -935,6 +974,7 @@ class GapFillDirection:
     recipient_channel: str
     donor_channel: str
     target_families: TargetFamilies
+    recipient_absence_rules: tuple[GapFillAbsenceRule, ...] = ()
 
     def __post_init__(self) -> None:
         for label, value in (
@@ -962,6 +1002,43 @@ class GapFillDirection:
             "target_families",
             _freeze_target_families(self.target_families),
         )
+        rules = tuple(self.recipient_absence_rules)
+        if any(not isinstance(rule, GapFillAbsenceRule) for rule in rules):
+            raise TypeError(
+                "GapFillDirection recipient_absence_rules require "
+                "GapFillAbsenceRule values."
+            )
+        target_keys = {
+            (entity, target)
+            for entity, families in self.target_families.items()
+            for targets in families.values()
+            for target in targets
+        }
+        rule_keys = [(rule.entity, rule.column) for rule in rules]
+        outside = sorted(set(rule_keys) - target_keys)
+        duplicates = sorted(
+            key for key, count in Counter(rule_keys).items() if count > 1
+        )
+        if outside or duplicates:
+            raise ValueError(
+                f"GapFillDirection {self.name!r} has invalid recipient absence "
+                f"rules; outside_targets={outside}, duplicate_targets={duplicates}."
+            )
+        object.__setattr__(self, "recipient_absence_rules", rules)
+
+
+@dataclass(frozen=True)
+class _GapFillProducerRecord:
+    """One channel-aware proof that a declared target exists before its check."""
+
+    entity: str
+    family: str
+    target: str
+    operator: str
+    operator_order_index: int
+    execution_scope: str
+    produced_channel: str
+    producer_stage: str
 
 
 @dataclass(frozen=True)
@@ -1001,10 +1078,19 @@ def _build_stacked_gap_fill_plan(
     if housing_families:
         directions.append(
             GapFillDirection(
-                name=_GAP_FILL_ACS_TO_ASEC,
-                recipient_channel=BASE_ASEC_SUPPORT_CHANNEL,
-                donor_channel=ACS_STACKED_SUPPORT_CHANNEL,
+                name=_GAP_FILL_ASEC_HOUSING_TO_ACS,
+                recipient_channel=ACS_STACKED_SUPPORT_CHANNEL,
+                donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
                 target_families=housing_families,
+                recipient_absence_rules=(
+                    GapFillAbsenceRule(
+                        rule_id=_ACS_GQ_RENT_ABSENCE_RULE_ID,
+                        entity="person",
+                        column="pre_subsidy_rent",
+                        selection=_ACS_GQ_RENT_ABSENCE_SELECTION,
+                        reason=_ACS_GQ_RENT_ABSENCE_REASON,
+                    ),
+                ),
             )
         )
     return tuple(directions)
@@ -1217,9 +1303,119 @@ def _plan_payload(plan: Sequence[GapFillDirection]) -> list[dict[str, object]]:
             "recipient_channel": direction.recipient_channel,
             "donor_channel": direction.donor_channel,
             "target_families": _surface_payload(direction.target_families),
+            "recipient_absence_rules": [
+                {
+                    "rule_id": rule.rule_id,
+                    "entity": rule.entity,
+                    "column": rule.column,
+                    "selection": rule.selection,
+                    "reason": rule.reason,
+                }
+                for rule in direction.recipient_absence_rules
+            ],
         }
         for direction in plan
     ]
+
+
+def _build_gap_fill_producer_schedule(
+    surface: TargetFamilies,
+) -> tuple[_GapFillProducerRecord, ...]:
+    """Resolve every early target to its actual pre-clone producer contract."""
+
+    records: list[_GapFillProducerRecord] = []
+    for entity, families in surface.items():
+        for family, targets in families.items():
+            for target in targets:
+                for operator_order_index, operator in enumerate(
+                    POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+                ):
+                    contract = POOL_OPERATOR_CONTRACTS[operator]
+                    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[contract.family]
+                    if target not in outputs.get(entity, ()):
+                        continue
+                    produced_channel = (
+                        BASE_ASEC_SUPPORT_CHANNEL
+                        if contract.execution_scope == "cps_source"
+                        else "*"
+                    )
+                    records.append(
+                        _GapFillProducerRecord(
+                            entity=entity,
+                            family=family,
+                            target=target,
+                            operator=operator,
+                            operator_order_index=operator_order_index,
+                            execution_scope=contract.execution_scope,
+                            produced_channel=produced_channel,
+                            producer_stage=_PRE_CLONE_PREPARATION_STAGE,
+                        )
+                    )
+    return tuple(records)
+
+
+def _gap_fill_activation_stage(direction_name: str) -> str:
+    return f"gap_fill_stacked_spine.activation[{direction_name}]"
+
+
+def _gap_fill_producer_precedence_failures(
+    plan: Sequence[GapFillDirection],
+    schedule: Sequence[_GapFillProducerRecord],
+) -> list[str]:
+    """Fail unless every direction reads a donor its producer already populated."""
+
+    stage_order = {
+        _PRE_CLONE_PREPARATION_STAGE: 0,
+        **{
+            _gap_fill_activation_stage(direction.name): index + 1
+            for index, direction in enumerate(plan)
+        },
+        _POST_GAP_FILL_STAGE: len(plan) + 1,
+    }
+    producer_index: dict[tuple[str, str, str], list[_GapFillProducerRecord]] = {}
+    for record in schedule:
+        producer_index.setdefault(
+            (record.entity, record.family, record.target), []
+        ).append(record)
+
+    failures: list[str] = []
+    for direction in plan:
+        check_stage = _gap_fill_activation_stage(direction.name)
+        check_order = stage_order[check_stage]
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                for target in targets:
+                    label = f"{direction.name}/{entity}/{family}/{target}"
+                    records = producer_index.get((entity, family, target), [])
+                    if len(records) != 1:
+                        failures.append(
+                            f"{label}: expected exactly one declared pre-clone "
+                            f"producer, found {len(records)}."
+                        )
+                        continue
+                    record = records[0]
+                    producer_order = stage_order.get(record.producer_stage)
+                    if producer_order is None:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} declares "
+                            f"unknown stage {record.producer_stage!r}."
+                        )
+                    elif producer_order >= check_order:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} runs at "
+                            f"{record.producer_stage!r}, which does not precede "
+                            f"activation stage {check_stage!r}."
+                        )
+                    if record.produced_channel not in {
+                        direction.donor_channel,
+                        "*",
+                    }:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} populates "
+                            f"channel {record.produced_channel!r}, but activation "
+                            f"declares donor {direction.donor_channel!r}."
+                        )
+    return failures
 
 
 def _metric_registry_payload(
@@ -1918,6 +2114,18 @@ CANONICAL_STACKED_DECLARED_SURFACE = _terminal_surface_from_pool_registry()
 CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
     CANONICAL_STACKED_GAP_FILL_SURFACE
 )
+_CANONICAL_STACKED_GAP_FILL_PRODUCER_SCHEDULE = _build_gap_fill_producer_schedule(
+    CANONICAL_STACKED_GAP_FILL_SURFACE
+)
+_canonical_producer_precedence_failures = _gap_fill_producer_precedence_failures(
+    CANONICAL_STACKED_GAP_FILL_PLAN,
+    _CANONICAL_STACKED_GAP_FILL_PRODUCER_SCHEDULE,
+)
+if _canonical_producer_precedence_failures:
+    raise RuntimeError(
+        "Canonical stacked gap-fill producer precedence is invalid:\n  "
+        + "\n  ".join(_canonical_producer_precedence_failures)
+    )
 CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _explicit_origin_battery_metric_registry(
     CANONICAL_STACKED_DECLARED_SURFACE
 )
@@ -2167,6 +2375,59 @@ def stacked_gap_fill_plan() -> tuple[GapFillDirection, ...]:
     return _STACKED_GAP_FILL_PLAN
 
 
+def stacked_gap_fill_producer_schedule_receipt() -> Mapping[str, object]:
+    """Return the live channel-aware proof that every producer precedes its check."""
+
+    plan = stacked_gap_fill_plan()
+    schedule = _build_gap_fill_producer_schedule(
+        pool_pre_clone_gap_fill_target_families()
+    )
+    failures = _gap_fill_producer_precedence_failures(plan, schedule)
+    if failures:
+        raise ValueError(
+            "Stacked gap-fill producer precedence failed:\n  " + "\n  ".join(failures)
+        )
+    schedule_by_target = {
+        (record.entity, record.family, record.target): record for record in schedule
+    }
+    directions: list[dict[str, object]] = []
+    for index, direction in enumerate(plan):
+        targets: list[dict[str, object]] = []
+        for entity, families in direction.target_families.items():
+            for family, columns in families.items():
+                for column in columns:
+                    record = schedule_by_target[(entity, family, column)]
+                    targets.append(
+                        {
+                            "entity": entity,
+                            "family": family,
+                            "column": column,
+                            "producer": record.operator,
+                            "producer_order_index": record.operator_order_index,
+                            "execution_scope": record.execution_scope,
+                            "produced_channel": record.produced_channel,
+                            "producer_stage": record.producer_stage,
+                        }
+                    )
+        directions.append(
+            {
+                "name": direction.name,
+                "order_index": index,
+                "donor_channel": direction.donor_channel,
+                "activation_stage": _gap_fill_activation_stage(direction.name),
+                "target_count": len(targets),
+                "targets": targets,
+            }
+        )
+    payload: dict[str, object] = {
+        "status": "all_producers_precede_activation",
+        "direction_count": len(directions),
+        "target_count": len(schedule),
+        "directions": directions,
+    }
+    return {**payload, "sha256": _canonical_sha256(payload)}
+
+
 def stacked_spine_authority_receipt() -> Mapping[str, object]:
     """Return the live-digested canonical authority for build identity binding."""
 
@@ -2350,6 +2611,15 @@ def _authority_validation_failures(
             if count > 1
         }
     )
+    if production:
+        failures.extend(
+            _gap_fill_producer_precedence_failures(
+                authority.gap_fill_plan,
+                _build_gap_fill_producer_schedule(
+                    pool_pre_clone_gap_fill_target_families()
+                ),
+            )
+        )
     if duplicate_surface_targets:
         failures.append(
             "declared surface repeats target(s): "
@@ -2946,6 +3216,113 @@ def _direction_entity_targets(
     return result
 
 
+def _direction_absence_rule_index(
+    direction: GapFillDirection,
+) -> dict[tuple[str, str], GapFillAbsenceRule]:
+    return {
+        (rule.entity, rule.column): rule for rule in direction.recipient_absence_rules
+    }
+
+
+def _gap_fill_absence_rule_mask(
+    frame: Frame,
+    *,
+    direction: GapFillDirection,
+    rule: GapFillAbsenceRule,
+) -> tuple[pd.Series, dict[str, object]]:
+    """Resolve one structural-null rule to an exact, live row mask and receipt."""
+
+    if (
+        rule.rule_id != _ACS_GQ_RENT_ABSENCE_RULE_ID
+        or rule.selection != _ACS_GQ_RENT_ABSENCE_SELECTION
+        or rule.entity != "person"
+        or rule.column != "pre_subsidy_rent"
+        or direction.recipient_channel != ACS_STACKED_SUPPORT_CHANNEL
+    ):
+        raise ValueError(
+            f"Gap-fill direction {direction.name!r} declares unsupported "
+            f"recipient absence rule {rule.rule_id!r}."
+        )
+
+    household = frame.table("household")
+    person = frame.table("person")
+    required_household = {
+        "household_id",
+        "TYPEHUGQ",
+        "tenure_type",
+        support_channel_column("household"),
+    }
+    required_person = {
+        "person_household_id",
+        support_channel_column("person"),
+        support_clone_index_column("person"),
+    }
+    missing_household = sorted(required_household - set(household.columns))
+    missing_person = sorted(required_person - set(person.columns))
+    if missing_household or missing_person:
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} cannot resolve its exact "
+            "universe; "
+            f"missing_household={missing_household}, missing_person={missing_person}."
+        )
+
+    household_channel = household[support_channel_column("household")].astype(str)
+    acs_households = household_channel.eq(ACS_STACKED_SUPPORT_CHANNEL)
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    invalid_kind = acs_households & ~kind.isin((1, 2, 3))
+    if invalid_kind.any():
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} found "
+            f"{int(invalid_kind.sum())} ACS household row(s) without a valid "
+            "TYPEHUGQ 1/2/3 source classification."
+        )
+    gq_households = acs_households & kind.isin((2, 3))
+    nonnull_gq_tenure = gq_households & household["tenure_type"].notna()
+    if nonnull_gq_tenure.any():
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} found "
+            f"{int(nonnull_gq_tenure.sum())} ACS group-quarters household row(s) "
+            "with synthesized tenure."
+        )
+    gq_household_ids = household.loc[gq_households, "household_id"]
+    person_channel = person[support_channel_column("person")].astype(str)
+    mask = person_channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & person[
+        "person_household_id"
+    ].isin(gq_household_ids)
+    person_counts = person.loc[mask, "person_household_id"].value_counts()
+    if len(person_counts) != int(gq_households.sum()) or not person_counts.eq(1).all():
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} requires exactly one linked "
+            "person per ACS group-quarters household."
+        )
+
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")], errors="raise"
+    ).astype("int64")
+    by_origin_role = {
+        f"{channel}/clone_{int(clone)}": int(count)
+        for (channel, clone), count in (
+            pd.DataFrame(
+                {
+                    "channel": person_channel.loc[mask],
+                    "clone_index": clone_index.loc[mask],
+                }
+            )
+            .groupby(["channel", "clone_index"], sort=True)
+            .size()
+            .items()
+        )
+    }
+    return mask, {
+        "rule_id": rule.rule_id,
+        "selection": rule.selection,
+        "reason": rule.reason,
+        "status": "exact_structural_absence",
+        "rows": int(mask.sum()),
+        "by_origin_role": by_origin_role,
+    }
+
+
 def _origin_projection(frame: Frame, *, channel: str) -> Frame:
     """Project one origin's native lineages as a standalone donor frame."""
 
@@ -3218,6 +3595,7 @@ def _verify_gap_fill_outcome(
         (record.entity, record.column): record for record in result.imputed_inputs
     }
     target_receipts: dict[str, dict[str, object]] = {}
+    absence_rules = _direction_absence_rule_index(direction)
     for entity, families in direction.target_families.items():
         table = frame.table(entity)
         channel = table[support_channel_column(entity)].astype(str)
@@ -3254,7 +3632,8 @@ def _verify_gap_fill_outcome(
                         "changed during gap-fill transfer."
                     )
                 null_mask = table[target].isna()
-                residual_nulls = int((null_mask & recipient_rows).sum())
+                residual_mask = null_mask & recipient_rows
+                residual_nulls = int(residual_mask.sum())
                 outside_nulls = int((null_mask & ~recipient_rows).sum())
                 if outside_nulls:
                     failures.append(
@@ -3279,12 +3658,33 @@ def _verify_gap_fill_outcome(
                         f"authorized_null_rows={authorized} != "
                         f"imputed_rows={imputed} + unmodeled_rows={unmodeled}."
                     )
-                target_receipts[f"{entity}/{family}/{target}"] = {
+                target_receipt: dict[str, object] = {
                     "authorized_null_rows": authorized,
                     "imputed_rows": imputed,
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
+                rule = absence_rules.get((entity, target))
+                if rule is not None:
+                    expected_absence, absence_receipt = _gap_fill_absence_rule_mask(
+                        frame,
+                        direction=direction,
+                        rule=rule,
+                    )
+                    unexpected = int((residual_mask & ~expected_absence).sum())
+                    synthesized = int((expected_absence & ~residual_mask).sum())
+                    if unexpected or synthesized:
+                        failures.append(
+                            f"{label}: exact structural-absence equation failed; "
+                            f"unexpected_null_rows={unexpected}, "
+                            f"structural_rows_filled={synthesized}."
+                        )
+                    target_receipt["recipient_absence_authority"] = {
+                        **absence_receipt,
+                        "unexpected_null_rows": unexpected,
+                        "structural_rows_filled": synthesized,
+                    }
+                target_receipts[f"{entity}/{family}/{target}"] = target_receipt
     if failures:
         raise ValueError(
             "Stacked gap-fill outcome verification failed:\n  " + "\n  ".join(failures)
@@ -4648,6 +5048,9 @@ def _stacked_completeness_gate_evaluate(
         )
 
     declared_directions: dict[tuple[str, str], GapFillDirection] = {}
+    declared_absence_rules: dict[
+        tuple[str, str], tuple[GapFillDirection, GapFillAbsenceRule]
+    ] = {}
     for direction in authority.gap_fill_plan:
         for entity, targets in _direction_entity_targets(direction).items():
             for target in targets:
@@ -4660,6 +5063,8 @@ def _stacked_completeness_gate_evaluate(
                         f"{direction.name!r}."
                     )
                 declared_directions[key] = direction
+        for rule in direction.recipient_absence_rules:
+            declared_absence_rules[(rule.entity, rule.column)] = (direction, rule)
     canonical_direction_keys: set[tuple[str, str]] = set()
     for direction in _canonical_gap_fill_plan:
         for entity, targets in _direction_entity_targets(direction).items():
@@ -4667,6 +5072,8 @@ def _stacked_completeness_gate_evaluate(
                 key = (entity, target)
                 canonical_direction_keys.add(key)
                 declared_directions[key] = direction
+        for rule in direction.recipient_absence_rules:
+            declared_absence_rules[(rule.entity, rule.column)] = (direction, rule)
     declared_post_puf_keys = {
         (entity, target)
         for entity, families in authority.post_puf_transfer_surface.items()
@@ -4753,6 +5160,32 @@ def _stacked_completeness_gate_evaluate(
                     }
                     continue
                 null_mask = table[target].isna()
+                structural_absence_receipt: dict[str, object] | None = None
+                structural_absence_mismatch = False
+                structural_rule = declared_absence_rules.get((entity, target))
+                if structural_rule is not None:
+                    rule_direction, rule = structural_rule
+                    structural_mask, structural_absence_receipt = (
+                        _gap_fill_absence_rule_mask(
+                            frame,
+                            direction=rule_direction,
+                            rule=rule,
+                        )
+                    )
+                    unexpected = int((null_mask & ~structural_mask).sum())
+                    synthesized = int((structural_mask & ~null_mask).sum())
+                    structural_absence_receipt = {
+                        **structural_absence_receipt,
+                        "unexpected_null_rows": unexpected,
+                        "structural_rows_filled": synthesized,
+                    }
+                    structural_absence_mismatch = bool(unexpected or synthesized)
+                    if structural_absence_mismatch:
+                        failures.append(
+                            f"{label}: exact structural-absence equation failed; "
+                            f"unexpected_null_rows={unexpected}, "
+                            f"structural_rows_filled={synthesized}."
+                        )
                 metric = metric_by_target[(entity, family, target)]
                 invalid_mask, invalidity = _declared_metric_invalidity(
                     table[target],
@@ -4784,7 +5217,13 @@ def _stacked_completeness_gate_evaluate(
                     )
                 if not null_mask.any():
                     target_receipts[label] = {
-                        "status": ("invalid_values" if invalid_rows else "complete"),
+                        "status": (
+                            "structural_absence_mismatch"
+                            if structural_absence_mismatch
+                            else "invalid_values"
+                            if invalid_rows
+                            else "complete"
+                        ),
                         "null_rows": 0,
                         "metric": metric,
                         "invalid_rows": invalid_rows,
@@ -4795,9 +5234,37 @@ def _stacked_completeness_gate_evaluate(
                             if invalid_rows
                             else "observed_complete"
                         ),
+                        **(
+                            {
+                                "recipient_absence_authority": (
+                                    structural_absence_receipt
+                                )
+                            }
+                            if structural_absence_receipt is not None
+                            else {}
+                        ),
                     }
                     continue
-                proofs = proof_index.get((entity, target), {})
+                proofs = dict(proof_index.get((entity, target), {}))
+                if structural_rule is not None:
+                    proofs = {}
+                    if not structural_absence_mismatch:
+                        _rule_direction, rule = structural_rule
+                        structural_mask, _receipt = _gap_fill_absence_rule_mask(
+                            frame,
+                            direction=_rule_direction,
+                            rule=rule,
+                        )
+                        structural_channels = channel.loc[structural_mask]
+                        structural_clones = clone_index.loc[structural_mask]
+                        for cell_channel, cell_clone in set(
+                            zip(
+                                structural_channels.astype(str),
+                                structural_clones.astype(int),
+                                strict=True,
+                            )
+                        ):
+                            proofs[(str(cell_channel), int(cell_clone))] = rule.reason
                 declared_direction = declared_directions.get((entity, target))
                 post_puf_target = (entity, target) in post_puf_keys
                 null_channels = channel.loc[null_mask]
@@ -4881,6 +5348,14 @@ def _stacked_completeness_gate_evaluate(
                                     ),
                                 }
                             )
+                        if structural_rule is not None:
+                            _rule_direction, rule = structural_rule
+                            proof_receipt.update(
+                                {
+                                    "structural_absence_rule_id": rule.rule_id,
+                                    "structural_absence_selection": rule.selection,
+                                }
+                            )
                         proven[key] = proof_receipt
                         target_authority_forms.add(authority_form)
                 if unproven:
@@ -4914,6 +5389,11 @@ def _stacked_completeness_gate_evaluate(
                         "invalid_declared_metric_values"
                         if invalid_rows and not unproven
                         else target_authority_form
+                    ),
+                    **(
+                        {"recipient_absence_authority": (structural_absence_receipt)}
+                        if structural_absence_receipt is not None
+                        else {}
                     ),
                 }
     return GateResult(
@@ -5042,6 +5522,9 @@ def _by_origin_battery_evaluate(
     *,
     authority: _StackedAuthority,
     production: bool,
+    _canonical_gap_fill_plan: tuple[
+        GapFillDirection, ...
+    ] = CANONICAL_STACKED_GAP_FILL_PLAN,
 ) -> GateResult:
     """Compare declared statistics between origins within the one spine.
 
@@ -5121,8 +5604,15 @@ def _by_origin_battery_evaluate(
 
     failures: list[str] = []
     comparisons: dict[str, object] = {}
+    structural_absence_receipts: dict[str, dict[str, object]] = {}
     untestable: list[str] = []
     tested = 0
+    declared_absence_rules: dict[
+        tuple[str, str], tuple[GapFillDirection, GapFillAbsenceRule]
+    ] = {}
+    for direction in (*authority.gap_fill_plan, *_canonical_gap_fill_plan):
+        for rule in direction.recipient_absence_rules:
+            declared_absence_rules[(rule.entity, rule.column)] = (direction, rule)
     for spec in specs:
         table = frame.table(spec.entity)
         channel = table[support_channel_column(spec.entity)].astype(str)
@@ -5135,8 +5625,6 @@ def _by_origin_battery_evaluate(
             dtype=np.float64,
         )
         scope = (clone_index.eq(spec.clone_index)).to_numpy() & (weights > 0.0)
-        left_rows = scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
-        right_rows = scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
         for column, metric in spec.column_metrics.items():
             label = f"{spec.entity}/{spec.family}/{column}[clone_{spec.clone_index}]"
             if column not in table.columns:
@@ -5147,7 +5635,44 @@ def _by_origin_battery_evaluate(
                 }
                 continue
             series = table[column]
-            scoped_nulls = int(series.isna().to_numpy(dtype=bool)[scope].sum())
+            target_scope = scope.copy()
+            structural_rule = declared_absence_rules.get((spec.entity, column))
+            if structural_rule is not None:
+                rule_direction, rule = structural_rule
+                structural_mask, structural_receipt = _gap_fill_absence_rule_mask(
+                    frame,
+                    direction=rule_direction,
+                    rule=rule,
+                )
+                scoped_structural = structural_mask.to_numpy(dtype=bool) & scope
+                scoped_null_mask = series.isna().to_numpy(dtype=bool) & scope
+                unexpected = int((scoped_null_mask & ~scoped_structural).sum())
+                synthesized = int((scoped_structural & ~scoped_null_mask).sum())
+                structural_receipt = {
+                    **structural_receipt,
+                    "comparison_clone_index": spec.clone_index,
+                    "rows_excluded_from_scope": int(scoped_structural.sum()),
+                    "unexpected_null_rows": unexpected,
+                    "structural_rows_filled": synthesized,
+                }
+                structural_absence_receipts[label] = structural_receipt
+                if unexpected or synthesized:
+                    failures.append(
+                        f"{label}: exact structural-absence equation failed; "
+                        f"unexpected_null_rows={unexpected}, "
+                        f"structural_rows_filled={synthesized}."
+                    )
+                    comparisons[label] = {
+                        "status": "structural_absence_mismatch",
+                        "metric": metric,
+                    }
+                    continue
+                target_scope &= ~scoped_structural
+            left_rows = target_scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+            right_rows = (
+                target_scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
+            )
+            scoped_nulls = int(series.isna().to_numpy(dtype=bool)[target_scope].sum())
             if scoped_nulls:
                 failures.append(
                     f"{label}: {scoped_nulls} null value(s) inside the "
@@ -5163,7 +5688,7 @@ def _by_origin_battery_evaluate(
             invalid_mask, invalidity = _declared_metric_invalidity(
                 series,
                 metric=metric,
-                scope=scope,
+                scope=target_scope,
             )
             invalid_rows = int(invalid_mask.sum())
             if invalid_rows:
@@ -5186,7 +5711,7 @@ def _by_origin_battery_evaluate(
                     label,
                     series,
                     metric=metric,
-                    scope=scope,
+                    scope=target_scope,
                     failures=failures,
                 )
                 if values is None:
@@ -5306,6 +5831,10 @@ def _by_origin_battery_evaluate(
             failures=failures,
             comparisons=comparisons,
         )
+    for label, receipt in structural_absence_receipts.items():
+        comparison = comparisons.get(label)
+        if isinstance(comparison, dict):
+            comparison["recipient_absence_authority"] = receipt
     return GateResult(
         name=_BATTERY_GATE_NAME,
         passed=not failures,

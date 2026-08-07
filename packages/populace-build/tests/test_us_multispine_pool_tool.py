@@ -1502,6 +1502,10 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         "clone_seed": identity(clone_seed=579),
         "stack_manifest": identity(stack=mutated_stack),
     }
+    producer_schedule = identities["base"]["pool_code"]["gap_fill_producer_schedule"]
+    assert producer_schedule["status"] == "all_producers_precede_activation"
+    assert producer_schedule["direction_count"] == 2
+    assert producer_schedule["target_count"] == 48
     digests = {
         name: pool_tool._pool_checkpoint_identity_sha256(value)
         for name, value in identities.items()
@@ -1583,7 +1587,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         assert changed_store.load_deepest() is None
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -1631,7 +1635,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 4
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,

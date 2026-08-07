@@ -50,6 +50,7 @@ from populace.build.us_runtime.stacked_spine import (
     STACKED_PILOT_ACS_SAMPLE_SEED,
     STACKED_SPINE_MANIFEST_KEY,
     AbsenceProof,
+    GapFillAbsenceRule,
     GapFillDirection,
     OriginBatterySpec,
     assemble_stacked_spine,
@@ -59,6 +60,7 @@ from populace.build.us_runtime.stacked_spine import (
     sample_acs_households,
     stacked_completeness_gate,
     stacked_gap_fill_plan,
+    stacked_gap_fill_producer_schedule_receipt,
     transfer_stacked_post_puf_inputs,
     validate_stacked_spine_frame,
 )
@@ -834,6 +836,9 @@ def _asec_gap_source() -> Frame:
     person["is_female"] = np.asarray([False, True, True, False, True, False])
     person["is_household_head"] = np.asarray([True, False, True, True, False, True])
     person["employment_income_before_lsr"] = np.linspace(10_000.0, 60_000.0, count)
+    person["pre_subsidy_rent"] = np.asarray(
+        [12_000.0, 0.0, 0.0, 9_600.0, 0.0, 14_400.0]
+    )
     person["unemployment_compensation"] = np.asarray(
         [0.0, 1_200.0, 0.0, 3_600.0, 0.0, 2_400.0]
     )
@@ -880,22 +885,8 @@ def _acs_gap_source() -> Frame:
     person["acs_interest_dividend_rental_income"] = np.asarray(
         [0.0, 400.0, 0.0, 150.0, 900.0, 0.0, 250.0, 0.0, 3_000.0, 120.0, 60.0]
     )
-    person["pre_subsidy_rent"] = np.asarray(
-        [
-            0.0,
-            14_400.0,
-            0.0,
-            0.0,
-            9_600.0,
-            12_000.0,
-            0.0,
-            18_000.0,
-            0.0,
-            7_200.0,
-            15_600.0,
-        ]
-    )
     household = frame.table("household").copy()
+    household["TYPEHUGQ"] = np.asarray([1] * 9 + [2], dtype=np.int64)
     household["tenure_type"] = pd.Series(
         [
             "OWNED_OUTRIGHT",
@@ -907,7 +898,7 @@ def _acs_gap_source() -> Frame:
             "OWNED_WITH_MORTGAGE",
             "RENTED",
             "OWNED_OUTRIGHT",
-            "RENTED",
+            np.nan,
         ],
         dtype=object,
     )
@@ -920,6 +911,14 @@ def _acs_gap_source() -> Frame:
         {"household": frame.weights_for("household")},
         frame.strata,
     )
+
+
+_CANONICAL_RENT_ABSENCE_RULE = GapFillAbsenceRule(
+    **{
+        field: getattr(stacked_gap_fill_plan()[1].recipient_absence_rules[0], field)
+        for field in ("rule_id", "entity", "column", "selection", "reason")
+    }
+)
 
 
 _GAP_FILL_TEST_PLAN = (
@@ -935,10 +934,11 @@ _GAP_FILL_TEST_PLAN = (
         },
     ),
     GapFillDirection(
-        name="acs_housing_to_asec",
-        recipient_channel="asec",
-        donor_channel="acs",
+        name="asec_housing_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
         target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+        recipient_absence_rules=(_CANONICAL_RENT_ABSENCE_RULE,),
     ),
 )
 
@@ -1210,13 +1210,13 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     plan = stacked_gap_fill_plan()
     assert [direction.name for direction in plan] == [
         "asec_survey_to_acs",
-        "acs_housing_to_asec",
+        "asec_housing_to_acs",
     ]
     survey, housing = plan
     assert survey.recipient_channel == "acs"
     assert survey.donor_channel == "asec"
-    assert housing.recipient_channel == "asec"
-    assert housing.donor_channel == "acs"
+    assert housing.recipient_channel == "acs"
+    assert housing.donor_channel == "asec"
     assert set(housing.target_families) == {"person"}
     assert housing.target_families["person"] == {"housing": ("pre_subsidy_rent",)}
 
@@ -1254,6 +1254,78 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     assert early_keys | late_keys == full_keys
 
 
+def test_every_declared_direction_producer_precedes_its_activation_check() -> None:
+    receipt = stacked_gap_fill_producer_schedule_receipt()
+    assert receipt["status"] == "all_producers_precede_activation"
+    assert receipt["direction_count"] == 2
+    assert receipt["target_count"] == 48
+    assert [direction["target_count"] for direction in receipt["directions"]] == [
+        47,
+        1,
+    ]
+
+    schedule = stacked_spine_module._build_gap_fill_producer_schedule(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    )
+    rent_record = next(
+        record for record in schedule if record.target == "pre_subsidy_rent"
+    )
+    late_schedule = tuple(
+        replace(
+            record,
+            producer_stage=stacked_spine_module._POST_GAP_FILL_STAGE,
+        )
+        if record == rent_record
+        else record
+        for record in schedule
+    )
+    failures = stacked_spine_module._gap_fill_producer_precedence_failures(
+        stacked_gap_fill_plan(),
+        late_schedule,
+    )
+    assert len(failures) == 1
+    assert "asec_housing_to_acs/person/housing/pre_subsidy_rent" in failures[0]
+    assert "does not precede activation stage" in failures[0]
+
+
+def test_housing_activation_requires_asec_rent_producer_to_run_first() -> None:
+    produced = _stacked_gap_fixture()
+    tables = {entity: produced.table(entity) for entity in produced.entities}
+    tables["person"] = tables["person"].drop(columns=["pre_subsidy_rent"])
+    unproduced = Frame(
+        tables,
+        produced.schema,
+        {entity: produced.weights_for(entity) for entity in produced.weighted_entities},
+        produced.strata,
+        mass_log=produced.mass_log,
+        metadata=produced.metadata,
+    )
+    housing = _GAP_FILL_TEST_PLAN[1]
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"asec_housing_to_acs/person/housing/pre_subsidy_rent: "
+            r"declared gap-fill target column is absent"
+        ),
+    ):
+        stacked_spine_module._verify_gap_fill_activation_authority(
+            unproduced,
+            direction=housing,
+        )
+
+    assert stacked_spine_module._verify_gap_fill_activation_authority(
+        produced,
+        direction=housing,
+    ) == {
+        ("person", "pre_subsidy_rent"): {
+            "authorized_null_rows": 11,
+            "recipient_rows": 11,
+            "donor_rows": 6,
+        }
+    }
+
+
 def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     stacked = _stacked_gap_fixture()
     result = _gap_fill_with_test_authority(
@@ -1267,9 +1339,17 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     channel = person[support_channel_column("person")]
     acs_rows = channel.eq("acs")
     asec_rows = channel.eq("asec")
+    gq_household_ids = result.frame.table("household").loc[
+        pd.to_numeric(
+            result.frame.table("household")["TYPEHUGQ"], errors="coerce"
+        ).isin((2, 3)),
+        "household_id",
+    ]
+    acs_gq_rows = acs_rows & person["person_household_id"].isin(gq_household_ids)
     for column in ("unemployment_compensation", "is_disabled"):
         assert person.loc[acs_rows, column].notna().all()
-    assert person.loc[asec_rows, "pre_subsidy_rent"].notna().all()
+    assert person.loc[acs_rows & ~acs_gq_rows, "pre_subsidy_rent"].notna().all()
+    assert person.loc[acs_gq_rows, "pre_subsidy_rent"].isna().all()
 
     before_person = stacked.table("person")
     for column in ("unemployment_compensation", "is_disabled"):
@@ -1279,8 +1359,8 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
             check_names=False,
         )
     pd.testing.assert_series_equal(
-        person.loc[acs_rows, "pre_subsidy_rent"],
-        before_person.loc[acs_rows.to_numpy(), "pre_subsidy_rent"],
+        person.loc[asec_rows, "pre_subsidy_rent"],
+        before_person.loc[asec_rows.to_numpy(), "pre_subsidy_rent"],
         check_names=False,
     )
 
@@ -1294,10 +1374,17 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     assert unemployment["authorized_null_rows"] == int(acs_rows.sum())
     assert unemployment["imputed_rows"] == int(acs_rows.sum())
     assert unemployment["residual_null_rows"] == 0
-    housing = directions["acs_housing_to_asec"]
+    housing = directions["asec_housing_to_acs"]
     rent = housing["targets"]["person/housing/pre_subsidy_rent"]
-    assert rent["imputed_rows"] == int(asec_rows.sum())
-    assert rent["residual_null_rows"] == 0
+    assert rent["imputed_rows"] == int((acs_rows & ~acs_gq_rows).sum())
+    assert rent["residual_null_rows"] == int(acs_gq_rows.sum()) == 1
+    assert rent["unmodeled_rows"] == 1
+    absence = rent["recipient_absence_authority"]
+    assert absence["rule_id"] == "acs_native_group_quarters_without_housing_unit"
+    assert absence["status"] == "exact_structural_absence"
+    assert absence["rows"] == 1
+    assert absence["unexpected_null_rows"] == 0
+    assert absence["structural_rows_filled"] == 0
 
     survey_transfer = result.transfer_results["asec_survey_to_acs"]
     native_predictor_used = any(
@@ -1779,7 +1866,7 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
             tmp_path / "survey",
             identity=identity,
         ),
-        "acs_housing_to_asec": AcsTransferTargetBankStore(
+        "asec_housing_to_acs": AcsTransferTargetBankStore(
             tmp_path / "housing",
             identity=identity,
         ),
@@ -1801,7 +1888,7 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
             tmp_path / "survey",
             identity=identity,
         ),
-        "acs_housing_to_asec": AcsTransferTargetBankStore(
+        "asec_housing_to_acs": AcsTransferTargetBankStore(
             tmp_path / "housing",
             identity=identity,
         ),
@@ -2502,7 +2589,109 @@ def test_completeness_gate_passes_on_filled_and_proven_surface() -> None:
     statuses = {
         label: receipt["status"] for label, receipt in result.details["targets"].items()
     }
-    assert set(statuses.values()) == {"complete"}
+    assert set(statuses.values()) == {"complete", "proven_absent"}
+    rent = result.details["targets"]["person/housing/pre_subsidy_rent"]
+    assert rent["recipient_absence_authority"]["rows"] == 1
+    assert rent["proven"]["acs/clone_0"]["structural_absence_rule_id"] == (
+        "acs_native_group_quarters_without_housing_unit"
+    )
+
+
+def test_structural_rent_absence_covers_every_clone_role_and_battery_scope() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    attached = clone_us_frame_for_puf_support(
+        gap_filled,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    surface = {"person": {"housing": ("pre_subsidy_rent",)}}
+    housing_plan = (_GAP_FILL_TEST_PLAN[1],)
+    completeness = _completeness_with_test_authority(
+        attached,
+        declared_surface=surface,
+        declared_gap_fill_plan=housing_plan,
+    )
+    assert completeness.passed, completeness.failures
+    target = completeness.details["targets"]["person/housing/pre_subsidy_rent"]
+    assert set(target["proven"]) == {"acs/clone_0", "acs/clone_1"}
+    assert target["recipient_absence_authority"]["by_origin_role"] == {
+        "acs/clone_0": 1,
+        "acs/clone_1": 1,
+    }
+
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=housing_plan,
+        metric_registry={
+            (
+                "person",
+                "housing",
+                "pre_subsidy_rent",
+                0,
+            ): "monetary_sign_separated"
+        },
+    )
+    battery = stacked_spine_module._by_origin_battery_with_test_authority(
+        attached,
+        authority=authority,
+    )
+    comparison = battery.details["comparisons"][
+        "person/housing/pre_subsidy_rent[clone_0]"
+    ]
+    assert comparison["status"] != "null_in_scope"
+    assert comparison["recipient_absence_authority"]["rows_excluded_from_scope"] == 1
+    assert not any(
+        "exact structural-absence" in failure for failure in battery.failures
+    )
+
+
+def test_structural_rent_absence_rejects_a_non_gq_recipient_null() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    person = gap_filled.table("person").copy()
+    channel = person[support_channel_column("person")].astype(str)
+    household = gap_filled.table("household")
+    gq_households = set(
+        household.loc[
+            pd.to_numeric(household["TYPEHUGQ"], errors="coerce").isin((2, 3)),
+            "household_id",
+        ]
+    )
+    non_gq = channel.eq("acs") & ~person["person_household_id"].isin(gq_households)
+    person.loc[person.index[non_gq][0], "pre_subsidy_rent"] = np.nan
+    tables = {entity: gap_filled.table(entity) for entity in gap_filled.entities}
+    tables["person"] = person
+    corrupted = Frame(
+        tables,
+        gap_filled.schema,
+        {
+            entity: gap_filled.weights_for(entity)
+            for entity in gap_filled.weighted_entities
+        },
+        gap_filled.strata,
+        mass_log=gap_filled.mass_log,
+        metadata=gap_filled.metadata,
+    )
+    result = _completeness_with_test_authority(
+        corrupted,
+        declared_surface={"person": {"housing": ("pre_subsidy_rent",)}},
+        declared_gap_fill_plan=(_GAP_FILL_TEST_PLAN[1],),
+    )
+    assert not result.passed
+    assert any(
+        "exact structural-absence equation failed" in failure
+        and "unexpected_null_rows=1" in failure
+        for failure in result.failures
+    )
 
 
 def test_completeness_gate_names_a_silently_missing_family() -> None:
@@ -3401,6 +3590,10 @@ def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
             person[column] = values[position]
         tables = {entity: frame.table(entity) for entity in frame.entities}
         tables["person"] = person
+        household = tables["household"].copy()
+        household["TYPEHUGQ"] = np.ones(len(household), dtype=np.int64)
+        household["tenure_type"] = "RENTED"
+        tables["household"] = household
         return Frame(
             tables,
             US_SCHEMA,
@@ -3901,6 +4094,7 @@ def _asec_e2e_source() -> Frame:
     # under any household subsample, so the gap-fill QRF reproduces the
     # incidence on the seeded ACS sample without sampling-skew noise.
     person["is_disabled"] = person["is_female"].to_numpy()
+    person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
     interest = np.where(index % 2 == 0, 1_200.0 + 40.0 * index, 0.0)
     person["taxable_interest_income"] = interest
     for column in (
@@ -3912,6 +4106,7 @@ def _asec_e2e_source() -> Frame:
     ):
         person[column] = 0.0
     household = frame.table("household").copy()
+    household["TYPEHUGQ"] = np.ones(40, dtype=np.int64)
     household["tenure_type"] = pd.Series(
         ["RENTED" if position % 2 else "OWNED_WITH_MORTGAGE" for position in range(40)],
         dtype=object,
@@ -3949,8 +4144,8 @@ def _acs_e2e_source() -> Frame:
     person["acs_interest_dividend_rental_income"] = np.where(
         index % 2 == 0, 1_250.0 + 42.0 * index, 0.0
     )
-    person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
     household = frame.table("household").copy()
+    household["TYPEHUGQ"] = np.ones(40, dtype=np.int64)
     household["tenure_type"] = pd.Series(
         ["RENTED" if position % 2 else "OWNED_OUTRIGHT" for position in range(40)],
         dtype=object,
@@ -3986,10 +4181,11 @@ _E2E_GAP_FILL_PLAN = (
         },
     ),
     GapFillDirection(
-        name="acs_housing_to_asec",
-        recipient_channel="asec",
-        donor_channel="acs",
+        name="asec_housing_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
         target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+        recipient_absence_rules=(_CANONICAL_RENT_ABSENCE_RULE,),
     ),
 )
 
