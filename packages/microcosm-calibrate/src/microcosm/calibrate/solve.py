@@ -1312,6 +1312,7 @@ def calibrate(
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
+    mass_reason: str | None = None,
     max_weight_ratio: float | None = None,
     target_records: int | None = None,
     l0_lambda: float = 0.0,
@@ -1357,6 +1358,12 @@ def calibrate(
             feasible targets.
         mass: :data:`FREE_MASS` (default) to let the total move, or
             :data:`CONSERVE_MASS` to hold it to the input total.
+        mass_reason: Optional caller-supplied reason recorded on the
+            :class:`~microcosm.frame.MassChange` a :data:`FREE_MASS`
+            calibration appends to the frame's mass log — domain context
+            (which target families moved the mass) instead of the generic
+            default. Must be ``None`` under :data:`CONSERVE_MASS`, which
+            appends no record.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
         target_records: If given, enable L0 pruning with **budget control**: the
@@ -1462,6 +1469,14 @@ def calibrate(
         raise ValueError(
             f"mass must be {FREE_MASS!r} or {CONSERVE_MASS!r}, got {mass!r}."
         )
+    if mass_reason is not None:
+        if mass != FREE_MASS:
+            raise ValueError(
+                "mass_reason requires mass='free'; a mass-conserving "
+                "calibration appends no mass record to carry it."
+            )
+        if not isinstance(mass_reason, str) or not mass_reason.strip():
+            raise ValueError("mass_reason must be a non-empty string when provided.")
     if epochs <= 0:
         raise ValueError(f"epochs must be positive, got {epochs!r}.")
     if max_weight_ratio is not None and not (max_weight_ratio > 0):
@@ -1708,7 +1723,15 @@ def calibrate(
             )
 
     calibrated = initial.with_values(final_weights, kind=WeightKind.CALIBRATED)
-    new_frame = _apply_weights(frame, weight_entity, initial, calibrated, mass, targets)
+    new_frame = _apply_weights(
+        frame,
+        weight_entity,
+        initial,
+        calibrated,
+        mass,
+        targets,
+        mass_reason=mass_reason,
+    )
 
     diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
     # One closing eval-mode loss on the RETURNED weights (Finding 8): the same
@@ -1780,6 +1803,8 @@ def _apply_weights(
     calibrated: Weights,
     mass: str,
     targets: TargetSet,
+    *,
+    mass_reason: str | None = None,
 ) -> Frame:
     """Place the calibrated weights on the frame with the right mass policy.
 
@@ -1787,14 +1812,15 @@ def _apply_weights(
     to the input within rtol, so the kernel's conservation check passes).
     ``mass="free"`` declares a :class:`~microcosm.frame.MassChange`: the total
     moved on purpose to fit the targets, and the change is recorded on the
-    frame's mass log with a reason naming the calibration.
+    frame's mass log with the caller's ``mass_reason`` when supplied, else a
+    generic reason naming the calibration.
     """
     if mass == CONSERVE_MASS:
         from microcosm.frame import CONSERVE_MASS as FRAME_CONSERVE
 
         return frame.with_weights(weight_entity, calibrated, mass=FRAME_CONSERVE)
     factor = calibrated.total / initial.total if initial.total != 0 else None
-    reason = (
+    reason = mass_reason or (
         f"calibrated {weight_entity!r} weights to {len(targets)} target(s) "
         "(capped weighted-MAPE loss); total mass free to move"
     )

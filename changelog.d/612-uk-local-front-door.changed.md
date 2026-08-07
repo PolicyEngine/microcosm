@@ -12,3 +12,12 @@ metadata) with per-entity `{entity}_clone_index` columns in memory; the
 written artifact keeps the legacy single-year schema — one `clone_index`
 name per table, renamed at the export boundary — so nothing the UK engine
 reads changes.
+The rowwise doctrine solve now runs through the public
+`microcosm.calibrate.calibrate` front door: the area x metric surface is
+expressed as a declarative `TargetSet`, the kernel enforces the
+`WeightKind.CALIBRATED` transition and mints the calibration mass record
+(naming the bound target families via the new `calibrate(mass_reason=...)`
+parameter), and the three private `microcosm.calibrate.solve` imports are
+gone from `uk_runtime`. The solver's optimizer floor retired with the
+migration — zero base weights are refused, tiny positives are legal seeds —
+and the kernel record now declares the realized mass factor.

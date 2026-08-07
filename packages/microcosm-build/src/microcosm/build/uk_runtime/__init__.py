@@ -201,16 +201,13 @@ from microcosm.build.uk_runtime.local_geography import (
     align_area_targets,
 )
 from microcosm.build.uk_runtime.local_rowwise import (
+    UKRowwiseDoctrineSolve,
     UKRowwiseLocalMatrix,
     build_uk_rowwise_local_matrix,
-    rowwise_area_support_summary,
-    rowwise_calibration_mass_record,
-    solve_uk_rowwise_weights_under_doctrine,
-)
-from microcosm.build.uk_runtime.local_solver import (
-    StackedLocalSolveResult,
     past_cap_census,
-    solve_prepared_local_weights,
+    rowwise_area_support_summary,
+    rowwise_calibration_mass_reason,
+    solve_uk_rowwise_weights_under_doctrine,
 )
 from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_KIND,
@@ -396,6 +393,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 
 __all__ = [
     "ARTIFACT_CLONE_INDEX_COLUMN",
+    "UKRowwiseDoctrineSolve",
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_DOCTRINE",
@@ -406,6 +404,7 @@ __all__ = [
     "UKCGTTargetMaterialization",
     "ladder_clone_index_column",
     "materialize_uk_cgt_calibration_frame",
+    "rowwise_calibration_mass_reason",
     "uk_cgt_annual_exempt_amount",
     "UK_CGT_REQUIRED_COLUMNS",
     "UK_CGT_TARGET_COVERAGE_REQUIREMENTS",
@@ -517,7 +516,6 @@ __all__ = [
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS",
     "SPI_SYNTHETIC_SUPPORT_CHANNEL",
-    "StackedLocalSolveResult",
     "UK_ENGLAND_WALES_REGION_CODES",
     "UK_GEOGRAPHY_LADDER_COLUMNS",
     "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
@@ -664,8 +662,6 @@ __all__ = [
     "solve_firm_weights",
     "past_cap_census",
     "rowwise_area_support_summary",
-    "rowwise_calibration_mass_record",
-    "solve_prepared_local_weights",
     "solve_uk_rowwise_weights_under_doctrine",
     "support_channel_column",
     "support_clone_index_column",

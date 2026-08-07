@@ -246,7 +246,11 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
         if "census_households/constituency" in record.reason
     ]
     assert calibration_records == [candidate_mass_log[-1]]
-    assert candidate_mass_log[-1].declared_factor is None
+    # The kernel-minted record declares the realized factor (the hand-minted
+    # predecessor left it None) — declared-vs-realized is validated by the
+    # kernel at with_weights time.
+    record = candidate_mass_log[-1]
+    assert record.declared_factor == pytest.approx(record.new_total / record.old_total)
 
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["candidate_scope"] == "adjudicated_partial"

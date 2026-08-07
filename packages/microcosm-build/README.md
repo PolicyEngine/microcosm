@@ -72,9 +72,10 @@ metric surface used by the local build: HMRC employment/self-employment amount
 and count rows, ONS age bands, Universal Credit household rows, constituency
 UC-by-children rows, and the LA income/tenure/rent rows. It accepts a
 PolicyEngine-UK-like simulation object and returns household-indexed metric
-tables; it still takes target values as explicit input tables. `local_solver`
-wraps the Microcosm calibrator's log-weight optimizer for the rowwise solve and
-records per-area/per-metric diagnostics on every result.
+tables; it still takes target values as explicit input tables. The rowwise
+doctrine solve goes through the public `microcosm.calibrate.calibrate` front
+door — the kernel enforces the `CALIBRATED` kind transition and mints the
+mass record — and records per-area/per-metric diagnostics on every result.
 
 ## UK firm generation
 

@@ -37,9 +37,9 @@ from microcosm.build.uk_runtime import (
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
-    StackedLocalSolveResult,
     UKLadderRowwiseDatasetResult,
     UkOaLadder,
+    UKRowwiseDoctrineSolve,
     UKRowwiseLocalMatrix,
     build_uk_rowwise_local_matrix,
     clone_uk_dataset_with_ladder_geography,
@@ -48,15 +48,13 @@ from microcosm.build.uk_runtime import (
     load_uk_national_frame,
     load_uk_oa_ladder,
     rowwise_area_support_summary,
-    rowwise_calibration_mass_record,
     solve_uk_rowwise_weights_under_doctrine,
     uk_geography_ladder_gate,
     uk_household_weight_kind,
-    uk_national_frame,
     uk_time_period,
     write_uk_rowwise_dataset,
 )
-from microcosm.frame import MassChangeRecord, WeightKind, assert_kind_transition
+from microcosm.frame import MassChangeRecord
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
 CANDIDATE_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise_candidate.h5"
@@ -68,7 +66,6 @@ PAST_CAP_FILENAME = "past_cap_census.json"
 _CONSERVE_MASS = False
 _TARGET_RECORDS: int | None = None
 _L0_LAMBDA = 0.0
-_MIN_INITIAL_WEIGHT = 1e-4
 _BUDGET_ITERS = 10
 _PAST_CAP_COUNT_KEYS = (
     "n_targets",
@@ -203,30 +200,31 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
         flush=True,
     )
-    base_weights = household["household_weight"].to_numpy(dtype=np.float64)
     solve = solve_uk_rowwise_weights_under_doctrine(
+        clone.frame,
         problem,
-        base_weights,
+        bound_families=BOUND_TARGET_FAMILIES,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
         conserve_mass=_CONSERVE_MASS,
         target_records=_TARGET_RECORDS,
         l0_lambda=_L0_LAMBDA,
-        min_initial_weight=_MIN_INITIAL_WEIGHT,
         budget_iters=_BUDGET_ITERS,
         seed=args.seed,
     )
     _validate_solve_result(solve, problem=problem)
 
-    calibration_record = rowwise_calibration_mass_record(
-        base_weights,
-        solve.weights,
-        bound_families=BOUND_TARGET_FAMILIES,
-    )
-    calibrated_household = household.copy()
-    calibrated_household["household_weight"] = solve.weights
+    # The kernel minted the calibration mass record inside calibrate() (the
+    # CALIBRATED kind transition is enforced there too); the record names
+    # the bound families via the doctrine's mass reason.
+    calibration_record = solve.frame.mass_log[-1]
+    if "calibration" not in calibration_record.reason:
+        raise ValueError(
+            "calibrated frame's latest mass record is not the calibration "
+            f"record: {calibration_record.reason!r}."
+        )
     candidate_gate = uk_geography_ladder_gate(
-        calibrated_household,
+        solve.frame.table("household"),
         np.asarray(solve.weights, dtype=np.float64),
     )
     if not candidate_gate.passed:
@@ -235,25 +233,9 @@ def main(argv: list[str] | None = None) -> int:
             + "; ".join(candidate_gate.failures)
         )
 
-    assert_kind_transition(
-        uk_household_weight_kind(clone.frame),
-        WeightKind.CALIBRATED,
-    )
-    # #618 idiom: hard-construct the calibrated frame with the refreshed
-    # household_weight column and the appended calibration record (the
-    # kernel transition above is asserted explicitly; the calibrate() front
-    # door will own both once the solve migrates onto it).
-    calibrated_frame = uk_national_frame(
-        person=clone.frame.table("person"),
-        benunit=clone.frame.table("benunit"),
-        household=calibrated_household,
-        time_period=uk_time_period(clone.frame),
-        weight_kind=WeightKind.CALIBRATED,
-        mass_log=(*clone.frame.mass_log, calibration_record),
-    )
     candidate = dataclasses.replace(
         clone,
-        frame=calibrated_frame,
+        frame=solve.frame,
         gate=candidate_gate,
         output_path=None,
     )
@@ -386,7 +368,7 @@ def _write_output_bundle(
     candidate: UKLadderRowwiseDatasetResult,
     clone: UKLadderRowwiseDatasetResult,
     problem: UKRowwiseLocalMatrix,
-    solve: StackedLocalSolveResult,
+    solve: UKRowwiseDoctrineSolve,
     support: pd.DataFrame,
     calibration_record: MassChangeRecord,
     source_year: int,
@@ -462,7 +444,7 @@ def _manifest(
     candidate: UKLadderRowwiseDatasetResult,
     clone: UKLadderRowwiseDatasetResult,
     problem: UKRowwiseLocalMatrix,
-    solve: StackedLocalSolveResult,
+    solve: UKRowwiseDoctrineSolve,
     support: pd.DataFrame,
     calibration_record: MassChangeRecord,
     source_year: int,
@@ -549,7 +531,6 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
             "conserve_mass": _CONSERVE_MASS,
             "target_records": _TARGET_RECORDS,
             "l0_lambda": _L0_LAMBDA,
-            "min_initial_weight": _MIN_INITIAL_WEIGHT,
             "budget_iters": _BUDGET_ITERS,
         },
     }
@@ -575,7 +556,7 @@ def _gate_payload(gate: GateResult, *, phase: str) -> dict[str, Any]:
 
 
 def _validate_solve_result(
-    solve: StackedLocalSolveResult,
+    solve: UKRowwiseDoctrineSolve,
     *,
     problem: UKRowwiseLocalMatrix,
 ) -> None:
