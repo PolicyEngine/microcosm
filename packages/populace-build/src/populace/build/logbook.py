@@ -1,13 +1,14 @@
-"""Local-only Chronicle spool rows compatible with the #628 build ledger.
+"""Local-only Logbook spool rows compatible with the #628 build trace.
 
 This module is the direct-write fallback for build tools whose branch base
-does not yet contain :mod:`populace.build.ledger`. It implements the exact
-17-field row schema and hash contract from populace#628, but deliberately has
-no remote client: a successful call validates one terminal build-attempt row
-and durably writes ``<row_digest>.json`` beneath the caller's spool directory.
+does not yet contain the full :mod:`populace.build.logbook` client. It
+implements the exact 17-field row schema and hash contract from populace#628,
+but deliberately has no remote client: a successful call validates one
+terminal build-attempt row and durably writes ``<row_digest>.json`` beneath
+the caller's spool directory.
 
 The caller owns chain coordination and must provide ``prev_row_digest`` for
-the ledger head it extends. The row digest is
+the logbook head it extends. The row digest is
 
 ``sha256(canonical JSON of all non-chain fields || prev_row_digest)``
 
@@ -34,13 +35,13 @@ from typing import Any
 
 __all__ = [
     "BUILD_DISPOSITIONS",
-    "CHRONICLE_ROW_FIELDS",
-    "CHRONICLE_RUNGS",
-    "ChronicleRow",
-    "ChronicleWriteResult",
+    "LOGBOOK_ROW_FIELDS",
+    "LOGBOOK_RUNGS",
+    "LogbookRow",
+    "LogbookWriteResult",
     "canonical_json_bytes",
     "compute_row_digest",
-    "load_chronicle_row",
+    "load_logbook_row",
     "record_build_attempt",
 ]
 
@@ -58,8 +59,8 @@ BUILD_DISPOSITIONS = frozenset(
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
-CHRONICLE_RUNGS = frozenset({"f001", "f010", "f100"})
-CHRONICLE_ROW_FIELDS = frozenset(
+LOGBOOK_RUNGS = frozenset({"f001", "f010", "f100"})
+LOGBOOK_ROW_FIELDS = frozenset(
     {
         "build_id",
         "ts",
@@ -84,7 +85,7 @@ _HASH_EXCLUDED_FIELDS = frozenset({"prev_row_digest", "row_digest"})
 
 
 @dataclass(frozen=True)
-class ChronicleRow:
+class LogbookRow:
     """A validated terminal build-attempt row with a verified chain digest."""
 
     build_id: str
@@ -126,7 +127,7 @@ class ChronicleRow:
         prediction_id: str | None,
         prev_row_digest: str | None,
         row_digest: str | None = None,
-    ) -> ChronicleRow:
+    ) -> LogbookRow:
         """Validate, normalize, and hash a complete attempt receipt."""
 
         normalized_build_id = _nonempty_text(build_id, "build_id")
@@ -217,19 +218,19 @@ class ChronicleRow:
         )
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> ChronicleRow:
+    def from_mapping(cls, value: Mapping[str, Any]) -> LogbookRow:
         """Load a row object, rejecting missing, extra, or tampered fields."""
 
         if not isinstance(value, Mapping):
             raise ValueError(
-                f"Chronicle row must be an object, got {type(value).__name__}."
+                f"Logbook row must be an object, got {type(value).__name__}."
             )
         keys = frozenset(value)
-        if keys != CHRONICLE_ROW_FIELDS:
-            missing = sorted(CHRONICLE_ROW_FIELDS - keys)
-            extra = sorted(keys - CHRONICLE_ROW_FIELDS)
+        if keys != LOGBOOK_ROW_FIELDS:
+            missing = sorted(LOGBOOK_ROW_FIELDS - keys)
+            extra = sorted(keys - LOGBOOK_ROW_FIELDS)
             raise ValueError(
-                f"Chronicle row schema mismatch; missing={missing}, extra={extra}."
+                f"Logbook row schema mismatch; missing={missing}, extra={extra}."
             )
         return cls.create(**dict(value))
 
@@ -259,7 +260,7 @@ class ChronicleRow:
         # still mutate nested JSON containers.  Re-authenticate immediately
         # before every serialization boundary so neither such a mutation nor
         # direct dataclass construction can persist an invalid row.
-        ChronicleRow.from_mapping(mapping)
+        LogbookRow.from_mapping(mapping)
         return mapping
 
     def to_json_line(self) -> str:
@@ -278,10 +279,10 @@ class ChronicleRow:
 
 
 @dataclass(frozen=True)
-class ChronicleWriteResult:
-    """Receipt for one durable local Chronicle spool write."""
+class LogbookWriteResult:
+    """Receipt for one durable local Logbook spool write."""
 
-    row: ChronicleRow
+    row: LogbookRow
     spool_path: Path
 
 
@@ -302,11 +303,9 @@ def canonical_json_bytes(value: Any) -> bytes:
 def compute_row_digest(value: Mapping[str, Any]) -> str:
     """Compute SHA-256(canonical non-chain fields || predecessor)."""
 
-    missing = (CHRONICLE_ROW_FIELDS - {"row_digest"}) - frozenset(value)
+    missing = (LOGBOOK_ROW_FIELDS - {"row_digest"}) - frozenset(value)
     if missing:
-        raise ValueError(
-            f"Cannot hash Chronicle row; missing fields: {sorted(missing)}."
-        )
+        raise ValueError(f"Cannot hash Logbook row; missing fields: {sorted(missing)}.")
     predecessor = _validate_digest(
         value.get("prev_row_digest"),
         "prev_row_digest",
@@ -338,11 +337,11 @@ def record_build_attempt(
     prediction_id: str | None,
     prev_row_digest: str | None,
     row_digest: str | None = None,
-    spool_dir: str | Path = "ledger-spool",
-) -> ChronicleWriteResult:
+    spool_dir: str | Path = "logbook-spool",
+) -> LogbookWriteResult:
     """Validate and durably spool one terminal attempt without network I/O."""
 
-    row = ChronicleRow.create(
+    row = LogbookRow.create(
         build_id=build_id,
         ts=ts,
         pipeline=pipeline,
@@ -363,21 +362,21 @@ def record_build_attempt(
     )
     spool_path = Path(spool_dir) / f"{row.row_digest}.json"
     _atomic_write_row(spool_path, row)
-    return ChronicleWriteResult(row=row, spool_path=spool_path)
+    return LogbookWriteResult(row=row, spool_path=spool_path)
 
 
-def load_chronicle_row(path: str | Path) -> ChronicleRow:
+def load_logbook_row(path: str | Path) -> LogbookRow:
     """Load one completed spool row and authenticate its digest filename."""
 
     spool_path = Path(path)
     try:
         value = json.loads(spool_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Invalid Chronicle spool row {spool_path}: {exc}.") from exc
-    row = ChronicleRow.from_mapping(value)
+        raise ValueError(f"Invalid Logbook spool row {spool_path}: {exc}.") from exc
+    row = LogbookRow.from_mapping(value)
     if spool_path.suffix != ".json" or spool_path.stem != row.row_digest:
         raise ValueError(
-            "Chronicle spool filename does not match row_digest for "
+            "Logbook spool filename does not match row_digest for "
             f"{row.build_id}: {spool_path.name}."
         )
     return row
@@ -451,10 +450,8 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
 
 
 def _validate_rung(value: str) -> str:
-    if value not in CHRONICLE_RUNGS:
-        raise ValueError(
-            f"rung must be one of {sorted(CHRONICLE_RUNGS)}, got {value!r}."
-        )
+    if value not in LOGBOOK_RUNGS:
+        raise ValueError(f"rung must be one of {sorted(LOGBOOK_RUNGS)}, got {value!r}.")
     return value
 
 
@@ -559,13 +556,13 @@ def _optional_text(value: Any, field: str) -> str | None:
     return _nonempty_text(value, field)
 
 
-def _atomic_write_row(path: Path, row: ChronicleRow) -> None:
+def _atomic_write_row(path: Path, row: LogbookRow) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        existing = load_chronicle_row(path)
+        existing = load_logbook_row(path)
         if existing != row:
             raise ValueError(
-                f"Chronicle spool digest collision or divergent retry at {path}."
+                f"Logbook spool digest collision or divergent retry at {path}."
             )
         # Complete a possibly interrupted replacement whose file became
         # visible before the parent-directory fsync succeeded.

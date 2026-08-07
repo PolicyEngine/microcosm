@@ -22,8 +22,8 @@ import pandas as pd
 import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
-from populace.build.chronicle import CHRONICLE_ROW_FIELDS, load_chronicle_row
 from populace.build.gates import GateReport, GateResult
+from populace.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_transfer import transfer_acs_inputs
 from populace.build.us_runtime.acs_transfer_bank import (
@@ -776,7 +776,7 @@ def _stacked_main_argv(
         ]
     )
     if predecessor is not None:
-        arguments.extend(["--chronicle-prev-row-digest", predecessor])
+        arguments.extend(["--logbook-prev-row-digest", predecessor])
     return arguments
 
 
@@ -987,7 +987,7 @@ def _install_stacked_entrypoint_stubs(
         ("error", None, "failed"),
     ],
 )
-def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_terminal_state(
+def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_terminal_state(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1009,10 +1009,10 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_te
     else:
         assert pool_tool.main(_stacked_main_argv(tmp_path)) == expected_code
 
-    rows = list((tmp_path / "ledger-spool").glob("*.json"))
+    rows = list((tmp_path / "logbook-spool").glob("*.json"))
     assert len(rows) == 1
-    row = load_chronicle_row(rows[0])
-    assert frozenset(row.to_mapping()) == CHRONICLE_ROW_FIELDS
+    row = load_logbook_row(rows[0])
+    assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
     assert row.disposition == disposition
     assert row.rung == "f001"
     assert row.seed == 578
@@ -1044,16 +1044,11 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_te
         # directories live outside both the checkout and home on supported
         # platforms, so the reference lands on the stripped-absolute form.
         assert row.artifact_location == (
-            "local://"
-            + (tmp_path / "stacked-pool.h5").resolve().as_posix().lstrip("/")
+            "local://" + (tmp_path / "stacked-pool.h5").resolve().as_posix().lstrip("/")
         )
-        expected_receipt_prefix = (
-            "local://"
-            + (tmp_path / "ledger-receipts" / row.build_id)
-            .resolve()
-            .as_posix()
-            .lstrip("/")
-        )
+        expected_receipt_prefix = "local://" + (
+            tmp_path / "logbook-receipts" / row.build_id
+        ).resolve().as_posix().lstrip("/")
         assert all(
             verdict["receipt"].startswith(expected_receipt_prefix)
             for verdict in row.gate_verdicts.values()
@@ -1075,7 +1070,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_chronicle_row_at_every_te
     "failure",
     ("negative_seed", "oversized_seed", "invalid_output", "code_pin"),
 )
-def test_stacked_preflight_errors_emit_one_chronicle_row(
+def test_stacked_preflight_errors_emit_one_logbook_row(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1108,9 +1103,9 @@ def test_stacked_preflight_errors_emit_one_chronicle_row(
     with pytest.raises((RuntimeError, ValueError), match=expected):
         pool_tool.main(arguments)
 
-    row_paths = list((tmp_path / "ledger-spool").glob("*.json"))
+    row_paths = list((tmp_path / "logbook-spool").glob("*.json"))
     assert len(row_paths) == 1
-    row = load_chronicle_row(row_paths[0])
+    row = load_logbook_row(row_paths[0])
     assert row.disposition == "failed"
     assert row.rung == "f001"
     assert row.prev_row_digest == predecessor
@@ -1123,7 +1118,7 @@ def test_stacked_preflight_errors_emit_one_chronicle_row(
         row.gate_verdicts["pipeline_error"]["receipt"]
     )
     assert error_path.is_file()
-    assert error_path.parent == tmp_path / "ledger-receipts" / row.build_id
+    assert error_path.parent == tmp_path / "logbook-receipts" / row.build_id
     assert order == []
 
 
@@ -1167,7 +1162,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     with pytest.raises(RuntimeError, match="fixture publication failure"):
         pool_tool.main(_stacked_main_argv(tmp_path))
 
-    row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+    row = load_logbook_row(next((tmp_path / "logbook-spool").glob("*.json")))
     assert row.artifact_location is None
     assert set(row.gate_verdicts) == {
         "fixture_completeness",
@@ -1181,7 +1176,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     assert stale_h5.read_bytes() == b"prior-build-artifact"
 
 
-def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
+def test_logbook_gate_receipts_are_immutable_across_later_attempts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1194,7 +1189,7 @@ def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
         terminal="success",
     )
     assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
-    first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+    first_row = load_logbook_row(next((tmp_path / "logbook-spool").glob("*.json")))
     first_receipt = _receipt_file_from_reference(
         first_row.gate_verdicts["fixture_battery"]["receipt"]
     )
@@ -1215,7 +1210,7 @@ def test_chronicle_gate_receipts_are_immutable_across_later_attempts(
     )
 
     rows = [
-        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+        load_logbook_row(path) for path in (tmp_path / "logbook-spool").glob("*.json")
     ]
     second_row = next(
         row for row in rows if row.prev_row_digest == first_row.row_digest
@@ -1447,7 +1442,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     )
     assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
     cold_order = list(order)
-    first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+    first_row = load_logbook_row(next((tmp_path / "logbook-spool").glob("*.json")))
 
     order.clear()
     assert (
@@ -1456,7 +1451,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     )
     simulated_resume_order = list(order)
     rows = [
-        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+        load_logbook_row(path) for path in (tmp_path / "logbook-spool").glob("*.json")
     ]
     second_row = next(
         row for row in rows if row.prev_row_digest == first_row.row_digest
@@ -1474,7 +1469,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     )
     transferred_resume_order = list(order)
     rows = [
-        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+        load_logbook_row(path) for path in (tmp_path / "logbook-spool").glob("*.json")
     ]
     third_row = next(
         row for row in rows if row.prev_row_digest == second_row.row_digest
@@ -1536,7 +1531,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "publish",
     ]
     final_rows = [
-        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+        load_logbook_row(path) for path in (tmp_path / "logbook-spool").glob("*.json")
     ]
     assert len(final_rows) == 4
     assert any(row.prev_row_digest == third_row.row_digest for row in final_rows)
@@ -1555,7 +1550,7 @@ def test_stacked_resume_error_uses_realized_stack_identity(
         terminal="success",
     )
     assert pool_tool.main(_stacked_main_argv(tmp_path)) == 0
-    first_row = load_chronicle_row(next((tmp_path / "ledger-spool").glob("*.json")))
+    first_row = load_logbook_row(next((tmp_path / "logbook-spool").glob("*.json")))
 
     checkpoint_root = next(
         (tmp_path / "stacked-pool.checkpoints" / "stacked").iterdir()
@@ -1575,7 +1570,7 @@ def test_stacked_resume_error_uses_realized_stack_identity(
         pool_tool.main(_stacked_main_argv(tmp_path, predecessor=first_row.row_digest))
 
     rows = [
-        load_chronicle_row(path) for path in (tmp_path / "ledger-spool").glob("*.json")
+        load_logbook_row(path) for path in (tmp_path / "logbook-spool").glob("*.json")
     ]
     failed_row = next(
         row for row in rows if row.prev_row_digest == first_row.row_digest
@@ -1789,7 +1784,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         ("puf_source_year_csv", "puf_source_year_csv_sha256"),
     )
     expected_destinations = {destination for pair in pairs for destination in pair} | {
-        "chronicle_prev_row_digest",
+        "logbook_prev_row_digest",
         "clone_attachment_fraction",
         "clone_attachment_seed",
         "checkpoint_root",
@@ -1805,7 +1800,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         for destination in expected_destinations
         - {
             "checkpoint_root",
-            "chronicle_prev_row_digest",
+            "logbook_prev_row_digest",
             "clone_attachment_fraction",
             "clone_attachment_seed",
             "legacy_two_spine",
@@ -1822,7 +1817,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
     assert actions["clone_attachment_fraction"].default == 1.0
     assert actions["clone_attachment_seed"].default == 578
     assert actions["legacy_two_spine"].default is False
-    assert actions["chronicle_prev_row_digest"].default is None
+    assert actions["logbook_prev_row_digest"].default is None
     for path_destination, sha_destination in pairs:
         assert actions[path_destination].type is Path
         assert actions[sha_destination].type is pool_tool._sha256_argument
@@ -3883,9 +3878,7 @@ def test_local_artifact_reference_never_embeds_host_absolute_paths(
 
     home_path = Path.home() / "populace-test-unwritten" / "artifact.h5"
     home_reference = pool_tool._local_artifact_reference(home_path)
-    assert home_reference == (
-        "local://~/populace-test-unwritten/artifact.h5"
-    )
+    assert home_reference == ("local://~/populace-test-unwritten/artifact.h5")
 
     outside_path = (tmp_path / "artifact.h5").resolve()
     outside_reference = pool_tool._local_artifact_reference(outside_path)

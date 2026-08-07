@@ -139,7 +139,7 @@ declared-input coverage and a live-digested, explicit per-column by-origin
 battery; metric choice never follows pandas dtype. Comparisons below the
 declared support validity domain receipt `insufficient_support` without
 widening tolerances. Every success, failed gate, or exception writes a durable
-Chronicle attempt row beside the output before the tool returns. The retiring
+Logbook attempt row beside the output before the tool returns. The retiring
 two-spine lineage remains available only through its explicit compatibility
 flag for byte-reproducible historical builds.
 

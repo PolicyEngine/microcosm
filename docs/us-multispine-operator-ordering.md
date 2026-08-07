@@ -140,7 +140,7 @@ are allowed only when named by the ACS native-input receipt.
    validity domain receipt `insufficient_support`; tolerances do not widen.
 8. Only after both gates run does publication write the nullable H5,
    diagnostics, and readiness manifest. Success, failed gate, and exception
-   paths each append a durable Chronicle spool row beside the output, with the
+   paths each append a durable Logbook spool row beside the output, with the
    fraction token, seed, code/input/identity pins, phases, gate-receipt
    pointers, wall time, artifact location, and disposition.
 
@@ -290,7 +290,7 @@ source ingestion and faithful schema harmonization
     -> seed take-up and other stochastic inputs
     -> simulate
     -> completeness gate plus 131-target by-origin battery
-    -> emit input-only pool, receipts, and terminal Chronicle row
+    -> emit input-only pool, receipts, and terminal Logbook row
 ```
 
 Calibration is a downstream consumer boundary, not a stage in this tool.

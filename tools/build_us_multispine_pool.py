@@ -58,7 +58,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.chronicle import record_build_attempt
 from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -69,6 +68,7 @@ from populace.build.gates import (
     GateResult,
     weights_audit_gate,
 )
+from populace.build.logbook import record_build_attempt
 from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from populace.build.us_runtime.acs_inputs import map_acs_native_inputs
 from populace.build.us_runtime.acs_pums import (
@@ -273,7 +273,7 @@ class StackedPoolBuildResult:
 
 @dataclass
 class _StackedAttemptState:
-    """Mutable terminal-attempt evidence collected for Chronicle emission."""
+    """Mutable terminal-attempt evidence collected for Logbook emission."""
 
     build_id: str
     identity_digest: str
@@ -462,11 +462,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Non-negative PUF clone attachment seed (default: 578).",
     )
     parser.add_argument(
-        "--chronicle-prev-row-digest",
+        "--logbook-prev-row-digest",
         type=_sha256_argument,
         help=(
-            "Optional current Chronicle chain head. If omitted, "
-            "POPULACE_CHRONICLE_PREV_ROW_DIGEST is used, then genesis null."
+            "Optional current Logbook chain head. If omitted, "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
         ),
     )
     parser.add_argument(
@@ -3418,18 +3418,17 @@ def _local_artifact_reference(path: Path) -> str:
     return f"local://{resolved.as_posix().lstrip('/')}"
 
 
-def _chronicle_predecessor(args: argparse.Namespace) -> str | None:
-    cli_value = args.chronicle_prev_row_digest
-    environment_value = os.environ.get("POPULACE_CHRONICLE_PREV_ROW_DIGEST")
+def _logbook_predecessor(args: argparse.Namespace) -> str | None:
+    cli_value = args.logbook_prev_row_digest
+    environment_value = os.environ.get("POPULACE_LOGBOOK_PREV_ROW_DIGEST")
     if cli_value is not None and environment_value not in {None, cli_value}:
         raise ValueError(
-            "--chronicle-prev-row-digest disagrees with "
-            "POPULACE_CHRONICLE_PREV_ROW_DIGEST."
+            "--logbook-prev-row-digest disagrees with POPULACE_LOGBOOK_PREV_ROW_DIGEST."
         )
     value = cli_value if cli_value is not None else environment_value
     if value is not None and not _LOWERCASE_SHA256.fullmatch(value):
         raise ValueError(
-            "POPULACE_CHRONICLE_PREV_ROW_DIGEST must be a lowercase SHA-256."
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST must be a lowercase SHA-256."
         )
     return value
 
@@ -3468,7 +3467,7 @@ def _record_stacked_terminal_attempt(
         disposition=disposition,
         prediction_id=None,
         prev_row_digest=predecessor,
-        spool_dir=outputs.pool_h5.parent / "ledger-spool",
+        spool_dir=outputs.pool_h5.parent / "logbook-spool",
     )
     return result.spool_path
 
@@ -3500,7 +3499,7 @@ def _stacked_attempt_receipt_dir(
 ) -> Path:
     """Return the immutable, build-scoped receipt directory beside output."""
 
-    return outputs.pool_h5.parent / "ledger-receipts" / build_id
+    return outputs.pool_h5.parent / "logbook-receipts" / build_id
 
 
 def _stacked_error_receipt_path(
@@ -3546,7 +3545,7 @@ def _write_stacked_terminal_gate_receipt(
 
 
 def _validate_stacked_seed(value: int, *, option: str) -> int:
-    """Keep build RNGs and Chronicle inside the signed-64-bit contract."""
+    """Keep build RNGs and Logbook inside the signed-64-bit contract."""
 
     if (
         isinstance(value, bool)
@@ -3593,15 +3592,15 @@ def _promote_stacked_attempt_identity(
 
 
 def _main_stacked(args: argparse.Namespace) -> int:
-    """Build the default stacked pipeline and emit one terminal Chronicle row."""
+    """Build the default stacked pipeline and emit one terminal Logbook row."""
 
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     outputs = _stacked_attempt_outputs(args)
     code_pin = "unresolved-local-git-code-pin"
-    predecessor = args.chronicle_prev_row_digest
+    predecessor = args.logbook_prev_row_digest
     rung = _stacked_rung(args.sample_fraction)
-    chronicle_seed: int | None = None
+    logbook_seed: int | None = None
     preflight_digest = hashlib.sha256(
         _canonical_json_bytes(
             {
@@ -3625,9 +3624,9 @@ def _main_stacked(args: argparse.Namespace) -> int:
 
     try:
         code_pin = _git_code_pin()
-        predecessor = _chronicle_predecessor(args)
+        predecessor = _logbook_predecessor(args)
         state.input_pins_digest = _configured_input_pins_digest(args)
-        chronicle_seed = _validate_stacked_seed(
+        logbook_seed = _validate_stacked_seed(
             args.sample_seed,
             option="--sample-seed",
         )
@@ -3856,7 +3855,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             started_ts=started_ts,
             code_pin=code_pin,
             rung=rung,
-            seed=chronicle_seed,
+            seed=logbook_seed,
             disposition="failed",
             predecessor=predecessor,
         )
@@ -3870,7 +3869,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
         started_ts=started_ts,
         code_pin=code_pin,
         rung=rung,
-        seed=chronicle_seed,
+        seed=logbook_seed,
         disposition=disposition,
         predecessor=predecessor,
     )
@@ -3880,11 +3879,11 @@ def _main_stacked(args: argparse.Namespace) -> int:
             f"manifest were written to {outputs.agreement_diagnostics} and "
             f"{outputs.manifest}."
         )
-        print(f"Wrote Chronicle row: {spool_path}")
+        print(f"Wrote Logbook row: {spool_path}")
         return 1
     print(f"Wrote simulation-ready stacked pool: {outputs.pool_h5}")
     print(f"Wrote stacked pool manifest: {outputs.manifest}")
-    print(f"Wrote Chronicle row: {spool_path}")
+    print(f"Wrote Logbook row: {spool_path}")
     return 0
 
 
