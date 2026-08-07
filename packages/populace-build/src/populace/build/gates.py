@@ -248,7 +248,11 @@ class GateReport:
                 _validate_stacked_gate_manifest_details,
             )
 
-            _validate_stacked_gate_manifest_details(result.name, result.details)
+            _validate_stacked_gate_manifest_details(
+                result.name,
+                result.details,
+                passed=result.passed,
+            )
         return {
             "passed": self.passed,
             "gates": {

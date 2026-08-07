@@ -1412,6 +1412,46 @@ def test_every_declared_direction_producer_precedes_its_activation_check() -> No
     assert "does not precede activation stage" in failures[0]
 
 
+def test_gap_fill_producer_guard_rejects_unknown_execution_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schedule = stacked_spine_module._build_gap_fill_producer_schedule(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    )
+    rent_record = next(
+        record for record in schedule if record.target == "pre_subsidy_rent"
+    )
+    contract = stacked_spine_module.POOL_OPERATOR_CONTRACTS[rent_record.operator]
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "POOL_OPERATOR_CONTRACTS",
+        {
+            **stacked_spine_module.POOL_OPERATOR_CONTRACTS,
+            rent_record.operator: replace(
+                contract,
+                execution_scope="bogus_source",
+            ),
+        },
+    )
+
+    mutated = stacked_spine_module._build_gap_fill_producer_schedule(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    )
+    failures = stacked_spine_module._gap_fill_producer_precedence_failures(
+        stacked_gap_fill_plan(),
+        mutated,
+    )
+
+    assert len(failures) == 3
+    assert all(
+        "unknown execution scope 'bogus_source'" in failure for failure in failures
+    )
+    assert any(
+        "asec_housing_to_acs/person/housing/pre_subsidy_rent" in failure
+        for failure in failures
+    )
+
+
 def test_housing_activation_requires_asec_rent_producer_to_run_first() -> None:
     produced = _stacked_gap_fixture()
     tables = {entity: produced.table(entity) for entity in produced.entities}
@@ -3453,6 +3493,29 @@ def test_fresh_gate_result_cannot_forge_a_donor_origin_proof() -> None:
         GateReport((forged,)).to_manifest()
 
 
+def test_fresh_gate_result_cannot_forge_structural_rent_absence() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = stacked_completeness_gate(frame)
+    assert canonical.passed, canonical.failures
+    details = deepcopy(dict(canonical.details))
+    rent = details["targets"]["person/housing/pre_subsidy_rent"]
+    rent["recipient_absence_authority"]["reason"] = "FORGED STRUCTURAL ABSENCE"
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="structural-absence doctrine mismatch.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
 def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None:
     frame = _battery_frame(
         {
@@ -3477,6 +3540,29 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
     with pytest.raises(
         ValueError,
         match="coverage receipt must bind all 131 targets.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_fresh_battery_result_requires_structural_scope_receipt() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = by_origin_battery(frame)
+    assert canonical.passed, canonical.failures
+    details = deepcopy(dict(canonical.details))
+    rent_label = "person/housing/pre_subsidy_rent[clone_0]"
+    details["comparisons"][rent_label].pop("recipient_absence_authority")
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="must carry canonical recipient-absence authority.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 

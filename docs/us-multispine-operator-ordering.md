@@ -130,7 +130,9 @@ are allowed only when named by the ACS native-input receipt.
    Activation authority is source-and-role exact, observed zero is not
    absence, and native donor cells must remain byte-identical. Every declared
    target resolves through the operator-output registry to a producer channel
-   and stage that must strictly precede its direction's check. ACS TYPEHUGQ
+   and stage that must strictly precede its direction's check. Only the
+   explicit `cps_source` and `whole_pool` execution scopes carry authority;
+   unknown scopes fail rather than inheriting whole-pool authority. ACS TYPEHUGQ
    2/3 people remain null only when their live mask matches the assembly-bound
    native group-quarters lineage in every clone role and the declared
    structural-absence rule; relabeling a housing unit later cannot create
@@ -169,9 +171,12 @@ are allowed only when named by the ACS native-input receipt.
    immutable live-digested per-column metric registry. Metric choice never
    dispatches from physical dtype. A digest-bound structural-absence rule may
    remove only its exact proven cells from a comparison's applicability scope;
-   any additional null or filled structural cell is terminal. At small rungs,
-   comparisons outside the validity domain receipt `insufficient_support`;
-   tolerances do not widen.
+   any additional null or filled structural cell is terminal. Manifest
+   emission revalidates the exact structural-rule schema, row arithmetic,
+   per-role proofs, and battery exclusion count from the immutable gate
+   snapshot, so authority metadata cannot be grafted onto invented absence.
+   At small rungs, comparisons outside the validity domain receipt
+   `insufficient_support`; tolerances do not widen.
 9. Only after both gates run does publication write the nullable H5,
    diagnostics, and readiness manifest. Success, failed gate, and exception
    paths each append a durable Logbook spool row beside the output, with the

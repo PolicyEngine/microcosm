@@ -1706,11 +1706,12 @@ def _build_gap_fill_producer_schedule(
                     outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[contract.family]
                     if target not in outputs.get(entity, ()):
                         continue
-                    produced_channel = (
-                        BASE_ASEC_SUPPORT_CHANNEL
-                        if contract.execution_scope == "cps_source"
-                        else "*"
-                    )
+                    if contract.execution_scope == "cps_source":
+                        produced_channel = BASE_ASEC_SUPPORT_CHANNEL
+                    elif contract.execution_scope == "whole_pool":
+                        produced_channel = "*"
+                    else:
+                        produced_channel = f"<unsupported:{contract.execution_scope}>"
                     records.append(
                         _GapFillProducerRecord(
                             entity=entity,
@@ -1766,6 +1767,12 @@ def _gap_fill_producer_precedence_failures(
                         )
                         continue
                     record = records[0]
+                    if record.execution_scope not in {"cps_source", "whole_pool"}:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} declares "
+                            f"unknown execution scope {record.execution_scope!r}."
+                        )
+                        continue
                     producer_order = stage_order.get(record.producer_stage)
                     if producer_order is None:
                         failures.append(
@@ -3191,6 +3198,7 @@ def _validate_stacked_gate_manifest_details(
     gate_name: str,
     details: Mapping[str, object],
     *,
+    passed: bool,
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
     _canonical_registry: Mapping[
@@ -3222,6 +3230,94 @@ def _validate_stacked_gate_manifest_details(
         raise ValueError(
             f"{boundary}: {reason}; production manifest emission is forbidden."
         )
+
+    def nonnegative_int(
+        receipt: Mapping[str, object],
+        field_name: str,
+        *,
+        label: str,
+    ) -> int:
+        value = receipt.get(field_name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            reject(f"{label} {field_name} must be a non-negative integer")
+        return value
+
+    def validate_structural_absence_receipt(
+        raw_receipt: object,
+        *,
+        label: str,
+        battery: bool,
+    ) -> tuple[int, dict[str, int]]:
+        if not isinstance(raw_receipt, Mapping):
+            reject(f"{label} must carry canonical recipient-absence authority")
+        expected_fields = {
+            "rule_id",
+            "selection",
+            "reason",
+            "status",
+            "rows",
+            "by_origin_role",
+            "unexpected_null_rows",
+            "structural_rows_filled",
+        }
+        if battery:
+            expected_fields.update(
+                {"comparison_clone_index", "rows_excluded_from_scope"}
+            )
+        if set(raw_receipt) != expected_fields:
+            reject(f"{label} structural-absence receipt schema mismatch")
+        if (
+            raw_receipt.get("rule_id") != _ACS_GQ_RENT_ABSENCE_RULE_ID
+            or raw_receipt.get("selection") != _ACS_GQ_RENT_ABSENCE_SELECTION
+            or raw_receipt.get("reason") != _ACS_GQ_RENT_ABSENCE_REASON
+            or raw_receipt.get("status") != "exact_structural_absence"
+        ):
+            reject(f"{label} structural-absence doctrine mismatch")
+        rows = nonnegative_int(raw_receipt, "rows", label=label)
+        unexpected = nonnegative_int(
+            raw_receipt,
+            "unexpected_null_rows",
+            label=label,
+        )
+        filled = nonnegative_int(
+            raw_receipt,
+            "structural_rows_filled",
+            label=label,
+        )
+        raw_by_role = raw_receipt.get("by_origin_role")
+        if not isinstance(raw_by_role, Mapping):
+            reject(f"{label} structural by-origin-role counts are not a mapping")
+        by_role: dict[str, int] = {}
+        for cell, count in raw_by_role.items():
+            cell_channel, separator, clone_role = str(cell).partition("/clone_")
+            if (
+                not separator
+                or cell_channel != ACS_STACKED_SUPPORT_CHANNEL
+                or not clone_role.isdigit()
+                or isinstance(count, bool)
+                or not isinstance(count, int)
+                or count <= 0
+            ):
+                reject(f"{label} structural by-origin-role receipt is malformed")
+            by_role[str(cell)] = count
+        if rows != sum(by_role.values()):
+            reject(f"{label} structural row count does not equal its role counts")
+        if passed and (unexpected != 0 or filled != 0):
+            reject(f"{label} passing structural-absence equation is not exact")
+        if battery:
+            if raw_receipt.get("comparison_clone_index") != 0:
+                reject(f"{label} structural battery clone scope must be clone 0")
+            excluded = nonnegative_int(
+                raw_receipt,
+                "rows_excluded_from_scope",
+                label=label,
+            )
+            if excluded != by_role.get(f"{ACS_STACKED_SUPPORT_CHANNEL}/clone_0", 0):
+                reject(
+                    f"{label} structural battery exclusion count differs from "
+                    "its clone-0 authority"
+                )
+        return rows, by_role
 
     if gate_name == _COMPLETENESS_GATE_NAME:
         expected_labels = {
@@ -3269,6 +3365,10 @@ def _validate_stacked_gate_manifest_details(
             proven = target_receipt.get("proven", {})
             if not isinstance(proven, Mapping):
                 reject(f"{label} proven-absence receipts are not a mapping")
+            unproven = target_receipt.get("unproven", {})
+            if not isinstance(unproven, Mapping):
+                reject(f"{label} unproven-absence counts are not a mapping")
+            proven_rows = 0
             for cell, proof_receipt in proven.items():
                 if not isinstance(proof_receipt, Mapping):
                     reject(f"{label} {cell} proof receipt is not a mapping")
@@ -3281,6 +3381,7 @@ def _validate_stacked_gate_manifest_details(
                 cell_channel, separator, _clone_role = str(cell).partition("/clone_")
                 if (
                     not separator
+                    or not _clone_role.isdigit()
                     or cell_channel != direction.recipient_channel
                     or proof_receipt.get("authority_form") != "origin_exact_recipient"
                     or proof_receipt.get("authority_sha256") != authority_sha256
@@ -3297,6 +3398,114 @@ def _validate_stacked_gate_manifest_details(
                     reject(
                         f"{label} {cell} proof is not recipient-exact canonical authority"
                     )
+                proven_rows += nonnegative_int(
+                    proof_receipt,
+                    "null_rows",
+                    label=f"{label} {cell} proof",
+                )
+            unproven_rows = 0
+            for cell, count in unproven.items():
+                cell_channel, separator, clone_role = str(cell).partition("/clone_")
+                if (
+                    not separator
+                    or not clone_role.isdigit()
+                    or not isinstance(cell_channel, str)
+                    or not cell_channel
+                    or isinstance(count, bool)
+                    or not isinstance(count, int)
+                    or count <= 0
+                ):
+                    reject(f"{label} unproven-absence receipt is malformed")
+                unproven_rows += count
+            status = target_receipt.get("status")
+            null_rows = target_receipt.get("null_rows")
+            if passed:
+                if status not in {"complete", "proven_absent"}:
+                    reject(f"{label} passing completeness status is {status!r}")
+                if (
+                    isinstance(null_rows, bool)
+                    or not isinstance(null_rows, int)
+                    or null_rows < 0
+                ):
+                    reject(f"{label} passing null_rows is not a non-negative integer")
+                if unproven_rows:
+                    reject(f"{label} passing receipt carries unproven nulls")
+                invalid_rows = nonnegative_int(
+                    target_receipt,
+                    "invalid_rows",
+                    label=label,
+                )
+                if invalid_rows:
+                    reject(f"{label} passing receipt carries invalid values")
+                if status == "complete" and (
+                    null_rows != 0
+                    or proven_rows != 0
+                    or authority_form != "observed_complete"
+                ):
+                    reject(f"{label} complete receipt has contradictory null authority")
+                if status == "proven_absent" and (
+                    null_rows <= 0
+                    or proven_rows != null_rows
+                    or authority_form != "origin_exact_recipient"
+                ):
+                    reject(f"{label} proven-absence count arithmetic is inconsistent")
+
+        rent_label = "person/housing/pre_subsidy_rent"
+        rent_target = targets[rent_label]
+        validate_rent_structure = passed or rent_target.get("status") not in {
+            "missing",
+            "missing_entity",
+        }
+        if validate_rent_structure:
+            rent_rows, rent_by_role = validate_structural_absence_receipt(
+                rent_target.get("recipient_absence_authority"),
+                label=rent_label,
+                battery=False,
+            )
+        else:
+            rent_rows, rent_by_role = 0, {}
+        if passed:
+            rent_null_rows = nonnegative_int(
+                rent_target,
+                "null_rows",
+                label=rent_label,
+            )
+            if rent_null_rows != rent_rows:
+                reject(f"{rent_label} null count differs from structural authority")
+            rent_proven = rent_target.get("proven", {})
+            if not isinstance(rent_proven, Mapping):
+                reject(f"{rent_label} proven-absence receipts are not a mapping")
+            if set(rent_proven) != set(rent_by_role):
+                reject(f"{rent_label} proven roles differ from structural authority")
+            direction = direction_by_label[rent_label]
+            expected_proof_fields = {
+                "null_rows",
+                "reason",
+                "authority_form",
+                "authority_sha256",
+                "plan_sha256",
+                "post_puf_surface_sha256",
+                "surface_sha256",
+                "declared_direction",
+                "declared_donor_channel",
+                "declared_recipient_channel",
+                "structural_absence_rule_id",
+                "structural_absence_selection",
+            }
+            for cell, count in rent_by_role.items():
+                proof = rent_proven[cell]
+                if (
+                    not isinstance(proof, Mapping)
+                    or set(proof) != expected_proof_fields
+                    or proof.get("null_rows") != count
+                    or proof.get("reason") != _ACS_GQ_RENT_ABSENCE_REASON
+                    or proof.get("structural_absence_rule_id")
+                    != _ACS_GQ_RENT_ABSENCE_RULE_ID
+                    or proof.get("structural_absence_selection")
+                    != _ACS_GQ_RENT_ABSENCE_SELECTION
+                    or proof.get("declared_direction") != direction.name
+                ):
+                    reject(f"{rent_label} {cell} structural proof is not canonical")
         return
 
     if gate_name == _BATTERY_GATE_NAME:
@@ -3347,6 +3556,46 @@ def _validate_stacked_gate_manifest_details(
                 or comparison.get("metric") != metric
             ):
                 reject(f"{label} comparison must use canonical metric {metric!r}")
+        if passed:
+            allowed_statuses = {"tested", "insufficient_support"}
+            statuses = {
+                label: comparison.get("status")
+                for label, comparison in comparisons.items()
+                if isinstance(comparison, Mapping)
+            }
+            invalid_statuses = {
+                label: status
+                for label, status in statuses.items()
+                if status not in allowed_statuses
+            }
+            if invalid_statuses:
+                reject(
+                    "passing battery carries failing comparison statuses "
+                    f"{invalid_statuses}"
+                )
+            tested_labels = {
+                label for label, status in statuses.items() if status == "tested"
+            }
+            untestable_labels = sorted(
+                label
+                for label, status in statuses.items()
+                if status == "insufficient_support"
+            )
+            if details.get("tested_comparisons") != len(tested_labels):
+                reject("passing battery tested-comparison count is inconsistent")
+            if details.get("untestable_comparisons") != untestable_labels:
+                reject("passing battery untestable-comparison list is inconsistent")
+
+        rent_label = "person/housing/pre_subsidy_rent[clone_0]"
+        rent_comparison = comparisons[rent_label]
+        if not isinstance(rent_comparison, Mapping):
+            reject(f"{rent_label} comparison is not a mapping")
+        if passed or rent_comparison.get("status") != "missing_column":
+            validate_structural_absence_receipt(
+                rent_comparison.get("recipient_absence_authority"),
+                label=rent_label,
+                battery=True,
+            )
         return
 
     reject("unknown stacked authority gate")
