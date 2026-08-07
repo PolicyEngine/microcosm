@@ -922,21 +922,28 @@ def _recover_symlink_flip(out_dir: Path, names: dict[str, object]) -> str:
         )
     if link_tmp.is_symlink() or link_tmp.exists():
         link_tmp.unlink()
-    if staging.exists() and not staging.is_symlink() and not set_dir.exists():
+    if (
+        not staging.is_symlink()
+        and staging.is_dir()
+        and not set_dir.exists()
+        and not set_dir.is_symlink()
+    ):
         # Normalize first so the committed check below also heals the
         # torn power-loss state where the public rename persisted but the
-        # set rename did not.
+        # set rename did not. Only a real staged directory is ever
+        # renamed into the set name — the publisher stages nothing else.
         staging.rename(set_dir)
         _fsync_dir(parent)
-    if set_dir.is_symlink():
-        # A symlink at the set name is not a publisher state, and
-        # ``is_dir()`` would follow it — an indirect route to judging a
-        # foreign target "committed" and deleting the real publication.
+    if set_dir.is_symlink() or (set_dir.exists() and not set_dir.is_dir()):
+        # Only a real directory is a set. ``is_dir()`` follows a symlink
+        # (an indirect route to judging a foreign target "committed"),
+        # and a regular file here would be retargeted into publication
+        # while the real old set is deleted behind it.
         raise RuntimeError(
             f"Publication marker for {out_dir} records a symlink retarget "
-            "whose set name holds a symlink, which the retarget cannot "
-            "have produced; refusing to recover over it. Resolve by hand "
-            "and remove the marker."
+            "whose set name does not hold a real directory, which the "
+            "retarget cannot have produced; refusing to recover over it. "
+            "Resolve by hand and remove the marker."
         )
     if public_target == set_dir.name:
         if not set_dir.is_dir():
@@ -957,11 +964,20 @@ def _recover_symlink_flip(out_dir: Path, names: dict[str, object]) -> str:
         _dispose_set(out_dir, old_set_name)
         return "finished a symlink retarget: disposed of the superseded set"
     if not set_dir.exists():
-        # Nothing staged survives and the flip never happened; the
-        # previous publication is intact under the public name (or, on a
-        # first publication, nothing was ever published).
+        # Nothing staged survives and the flip never happened. "Intact"
+        # is only claimed after checking what the public link resolves
+        # to — a target string alone can name a vanished, non-directory,
+        # or indirect set.
         if old_set_name is None:
             return "cleared an aborted symlink retarget (nothing published yet)"
+        old_set_path = parent / old_set_name
+        if old_set_path.is_symlink() or not old_set_path.is_dir():
+            raise RuntimeError(
+                f"Publication marker for {out_dir} records a symlink "
+                "retarget whose public link resolves to an old set that "
+                "is not a real directory; the publication cannot be "
+                "recovered automatically."
+            )
         return "cleared an aborted symlink retarget (publication intact)"
     # Reuse the marker-recorded temp-link name: a crash between the
     # symlink and its rename then leaves a link the NEXT recovery pass
@@ -1004,21 +1020,28 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
         )
     if link_tmp.is_symlink() or link_tmp.exists():
         link_tmp.unlink()
-    if staging.exists() and not staging.is_symlink() and not set_dir.exists():
+    if (
+        not staging.is_symlink()
+        and staging.is_dir()
+        and not set_dir.exists()
+        and not set_dir.is_symlink()
+    ):
         # Normalize first so the committed check below also heals the
         # torn power-loss state where the final rename persisted but the
-        # set rename did not.
+        # set rename did not. Only a real staged directory is ever
+        # renamed into the set name.
         staging.rename(set_dir)
         _fsync_dir(parent)
-    if set_dir.is_symlink():
-        # ``is_dir()`` follows symlinks; a symlink at the set name is an
-        # indirect route to judging a foreign target "committed" and
-        # deleting the real previous publication.
+    if set_dir.is_symlink() or (set_dir.exists() and not set_dir.is_dir()):
+        # Only a real directory is a set: ``is_dir()`` follows a symlink
+        # (an indirect route to a foreign "committed" judgment), and a
+        # regular file would be installed as the publication while the
+        # real previous set is deleted behind it.
         raise RuntimeError(
             f"Publication marker for {out_dir} records a layout "
-            "migration whose set name holds a symlink, which the "
-            "migration cannot have produced; refusing to recover over "
-            "it. Resolve by hand and remove the marker."
+            "migration whose set name does not hold a real directory, "
+            "which the migration cannot have produced; refusing to "
+            "recover over it. Resolve by hand and remove the marker."
         )
     if out_dir.is_symlink():
         if not set_dir.is_dir():
@@ -1060,6 +1083,11 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
                 "and remove the marker."
             )
         previous.rename(out_dir)
+        # The restore must be durable before the marker can be removed:
+        # losing this rename to a second power loss after the marker
+        # deletion persisted would leave the name absent with no
+        # recovery state at all.
+        _fsync_dir(parent)
         return "restored the previous publication"
     if out_dir.exists():
         return "cleared an aborted layout migration (publication intact)"
@@ -1116,6 +1144,8 @@ def _recover_legacy_two_rename(out_dir: Path, names: dict[str, object]) -> str:
                 "restore from it. Resolve by hand and remove the marker."
             )
         previous.rename(out_dir)
+        # Durable before the marker goes: see the migration restore.
+        _fsync_dir(out_dir.parent)
         return "restored the previous publication"
     raise RuntimeError(
         f"Publication marker {_publish_marker_path(out_dir)} names "
