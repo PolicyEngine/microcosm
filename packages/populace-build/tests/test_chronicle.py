@@ -105,6 +105,24 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "chronicle.valid_gate_verdicts(jsonb)" in function_grants
     assert "TO chronicle_writer, chronicle_break_glass_admin" in function_grants
 
+    # PostgREST's idempotent replay plans as INSERT ... ON CONFLICT
+    # (build_id) DO NOTHING, which needs plan-time SELECT on the conflict
+    # column and, under FORCE RLS, a writer SELECT policy. Without both,
+    # every POST from the writer fails with 42501 and the live store
+    # silently receives nothing.
+    assert re.search(
+        r"GRANT SELECT \(build_id\) ON chronicle\.builds\s+TO chronicle_writer;",
+        sql,
+    )
+    assert re.search(
+        r"CREATE POLICY builds_writer_conflict_select\s+"
+        r"ON chronicle\.builds\s+"
+        r"FOR SELECT\s+"
+        r"TO chronicle_writer\s+"
+        r"USING \(true\);",
+        sql,
+    )
+
     text_helper = sql.split(
         "CREATE OR REPLACE FUNCTION chronicle.nonempty_trimmed_text",
         1,

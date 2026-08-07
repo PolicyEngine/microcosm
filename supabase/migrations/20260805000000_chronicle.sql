@@ -564,6 +564,14 @@ GRANT EXECUTE ON FUNCTION
     TO chronicle_writer, chronicle_break_glass_admin;
 GRANT INSERT ON chronicle.builds, chronicle.predictions
     TO chronicle_writer;
+-- The client's only INSERT shape is PostgREST's idempotent replay
+-- (?on_conflict=build_id + resolution=ignore-duplicates), which plans as
+-- INSERT ... ON CONFLICT (build_id) DO NOTHING. PostgreSQL requires
+-- plan-time SELECT privilege on the conflict-target column, and FORCE RLS
+-- additionally requires a SELECT policy for the conflict check. The
+-- column ACL keeps every other column (cost_usd included) unreadable.
+GRANT SELECT (build_id) ON chronicle.builds
+    TO chronicle_writer;
 GRANT SELECT ON chronicle.builds
     TO chronicle_exporter;
 GRANT SELECT, INSERT, UPDATE, DELETE
@@ -582,6 +590,15 @@ CREATE POLICY builds_writer_insert
     FOR INSERT
     TO chronicle_writer
     WITH CHECK (true);
+
+-- Row visibility for the writer is still bounded by the column ACL above:
+-- this policy only lets the ON CONFLICT (build_id) check run under FORCE
+-- ROW LEVEL SECURITY.
+CREATE POLICY builds_writer_conflict_select
+    ON chronicle.builds
+    FOR SELECT
+    TO chronicle_writer
+    USING (true);
 
 CREATE POLICY predictions_writer_insert
     ON chronicle.predictions
