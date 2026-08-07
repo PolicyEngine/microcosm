@@ -237,7 +237,7 @@ _STACKED_PIPELINE = "us-stacked-pool"
 # Version 3 binds the staged post-PUF transfer and its target bank. Earlier
 # stacked checkpoints either predate that stage or its complete clone-2 tail
 # provenance and must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 3
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 4
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"

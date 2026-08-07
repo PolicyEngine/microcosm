@@ -1474,11 +1474,13 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         assert changed_store.load_deepest() is None
 
 
-def test_stacked_materializer_v1_checkpoint_is_not_discovered(
+@pytest.mark.parametrize("legacy_version", (1, 2, 3))
+def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    legacy_version: int,
 ) -> None:
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
@@ -1490,7 +1492,11 @@ def test_stacked_materializer_v1_checkpoint_is_not_discovered(
     checkpoint_root = tmp_path / "stacked-materializer-checkpoints"
 
     with monkeypatch.context() as legacy:
-        legacy.setattr(pool_tool, "_STACKED_CHECKPOINT_MATERIALIZER_VERSION", 1)
+        legacy.setattr(
+            pool_tool,
+            "_STACKED_CHECKPOINT_MATERIALIZER_VERSION",
+            legacy_version,
+        )
         legacy_identity = pool_tool._stacked_checkpoint_base_identity(
             verified,
             stack_receipt=stack.receipt,
@@ -1516,7 +1522,7 @@ def test_stacked_materializer_v1_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 3
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 4
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,

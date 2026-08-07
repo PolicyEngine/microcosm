@@ -978,6 +978,12 @@ def test_production_entrypoints_take_no_authority_parameters() -> None:
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
     plan = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
     post_puf_surface = stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    puf_producer_surface = (
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+    )
+    source_producer_surface = (
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+    )
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     joint_registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
@@ -988,6 +994,10 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         plan[0].target_families["person"]["model_required_numeric"] = ()
     with pytest.raises(TypeError):
         post_puf_surface["person"]["puf_tax_itemization"] = ()
+    with pytest.raises(TypeError):
+        puf_producer_surface["person"]["puf_tax_itemization"] = ()
+    with pytest.raises(TypeError):
+        source_producer_surface["person"]["model_required_boolean"] = ()
     with pytest.raises(TypeError):
         surface["person"]["model_required_numeric"] = ()
     with pytest.raises(TypeError):
@@ -1059,8 +1069,28 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for family, targets in families.items()
         for target in targets
     }
+    puf_producer_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    source_producer_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
     assert len(gap_targets) == 48
     assert len(post_puf_targets) == 70
+    assert len(puf_producer_targets) == 43
+    assert len(source_producer_targets) == 30
+    assert len(puf_producer_targets & source_producer_targets) == 3
+    assert puf_producer_targets | source_producer_targets == post_puf_targets
     assert gap_targets.isdisjoint(post_puf_targets)
     assert len(gap_targets | post_puf_targets) == 118
     assert gap_targets | post_puf_targets < surface_targets
@@ -1543,17 +1573,17 @@ def _post_puf_transfer_fixture() -> Frame:
         clone_attachment_seed=578,
     )
     person = attached.table("person").copy()
-    donor_rows = person[support_channel_column("person")].astype(str).eq(
-        "asec"
-    ) & person[support_clone_index_column("person")].eq(1)
+    source_producer_rows = (
+        person[support_channel_column("person")].astype(str).eq("asec")
+    )
     person["is_pregnant"] = pd.Series(
         pd.NA,
         index=person.index,
         dtype="boolean",
     )
-    person.loc[donor_rows, "is_pregnant"] = np.resize(
+    person.loc[source_producer_rows, "is_pregnant"] = np.resize(
         np.asarray([True, False]),
-        int(donor_rows.sum()),
+        int(source_producer_rows.sum()),
     )
     tables = {entity: attached.table(entity) for entity in attached.entities}
     tables["person"] = person
@@ -1567,7 +1597,7 @@ def _post_puf_transfer_fixture() -> Frame:
     )
 
 
-def test_post_puf_transfer_uses_complete_asec_clone_one_donors() -> None:
+def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     frame = _post_puf_transfer_fixture()
     surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
     authority = stacked_spine_module._make_test_stacked_authority(
@@ -1584,28 +1614,37 @@ def test_post_puf_transfer_uses_complete_asec_clone_one_donors() -> None:
     )
 
     person = result.frame.table("person")
-    donor_rows = person[support_channel_column("person")].astype(str).eq(
-        "asec"
-    ) & person[support_clone_index_column("person")].eq(1)
+    producer_rows = person[support_channel_column("person")].astype(str).eq("asec")
     assert person["is_pregnant"].notna().all()
     pd.testing.assert_series_equal(
-        person.loc[donor_rows, "is_pregnant"],
-        before.loc[donor_rows],
+        person.loc[producer_rows, "is_pregnant"],
+        before.loc[producer_rows],
     )
     receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
-    assert receipt["authorized_null_rows"] == int((~donor_rows).sum())
-    assert receipt["imputed_rows"] == int((~donor_rows).sum())
+    assert receipt["producer_roles"] == ["asec_source"]
+    assert receipt["producer_rows"] == int(producer_rows.sum())
+    assert receipt["authorized_null_rows"] == int((~producer_rows).sum())
+    assert receipt["imputed_rows"] == int((~producer_rows).sum())
     assert receipt["unmodeled_rows"] == 0
     assert receipt["residual_null_rows"] == 0
 
 
-def test_post_puf_transfer_rejects_incomplete_declared_donors() -> None:
+@pytest.mark.parametrize(
+    "clone_index",
+    (
+        pytest.param(0, id="source_nondonor"),
+        pytest.param(1, id="model_donor"),
+    ),
+)
+def test_post_puf_transfer_rejects_incomplete_source_producer(
+    clone_index: int,
+) -> None:
     frame = _post_puf_transfer_fixture()
     person = frame.table("person").copy()
-    donor_rows = person[support_channel_column("person")].astype(str).eq(
+    source_producer_rows = person[support_channel_column("person")].astype(str).eq(
         "asec"
-    ) & person[support_clone_index_column("person")].eq(1)
-    person.loc[person.index[donor_rows][0], "is_pregnant"] = pd.NA
+    ) & person[support_clone_index_column("person")].eq(clone_index)
+    person.loc[person.index[source_producer_rows][0], "is_pregnant"] = pd.NA
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
     incomplete = Frame(
@@ -1626,7 +1665,104 @@ def test_post_puf_transfer_rejects_incomplete_declared_donors() -> None:
     with pytest.raises(
         ValueError,
         match=r"post_puf_transfer/person/model_required_boolean/is_pregnant:.*"
-        r"donors must observe every declared target",
+        r"upstream producers must observe every producer-owned target",
+    ):
+        stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+            incomplete,
+            authority=authority,
+            seed=578,
+            n_estimators=10,
+        )
+
+
+def _post_puf_puf_producer_fixture() -> Frame:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    )
+    producer_rows = clone_index.gt(0)
+    person["educator_expense"] = np.nan
+    person.loc[producer_rows, "educator_expense"] = 10.0 * np.arange(
+        1,
+        int(producer_rows.sum()) + 1,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_post_puf_transfer_preserves_every_live_puf_clone_producer() -> None:
+    frame = _post_puf_puf_producer_fixture()
+    surface = {"person": {"puf_tax_itemization": ("educator_expense",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    before = frame.table("person")["educator_expense"].copy(deep=True)
+
+    result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+        frame,
+        authority=authority,
+        seed=578,
+        n_estimators=10,
+    )
+
+    person = result.frame.table("person")
+    producer_rows = pd.to_numeric(
+        person[support_clone_index_column("person")], errors="raise"
+    ).gt(0)
+    assert person["educator_expense"].notna().all()
+    pd.testing.assert_series_equal(
+        person.loc[producer_rows, "educator_expense"],
+        before.loc[producer_rows],
+    )
+    receipt = result.receipt["targets"]["person/puf_tax_itemization/educator_expense"]
+    assert receipt["producer_roles"] == ["puf_clone"]
+    assert receipt["producer_rows"] == int(producer_rows.sum())
+    assert receipt["authorized_null_rows"] == int((~producer_rows).sum())
+    assert receipt["imputed_rows"] == int((~producer_rows).sum())
+    assert receipt["unmodeled_rows"] == 0
+    assert receipt["residual_null_rows"] == 0
+
+
+def test_post_puf_transfer_rejects_incomplete_acs_puf_clone_producer() -> None:
+    frame = _post_puf_puf_producer_fixture()
+    person = frame.table("person").copy()
+    corrupted_rows = person[support_channel_column("person")].astype(str).eq(
+        "acs"
+    ) & person[support_clone_index_column("person")].eq(1)
+    person.loc[person.index[corrupted_rows][0], "educator_expense"] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    incomplete = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    surface = {"person": {"puf_tax_itemization": ("educator_expense",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"post_puf_transfer/person/puf_tax_itemization/educator_expense:.*"
+        r"upstream producers must observe every producer-owned target",
     ):
         stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
             incomplete,
@@ -2752,6 +2888,8 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         version=1,
         gap_fill_plan=(),
         post_puf_transfer_surface={},
+        post_puf_puf_producer_surface={},
+        post_puf_source_producer_surface={},
         declared_surface=surface,
         metric_registry={
             ("person", "test_only", "unemployment_compensation", 0): (
@@ -2788,6 +2926,8 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
         version=1,
         gap_fill_plan=(),
         post_puf_transfer_surface={},
+        post_puf_puf_producer_surface={},
+        post_puf_source_producer_surface={},
         declared_surface=surface,
         metric_registry={
             ("person", "test_only", "unemployment_compensation", 0): (

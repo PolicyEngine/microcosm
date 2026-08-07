@@ -42,6 +42,8 @@ from populace.build.us_runtime.multispine_pool import (
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
     pool_input_surface,
+    pool_post_puf_puf_producer_target_families,
+    pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
     pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
@@ -843,11 +845,17 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     full = keys(pool_transfer_target_families())
     early = keys(pool_pre_clone_gap_fill_target_families())
     late = keys(pool_post_puf_transfer_target_families())
+    puf_producers = keys(pool_post_puf_puf_producer_target_families())
+    source_producers = keys(pool_post_puf_source_producer_target_families())
 
     assert len(early) == 48
     assert len(late) == 70
     assert early.isdisjoint(late)
     assert early | late == full
+    assert len(puf_producers) == 43
+    assert len(source_producers) == 30
+    assert len(puf_producers & source_producers) == 3
+    assert puf_producers | source_producers == late
     assert ("person", "source_operator_cps_carried", "strike_benefits") in early
     assert ("person", "model_required_boolean", "is_pregnant") in late
     assert (
@@ -855,6 +863,16 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
         "puf_tax_itemization",
         "health_savings_account_ald",
     ) in late
+    assert (
+        "tax_unit",
+        "puf_tax_itemization",
+        "health_savings_account_ald",
+    ) in puf_producers
+    assert (
+        "person",
+        "model_required_boolean",
+        "is_pregnant",
+    ) in source_producers
 
 
 def test_pool_input_surface_normalizes_all_four_source_registries() -> None:

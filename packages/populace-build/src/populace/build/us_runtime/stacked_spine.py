@@ -58,6 +58,8 @@ from populace.build.us_runtime.acs_transfer import (
 )
 from populace.build.us_runtime.multispine_pool import (
     POOL_SPINE_AGREEMENT_REGISTRY,
+    pool_post_puf_puf_producer_target_families,
+    pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
     pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
@@ -112,6 +114,8 @@ __all__ = [
     "CANONICAL_STACKED_DECLARED_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_PLAN",
+    "CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE",
+    "CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE",
     "CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "ORIGIN_BATTERY_METRIC_KINDS",
@@ -880,7 +884,7 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-_STACKED_AUTHORITY_VERSION = 3
+_STACKED_AUTHORITY_VERSION = 4
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 
@@ -1028,6 +1032,8 @@ class _StackedAuthority:
     version: int
     gap_fill_plan: tuple[GapFillDirection, ...]
     post_puf_transfer_surface: TargetFamilies
+    post_puf_puf_producer_surface: TargetFamilies
+    post_puf_source_producer_surface: TargetFamilies
     declared_surface: TargetFamilies
     metric_registry: Mapping[tuple[str, str, str, int], str]
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
@@ -1049,6 +1055,16 @@ class _StackedAuthority:
             self,
             "post_puf_transfer_surface",
             _freeze_target_families(self.post_puf_transfer_surface),
+        )
+        object.__setattr__(
+            self,
+            "post_puf_puf_producer_surface",
+            _freeze_target_families(self.post_puf_puf_producer_surface),
+        )
+        object.__setattr__(
+            self,
+            "post_puf_source_producer_surface",
+            _freeze_target_families(self.post_puf_source_producer_surface),
         )
         object.__setattr__(
             self,
@@ -1247,6 +1263,8 @@ def _authority_component_payloads(
     *,
     gap_fill_plan: Sequence[GapFillDirection],
     post_puf_transfer_surface: TargetFamilies,
+    post_puf_puf_producer_surface: TargetFamilies,
+    post_puf_source_producer_surface: TargetFamilies,
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
@@ -1257,7 +1275,13 @@ def _authority_component_payloads(
         "post_puf_transfer_surface": {
             "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
             "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
-            "recipient_selection": "all_non_donor_rows",
+            "recipient_selection": (
+                "target_specific_complement_of_declared_producer_rows"
+            ),
+            "producer_surfaces": {
+                "puf_clone": _surface_payload(post_puf_puf_producer_surface),
+                "post_clone_source": _surface_payload(post_puf_source_producer_surface),
+            },
             "target_families": _surface_payload(post_puf_transfer_surface),
         },
         "declared_surface": _surface_payload(declared_surface),
@@ -1284,6 +1308,8 @@ def _authority_live_digests(
     payloads = _authority_component_payloads(
         gap_fill_plan=authority.gap_fill_plan,
         post_puf_transfer_surface=authority.post_puf_transfer_surface,
+        post_puf_puf_producer_surface=(authority.post_puf_puf_producer_surface),
+        post_puf_source_producer_surface=(authority.post_puf_source_producer_surface),
         declared_surface=authority.declared_surface,
         metric_registry=authority.metric_registry,
         joint_metric_registry=authority.joint_metric_registry,
@@ -1308,6 +1334,8 @@ def _make_stacked_authority(
     version: int,
     gap_fill_plan: Sequence[GapFillDirection],
     post_puf_transfer_surface: TargetFamilies,
+    post_puf_puf_producer_surface: TargetFamilies,
+    post_puf_source_producer_surface: TargetFamilies,
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
@@ -1319,6 +1347,12 @@ def _make_stacked_authority(
 ) -> _StackedAuthority:
     frozen_plan = tuple(gap_fill_plan)
     frozen_post_puf_surface = _freeze_target_families(post_puf_transfer_surface)
+    frozen_post_puf_puf_producer_surface = _freeze_target_families(
+        post_puf_puf_producer_surface
+    )
+    frozen_post_puf_source_producer_surface = _freeze_target_families(
+        post_puf_source_producer_surface
+    )
     frozen_surface = _freeze_target_families(declared_surface)
     frozen_registry = _freeze_metric_registry(metric_registry)
     frozen_joint_registry = _freeze_joint_metric_registry(
@@ -1327,6 +1361,8 @@ def _make_stacked_authority(
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         post_puf_transfer_surface=frozen_post_puf_surface,
+        post_puf_puf_producer_surface=frozen_post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=frozen_post_puf_source_producer_surface,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
@@ -1347,6 +1383,8 @@ def _make_stacked_authority(
         version=version,
         gap_fill_plan=frozen_plan,
         post_puf_transfer_surface=frozen_post_puf_surface,
+        post_puf_puf_producer_surface=frozen_post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=frozen_post_puf_source_producer_surface,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
@@ -1869,6 +1907,12 @@ CANONICAL_STACKED_GAP_FILL_SURFACE = _freeze_target_families(
 CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE = _freeze_target_families(
     pool_post_puf_transfer_target_families()
 )
+CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE = _freeze_target_families(
+    pool_post_puf_puf_producer_target_families()
+)
+CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE = _freeze_target_families(
+    pool_post_puf_source_producer_target_families()
+)
 CANONICAL_STACKED_DECLARED_SURFACE = _terminal_surface_from_pool_registry()
 CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
     CANONICAL_STACKED_GAP_FILL_SURFACE
@@ -1900,6 +1944,12 @@ _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR = CANONICAL_STACKED_GAP_FILL_PLAN
 _CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR = (
     CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
 )
+_CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR = (
+    CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+)
+_CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR = (
+    CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+)
 _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
 )
@@ -1917,6 +1967,10 @@ _STACKED_DECLARED_SURFACE = CANONICAL_STACKED_DECLARED_SURFACE
 _STACKED_GAP_FILL_SURFACE = CANONICAL_STACKED_GAP_FILL_SURFACE
 _STACKED_GAP_FILL_PLAN = CANONICAL_STACKED_GAP_FILL_PLAN
 _STACKED_POST_PUF_TRANSFER_SURFACE = CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+_STACKED_POST_PUF_PUF_PRODUCER_SURFACE = CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE = (
+    CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+)
 _BATTERY_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
 _BATTERY_JOINT_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 _BATTERY_SUPPORT_PROFILE = CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
@@ -1926,6 +1980,12 @@ _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
     version=_STACKED_AUTHORITY_VERSION,
     gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
     post_puf_transfer_surface=(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR),
+    post_puf_puf_producer_surface=(
+        _CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR
+    ),
+    post_puf_source_producer_surface=(
+        _CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR
+    ),
     declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
     metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
     joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
@@ -1943,6 +2003,12 @@ def _production_stacked_authority(
     _canonical_post_puf_surface: TargetFamilies = (
         CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
     ),
+    _canonical_post_puf_puf_producer_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+    ),
+    _canonical_post_puf_source_producer_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+    ),
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
@@ -1958,6 +2024,10 @@ def _production_stacked_authority(
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
         and _STACKED_POST_PUF_TRANSFER_SURFACE is _canonical_post_puf_surface
+        and _STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+        is _canonical_post_puf_puf_producer_surface
+        and _STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+        is _canonical_post_puf_source_producer_surface
         and _STACKED_DECLARED_SURFACE is _canonical_surface
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
         and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
@@ -1970,6 +2040,8 @@ def _production_stacked_authority(
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=_STACKED_GAP_FILL_PLAN,
         post_puf_transfer_surface=_STACKED_POST_PUF_TRANSFER_SURFACE,
+        post_puf_puf_producer_surface=_STACKED_POST_PUF_PUF_PRODUCER_SURFACE,
+        post_puf_source_producer_surface=(_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE),
         declared_surface=_STACKED_DECLARED_SURFACE,
         metric_registry=_BATTERY_METRIC_REGISTRY,
         joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
@@ -1995,11 +2067,31 @@ def _metric_registry_for_surface(
     )
 
 
+def _restrict_surface_to_declared_targets(
+    surface: TargetFamilies,
+    declared: TargetFamilies,
+) -> TargetFamilies:
+    declared_keys = set(_surface_target_keys(declared))
+    restricted: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, families in surface.items():
+        for family, targets in families.items():
+            retained = tuple(
+                target
+                for target in targets
+                if (entity, family, target, 0) in declared_keys
+            )
+            if retained:
+                restricted.setdefault(entity, {})[family] = retained
+    return restricted
+
+
 def _make_test_stacked_authority(
     *,
     declared_surface: TargetFamilies | None = None,
     gap_fill_plan: Sequence[GapFillDirection] | None = None,
     post_puf_transfer_surface: TargetFamilies | None = None,
+    post_puf_puf_producer_surface: TargetFamilies | None = None,
+    post_puf_source_producer_surface: TargetFamilies | None = None,
     metric_registry: Mapping[tuple[str, str, str, int], str] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
@@ -2013,6 +2105,25 @@ def _make_test_stacked_authority(
         else declared_surface
     )
     plan = CANONICAL_STACKED_GAP_FILL_PLAN if gap_fill_plan is None else gap_fill_plan
+    post_puf_surface = (
+        {} if post_puf_transfer_surface is None else post_puf_transfer_surface
+    )
+    puf_producer_surface = (
+        _restrict_surface_to_declared_targets(
+            CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE,
+            post_puf_surface,
+        )
+        if post_puf_puf_producer_surface is None
+        else post_puf_puf_producer_surface
+    )
+    source_producer_surface = (
+        _restrict_surface_to_declared_targets(
+            CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE,
+            post_puf_surface,
+        )
+        if post_puf_source_producer_surface is None
+        else post_puf_source_producer_surface
+    )
     registry = (
         _metric_registry_for_surface(surface)
         if metric_registry is None
@@ -2034,9 +2145,9 @@ def _make_test_stacked_authority(
         authority_id=f"{_STACKED_AUTHORITY_ID}.test",
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=plan,
-        post_puf_transfer_surface=(
-            {} if post_puf_transfer_surface is None else post_puf_transfer_surface
-        ),
+        post_puf_transfer_surface=post_puf_surface,
+        post_puf_puf_producer_surface=puf_producer_surface,
+        post_puf_source_producer_surface=source_producer_surface,
         declared_surface=surface,
         metric_registry=registry,
         joint_metric_registry=joints,
@@ -2132,9 +2243,17 @@ def _authority_receipt(
             "target_count": len(
                 _surface_target_keys(authority.post_puf_transfer_surface)
             ),
+            "puf_producer_target_count": len(
+                _surface_target_keys(authority.post_puf_puf_producer_surface)
+            ),
+            "source_producer_target_count": len(
+                _surface_target_keys(authority.post_puf_source_producer_surface)
+            ),
             "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
             "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
-            "recipient_selection": "all_non_donor_rows",
+            "recipient_selection": (
+                "target_specific_complement_of_declared_producer_rows"
+            ),
             "digest_matches_declared": component_integrity["post_puf_transfer_surface"],
         },
         "declared_surface": {
@@ -2204,6 +2323,12 @@ def _authority_validation_failures(
     surface_targets = _surface_target_keys(authority.declared_surface)
     plan_targets = _plan_target_keys(authority.gap_fill_plan)
     post_puf_targets = _surface_target_keys(authority.post_puf_transfer_surface)
+    post_puf_puf_producer_targets = _surface_target_keys(
+        authority.post_puf_puf_producer_surface
+    )
+    post_puf_source_producer_targets = _surface_target_keys(
+        authority.post_puf_source_producer_surface
+    )
     duplicate_surface_targets = sorted(
         target for target, count in Counter(surface_targets).items() if count > 1
     )
@@ -2212,6 +2337,17 @@ def _authority_validation_failures(
     )
     duplicate_post_puf_targets = sorted(
         target for target, count in Counter(post_puf_targets).items() if count > 1
+    )
+    duplicate_post_puf_producer_targets = sorted(
+        {
+            target
+            for targets in (
+                post_puf_puf_producer_targets,
+                post_puf_source_producer_targets,
+            )
+            for target, count in Counter(targets).items()
+            if count > 1
+        }
     )
     if duplicate_surface_targets:
         failures.append(
@@ -2237,6 +2373,15 @@ def _authority_validation_failures(
             )
             + "."
         )
+    if duplicate_post_puf_producer_targets:
+        failures.append(
+            "post-PUF producer surfaces repeat target(s) within a role: "
+            + ", ".join(
+                _battery_target_label(target)
+                for target in duplicate_post_puf_producer_targets
+            )
+            + "."
+        )
     overlap = sorted(set(plan_targets) & set(post_puf_targets))
     if overlap:
         failures.append(
@@ -2250,6 +2395,23 @@ def _authority_validation_failures(
             "post-PUF transfer targets are absent from the declared terminal "
             "surface: "
             + ", ".join(_battery_target_label(target) for target in outside_declared)
+            + "."
+        )
+    producer_targets = set(post_puf_puf_producer_targets) | set(
+        post_puf_source_producer_targets
+    )
+    unowned_post_puf = sorted(set(post_puf_targets) - producer_targets)
+    outside_post_puf = sorted(producer_targets - set(post_puf_targets))
+    if unowned_post_puf:
+        failures.append(
+            "post-PUF transfer targets have no declared producer role: "
+            + ", ".join(_battery_target_label(target) for target in unowned_post_puf)
+            + "."
+        )
+    if outside_post_puf:
+        failures.append(
+            "post-PUF producer roles name targets outside the transfer surface: "
+            + ", ".join(_battery_target_label(target) for target in outside_post_puf)
             + "."
         )
     for name, label in (
@@ -2538,6 +2700,12 @@ _canonical_early_transfer_keys = set(
 _canonical_late_transfer_keys = set(
     _surface_target_keys(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR)
 )
+_canonical_late_puf_producer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR)
+)
+_canonical_late_source_producer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR)
+)
 _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
@@ -2546,6 +2714,12 @@ if (
     or len(set(_canonical_surface_keys)) != 131
     or len(_canonical_early_transfer_keys) != 48
     or len(_canonical_late_transfer_keys) != 70
+    or len(_canonical_late_puf_producer_keys) != 43
+    or len(_canonical_late_source_producer_keys) != 30
+    or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
+    != 3
+    or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
+    != _canonical_late_transfer_keys
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
@@ -2571,7 +2745,9 @@ if (
     raise RuntimeError(
         "Canonical stacked authority must partition the exact 118-target "
         "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 131-target terminal surface and metric registry."
+        "inside an exact 131-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 43 PUF-clone and 30 "
+        "ASEC-source producer targets with their declared three-target overlap."
     )
 
 
@@ -3205,17 +3381,27 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     pre_counts = _verify_post_puf_transfer_activation_authority(
         frame,
         target_families=surface,
+        puf_producer_families=authority.post_puf_puf_producer_surface,
+        source_producer_families=authority.post_puf_source_producer_surface,
     )
     donor = _post_puf_donor_projection(frame)
-    donor_snapshot = {
-        entity: _post_puf_targets_snapshot(
+    puf_producer_keys = set(
+        _surface_target_keys(authority.post_puf_puf_producer_surface)
+    )
+    source_producer_keys = set(
+        _surface_target_keys(authority.post_puf_source_producer_surface)
+    )
+    producer_snapshot = {
+        (entity, target): _post_puf_producer_snapshot(
             frame,
             entity=entity,
-            targets=tuple(
-                target for targets in families.values() for target in targets
-            ),
+            target=target,
+            puf_produced=(entity, family, target, 0) in puf_producer_keys,
+            source_produced=(entity, family, target, 0) in source_producer_keys,
         )
         for entity, families in surface.items()
+        for family, targets in families.items()
+        for target in targets
     }
     transfer = transfer_acs_inputs(
         frame,
@@ -3230,8 +3416,10 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     target_receipts = _verify_post_puf_transfer_outcome(
         transfer.frame,
         target_families=surface,
+        puf_producer_families=authority.post_puf_puf_producer_surface,
+        source_producer_families=authority.post_puf_source_producer_surface,
         pre_counts=pre_counts,
-        donor_snapshot=donor_snapshot,
+        producer_snapshot=producer_snapshot,
         result=transfer,
     )
     validate_stacked_spine_frame(
@@ -3245,7 +3433,9 @@ def _transfer_stacked_post_puf_inputs_evaluate(
             "donor_selection": "owner_projection_of_asec_origin_clone_1",
             "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
             "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
-            "recipient_selection": "all_non_donor_rows",
+            "recipient_selection": (
+                "target_specific_complement_of_declared_producer_rows"
+            ),
             "resolved_donor_channel": transfer.resolved_donor_channel,
             "targets": target_receipts,
             "fit_records": [
@@ -3276,33 +3466,97 @@ def _post_puf_donor_projection(frame: Frame) -> Frame:
     return frame.select(person_mask.to_numpy(dtype=bool))
 
 
-def _post_puf_targets_snapshot(
+def _verify_post_puf_cross_grain_clone_provenance(frame: Frame) -> None:
+    """Require each person to share the clone role of every parent entity."""
+
+    person_entity = frame.schema.person_entity
+    person = frame.table(person_entity)
+    person_clone = pd.to_numeric(
+        person[support_clone_index_column(person_entity)],
+        errors="raise",
+    )
+    failures: list[str] = []
+    for group in frame.schema.group_entities:
+        membership_column = frame.schema.membership_column(group)
+        group_id_column = frame.schema.entity_id_column(group)
+        group_table = frame.table(group)
+        group_clone = pd.to_numeric(
+            group_table.set_index(group_id_column)[support_clone_index_column(group)],
+            errors="raise",
+        )
+        expected = person[membership_column].map(group_clone)
+        mismatch = expected.isna() | expected.ne(person_clone)
+        if mismatch.any():
+            failures.append(
+                f"{int(mismatch.sum())} person/{group} link(s) disagree on "
+                "support clone index"
+            )
+    if failures:
+        raise ValueError(
+            "Stacked post-PUF transfer cross-grain clone provenance failed:\n  "
+            + "\n  ".join(failures)
+        )
+
+
+def _post_puf_producer_mask(
     frame: Frame,
     *,
     entity: str,
-    targets: Sequence[str],
-) -> pd.DataFrame:
+    puf_produced: bool,
+    source_produced: bool,
+) -> pd.Series:
     table = frame.table(entity)
-    donor_rows = _post_puf_role_mask(frame, entity=entity)
-    present = [target for target in targets if target in table.columns]
-    return table.loc[donor_rows, present].copy(deep=True)
+    producer_rows = pd.Series(False, index=table.index, dtype=bool)
+    if puf_produced:
+        producer_rows |= pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).gt(0)
+    if source_produced:
+        producer_rows |= (
+            table[support_channel_column(entity)]
+            .astype(str)
+            .eq(BASE_ASEC_SUPPORT_CHANNEL)
+        )
+    return producer_rows
+
+
+def _post_puf_producer_snapshot(
+    frame: Frame,
+    *,
+    entity: str,
+    target: str,
+    puf_produced: bool,
+    source_produced: bool,
+) -> pd.Series:
+    table = frame.table(entity)
+    producer_rows = _post_puf_producer_mask(
+        frame,
+        entity=entity,
+        puf_produced=puf_produced,
+        source_produced=source_produced,
+    )
+    return table.loc[producer_rows, target].copy(deep=True)
 
 
 def _verify_post_puf_transfer_activation_authority(
     frame: Frame,
     *,
     target_families: TargetFamilies,
+    puf_producer_families: TargetFamilies,
+    source_producer_families: TargetFamilies,
 ) -> dict[tuple[str, str], dict[str, int]]:
-    """Require the declared late surface on complete ASEC clone-1 donors."""
+    """Require complete declared producers before authorizing recipient nulls."""
 
     failures: list[str] = []
     counts: dict[tuple[str, str], dict[str, int]] = {}
+    _verify_post_puf_cross_grain_clone_provenance(frame)
+    puf_producer_keys = set(_surface_target_keys(puf_producer_families))
+    source_producer_keys = set(_surface_target_keys(source_producer_families))
     for entity, families in target_families.items():
         table = frame.table(entity)
         donor_rows = _post_puf_role_mask(frame, entity=entity)
-        recipient_rows = ~donor_rows
         donor_count = int(donor_rows.sum())
-        recipient_count = int(recipient_rows.sum())
         if donor_count == 0:
             failures.append(
                 f"post_puf_transfer/{entity}: declared ASEC clone-1 donor role "
@@ -3311,6 +3565,16 @@ def _verify_post_puf_transfer_activation_authority(
         for family, targets in families.items():
             for target in targets:
                 label = f"post_puf_transfer/{entity}/{family}/{target}"
+                key = (entity, family, target, 0)
+                puf_produced = key in puf_producer_keys
+                source_produced = key in source_producer_keys
+                producer_rows = _post_puf_producer_mask(
+                    frame,
+                    entity=entity,
+                    puf_produced=puf_produced,
+                    source_produced=source_produced,
+                )
+                recipient_rows = ~producer_rows
                 if target not in table.columns:
                     failures.append(
                         f"{label}: declared post-PUF transfer target column is "
@@ -3318,15 +3582,25 @@ def _verify_post_puf_transfer_activation_authority(
                     )
                     continue
                 null_mask = table[target].isna()
-                donor_nulls = int((null_mask & donor_rows).sum())
-                if donor_nulls:
+                producer_nulls = int((null_mask & producer_rows).sum())
+                if producer_nulls:
+                    roles = ", ".join(
+                        role
+                        for role, active in (
+                            ("PUF clone", puf_produced),
+                            ("ASEC source", source_produced),
+                        )
+                        if active
+                    )
                     failures.append(
-                        f"{label}: ASEC clone-1 donor role has {donor_nulls} "
-                        "null cell(s); donors must observe every declared target."
+                        f"{label}: declared {roles} producer role(s) have "
+                        f"{producer_nulls} null cell(s); upstream producers must "
+                        "observe every producer-owned target."
                     )
                 counts[(entity, target)] = {
                     "authorized_null_rows": int((null_mask & recipient_rows).sum()),
-                    "recipient_rows": recipient_count,
+                    "recipient_rows": int(recipient_rows.sum()),
+                    "producer_rows": int(producer_rows.sum()),
                     "donor_rows": donor_count,
                 }
     if failures:
@@ -3341,66 +3615,66 @@ def _verify_post_puf_transfer_outcome(
     frame: Frame,
     *,
     target_families: TargetFamilies,
+    puf_producer_families: TargetFamilies,
+    source_producer_families: TargetFamilies,
     pre_counts: Mapping[tuple[str, str], Mapping[str, int]],
-    donor_snapshot: Mapping[str, pd.DataFrame],
+    producer_snapshot: Mapping[tuple[str, str], pd.Series],
     result: AcsTransferResult,
-) -> dict[str, dict[str, int]]:
-    """Prove late donors were preserved and every authorized null was filled."""
+) -> dict[str, dict[str, object]]:
+    """Prove producers were preserved and every authorized null was filled."""
 
     failures: list[str] = []
     imputed_by_target = {
         (record.entity, record.column): record for record in result.imputed_inputs
     }
-    target_receipts: dict[str, dict[str, int]] = {}
+    target_receipts: dict[str, dict[str, object]] = {}
+    puf_producer_keys = set(_surface_target_keys(puf_producer_families))
+    source_producer_keys = set(_surface_target_keys(source_producer_families))
     for entity, families in target_families.items():
         table = frame.table(entity)
-        donor_rows = _post_puf_role_mask(frame, entity=entity)
-        recipient_rows = ~donor_rows
-        targets = tuple(
-            target for family_targets in families.values() for target in family_targets
-        )
-        donor_after = _post_puf_targets_snapshot(
-            frame,
-            entity=entity,
-            targets=targets,
-        )
         for family, family_targets in families.items():
             for target in family_targets:
                 label = f"post_puf_transfer/{entity}/{family}/{target}"
-                before = donor_snapshot[entity].get(target)
-                after = donor_after.get(target)
-                if (
-                    before is None
-                    or after is None
-                    or _canonical_donor_series_payload(
-                        before,
-                        boundary=f"{label} donor identity before transfer",
-                    )
-                    != _canonical_donor_series_payload(
-                        after,
-                        boundary=f"{label} donor identity after transfer",
-                    )
+                key = (entity, family, target, 0)
+                puf_produced = key in puf_producer_keys
+                source_produced = key in source_producer_keys
+                producer_rows = _post_puf_producer_mask(
+                    frame,
+                    entity=entity,
+                    puf_produced=puf_produced,
+                    source_produced=source_produced,
+                )
+                recipient_rows = ~producer_rows
+                before = producer_snapshot.get((entity, target))
+                after = table.loc[producer_rows, target].copy(deep=True)
+                if before is None or _canonical_donor_series_payload(
+                    before,
+                    boundary=f"{label} producer identity before transfer",
+                ) != _canonical_donor_series_payload(
+                    after,
+                    boundary=f"{label} producer identity after transfer",
                 ):
                     failures.append(
-                        f"{label}: donor byte identity failed for ASEC clone-1; "
-                        "canonical donor payload changed during transfer."
+                        f"{label}: producer byte identity failed; a declared "
+                        "producer payload changed during transfer."
                     )
                 null_mask = table[target].isna()
-                donor_nulls = int((null_mask & donor_rows).sum())
-                residual_nulls = int((null_mask & recipient_rows).sum())
+                producer_nulls = int((null_mask & producer_rows).sum())
+                recipient_nulls = int((null_mask & recipient_rows).sum())
+                residual_nulls = int(null_mask.sum())
                 record = imputed_by_target.get((entity, target))
                 imputed = record.imputed_recipient_rows if record else 0
                 unmodeled = record.unmodeled_recipient_rows if record else 0
                 authorized = pre_counts[(entity, target)]["authorized_null_rows"]
-                if donor_nulls:
+                if producer_nulls:
                     failures.append(
-                        f"{label}: {donor_nulls} donor null cell(s) appeared "
+                        f"{label}: {producer_nulls} producer null cell(s) appeared "
                         "during transfer."
                     )
-                if residual_nulls != unmodeled:
+                if recipient_nulls != unmodeled:
                     failures.append(
                         f"{label}: residual-null equation failed: "
-                        f"residual_null_rows={residual_nulls} != "
+                        f"recipient_null_rows={recipient_nulls} != "
                         f"unmodeled_rows={unmodeled}."
                     )
                 if authorized != imputed + unmodeled:
@@ -3416,6 +3690,15 @@ def _verify_post_puf_transfer_outcome(
                         f"residual_null_rows={residual_nulls}; zero are allowed."
                     )
                 target_receipts[f"{entity}/{family}/{target}"] = {
+                    "producer_roles": [
+                        role
+                        for role, active in (
+                            ("puf_clone", puf_produced),
+                            ("asec_source", source_produced),
+                        )
+                        if active
+                    ],
+                    "producer_rows": pre_counts[(entity, target)]["producer_rows"],
                     "authorized_null_rows": authorized,
                     "imputed_rows": imputed,
                     "unmodeled_rows": unmodeled,

@@ -129,8 +129,14 @@ are allowed only when named by the ACS native-input receipt.
    QRF-owned cells are checked after source completion and every later phase.
 5. The post-clone source-completion chain runs, then the declared post-PUF
    transfer fills the targets first materialized by that chain or the PUF pass.
-   Its complete donor is the ASEC-origin PUF-detail role; recipient nulls are
-   never synthesized before this stage, and zero residual nulls are required.
+   Its complete model donor is the ASEC-origin PUF-detail role. Authority is
+   target-specific: every live positive-index clone must already observe a
+   PUF-produced target, every ASEC-origin clone must already observe a
+   source-produced target, and dual-produced targets require the union. A null
+   on any such producer row is terminal; only the complementary recipient
+   rows may be filled from QRF predictions. No blanket null-to-zero synthesis
+   occurs, every producer cell stays byte-identical, and zero residual nulls
+   are required.
 6. The transferred checkpoint records the early gap-fill banks, post-PUF
    transfer bank, primary-QRF bank, tail manifest, weights audit,
    stack-manifest digest, fraction/seed, and clone controls. The same identity

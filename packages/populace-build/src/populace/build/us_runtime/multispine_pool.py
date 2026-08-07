@@ -128,6 +128,8 @@ __all__ = [
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
     "pool_input_surface",
+    "pool_post_puf_puf_producer_target_families",
+    "pool_post_puf_source_producer_target_families",
     "pool_post_puf_transfer_target_families",
     "pool_pre_clone_gap_fill_target_families",
     "pool_transfer_target_families",
@@ -627,6 +629,56 @@ def pool_post_puf_transfer_target_families() -> TargetFamilies:
         pool_transfer_target_families()
     )
     return late
+
+
+def _filter_target_families_by_outputs(
+    target_families: TargetFamilies,
+    outputs: set[tuple[str, str]],
+) -> TargetFamilies:
+    """Preserve declaration order while retaining targets with named producers."""
+
+    filtered: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, families in target_families.items():
+        for family, targets in families.items():
+            produced = tuple(
+                target for target in targets if (entity, target) in outputs
+            )
+            if produced:
+                filtered.setdefault(entity, {})[family] = produced
+    return filtered
+
+
+def pool_post_puf_puf_producer_target_families() -> TargetFamilies:
+    """Return late targets whose producer role is a live PUF clone."""
+
+    puf_outputs = {
+        (entity, target)
+        for entity, targets in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            "primary_puf_qrf"
+        ].items()
+        for target in targets
+    }
+    return _filter_target_families_by_outputs(
+        pool_post_puf_transfer_target_families(),
+        puf_outputs,
+    )
+
+
+def pool_post_puf_source_producer_target_families() -> TargetFamilies:
+    """Return late targets whose producer role is an ASEC source clone."""
+
+    source_outputs = {
+        (entity, target)
+        for operator_name in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        for entity, targets in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            POOL_OPERATOR_CONTRACTS[operator_name].family
+        ].items()
+        for target in targets
+    }
+    return _filter_target_families_by_outputs(
+        pool_post_puf_transfer_target_families(),
+        source_outputs,
+    )
 
 
 def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
