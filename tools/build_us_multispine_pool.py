@@ -154,6 +154,7 @@ from populace.build.us_runtime.stacked_spine import (
     stacked_gap_fill_plan,
     stacked_spine_authority_receipt,
     transfer_stacked_post_puf_inputs,
+    validate_stacked_post_puf_transfer_receipt,
     validate_stacked_spine_frame,
 )
 from populace.build.us_runtime.support_provenance import (
@@ -234,9 +235,9 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 3 binds the staged post-PUF transfer and its target bank. Earlier
-# stacked checkpoints either predate that stage or its complete clone-2 tail
-# provenance and must rebuild.
+# Version 4 binds target-specific producer authority for the staged post-PUF
+# transfer. Earlier checkpoints either predate that stage, its complete clone-2
+# tail provenance, or its fail-closed producer-role registry and must rebuild.
 _STACKED_CHECKPOINT_MATERIALIZER_VERSION = 4
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
@@ -2436,6 +2437,30 @@ def _stacked_tail_manifest(
     return manifest
 
 
+def _validate_stacked_post_puf_stage_receipt(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    boundary: str,
+) -> None:
+    """Require the nested late-transfer receipt to carry canonical authority."""
+
+    impute = stage_receipts.get("impute")
+    if not isinstance(impute, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked transferred receipts have no impute object."
+        )
+    transfer_receipt = impute.get("stacked_post_puf_transfer")
+    if not isinstance(transfer_receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked transferred receipts have no post-PUF "
+            "transfer object."
+        )
+    validate_stacked_post_puf_transfer_receipt(
+        transfer_receipt,
+        boundary=boundary,
+    )
+
+
 def _emit_stacked_checkpoint(
     callback: Callable[[MultispinePoolCheckpoint], None] | None,
     *,
@@ -2445,6 +2470,11 @@ def _emit_stacked_checkpoint(
     stage_receipts: Mapping[str, Mapping[str, object]],
     simulation_frame: Frame | None = None,
 ) -> None:
+    if stage in {"transferred", "simulated"}:
+        _validate_stacked_post_puf_stage_receipt(
+            stage_receipts,
+            boundary=f"stacked {stage} checkpoint emission",
+        )
     if callback is None:
         return
     callback(
@@ -2532,6 +2562,11 @@ def build_stacked_pool(
             name: dict(receipt) for name, receipt in resume.stage_receipts.items()
         }
         resume_stage = resume.stage
+        if resume_stage in {"transferred", "simulated"}:
+            _validate_stacked_post_puf_stage_receipt(
+                receipts,
+                boundary=f"stacked {resume_stage} checkpoint resume",
+            )
         for completed_phase in (
             "assembled",
             *(
@@ -2661,6 +2696,10 @@ def build_stacked_pool(
             n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
             max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
             target_bank=post_puf_target_bank,
+        )
+        validate_stacked_post_puf_transfer_receipt(
+            post_puf_transfer.receipt,
+            boundary="stacked cold-build post-PUF transfer",
         )
         fit_records.extend(post_puf_transfer.transfer_result.fit_records)
         weights_audit = weights_audit_gate(fit_records)
@@ -2927,6 +2966,10 @@ def _stacked_manifest_payload(
 ) -> dict[str, object]:
     """Build the stacked-only manifest without changing the legacy envelope."""
 
+    _validate_stacked_post_puf_stage_receipt(
+        result.stage_receipts,
+        boundary="stacked production manifest",
+    )
     status = "simulation_ready" if result.simulation_ready else "gate_failed"
     puf_donor_receipt = input_receipts.get("puf_donor")
     if not isinstance(puf_donor_receipt, Mapping):
@@ -2948,6 +2991,7 @@ def _stacked_manifest_payload(
             "gap_fill_stacked_spine",
             "run_stacked_puf_pass",
             "complete_multispine_source_inputs",
+            "transfer_stacked_post_puf_inputs",
             "prepare_stacked_tail_derivation",
             "derive_multispine_pool_inputs",
             "seed_multispine_pool_inputs",
@@ -3187,6 +3231,10 @@ def _write_stacked_outputs(
 ) -> dict[str, object]:
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
+    _validate_stacked_post_puf_stage_receipt(
+        result.stage_receipts,
+        boundary="stacked publication entry",
+    )
     publication_run_id = _new_publication_run_id()
     _atomic_write_json(
         outputs.manifest,

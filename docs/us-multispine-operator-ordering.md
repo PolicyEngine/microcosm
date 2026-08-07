@@ -140,7 +140,9 @@ are allowed only when named by the ACS native-input receipt.
 6. The transferred checkpoint records the early gap-fill banks, post-PUF
    transfer bank, primary-QRF bank, tail manifest, weights audit,
    stack-manifest digest, fraction/seed, and clone controls. The same identity
-   regime governs cold and resumed builds.
+   regime governs cold and resumed builds. Checkpoint emission, resume, and
+   final publication each reject the post-PUF receipt unless it carries the
+   exact canonical stacked authority; NON-CANONICAL test receipts cannot ship.
 7. Schedule-D preparation, deterministic derivation, seeded inputs, and
    batched simulation run on the transferred stack. The tool retains the
    existing `assembled`, `transferred`, and `simulated` #599 boundaries.

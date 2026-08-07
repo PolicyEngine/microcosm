@@ -794,12 +794,23 @@ def _stacked_main_argv(
     return arguments
 
 
+def _noncanonical_post_puf_authority_receipt() -> dict[str, object]:
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    test_authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    return stacked_spine_module._authority_receipt(test_authority)
+
+
 def _install_stacked_entrypoint_stubs(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     *,
     terminal: str,
+    post_puf_authority: Mapping[str, object] | None = None,
 ) -> tuple[list[str], int]:
     order: list[str] = []
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
@@ -959,7 +970,14 @@ def _install_stacked_entrypoint_stubs(
         assert kwargs["target_bank"] is not None
         return SimpleNamespace(
             frame=frame,
-            receipt={"fixture": "post_puf_transfer"},
+            receipt={
+                "fixture": "post_puf_transfer",
+                "authority": dict(
+                    pool_tool.stacked_spine_authority_receipt()
+                    if post_puf_authority is None
+                    else post_puf_authority
+                ),
+            },
             transfer_result=SimpleNamespace(fit_records=()),
         )
 
@@ -1160,6 +1178,20 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             (tmp_path / "stacked-pool.manifest.json").read_text(encoding="utf-8")
         )
         assert manifest["pipeline"] == "us-stacked-pool"
+        assert manifest["operator_order"] == [
+            "assemble_stacked_spine",
+            "prepare_multispine_source_inputs_for_clone",
+            "gap_fill_stacked_spine",
+            "run_stacked_puf_pass",
+            "complete_multispine_source_inputs",
+            "transfer_stacked_post_puf_inputs",
+            "prepare_stacked_tail_derivation",
+            "derive_multispine_pool_inputs",
+            "seed_multispine_pool_inputs",
+            "materialize_multispine_agreement_outputs",
+            "stacked_completeness_gate",
+            "by_origin_battery",
+        ]
         assert manifest["sampling"] == {
             **manifest["sampling"],
             "sample_fraction": 0.01,
@@ -1167,6 +1199,83 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "sample_seed": 578,
             "realized_households": {"asec": 1, "acs": 1},
         }
+
+
+def test_stacked_entrypoint_rejects_noncanonical_post_puf_transfer_receipt(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    noncanonical = _noncanonical_post_puf_authority_receipt()
+    assert noncanonical["authority_form"] == "NON-CANONICAL"
+    assert noncanonical["production_manifest_permitted"] is False
+    order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+        post_puf_authority=noncanonical,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "stacked cold-build post-PUF transfer: non-canonical stacked "
+            "authority is forbidden"
+        ),
+    ):
+        pool_tool.main(_stacked_main_argv(tmp_path))
+
+    assert order == [
+        "stack",
+        "build_stacked_pool",
+        "prepare",
+        "gap",
+        "puf",
+        "complete",
+        "post_puf_transfer",
+    ]
+    assert not (tmp_path / "stacked-pool.h5").exists()
+    assert not (tmp_path / "stacked-pool.manifest.json").exists()
+
+
+def test_stacked_publication_rejects_noncanonical_receipt_before_any_write(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    noncanonical = _noncanonical_post_puf_authority_receipt()
+    outputs = pool_tool._stacked_output_paths(tmp_path / "stacked-pool.h5")
+    result = SimpleNamespace(
+        stage_receipts={
+            "impute": {
+                "stacked_post_puf_transfer": {"authority": noncanonical},
+            }
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "stacked publication entry: non-canonical stacked authority is forbidden"
+        ),
+    ):
+        pool_tool._write_stacked_outputs(
+            result,
+            outputs=outputs,
+            verified_inputs={},
+            acs_source_manifest=pool_tool.load_acs_source_manifest(),
+            input_receipts={},
+            checkpoint_provenance={},
+            sample_fraction=0.01,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=579,
+        )
+
+    assert not outputs.pool_h5.exists()
+    assert not outputs.manifest.exists()
+    assert not outputs.agreement_diagnostics.exists()
 
 
 @pytest.mark.parametrize(
@@ -1535,6 +1644,53 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
         is None
     )
     assert "checkpoint base identity is stale" in capsys.readouterr().out
+
+
+def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    stack = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(),
+        _many_household_source_frame(measured_offset=1_000.0),
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
+    noncanonical = _noncanonical_post_puf_authority_receipt()
+    resume = pool_tool.MultispinePoolCheckpoint(
+        stage="transferred",
+        frame=stack.frame,
+        assembly_receipt=stack.frame.metadata[pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY],
+        stage_receipts={
+            "impute": {
+                "stacked_post_puf_transfer": {"authority": noncanonical},
+            }
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "stacked transferred checkpoint resume: non-canonical stacked "
+            "authority is forbidden"
+        ),
+    ):
+        pool_tool.build_stacked_pool(
+            stack.frame,
+            expected_stack_receipt=stack.receipt,
+            release_id=(
+                "populace-us-2024-stacked-f010-s578-asec4-acs1-"
+                "20260807T000000Z-deadbeef"
+            ),
+            puf_donor=None,
+            acs_rent_donor=None,
+            primary_qrf_checkpoint_dir=tmp_path / "primary-qrf",
+            acs_transfer_checkpoint_dir=tmp_path / "acs-transfer",
+            checkpoint_identity={},
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            resume=resume,
+        )
 
 
 def test_stacked_entrypoint_resumes_each_checkpoint_boundary(

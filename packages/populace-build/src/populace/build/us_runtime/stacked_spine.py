@@ -140,6 +140,7 @@ __all__ = [
     "stacked_gap_fill_plan",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
+    "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
 
@@ -2512,6 +2513,24 @@ def _validate_production_authority_receipt(
             f"{boundary}: non-canonical stacked authority is forbidden; "
             "production manifest emission is forbidden."
         )
+
+
+def validate_stacked_post_puf_transfer_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    """Reject a late-transfer receipt unless it carries canonical authority."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError(f"{boundary}: stacked post-PUF transfer receipt is absent.")
+    authority = receipt.get("authority")
+    if not isinstance(authority, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer receipt has no authority; "
+            "production manifest emission is forbidden."
+        )
+    _validate_production_authority_receipt(authority, boundary=boundary)
 
 
 def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> None:
