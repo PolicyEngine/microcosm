@@ -123,6 +123,7 @@ class TestDerivation:
         assert result["weekly_hours_worked_before_lsr"].tolist() == [38.0, 0.0]
         assert result["hours_worked_last_week"].tolist() == [40.0, 0.0]
         assert result["weeks_worked"].tolist() == [50.0, 0.0]
+        assert result["WKSWORK"].tolist() == [50, 0]
 
     def test_negative_sentinels_floor_at_zero_and_weeks_clip_at_52(self) -> None:
         table = _person_table([_worker(-1, -4, 99)])
@@ -130,6 +131,7 @@ class TestDerivation:
         assert result["weekly_hours_worked_before_lsr"].tolist() == [0.0]
         assert result["hours_worked_last_week"].tolist() == [0.0]
         assert result["weeks_worked"].tolist() == [52.0]
+        assert result["WKSWORK"].tolist() == [99]
 
     def test_nan_raw_values_become_zero(self) -> None:
         table = _person_table([_worker(np.nan, np.nan, np.nan)])
@@ -177,6 +179,7 @@ class TestFrameIntegration:
         ]
         assert person["hours_worked_last_week"].iloc[7] == 5.0
         assert person["weeks_worked"].max() == 52.0
+        assert person["WKSWORK"].max() == 52
 
     def test_frame_with_signal_passes_through_untouched(self) -> None:
         derived = with_us_hours_worked_inputs(
@@ -224,6 +227,7 @@ class TestFrameIntegration:
         )
         person = frame.table("person")
         assert person["weekly_hours_worked_before_lsr"].tolist() == [38.0, 0.0]
+        assert person["weeks_worked"].tolist() == [50.0, 0.0]
 
     def test_missing_raw_columns_without_signal_raise(self) -> None:
         frame = _us_frame([{"person_id": 1}])

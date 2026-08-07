@@ -846,8 +846,9 @@ class TestUsSources:
         assert "educator_expense" in stage.nonnegative_outputs
         assert "educator_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
 
-    def test_puf_stage_disaggregates_aggregate_records_before_uprating(self) -> None:
-        operations = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].operations
+    def test_puf_stage_distinguishes_runtime_prefix_from_artifact_lineage(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"]
+        operations = stage.operations
         kinds = [operation.kind for operation in operations]
         assert (
             kinds.index("read_table")
@@ -904,7 +905,45 @@ class TestUsSources:
             "amount_columns": "irs_puf_amount_columns",
             "seed_from_build_config": True,
         }
-        assert "forbes" not in str(operation.parameters).lower()
+        assert "use_forbes_top_tail" not in operation.parameters
+        artifact = next(
+            artifact
+            for artifact in stage.artifacts
+            if artifact["kind"] == "versioned_derived_microdata"
+        )
+        assert artifact["lineage"] == {
+            "archived_commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+            "generator_path_parts": [
+                "policyengine_",
+                "us_data",
+                "datasets",
+                "puf",
+                "puf.py",
+            ],
+            "generator_lines": "1378-1398",
+            "disaggregator_path_parts": [
+                "policyengine_",
+                "us_data",
+                "datasets",
+                "puf",
+                "disaggregate_puf.py",
+            ],
+            "disaggregator_lines": "55-60,85-123",
+            "operation_order": ["uprate", "disaggregate_aggregate_records"],
+            "aggregate_disaggregation_seed": 42,
+            "forbes_top_tail_enabled": True,
+            "forbes_aggregate_recid": 999999,
+            "forbes_synthetic_record_count": 3900,
+        }
+        notes = stage.notes
+        assert "uprates the raw TY2015 rows before replacing" in notes
+        assert "Forbes backbone for aggregate RECID 999999" in notes
+        assert "3,900-record open tail" in notes
+        assert "does not request unsupported Forbes synthesis" in notes
+        donor_notes = US_DONORS["puf_tax_detail"].notes
+        assert "uprates its raw TY2015 rows before" in donor_notes
+        assert "Forbes-backed 3,900-record open tail" in donor_notes
+        assert "without rerunning Forbes synthesis" in donor_notes
 
     def test_aca_stage_declares_marketplace_input_surface(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
@@ -952,6 +991,21 @@ class TestUsSources:
             # strings only — nothing is imported or fetched from it.
             "packages/populace-build/src/populace/build/uk_runtime/hmrc_source_contract.py",
             "packages/populace-build/tests/test_uk_parity_reference.py",
+            # The publication contract's June-grandfather test keeps the
+            # three semantic-real JSON artifacts from the frozen df82567
+            # release. These exact test-only paths preserve historical
+            # repository/version provenance; they import or execute nothing.
+            "packages/populace-data/tests/test_contract.py",
+            (
+                "packages/populace-data/tests/fixtures/uk_june_2023/"
+                "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z/"
+                "build_manifest.json"
+            ),
+            (
+                "packages/populace-data/tests/fixtures/uk_june_2023/"
+                "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z/"
+                "calibration_diagnostics.json"
+            ),
             "tools/build_uk_efrs_parity_reference.py",
             "UK_COVERAGE_PROGRESS.md",
         }
@@ -1187,8 +1241,8 @@ class TestBaseStageSourceClosure:
 
     #: Raw columns restored from pinned official sidecars because the frozen
     #: census_cps inputs never carried them (LKWEEKS only for income year
-    #: 2022; ED_VAL for every pooled year).
-    SIDECAR_RESTORED_COLUMNS = frozenset({"LKWEEKS", "ED_VAL"})
+    #: 2022; ED_VAL and PAW_TYP for every pooled year).
+    SIDECAR_RESTORED_COLUMNS = frozenset({"LKWEEKS", "ED_VAL", "PAW_TYP"})
 
     #: Release-time stage constants whose inputs are produced inside the
     #: fiscal-refresh release tool, not the base builder (org_wages consumes

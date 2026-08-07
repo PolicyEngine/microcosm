@@ -31,7 +31,7 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "charitable_deduction": (
         "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss"
     ),
-    "interest_deduction": (
+    "deductible_mortgage_interest": (
         "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss"
     ),
     "qualified_business_income_deduction": (
@@ -557,12 +557,59 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 48
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
     )
     assert all(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.values())
+
+
+def test_other_income_rows_are_reviewed_concept_exclusions() -> None:
+    """E01200 — the field mapped to miscellaneous_income — is Form 4797 /
+    Form 1040 line-14 business-property net gain/loss, not SOI Table 1.4's
+    line-21 'other income' concept (populace#393 final determination), so
+    all four other-income rows compare incompatible concepts regardless of
+    sign. They must be registry-excluded AND absent from a compiled
+    registry, with a sibling Table 1.4 row surviving as the control."""
+    row_keys = [
+        f"irs_soi.ty2023.table_1_4.all.other_income_net_{side}_{measure}"
+        for side in ("income", "loss")
+        for measure in ("amount", "returns")
+    ]
+    for key in row_keys:
+        assert key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+        assert "4797" in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS[key]
+
+    control_source_record_id = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+    facts = [
+        *packaged_reference_facts(),
+        _soi_taxable_interest_fact(
+            2023,
+            source_record_id=control_source_record_id,
+            value=240_000_000_000,
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+        ),
+        *(
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=key,
+                value=1_000_000_000,
+                measure_id=key.split(".")[-1],
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+            )
+            for key in row_keys
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    for key in row_keys:
+        assert key not in by_source_record_id
+    assert control_source_record_id in by_source_record_id
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -805,6 +852,20 @@ def test_jct_tax_expenditure_references_are_simple_income_tax_reforms() -> None:
         assert spec.output_variable == "income_tax"
         assert spec.matrix_row == "reform_minus_baseline_income_tax"
         assert spec.neutralized_variable
+
+
+def test_jct_mortgage_reform_neutralizes_only_the_mortgage_component() -> None:
+    mortgage_target = (
+        "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss"
+    )
+    reform = next(
+        spec
+        for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+        if spec.target_name == mortgage_target
+    )
+
+    assert reform.neutralized_variable == "deductible_mortgage_interest"
+    assert reform.neutralized_variable != "interest_deduction"
 
 
 def test_jct_reform_objects_satisfy_their_own_coverage_requirement() -> None:

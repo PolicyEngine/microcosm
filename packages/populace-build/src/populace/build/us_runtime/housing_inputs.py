@@ -33,6 +33,12 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -527,6 +533,7 @@ def derive_us_housing_inputs(frame: Frame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -986,33 +993,30 @@ def impute_us_housing_assistance_to_puf_support(
     rent and both tenure enums are cloned unchanged.
     """
 
-    from populace.build.us_runtime.puf_support import (
-        BASE_ASEC_SUPPORT_CHANNEL,
-        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
-        support_channel_column,
-    )
-
     if frame.schema != US_SCHEMA:
         raise ValueError("US housing inputs require the US schema.")
     person = frame.table("person")
     spm_unit = frame.table("spm_unit")
-    person_channel_column = support_channel_column("person")
-    spm_channel_column = support_channel_column("spm_unit")
     _required_columns(
         person,
-        (person_channel_column, "person_spm_unit_id", "person_id"),
+        ("person_spm_unit_id", "person_id"),
         "person",
     )
     _required_columns(
         spm_unit,
         (
-            spm_channel_column,
             "spm_unit_id",
             "receives_housing_assistance",
             "takes_up_housing_assistance_if_eligible",
         ),
         "spm_unit",
     )
+    if not has_support_role_metadata(person, entity="person"):
+        raise ValueError("US housing PUF imputation requires person support metadata.")
+    if not has_support_role_metadata(spm_unit, entity="spm_unit"):
+        raise ValueError(
+            "US housing PUF imputation requires SPM-unit support metadata."
+        )
     predictors = _person_puf_predictors(frame)
     receipt_values, receipt_missing, receipt_invalid = _strict_boolean_signal(
         spm_unit["receives_housing_assistance"]
@@ -1044,9 +1048,9 @@ def impute_us_housing_assistance_to_puf_support(
             f"US housing assistance target does not cover person SPM unit id(s) {bad}."
         )
 
-    channel = person[person_channel_column].astype(str)
-    asec_mask = channel == BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    role = support_role_series(person, entity="person")
+    asec_mask = role == BASE_ASEC_SUPPORT_CHANNEL
+    puf_mask = role == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     if not asec_mask.any() or not puf_mask.any():
         raise ValueError(
             "US housing PUF imputation requires nonempty ASEC and PUF-tax-detail "
@@ -1119,8 +1123,8 @@ def impute_us_housing_assistance_to_puf_support(
     aligned = unit_values.reindex(spm_unit["spm_unit_id"])
     if aligned.isna().any():
         raise ValueError("US housing PUF QRF output does not cover every SPM unit.")
-    puf_units = (
-        spm_unit[spm_channel_column].astype(str).eq(PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+    puf_units = support_role_series(spm_unit, entity="spm_unit").eq(
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL
     )
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["spm_unit"].loc[puf_units, "receives_housing_assistance"] = aligned.to_numpy(
@@ -1135,6 +1139,7 @@ def impute_us_housing_assistance_to_puf_support(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -1169,6 +1174,7 @@ def with_us_housing_inputs(
         {entity: carried.weights_for(entity) for entity in carried.weighted_entities},
         carried.strata,
         mass_log=carried.mass_log,
+        metadata=carried.metadata,
     )
 
 
@@ -1213,17 +1219,14 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
         if total_spm_weight > 0.0
         else 0.0
     )
-    from populace.build.us_runtime.puf_support import (
-        BASE_ASEC_SUPPORT_CHANNEL,
-        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
-        support_channel_column,
-    )
-
     assistance_share_by_channel: dict[str, float] = {}
     assistance_positive_by_channel: dict[str, int] = {}
-    spm_channel_column = support_channel_column("spm_unit")
-    if spm_channel_column in spm_unit:
-        channels = spm_unit[spm_channel_column].astype(str).to_numpy()
+    has_spm_support_metadata = has_support_role_metadata(
+        spm_unit,
+        entity="spm_unit",
+    )
+    if has_spm_support_metadata:
+        channels = support_role_series(spm_unit, entity="spm_unit").to_numpy()
         for channel_name in (
             BASE_ASEC_SUPPORT_CHANNEL,
             PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -1260,7 +1263,7 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
         "housing_assistance_positive_by_support_channel": (
             assistance_positive_by_channel
         ),
-        "has_spm_support_channel_metadata": spm_channel_column in spm_unit,
+        "has_spm_support_channel_metadata": has_spm_support_metadata,
         "nonfinite_rent": int(np.count_nonzero(~np.isfinite(rent))),
         "negative_rent": int(np.count_nonzero(rent < 0.0)),
         "positive_rent_nonhead": int(np.count_nonzero(positive_rent & ~head)),
@@ -1362,8 +1365,6 @@ def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
             failures.append(
                 f"{label} {share:.3f} outside plausibility band [{low}, {high}]."
             )
-    from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_SUPPORT_CHANNEL
-
     channel_shares = summary["housing_assistance_share_by_support_channel"]
     if summary["has_spm_support_channel_metadata"]:
         if PUF_TAX_DETAIL_SUPPORT_CHANNEL not in channel_shares:

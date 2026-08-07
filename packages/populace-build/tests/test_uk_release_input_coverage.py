@@ -202,16 +202,12 @@ class TestUKReleaseInputCoverageGate:
             manifest=contract,
         )
         default_only = uk_release_input_coverage_gate(
-            _person_frame(
-                {"state_pension_reported": np.asarray([0.0, 0.0])}
-            ),
+            _person_frame({"state_pension_reported": np.asarray([0.0, 0.0])}),
             engine,
             manifest=contract,
         )
         populated = uk_release_input_coverage_gate(
-            _person_frame(
-                {"state_pension_reported": np.asarray([0.0, 12_000.0])}
-            ),
+            _person_frame({"state_pension_reported": np.asarray([0.0, 12_000.0])}),
             engine,
             manifest=contract,
         )
@@ -551,9 +547,7 @@ class TestUKReleaseInputCoverageGate:
         assert result.details["degenerate_required"] == ["gender"]
 
     def test_zero_mass_signal_does_not_stale_a_reviewed_exclusion(self) -> None:
-        contract = _manifest(
-            (_reviewed_gift_aid_exclusion(),)
-        )
+        contract = _manifest((_reviewed_gift_aid_exclusion(),))
         frame = _weighted_person_frame(
             {"gift_aid": np.asarray([900.0, 0.0])},
             np.asarray([0.0, 1_000.0]),
@@ -618,7 +612,7 @@ class TestUKManifest:
             json.dumps(
                 {
                     "reference": {},
-                    "candidate_evidence": {},
+                    "candidate_evidence": {"tier": "frs"},
                     "effective_mass_coverage": {
                         "weight_source": "household_weight",
                         "minimum_nondefault_mass_share": 1e-6,
@@ -654,6 +648,33 @@ class TestUKManifest:
         with pytest.raises(ValueError, match="mass_share_denominator"):
             load_uk_release_input_coverage_manifest(str(bad))
 
+    @pytest.mark.parametrize("tier", [None, "public"])
+    def test_candidate_tier_must_be_present_and_ratified(
+        self,
+        tmp_path: Path,
+        tier: str | None,
+    ) -> None:
+        source = (
+            _REPO_ROOT
+            / "packages"
+            / "populace-build"
+            / "src"
+            / "populace"
+            / "build"
+            / "uk"
+            / "release_input_coverage_manifest.json"
+        )
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        if tier is None:
+            payload["candidate_evidence"].pop("tier", None)
+        else:
+            payload["candidate_evidence"]["tier"] = tier
+        bad = tmp_path / "bad_candidate_tier.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="candidate_evidence.tier"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
     def test_deferred_family_requires_restoration_status(self, tmp_path) -> None:
         source = (
             _REPO_ROOT
@@ -669,9 +690,7 @@ class TestUKManifest:
         payload["family_coverage"]["hmrc_spi_income"]["status"] = (
             "deferred_until_restored"
         )
-        payload["family_coverage"]["hmrc_spi_income"].pop(
-            "restoration_status", None
-        )
+        payload["family_coverage"]["hmrc_spi_income"].pop("restoration_status", None)
         bad = tmp_path / "deferred_without_blocker.json"
         bad.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -770,6 +789,20 @@ class TestUKManifest:
         drifted = replace(manifest, family_coverage=families)
 
         with pytest.raises(ValueError, match="changed without regenerating"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=drifted,
+            )
+
+    def test_manifest_candidate_tier_must_match_hmrc_source_lineage(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"]["base_candidate_tier"] = "cps-transfer"
+        drifted = replace(manifest, family_coverage=families)
+
+        with pytest.raises(ValueError, match="base_candidate_tier.*disagrees"):
             assert_uk_release_input_coverage_manifest_current(
                 engine=_StubEngine({}, set(manifest.declared_columns)),
                 manifest=drifted,

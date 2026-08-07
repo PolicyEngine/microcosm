@@ -8,7 +8,7 @@ failure mode of populace issues #242/#248 (SNAP's 30-hour general and
 20-hour ABAWD work requirements pass for everyone, erasing work-requirement
 reform exposure entirely).
 
-The stage writes three PolicyEngine-facing person input columns, each a
+The stage writes three PolicyEngine-facing person columns, each a
 direct mapping of a measured CPS ASEC person variable — the same mappings
 the retired enhanced-CPS pipeline used, so parity with the retired
 enhanced-CPS hours surface is by construction rather than by imputation:
@@ -19,6 +19,12 @@ enhanced-CPS hours surface is by construction rather than by imputation:
   reference week).
 - ``weeks_worked`` ← ``WKSWORK`` clipped to [0, 52].
 
+The legacy fiscal-refresh path still needs ``weeks_worked`` for its downstream
+ORG/FLSA operator and its period-scoped 2024 export contract permits the
+column. The multispine pool wrapper projects that canonical column away after
+this shared kernel runs because the pool's input-leaf contract classifies
+formula ownership across all periods; raw ``WKSWORK`` remains source evidence.
+
 Semantics note (documented, not hidden): SNAP's ABAWD standard is a monthly
 80-hour test. ``HRSWK`` is an annual usual-hours measure, so a person who
 worked half the year at 40 hours/week carries 40 here — the engine's
@@ -26,8 +32,8 @@ work-requirement variables read usual weekly hours, matching how the
 retired enhanced-CPS pipeline fed them. Week-by-week volatility is not in
 the CPS and is out of scope for this stage.
 
-Healing behavior: a frame that already carries all three columns *with
-signal* passes through untouched (idempotent). A frame carrying a constant
+Healing behavior: a frame that already carries all three columns *with signal*
+passes through untouched (idempotent). A frame carrying a constant
 ``weekly_hours_worked_before_lsr`` — the published constant-40 landmine —
 is recomputed from the raw columns rather than trusted, because a constant
 hours column is indistinguishable from the engine default and masks the
@@ -59,6 +65,8 @@ from populace.frame.units import US_SCHEMA
 __all__ = [
     "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
     "US_HOURS_WORKED_OUTPUT_COLUMNS",
+    "US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS",
+    "US_HOURS_WORKED_POOL_OUTPUT_COLUMNS",
     "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
     "US_HOURS_WORKED_STAGE_NAME",
     "derive_us_hours_worked_from_manifest",
@@ -75,6 +83,17 @@ US_HOURS_WORKED_OUTPUT_COLUMNS: tuple[str, ...] = (
     "weekly_hours_worked_before_lsr",
     "hours_worked_last_week",
     "weeks_worked",
+)
+
+#: Formula-owned outputs retained only for the legacy fiscal path. The pool
+#: wrapper removes these after running the shared derivation kernel.
+US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS = frozenset({"weeks_worked"})
+
+#: The two input leaves the multispine pool persists and transfers.
+US_HOURS_WORKED_POOL_OUTPUT_COLUMNS: tuple[str, ...] = tuple(
+    column
+    for column in US_HOURS_WORKED_OUTPUT_COLUMNS
+    if column not in US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS
 )
 
 #: Release gates require these person columns to carry signal (≥2 values).
@@ -196,7 +215,8 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
         time_period: The dataset's time period.
 
     Returns:
-        A new frame whose person table carries all three hours columns.
+        A new frame whose person table carries all three hours columns. Pool
+        callers project ``weeks_worked`` away after this shared kernel runs.
 
     Raises:
         ValueError: If the frame is not US-schema or the stage output does
@@ -240,6 +260,7 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

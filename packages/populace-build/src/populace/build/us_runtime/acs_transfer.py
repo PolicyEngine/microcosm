@@ -2,9 +2,9 @@
 
 ACS observes a dense demographic and geography spine but not every input the
 US model consumes. This module learns missing numeric and boolean leaves from
-an ASEC x PUF donor with :mod:`populace.fit`. Native ACS columns always win: a
-requested target already present on the recipient is never overwritten, and
-model-only predictors are never added to the returned frame.
+an ASEC x PUF donor with :mod:`populace.fit`. Native values always win: only
+null target cells are filled, and model-only predictors are never added to the
+returned frame.
 
 Optional ACS predictors keep their source missingness. Recipient rows are
 partitioned by the predictors they actually observe, then one weighted QRF is
@@ -12,30 +12,35 @@ fit per availability pattern using complete donor rows for that predictor set.
 No missing value is ever converted to zero merely to satisfy an estimator.
 
 Imputation provenance is external to the frame. ``imputed_inputs`` records one
-immutable entry per added column, including every availability-pattern fit; it
-is not an export column and cannot leak into a PolicyEngine dataset.
+immutable entry per filled column, including every availability-pattern fit;
+it is not an export column and cannot leak into a PolicyEngine dataset.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import import_module
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     resolve_formula_owned_outputs,
-    support_channel_column,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+)
+from populace.fit import QRFChainState
 from populace.frame import EntitySchema, Frame, Weights
 
 QRF: Any | None = None
@@ -50,10 +55,14 @@ __all__ = [
     "ACS_PERSON_TRANSFER_PREDICTORS",
     "ASEC_PUF_DONOR_SPINE",
     "AcsImputedInput",
+    "AcsTransferBankPatternStep",
     "AcsTransferPattern",
     "AcsTransferResult",
+    "AcsTransferTargetBank",
+    "AcsTransferTargetCheckpoint",
     "TargetFamilies",
     "acs_transfer_donor_requirements",
+    "assert_acs_transfer_targets_are_input_leaves",
     "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
     "ACS_DERIVED_TRANSFER_INPUTS",
@@ -76,10 +85,10 @@ ACS_DONOR_CHANNEL_AUTO = "auto"
 # budget while continuing to use populace-fit's canonical chained QRF API.
 DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT = 8
 
-# Required, always-observed ACS predictors. State is broadcast from the
-# household table so every imputation is conditioned on the ACS record's real
-# state rather than drawing from a national donor mixture. A missing/non-finite
-# value here is corrupt source data rather than an optional universe blank.
+# Required ACS predictor columns. State is broadcast from the household table
+# so every modeled imputation is conditioned on the ACS record's real state
+# rather than drawing from a national donor mixture. Cross-spine assembly may
+# leave peer rows null; row-level complete-case masks keep those rows out of QRF.
 _STATE_FEATURE = "__acs_transfer_state_fips"
 ACS_PERSON_TRANSFER_PREDICTORS: tuple[str, ...] = (
     "age",
@@ -270,7 +279,6 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "has_champva_health_coverage_at_interview",
             "has_esi",
             "has_indian_health_service_coverage_at_interview",
-            "has_marketplace_health_coverage",
             "has_marketplace_health_coverage_at_interview",
             "has_medicaid_health_coverage_at_interview",
             "has_non_marketplace_direct_purchase_health_coverage_at_interview",
@@ -281,6 +289,10 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "is_disabled",
             "is_full_time_college_student",
             "is_pregnant",
+            # WICYN's adult-female reporter is only a physical carrier for an
+            # SPM-unit receipt fact. Engine consumers are separately guarded
+            # to aggregate receives_wic at SPM-unit grain (populace#591).
+            "receives_wic",
         ),
         "model_required_discrete": ("own_children_in_household",),
     },
@@ -304,6 +316,9 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
         # Housing-assistance receipt is source-observed in the raw pool. Other
         # takes_up_* leaves are runtime-owned draws and are not donor targets.
         "benefit_participation": ("takes_up_housing_assistance_if_eligible",),
+        # Reported TANF/SNAP receipt is produced from annual ASEC amounts before
+        # cloning and transferred like the person-level required booleans.
+        "model_required_boolean": ("is_tanf_enrolled", "receives_snap"),
         "model_required_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
     },
 }
@@ -335,6 +350,8 @@ class AcsImputedInput:
     seed: int
     weight_kind: str
     patterns: tuple[AcsTransferPattern, ...] = ()
+    #: Number of recipient null cells this operation filled.
+    imputed_recipient_rows: int = 0
     unmodeled_recipient_rows: int = 0
     #: Non-fit derivation kind for deterministic post-transfer columns
     #: (e.g. ``"split_component_by_share"``); ``None`` for QRF-fitted ones.
@@ -356,6 +373,69 @@ class AcsTransferResult:
 
 
 @dataclass(frozen=True)
+class AcsTransferBankPatternStep:
+    """One availability pattern's state transition for a banked target."""
+
+    pattern: str
+    state_before: QRFChainState
+    state_after: QRFChainState
+
+
+@dataclass(frozen=True)
+class AcsTransferTargetCheckpoint:
+    """Raw draws and chain states for one ordered ACS model target."""
+
+    target_index: int
+    total_targets: int
+    entity: str
+    family: str
+    family_targets: tuple[str, ...]
+    model_targets: tuple[str, ...]
+    model_target: str
+    exported_targets: tuple[str, ...]
+    raw_draw: np.ndarray
+    pattern_steps: tuple[AcsTransferBankPatternStep, ...]
+
+    def __post_init__(self) -> None:
+        raw_draw = np.asarray(self.raw_draw)
+        if raw_draw.ndim != 1 or raw_draw.dtype != np.dtype(np.float64):
+            raise ValueError(
+                "ACS transfer target checkpoints require a one-dimensional "
+                "float64 raw draw."
+            )
+        raw_draw = np.ascontiguousarray(raw_draw)
+        raw_draw.setflags(write=False)
+        object.__setattr__(self, "raw_draw", raw_draw)
+
+
+class AcsTransferTargetBank(Protocol):
+    """Durable target store consumed by the checkpointed ACS transfer path."""
+
+    def load_target(
+        self,
+        *,
+        target_index: int,
+        total_targets: int,
+        entity: str,
+        family: str,
+        family_targets: tuple[str, ...],
+        model_targets: tuple[str, ...],
+        model_target: str,
+        exported_targets: tuple[str, ...],
+        recipient_rows: int,
+        expected_states: Mapping[str, QRFChainState],
+    ) -> AcsTransferTargetCheckpoint | None:
+        """Load one valid target or return ``None`` so it is rebuilt."""
+
+        ...
+
+    def write_target(self, checkpoint: AcsTransferTargetCheckpoint) -> None:
+        """Atomically persist one completed target."""
+
+        ...
+
+
+@dataclass(frozen=True)
 class _FeatureSurface:
     donor: pd.DataFrame
     recipient: pd.DataFrame
@@ -371,8 +451,14 @@ class _FamilyFit:
     predictors: tuple[str, ...]
     weight_kind: str
     family_seed: int
-    unmodeled_recipient_rows: int
     target_encodings: Mapping[str, _TargetEncoding]
+
+
+@dataclass(frozen=True)
+class _BankPatternContext:
+    pattern: AcsTransferPattern
+    recipient_positions: np.ndarray
+    donor_mask: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -427,6 +513,7 @@ def acs_derived_transfer_expectations(
         return {_SCHEDULE_D_CGD_COLUMN: "person"}
     return {}
 
+
 _SCHEDULE_D_CGD_COLUMN = "schedule_d_capital_gain_distributions"
 _SCHEDULE_D_CGD_SOURCE = "long_term_capital_gains_before_response"
 _SCHEDULE_D_CGD_EXCLUSIVE_WITH = "non_sch_d_capital_gains"
@@ -477,6 +564,8 @@ def derive_acs_schedule_d_capital_gain_distributions(
 
 def reconcile_acs_adult_care(
     person: pd.DataFrame,
+    *,
+    mutable_rows: np.ndarray | pd.Series | None = None,
 ) -> tuple[pd.Series, dict[str, int]]:
     """Reconcile transferred adult-care expenses to the statute structure.
 
@@ -485,10 +574,25 @@ def reconcile_acs_adult_care(
     carrier; independent person-grain predictions cannot. Deterministically:
     clear expenses on non-qualifying people, then keep only the largest
     carrier per unit (ties broken by row order).
+
+    When ``mutable_rows`` is supplied, only those newly imputed expense cells
+    may change. A pre-existing positive carrier blocks every mutable carrier
+    in its unit, preserving raw values while preventing the transfer from
+    introducing an additional carrier.
     """
 
     flag = person[_ADULT_CARE_FLAG].fillna(False).astype(bool)
-    expenses = pd.to_numeric(person[_ADULT_CARE_EXPENSE], errors="coerce").fillna(0.0)
+    raw_expenses = pd.to_numeric(person[_ADULT_CARE_EXPENSE], errors="coerce")
+    expenses = raw_expenses.fillna(0.0)
+    if mutable_rows is None:
+        mutable = pd.Series(True, index=person.index)
+    else:
+        mutable_array = np.asarray(mutable_rows, dtype=bool)
+        if mutable_array.ndim != 1 or len(mutable_array) != len(person):
+            raise ValueError(
+                "mutable_rows must be a one-dimensional mask aligned to person."
+            )
+        mutable = pd.Series(mutable_array, index=person.index)
     role = person[_ADULT_CARE_ROLE].astype(str)
     units = person[_ADULT_CARE_UNIT]
     is_dependent = role.eq("DEPENDENT")
@@ -497,22 +601,27 @@ def reconcile_acs_adult_care(
     unit_married = is_spouse.groupby(units).transform("any")
     qualifying = flag & (is_dependent | ((is_head | is_spouse) & unit_married))
 
-    positive = expenses > 0.0
-    cleared_ineligible = int((positive & ~qualifying).sum())
-    expenses = expenses.where(qualifying, 0.0)
+    mutable_positive = mutable & (expenses > 0.0)
+    cleared_ineligible_mask = mutable_positive & ~qualifying
+    cleared_ineligible = int(cleared_ineligible_mask.sum())
 
-    positive = expenses > 0.0
-    rank = (-expenses).groupby(units).rank(method="first")
-    keep = positive & rank.eq(1.0)
-    cleared_multi_carrier = int((positive & ~keep).sum())
-    expenses = expenses.where(keep, 0.0)
+    candidates = mutable_positive & qualifying
+    immutable_positive = ~mutable & (expenses > 0.0)
+    unit_has_immutable = immutable_positive.groupby(units).transform("any")
+    ranked = (-expenses.where(candidates, 0.0)).groupby(units).rank(method="first")
+    keep = candidates & ~unit_has_immutable & ranked.eq(1.0)
+    cleared_multi_carrier = int((candidates & ~keep).sum())
+
+    reconciled = expenses.copy() if mutable_rows is None else raw_expenses.copy()
+    reconciled.loc[keep] = expenses.loc[keep]
+    reconciled.loc[mutable & ~keep] = 0.0
 
     counts = {
         "cleared_ineligible_carriers": cleared_ineligible,
         "cleared_multi_carrier_rows": cleared_multi_carrier,
-        "remaining_carriers": int((expenses > 0.0).sum()),
+        "remaining_carriers": int((reconciled > 0.0).sum()),
     }
-    return expenses, counts
+    return reconciled, counts
 
 
 def declared_acs_transfer_target_families() -> TargetFamilies:
@@ -636,6 +745,52 @@ def acs_transfer_donor_requirements(
     }
 
 
+def assert_acs_transfer_targets_are_input_leaves(
+    targets: Iterable[str],
+    *,
+    engine: Any | None = None,
+    require_known: bool = False,
+) -> None:
+    """Reject transfer targets the engine owns or, optionally, does not know.
+
+    The formula-owned branch is the production transfer check. Keeping it in
+    one helper lets the committed full-plan sweep exercise the exact same
+    classifier and error path before a Modal build starts. Generic library
+    callers may use non-engine fixture columns, so strict engine membership is
+    opt-in for the production-plan sweep.
+    """
+
+    target_names = set(targets)
+    formula_owned = sorted(resolve_formula_owned_outputs(target_names, engine=engine))
+    if formula_owned:
+        raise ValueError(
+            "ACS transfer targets must be PolicyEngine input leaves, not "
+            f"formula-owned outputs: {formula_owned}."
+        )
+    if not require_known:
+        return
+
+    try:
+        if engine is None:
+            from populace.frame.adapters.policyengine_us import (
+                PolicyEngineUSVariableMetadataIndex,
+            )
+
+            engine = PolicyEngineUSVariableMetadataIndex()
+        engine_leaves = set(engine.variables())
+    except ImportError as exc:
+        raise RuntimeError(
+            "Strict ACS transfer leaf classification requires policyengine-us; "
+            "install the populace-build US extra."
+        ) from exc
+    unknown = sorted(target_names - engine_leaves)
+    if unknown:
+        raise ValueError(
+            "ACS transfer targets must be known PolicyEngine input leaves; "
+            f"unknown or non-leaf targets: {unknown}."
+        )
+
+
 def transfer_acs_inputs(
     recipient: Frame,
     donor: Frame,
@@ -646,24 +801,33 @@ def transfer_acs_inputs(
     seed: int = 0,
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
     ``target_families`` is an ``entity -> family -> targets`` mapping. Each
     family is split into recipient optional-predictor availability patterns.
-    Every pattern gets a separately seeded QRF fit on donor rows finite for
-    exactly the predictors that pattern observes.
+    Every pattern gets a separately seeded QRF fit on donor rows complete for
+    every family target and finite for exactly the predictors that pattern
+    observes. Existing non-null target cells remain unchanged.
 
     Families wider than ``max_targets_per_fit`` are deterministically split
     into bounded chained-QRF batches so fitted forests cannot grow linearly
     across the full model-input inventory. Joint categorical codecs remain in
     one batch even when their two exported columns cross the nominal limit.
 
-    ``donor_channel="auto"`` is the safe default: it selects
-    ``puf_tax_detail`` when support metadata exists and otherwise uses an
-    unchanneled donor. Pass ``None`` only to deliberately fit every donor row.
-    The resolved channel, patterns, seeds, row counts, and weight kind are
-    recorded outside the returned frame.
+    ``donor_channel="auto"`` is the safe default: it selects the
+    ``puf_tax_detail`` clone role when support-role metadata exists and
+    otherwise uses an unchanneled donor. Source-spine channel labels never
+    determine fit eligibility. Pass ``None`` only to deliberately fit every
+    donor row. The resolved role, patterns, seeds, row counts, and weight kind
+    are recorded outside the returned frame.
+
+    When ``target_bank`` is provided, every availability-pattern QRF uses the
+    target-at-a-time chain API. Raw draws and advanced RNG states are banked
+    after each ordered model target, so a retry can continue without changing
+    the monolithic chained-QRF result. The ordinary in-memory fit remains the
+    default for library callers that do not request durable banking.
     """
 
     _validate_frames(recipient, donor)
@@ -690,24 +854,25 @@ def transfer_acs_inputs(
     )
     if not requested:
         return AcsTransferResult(
-            frame=recipient,
+            frame=canonicalize_frame_string_dtypes(
+                recipient,
+                boundary="ACS transfer result",
+            ),
             deferred_inputs=deferred_inputs,
         )
 
     all_targets = [
         target for _entity, _family, targets in requested for target in targets
     ]
-    formula_owned = sorted(resolve_formula_owned_outputs(all_targets))
-    if formula_owned:
-        raise ValueError(
-            "ACS transfer targets must be PolicyEngine input leaves, not "
-            f"formula-owned outputs: {formula_owned}."
-        )
+    assert_acs_transfer_targets_are_input_leaves(all_targets)
 
     active = _missing_target_families(requested, recipient=recipient)
     if not active:
         return AcsTransferResult(
-            frame=recipient,
+            frame=canonicalize_frame_string_dtypes(
+                recipient,
+                boundary="ACS transfer result",
+            ),
             deferred_inputs=deferred_inputs,
         )
 
@@ -718,24 +883,69 @@ def transfer_acs_inputs(
     }
     provenance: list[AcsImputedInput] = []
     fit_records: list[FitWeightRecord] = []
+    imputed_masks: dict[tuple[str, str], np.ndarray] = {}
+    ordered_bank_targets = [
+        (entity, family, model_target)
+        for entity, family, targets in requested
+        for model_target in _model_target_names(targets)
+    ]
+    bank_target_indexes = {key: index for index, key in enumerate(ordered_bank_targets)}
 
     for entity, family, targets in active:
-        fitted = _fit_family_patterns(
-            fit_donor,
-            recipient,
-            entity=entity,
-            family=family,
-            targets=targets,
-            seed=seed,
-            n_estimators=n_estimators,
-        )
+        recipient_table = recipient.table(entity)
+        target_missing = {
+            target: (
+                recipient_table[target].isna().to_numpy(dtype=bool)
+                if target in recipient_table.columns
+                else np.ones(len(recipient_table), dtype=bool)
+            )
+            for target in targets
+        }
+        if target_bank is None:
+            fitted = _fit_family_patterns(
+                fit_donor,
+                recipient,
+                entity=entity,
+                family=family,
+                targets=targets,
+                target_missing=target_missing,
+                seed=seed,
+                n_estimators=n_estimators,
+            )
+        else:
+            fitted = _fit_family_patterns_banked(
+                fit_donor,
+                recipient,
+                entity=entity,
+                family=family,
+                targets=targets,
+                target_missing=target_missing,
+                seed=seed,
+                n_estimators=n_estimators,
+                target_bank=target_bank,
+                target_indexes={
+                    model_target: bank_target_indexes[(entity, family, model_target)]
+                    for model_target in _model_target_names(targets)
+                },
+                total_targets=len(ordered_bank_targets),
+            )
         for target in targets:
-            output_tables[entity][target] = _prediction_values(
+            predicted = _prediction_values(
                 fitted.predictions[target],
                 encoding=fitted.target_encodings[target],
                 entity=entity,
                 target=target,
             )
+            merged, imputed = _fill_recipient_nulls(
+                output_tables[entity],
+                target=target,
+                predicted=predicted,
+            )
+            output_tables[entity][target] = merged
+            imputed_masks[(entity, target)] = imputed
+            missing_rows = target_missing[target]
+            if not missing_rows.any():
+                continue
             provenance.append(
                 AcsImputedInput(
                     column=target,
@@ -747,7 +957,8 @@ def transfer_acs_inputs(
                     seed=fitted.family_seed,
                     weight_kind=fitted.weight_kind,
                     patterns=fitted.patterns,
-                    unmodeled_recipient_rows=fitted.unmodeled_recipient_rows,
+                    imputed_recipient_rows=int(imputed.sum()),
+                    unmodeled_recipient_rows=int((missing_rows & ~imputed).sum()),
                 )
             )
         fit_records.extend(fitted.fit_records)
@@ -755,6 +966,7 @@ def transfer_acs_inputs(
     _apply_post_transfer_structure(
         output_tables,
         provenance,
+        imputed_masks=imputed_masks,
         donor_spine=donor_spine,
         resolved_channel=resolved_channel,
     )
@@ -770,6 +982,12 @@ def transfer_acs_inputs(
         },
         recipient.strata,
         mass_log=recipient.mass_log,
+        metadata=recipient.metadata,
+    )
+    frame = canonicalize_frame_string_dtypes(
+        frame,
+        boundary="ACS transfer result",
+        in_place=True,
     )
     return AcsTransferResult(
         frame=frame,
@@ -784,13 +1002,14 @@ def _apply_post_transfer_structure(
     output_tables: dict[str, pd.DataFrame],
     provenance: list[AcsImputedInput],
     *,
+    imputed_masks: Mapping[tuple[str, str], np.ndarray],
     donor_spine: str,
     resolved_channel: str | None,
 ) -> None:
     """Apply the deterministic post-fit steps the base's construction implies.
 
-    Both steps key off what THIS transfer produced (the provenance list), so
-    custom test plans that never touch these families are unaffected:
+    Both steps key off cells THIS transfer filled, so custom test plans that
+    never touch these families are unaffected:
 
     - The Schedule D CGD memo leg is derived from the two transferred
       capital-gain parents at the packaged share with route exclusivity.
@@ -801,41 +1020,79 @@ def _apply_post_transfer_structure(
     person = output_tables.get("person")
     if person is None:
         return
-    transferred = {item.column for item in provenance if item.entity == "person"}
 
     cgd_parents = {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
-    if cgd_parents <= transferred:
-        if _SCHEDULE_D_CGD_COLUMN in person.columns:
-            raise ValueError(
-                f"{_SCHEDULE_D_CGD_COLUMN!r} must not be fitted or natively "
-                "present; it is derived from its transferred parents."
-            )
-        values, derivation = derive_acs_schedule_d_capital_gain_distributions(person)
-        person[_SCHEDULE_D_CGD_COLUMN] = values
-        provenance.append(
-            AcsImputedInput(
-                column=_SCHEDULE_D_CGD_COLUMN,
-                entity="person",
-                family="capital_gain_details",
-                donor_spine=donor_spine,
-                donor_channel=resolved_channel,
-                predictors=(
-                    _SCHEDULE_D_CGD_SOURCE,
-                    _SCHEDULE_D_CGD_EXCLUSIVE_WITH,
-                ),
-                seed=0,
-                weight_kind="deterministic",
-                derivation="split_component_by_share",
-                reconciliation={
-                    key: int(value)
-                    for key, value in derivation.items()
-                    if isinstance(value, int)
-                },
-            )
+    cgd_candidate = np.zeros(len(person), dtype=bool)
+    for parent in cgd_parents:
+        cgd_candidate |= imputed_masks.get(
+            ("person", parent),
+            np.zeros(len(person), dtype=bool),
         )
+    if cgd_candidate.any() and cgd_parents <= set(person.columns):
+        source = pd.to_numeric(person[_SCHEDULE_D_CGD_SOURCE], errors="coerce")
+        other_route = pd.to_numeric(
+            person[_SCHEDULE_D_CGD_EXCLUSIVE_WITH],
+            errors="coerce",
+        )
+        derivable = (
+            cgd_candidate
+            & np.isfinite(source.to_numpy(dtype=np.float64))
+            & np.isfinite(other_route.to_numpy(dtype=np.float64))
+        )
+        if _SCHEDULE_D_CGD_COLUMN in person.columns:
+            derived_output = person[_SCHEDULE_D_CGD_COLUMN].copy()
+        else:
+            derived_output = pd.Series(
+                np.nan,
+                index=person.index,
+                name=_SCHEDULE_D_CGD_COLUMN,
+            )
+        fill = derivable & derived_output.isna().to_numpy(dtype=bool)
+        if not fill.any():
+            derivation: dict[str, object] = {}
+        else:
+            values, derivation = derive_acs_schedule_d_capital_gain_distributions(
+                person.loc[fill]
+            )
+            derived_output.loc[fill] = values
+            person[_SCHEDULE_D_CGD_COLUMN] = derived_output
+        if fill.any():
+            provenance.append(
+                AcsImputedInput(
+                    column=_SCHEDULE_D_CGD_COLUMN,
+                    entity="person",
+                    family="capital_gain_details",
+                    donor_spine=donor_spine,
+                    donor_channel=resolved_channel,
+                    predictors=(
+                        _SCHEDULE_D_CGD_SOURCE,
+                        _SCHEDULE_D_CGD_EXCLUSIVE_WITH,
+                    ),
+                    seed=0,
+                    weight_kind="deterministic",
+                    imputed_recipient_rows=int(fill.sum()),
+                    unmodeled_recipient_rows=int(
+                        (
+                            cgd_candidate
+                            & derived_output.isna().to_numpy(dtype=bool)
+                            & ~derivable
+                        ).sum()
+                    ),
+                    derivation="split_component_by_share",
+                    reconciliation={
+                        key: int(value)
+                        for key, value in derivation.items()
+                        if isinstance(value, int)
+                    },
+                )
+            )
 
-    adult_care = {_ADULT_CARE_FLAG, _ADULT_CARE_EXPENSE}
-    if adult_care <= transferred:
+    adult_care_expense_mask = imputed_masks.get(("person", _ADULT_CARE_EXPENSE))
+    if (
+        adult_care_expense_mask is not None
+        and adult_care_expense_mask.any()
+        and _ADULT_CARE_FLAG in person.columns
+    ):
         structural = {_ADULT_CARE_ROLE, _ADULT_CARE_UNIT}
         missing = sorted(structural - set(person.columns))
         if missing:
@@ -844,12 +1101,32 @@ def _apply_post_transfer_structure(
                 f"column(s) {missing}; refusing to ship an unreconciled "
                 "expense surface."
             )
-        expenses, counts = reconcile_acs_adult_care(person)
+        expenses, counts = reconcile_acs_adult_care(
+            person,
+            mutable_rows=adult_care_expense_mask,
+        )
         person[_ADULT_CARE_EXPENSE] = expenses
         for index, item in enumerate(provenance):
             if item.column == _ADULT_CARE_EXPENSE and item.entity == "person":
                 provenance[index] = replace(item, reconciliation=counts)
                 break
+
+
+def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:
+    """Return the exact chained-QRF target order for exported leaves."""
+
+    requested = set(targets)
+    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
+    model_targets: list[str] = []
+    joint_added = False
+    for target in targets:
+        if target in immigration_pair and immigration_pair.issubset(requested):
+            if not joint_added:
+                model_targets.append(_IMMIGRATION_STATUS_MODEL_TARGET)
+                joint_added = True
+            continue
+        model_targets.append(target)
+    return tuple(model_targets)
 
 
 def _fit_family_patterns(
@@ -859,17 +1136,24 @@ def _fit_family_patterns(
     entity: str,
     family: str,
     targets: tuple[str, ...],
+    target_missing: Mapping[str, np.ndarray],
     seed: int,
     n_estimators: int,
 ) -> _FamilyFit:
     _validate_donor_targets(donor, entity=entity, targets=targets)
-    target_encodings = _target_encodings(
-        donor.table(entity),
+    donor_table = donor.table(entity)
+    target_complete = _complete_target_mask(donor_table, targets=targets)
+    if not target_complete.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            f"donor rows complete for every target {list(targets)}."
+        )
+    target_encodings = _complete_case_target_encodings(
+        donor_table,
         targets=targets,
+        complete=target_complete,
     )
-    model_targets = tuple(
-        dict.fromkeys(encoding.model_target for encoding in target_encodings.values())
-    )
+    model_targets = _model_target_names(targets)
     surface = _transfer_feature_surface(
         donor,
         recipient,
@@ -883,8 +1167,16 @@ def _fit_family_patterns(
             f"that are required predictors: {overlap}."
         )
 
-    recipient_required = surface.recipient.loc[:, list(surface.required)]
-    eligible = np.isfinite(recipient_required.to_numpy(dtype=np.float64)).all(axis=1)
+    needs_prediction = np.logical_or.reduce(
+        [np.asarray(target_missing[target], dtype=bool) for target in targets]
+    )
+    eligible = (
+        _complete_predictor_mask(
+            surface.recipient,
+            predictors=surface.required,
+        )
+        & needs_prediction
+    )
     if not eligible.any():
         raise ValueError(
             f"ACS transfer family {family!r} on entity {entity!r} has no "
@@ -903,8 +1195,10 @@ def _fit_family_patterns(
         _availability_patterns(surface, eligible=eligible)
     ):
         predictors = (*surface.required, *observed_optional)
-        donor_matrix = surface.donor.loc[:, list(predictors)].to_numpy(dtype=np.float64)
-        donor_mask = np.isfinite(donor_matrix).all(axis=1)
+        donor_mask = (
+            _complete_predictor_mask(surface.donor, predictors=predictors)
+            & target_complete
+        )
         donor_rows = int(donor_mask.sum())
         if donor_rows == 0:
             raise ValueError(
@@ -942,9 +1236,10 @@ def _fit_family_patterns(
                 f"Frame's {resolved_kind!r}."
             )
 
-        recipient_pattern = surface.recipient.iloc[recipient_positions].loc[
-            :, list(predictors)
-        ]
+        recipient_pattern = _encoded_predictor_frame(
+            surface.recipient.iloc[recipient_positions],
+            predictors=predictors,
+        )
         drawn = fitted.predict(recipient_pattern)
         _validate_prediction_values(
             drawn,
@@ -994,9 +1289,389 @@ def _fit_family_patterns(
         predictors=used_predictors,
         weight_kind=next(iter(kinds)),
         family_seed=family_seed,
-        unmodeled_recipient_rows=int((~eligible).sum()),
         target_encodings=target_encodings,
     )
+
+
+def _fit_family_patterns_banked(
+    donor: Frame,
+    recipient: Frame,
+    *,
+    entity: str,
+    family: str,
+    targets: tuple[str, ...],
+    target_missing: Mapping[str, np.ndarray],
+    seed: int,
+    n_estimators: int,
+    target_bank: AcsTransferTargetBank,
+    target_indexes: Mapping[str, int],
+    total_targets: int,
+) -> _FamilyFit:
+    """Fit one family targetwise, resuming exact raw chained draws."""
+
+    _validate_donor_targets(donor, entity=entity, targets=targets)
+    donor_table = donor.table(entity)
+    target_complete = _complete_target_mask(donor_table, targets=targets)
+    if not target_complete.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            f"donor rows complete for every target {list(targets)}."
+        )
+    target_encodings = _complete_case_target_encodings(
+        donor_table,
+        targets=targets,
+        complete=target_complete,
+    )
+    model_targets = _model_target_names(targets)
+    encoded_model_targets = tuple(
+        dict.fromkeys(encoding.model_target for encoding in target_encodings.values())
+    )
+    if model_targets != encoded_model_targets:  # pragma: no cover - codec invariant
+        raise AssertionError(
+            "ACS transfer model-target ordering changed during encode."
+        )
+
+    surface = _transfer_feature_surface(
+        donor,
+        recipient,
+        entity=entity,
+        targets=targets,
+    )
+    overlap = sorted(set(surface.required).intersection(targets))
+    if overlap:
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has target(s) "
+            f"that are required predictors: {overlap}."
+        )
+    needs_prediction = np.logical_or.reduce(
+        [np.asarray(target_missing[target], dtype=bool) for target in targets]
+    )
+    eligible = (
+        _complete_predictor_mask(
+            surface.recipient,
+            predictors=surface.required,
+        )
+        & needs_prediction
+    )
+    if not eligible.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            f"recipient rows with required predictors {list(surface.required)}."
+        )
+
+    contexts: list[_BankPatternContext] = []
+    states: dict[str, QRFChainState] = {}
+    raw_priors: dict[str, pd.DataFrame] = {}
+    pattern_records: list[AcsTransferPattern] = []
+    fit_records: list[FitWeightRecord] = []
+    for position, (observed_optional, recipient_positions) in enumerate(
+        _availability_patterns(surface, eligible=eligible)
+    ):
+        predictors = (*surface.required, *observed_optional)
+        donor_mask = (
+            _complete_predictor_mask(surface.donor, predictors=predictors)
+            & target_complete
+        )
+        donor_rows = int(donor_mask.sum())
+        if donor_rows == 0:
+            raise ValueError(
+                f"ACS transfer family {family!r} on entity {entity!r} has no "
+                f"donor rows finite for availability pattern "
+                f"{list(observed_optional)} and predictors {list(predictors)}."
+            )
+        pattern_name = _pattern_name(position, observed_optional)
+        pattern_seed = _pattern_seed(
+            seed,
+            entity=entity,
+            family=family,
+            observed_optional=observed_optional,
+        )
+        model_frame = _model_frame(
+            donor,
+            entity=entity,
+            features=surface.donor,
+            predictors=predictors,
+            target_encodings=target_encodings,
+            mask=donor_mask,
+        )
+        resolved_kind = model_frame.resolve_weights(entity).kind.value
+        model = _qrf()(n_estimators=n_estimators, seed=pattern_seed)
+        if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
+            raise TypeError(
+                "Banked ACS transfer requires a QRF with start_chain and "
+                "fit_draw_next support."
+            )
+        state = model.start_chain(
+            model_frame,
+            list(predictors),
+            list(model_targets),
+            weights=resolved_kind,
+        )
+        if state.weight_kind != resolved_kind:
+            raise RuntimeError(
+                f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
+                f"weight kind {state.weight_kind!r}, expected the donor "
+                f"Frame's {resolved_kind!r}."
+            )
+        pattern = AcsTransferPattern(
+            name=pattern_name,
+            observed_optional_predictors=observed_optional,
+            predictors=predictors,
+            seed=pattern_seed,
+            weight_kind=state.weight_kind,
+            donor_rows=donor_rows,
+            recipient_rows=len(recipient_positions),
+        )
+        contexts.append(
+            _BankPatternContext(
+                pattern=pattern,
+                recipient_positions=recipient_positions,
+                donor_mask=donor_mask,
+            )
+        )
+        states[pattern_name] = state
+        raw_priors[pattern_name] = pd.DataFrame(
+            index=surface.recipient.iloc[recipient_positions].index
+        )
+        pattern_records.append(pattern)
+        fit_records.append(
+            FitWeightRecord(
+                f"acs_transfer:{entity}:{family}:{pattern_name}",
+                state.weight_kind,
+            )
+        )
+
+    n_recipient = len(surface.recipient)
+    raw_by_model_target: dict[str, np.ndarray] = {}
+    for model_target in model_targets:
+        exported_targets = tuple(
+            target
+            for target in targets
+            if target_encodings[target].model_target == model_target
+        )
+        expected_states = dict(states)
+        checkpoint = target_bank.load_target(
+            target_index=target_indexes[model_target],
+            total_targets=total_targets,
+            entity=entity,
+            family=family,
+            family_targets=targets,
+            model_targets=model_targets,
+            model_target=model_target,
+            exported_targets=exported_targets,
+            recipient_rows=n_recipient,
+            expected_states=expected_states,
+        )
+        if checkpoint is None:
+            raw_draw = np.full(n_recipient, np.nan, dtype=np.float64)
+            steps: list[AcsTransferBankPatternStep] = []
+            for context in contexts:
+                pattern = context.pattern
+                state_before = states[pattern.name]
+                model_frame = _model_frame(
+                    donor,
+                    entity=entity,
+                    features=surface.donor,
+                    predictors=pattern.predictors,
+                    target_encodings=target_encodings,
+                    mask=context.donor_mask,
+                )
+                recipient_pattern = _encoded_predictor_frame(
+                    surface.recipient.iloc[context.recipient_positions],
+                    predictors=pattern.predictors,
+                )
+                result = _qrf()(
+                    n_estimators=n_estimators,
+                    seed=pattern.seed,
+                ).fit_draw_next(
+                    model_frame,
+                    recipient_pattern,
+                    raw_priors[pattern.name],
+                    state=state_before,
+                    weights=pattern.weight_kind,
+                )
+                if result.target != model_target:
+                    raise AssertionError(
+                        f"ACS transfer chain returned {result.target!r}, "
+                        f"expected {model_target!r}."
+                    )
+                if result.weight_kind != pattern.weight_kind:
+                    raise RuntimeError(
+                        f"ACS transfer {entity!r}/{family!r}/{pattern.name!r} "
+                        f"resolved weight kind {result.weight_kind!r}, expected "
+                        f"{pattern.weight_kind!r}."
+                    )
+                raw_draw[context.recipient_positions] = result.raw_draw
+                _validate_prediction_values(
+                    pd.DataFrame(
+                        {model_target: result.raw_draw},
+                        index=recipient_pattern.index,
+                    ),
+                    entity=entity,
+                    family=family,
+                    pattern=pattern.name,
+                )
+                steps.append(
+                    AcsTransferBankPatternStep(
+                        pattern=pattern.name,
+                        state_before=state_before,
+                        state_after=result.state,
+                    )
+                )
+            checkpoint = AcsTransferTargetCheckpoint(
+                target_index=target_indexes[model_target],
+                total_targets=total_targets,
+                entity=entity,
+                family=family,
+                family_targets=targets,
+                model_targets=model_targets,
+                model_target=model_target,
+                exported_targets=exported_targets,
+                raw_draw=raw_draw,
+                pattern_steps=tuple(steps),
+            )
+            target_bank.write_target(checkpoint)
+
+        _validate_banked_target_checkpoint(
+            checkpoint,
+            target_index=target_indexes[model_target],
+            total_targets=total_targets,
+            entity=entity,
+            family=family,
+            family_targets=targets,
+            model_targets=model_targets,
+            model_target=model_target,
+            exported_targets=exported_targets,
+            recipient_rows=n_recipient,
+            expected_states=expected_states,
+            expected_patterns=tuple(context.pattern.name for context in contexts),
+        )
+        steps_by_pattern = {step.pattern: step for step in checkpoint.pattern_steps}
+        raw_by_model_target[model_target] = checkpoint.raw_draw
+        for context in contexts:
+            pattern_name = context.pattern.name
+            raw_priors[pattern_name][model_target] = checkpoint.raw_draw[
+                context.recipient_positions
+            ]
+            states[pattern_name] = steps_by_pattern[pattern_name].state_after
+
+    incomplete_states = [
+        name for name, state in states.items() if not state.is_complete
+    ]
+    if incomplete_states:  # pragma: no cover - one step per declared target
+        raise AssertionError(
+            f"ACS transfer bank left incomplete pattern chains: {incomplete_states}."
+        )
+    patterns = tuple(pattern_records)
+    kinds = {pattern.weight_kind for pattern in patterns}
+    if len(kinds) != 1:  # pragma: no cover - every subset resolves one donor kind
+        raise RuntimeError(
+            f"ACS transfer family {family!r} resolved mixed weight kinds: "
+            f"{sorted(kinds)}."
+        )
+    used_predictors = tuple(
+        predictor
+        for predictor in (*surface.required, *surface.optional)
+        if any(predictor in pattern.predictors for pattern in patterns)
+    )
+    return _FamilyFit(
+        predictions={
+            target: raw_by_model_target[target_encodings[target].model_target]
+            for target in targets
+        },
+        patterns=patterns,
+        fit_records=tuple(fit_records),
+        predictors=used_predictors,
+        weight_kind=next(iter(kinds)),
+        family_seed=_family_seed(seed, entity=entity, family=family),
+        target_encodings=target_encodings,
+    )
+
+
+def _validate_banked_target_checkpoint(
+    checkpoint: AcsTransferTargetCheckpoint,
+    *,
+    target_index: int,
+    total_targets: int,
+    entity: str,
+    family: str,
+    family_targets: tuple[str, ...],
+    model_targets: tuple[str, ...],
+    model_target: str,
+    exported_targets: tuple[str, ...],
+    recipient_rows: int,
+    expected_states: Mapping[str, QRFChainState],
+    expected_patterns: tuple[str, ...],
+) -> None:
+    observed_binding = (
+        checkpoint.target_index,
+        checkpoint.total_targets,
+        checkpoint.entity,
+        checkpoint.family,
+        checkpoint.family_targets,
+        checkpoint.model_targets,
+        checkpoint.model_target,
+        checkpoint.exported_targets,
+    )
+    expected_binding = (
+        target_index,
+        total_targets,
+        entity,
+        family,
+        family_targets,
+        model_targets,
+        model_target,
+        exported_targets,
+    )
+    if observed_binding != expected_binding:
+        raise ValueError(
+            f"ACS transfer bank returned the wrong target binding for "
+            f"{entity}.{model_target}."
+        )
+    if len(checkpoint.raw_draw) != recipient_rows:
+        raise ValueError(
+            f"ACS transfer bank returned {len(checkpoint.raw_draw)} rows for "
+            f"{entity}.{model_target}; expected {recipient_rows}."
+        )
+    if tuple(step.pattern for step in checkpoint.pattern_steps) != expected_patterns:
+        raise ValueError(
+            f"ACS transfer bank returned the wrong availability patterns for "
+            f"{entity}.{model_target}."
+        )
+    for step in checkpoint.pattern_steps:
+        state_before = expected_states[step.pattern]
+        if step.state_before != state_before:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} does not "
+                f"continue pattern {step.pattern!r}'s prior state."
+            )
+        if state_before.next_target != model_target:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} is not the "
+                f"next target for pattern {step.pattern!r}."
+            )
+        expected_completed = (*state_before.completed_targets, model_target)
+        if step.state_after.completed_targets != expected_completed:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} advanced "
+                f"pattern {step.pattern!r} to the wrong target prefix."
+            )
+        if (
+            step.state_after.predictors != state_before.predictors
+            or step.state_after.targets != state_before.targets
+            or step.state_after.entity != state_before.entity
+            or step.state_after.weight_kind != state_before.weight_kind
+            or step.state_after.weight_sha256 != state_before.weight_sha256
+            or step.state_after.donor_index != state_before.donor_index
+            or (
+                state_before.recipient_index is not None
+                and step.state_after.recipient_index != state_before.recipient_index
+            )
+        ):
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} changed "
+                f"pattern {step.pattern!r}'s bound chain identity."
+            )
 
 
 def _availability_patterns(
@@ -1165,7 +1840,14 @@ def _complete_component_sum(
     )
     # NumPy propagation is intentional: any missing component makes the
     # combined analog missing, so its row enters a pattern without this feature.
-    values = columns.to_numpy(dtype=np.float64).sum(axis=1)
+    values = (
+        _encoded_predictor_frame(
+            columns,
+            predictors=components,
+        )
+        .to_numpy(copy=False)
+        .sum(axis=1)
+    )
     return pd.Series(values, index=person.index, name=feature)
 
 
@@ -1318,20 +2000,30 @@ def _required_group_features(
     np.add.at(age_sum, positions, _as_float_array(person["age"]))
     np.add.at(female_count, positions, _as_float_array(person["is_female"]))
     person_state = _as_float_array(person[_STATE_FEATURE])
+    finite_state = np.isfinite(person_state)
+    finite_state_counts = np.bincount(
+        positions,
+        weights=finite_state.astype(np.int64),
+        minlength=n_groups,
+    )
     state_low = np.full(n_groups, np.inf, dtype=np.float64)
     state_high = np.full(n_groups, -np.inf, dtype=np.float64)
-    np.minimum.at(state_low, positions, person_state)
-    np.maximum.at(state_high, positions, person_state)
-    if not np.array_equal(state_low, state_high):
+    np.minimum.at(state_low, positions[finite_state], person_state[finite_state])
+    np.maximum.at(state_high, positions[finite_state], person_state[finite_state])
+    spans_states = (finite_state_counts > 0) & (state_low != state_high)
+    if spans_states.any():
         raise ValueError(
             f"ACS transfer {role} {entity!r} groups span multiple state_fips values."
         )
+    state = np.full(n_groups, np.nan, dtype=np.float64)
+    complete_state = (counts > 0) & (finite_state_counts == counts)
+    state[complete_state] = state_low[complete_state]
     result = pd.DataFrame(
         {
             _GROUP_PERSON_COUNT: counts,
             _GROUP_AGE_SUM: age_sum,
             _GROUP_FEMALE_COUNT: female_count,
-            _STATE_FEATURE: state_low,
+            _STATE_FEATURE: state,
         },
         index=frame.table(entity).index,
     )
@@ -1405,8 +2097,9 @@ def _model_frame(
     resolved = donor.resolve_weights(entity)
     weights = Weights(resolved.values[selected], resolved.kind)
     model_values = pd.DataFrame(index=np.arange(n))
+    encoded_features = _encoded_predictor_frame(features, predictors=predictors)
     for predictor in predictors:
-        model_values[predictor] = features[predictor].iloc[selected].to_numpy()
+        model_values[predictor] = encoded_features[predictor].iloc[selected].to_numpy()
     seen_model_targets: set[str] = set()
     for encoding in target_encodings.values():
         if encoding.model_target in seen_model_targets:
@@ -1604,9 +2297,12 @@ def _missing_target_families(
 ) -> list[tuple[str, str, tuple[str, ...]]]:
     active: list[tuple[str, str, tuple[str, ...]]] = []
     for entity, family, targets in families:
-        missing: list[str] = []
+        incomplete: list[str] = []
+        table = recipient.table(entity)
         for target in targets:
-            if target in recipient.table(entity).columns:
+            if target in table.columns:
+                if table[target].isna().any():
+                    incomplete.append(target)
                 continue
             owner = _column_owner_or_none(recipient, target)
             if owner is not None:
@@ -1615,9 +2311,22 @@ def _missing_target_families(
                     f"{entity!r}, but the recipient already carries it on "
                     f"entity {owner!r}."
                 )
-            missing.append(target)
-        if missing:
-            active.append((entity, family, tuple(missing)))
+            incomplete.append(target)
+
+        # A joint codec needs both columns to learn only observed donor pairs.
+        # The complete companion is fitted but its recipient values are not
+        # written because target-level null masks remain authoritative.
+        immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
+        if immigration_pair.issubset(targets) and immigration_pair.intersection(
+            incomplete
+        ):
+            incomplete = [
+                target
+                for target in targets
+                if target in immigration_pair or target in incomplete
+            ]
+        if incomplete:
+            active.append((entity, family, tuple(incomplete)))
     return active
 
 
@@ -1647,55 +2356,60 @@ def resolve_acs_donor_channel(
     donor: Frame,
     channel: str | None,
 ) -> tuple[Frame, str | None]:
-    """Resolve and select the transfer donor support channel fail-closed."""
+    """Resolve the requested transfer role without reading source-spine identity.
+
+    ``donor_channel`` is the legacy public API name. Its non-``None`` values
+    identify operator roles derived by :func:`support_role_series`; on an
+    assembled pool those roles come from clone indices while receipt-declared
+    source channels (for example ``"acs"`` and ``"asec"``) remain untouched.
+    """
 
     if channel is None:
         return donor, None
 
-    channel_columns = {
-        entity: support_channel_column(entity)
+    # Donor-role selection is person-grain: Frame.select() propagates the
+    # person mask to group tables through structural IDs. Other-entity
+    # metadata is checked only to distinguish an untagged legacy donor from
+    # malformed partial metadata with no person role. Current assembled pools
+    # receive their cross-grain provenance validation at the clone boundary.
+    metadata_entities = {
+        entity
         for entity in donor.entities
-        if support_channel_column(entity) in donor.table(entity).columns
+        if has_support_role_metadata(donor.table(entity), entity=entity)
     }
-    if channel != ACS_DONOR_CHANNEL_AUTO:
-        return _select_donor_channel(donor, channel), channel
-    if not channel_columns:
-        return donor, None
     person_entity = donor.schema.person_entity
-    person_channel = support_channel_column(person_entity)
-    if person_entity not in channel_columns:
+    if not metadata_entities:
+        if channel == ACS_DONOR_CHANNEL_AUTO:
+            return donor, None
         raise ValueError(
-            "AUTO donor-channel resolution found partial support metadata but "
-            f"the donor person table lacks {person_channel!r}."
+            f"donor_channel={channel!r} requested a support role, but the donor "
+            "carries no support-role metadata."
         )
-    available = set(donor.table(person_entity)[person_channel].dropna().astype(str))
-    if PUF_TAX_DETAIL_SUPPORT_CHANNEL not in available:
+    if person_entity not in metadata_entities:
         raise ValueError(
-            "AUTO donor-channel resolution found support metadata but no "
-            f"{PUF_TAX_DETAIL_SUPPORT_CHANNEL!r} rows; available channels: "
-            f"{sorted(available)}. Pass None only for a deliberate whole-donor fit."
+            "Donor-role resolution found partial support metadata but the "
+            f"{person_entity!r} table has no support-role metadata."
         )
-    return (
-        _select_donor_channel(donor, PUF_TAX_DETAIL_SUPPORT_CHANNEL),
-        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+
+    role = (
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL if channel == ACS_DONOR_CHANNEL_AUTO else channel
     )
+    roles = support_role_series(donor.table(person_entity), entity=person_entity)
+    return _select_donor_role(donor, roles=roles, role=role), role
 
 
-def _select_donor_channel(donor: Frame, channel: str) -> Frame:
-    person_entity = donor.schema.person_entity
-    column = support_channel_column(person_entity)
-    if column not in donor.table(person_entity).columns:
-        raise ValueError(
-            f"donor_channel={channel!r} was requested, but donor person table "
-            f"lacks {column!r}."
-        )
-    values = donor.table(person_entity)[column]
-    mask = values.astype(str) == channel
+def _select_donor_role(
+    donor: Frame,
+    *,
+    roles: pd.Series,
+    role: str,
+) -> Frame:
+    mask = roles.eq(role)
     if not mask.any():
-        available = sorted(map(str, values.dropna().unique()))
+        available = sorted(map(str, roles.dropna().unique()))
         raise ValueError(
-            f"donor channel {channel!r} has no person rows; available channels: "
-            f"{available}."
+            f"donor support role {role!r} has no person rows; available roles: "
+            f"{available}. Pass None only for a deliberate whole-donor fit."
         )
     if mask.all():
         return donor
@@ -1714,14 +2428,9 @@ def _require_columns(
 
 
 def _validate_required_numeric_frame(frame: pd.DataFrame, *, context: str) -> None:
-    _validate_numeric_kinds(frame, context=context)
-    non_finite = [
-        column
-        for column in frame.columns
-        if not np.isfinite(_as_float_array(frame[column])).all()
-    ]
-    if non_finite:
-        raise ValueError(f"{context} contains non-finite values: {non_finite}.")
+    """Validate required predictor columns without rejecting peer-row nulls."""
+
+    _validate_optional_numeric_frame(frame, context=context)
 
 
 def _validate_optional_numeric_frame(frame: pd.DataFrame, *, context: str) -> None:
@@ -1765,33 +2474,31 @@ def _validate_donor_targets(
         raise ValueError(
             f"ACS transfer donor entity {entity!r} is missing target(s): {missing}."
         )
+    metadata_by_target = {
+        target: _engine_variable_metadata(target) for target in targets
+    }
     unsupported = [
-        target for target in targets if not _is_supported_target(table[target])
+        target
+        for target in targets
+        if not _is_supported_target(table[target])
+        # Known booleans with observed object values reach the encoder, which
+        # owns the semantic-boolean check and its value-type diagnostics.
+        and not (
+            (metadata := metadata_by_target[target]) is not None
+            and metadata.dtype == "bool"
+            and pd.api.types.is_object_dtype(table[target].dtype)
+            and table[target].notna().any()
+        )
     ]
     if unsupported:
         raise TypeError(
             f"ACS transfer donor targets on entity {entity!r} must be numeric, "
             f"boolean, or categorical string/enum values: {unsupported}."
         )
-    non_finite = []
-    for target in targets:
-        values = table[target]
-        if values.isna().any():
-            non_finite.append(target)
-        elif (
-            _is_numeric_or_bool(values)
-            and not np.isfinite(_as_float_array(values)).all()
-        ):
-            non_finite.append(target)
-    if non_finite:
-        raise ValueError(
-            f"ACS transfer donor targets on entity {entity!r} contain "
-            f"non-finite values: {non_finite}."
-        )
     wrong_engine_entity = {
         target: metadata.entity
         for target in targets
-        if (metadata := _engine_variable_metadata(target)) is not None
+        if (metadata := metadata_by_target[target]) is not None
         and metadata.entity != entity
     }
     if wrong_engine_entity:
@@ -1801,10 +2508,45 @@ def _validate_donor_targets(
         )
 
 
+def _complete_target_mask(
+    table: pd.DataFrame,
+    *,
+    targets: Sequence[str],
+) -> np.ndarray:
+    """Rows observed and finite for every target in one chained fit."""
+
+    complete = np.ones(len(table), dtype=bool)
+    for target in targets:
+        values = table[target]
+        observed = values.notna().to_numpy(dtype=bool, copy=True)
+        if _is_numeric_or_bool(values):
+            observed &= np.isfinite(_as_float_array(values))
+        complete &= observed
+    return complete
+
+
+def _complete_predictor_mask(
+    table: pd.DataFrame,
+    *,
+    predictors: Sequence[str],
+) -> np.ndarray:
+    """Rows whose encoded predictor values are all finite.
+
+    ACS transfer owns stricter missing-value semantics than the underlying QRF:
+    this mask selects rows complete for required predictors and for the optional
+    predictors in each recipient availability pattern. Encoding maps missing
+    values to ``NaN``; it never maps a nullable boolean's missing cells to
+    ``False``.
+    """
+
+    encoded = _encoded_predictor_frame(table, predictors=predictors)
+    return np.isfinite(encoded.to_numpy(copy=False)).all(axis=1)
+
+
 def _is_supported_target(series: pd.Series) -> bool:
     if _is_numeric_or_bool(series):
         return True
-    if pd.api.types.is_categorical_dtype(series.dtype):
+    if isinstance(series.dtype, pd.CategoricalDtype):
         return True
     inferred = pd.api.types.infer_dtype(series, skipna=True)
     return inferred in {
@@ -1890,13 +2632,69 @@ def _target_encodings(
     return result
 
 
+def _complete_case_target_encodings(
+    table: pd.DataFrame,
+    *,
+    targets: Sequence[str],
+    complete: np.ndarray,
+) -> dict[str, _TargetEncoding]:
+    """Learn target support on complete cases, then restore donor alignment."""
+
+    complete_table = table.iloc[np.flatnonzero(complete)]
+    encodings = _target_encodings(complete_table, targets=targets)
+    result: dict[str, _TargetEncoding] = {}
+    positions = np.flatnonzero(complete)
+    for target, encoding in encodings.items():
+        aligned = pd.Series(
+            np.nan,
+            index=table.index,
+            name=encoding.model_values.name,
+        )
+        aligned.iloc[positions] = encoding.model_values.to_numpy(dtype=np.float64)
+        result[target] = replace(encoding, model_values=aligned)
+    return result
+
+
 def _target_encoding(series: pd.Series, *, target: str) -> _TargetEncoding:
     """Encode one scalar donor target for QRF without changing its support."""
 
     metadata = _engine_variable_metadata(target)
     target_dtype = metadata.dtype if metadata is not None else None
+    semantic_boolean = _is_semantic_boolean(series)
 
-    if target_dtype == "bool" or pd.api.types.is_bool_dtype(series.dtype):
+    if (
+        target_dtype == "bool"
+        and pd.api.types.is_object_dtype(series.dtype)
+        and not semantic_boolean
+    ):
+        offending_types = sorted(
+            {
+                f"{type(value).__module__}.{type(value).__qualname__}"
+                for value in series.dropna()
+                if not isinstance(value, (bool, np.bool_))
+            }
+        )
+        if not offending_types:
+            offending_types = ["<no observed values>"]
+        raise TypeError(
+            f"ACS transfer boolean target {target!r} is object-backed but "
+            "contains non-boolean donor values; offending value types: "
+            f"{offending_types}."
+        )
+
+    if target_dtype == "bool" and not (_is_numeric_or_bool(series) or semantic_boolean):
+        raise TypeError(
+            f"ACS transfer boolean target {target!r} must be boolean or use "
+            "the supported physical numeric 0/1 primary-QRF/HDF representation; got "
+            f"dtype {series.dtype!s}."
+        )
+
+    if target_dtype == "bool" or semantic_boolean:
+        # Primary PUF finalization deliberately stores its QBI boolean-count
+        # outputs in physical float columns before they become ACS-transfer
+        # donors (including through the supported legacy HDF path). Keep that
+        # numeric-dtype 0/1 compatibility explicit; object-backed 0/1 values
+        # are rejected above rather than coerced through metadata.
         values = pd.Series(
             _as_float_array(series),
             index=series.index,
@@ -1951,9 +2749,9 @@ def _policyengine_us_adapter() -> Any | None:
     try:
         adapter = import_module(
             "populace.frame.adapters.policyengine_us"
-        ).PolicyEngineUSEngine()
-        # Force the optional country package to load once so an absent extra
-        # uses the documented dtype fallback rather than failing mid-family.
+        ).PolicyEngineUSVariableMetadataIndex()
+        # Force the optional source index to load once so an absent extra uses
+        # the documented dtype fallback rather than failing mid-family.
         adapter.variables()
     except ImportError:
         return None
@@ -1971,8 +2769,10 @@ def _engine_variable_metadata(target: str) -> Any | None:
 
 
 def _is_numeric_or_bool(series: pd.Series) -> bool:
+    """Recognize physical numeric dtypes and semantic boolean columns."""
+
     return bool(
-        pd.api.types.is_bool_dtype(series.dtype)
+        _is_semantic_boolean(series)
         or (
             pd.api.types.is_numeric_dtype(series.dtype)
             and not pd.api.types.is_complex_dtype(series.dtype)
@@ -1980,8 +2780,32 @@ def _is_numeric_or_bool(series: pd.Series) -> bool:
     )
 
 
+def _is_semantic_boolean(series: pd.Series) -> bool:
+    """Recognize nullable object columns whose observed values are booleans."""
+
+    if pd.api.types.is_bool_dtype(series.dtype):
+        return True
+    return bool(
+        pd.api.types.is_object_dtype(series.dtype)
+        and pd.api.types.infer_dtype(series, skipna=True) == "boolean"
+    )
+
+
 def _as_float_array(series: pd.Series) -> np.ndarray:
     return series.to_numpy(dtype=np.float64, na_value=np.nan)
+
+
+def _encoded_predictor_frame(
+    table: pd.DataFrame,
+    *,
+    predictors: Sequence[str],
+) -> pd.DataFrame:
+    """Encode validated numeric/semantic-boolean predictors as float64."""
+
+    return pd.DataFrame(
+        {predictor: _as_float_array(table[predictor]) for predictor in predictors},
+        index=table.index,
+    )
 
 
 def _family_seed(seed: int, *, entity: str, family: str) -> int:
@@ -2086,6 +2910,38 @@ def _prediction_values(
     result = pd.array([pd.NA] * len(values), dtype="boolean")
     result[finite] = np.isclose(values[finite], 1.0)
     return result
+
+
+def _fill_recipient_nulls(
+    table: pd.DataFrame,
+    *,
+    target: str,
+    predicted: np.ndarray | pd.api.extensions.ExtensionArray,
+) -> tuple[pd.Series, np.ndarray]:
+    """Merge predictions into null cells without changing observed values."""
+
+    prediction = pd.Series(predicted, index=table.index, name=target)
+    predicted_observed = prediction.notna().to_numpy(dtype=bool)
+    if target not in table.columns:
+        return prediction, predicted_observed
+
+    result = table[target].copy()
+    imputed = result.isna().to_numpy(dtype=bool) & predicted_observed
+    if not imputed.any():
+        return result, imputed
+
+    if isinstance(result.dtype, pd.CategoricalDtype):
+        additions = [
+            value
+            for value in pd.unique(prediction.iloc[np.flatnonzero(imputed)])
+            if value not in result.cat.categories
+        ]
+        if additions:
+            result = result.cat.add_categories(additions)
+
+    positions = np.flatnonzero(imputed)
+    result.iloc[positions] = prediction.iloc[positions].to_numpy()
+    return result, imputed
 
 
 def _snap_to_support(values: np.ndarray, support: np.ndarray) -> np.ndarray:

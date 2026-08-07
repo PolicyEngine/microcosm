@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -12,6 +13,8 @@ from populace.build.us_runtime.acs_pums import (
     build_acs_pums_unit_frame,
     load_acs_pums_tables,
 )
+from populace.build.us_runtime.spine_assembly import assemble_spines
+from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
 def _write_csv_zip(
@@ -122,6 +125,52 @@ def _source(tmp_path: Path) -> AcsPumsSource:
     return AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
 
 
+def _asec_shaped_frame() -> Frame:
+    """Return one ASEC-like row sharing only structural and lineage fields."""
+
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([101], dtype=np.int64),
+            "person_household_id": np.asarray([201], dtype=np.int64),
+            "person_tax_unit_id": np.asarray([301], dtype=np.int64),
+            "person_spm_unit_id": np.asarray([401], dtype=np.int64),
+            "person_family_id": np.asarray([501], dtype=np.int64),
+            "person_marital_unit_id": np.asarray([601], dtype=np.int64),
+            "source_year": np.asarray([2024], dtype=np.int64),
+            "source_household_id": np.asarray([7], dtype=np.int64),
+            "source_person_id": pd.Series(["7-1"]).astype(str),
+            "source_row_id": np.asarray([0], dtype=np.int64),
+            "A_AGE": np.asarray([55], dtype=np.int64),
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {"household_id": np.asarray([201], dtype=np.int64)}
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([301], dtype=np.int64)}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": np.asarray([401], dtype=np.int64)}
+            ),
+            "family": pd.DataFrame({"family_id": np.asarray([501], dtype=np.int64)}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([601], dtype=np.int64)}
+            ),
+        },
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.asarray([10.0], dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+        pd.Series(["asec_2024"], dtype=object),
+    )
+
+
 def test_load_acs_pums_tables_streams_all_csv_members_and_keeps_native_blanks(
     tmp_path: Path,
 ) -> None:
@@ -164,12 +213,13 @@ def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
     assert household["puma_geoid"].tolist() == ["0612345", "3600100"]
     assert frame.weights_for("household").values.tolist() == [10.0, 20.0]
     assert "SERIALNO" not in frame.table("person")
-    assert frame.table("person")["source_row_id"].tolist() == [
-        "acs_2024_1yr:2024HU0000001:1",
-        "acs_2024_1yr:2024HU0000001:2",
-        "acs_2024_1yr:2024HU0000001:3",
-        "acs_2024_1yr:2024HU0000002:1",
-    ]
+    person = frame.table("person")
+    assert person["source_household_id"].tolist() == [1, 1, 1, 2]
+    assert person["source_person_id"].tolist() == ["1", "2", "3", "1"]
+    assert person["source_row_id"].tolist() == [0, 1, 2, 3]
+    assert person["source_household_id"].dtype == np.dtype(np.int64)
+    assert pd.api.types.is_string_dtype(person["source_person_id"].dtype)
+    assert person["source_row_id"].dtype == np.dtype(np.int64)
     assert metadata["weighted_household_population"] == pytest.approx(30.0)
 
 
@@ -178,11 +228,13 @@ def test_build_acs_pums_unit_frame_derives_only_structural_relationship_fields(
 ) -> None:
     pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     frame, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=2)
-    people = frame.table("person").set_index("source_row_id")
-    head = people.loc["acs_2024_1yr:2024HU0000001:1"]
-    spouse = people.loc["acs_2024_1yr:2024HU0000001:2"]
-    child = people.loc["acs_2024_1yr:2024HU0000001:3"]
-    lone_head = people.loc["acs_2024_1yr:2024HU0000002:1"]
+    people = frame.table("person").set_index(
+        ["source_household_id", "source_person_id"]
+    )
+    head = people.loc[(1, "1")]
+    spouse = people.loc[(1, "2")]
+    child = people.loc[(1, "3")]
+    lone_head = people.loc[(2, "1")]
 
     assert (head["A_SPOUSE"], spouse["A_SPOUSE"], child["A_SPOUSE"]) == (2, 1, 0)
     assert (child["PEPAR1"], child["PEPAR2"]) == (1, 2)
@@ -196,6 +248,43 @@ def test_build_acs_pums_unit_frame_derives_only_structural_relationship_fields(
     assert lone_head["A_MARITL"] == 6
     assert head["person_marital_unit_id"] == spouse["person_marital_unit_id"]
     assert child["person_marital_unit_id"] != head["person_marital_unit_id"]
+
+
+def test_built_acs_lineage_assembles_with_asec_without_measured_coercion(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    acs, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=1)
+    measured_wages = acs.table("person")["WAGP"].copy()
+    raw_serials = acs.table("household")["SERIALNO"].copy()
+
+    assembled = assemble_spines(
+        {"asec": _asec_shaped_frame(), "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+
+    person = assembled.table("person")
+    acs_person = person.loc[person["person_support_channel"].eq("acs")].sort_values(
+        "source_row_id"
+    )
+    pd.testing.assert_series_equal(
+        acs_person["WAGP"].reset_index(drop=True),
+        measured_wages.reset_index(drop=True),
+    )
+    assert person["source_household_id"].dtype == np.dtype(np.int64)
+    assert (
+        person["source_person_id"].dtype
+        == _asec_shaped_frame().table("person")["source_person_id"].dtype
+    )
+    assert person["source_row_id"].dtype == np.dtype(np.int64)
+
+    household = assembled.table("household")
+    acs_household = household.loc[household["household_support_channel"].eq("acs")]
+    pd.testing.assert_series_equal(
+        acs_household["SERIALNO"].reset_index(drop=True),
+        raw_serials.reset_index(drop=True),
+        check_dtype=False,
+    )
 
 
 def test_load_acs_pums_tables_rejects_duplicate_household_serialno(

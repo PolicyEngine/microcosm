@@ -38,6 +38,11 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.support_provenance import (
+    has_support_role_metadata,
+    support_role_series,
+    without_support_role_metadata,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -49,6 +54,7 @@ __all__ = [
     "PRIOR_YEAR_INCOME_ARCHIVED_FORMULA_OUTPUT_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_FINALIZER_URL",
     "US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS",
+    "US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS",
@@ -98,6 +104,10 @@ US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS: tuple[str, ...] = (
     "self_employment_income_last_year",
     "previous_year_income_available",
 )
+US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS = frozenset(
+    set(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
+    - set(US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS)
+)
 US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS = (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS
 )
@@ -111,7 +121,6 @@ US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 )
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _PERSON_SUPPORT_SOURCE_ID_COLUMN = "person_source_id"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
@@ -244,7 +253,7 @@ def derive_us_prior_year_income_from_manifest(
             "US prior-year-income derivation requires measured ASEC source "
             f"column(s): {missing}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in frame.columns:
+    if has_support_role_metadata(frame, entity="person"):
         absent = [
             column
             for column in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
@@ -373,7 +382,7 @@ def impute_us_prior_year_income_to_puf_support_from_manifest(
             f"archived method; missing={missing_parameters}, "
             f"unexpected={unexpected}."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in frame.columns:
+    if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
 
     predictors = tuple(str(value) for value in operation.parameters["predictors"])
@@ -410,9 +419,9 @@ def impute_us_prior_year_income_to_puf_support_from_manifest(
             f"{missing}."
         )
 
-    channel = frame[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-    asec_mask = channel.eq(_BASE_ASEC_SUPPORT_CHANNEL)
-    puf_mask = channel.eq(_PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+    roles = support_role_series(frame, entity="person")
+    asec_mask = roles.eq(_BASE_ASEC_SUPPORT_CHANNEL)
+    puf_mask = roles.eq(_PUF_TAX_DETAIL_SUPPORT_CHANNEL)
     if not asec_mask.any() or not puf_mask.any():
         raise SourceRuntimeError(
             "US prior-year-income PUF imputation requires nonempty ASEC and "
@@ -639,6 +648,7 @@ def _replace_person_table(frame: Frame, person: pd.DataFrame) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -653,12 +663,12 @@ def with_us_prior_year_income_inputs(
     if frame.schema != US_SCHEMA:
         raise ValueError("US prior-year income requires the US schema.")
     person = frame.table("person")
-    has_support_channels = _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns
+    has_support_roles = has_support_role_metadata(person, entity="person")
     has_raw_sources = all(
         column in person for column in US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS
     )
     if (
-        not has_support_channels
+        not has_support_roles
         and all(column in person for column in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
         and not has_raw_sources
     ):
@@ -666,7 +676,7 @@ def with_us_prior_year_income_inputs(
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    if has_support_channels:
+    if has_support_roles:
         predictors = _person_prior_year_income_predictors(frame)
         for column in _PUF_PREDICTORS:
             stage_person[_PUF_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
@@ -687,7 +697,7 @@ def with_us_prior_year_income_inputs(
         ],
         errors="ignore",
     )
-    if has_support_channels:
+    if has_support_roles:
         output = output.drop(columns=[_FORMULA_OWNED_OUTPUT])
     return _replace_person_table(frame, output)
 
@@ -708,10 +718,10 @@ def us_prior_year_income_summary(frame: Frame) -> dict[str, object]:
         return float(weights[mask].sum()) / total_weight if total_weight > 0 else 0.0
 
     channels: dict[str, dict[str, float | int]] = {}
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        support_channel = person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+    if has_support_role_metadata(person, entity="person"):
+        support_roles = support_role_series(person, entity="person").to_numpy()
         for channel in (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL):
-            mask = support_channel == channel
+            mask = support_roles == channel
             channel_weight = float(weights[mask].sum())
             channels[channel] = {
                 "rows": int(mask.sum()),
@@ -733,9 +743,23 @@ def us_prior_year_income_summary(frame: Frame) -> dict[str, object]:
 
     clone_availability_mismatches = 0
     if _PERSON_SUPPORT_SOURCE_ID_COLUMN in person:
+        clone_work = pd.DataFrame(
+            {
+                "_source_id": person[_PERSON_SUPPORT_SOURCE_ID_COLUMN].astype(str),
+                "_availability": availability,
+            }
+        )
+        group_columns = ["_source_id"]
+        if has_support_role_metadata(person, entity="person"):
+            clone_work["_role"] = support_role_series(
+                person, entity="person"
+            ).to_numpy()
+            clone_work["_source_occurrence"] = clone_work.groupby(
+                ["_source_id", "_role"], sort=False
+            ).cumcount()
+            group_columns.append("_source_occurrence")
         clone_availability_mismatches = int(
-            person.assign(_availability=availability)
-            .groupby(_PERSON_SUPPORT_SOURCE_ID_COLUMN, sort=False)["_availability"]
+            clone_work.groupby(group_columns, sort=False)["_availability"]
             .nunique()
             .gt(1)
             .sum()
@@ -884,11 +908,9 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
     """
 
     person = frame.table("person")
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        asec_mask = (
-            person[_PERSON_SUPPORT_CHANNEL_COLUMN]
-            .astype(str)
-            .eq(_BASE_ASEC_SUPPORT_CHANNEL)
+    if has_support_role_metadata(person, entity="person"):
+        asec_mask = support_role_series(person, entity="person").eq(
+            _BASE_ASEC_SUPPORT_CHANNEL
         )
         actual = person.loc[asec_mask].reset_index(drop=True).copy()
     else:
@@ -920,12 +942,12 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
             },
         )
 
-    source = actual.drop(
-        columns=[
-            *US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
-            _PERSON_SUPPORT_CHANNEL_COLUMN,
-        ],
-        errors="ignore",
+    source = without_support_role_metadata(
+        actual.drop(
+            columns=[*US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS],
+            errors="ignore",
+        ),
+        entity="person",
     )
     operation = next(
         operation

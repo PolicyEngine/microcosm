@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "acc6e4b7bcbef62120dbcf7e78f83d04e787ba1278fe8697e358295bf86e7481",
+  "fingerprint": "d8915ca7fca2b852036a956cf485791f87a57377629e7a79d03e591fb9818c58",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -29,7 +29,7 @@
   },
   "resource_hashes": {
     "country_package.json": "73c7f613e9d78e32d8f32a1e77d138071aea6d2417608ad41c13489f8cdf3ea4",
-    "gates.json": "2ca88a5cab1d5b3864dfc73523cf126d6ce2e41b81ba87d70ee630d1ca548b37",
+    "gates.json": "49635a32881aec3e914e74ed1bd3a408b427caac902c8e3d01118e99e8c9d1c8",
     "geography_spine.json": "0b39217386dbc9b053a036766004f10a3a34434a293c1e956e0f4f053a08e1bf",
     "release_contract.json": "af956e05782cd2aa5df108b216f0ff2a835f2a4e87d68419239b537550082c25",
     "source_stages.json": "64e45f48b5c3bb00a710e56f805c7c8c441ddc1050cfb61d846d45e9cbbb16b2",

@@ -132,9 +132,6 @@
   "has_indian_health_service_coverage_at_interview": {
    "status": "required"
   },
-  "has_marketplace_health_coverage": {
-   "status": "required"
-  },
   "has_marketplace_health_coverage_at_interview": {
    "status": "required"
   },
@@ -191,9 +188,7 @@
    "status": "required"
   },
   "investment_interest_expense": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe maps the sole interest field used by the retired derivation, E19200, to interest_deduction at datasets/puf/puf.py line 654 and explicitly assigns that identical amount as deductible mortgage interest at lines 1548-1550. utils/mortgage_interest.py lines 141-155 and 268-320 derives investment_interest_expense only as max(total_interest_deduction - tax_unit_deductible, 0); the retired QRF separately predicted the two source-identical aliases before conversion, so any positive residual is stochastic prediction divergence rather than observed source detail. The SHA-pinned PUF 1.8.0 artifact consumed by the hermetic build has 499,045 all-zero investment_interest_expense values and omits interest_deduction, deductible_mortgage_interest, and raw E19200; all three locked ASEC inputs omit them too. A nonzero restoration would invent an unobserved mortgage-versus-investment split.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_blind": {
    "status": "required"
@@ -540,8 +535,8 @@
  },
  "counts": {
   "required": 163,
-  "reviewed_exclusion": 8,
-  "total": 171
+  "reviewed_exclusion": 7,
+  "total": 170
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/populace#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",

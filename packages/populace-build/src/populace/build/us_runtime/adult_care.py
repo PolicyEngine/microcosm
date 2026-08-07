@@ -42,10 +42,13 @@ qualifying individual (dependent, or married head/spouse) plus the section
 ``min_head_spouse_earned`` binds — both spouses earning, or a 21(d)(2)
 floor-eligible spouse (incapable of self-care, or the measured full-time
 college student) deemed while the OTHER spouse actually earns.  Assignment
-is a seeded, weight-targeted, distribution-preserving draw over sorted unit
-ids (invariant to person-row order), with the level grid taken from the
-selected units' own cumulative weights; no level or usage number is
-invented outside the measured donor distribution.
+is a seeded, weight-targeted draw over sorted unit ids (invariant to
+person-row order) that preserves the SCREENED level distribution — donor
+values above the expense plausibility ceiling are refused as interpolation
+knots with a logged receipt, while the measured frame values stay
+untouched — with the level grid taken from the selected units' own
+cumulative weights; no level or usage number is invented outside the
+screened measured donor distribution.
 """
 
 from __future__ import annotations
@@ -66,6 +69,12 @@ from populace.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
     run_source_stage,
+)
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PERSON_SUPPORT_CHANNEL_COLUMN,
+    has_support_role_metadata,
+    support_role_series,
 )
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
@@ -96,7 +105,7 @@ US_ADULT_CARE_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "PEDISDRS",
     "spm_unit_pre_subsidy_childcare_expenses",
     "is_full_time_college_student",
-    "person_support_channel",
+    PERSON_SUPPORT_CHANNEL_COLUMN,
 )
 # 26 USC 21(b)(1)(A): a dependent under this age qualifies by age (the
 # engine's gov.irs.credits.cdcc.eligibility.child_age parameter carries the
@@ -116,15 +125,14 @@ _STUDENT_SOURCE = "is_full_time_college_student"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _TAX_UNIT_WEIGHT_COLUMN = "adult_care_tax_unit_weight"
 _SPM_UNIT_WEIGHT_COLUMN = "adult_care_spm_unit_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _ROLE_COLUMN = "tax_unit_role_input"
 _AGE_COLUMN = "age"
 _FLAG_SHARE_BAND = (0.002, 0.12)
 # Sanity ceiling for a single unit's annual employment-related care expense.
-# Far above any measured childcare donor value (certified N maximum is in the
-# tens of thousands); its only job is refusing corrupted magnitudes such as
-# overflow artifacts on healed surfaces.
+# Its job is refusing corrupted magnitudes wherever they appear: measured
+# ASEC childcare itself carries two implausible values ($730,000 and
+# $360,000) that are screened out of the donor pool below, and healed
+# surfaces can carry overflow artifacts.
 _EXPENSE_PLAUSIBILITY_CEILING = 250_000.0
 
 
@@ -194,6 +202,46 @@ def _role(person: pd.DataFrame) -> pd.Series:
     )
 
 
+def _screen_implausible_donors(
+    donor_childcare: np.ndarray,
+    donor_weight: np.ndarray,
+    level_mask: np.ndarray,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Refuse donor knots above the plausibility ceiling, with a receipt.
+
+    The ceiling's charter is refusing corrupted magnitudes, and a corrupt
+    magnitude is corrupt at the SOURCE: two measured ASEC units ($730,000
+    and $360,000 childcare) sat latent in every build's donor pool, and
+    whether a recipient's quantile position reached those top knots was
+    grid luck — Build P3's tail clones shifted the grid and 12 draws
+    entered the >$250k top-tail interpolation region (three between the
+    ceiling and $360k, nine at or above $360k; populace#567). The measured
+    values stay in the frame untouched; they are only refused as
+    imputation donors. The receipt is a deterministic recomputation-stable
+    build-log record, not a persisted artifact.
+    """
+
+    implausible = level_mask & (donor_childcare > _EXPENSE_PLAUSIBILITY_CEILING)
+    clean_mask = level_mask & ~implausible
+    level_weight = float(donor_weight[level_mask].sum())
+    retained_values = donor_childcare[clean_mask]
+    receipt = {
+        "count": int(np.count_nonzero(implausible)),
+        "values": sorted(float(value) for value in donor_childcare[implausible]),
+        "weight": float(donor_weight[implausible].sum()),
+        "excluded_weight_share": (
+            float(donor_weight[implausible].sum()) / level_weight
+            if level_weight > 0.0
+            else 0.0
+        ),
+        "retained_maximum": (
+            float(retained_values.max()) if retained_values.size else 0.0
+        ),
+        "ceiling": _EXPENSE_PLAUSIBILITY_CEILING,
+    }
+    return clean_mask, receipt
+
+
 def derive_us_adult_care_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -214,7 +262,7 @@ def derive_us_adult_care_from_manifest(
         "self_care_difficulty_source": _SELF_CARE_SOURCE,
         "childcare_expense_source": _CHILDCARE_SOURCE,
         "full_time_student_source": _STUDENT_SOURCE,
-        "support_channel_source": _PERSON_SUPPORT_CHANNEL_COLUMN,
+        "support_channel_source": PERSON_SUPPORT_CHANNEL_COLUMN,
         "child_qualifying_age_limit": US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT,
         "earned_income_sources": list(US_ADULT_CARE_EARNED_INCOME_SOURCES),
         "seed_from_build_config": True,
@@ -253,12 +301,13 @@ def derive_us_adult_care_from_manifest(
             f"US adult-care donor {_CHILDCARE_SOURCE!r} contains "
             f"{negative_childcare} negative value(s)."
         )
-    if _PERSON_SUPPORT_CHANNEL_COLUMN not in person.columns:
+    if not has_support_role_metadata(person, entity="person"):
         raise SourceRuntimeError(
-            "US adult-care derivation requires the support-channel column "
-            f"{_PERSON_SUPPORT_CHANNEL_COLUMN!r}; without provenance the "
+            "US adult-care derivation requires support-role provenance; "
+            "without it the "
             "measured-ASEC donor statistics cannot be certified."
         )
+    support_role = support_role_series(person, entity="person")
 
     role = _role(person)
     is_head = (role == "HEAD").to_numpy()
@@ -309,10 +358,7 @@ def derive_us_adult_care_from_manifest(
                 if "person_spm_unit_id" in person.columns
                 else person["person_tax_unit_id"].to_numpy()
             ),
-            "asec": (
-                person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-                == _BASE_ASEC_SUPPORT_CHANNEL
-            ).to_numpy(),
+            "asec": (support_role == BASE_ASEC_SUPPORT_CHANNEL).to_numpy(),
         }
     )
     units = unit_frame.groupby("unit", sort=False).agg(
@@ -386,6 +432,25 @@ def derive_us_adult_care_from_manifest(
     # Zero-weight donors carry no measured mass and must not become
     # interpolation knots.
     level_mask = donor_positive & (donor_weight > 0.0)
+    # Implausible donor knots are refused with a logged receipt (see
+    # _screen_implausible_donors).
+    level_mask, implausible_donor_receipt = _screen_implausible_donors(
+        donor_childcare,
+        donor_weight,
+        level_mask,
+    )
+    if implausible_donor_receipt["count"]:
+        print(
+            "US adult-care donor screen refused "
+            f"{implausible_donor_receipt['count']} implausible donor knot(s) "
+            f"above ${_EXPENSE_PLAUSIBILITY_CEILING:,.0f}: "
+            f"{implausible_donor_receipt['values']} "
+            f"(weight {implausible_donor_receipt['weight']:,.2f}, "
+            f"{implausible_donor_receipt['excluded_weight_share']:.4%} of "
+            "level weight; retained maximum "
+            f"${implausible_donor_receipt['retained_maximum']:,.0f}); the "
+            "measured frame values are untouched."
+        )
     level_values = donor_childcare[level_mask]
     level_weights = donor_weight[level_mask]
     if not level_values.size:
@@ -542,6 +607,7 @@ def with_us_adult_care_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

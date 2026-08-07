@@ -175,6 +175,7 @@ def with_household_congressional_districts(
         weights,
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

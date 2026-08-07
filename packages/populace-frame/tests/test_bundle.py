@@ -435,6 +435,32 @@ class TestWithWeights:
             bundle.with_weights("household", wrong, mass=_FREE_MASS)
 
 
+class TestMetadata:
+    def test_metadata_is_deeply_immutable_and_propagates(self, make_bundle) -> None:
+        source = make_bundle()
+        frame = Frame(
+            {entity: source.table(entity) for entity in source.entities},
+            source.schema,
+            {entity: source.weights_for(entity) for entity in source.weighted_entities},
+            source.strata,
+            metadata={
+                "assembly": {
+                    "channels": ["asec", "acs"],
+                    "counts": {"asec": 2, "acs": 1},
+                }
+            },
+        )
+
+        with pytest.raises(TypeError):
+            frame.metadata["assembly"]["counts"]["asec"] = 99
+        replacement = Weights(
+            values=frame.weights_for("household").values,
+            kind=WeightKind.IMPORTANCE,
+        )
+        updated = frame.with_weights("household", replacement, mass="conserve")
+        assert updated.metadata == frame.metadata
+
+
 class TestConcat:
     def test_column_set_mismatch_is_named(self, make_bundle) -> None:
         a = make_bundle()
@@ -511,3 +537,27 @@ class TestSelect:
         assert set(selected.strata.unique()) == {"b"}
         assert selected.weights_for("household").values.tolist() == [200.0]
         assert selected.stratum_mass()["b"] == 600.0
+
+
+def test_revalidate_catches_post_construction_corruption(make_bundle) -> None:
+    """table()/person return stored internals, so in-place mutation can break
+    what construction proved; revalidate must fail closed on the same state
+    construction would reject."""
+
+    bundle = make_bundle()
+    bundle.revalidate()  # clean state passes
+
+    bundle.person.loc[0, "person_household_id"] = 999_999
+    with pytest.raises(ValueError):
+        bundle.revalidate()
+    bundle.person.loc[0, "person_household_id"] = bundle.person.loc[
+        1, "person_household_id"
+    ]
+    bundle.revalidate()
+
+    household = bundle.table("household")
+    household.sort_values(
+        "household_id", ascending=False, inplace=True, ignore_index=True
+    )
+    with pytest.raises(ValueError):
+        bundle.revalidate()

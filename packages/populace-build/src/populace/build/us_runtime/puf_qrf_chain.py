@@ -19,15 +19,23 @@ from populace.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
+from populace.build.serialization_dtypes import (
+    canonicalize_frame_string_dtypes,
+    canonicalize_table_string_dtypes,
+)
 from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime.puf_support import (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
-    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     PufTaxDetailChainInputs,
     finalize_us_puf_tax_detail_predictions,
     prepare_us_puf_tax_detail_chain_inputs,
+)
+from populace.build.us_runtime.support_provenance import (
+    puf_tax_detail_clone_mask,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -35,17 +43,34 @@ from populace.build.us_runtime.puf_support import (
 from populace.fit import QRF, QRFChainState
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
-# v2 (populace#515): the checkpointed donor frame now carries the E19200 ->
-# mortgage-only concept carve (US_PUF_E19200_HOME_MORTGAGE_SHARE). Loading
-# validates only schema/digest/kind/role -- not donor construction identity --
-# so a v1 checkpoint initialized pre-carve would keep fitting and drawing the
-# uncarved levels under carved code. The bump rejects every pre-carve
-# checkpoint and forces re-initialization through the carved constructor.
+# v2 (populace#515): the checkpointed donor frame gained the interim national
+# E19200 -> mortgage-only concept carve. Loading validates only
+# schema/digest/kind/role -- not donor construction identity -- so a v1
+# checkpoint initialized pre-carve would keep fitting and drawing the uncarved
+# levels under carved code.
 # v3 (populace#516): donor construction now whole-row-screens grouped raw
 # mortgage-interest outliers before that carve. A v2 post-carve, pre-screen
 # checkpoint would otherwise still fit and draw the corrupt rows under screened
 # code, so it too must be rejected and rebuilt.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 3
+# v4 (populace#515 completion): donor construction replaces the national carve
+# with published per-AGI-band shares and adds investment_interest_expense as a
+# learned person input. The production target-order digest also changes, but a
+# schema bump is still required for standalone custom-order checkpoints whose
+# manifests do not fingerprint donor-construction semantics.
+# v5 (populace#567): the grouped-raw mortgage screen is field-local instead of
+# dropping whole donor rows. A v4 checkpoint would silently retain the
+# whole-row quarantine semantics and its missing capital-gains support.
+# populace#578 does not bump v5: object-backed and canonical StringDtype
+# support-channel columns are two physical encodings of the same identity-only
+# values, never QRF predictors or targets. Loads authenticate the immutable file
+# SHA, metadata, and legacy dtype-sensitive recipient identity before applying
+# the canonical in-memory string policy, so existing bank bytes remain valid.
+# The populace#578 stacked-spine doctrine controls likewise do not bump v5:
+# legacy manifests omit both fields and retain their exact bytes and behavior.
+# A non-legacy initialization writes both controls into each immutable bank,
+# the root manifest, and every target receipt so deletion or mutation cannot
+# silently downgrade a stacked chain to the legacy policy.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 5
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
@@ -55,13 +80,19 @@ PRIMARY_QRF_TARGET_ORDER = (
     *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 PRIMARY_QRF_TARGET_ORDER_SHA256 = (
-    "556d713d029840848aba548d9c991842a54ea3cdbdea650c0be57d5ec5782661"
+    "795519d161e6b8425fc3b64de7eb435d52d25e7c8250b5861f3bb21ab48266a3"
 )
 
 _ARTIFACT_KIND = "populace_primary_puf_qrf_chain"
 _RAW_TARGET_ARTIFACT_KIND = "populace_primary_puf_qrf_raw_target"
 _METADATA_DATASET = "metadata_json"
 _RAW_DRAW_BITS_DATASET = "raw_draw_bits"
+_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS = "require_complete_recipient_predictors"
+_ABSENT_CELLS = "absent_cells"
+_ABSENT_CELLS_POLICIES = (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
+)
 
 __all__ = [
     "PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION",
@@ -85,8 +116,29 @@ def initialize_primary_puf_qrf_chain(
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     seed: int = 0,
     n_estimators: int = 100,
+    require_complete_recipient_predictors: bool = False,
+    absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> dict[str, object]:
-    """Write immutable donor/recipient inputs and the initial RNG manifest."""
+    """Write immutable donor/recipient inputs and the initial RNG manifest.
+
+    The defaults preserve the historical two-spine chain exactly: recipient
+    predictor absence is zero-filled, finalization globally zero-fills absent
+    outputs, and the two doctrine fields are omitted so legacy v5 bank bytes do
+    not change.  Selecting either non-legacy control declares *both* settings
+    in every immutable bank, the root manifest, and per-target receipts.
+    """
+
+    require_complete_recipient_predictors, absent_cells = (
+        _validate_chain_doctrine_controls(
+            require_complete_recipient_predictors,
+            absent_cells,
+            source="Primary QRF initialization",
+        )
+    )
+    doctrine_receipt = _declared_chain_doctrine_receipt(
+        require_complete_recipient_predictors,
+        absent_cells,
+    )
 
     root = Path(checkpoint_dir)
     manifest_path = root / PRIMARY_QRF_MANIFEST_FILENAME
@@ -95,12 +147,16 @@ def initialize_primary_puf_qrf_chain(
     root.mkdir(parents=True, exist_ok=True)
     (root / PRIMARY_QRF_TARGETS_DIRNAME).mkdir(exist_ok=True)
 
+    preparation_kwargs: dict[str, object] = {}
+    if require_complete_recipient_predictors:
+        preparation_kwargs[_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS] = True
     inputs = prepare_us_puf_tax_detail_chain_inputs(
         frame,
         donor_tax_units,
         predictors=predictors,
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
+        **preparation_kwargs,
     )
     target_order = inputs.target_order
     if (
@@ -110,17 +166,28 @@ def initialize_primary_puf_qrf_chain(
     ):
         raise AssertionError("The production primary QRF target order changed.")
 
+    donor_frame = canonicalize_frame_string_dtypes(
+        inputs.donor_frame,
+        boundary="primary PUF QRF donor bank write",
+        in_place=True,
+    )
     donor_path = root / PRIMARY_QRF_DONOR_FILENAME
     write_frame_checkpoint(
         donor_path,
-        inputs.donor_frame,
+        donor_frame,
         metadata={
             "artifact_kind": _ARTIFACT_KIND,
             "role": "donor",
             "target_order": list(target_order),
+            **doctrine_receipt,
         },
     )
     recipient_frame, identity_columns = _recipient_checkpoint_frame(frame, inputs)
+    recipient_frame = canonicalize_frame_string_dtypes(
+        recipient_frame,
+        boundary="primary PUF QRF recipient bank write",
+        in_place=True,
+    )
     recipient_path = root / PRIMARY_QRF_RECIPIENT_FILENAME
     write_frame_checkpoint(
         recipient_path,
@@ -131,12 +198,13 @@ def initialize_primary_puf_qrf_chain(
             "predictors": list(inputs.predictors),
             "role": "recipient",
             "target_order": list(target_order),
+            **doctrine_receipt,
         },
     )
 
     model = QRF(n_estimators=n_estimators, seed=seed)
     state = model.start_chain(
-        inputs.donor_frame,
+        donor_frame,
         list(inputs.predictors),
         list(target_order),
         weights="design",
@@ -163,6 +231,7 @@ def initialize_primary_puf_qrf_chain(
         "target_order": list(target_order),
         "target_order_sha256": _ordered_strings_sha256(target_order),
         "tax_unit_outputs": list(inputs.tax_unit_outputs),
+        **doctrine_receipt,
     }
     _atomic_write_json(manifest_path, manifest)
     return manifest
@@ -265,10 +334,6 @@ def run_primary_puf_qrf_target(
             role="recipient",
         )
         recipient_table = recipient.table("tax_unit")
-        identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
-        actual_identity = _recipient_identity_sha256(recipient_table, identity_columns)
-        if actual_identity != manifest.get("recipient_identity_sha256"):
-            raise ValueError("Primary QRF recipient identity or row order changed.")
 
         raw_prior = pd.DataFrame(index=recipient_table.index)
         state_payload = manifest.get("initial_state")
@@ -353,7 +418,7 @@ def finalize_primary_puf_qrf_chain(
 
     root = Path(checkpoint_dir).resolve()
     manifest = _load_manifest(root)
-    _assert_live_recipient_identity(frame, manifest)
+    _assert_live_recipient_identity(frame, root, manifest)
     donor_frame = _load_bound_frame(
         root,
         manifest,
@@ -371,6 +436,7 @@ def finalize_primary_puf_qrf_chain(
         person_outputs=_manifest_strings(manifest, "person_outputs"),
         tax_unit_outputs=_manifest_strings(manifest, "tax_unit_outputs"),
         tail_bound_diagnostics=tail_bound_diagnostics,
+        **_finalization_doctrine_kwargs(manifest),
     )
     initial_state = manifest.get("initial_state")
     if not isinstance(initial_state, dict):
@@ -449,11 +515,52 @@ def _load_bound_frame(
             f"{expected_digest}, got {actual_digest}."
         )
     loaded = load_frame_checkpoint(path)
-    if loaded.metadata.get("artifact_kind") != _ARTIFACT_KIND:
-        raise ValueError(f"Primary QRF {role} checkpoint has the wrong artifact kind.")
-    if loaded.metadata.get("role") != role:
-        raise ValueError(f"Primary QRF checkpoint role is not {role!r}.")
-    return loaded.frame
+    expected_metadata: dict[str, object] = {
+        "artifact_kind": _ARTIFACT_KIND,
+        "role": role,
+        "target_order": list(_manifest_strings(manifest, "target_order")),
+    }
+    if role == "recipient":
+        expected_metadata.update(
+            {
+                "identity_columns": list(
+                    _manifest_strings(manifest, "recipient_identity_columns")
+                ),
+                "predictors": list(_manifest_strings(manifest, "predictors")),
+            }
+        )
+    for key, expected in expected_metadata.items():
+        if loaded.metadata.get(key) != expected:
+            raise ValueError(
+                f"Primary QRF {role} checkpoint has invalid {key}: expected "
+                f"{expected!r}, got {loaded.metadata.get(key)!r}."
+            )
+    _assert_bound_doctrine_controls(
+        manifest,
+        loaded.metadata,
+        role=f"{role} checkpoint",
+    )
+    if role == "recipient":
+        identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
+        recipient_table = loaded.frame.table("tax_unit")
+        expected_rows = _manifest_integer(manifest, "recipient_rows")
+        expected_identity = manifest.get("recipient_identity_sha256")
+        if (
+            len(recipient_table) != expected_rows
+            or not isinstance(expected_identity, str)
+            or _recipient_identity_sha256(recipient_table, identity_columns)
+            != expected_identity
+        ):
+            raise ValueError("Primary QRF recipient identity or row order changed.")
+    # Preserve the authenticated bytes and dtype-sensitive legacy manifest
+    # binding above. Canonicalization is deliberately post-load and in-memory:
+    # v5 object-backed banks remain valid while every active worker sees the
+    # same physical string dtype as a newly initialized bank.
+    return canonicalize_frame_string_dtypes(
+        loaded.frame,
+        boundary=f"primary PUF QRF {role} bank load",
+        in_place=True,
+    )
 
 
 def _write_target_checkpoint(
@@ -469,6 +576,7 @@ def _write_target_checkpoint(
     weight_kind: str,
 ) -> None:
     draw = np.ascontiguousarray(raw_draw, dtype="<f8")
+    doctrine_receipt = _manifest_doctrine_receipt(manifest)
     metadata = {
         "artifact_kind": _RAW_TARGET_ARTIFACT_KIND,
         "manifest_sha256": _mapping_sha256(manifest),
@@ -481,6 +589,7 @@ def _write_target_checkpoint(
         "target": target,
         "target_index": target_index,
         "weight_kind": weight_kind,
+        **doctrine_receipt,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
@@ -499,7 +608,10 @@ def _write_target_checkpoint(
                 track_times=False,
             )
             h5.flush()
+        with temporary.open("rb") as stream:
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
+        _fsync_parent_directory(path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -539,6 +651,11 @@ def _load_target_checkpoint(
                 f"Primary QRF target checkpoint {path} has invalid {key}: "
                 f"expected {value!r}, got {metadata.get(key)!r}."
             )
+    _assert_bound_doctrine_controls(
+        manifest,
+        metadata,
+        role=f"target checkpoint {path}",
+    )
     if len(bits) != _manifest_integer(manifest, "recipient_rows"):
         raise ValueError(f"Primary QRF target checkpoint {path} has wrong row count.")
     actual_draw_digest = hashlib.sha256(bits.tobytes()).hexdigest()
@@ -619,34 +736,48 @@ def _load_manifest(root: Path) -> dict[str, object]:
         raise ValueError("Primary QRF production_target_order must be boolean.")
     if production_target_order and target_order != PRIMARY_QRF_TARGET_ORDER:
         raise ValueError("Primary QRF production target order changed.")
+    _resolve_chain_doctrine_controls(manifest, source="Primary QRF manifest")
     return manifest
 
 
 def _assert_live_recipient_identity(
     frame: Frame,
+    root: Path,
     manifest: Mapping[str, object],
 ) -> None:
     identity_columns = _manifest_strings(manifest, "recipient_identity_columns")
     tax_unit = frame.table("tax_unit")
-    channel = support_channel_column("tax_unit")
-    if channel not in tax_unit:
-        raise ValueError("Live finalization frame lacks PUF support-channel identity.")
+    clone_index = support_clone_index_column("tax_unit")
+    if clone_index not in tax_unit:
+        raise ValueError("Live finalization frame lacks PUF clone identity.")
     missing_identity = [column for column in identity_columns if column not in tax_unit]
     if missing_identity:
         raise ValueError(
             f"Live finalization frame lacks identity columns: {missing_identity}."
         )
     live = tax_unit.loc[
-        tax_unit[channel].to_numpy() == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        puf_tax_detail_clone_mask(tax_unit, entity="tax_unit"),
         list(identity_columns),
     ]
     expected_rows = _manifest_integer(manifest, "recipient_rows")
-    expected_digest = manifest.get("recipient_identity_sha256")
-    if len(live) != expected_rows or not isinstance(expected_digest, str):
+    if len(live) != expected_rows:
         raise ValueError(
             "Live finalization frame has a different PUF recipient surface."
         )
-    if _recipient_identity_sha256(live, identity_columns) != expected_digest:
+    # The manifest authenticates the raw stored dtype in _load_bound_frame.
+    # Compare the live surface to that authenticated bank under the canonical
+    # logical string policy so pre-policy object-backed banks and new canonical
+    # banks share one finalization identity without a schema/version bump.
+    bank = _load_bound_frame(
+        root,
+        manifest,
+        filename_key="recipient_filename",
+        digest_key="recipient_checkpoint_sha256",
+        role="recipient",
+    ).table("tax_unit")
+    if _canonical_recipient_identity_sha256(
+        live, identity_columns
+    ) != _canonical_recipient_identity_sha256(bank, identity_columns):
         raise ValueError(
             "Live finalization frame changed PUF recipient identity or row order."
         )
@@ -664,6 +795,117 @@ def _manifest_integer(manifest: Mapping[str, object], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"Primary QRF manifest {key!r} must be an integer.")
     return value
+
+
+def _validate_chain_doctrine_controls(
+    require_complete_recipient_predictors: object,
+    absent_cells: object,
+    *,
+    source: str,
+) -> tuple[bool, str]:
+    if not isinstance(require_complete_recipient_predictors, bool):
+        raise ValueError(
+            f"{source} {_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS!r} must be boolean."
+        )
+    if not isinstance(absent_cells, str) or absent_cells not in _ABSENT_CELLS_POLICIES:
+        raise ValueError(
+            f"{source} {_ABSENT_CELLS!r} must be one of "
+            f"{list(_ABSENT_CELLS_POLICIES)}; got {absent_cells!r}."
+        )
+    return require_complete_recipient_predictors, absent_cells
+
+
+def _declared_chain_doctrine_receipt(
+    require_complete_recipient_predictors: bool,
+    absent_cells: str,
+) -> dict[str, object]:
+    if (
+        not require_complete_recipient_predictors
+        and absent_cells == PUF_ABSENT_CELLS_LEGACY_ZERO_FILL
+    ):
+        return {}
+    return {
+        _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS: (require_complete_recipient_predictors),
+        _ABSENT_CELLS: absent_cells,
+    }
+
+
+def _resolve_chain_doctrine_controls(
+    payload: Mapping[str, object],
+    *,
+    source: str,
+) -> tuple[bool, str, bool]:
+    has_require_complete = _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS in payload
+    has_absent_cells = _ABSENT_CELLS in payload
+    if has_require_complete != has_absent_cells:
+        raise ValueError(
+            f"{source} doctrine controls must declare both "
+            f"{_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS!r} and "
+            f"{_ABSENT_CELLS!r}, or neither for a legacy v5 bank."
+        )
+    if not has_require_complete:
+        return False, PUF_ABSENT_CELLS_LEGACY_ZERO_FILL, False
+    require_complete, absent_cells = _validate_chain_doctrine_controls(
+        payload[_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS],
+        payload[_ABSENT_CELLS],
+        source=source,
+    )
+    return require_complete, absent_cells, True
+
+
+def _manifest_doctrine_receipt(
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    require_complete, absent_cells, declared = _resolve_chain_doctrine_controls(
+        manifest,
+        source="Primary QRF manifest",
+    )
+    if not declared:
+        return {}
+    return {
+        _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS: require_complete,
+        _ABSENT_CELLS: absent_cells,
+    }
+
+
+def _assert_bound_doctrine_controls(
+    manifest: Mapping[str, object],
+    receipt: Mapping[str, object],
+    *,
+    role: str,
+) -> None:
+    manifest_require_complete, manifest_absent_cells, manifest_declared = (
+        _resolve_chain_doctrine_controls(
+            manifest,
+            source="Primary QRF manifest",
+        )
+    )
+    receipt_require_complete, receipt_absent_cells, receipt_declared = (
+        _resolve_chain_doctrine_controls(
+            receipt,
+            source=f"Primary QRF {role}",
+        )
+    )
+    if (
+        receipt_declared != manifest_declared
+        or receipt_require_complete != manifest_require_complete
+        or receipt_absent_cells != manifest_absent_cells
+    ):
+        raise ValueError(
+            f"Primary QRF {role} doctrine controls disagree with the manifest."
+        )
+
+
+def _finalization_doctrine_kwargs(
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    _require_complete, absent_cells, declared = _resolve_chain_doctrine_controls(
+        manifest,
+        source="Primary QRF manifest",
+    )
+    if not declared:
+        return {}
+    return {_ABSENT_CELLS: absent_cells}
 
 
 def _recipient_identity_sha256(
@@ -685,6 +927,20 @@ def _recipient_identity_sha256(
         pd.util.hash_pandas_object(identity, index=True).to_numpy(dtype="<u8").tobytes()
     )
     return digest.hexdigest()
+
+
+def _canonical_recipient_identity_sha256(
+    table: pd.DataFrame,
+    identity_columns: Sequence[str],
+) -> str:
+    """Fingerprint recipient identity under the serialization string policy."""
+
+    identity = canonicalize_table_string_dtypes(
+        table.loc[:, list(identity_columns)],
+        boundary="primary PUF QRF logical recipient identity",
+        table_name="tax_unit",
+    )
+    return _recipient_identity_sha256(identity, identity_columns)
 
 
 def _ordered_strings_sha256(values: Sequence[str]) -> str:
@@ -731,7 +987,21 @@ def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary_path, path)
+        _fsync_parent_directory(path)
         temporary_path = None
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _fsync_parent_directory(path: Path) -> None:
+    """Persist a completed atomic rename in its containing directory."""
+
+    # O_DIRECTORY is not universal. A read-only directory descriptor is the
+    # supported POSIX fallback; failures to open or fsync still propagate.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

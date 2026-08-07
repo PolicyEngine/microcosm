@@ -9,6 +9,8 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -17,10 +19,31 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.puf_e01000_reconciliation import (
+    PUF_SCHEDULE_D_JOINT_COLUMNS,
+    puf_capital_gains_joint_metrics,
+    puf_processed_capital_gains_stage,
+)
+from populace.build.us_runtime.puf_interest_components import (
+    split_us_puf_e19200_by_agi_band,
+)
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_CLONE_INDEX,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    puf_tax_detail_clone_mask,
+    spine_source_id_column,
+    support_channel_column,
+    support_clone_index_column,
+    support_role_series,
+    support_source_id_column,
+    validate_assembly_provenance,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from populace.frame.schema import EntitySchema
@@ -30,59 +53,90 @@ QRF: Any | None = None
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PufTaxDetailChainInputs",
+    "PUF_ABSENT_CELLS_LEGACY_ZERO_FILL",
+    "PUF_ABSENT_CELLS_PRESERVE_NULLS",
+    "PUF_CLONE_ATTACHMENT_MANIFEST_KEY",
+    "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
+    "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
-    "US_PUF_E19200_HOME_MORTGAGE_SHARE",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
+    "bind_puf_clone_attachment_tail_descendant",
     "clone_us_frame_for_puf_support",
     "finalize_us_puf_tax_detail_predictions",
+    "has_support_role_metadata",
     "impute_us_puf_tax_detail_support",
+    "puf_tax_detail_clone_mask",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
+    "spine_source_id_column",
     "support_channel_column",
     "support_clone_index_column",
+    "support_role_series",
     "support_source_id_column",
+    "validate_puf_clone_attachment",
 ]
 
-BASE_ASEC_SUPPORT_CHANNEL = "asec"
-PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
+
+#: Frozen receipt binding a seeded clone attachment (populace#578 revision
+#: item 3) to the live rows: fraction, seed, the floor-rule counts, and the
+#: digest of the attached households' assembly-unique source IDs.
+PUF_CLONE_ATTACHMENT_MANIFEST_KEY = "us_puf_clone_attachment_manifest"
+_PUF_CLONE_ATTACHMENT_MANIFEST_VERSION = 1
+_PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION = 2
+_SUPPORTED_PUF_CLONE_ATTACHMENT_MANIFEST_VERSIONS = {
+    _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION,
+    _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION,
+}
+
+#: Finalization policies for cells the PUF pass does not own (populace#578
+#: revision, audit item 1).  The legacy policy reproduces the historical
+#: two-arm behavior byte for byte: every requested output column is coerced
+#: with a global ``fillna(0.0)``, so cells that were never imputed read as
+#: observed zeros.  The preserve-nulls policy is the stacked-spine doctrine:
+#: absence stays null until an authorized stage fills it — finalization only
+#: writes the PUF clone arm's cells, creates missing columns as null, and
+#: never converts absence into an observed ``0.0``.
+PUF_ABSENT_CELLS_LEGACY_ZERO_FILL = "legacy_zero_fill"
+PUF_ABSENT_CELLS_PRESERVE_NULLS = "preserve_nulls"
+_PUF_ABSENT_CELLS_POLICIES = (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    PUF_ABSENT_CELLS_PRESERVE_NULLS,
+)
 
 #: The name the PUF tax-detail support fit records in the build weights audit
 #: (populace #300). Stable so a release manifest and its allowlist can refer to
 #: this fit by name.
 US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
+PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN = "puf_source_adjusted_gross_income"
 
-# Interim populace#515 carve: SOI Pub 1304 TY2015 Table 2.1 reports
-# $283,004,465 thousand of home-mortgage interest within $304,461,163 thousand
-# of total interest paid. Apply that concept share per donor record before the
-# QRF learns levels and realized support. The #486 ``support_value_repairs``
-# surface is instead a release-time total pin, so it cannot express this
-# donor-column concept correction (#492). A uniform carve cannot identify the
-# records carrying the removed points, qualified mortgage-insurance premiums,
-# or investment interest, so ``investment_interest_expense`` remains all-zero.
-US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163
-
-# populace#516 donor outlier screen: $10M of annual home-mortgage interest
-# implies roughly a $250M mortgage at 4%, not a genuine Schedule A return; the
-# pinned artifact's maximum REAL-scale unit values are only low single-digit
-# millions. Its grouped-raw >=$10M intersection contains 3,066 tax units (max
-# $235.97B; weight 3,684 of 161M) and $2.947T of phantom mortgage-interest mass,
-# versus $418B retained; 1,823 have synthetic IDs >= 1,000,000 and 1,243 have
-# ordinary IDs.
-# The cohort uniquely sets 20 upper and 3 lower realized-range endpoints across
-# the 64 donor targets, so every column of each row must be removed. This is an
-# outlier screen, NOT aggregate-lineage removal: an ID-range union would delete
-# 2,162 healthy synthetic donors to remove only about $0.7B more.
+# populace#516 donor mortgage quarantine: $10M of annual home-mortgage
+# interest implies roughly a $250M mortgage at 4%, not a genuine Schedule A
+# return; the pinned artifact's maximum REAL-scale unit values are only low
+# single-digit millions. Its grouped-raw >=$10M intersection contains 3,066
+# tax units (max $235.97B; weight 3,684 of 161M) and $2.947T of phantom
+# mortgage-interest mass, versus $418B retained; 1,823 have synthetic IDs
+# >= 1,000,000 and 1,243 have ordinary IDs.
+#
+# populace#567 measured that whole-row removal also deleted $98.176B of
+# positive capital gains that are unrelated to E19200. The quarantine is
+# therefore field-local: only the raw E19200 lineage and its conserving
+# non-mortgage residual are zeroed. Mortgage balances and origination years
+# are independently sourced and remain intact, as do every non-mortgage field.
+# This is an outlier screen, NOT aggregate-lineage removal: an ID-range union
+# would also delete 2,162 healthy synthetic donors.
 US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0
 
 # Reserved internal column used to thread the grouped RAW mortgage value to
 # the outlier screen; never a legal requested output (populace#516).
 _MORTGAGE_OUTLIER_SCREEN_COLUMN = "_raw_home_mortgage_interest_for_outlier_screen"
+_E19200_AGI_BAND_COLUMN = "_adjusted_gross_income_for_e19200_band"
 
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -91,6 +145,13 @@ _DEFAULT_SUPPORT_CHANNELS = (
 
 _US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
     "home_mortgage_interest",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "interest_deduction",
+)
+US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS = (
+    "home_mortgage_interest",
+    "investment_interest_expense",
     "first_home_mortgage_interest",
     "second_home_mortgage_interest",
     "interest_deduction",
@@ -151,6 +212,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "charitable_non_cash_donations",
     "real_estate_taxes",
     "home_mortgage_interest",
+    "investment_interest_expense",
     "investment_income_elected_form_4952",
     "student_loan_interest",
     "educator_expense",
@@ -260,8 +322,8 @@ _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS = frozenset(
 
 # Known formula-owned outputs the PUF tax-detail donor must never carry as
 # persistable leaves. This is a documented *seed* set, not the whole story:
-# :func:`resolve_formula_owned_outputs` unions it with the set derived live
-# from PolicyEngine-US variable metadata, so a new formula-owned aggregate
+# :func:`resolve_formula_owned_outputs` unions it with the set derived from the
+# installed PolicyEngine-US source metadata, so a new formula-owned aggregate
 # added upstream is rejected even before anyone adds it here (populace issue
 # #301). Every name here has a stated reason; a build-time consistency check
 # (:func:`assert_formula_owned_blocklist_current`) fails if the engine stops
@@ -305,6 +367,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_interest_expense",
         "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
@@ -429,9 +492,10 @@ _FILING_STATUS_CODES = {
 _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "health_insurance_premiums_without_medicare_part_b": 0.453,
     "other_medical_expenses": 0.325,
-    "medicare_part_b_premiums": 0.137,
     "over_the_counter_health_expenses": 0.085,
 }
+# The omitted 13.7% E17500 share represented reported Medicare Part B premiums.
+# Do not redistribute it: the engine computes its distinct singular Part B output.
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 
@@ -439,47 +503,114 @@ def clone_us_frame_for_puf_support(
     frame: Frame,
     *,
     channels: Sequence[str] = _DEFAULT_SUPPORT_CHANNELS,
+    clone_attachment_fraction: float | None = None,
+    clone_attachment_seed: int | None = None,
 ) -> Frame:
     """Clone a US frame into support channels for PUF detail imputation.
 
     Args:
-        frame: A US-schema frame after unit assignment and CPS-carried
-            derivations.
-        channels: Ordered support-channel names. The first channel keeps the
-            original IDs; later channels receive remapped IDs. Weights are
-            split evenly across channels.
+        frame: A US-schema frame. A frame without support metadata follows the
+            legacy ASEC expansion. A frame whose entity tables all carry
+            native (clone-index zero) support provenance keeps its source
+            channels unchanged while receiving one PUF-detail clone.
+        channels: The canonical ``("asec", "puf_tax_detail")`` operator-role
+            pair. Custom roles are rejected at this boundary because downstream
+            operators accept only these two roles.
+        clone_attachment_fraction: Optional seeded-attachment fraction in
+            ``(0, 1]`` (populace#578 revision item 3).  When set — assembled
+            frames only — the PUF clone arm attaches to a seeded whole-
+            household sample of the spine: ``floor(fraction * households)``
+            households keep their clone pair at half weight each, every other
+            household keeps a single full-weight native lineage, and partial
+            attachments carry a manifest binding fraction, seed, and the
+            realized selection digest to the live rows.  ``None`` and exact
+            ``1.0`` both return the ordinary full two-arm clone unchanged.
+        clone_attachment_seed: Non-negative selection seed; required exactly
+            when a fraction is given so the attachment identity is always
+            explicit.
 
     Returns:
-        A new frame with every entity table cloned once per support channel,
-        channel/source metadata added with entity-prefixed column names, all
+        A new frame with every entity table cloned once per support role, all
         structural IDs remapped consistently, and typed weights mass-conserved.
+        Preassembled source-channel provenance is preserved.
 
     Raises:
         ValueError: If the frame is not US-schema, channel names are invalid,
-            metadata columns already exist, or an ID remapping would collide.
+            metadata is partial or already operated, an ID remapping would
+            collide, or the attachment configuration is invalid.
     """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("PUF support expansion currently requires the US schema.")
     support_channels = _validate_channels(channels)
-    _reject_metadata_collisions(frame, support_channels)
+    has_assembly_provenance = _has_native_assembly_provenance(frame)
+    if (clone_attachment_fraction is None) != (clone_attachment_seed is None):
+        raise ValueError(
+            "clone_attachment_fraction and clone_attachment_seed must be "
+            "provided together; a seeded attachment identity is never implicit."
+        )
+    if clone_attachment_fraction is not None:
+        if not has_assembly_provenance:
+            raise ValueError(
+                "Seeded clone attachment requires an assembled frame with "
+                "native support provenance."
+            )
+        if (
+            isinstance(clone_attachment_fraction, bool)
+            or not isinstance(clone_attachment_fraction, (int, float))
+            or not np.isfinite(clone_attachment_fraction)
+            or not 0.0 < float(clone_attachment_fraction) <= 1.0
+        ):
+            raise ValueError(
+                "clone_attachment_fraction must be a finite number in (0, 1]; "
+                f"got {clone_attachment_fraction!r}."
+            )
+        if (
+            isinstance(clone_attachment_seed, bool)
+            or not isinstance(clone_attachment_seed, int)
+            or clone_attachment_seed < 0
+        ):
+            raise ValueError(
+                "clone_attachment_seed must be a non-negative integer; got "
+                f"{clone_attachment_seed!r}."
+            )
+    if has_assembly_provenance:
+        validate_assembly_provenance(
+            frame,
+            boundary="PUF support clone entry",
+        )
+        if support_channels != _DEFAULT_SUPPORT_CHANNELS:
+            raise ValueError(
+                "Preassembled spine frames use the canonical native/PUF clone "
+                "roles; custom support channels are not accepted."
+            )
+    else:
+        _reject_metadata_collisions(frame, support_channels)
     id_multiplier = _id_multiplier_for_frame(frame)
 
     tables: dict[str, pd.DataFrame] = {}
     for entity in frame.entities:
-        tables[entity] = _clone_entity_table(
-            frame.table(entity),
-            entity=entity,
-            schema=frame.schema,
-            channels=support_channels,
-            id_multiplier=id_multiplier,
-        )
+        if has_assembly_provenance:
+            tables[entity] = _clone_preassembled_entity_table(
+                frame.table(entity),
+                entity=entity,
+                schema=frame.schema,
+                id_multiplier=id_multiplier,
+            )
+        else:
+            tables[entity] = _clone_entity_table(
+                frame.table(entity),
+                entity=entity,
+                schema=frame.schema,
+                channels=support_channels,
+                id_multiplier=id_multiplier,
+            )
     for link_name in frame.links:
         tables[link_name] = _clone_link_table(
             frame.link(link_name),
             link_name=link_name,
             schema=frame.schema,
-            channels=support_channels,
+            clone_count=len(support_channels),
             id_multiplier=id_multiplier,
         )
 
@@ -497,20 +628,583 @@ def clone_us_frame_for_puf_support(
         [frame.strata.copy() for _channel in support_channels],
         ignore_index=True,
     )
-    return Frame(
+    result = Frame(
         tables,
         frame.schema,
         weights,
         strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
+    if has_assembly_provenance:
+        validate_assembly_provenance(
+            result,
+            boundary="PUF support clone output",
+        )
+    if clone_attachment_fraction is not None:
+        assert clone_attachment_seed is not None  # validated at entry
+        if float(clone_attachment_fraction) == 1.0:
+            validate_puf_clone_attachment(
+                result,
+                boundary="PUF support full-clone identity output",
+                expected_fraction=float(clone_attachment_fraction),
+                expected_seed=clone_attachment_seed,
+            )
+            return result
+        result = _attach_clone_arm_to_seeded_sample(
+            result,
+            fraction=clone_attachment_fraction,
+            seed=clone_attachment_seed,
+        )
+        validate_assembly_provenance(
+            result,
+            boundary="PUF support clone attachment output",
+        )
+        validate_puf_clone_attachment(
+            result,
+            boundary="PUF support clone attachment output",
+            expected_fraction=float(clone_attachment_fraction),
+            expected_seed=clone_attachment_seed,
+        )
+    return result
+
+
+def _attach_clone_arm_to_seeded_sample(
+    cloned: Frame,
+    *,
+    fraction: float,
+    seed: int,
+) -> Frame:
+    """Keep the PUF clone pair on a seeded household sample only.
+
+    Operates on the full two-arm clone so the selected pairs are byte-
+    identical to the full expansion: the detail lineages of unselected
+    households are dropped whole (via :meth:`Frame.select`) and those
+    households' native weights are restored to their pre-clone values.
+    Mass is conserved: selected households carry half weight on each arm,
+    unselected households carry full weight on their native lineage.
+    """
+
+    household = cloned.table("household")
+    household_clone = household[support_clone_index_column("household")]
+    household_source = household[support_source_id_column("household")]
+    native_source_ids = np.sort(
+        household_source.loc[household_clone.eq(0)].to_numpy(dtype=np.int64)
+    )
+    eligible = int(len(native_source_ids))
+    requested = int(np.floor(fraction * eligible))
+    if requested < 1:
+        raise ValueError(
+            f"clone_attachment_fraction {fraction!r} floors to zero households "
+            f"(floor(fraction * eligible) with eligible={eligible}); the PUF "
+            "pass requires at least one attached household."
+        )
+    rng = np.random.default_rng(seed)
+    selected = np.sort(rng.choice(native_source_ids, size=requested, replace=False))
+    selected_set = frozenset(int(value) for value in selected)
+
+    person = cloned.table("person")
+    person_clone = person[support_clone_index_column("person")]
+    person_household_source = _person_household_source_ids(cloned)
+    keep_person = person_clone.eq(0).to_numpy() | np.isin(
+        person_household_source, selected
+    )
+    trimmed = cloned.select(keep_person)
+
+    trimmed_household = trimmed.table("household")
+    trimmed_clone = trimmed_household[support_clone_index_column("household")]
+    trimmed_source = trimmed_household[support_source_id_column("household")]
+    restored = np.array(
+        trimmed.weights_for("household").values,
+        dtype=np.float64,
+        copy=True,
+    )
+    unattached_native = (
+        trimmed_clone.eq(0) & ~trimmed_source.isin(list(selected_set))
+    ).to_numpy()
+    restored[unattached_native] *= 2.0
+    weights = {
+        entity: trimmed.weights_for(entity) for entity in trimmed.weighted_entities
+    }
+    weights["household"] = Weights(restored, trimmed.weights_for("household").kind)
+
+    manifest = {
+        PUF_CLONE_ATTACHMENT_MANIFEST_KEY: {
+            "version": _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION,
+            "clone_attachment_fraction": float(fraction),
+            "clone_attachment_seed": int(seed),
+            "eligible_household_count": eligible,
+            "requested_household_count": requested,
+            "realized_household_count": requested,
+            "exact_count_rule": "floor(fraction * eligible)",
+            "selected_household_source_ids_sha256": _source_ids_sha256(selected),
+        }
+    }
+    trimmed_metadata = {**trimmed.metadata, **manifest}
+    trimmed_mass_log = trimmed.mass_log
+    return Frame(
+        {entity: trimmed.table(entity) for entity in trimmed.entities},
+        trimmed.schema,
+        weights,
+        trimmed.strata,
+        mass_log=trimmed_mass_log,
+        metadata=trimmed_metadata,
+    )
+
+
+def _person_household_source_ids(frame: Frame) -> np.ndarray:
+    """Map each person row to its household's assembly-unique source ID."""
+
+    household = frame.table("household")
+    lookup = pd.Series(
+        household[support_source_id_column("household")].to_numpy(),
+        index=household["household_id"].to_numpy(),
+    )
+    mapped = frame.table("person")["person_household_id"].map(lookup)
+    if mapped.isna().any():
+        raise ValueError(
+            "Clone attachment cannot resolve household source IDs for "
+            f"{int(mapped.isna().sum())} person row(s)."
+        )
+    return mapped.to_numpy(dtype=np.int64)
+
+
+def bind_puf_clone_attachment_tail_descendant(
+    frame: Frame,
+    *,
+    attachment_receipt: Mapping[str, Any],
+    tail_manifest: Mapping[str, Any],
+) -> Frame:
+    """Bind a clone-2 tail split into the live attachment identity.
+
+    The initial attachment contract proves equal native/clone-1 weights.  A
+    capital-gains-tail split intentionally moves part of clone-1's weight to
+    clone 2, so retaining the version-1 receipt would make the live frame fail
+    its own identity validator.  Version 2 binds the tail manifest and the
+    exact clone-2 lineage inventory; its live invariant is native weight equal
+    to the sum of clone-1 and clone-2 weights for every attached household.
+    """
+
+    if not isinstance(attachment_receipt, Mapping):
+        raise TypeError("Clone attachment receipt must be a mapping.")
+    if not isinstance(tail_manifest, Mapping):
+        raise TypeError("PUF tail manifest must be a mapping.")
+    records = tail_manifest.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("PUF tail descendant binding requires nonempty records.")
+    try:
+        record_source_ids = np.sort(
+            np.asarray(
+                [int(record["recipient_household_source_id"]) for record in records],
+                dtype=np.int64,
+            )
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            "PUF tail descendant records have malformed household lineage."
+        ) from error
+    if len(np.unique(record_source_ids)) != len(record_source_ids):
+        raise ValueError("PUF tail descendant household lineages must be unique.")
+
+    household = frame.table("household")
+    clone_index = pd.to_numeric(
+        household[support_clone_index_column("household")], errors="raise"
+    ).astype("int64")
+    live_source_ids = np.sort(
+        household.loc[
+            clone_index.eq(2),
+            support_source_id_column("household"),
+        ].to_numpy(dtype=np.int64)
+    )
+    if not np.array_equal(live_source_ids, record_source_ids):
+        raise ValueError(
+            "PUF tail descendant manifest lineages differ from live clone-2 households."
+        )
+
+    required_attachment_fields = {
+        "clone_attachment_fraction",
+        "clone_attachment_seed",
+        "eligible_household_count",
+        "requested_household_count",
+        "realized_household_count",
+        "selected_household_source_ids_sha256",
+    }
+    missing = sorted(required_attachment_fields - set(attachment_receipt))
+    if missing:
+        raise ValueError(
+            f"PUF tail descendant attachment receipt is missing {missing}."
+        )
+    tail_manifest_sha256 = tail_manifest.get("manifest_sha256")
+    stage = tail_manifest.get("stage")
+    if not isinstance(tail_manifest_sha256, str) or not isinstance(stage, str):
+        raise ValueError("PUF tail descendant manifest identity is malformed.")
+
+    descendant_manifest = {
+        **dict(attachment_receipt),
+        "version": _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION,
+        "exact_count_rule": "floor(fraction * eligible)",
+        "post_attachment_transform": {
+            "stage": stage,
+            "tail_clone_index": 2,
+            "tail_manifest_sha256": tail_manifest_sha256,
+            "tail_household_count": int(len(record_source_ids)),
+            "tail_household_source_ids_sha256": _source_ids_sha256(record_source_ids),
+        },
+    }
+    descendant = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={
+            **frame.metadata,
+            PUF_CLONE_ATTACHMENT_MANIFEST_KEY: descendant_manifest,
+        },
+    )
+    validate_puf_clone_attachment(
+        descendant,
+        boundary="PUF clone attachment tail descendant",
+        expected_fraction=float(descendant_manifest["clone_attachment_fraction"]),
+        expected_seed=int(descendant_manifest["clone_attachment_seed"]),
+    )
+    return descendant
+
+
+def validate_puf_clone_attachment(
+    frame: Frame,
+    *,
+    boundary: str,
+    expected_fraction: float | None = None,
+    expected_seed: int | None = None,
+) -> Mapping[str, Any]:
+    """Validate the clone-attachment manifest against live clone lineages.
+
+    The realized clone-pair count, the selection digest over live detail-arm
+    household source IDs, the floor rule, and per-pair weight symmetry must
+    all match the manifest; any mutation of the sample, the counts, or the
+    manifest fails closed with a named error.  An explicitly expected full
+    attachment uses the metadata-symmetric ordinary clone instead: exact
+    native/detail household lineage and pair-weight identity are validated
+    and returned as an out-of-frame authority receipt.
+    """
+
+    if (expected_fraction is None) != (expected_seed is None):
+        raise ValueError(
+            f"{boundary}: expected clone attachment fraction and seed must be "
+            "provided together."
+        )
+    if expected_fraction is not None:
+        if (
+            isinstance(expected_fraction, bool)
+            or not isinstance(expected_fraction, (int, float))
+            or not np.isfinite(expected_fraction)
+            or not 0.0 < float(expected_fraction) <= 1.0
+        ):
+            raise ValueError(
+                f"{boundary}: expected clone attachment fraction must be a "
+                f"finite number in (0, 1], got {expected_fraction!r}."
+            )
+        if (
+            isinstance(expected_seed, bool)
+            or not isinstance(expected_seed, int)
+            or expected_seed < 0
+        ):
+            raise ValueError(
+                f"{boundary}: expected clone attachment seed must be a "
+                f"non-negative integer, got {expected_seed!r}."
+            )
+
+    manifest = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
+    if (
+        expected_fraction is not None
+        and float(expected_fraction) == 1.0
+        and manifest is None
+    ):
+        return _validate_full_clone_identity(
+            frame,
+            boundary=boundary,
+            expected_seed=expected_seed,
+        )
+    if manifest is None:
+        raise ValueError(
+            f"{boundary}: clone attachment manifest "
+            f"{PUF_CLONE_ATTACHMENT_MANIFEST_KEY!r} is absent."
+        )
+    if (
+        expected_fraction is not None
+        and float(expected_fraction) == 1.0
+        and (
+            not isinstance(manifest, Mapping)
+            or manifest.get("version")
+            != _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION
+        )
+    ):
+        raise ValueError(
+            f"{boundary}: full-clone metadata symmetry failed: attachment "
+            "manifest must be absent before the tail split."
+        )
+    if not isinstance(manifest, Mapping) or manifest.get("version") not in (
+        _SUPPORTED_PUF_CLONE_ATTACHMENT_MANIFEST_VERSIONS
+    ):
+        raise ValueError(f"{boundary}: clone attachment manifest is malformed.")
+    version = int(manifest["version"])
+    if expected_fraction is not None and float(expected_fraction) == 1.0:
+        if version != _PUF_CLONE_ATTACHMENT_TAIL_DESCENDANT_MANIFEST_VERSION:
+            raise ValueError(
+                f"{boundary}: full-clone metadata symmetry failed: attachment "
+                "manifest must be absent before the tail split."
+            )
+    fraction = manifest.get("clone_attachment_fraction")
+    if not isinstance(fraction, float) or isinstance(fraction, bool):
+        raise ValueError(
+            f"{boundary}: clone attachment fraction must be a float, got {fraction!r}."
+        )
+    seed = manifest.get("clone_attachment_seed")
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError(
+            f"{boundary}: clone attachment seed must be a non-negative "
+            f"integer, got {seed!r}."
+        )
+    if expected_fraction is not None and fraction != float(expected_fraction):
+        raise ValueError(
+            f"{boundary}: clone attachment fraction {fraction!r} differs from "
+            f"the expected fraction {float(expected_fraction)!r}."
+        )
+    if expected_seed is not None and seed != expected_seed:
+        raise ValueError(
+            f"{boundary}: clone attachment seed {seed!r} differs from the "
+            f"expected seed {expected_seed!r}."
+        )
+
+    household = frame.table("household")
+    clone_index = household[support_clone_index_column("household")]
+    source_ids = household[support_source_id_column("household")]
+    native = clone_index.eq(0)
+    detail = clone_index.eq(PUF_TAX_DETAIL_CLONE_INDEX)
+    eligible = int(native.sum())
+    if int(manifest.get("eligible_household_count", -1)) != eligible:
+        raise ValueError(
+            f"{boundary}: live eligible household count {eligible} differs "
+            "from the clone attachment manifest "
+            f"{manifest.get('eligible_household_count')!r}."
+        )
+    requested = int(manifest.get("requested_household_count", -1))
+    if requested != int(np.floor(float(fraction) * eligible)):
+        raise ValueError(
+            f"{boundary}: clone attachment requested count {requested} "
+            "violates floor(fraction * eligible) for "
+            f"fraction={fraction!r}, eligible={eligible}."
+        )
+    realized = int(manifest.get("realized_household_count", -1))
+    live_detail_ids = np.sort(source_ids.loc[detail].to_numpy(dtype=np.int64))
+    if realized != requested or int(detail.sum()) != realized:
+        raise ValueError(
+            f"{boundary}: live attached clone-pair count {int(detail.sum())} "
+            f"differs from the manifest's realized attachment count "
+            f"{realized} (requested {requested})."
+        )
+    live_sha = _source_ids_sha256(live_detail_ids)
+    if live_sha != manifest.get("selected_household_source_ids_sha256"):
+        raise ValueError(
+            f"{boundary}: live attached-household selection digest {live_sha} "
+            "differs from the clone attachment manifest digest "
+            f"{manifest.get('selected_household_source_ids_sha256')!r}."
+        )
+    native_ids = set(source_ids.loc[native].to_numpy(dtype=np.int64).tolist())
+    orphaned = [int(value) for value in live_detail_ids if int(value) not in native_ids]
+    if orphaned:
+        raise ValueError(
+            f"{boundary}: {len(orphaned)} attached clone lineage(s) have no "
+            f"native partner (first: {orphaned[:5]})."
+        )
+
+    weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
+    pair_frame = pd.DataFrame(
+        {
+            "source_id": source_ids.to_numpy(dtype=np.int64),
+            "clone_index": clone_index.to_numpy(),
+            "weight": weights,
+        }
+    )
+    attached = pair_frame[pair_frame["source_id"].isin(live_detail_ids)]
+    duplicated_roles = attached.duplicated(["source_id", "clone_index"], keep=False)
+    if duplicated_roles.any():
+        raise ValueError(
+            f"{boundary}: attached clone lineages contain duplicate household roles."
+        )
+    by_pair = attached.pivot_table(
+        index="source_id",
+        columns="clone_index",
+        values="weight",
+        aggfunc="sum",
+    )
+    if version == _PUF_CLONE_ATTACHMENT_MANIFEST_VERSION:
+        unexpected_roles = sorted(
+            set(pd.to_numeric(clone_index, errors="raise").astype("int64"))
+            - {0, PUF_TAX_DETAIL_CLONE_INDEX}
+        )
+        if unexpected_roles:
+            raise ValueError(
+                f"{boundary}: version-1 attachment has unauthorized clone "
+                f"roles {unexpected_roles}."
+            )
+        if not np.allclose(
+            by_pair[0].to_numpy(dtype=np.float64),
+            by_pair[PUF_TAX_DETAIL_CLONE_INDEX].to_numpy(dtype=np.float64),
+            rtol=1e-12,
+            atol=0.0,
+        ):
+            raise ValueError(
+                f"{boundary}: attached clone pairs must split household mass "
+                "evenly between the native and detail arms."
+            )
+        return manifest
+
+    transform = manifest.get("post_attachment_transform")
+    if not isinstance(transform, Mapping):
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment transform is malformed."
+        )
+    expected_transform_fields = {
+        "stage",
+        "tail_clone_index",
+        "tail_manifest_sha256",
+        "tail_household_count",
+        "tail_household_source_ids_sha256",
+    }
+    if set(transform) != expected_transform_fields:
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment transform fields are malformed."
+        )
+    if transform["tail_clone_index"] != 2:
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment must use clone index 2."
+        )
+    stage = transform["stage"]
+    tail_sha = transform["tail_manifest_sha256"]
+    if not isinstance(stage, str) or not stage.strip():
+        raise ValueError(f"{boundary}: tail-descendant stage is malformed.")
+    if (
+        not isinstance(tail_sha, str)
+        or len(tail_sha) != 64
+        or any(character not in "0123456789abcdef" for character in tail_sha)
+    ):
+        raise ValueError(f"{boundary}: tail-descendant manifest SHA-256 is malformed.")
+    all_roles = set(pd.to_numeric(clone_index, errors="raise").astype("int64"))
+    unexpected_roles = sorted(all_roles - {0, PUF_TAX_DETAIL_CLONE_INDEX, 2})
+    if unexpected_roles:
+        raise ValueError(
+            f"{boundary}: tail-descendant attachment has unauthorized clone "
+            f"roles {unexpected_roles}."
+        )
+    tail = clone_index.eq(2)
+    live_tail_ids = np.sort(source_ids.loc[tail].to_numpy(dtype=np.int64))
+    if int(transform["tail_household_count"]) != len(live_tail_ids):
+        raise ValueError(
+            f"{boundary}: live tail household count {len(live_tail_ids)} differs "
+            "from the tail-descendant attachment transform."
+        )
+    live_tail_sha = _source_ids_sha256(live_tail_ids)
+    if live_tail_sha != transform["tail_household_source_ids_sha256"]:
+        raise ValueError(
+            f"{boundary}: live tail household lineage digest differs from the "
+            "tail-descendant attachment transform."
+        )
+    orphaned_tail = sorted(set(live_tail_ids) - set(live_detail_ids))
+    if orphaned_tail:
+        raise ValueError(
+            f"{boundary}: tail clone lineages have no attached detail parent: "
+            f"{orphaned_tail[:5]}."
+        )
+    by_pair = by_pair.reindex(
+        index=live_detail_ids,
+        columns=[0, PUF_TAX_DETAIL_CLONE_INDEX, 2],
+        fill_value=0.0,
+    ).fillna(0.0)
+    if not np.allclose(
+        by_pair[0].to_numpy(dtype=np.float64),
+        by_pair[PUF_TAX_DETAIL_CLONE_INDEX].to_numpy(dtype=np.float64)
+        + by_pair[2].to_numpy(dtype=np.float64),
+        rtol=1e-12,
+        atol=0.0,
+    ):
+        raise ValueError(
+            f"{boundary}: tail-descendant clone lineages must conserve each "
+            "native household's weight across clone 1 and clone 2."
+        )
+    return manifest
+
+
+def _validate_full_clone_identity(
+    frame: Frame,
+    *,
+    boundary: str,
+    expected_seed: int,
+) -> Mapping[str, Any]:
+    """Receipt exact full-clone coverage without mutating frame metadata."""
+
+    household = frame.table("household")
+    clone_index = household[support_clone_index_column("household")]
+    source_ids = household[support_source_id_column("household")]
+    native = clone_index.eq(0)
+    detail = clone_index.eq(PUF_TAX_DETAIL_CLONE_INDEX)
+    weights = frame.weights_for("household").values
+
+    native_ids = source_ids.loc[native].to_numpy(dtype=np.int64)
+    detail_ids = source_ids.loc[detail].to_numpy(dtype=np.int64)
+    native_order = np.argsort(native_ids, kind="stable")
+    detail_order = np.argsort(detail_ids, kind="stable")
+    ordered_native_ids = native_ids[native_order]
+    ordered_detail_ids = detail_ids[detail_order]
+    native_weights = np.ascontiguousarray(weights[native.to_numpy()][native_order])
+    detail_weights = np.ascontiguousarray(weights[detail.to_numpy()][detail_order])
+
+    lineages_exact = (
+        bool((native | detail).all())
+        and len(ordered_native_ids) == len(ordered_detail_ids)
+        and len(np.unique(ordered_native_ids)) == len(ordered_native_ids)
+        and len(np.unique(ordered_detail_ids)) == len(ordered_detail_ids)
+        and np.array_equal(ordered_native_ids, ordered_detail_ids)
+    )
+    weights_exact = (
+        native_weights.dtype == detail_weights.dtype
+        and native_weights.shape == detail_weights.shape
+        and native_weights.tobytes(order="C") == detail_weights.tobytes(order="C")
+    )
+    if not lineages_exact or not weights_exact:
+        raise ValueError(
+            f"{boundary}: full-clone identity failed: native/detail household "
+            "lineages or pair weights are not exact."
+        )
+
+    return {
+        "authority_form": "full_clone_identity_no_manifest",
+        "clone_attachment_fraction": 1.0,
+        "clone_attachment_seed": expected_seed,
+        "eligible_household_count": len(ordered_native_ids),
+        "requested_household_count": len(ordered_native_ids),
+        "realized_household_count": len(ordered_detail_ids),
+        "exact_count_rule": "full native/detail identity",
+        "selected_household_source_ids_sha256": _source_ids_sha256(ordered_detail_ids),
+    }
+
+
+def _source_ids_sha256(ids: np.ndarray) -> str:
+    payload = json.dumps(
+        [int(value) for value in np.asarray(ids).tolist()],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def puf_tax_unit_donor_from_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
+    adjusted_gross_income: Sequence[Any] | None = None,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    donor_build_summary: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Build a tax-unit donor table from processed PUF array columns.
 
@@ -521,9 +1215,15 @@ def puf_tax_unit_donor_from_arrays(
 
     Args:
         arrays: Mapping from column name to array-like values.
+        adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
+            published TY2015 SOI Table 2.1 component share for each record.
+            Required whenever the processed PUF carries nonzero E19200.
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
+        donor_build_summary: Optional mutable sink for donor-construction
+            provenance. When supplied, receives the field-local mortgage
+            quarantine cohort and per-field removed masses.
 
     Returns:
         A tax-unit donor DataFrame with numeric predictors, requested outputs,
@@ -545,11 +1245,67 @@ def puf_tax_unit_donor_from_arrays(
             "filing_status_code": _filing_status_codes(arrays["filing_status"]),
         }
     )
+    if adjusted_gross_income is not None:
+        # Strict conversion (PR #561 review findings, rounds 1-2):
+        # _numeric_array coerces nonnumeric/NaN to 0.0, and errors="raise"
+        # alone is parse-strict but not real-number-strict — datetime and
+        # timedelta arrays (including NaT) convert to finite epoch/sentinel
+        # integers, complex drops its imaginary part, and booleans pass.
+        # Any of those would route records to the wrong AGI band with the
+        # finiteness check below none the wiser, so non-real dtypes are
+        # rejected up front. NaN/inf survive strict conversion and fail the
+        # explicit check.
+        agi_series = pd.Series(adjusted_gross_income)
+        if agi_series.dtype.kind not in "iufO":
+            raise TypeError(
+                "adjusted_gross_income must be real-valued; got dtype "
+                f"{agi_series.dtype}."
+            )
+        if agi_series.dtype.kind == "O":
+            # Element screen (PR #561 review, round 3): object and
+            # categorical arrays reach the strict parse below with kind
+            # "O", where object-wrapped booleans become 1.0/0.0 and
+            # object-wrapped complex keeps its real part with only a
+            # warning. Allow only element types whose float conversion is
+            # faithful: real numbers, Decimal, strings (strict-parsed),
+            # and missing values (which fail the finiteness check).
+            inferred = pd.api.types.infer_dtype(agi_series, skipna=True)
+            if inferred not in {
+                "integer",
+                "floating",
+                "mixed-integer-float",
+                "decimal",
+                "string",
+                "empty",
+            }:
+                raise TypeError(
+                    f"adjusted_gross_income must be real-valued; got {inferred} values."
+                )
+        agi = pd.to_numeric(agi_series, errors="raise").to_numpy(dtype=np.float64)
+        if len(agi) != len(tax_unit_id):
+            raise ValueError(
+                "adjusted_gross_income must align one-for-one with tax_unit_id."
+            )
+        if not np.isfinite(agi).all():
+            raise ValueError("adjusted_gross_income must contain only finite values.")
+        tax_unit[_E19200_AGI_BAND_COLUMN] = agi
+        # Preserve the source-year value solely as donor provenance for the
+        # post-QRF capital-gains tail transfer. QRF preparation selects an
+        # explicit predictor/output surface, so this never becomes a modeled
+        # carrier or a shipped PolicyEngine input.
+        tax_unit[PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN] = agi
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
-    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in (*person_outputs, *tax_unit_outputs):
+    reserved_outputs = {
+        _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+        _E19200_AGI_BAND_COLUMN,
+    }
+    requested_reserved = reserved_outputs.intersection(
+        (*person_outputs, *tax_unit_outputs)
+    )
+    if requested_reserved:
         raise ValueError(
-            f"{_MORTGAGE_OUTLIER_SCREEN_COLUMN!r} is reserved for the donor "
-            "mortgage outlier screen and cannot be a requested output."
+            f"{sorted(requested_reserved)!r} are reserved for donor E19200 "
+            "processing and cannot be requested outputs."
         )
     raw_home_mortgage_interest = _person_source_values(
         arrays,
@@ -598,42 +1354,181 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    mortgage_quarantine_mask = np.zeros(len(tax_unit), dtype=bool)
     if _MORTGAGE_OUTLIER_SCREEN_COLUMN in tax_unit:
-        # The screen thresholds the grouped RAW person value: screening the
-        # CARVED value at the same literal would miss 49 corrupt rows in the
-        # $10M-to-$10.75M raw band (the semantic contract, pinned by the
-        # 10.5M-raw regression). Because the raw value rides its own reserved
-        # helper column -- outside the carve lineage tuple -- the returned
-        # frame is identical whether the screen runs before or after the
-        # carve; it runs first so the carve never touches rows the screen
-        # discards.
-        retained = (
-            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN]
-            < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+        # Threshold the grouped RAW person value: thresholding the carved
+        # mortgage value at the same literal would miss corrupt rows in the
+        # $10M-to-$10.75M raw band. Keep the mask while the E19200 split
+        # materializes both conserving components, then quarantine only those
+        # implicated fields so unrelated donor values remain available.
+        mortgage_quarantine_mask = (
+            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
+                dtype=np.float64,
+                copy=False,
+            )
+            >= US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
         )
-        tax_unit = (
-            tax_unit.loc[retained]
-            .drop(columns=[_MORTGAGE_OUTLIER_SCREEN_COLUMN])
-            .reset_index(drop=True)
+    # Keep the split BEFORE _add_predictor_aliases: no mortgage predictor alias
+    # exists today, but if one is ever added it must derive from the decomposed
+    # column (aliases skip already-present columns, so a post-alias split would
+    # leave a stale total-interest predictor copy).
+    _split_us_puf_e19200_components(tax_unit)
+    if donor_build_summary is not None and set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(
+        tax_unit.columns
+    ):
+        donor_build_summary["capital_gains_before_mortgage_screen"] = (
+            puf_processed_capital_gains_stage(tax_unit)
         )
-    # Keep the carve BEFORE _add_predictor_aliases: no mortgage predictor
-    # alias exists today, but if one is ever added it must derive from the
-    # carved column (aliases skip already-present columns, so a post-alias
-    # carve would leave a stale uncarved predictor copy).
-    _carve_us_puf_e19200_home_mortgage_share(tax_unit)
+    _quarantine_us_puf_mortgage_fields(
+        tax_unit,
+        mortgage_quarantine_mask,
+        donor_build_summary=donor_build_summary,
+    )
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
 
 
-def _carve_us_puf_e19200_home_mortgage_share(donor: pd.DataFrame) -> None:
-    """Carve E19200-lineage donor columns to the mortgage-only concept."""
+def _quarantine_us_puf_mortgage_fields(
+    donor: pd.DataFrame,
+    quarantine_mask: np.ndarray,
+    *,
+    donor_build_summary: dict[str, object] | None,
+) -> None:
+    """Zero only E19200-derived fields and record removed donor mass."""
 
+    mask = np.asarray(quarantine_mask, dtype=bool)
+    if mask.ndim != 1 or len(mask) != len(donor):
+        raise ValueError(
+            "PUF mortgage quarantine mask must align one-for-one with donor rows."
+        )
+    weights = donor["weight"].to_numpy(dtype=np.float64, copy=False)
+    has_capital_gains = set(PUF_SCHEDULE_D_JOINT_COLUMNS).issubset(donor.columns)
+    capital_gains_before = (
+        puf_capital_gains_joint_metrics(donor, mask=mask) if has_capital_gains else None
+    )
+    fields: dict[str, dict[str, float | int]] = {}
+    for column in US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS:
+        if column not in donor:
+            continue
+        values = donor[column].to_numpy(dtype=np.float64, copy=False)
+        screened_values = values[mask]
+        screened_weights = weights[mask]
+        nonzero = screened_values != 0.0
+        positive = screened_values > 0.0
+        negative = screened_values < 0.0
+        fields[column] = {
+            "screened_record_count": int(mask.sum()),
+            "screened_nonzero_record_count": int(nonzero.sum()),
+            "screened_weight": float(screened_weights.sum()),
+            "screened_unweighted_signed_mass": float(screened_values.sum()),
+            "screened_weighted_signed_mass": float(
+                np.dot(screened_values, screened_weights)
+            ),
+            "screened_weighted_absolute_mass": float(
+                np.dot(np.abs(screened_values), screened_weights)
+            ),
+            "screened_weighted_positive_mass": float(
+                np.dot(screened_values[positive], screened_weights[positive])
+            ),
+            "screened_weighted_negative_mass": float(
+                np.dot(screened_values[negative], screened_weights[negative])
+            ),
+        }
+        donor.loc[mask, column] = 0.0
+
+    if donor_build_summary is not None:
+        quarantine: dict[str, object] = {
+            "method": "field_local_zero",
+            "source_field": "grouped_raw_home_mortgage_interest",
+            "comparison": "greater_than_or_equal",
+            "ceiling": US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
+            "screened_record_count": int(mask.sum()),
+            "screened_weight": float(weights[mask].sum()),
+            "fields": fields,
+        }
+        if capital_gains_before is not None:
+            capital_gains_after = puf_capital_gains_joint_metrics(donor, mask=mask)
+            capital_gains_difference = {
+                key: capital_gains_after[key] - value
+                for key, value in capital_gains_before.items()
+            }
+            if any(value != 0 for value in capital_gains_difference.values()):
+                raise AssertionError(
+                    "Field-local PUF mortgage quarantine changed capital gains."
+                )
+            quarantine["capital_gains_preserved"] = {
+                "columns": list(PUF_SCHEDULE_D_JOINT_COLUMNS),
+                "before": capital_gains_before,
+                "after": capital_gains_after,
+                "difference": capital_gains_difference,
+            }
+        donor_build_summary["mortgage_field_quarantine"] = quarantine
+
+
+def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
+    """Split raw E19200 into mortgage and modeled non-mortgage components."""
+
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor:
+        donor.drop(columns=[_E19200_AGI_BAND_COLUMN], errors="ignore", inplace=True)
+        return
+    raw_total = donor[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
+        dtype=np.float64,
+        copy=False,
+    )
+    has_nonzero_e19200 = bool((raw_total != 0).any())
+    if has_nonzero_e19200 and _E19200_AGI_BAND_COLUMN not in donor:
+        raise ValueError(
+            "adjusted_gross_income is required to split nonzero PUF E19200 "
+            "records by the published SOI AGI bands."
+        )
+    if "investment_interest_expense" in donor:
+        existing = donor["investment_interest_expense"].to_numpy(
+            dtype=np.float64,
+            copy=False,
+        )
+        if (existing != 0).any():
+            raise ValueError(
+                "Processed PUF already carries nonzero investment_interest_expense; "
+                "refusing to overwrite independently sourced values with the "
+                "E19200 residual."
+            )
+    if not has_nonzero_e19200:
+        if "investment_interest_expense" in donor:
+            donor["investment_interest_expense"] = np.zeros_like(raw_total)
+        donor.drop(
+            columns=[
+                _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+                _E19200_AGI_BAND_COLUMN,
+            ],
+            errors="ignore",
+            inplace=True,
+        )
+        return
+
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
+        raw_total,
+        donor[_E19200_AGI_BAND_COLUMN].to_numpy(dtype=np.float64, copy=False),
+    )
+    band_share = np.divide(
+        mortgage,
+        raw_total,
+        out=np.ones_like(mortgage),
+        where=raw_total != 0,
+    )
     for column in _US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
         if column in donor:
             donor[column] = (
-                donor[column].to_numpy(dtype=np.float64, copy=False)
-                * US_PUF_E19200_HOME_MORTGAGE_SHARE
+                donor[column].to_numpy(dtype=np.float64, copy=False) * band_share
             )
+    if "investment_interest_expense" in donor:
+        donor["investment_interest_expense"] = non_mortgage
+    donor.drop(
+        columns=[
+            _MORTGAGE_OUTLIER_SCREEN_COLUMN,
+            _E19200_AGI_BAND_COLUMN,
+        ],
+        inplace=True,
+    )
 
 
 def impute_us_puf_tax_detail_support(
@@ -648,6 +1543,8 @@ def impute_us_puf_tax_detail_support(
     fit_records: list[FitWeightRecord] | None = None,
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    require_complete_recipient_predictors: bool = False,
+    absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -676,16 +1573,22 @@ def impute_us_puf_tax_detail_support(
         tail_bound_diagnostics: Optional output sink for the per-target tail-bound
             records produced during finalization. Build callers publish these
             records with the QRF-finalization telemetry.
+        require_complete_recipient_predictors: Stacked-spine doctrine switch
+            (populace#578): build recipient features null-preserving and fail
+            closed by name when any recipient row is missing a predictor
+            value, instead of the legacy silent zero-fill.
+        absent_cells: Finalization policy for cells outside the PUF clone arm
+            (see :func:`finalize_us_puf_tax_detail_predictions`).
     """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("PUF tax-detail support imputation requires the US schema.")
-    tax_unit_channel = support_channel_column("tax_unit")
-    person_channel = support_channel_column("person")
-    if tax_unit_channel not in frame.table("tax_unit").columns:
-        raise ValueError("PUF support metadata is missing from the tax_unit table.")
-    if person_channel not in frame.table("person").columns:
-        raise ValueError("PUF support metadata is missing from the person table.")
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    if tax_unit_clone_index not in frame.table("tax_unit").columns:
+        raise ValueError("PUF clone metadata is missing from the tax_unit table.")
+    if person_clone_index not in frame.table("person").columns:
+        raise ValueError("PUF clone metadata is missing from the person table.")
 
     engine = _formula_owned_engine()
     assert_formula_owned_blocklist_current(engine)
@@ -694,6 +1597,14 @@ def impute_us_puf_tax_detail_support(
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF detail clone has no tax-unit rows.")
+    if require_complete_recipient_predictors:
+        _require_complete_recipient_predictor_sources(frame, puf_mask, predictors)
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
     missing_donor = [
@@ -728,13 +1639,13 @@ def impute_us_puf_tax_detail_support(
         # fit did not silently resolve unweighted (populace #300).
         fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind))
 
-    features = _tax_unit_feature_frame(frame, predictors)
-    puf_mask = (
-        frame.table("tax_unit")[tax_unit_channel].to_numpy()
-        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    features = _tax_unit_feature_frame(
+        frame,
+        predictors,
+        preserve_nulls=require_complete_recipient_predictors,
     )
-    if not puf_mask.any():
-        raise ValueError("PUF support channel has no tax-unit rows.")
+    if require_complete_recipient_predictors:
+        _require_complete_recipient_predictors(features, puf_mask, predictors)
     predictions = fitted.predict(
         features.loc[puf_mask, list(predictors)], release_models=True
     )
@@ -747,6 +1658,7 @@ def impute_us_puf_tax_detail_support(
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
         tail_bound_diagnostics=tail_bound_diagnostics,
+        absent_cells=absent_cells,
     )
 
 
@@ -757,17 +1669,25 @@ def prepare_us_puf_tax_detail_chain_inputs(
     predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    require_complete_recipient_predictors: bool = False,
 ) -> PufTaxDetailChainInputs:
-    """Prepare lossless donor and recipient inputs for targetwise QRF workers."""
+    """Prepare lossless donor and recipient inputs for targetwise QRF workers.
+
+    ``require_complete_recipient_predictors`` is the stacked-spine doctrine
+    switch (populace#578): recipient features are built null-preserving and a
+    missing predictor value on any recipient row is a named terminal failure
+    instead of a silent zero-fill.  The legacy default keeps the historical
+    zero-filled feature surface byte for byte.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("PUF tax-detail support imputation requires the US schema.")
-    tax_unit_channel = support_channel_column("tax_unit")
-    person_channel = support_channel_column("person")
-    if tax_unit_channel not in frame.table("tax_unit").columns:
-        raise ValueError("PUF support metadata is missing from the tax_unit table.")
-    if person_channel not in frame.table("person").columns:
-        raise ValueError("PUF support metadata is missing from the person table.")
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    if tax_unit_clone_index not in frame.table("tax_unit").columns:
+        raise ValueError("PUF clone metadata is missing from the tax_unit table.")
+    if person_clone_index not in frame.table("person").columns:
+        raise ValueError("PUF clone metadata is missing from the person table.")
 
     engine = _formula_owned_engine()
     assert_formula_owned_blocklist_current(engine)
@@ -776,6 +1696,14 @@ def prepare_us_puf_tax_detail_chain_inputs(
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF detail clone has no tax-unit rows.")
+    if require_complete_recipient_predictors:
+        _require_complete_recipient_predictor_sources(frame, puf_mask, predictors)
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
     missing_donor = [
@@ -792,13 +1720,13 @@ def prepare_us_puf_tax_detail_chain_inputs(
     for column in donor.columns:
         donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
     donor_frame = _tax_unit_model_frame(donor)
-    features = _tax_unit_feature_frame(frame, predictors)
-    puf_mask = (
-        frame.table("tax_unit")[tax_unit_channel].to_numpy()
-        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    features = _tax_unit_feature_frame(
+        frame,
+        predictors,
+        preserve_nulls=require_complete_recipient_predictors,
     )
-    if not puf_mask.any():
-        raise ValueError("PUF support channel has no tax-unit rows.")
+    if require_complete_recipient_predictors:
+        _require_complete_recipient_predictors(features, puf_mask, predictors)
     recipient_features = features.loc[puf_mask, list(predictors)].copy()
     recipient_tax_unit_ids = (
         frame.table("tax_unit").loc[puf_mask, "tax_unit_id"].to_numpy(copy=True)
@@ -823,6 +1751,7 @@ def finalize_us_puf_tax_detail_predictions(
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     tail_bound_quantiles: Mapping[str, float] | None = None,
+    absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> Frame:
     """Finalize a complete raw PUF QRF chain onto its support channel.
 
@@ -838,8 +1767,22 @@ def finalize_us_puf_tax_detail_predictions(
     invocation's exact output surface. Diagnostics report recipient-design-
     weighted mass over the affected raw tax-unit draws before and after
     clipping; build callers must provide the sink and publish every active cap.
+
+    ``absent_cells`` selects the finalization policy for cells outside the PUF
+    clone arm (populace#578 audit item 1).  The legacy default reproduces the
+    historical global zero-fill byte for byte.  Under
+    :data:`PUF_ABSENT_CELLS_PRESERVE_NULLS` — the stacked-spine doctrine —
+    absence stays null on every row this pass does not own, and the
+    donor-rate sparsification and placement rewrites are scoped to the PUF
+    clone arm so no boundary converts absence into an observed zero.
     """
 
+    if absent_cells not in _PUF_ABSENT_CELLS_POLICIES:
+        raise ValueError(
+            f"absent_cells must be one of {list(_PUF_ABSENT_CELLS_POLICIES)}; "
+            f"got {absent_cells!r}."
+        )
+    preserve_nulls = absent_cells == PUF_ABSENT_CELLS_PRESERVE_NULLS
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
@@ -892,11 +1835,11 @@ def finalize_us_puf_tax_detail_predictions(
             "tail bounds must not be silent."
         )
 
-    tax_unit_channel = support_channel_column("tax_unit")
-    person_channel = support_channel_column("person")
-    puf_mask = (
-        frame.table("tax_unit")[tax_unit_channel].to_numpy()
-        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    tax_unit_clone_index = support_clone_index_column("tax_unit")
+    person_clone_index = support_clone_index_column("person")
+    puf_mask = puf_tax_detail_clone_mask(
+        frame.table("tax_unit"),
+        entity="tax_unit",
     )
     expected_index = frame.table("tax_unit").index[puf_mask]
     if not predictions.index.equals(expected_index):
@@ -964,12 +1907,16 @@ def finalize_us_puf_tax_detail_predictions(
     _reconcile_puf_social_security_components(
         predictions,
         tables["person"],
-        person_channel=person_channel,
+        person_clone_index=person_clone_index,
         tax_unit_ids=tax_unit_ids,
         requested_components=person_outputs,
     )
     for column in tax_unit_outputs:
-        _ensure_float_output_column(tables["tax_unit"], column)
+        _ensure_float_output_column(
+            tables["tax_unit"],
+            column,
+            preserve_nulls=preserve_nulls,
+        )
         tables["tax_unit"].loc[puf_mask, column] = predictions[column].to_numpy()
     for column in tax_unit_outputs:
         if column in _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS:
@@ -981,12 +1928,20 @@ def finalize_us_puf_tax_detail_predictions(
                     donor["weight"],
                 ),
                 household_weights=frame.weights_for("household").values,
-                tax_unit_channel=tax_unit_channel,
+                tax_unit_clone_index=tax_unit_clone_index,
+                puf_role_only=preserve_nulls,
             )
 
-    person_puf_mask = tables["person"][person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    person_puf_mask = puf_tax_detail_clone_mask(
+        tables["person"],
+        entity="person",
+    )
     for column in person_outputs:
-        _ensure_float_output_column(tables["person"], column)
+        _ensure_float_output_column(
+            tables["person"],
+            column,
+            preserve_nulls=preserve_nulls,
+        )
         totals = pd.Series(predictions[column].to_numpy(), index=tax_unit_ids)
         if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
             _write_person_tax_unit_boolean_counts(
@@ -1019,8 +1974,9 @@ def finalize_us_puf_tax_detail_predictions(
                     donor["weight"],
                 ),
                 household_weights=frame.weights_for("household").values,
-                person_channel=person_channel,
-                tax_unit_channel=tax_unit_channel,
+                person_clone_index=person_clone_index,
+                tax_unit_clone_index=tax_unit_clone_index,
+                puf_role_only=preserve_nulls,
             )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS:
@@ -1030,8 +1986,8 @@ def finalize_us_puf_tax_detail_predictions(
                 donor_values=donor[column],
                 donor_weights=donor["weight"],
                 household_weights=frame.weights_for("household").values,
-                person_channel=person_channel,
-                tax_unit_channel=tax_unit_channel,
+                person_clone_index=person_clone_index,
+                tax_unit_clone_index=tax_unit_clone_index,
             )
     return Frame(
         tables,
@@ -1039,28 +1995,8 @@ def finalize_us_puf_tax_detail_predictions(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
-
-
-def support_channel_column(entity: str) -> str:
-    """Return the entity-prefixed support-channel metadata column."""
-
-    _require_entity_name(entity)
-    return f"{entity}_support_channel"
-
-
-def support_clone_index_column(entity: str) -> str:
-    """Return the entity-prefixed clone-index metadata column."""
-
-    _require_entity_name(entity)
-    return f"{entity}_support_clone_index"
-
-
-def support_source_id_column(entity: str) -> str:
-    """Return the entity-prefixed original-ID provenance column."""
-
-    _require_entity_name(entity)
-    return f"{entity}_source_id"
 
 
 def _clone_entity_table(
@@ -1101,12 +2037,45 @@ def _clone_entity_table(
     return result
 
 
+def _clone_preassembled_entity_table(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+    schema: EntitySchema,
+    id_multiplier: int,
+) -> pd.DataFrame:
+    """Clone one preassembled entity table while preserving source provenance."""
+
+    id_columns = _entity_id_columns(schema, entity)
+    clone_index_column = support_clone_index_column(entity)
+    primary_id = schema.entity_id_column(entity)
+
+    native = table.copy(deep=True)
+    detail = table.copy(deep=True)
+    detail[clone_index_column] = PUF_TAX_DETAIL_CLONE_INDEX
+    for column in id_columns:
+        detail[column] = _remap_ids(
+            detail[column].to_numpy(),
+            clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+            id_multiplier=id_multiplier,
+        )
+    result = pd.concat([native, detail], ignore_index=True)
+    if result[primary_id].duplicated().any():
+        duplicates = result.loc[result[primary_id].duplicated(), primary_id].unique()
+        raise ValueError(
+            f"remapped {primary_id!r} values are not unique; id multiplier "
+            "is too small. Duplicate value(s): "
+            f"{list(map(str, duplicates[:5]))}."
+        )
+    return result
+
+
 def _clone_link_table(
     table: pd.DataFrame,
     *,
     link_name: str,
     schema: EntitySchema,
-    channels: tuple[str, ...],
+    clone_count: int,
     id_multiplier: int,
 ) -> pd.DataFrame:
     links = {link.name: link for link in schema.links}
@@ -1122,7 +2091,7 @@ def _clone_link_table(
         )
 
     clones: list[pd.DataFrame] = []
-    for clone_index, _channel in enumerate(channels):
+    for clone_index in range(clone_count):
         clone = table.copy(deep=True)
         for column in id_columns:
             clone[column] = _remap_ids(
@@ -1157,6 +2126,112 @@ def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:
     return values
 
 
+def _validated_integral_ids(
+    values: Sequence[Any],
+    *,
+    label: str,
+) -> np.ndarray:
+    """Return int64 IDs only when every input value is exactly integral."""
+
+    try:
+        numeric = pd.to_numeric(pd.Series(values), errors="raise")
+        as_float = numeric.to_numpy(dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be integral.") from exc
+    if (
+        not np.isfinite(as_float).all()
+        or not np.equal(as_float, np.floor(as_float)).all()
+    ):
+        raise ValueError(f"{label} must be integral.")
+    try:
+        integral = numeric.astype("int64").to_numpy()
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be integral.") from exc
+    if not np.equal(as_float, integral.astype(np.float64)).all():
+        raise ValueError(f"{label} must be integral.")
+    return integral
+
+
+def _has_native_assembly_provenance(frame: Frame) -> bool:
+    """Validate support metadata and identify a preassembled native frame."""
+
+    expected_by_entity = {
+        entity: {
+            support_source_id_column(entity),
+            support_channel_column(entity),
+            support_clone_index_column(entity),
+        }
+        for entity in frame.entities
+    }
+    present_by_entity = {
+        entity: expected & set(frame.table(entity).columns)
+        for entity, expected in expected_by_entity.items()
+    }
+    present = {column for columns in present_by_entity.values() for column in columns}
+    if not present:
+        return False
+    missing = sorted(
+        column
+        for entity, expected in expected_by_entity.items()
+        for column in expected - present_by_entity[entity]
+    )
+    if missing:
+        raise ValueError(
+            f"PUF support expansion metadata is partial; missing column(s): {missing}."
+        )
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        clone_index_column = support_clone_index_column(entity)
+        clone_indices = pd.to_numeric(
+            table[clone_index_column],
+            errors="coerce",
+        )
+        if (
+            clone_indices.isna().any()
+            or not (clone_indices.to_numpy(dtype=np.float64) == 0.0).all()
+        ):
+            raise ValueError(
+                "PUF support expansion metadata column(s) already exist. "
+                "The stage should run exactly once."
+            )
+
+    missing_spine_source = sorted(
+        spine_source_id_column(entity)
+        for entity in frame.entities
+        if spine_source_id_column(entity) not in frame.table(entity)
+    )
+    if missing_spine_source:
+        raise ValueError(
+            "Preassembled support provenance is incomplete; missing raw spine "
+            f"source ID column(s): {missing_spine_source}."
+        )
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        channel_column = support_channel_column(entity)
+        channels = table[channel_column]
+        if (
+            channels.isna().any()
+            or not channels.map(
+                lambda value: isinstance(value, str) and bool(value)
+            ).all()
+        ):
+            raise ValueError(
+                f"Preassembled support channel {channel_column!r} must contain "
+                "non-empty strings."
+            )
+        for source_id_column in (
+            support_source_id_column(entity),
+            spine_source_id_column(entity),
+        ):
+            _validated_integral_ids(
+                table[source_id_column],
+                label=f"Preassembled source IDs in {source_id_column!r}",
+            )
+    return True
+
+
 def _reject_metadata_collisions(
     frame: Frame,
     channels: tuple[str, ...],
@@ -1166,6 +2241,7 @@ def _reject_metadata_collisions(
         for entity in frame.entities
         for column in (
             support_source_id_column(entity),
+            spine_source_id_column(entity),
             support_channel_column(entity),
             support_clone_index_column(entity),
         )
@@ -1188,6 +2264,11 @@ def _reject_metadata_collisions(
         raise ValueError(
             f"support channels must include {PUF_TAX_DETAIL_SUPPORT_CHANNEL!r}."
         )
+    if channels != _DEFAULT_SUPPORT_CHANNELS:
+        raise ValueError(
+            "PUF support expansion accepts only the canonical ASEC/PUF roles "
+            f"{_DEFAULT_SUPPORT_CHANNELS!r}; got {channels!r}."
+        )
 
 
 def _id_multiplier_for_frame(frame: Frame) -> int:
@@ -1198,14 +2279,28 @@ def _id_multiplier_for_frame(frame: Frame) -> int:
     return _id_multiplier_for_values(*values)
 
 
+# The decimal remap (id + clone_index * 10**digits(max_id)) must stay inside
+# int64 for every clone index the builder can produce. Capping assembled
+# source IDs at 10**15 - 1 bounds the multiplier at 10**16, leaving clone
+# indices up to 921 before int64 overflow — orders beyond any configured
+# clone count. Assembly enforces this bound; _remap_ids re-checks it so a
+# violation is a governed ValueError, never an OverflowError.
+PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID = 10**15 - 1
+
+_INT64_MAX = 2**63 - 1
+
+
 def _id_multiplier_for_values(*values: Sequence[Any]) -> int:
     if not values:
         raise ValueError("at least one ID value sequence is required.")
     max_id = 0
     for sequence in values:
-        numeric = pd.to_numeric(pd.Series(sequence), errors="raise").astype("int64")
+        numeric = _validated_integral_ids(
+            sequence,
+            label="PUF support structural IDs",
+        )
         if len(numeric):
-            max_id = max(max_id, int(numeric.abs().max()))
+            max_id = max(max_id, int(np.abs(numeric).max()))
     return 10 ** max(1, len(str(max_id)))
 
 
@@ -1215,15 +2310,22 @@ def _remap_ids(
     clone_index: int,
     id_multiplier: int,
 ) -> np.ndarray:
-    values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
+    values = _validated_integral_ids(
+        ids,
+        label="PUF support structural IDs",
+    )
     if clone_index == 0:
         return values.copy()
-    return values + clone_index * id_multiplier
-
-
-def _require_entity_name(entity: str) -> None:
-    if not isinstance(entity, str) or not entity:
-        raise ValueError("entity must be a non-empty string.")
+    shift = int(clone_index) * int(id_multiplier)
+    if len(values) and shift + int(values.max()) > _INT64_MAX:
+        raise ValueError(
+            "PUF support ID remap would overflow int64: max source ID "
+            f"{int(values.max())} with clone index {clone_index} and "
+            f"multiplier {id_multiplier} exceeds {_INT64_MAX}. Assembled "
+            "source IDs must not exceed "
+            f"{PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID}."
+        )
+    return values + shift
 
 
 def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
@@ -1363,25 +2465,23 @@ def _tax_unit_household_weights(
 
 
 def _formula_owned_engine() -> Any | None:
-    """A PolicyEngine-US adapter for formula metadata, or ``None`` if absent.
+    """An import-free PolicyEngine-US source index, or ``None`` if absent.
 
-    The adapter is the single reader of engine metadata. Its module ships with
-    populace-frame, so this import (and the trivial construction) succeeds even
-    when ``policyengine_us`` itself is not installed — the adapter imports the
-    engine lazily, so a missing ``[us]`` extra surfaces as an ``ImportError``
-    at *call* time, not here. Callers treat that call-time ``ImportError``
-    exactly like ``None``: the guard degrades to the static seed set (the
-    workspace test environment) rather than letting a missing optional extra
-    abort a build. At build time the extra is installed and the adapter serves
-    live metadata.
+    Importing ``policyengine_us`` constructs a full tax-benefit system, and a
+    second adapter system registers another complete set of variable modules.
+    The ownership guard needs only class metadata, so the source index parses
+    the installed variable declarations without importing the country package.
+    A missing ``[us]`` extra still degrades to the static seed set.
     """
     try:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from populace.frame.adapters.policyengine_us import (
+            PolicyEngineUSVariableMetadataIndex,
+        )
     except ImportError:
         return None
     try:
-        return PolicyEngineUSEngine()
-    except Exception:  # pragma: no cover - defensive; construction is trivial
+        return PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
         return None
 
 
@@ -1410,7 +2510,8 @@ def resolve_formula_owned_outputs(
     Args:
         requested: The output variable names a fit intends to impute/persist.
         engine: A metadata source exposing ``formula_owned_outputs(names) ->
-            set[str]`` (a :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSEngine`
+            set[str]`` (a
+            :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSVariableMetadataIndex`
             in production). ``None`` resolves one lazily, falling back to the
             static seed set when ``policyengine_us`` is not installed.
 
@@ -1425,9 +2526,8 @@ def resolve_formula_owned_outputs(
         try:
             rejected |= set(engine.formula_owned_outputs(requested_set))
         except ImportError:
-            # The adapter imports policyengine_us lazily, so a missing [us]
-            # extra surfaces here rather than at construction; degrade to the
-            # static seed set exactly as when no adapter is available.
+            # An injected metadata source may resolve the optional package
+            # lazily; degrade to the static seed exactly as when unavailable.
             pass
     return rejected
 
@@ -1443,10 +2543,9 @@ def assert_formula_owned_blocklist_current(engine: Any | None = None) -> None:
     catches formula-owned names *missing* from the static set, this catches
     static names the engine no longer *considers* formula-owned.
 
-    A no-op when no engine is available or the engine's lazy
-    ``policyengine_us`` import is missing at call time (the workspace test
-    environment), so the check runs only where the ``[us]`` extra is
-    installed — the build.
+    A no-op when no metadata index is available or an injected source reports
+    the optional package missing, so the check runs only where the ``[us]``
+    extra is installed — the build.
 
     Raises:
         ValueError: If a static-set entry is not reported formula-owned by the
@@ -1487,7 +2586,23 @@ def _reject_formula_owned_outputs(
         )
 
 
-def _tax_unit_feature_frame(frame: Frame, columns: Sequence[str]) -> pd.DataFrame:
+def _tax_unit_feature_frame(
+    frame: Frame,
+    columns: Sequence[str],
+    *,
+    preserve_nulls: bool = False,
+) -> pd.DataFrame:
+    """Build the tax-unit predictor surface under the active absence policy.
+
+    The legacy policy zero-fills every missing predictor cell — the exact
+    boundary the populace#578 audit identified as collapsing recipient draws
+    to zero-conditioned degenerates.  Under ``preserve_nulls`` absence
+    propagates as null (a leaf-alias sum is null wherever any component is
+    null, and an entirely absent component column is null everywhere) so the
+    strict recipient check can fail closed by name instead of a silent fill.
+    Structural person counts are not absence and stay zero-filled.
+    """
+
     tax_unit = frame.table("tax_unit")
     person = frame.table("person")
     result = pd.DataFrame(index=tax_unit.index)
@@ -1499,7 +2614,10 @@ def _tax_unit_feature_frame(frame: Frame, columns: Sequence[str]) -> pd.DataFram
                 source = tax_unit.get("filing_status")
             if source is None:
                 raise ValueError("tax_unit table lacks filing-status input.")
-            result[column] = _filing_status_codes(source)
+            result[column] = _filing_status_codes(
+                source,
+                preserve_nulls=preserve_nulls,
+            )
         elif source_column == "tax_unit_person_count":
             result[column] = (
                 person.groupby("person_tax_unit_id", sort=False)
@@ -1509,54 +2627,210 @@ def _tax_unit_feature_frame(frame: Frame, columns: Sequence[str]) -> pd.DataFram
                 .to_numpy(dtype=np.float64)
             )
         elif source_column in tax_unit.columns:
-            result[column] = pd.to_numeric(
-                tax_unit[source_column], errors="coerce"
-            ).fillna(0.0)
+            numeric = pd.to_numeric(
+                tax_unit[source_column],
+                errors="raise" if preserve_nulls else "coerce",
+            )
+            result[column] = numeric if preserve_nulls else numeric.fillna(0.0)
         else:
-            result[column] = _person_tax_unit_sum(frame, source_column)
+            result[column] = _person_tax_unit_sum(
+                frame,
+                source_column,
+                preserve_nulls=preserve_nulls,
+            )
     return result
 
 
-def _person_tax_unit_sum(frame: Frame, column: str) -> np.ndarray:
+def _person_tax_unit_sum(
+    frame: Frame,
+    column: str,
+    *,
+    preserve_nulls: bool = False,
+) -> np.ndarray:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
     if column == "dividend_income" and column not in person.columns:
         values = _optional_person(
-            person, "non_qualified_dividend_income"
-        ) + _optional_person(person, "qualified_dividend_income")
+            person,
+            "non_qualified_dividend_income",
+            preserve_nulls=preserve_nulls,
+        ) + _optional_person(
+            person,
+            "qualified_dividend_income",
+            preserve_nulls=preserve_nulls,
+        )
     elif column not in person.columns and column in _PREDICTOR_LEAF_ALIASES:
         values = np.zeros(len(person), dtype=np.float64)
         for leaf in _PREDICTOR_LEAF_ALIASES[column]:
-            values += _optional_person(person, leaf)
+            values += _optional_person(person, leaf, preserve_nulls=preserve_nulls)
     else:
         if column not in person.columns:
             raise ValueError(
                 f"Cannot build tax-unit predictor {column!r}; no matching "
                 "tax_unit column or person column exists."
             )
-        values = pd.to_numeric(person[column], errors="coerce").fillna(0.0)
-    grouped = (
-        pd.DataFrame(
-            {
-                "person_tax_unit_id": person["person_tax_unit_id"],
-                column: np.asarray(values, dtype=np.float64),
-            }
+        numeric = pd.to_numeric(
+            person[column],
+            errors="raise" if preserve_nulls else "coerce",
         )
-        .groupby("person_tax_unit_id", sort=False)[column]
-        .sum()
-    )
+        if not preserve_nulls:
+            numeric = numeric.fillna(0.0)
+        values = numeric
+    grouped_frame = pd.DataFrame(
+        {
+            "person_tax_unit_id": person["person_tax_unit_id"],
+            column: np.asarray(values, dtype=np.float64),
+        }
+    ).groupby("person_tax_unit_id", sort=False)[column]
+    if preserve_nulls:
+        # ``sum`` normally skips partial nulls, which would turn a missing
+        # member-level source into an observed unit total.  Poison any such
+        # group so strict recipient validation sees the absence by name.
+        grouped = grouped_frame.sum(min_count=1)
+        grouped[grouped_frame.count() != grouped_frame.size()] = np.nan
+        return grouped.reindex(tax_unit["tax_unit_id"]).to_numpy()
+    grouped = grouped_frame.sum()
     return grouped.reindex(tax_unit["tax_unit_id"]).fillna(0.0).to_numpy()
 
 
-def _optional_person(person: pd.DataFrame, column: str) -> np.ndarray:
+def _optional_person(
+    person: pd.DataFrame,
+    column: str,
+    *,
+    preserve_nulls: bool = False,
+) -> np.ndarray:
     if column not in person.columns:
+        if preserve_nulls:
+            return np.full(len(person), np.nan, dtype=np.float64)
         return np.zeros(len(person), dtype=np.float64)
-    return pd.to_numeric(person[column], errors="coerce").fillna(0.0).to_numpy()
+    numeric = pd.to_numeric(
+        person[column],
+        errors="raise" if preserve_nulls else "coerce",
+    )
+    if not preserve_nulls:
+        numeric = numeric.fillna(0.0)
+    return numeric.to_numpy(dtype=np.float64)
 
 
-def _ensure_float_output_column(table: pd.DataFrame, column: str) -> None:
+def _require_complete_recipient_predictor_sources(
+    frame: Frame,
+    recipient_mask: np.ndarray,
+    predictors: Sequence[str],
+) -> None:
+    """Reject raw recipient absence before feature conversion or coercion."""
+
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    recipient_ids = tax_unit.loc[recipient_mask, "tax_unit_id"]
+    offenders: dict[str, int] = {}
+    for predictor in predictors:
+        source = _predictor_source_column(predictor)
+        if source == "filing_status_code":
+            values = tax_unit.get("filing_status_input")
+            if values is None:
+                values = tax_unit.get("filing_status")
+            missing = (
+                np.ones(int(recipient_mask.sum()), dtype=bool)
+                if values is None
+                else values.loc[recipient_mask].isna().to_numpy()
+            )
+        elif source == "tax_unit_person_count":
+            missing = np.zeros(int(recipient_mask.sum()), dtype=bool)
+        elif source in tax_unit.columns:
+            missing = tax_unit.loc[recipient_mask, source].isna().to_numpy()
+        else:
+            if source == "dividend_income" and source not in person.columns:
+                source_columns = (
+                    "non_qualified_dividend_income",
+                    "qualified_dividend_income",
+                )
+            elif source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
+                source_columns = _PREDICTOR_LEAF_ALIASES[source]
+            else:
+                source_columns = (source,)
+            absent_columns = [
+                column for column in source_columns if column not in person.columns
+            ]
+            if absent_columns:
+                missing = np.ones(int(recipient_mask.sum()), dtype=bool)
+            else:
+                link = person["person_tax_unit_id"]
+                relevant = link.isin(recipient_ids)
+                observed_ids = set(link.loc[relevant].tolist())
+                null_source = (
+                    person.loc[relevant, list(source_columns)].isna().any(axis=1)
+                )
+                null_ids = set(link.loc[relevant].loc[null_source].tolist())
+                missing = np.asarray(
+                    [
+                        tax_unit_id not in observed_ids or tax_unit_id in null_ids
+                        for tax_unit_id in recipient_ids
+                    ],
+                    dtype=bool,
+                )
+        count = int(missing.sum())
+        if count:
+            offenders[str(predictor)] = count
+    if offenders:
+        raise ValueError(
+            "PUF recipient predictor source(s) have missing values before "
+            f"coercion: {offenders} (of {int(len(recipient_ids))} recipient rows). "
+            "This is a terminal stacked-spine failure; gap-fill the source "
+            "before the PUF pass."
+        )
+
+
+def _require_complete_recipient_predictors(
+    features: pd.DataFrame,
+    recipient_mask: np.ndarray,
+    predictors: Sequence[str],
+) -> None:
+    """Fail closed when any recipient row is missing a predictor value.
+
+    The populace#578 audit found the primary QRF silently zero-filling
+    target-like predictors on recipient rows whose source never measured
+    them, collapsing those draws to degenerate near-zero values.  Under the
+    stacked-spine doctrine that absence is a named terminal failure: the
+    PUF pass runs only after gap-fill has made every predictor observable on
+    every origin.
+    """
+
+    recipient = features.loc[recipient_mask, list(predictors)]
+    null_counts = recipient.isna().sum()
+    offenders = {
+        str(name): int(count) for name, count in null_counts.items() if int(count)
+    }
+    if offenders:
+        raise ValueError(
+            "PUF recipient predictor(s) have missing values on recipient "
+            f"rows: {offenders} (of {int(len(recipient))} recipient rows). "
+            "The primary QRF must not zero-fill absence (populace#578); "
+            "gap-fill the stacked spine before the PUF pass."
+        )
+
+
+def _ensure_float_output_column(
+    table: pd.DataFrame,
+    column: str,
+    *,
+    preserve_nulls: bool = False,
+) -> None:
+    """Coerce one requested output column to float64 under the active policy.
+
+    The legacy policy globally converts missing cells to ``0.0`` (the
+    historical two-arm behavior).  Under the preserve-nulls doctrine a missing
+    column materializes as null and existing nulls survive the coercion:
+    absence must stay null until the stage that owns those cells fills them
+    (populace#578 audit item 1).  Preserve-nulls coercion is also
+    parse-strict — a non-numeric observed value fails closed instead of
+    silently becoming absence.
+    """
+
     if column not in table.columns:
-        table[column] = 0.0
+        table[column] = np.nan if preserve_nulls else 0.0
+        return
+    if preserve_nulls:
+        table[column] = pd.to_numeric(table[column], errors="raise").astype("float64")
         return
     table[column] = (
         pd.to_numeric(table[column], errors="coerce").fillna(0.0).astype("float64")
@@ -1742,10 +3016,28 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
     column: str,
     donor_positive_rate: float,
     household_weights: np.ndarray,
-    tax_unit_channel: str,
+    tax_unit_clone_index: str | None = None,
+    tax_unit_channel: str | None = None,
+    puf_role_only: bool = False,
 ) -> None:
-    """Prune a sparse tax-unit amount to the donor's weighted positive rate."""
+    """Prune a sparse tax-unit amount to the donor's weighted positive rate.
 
+    ``puf_role_only`` scopes the pruning to the PUF clone arm: under the
+    preserve-nulls doctrine other arms' cells are source- or gap-fill-owned
+    (observed values or authorized nulls) and must never be rewritten here.
+    """
+
+    if (tax_unit_clone_index is None) == (tax_unit_channel is None):
+        raise ValueError("Provide exactly one tax-unit support role column.")
+    tax_unit_role_column = (
+        tax_unit_clone_index if tax_unit_clone_index is not None else tax_unit_channel
+    )
+    assert tax_unit_role_column is not None
+    puf_role: int | str = (
+        PUF_TAX_DETAIL_CLONE_INDEX
+        if tax_unit_clone_index is not None
+        else PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
     positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
     person = tables["person"]
     household = tables["household"]
@@ -1766,9 +3058,14 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
     )
     tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
 
-    for channel in tax_unit[tax_unit_channel].dropna().unique():
-        channel_mask = tax_unit[tax_unit_channel] == channel
-        channel_rows = tax_unit.loc[channel_mask]
+    role_values = tax_unit[tax_unit_role_column].dropna().unique()
+    if puf_role_only:
+        role_values = np.asarray(
+            [role_value for role_value in role_values if role_value == puf_role]
+        )
+    for clone_index in role_values:
+        clone_mask = tax_unit[tax_unit_role_column] == clone_index
+        channel_rows = tax_unit.loc[clone_mask]
         amounts = pd.Series(
             pd.to_numeric(channel_rows[column], errors="coerce")
             .fillna(0.0)
@@ -1799,7 +3096,7 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
         sparse_total = float((sparse_amounts * weights).sum())
         if original_total != 0.0 and sparse_total != 0.0:
             sparse_amounts *= original_total / sparse_total
-        tax_unit.loc[channel_mask, column] = sparse_amounts.to_numpy()
+        tax_unit.loc[clone_mask, column] = sparse_amounts.to_numpy()
 
 
 def _sparsify_tax_unit_person_output_to_donor_positive_rate(
@@ -1808,9 +3105,29 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
     column: str,
     donor_positive_rate: float,
     household_weights: np.ndarray,
-    person_channel: str,
-    tax_unit_channel: str,
+    person_clone_index: str | None = None,
+    tax_unit_clone_index: str | None = None,
+    person_channel: str | None = None,
+    tax_unit_channel: str | None = None,
+    puf_role_only: bool = False,
 ) -> None:
+    if (person_clone_index is None) == (person_channel is None) or (
+        (tax_unit_clone_index is None) == (tax_unit_channel is None)
+    ):
+        raise ValueError("Provide exactly one person and tax-unit support role column.")
+    person_role_column = (
+        person_clone_index if person_clone_index is not None else person_channel
+    )
+    tax_unit_role_column = (
+        tax_unit_clone_index if tax_unit_clone_index is not None else tax_unit_channel
+    )
+    assert person_role_column is not None
+    assert tax_unit_role_column is not None
+    puf_role: int | str = (
+        PUF_TAX_DETAIL_CLONE_INDEX
+        if tax_unit_clone_index is not None
+        else PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
     positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
     person = tables["person"]
     household = tables["household"]
@@ -1837,18 +3154,14 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         .sum()
     )
 
-    channels = tax_unit[tax_unit_channel].dropna().unique()
-    if column in _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS:
-        channels = np.asarray(
-            [
-                channel
-                for channel in channels
-                if channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL
-            ]
+    clone_indices = tax_unit[tax_unit_role_column].dropna().unique()
+    if puf_role_only or column in _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS:
+        clone_indices = np.asarray(
+            [clone_index for clone_index in clone_indices if clone_index == puf_role]
         )
-    for channel in channels:
+    for clone_index in clone_indices:
         channel_tax_unit_ids = tax_unit.loc[
-            tax_unit[tax_unit_channel] == channel,
+            tax_unit[tax_unit_role_column] == clone_index,
             "tax_unit_id",
         ]
         amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
@@ -1877,7 +3190,7 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         if original_total != 0.0 and sparse_total != 0.0:
             sparse_totals *= original_total / sparse_total
 
-        mask = person[person_channel] == channel
+        mask = person[person_role_column] == clone_index
         _write_person_tax_unit_totals(
             person,
             mask=mask,
@@ -1918,8 +3231,8 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
     donor_values: pd.Series,
     donor_weights: pd.Series,
     household_weights: np.ndarray,
-    person_channel: str,
-    tax_unit_channel: str,
+    person_clone_index: str,
+    tax_unit_clone_index: str,
 ) -> None:
     """Pin a signed person output's per-leg mass to the donor instrument.
 
@@ -1972,7 +3285,7 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
     )
 
     channel_tax_unit_ids = tax_unit.loc[
-        tax_unit[tax_unit_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        tax_unit[tax_unit_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX,
         "tax_unit_id",
     ]
     amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
@@ -2005,7 +3318,7 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
         calibrated[negative] *= donor_negative_per_weight / imputed_negative_per_weight
 
     calibrated_totals = pd.Series(calibrated, index=amounts.index)
-    mask = person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    mask = person[person_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX
     _write_person_tax_unit_totals(
         person,
         mask=mask,
@@ -2019,7 +3332,7 @@ def _reconcile_puf_social_security_components(
     predictions: pd.DataFrame,
     person: pd.DataFrame,
     *,
-    person_channel: str,
+    person_clone_index: str,
     tax_unit_ids: np.ndarray,
     requested_components: Sequence[str],
 ) -> None:
@@ -2043,7 +3356,7 @@ def _reconcile_puf_social_security_components(
         )
 
     puf_person = person.loc[
-        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        person[person_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX,
         ["person_tax_unit_id"],
     ].copy()
     for component in components:
@@ -2051,7 +3364,7 @@ def _reconcile_puf_social_security_components(
             puf_person[component] = (
                 pd.to_numeric(
                     person.loc[
-                        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                        person[person_clone_index] == PUF_TAX_DETAIL_CLONE_INDEX,
                         component,
                     ],
                     errors="coerce",
@@ -2225,9 +3538,16 @@ def _tax_unit_source_values(
     return None
 
 
-def _filing_status_codes(values: Sequence[Any]) -> np.ndarray:
+def _filing_status_codes(
+    values: Sequence[Any],
+    *,
+    preserve_nulls: bool = False,
+) -> np.ndarray:
     decoded = pd.Series(values).map(_decode_status).str.upper()
-    return decoded.map(_FILING_STATUS_CODES).fillna(0.0).to_numpy(dtype=np.float64)
+    codes = decoded.map(_FILING_STATUS_CODES)
+    if not preserve_nulls:
+        codes = codes.fillna(0.0)
+    return codes.to_numpy(dtype=np.float64)
 
 
 def _decode_status(value: Any) -> str:

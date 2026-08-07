@@ -1,12 +1,12 @@
-"""ASEC/IRS PUF alimony inputs for the US build.
+"""ASEC other-income decomposition and IRS PUF alimony inputs.
 
 The retired eCPS pipeline measured recipient income from Census ASEC other-
 income records and tax-return income/expense from two IRS PUF fields.  The
-ASEC half keeps reported ``OI_VAL`` only when ``OI_OFF == 20``; the PUF support
-half is populated from the direct ``E00800`` / ``E03500`` mappings through the
-shared weighted PUF QRF.  ``miscellaneous_income`` must simultaneously exclude
-alimony (and the retired pipeline's strike-benefit code 12), otherwise the ASEC
-amount is counted twice in gross income.
+ASEC half splits ``OI_VAL`` into reported alimony when ``OI_OFF == 20``, strike
+benefits when ``OI_OFF == 12``, and miscellaneous income otherwise.  The PUF
+support half is populated from the direct ``E00800`` / ``E03500`` mappings
+through the shared weighted PUF QRF.  The three ASEC outputs are mutually
+exclusive so every reported amount is carried exactly once.
 
 This module owns only factual input leaves. PolicyEngine-US owns taxable-income
 and above-the-line-deduction formulas.
@@ -21,11 +21,18 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 
 __all__ = [
     "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
     "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
+    "STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL",
+    "US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS",
     "US_ALIMONY_NONCONSTANT_PERSON_COLUMNS",
     "US_ALIMONY_OUTPUT_COLUMNS",
     "US_ALIMONY_STAGE_NAME",
@@ -43,6 +50,7 @@ ALIMONY_ASEC_ARCHIVED_DERIVATION_URL = (
     f"{_ARCHIVED_DATA_REPOSITORY}/blob/{_ARCHIVED_COMMIT}/"
     "policyengine_" + "us_data/datasets/cps/cps.py#L1481-L1492"
 )
+STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL = ALIMONY_ASEC_ARCHIVED_DERIVATION_URL
 ALIMONY_PUF_ARCHIVED_DERIVATION_URL = (
     "https://github.com/PolicyEngine/"
     f"{_ARCHIVED_DATA_REPOSITORY}/blob/{_ARCHIVED_COMMIT}/"
@@ -55,9 +63,20 @@ US_ALIMONY_OUTPUT_COLUMNS: tuple[str, ...] = (
     "alimony_expense",
 )
 US_ALIMONY_NONCONSTANT_PERSON_COLUMNS = US_ALIMONY_OUTPUT_COLUMNS
+US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS: tuple[str, ...] = (
+    "alimony_income",
+    "strike_benefits",
+    "miscellaneous_income",
+)
 
 _ASEC_ALIMONY_OTHER_INCOME_CODE = 20
-_ASEC_SEPARATE_OTHER_INCOME_CODES = frozenset({12, 20})
+_ASEC_STRIKE_BENEFITS_OTHER_INCOME_CODE = 12
+_ASEC_SEPARATE_OTHER_INCOME_CODES = frozenset(
+    {
+        _ASEC_ALIMONY_OTHER_INCOME_CODE,
+        _ASEC_STRIKE_BENEFITS_OTHER_INCOME_CODE,
+    }
+)
 _NONZERO_SHARE_BAND = (0.00001, 0.02)
 
 
@@ -104,18 +123,18 @@ def _strict_numeric_source(
 
 
 def derive_us_alimony_from_asec(person: pd.DataFrame) -> pd.DataFrame:
-    """Carry reported ASEC alimony and remove it from miscellaneous income.
+    """Split reported ASEC other income into three exhaustive input leaves.
 
-    An already materialized pair is preserved, which makes the CPS-carried
-    transform idempotent on a staged base artifact. If either leaf is missing,
-    both raw ASEC fields are mandatory; a missing source must not be healed with
-    fabricated zeros.
+    An already materialized split is preserved, which makes the CPS-carried
+    transform idempotent on a staged base artifact. If any leaf is missing,
+    both raw ASEC fields are mandatory; a missing source must not be healed
+    with fabricated zeros.
     """
 
     raw_sources = {"OI_VAL", "OI_OFF"}
     present_sources = raw_sources.intersection(person.columns)
     if not present_sources:
-        materialized = {"alimony_income", "miscellaneous_income"}
+        materialized = set(US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS)
         if materialized.issubset(person.columns):
             return person.copy(deep=True)
         missing = sorted(materialized - set(person.columns))
@@ -154,6 +173,11 @@ def derive_us_alimony_from_asec(person: pd.DataFrame) -> pd.DataFrame:
     result = person.copy(deep=True)
     result["alimony_income"] = np.where(
         integer_codes == _ASEC_ALIMONY_OTHER_INCOME_CODE,
+        amounts,
+        0.0,
+    )
+    result["strike_benefits"] = np.where(
+        integer_codes == _ASEC_STRIKE_BENEFITS_OTHER_INCOME_CODE,
         amounts,
         0.0,
     )
@@ -251,15 +275,27 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
                 f"band [{low}, {high}]."
             )
     raw_sources = {"OI_VAL", "OI_OFF"}
-    if raw_sources.issubset(person.columns) and "miscellaneous_income" not in person:
-        failures.append(
-            "ASEC raw OI_VAL/OI_OFF are present but miscellaneous_income is missing."
+    if raw_sources.issubset(person.columns):
+        missing_split = sorted(
+            set(US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS) - set(person.columns)
         )
-    elif raw_sources.issubset(person.columns):
+        if missing_split:
+            failures.append(
+                "ASEC raw OI_VAL/OI_OFF are present but other-income split "
+                f"column(s) are missing: {missing_split}."
+            )
+            return GateResult(
+                name="alimony_inputs_signal",
+                passed=False,
+                failures=tuple(failures),
+                details=summary,
+            )
         source_mask = np.ones(len(person), dtype=bool)
-        if "person_support_channel" in person:
+        if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                person["person_support_channel"].to_numpy(dtype=object) == "asec"
+                support_role_series(person, entity="person")
+                .eq(BASE_ASEC_SUPPORT_CHANNEL)
+                .to_numpy()
             )
         amounts = pd.to_numeric(person["OI_VAL"], errors="coerce").to_numpy(
             dtype=np.float64
@@ -274,6 +310,11 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
                 amounts,
                 0.0,
             )
+            expected_strike_benefits = np.where(
+                integer_codes == _ASEC_STRIKE_BENEFITS_OTHER_INCOME_CODE,
+                amounts,
+                0.0,
+            )
             expected_miscellaneous = np.where(
                 np.isin(integer_codes, list(_ASEC_SEPARATE_OTHER_INCOME_CODES)),
                 0.0,
@@ -282,23 +323,44 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
             actual_alimony = pd.to_numeric(
                 person.loc[source_mask, "alimony_income"], errors="coerce"
             ).to_numpy(dtype=np.float64)
+            actual_strike_benefits = pd.to_numeric(
+                person.loc[source_mask, "strike_benefits"], errors="coerce"
+            ).to_numpy(dtype=np.float64)
             actual_miscellaneous = pd.to_numeric(
                 person.loc[source_mask, "miscellaneous_income"], errors="coerce"
             ).to_numpy(dtype=np.float64)
             alimony_mismatch = ~np.isclose(actual_alimony, expected_alimony)
+            strike_benefits_mismatch = ~np.isclose(
+                actual_strike_benefits,
+                expected_strike_benefits,
+            )
             miscellaneous_mismatch = ~np.isclose(
                 actual_miscellaneous,
                 expected_miscellaneous,
+            )
+            conservation_mismatch = ~np.isclose(
+                actual_alimony + actual_strike_benefits + actual_miscellaneous,
+                amounts,
             )
             if bool(alimony_mismatch.any()):
                 failures.append(
                     "ASEC alimony_income disagrees with OI_OFF == 20 / OI_VAL "
                     f"on {int(np.count_nonzero(alimony_mismatch))} row(s)."
                 )
+            if bool(strike_benefits_mismatch.any()):
+                failures.append(
+                    "ASEC strike_benefits disagrees with OI_OFF == 12 / OI_VAL "
+                    f"on {int(np.count_nonzero(strike_benefits_mismatch))} row(s)."
+                )
             if bool(miscellaneous_mismatch.any()):
                 failures.append(
                     "ASEC miscellaneous_income does not exclude alimony/strike "
                     f"codes on {int(np.count_nonzero(miscellaneous_mismatch))} row(s)."
+                )
+            if bool(conservation_mismatch.any()):
+                failures.append(
+                    "ASEC other-income split does not conserve OI_VAL on "
+                    f"{int(np.count_nonzero(conservation_mismatch))} row(s)."
                 )
     return GateResult(
         name="alimony_inputs_signal",

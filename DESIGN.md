@@ -1,6 +1,6 @@
 # The Populace stack: design charter
 
-**Status:** founding document, updated 2026-06-14. Decisions here were agreed
+**Status:** founding document, updated 2026-08-06. Decisions here were agreed
 between Max and Claude after building and scoring the first Populace
 population candidate, which surfaced every failure mode this design exists to
 prevent.
@@ -114,6 +114,35 @@ not a migration). Nothing outside the adapter imports a rules engine.
   as (target, period) constraint rows over the same weight vector. Calibrating
   cross-sections independently destroys panels and is a kernel-level error.
 
+### Production US stacked spine
+
+The US pool applies the kernel doctrine as one origin-labeled sampling frame,
+not two separately operated datasets compared after the fact. ASEC and ACS
+are uniformly sampled at whole-household grain by one identity-bound
+`sample_fraction` and seed, normalized back to their full-source design mass,
+and assembled before any fitted population operator. The standard scale
+ladder is 1% smoke (`f001`), 10% development (`f010`), and full (`f100`). PUF
+donors always remain full; PUF clone attachment is a separate control whose
+default is `1.0`.
+
+Survey-specific gaps are filled cross-origin under a frozen source-and-role
+plan. Null is absence and zero is observed data: a transfer may fill only the
+declared recipient cells, may learn only from native rows of the declared
+donor, and must leave donor cells byte-identical. Per-target banks and the
+assembled/transferred/simulated stage boundaries bind the stack manifest,
+fraction, seed, realized counts, and clone controls, so a smaller rung or a
+different draw cannot reuse another build's evidence.
+
+After gap-fill, one PUF QRF pass and the clone-2 capital-gains-tail operator
+run over both survey origins. Publication is terminally gated by complete
+declared-input coverage and a live-digested, explicit per-column by-origin
+battery; metric choice never follows pandas dtype. Comparisons below the
+declared support validity domain receipt `insufficient_support` without
+widening tolerances. Every success, failed gate, or exception writes a durable
+Logbook attempt row beside the output before the tool returns. The retiring
+two-spine lineage remains available only through its explicit compatibility
+flag for byte-reproducible historical builds.
+
 ## Longitudinal (the social-security-model direction)
 
 This section names kernel changes the current `Frame` does NOT yet support;
@@ -226,7 +255,9 @@ risks, not footnotes:
   mandatory, not optional.
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
-  dividends, interest, retirement income; plus SPM, and the
+  dividends, interest, retirement income; plus the SPM resource-component
+  families (never SPM poverty rates, which are permanent holdouts under
+  the rule below), and the
   benefit-program families) with explicit tolerances. A contribution may not
   worsen any protected family beyond tolerance even if it improves aggregate
   loss. This list is versioned with the population and is the steward's call.
@@ -234,6 +265,21 @@ risks, not footnotes:
   calibration objective, so validity must be scored on held-out targets and
   variables the objective never saw — otherwise "passes calibration" launders
   into "is correct."
+- **Survey-measured tax-benefit quantities are permanent holdouts.** The
+  rule: never calibrate against ANY tax-benefit quantity from a survey —
+  reported or computed — or anything derived from such. Tax-benefit quantities from
+  administrative data are targets (SOI, FNS, SSA, ACF); raw survey
+  quantities are targets (ACS population/structure, income margins); but
+  survey-measured program totals (total SNAP from the CPS) and everything
+  downstream of survey tax-benefit measurement — SPM/OPM poverty above
+  all — may never be fitted. The rebuild replaces the survey's tax-benefit
+  measurement with imputed, computed, and admin-calibrated values; fitting
+  the survey-derived version launders its error back in and destroys the
+  held-out signal the evaluation depends on. Corollary: deviations from
+  official poverty metrics are expected by construction (corrected
+  underreporting should sit below survey-based rates, all else equal) and
+  are never inherently problematic — official numbers are comparators, not
+  truth.
 - **Correlated evidence.** Target standard errors from one survey are
   design-correlated across its published cells; treating them as diagonal
   overweights cell-rich surveys (the standard GREG caveat). Evidence

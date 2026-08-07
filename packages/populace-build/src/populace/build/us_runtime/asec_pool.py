@@ -352,6 +352,7 @@ def _attach_household_attributes(frame: Frame, columns: tuple[str, ...]) -> Fram
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 

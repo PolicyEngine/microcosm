@@ -1,11 +1,15 @@
 {
-  "version": 1,
+  "version": 2,
   "country": "be",
   "policy": "Belgium has no incumbent dataset, so the incumbent-comparison gates (parity, export_surface, target_surface) are deliberately not selected: external oracles replace self-parity (EUROMOD-BE baselines and Federal Planning Bureau reform scores, populace#264). National and NUTS1 targets hard-gate; commune-grain rows are diagnostic until the spine demonstrably supports them.",
+  "phases": [
+    "terminal"
+  ],
   "gates": [
     {
       "id": "calibration_per_family_fit",
       "gate": "per_family_fit",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
         "within": 0.1,
@@ -16,9 +20,13 @@
     {
       "id": "national_and_nuts1_admin_aggregates",
       "gate": "aggregate_admin",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "geography_levels": ["country", "nuts1"],
+        "geography_levels": [
+          "country",
+          "nuts1"
+        ],
         "default_rtol": 0.05
       },
       "notes": "Weighted aggregates against admin anchors on the hard surface. Criticality tiers per target arrive with the Ledger profile (PolicyEngine/ledger#70): e.g. PIT total tighter than caseloads."
@@ -26,9 +34,12 @@
     {
       "id": "commune_fiscal_income_fit",
       "gate": "aggregate_admin",
+      "phase": "terminal",
       "criticality": "diagnostic",
       "parameters": {
-        "geography_levels": ["commune"],
+        "geography_levels": [
+          "commune"
+        ],
         "report_worst_fit": 25
       },
       "notes": "Commune-grain diagnostics render per-target fit with the worst-fit communes named; promotion to release_blocking is a spine-quality decision (populace#263), not a default."
@@ -36,6 +47,7 @@
     {
       "id": "target_profile_coverage",
       "gate": "target_profile_coverage",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
         "required_families": [
@@ -51,6 +63,7 @@
     {
       "id": "demographics_vs_statbel",
       "gate": "aggregate_admin",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
         "surface": "demography",
@@ -61,6 +74,7 @@
     {
       "id": "exported_nonzero",
       "gate": "exported_nonzero",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
       "notes": "No all-zero stored layers: an all-zero column is a pipeline bug or dead scaffolding masking engine defaults."
@@ -68,13 +82,15 @@
     {
       "id": "formula_owned_export",
       "gate": "formula_owned_export",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
-      "notes": "No Axiom derived-rule output may persist as a dataset input (a stored engine output masks reforms) — enforced from day one; the adapter's writer refuses such columns and this gate re-checks the artifact."
+      "notes": "No Axiom derived-rule output may persist as a dataset input (a stored engine output masks reforms) \u2014 enforced from day one; the adapter's writer refuses such columns and this gate re-checks the artifact."
     },
     {
       "id": "nonnegative_columns",
       "gate": "nonnegative_columns",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
       "notes": "Physically non-negative columns (incomes, contributions) carry no negatives; the column list follows the source manifest's nonnegative_outputs."
@@ -82,13 +98,17 @@
     {
       "id": "macro_realism_nbb",
       "gate": "macro_realism",
+      "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
         "bands": {
-          "household_disposable_income_vs_nbb": [0.7, 1.1]
+          "household_disposable_income_vs_nbb": [
+            0.7,
+            1.1
+          ]
         }
       },
-      "notes": "Broad release-blocking band against the NBB household-sector anchor — a levels sanity check, not a calibration target (the populace#212 lesson)."
+      "notes": "Broad release-blocking band against the NBB household-sector anchor \u2014 a levels sanity check, not a calibration target (the populace#212 lesson)."
     }
   ]
 }

@@ -17,10 +17,14 @@ construction:
 - every provided link table carries both linked entities' id columns, and
   every id it references exists in the linked entity's table.
 
-All operations return new frames; a frame is never mutated in place.
+Frame operations return new frames. Entity-table access follows a read-only
+caller convention; integrity-critical receipts belong in the frame's private,
+immutable metadata rather than in mutable table columns.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -72,6 +76,9 @@ class Frame:
         strata: Per-person provenance labels, index-aligned to the person
             table. ``None`` assigns the single stratum
             :data:`DEFAULT_STRATUM` to every person.
+        metadata: Optional stage receipts composed of mappings, sequences,
+            sets, and scalar values. The structure is copied into immutable,
+            pickle-safe containers and propagated by frame operations.
 
     Raises:
         TypeError: If a weight value is not a :class:`Weights`, or ``strata``
@@ -83,6 +90,7 @@ class Frame:
     __slots__ = (
         "_link_tables",
         "_mass_log",
+        "_metadata",
         "_schema",
         "_strata",
         "_tables",
@@ -97,9 +105,11 @@ class Frame:
         strata: pd.Series | None = None,
         *,
         mass_log: tuple[MassChangeRecord, ...] = (),
+        metadata: Mapping[str, Any] | None = None,
     ) -> None:
         self._schema = schema
         self._mass_log = tuple(mass_log)
+        self._metadata = _freeze_metadata(metadata)
         declared_links = {link.name for link in schema.links}
         self._tables: dict[str, pd.DataFrame] = {}
         self._link_tables: dict[str, pd.DataFrame] = {}
@@ -108,6 +118,32 @@ class Frame:
             target[name] = frame.copy()
         self._weights = dict(weights)
         self._strata = self._validated_strata(strata)
+        self._validate_tables()
+        self._validate_linkage()
+        self._validate_links()
+        self._validate_global_columns()
+        self._validate_weights()
+        self._validate_reserved_weight_columns()
+
+    def revalidate(self) -> None:
+        """Re-run every constructor invariant against the current state.
+
+        :meth:`table` and :attr:`person` return the stored tables, not
+        copies, so a caller that mutates them in place can silently break
+        the invariants construction proved. Seams that hand a long-lived
+        bundle across trust boundaries (a build loop between stages, a
+        writer before export) call this to fail closed on post-construction
+        corruption instead of shipping it.
+
+        Raises:
+            TypeError, ValueError: Exactly as construction would on the
+                same state — missing or extra tables, broken linkage,
+                duplicated or unsorted ids, cross-entity column collisions,
+                invalid weights or reserved weight columns, or strata that
+                no longer align with the person index.
+        """
+
+        self._strata = self._validated_strata(self._strata)
         self._validate_tables()
         self._validate_linkage()
         self._validate_links()
@@ -395,6 +431,18 @@ class Frame:
         through :meth:`select` and :meth:`concat`.
         """
         return self._mass_log
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        """Deeply immutable stage metadata carried with this frame.
+
+        Metadata records integrity contracts that must survive ordinary frame
+        transformations without becoming mutable through :meth:`table`.
+        Keys and nested mapping keys are strings; mappings, sequences, and
+        sets are frozen on construction.
+        """
+
+        return self._metadata
 
     def link(self, name: str) -> pd.DataFrame:
         """Return the link table named ``name``.
@@ -723,6 +771,7 @@ class Frame:
             new_weights,
             self._strata,
             mass_log=new_mass_log,
+            metadata=self._metadata,
         )
 
     @staticmethod
@@ -901,6 +950,7 @@ class Frame:
             dict(self._weights),
             self._strata,
             mass_log=self._mass_log,
+            metadata=self._metadata,
         )
 
     def _aggregate_positions(
@@ -1077,6 +1127,8 @@ class Frame:
             )
         if self._schema != other._schema:
             raise ValueError("Cannot concat bundles with different schemas.")
+        if self._metadata != other._metadata:
+            raise ValueError("Cannot concat bundles with different frame metadata.")
         for entity in self.entities:
             mine = set(self._tables[entity].columns)
             theirs = set(other._tables[entity].columns)
@@ -1141,6 +1193,7 @@ class Frame:
             weights,
             strata,
             mass_log=(*self._mass_log, *other._mass_log),
+            metadata=self._metadata,
         )
 
     def select(self, person_mask: np.ndarray | pd.Series) -> "Frame":
@@ -1211,7 +1264,14 @@ class Frame:
                     existing.values[keep], kind=existing.kind
                 )
         strata = self._strata.loc[mask]
-        return Frame(tables, self._schema, weights, strata, mass_log=self._mass_log)
+        return Frame(
+            tables,
+            self._schema,
+            weights,
+            strata,
+            mass_log=self._mass_log,
+            metadata=self._metadata,
+        )
 
     # ------------------------------------------------------------------
     # Concat helpers
@@ -1281,3 +1341,75 @@ class Frame:
         n_strata = self._strata.nunique()
         links = f"; links={list(self.links)}" if self._link_tables else ""
         return f"Frame({sizes}; weights[{weighted}]; strata={n_strata}{links})"
+
+
+@dataclass(frozen=True)
+class _FrozenMapping(Mapping[str, Any]):
+    """Small pickle-safe immutable mapping used for frame metadata."""
+
+    _items: tuple[tuple[str, Any], ...]
+
+    def __getitem__(self, key: str) -> Any:
+        for candidate, value in self._items:
+            if candidate == key:
+                return value
+        raise KeyError(key)
+
+    def __iter__(self):
+        return (key for key, _value in self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+
+def _freeze_metadata(metadata: Mapping[str, Any] | None) -> Mapping[str, Any]:
+    """Return a recursively immutable copy of frame metadata."""
+
+    if metadata is None:
+        return _FrozenMapping(())
+    if not isinstance(metadata, Mapping):
+        raise TypeError(
+            f"Frame metadata must be a mapping, got {type(metadata).__name__}."
+        )
+    frozen: list[tuple[str, Any]] = []
+    for key, value in metadata.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError("Frame metadata keys must be non-empty strings.")
+        frozen.append((key, _freeze_metadata_value(value, path=key)))
+    return _FrozenMapping(tuple(frozen))
+
+
+def _freeze_metadata_value(value: Any, *, path: str) -> Any:
+    if isinstance(value, Mapping):
+        frozen: list[tuple[str, Any]] = []
+        for key, nested in value.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError(
+                    f"Frame metadata mapping {path!r} has a non-string/empty key."
+                )
+            frozen.append(
+                (
+                    key,
+                    _freeze_metadata_value(
+                        nested,
+                        path=f"{path}.{key}",
+                    ),
+                )
+            )
+        return _FrozenMapping(tuple(frozen))
+    if isinstance(value, (tuple, list)):
+        return tuple(
+            _freeze_metadata_value(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
+    if isinstance(value, (set, frozenset)):
+        return frozenset(
+            _freeze_metadata_value(item, path=f"{path}[]") for item in value
+        )
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(
+        f"Frame metadata value at {path!r} must be composed of mappings, "
+        "sequences, sets, and scalar values; got "
+        f"{type(value).__name__}."
+    )

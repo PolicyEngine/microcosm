@@ -18,18 +18,35 @@ column, materialized from the frame's typed household weights.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from functools import lru_cache
+from hashlib import sha256
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from populace.frame.adapters._policyengine_us_source_index import (
+    ConsumerReceipt,
+    _PolicyEngineUSSourceIndex,
+    _SourceVariableDefinition,
+)
+from populace.frame.adapters._policyengine_us_source_index import (
+    _index_policyengine_us_sources as _build_policyengine_us_source_index,
+)
 from populace.frame.bundle import Frame
+from populace.frame.materialize import engine_tables
 from populace.frame.rules import ExportContract
 from populace.frame.schema import EntitySchema, VariableMetadata
 from populace.frame.units import US_SCHEMA
 
-__all__ = ["PolicyEngineUSEngine"]
+__all__ = [
+    "ConsumerReceipt",
+    "PolicyEngineUSEngine",
+    "PolicyEngineUSVariableMetadataIndex",
+]
 
 _PERSON_TABLE = "person"
 _GROUP_TABLES: tuple[str, ...] = (
@@ -68,6 +85,247 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
 # PolicyEngine ``definition_period`` → kernel period semantics. Anything else
 # (``"eternity"``, ``"day"``) is point-in-time state.
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
+
+# PolicyEngine-US 1.764.6 creates 110 default-system variables outside ordinary
+# top-level ``class ...(Variable)`` declarations. Keep the compact metadata
+# snapshot tied to every source/activation surface that produced it: a changed
+# wheel must fail closed until this audit is refreshed, never silently omit a
+# newly generated formula-owned output.
+_GENERATED_SOURCE_VERSION = "1.764.6"
+_GENERATED_SOURCE_SHA256: dict[str, str] = {
+    "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
+    "variables/household/demographic/geographic/state/in_state.py": (
+        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
+    ),
+    "variables/gov/puf.py": (
+        "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
+    ),
+    "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
+        "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
+    ),
+    "reforms/states/mi/surtax.py": (
+        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    ),
+    "reforms/reforms.py": (
+        "3e97e5100254ef2aaef81a8b6126674e9091b8da1951e0e5b0ddf6cf25805721"
+    ),
+    "system.py": "cd0a56ed5572da71923852e589eb90a38049723d6c9a7c15e49e774ac7fea42a",
+}
+_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
+    (
+        tuple(
+            "AL AK AZ AR CA CO CT DC DE FL GA HI ID IL IN IA KS KY LA ME MD MA "
+            "MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX "
+            "UT VT VA WA WV WI WY PR VI".split()
+        ),
+        "household",
+        "bool",
+        True,
+    ),
+    (
+        tuple(
+            "e02000 e26270 e19200 e18500 e19800 e20400 e20100 e00700 e03270 "
+            "e24515 e03300 e07300 e62900 e32800 e87530 e03240 e01100 e01200 "
+            "e24518 e09900 e27200 e03290 e58990 e03230 e11200 e07260 e07240 "
+            "e03220 p08000 e03400 e09800 e09700 e03500 e87521".split()
+        ),
+        "person",
+        "float",
+        False,
+    ),
+    (
+        tuple(
+            "ar_standard_deduction ar_itemized_deductions ar_taxable_income ar_agi "
+            "dc_taxable_income de_standard_deduction de_itemized_deductions "
+            "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
+            "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
+            "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
+            "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+            "mt_taxable_income".split()
+        ),
+        "tax_unit",
+        "float",
+        True,
+    ),
+    (("mi_surtax",), "tax_unit", "float", True),
+)
+
+
+def _index_policyengine_us_sources(
+    variables_root: Path,
+    *,
+    parameters_root: Path | None = None,
+) -> _PolicyEngineUSSourceIndex:
+    """Thin adapter hook over the single combined source-index implementation."""
+
+    return _build_policyengine_us_source_index(
+        variables_root,
+        parameters_root=parameters_root,
+    )
+
+
+def _index_policyengine_us_variable_sources(
+    variables_root: Path,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Compatibility metadata view over the combined source index."""
+
+    return _index_policyengine_us_sources(variables_root).definitions
+
+
+def _index_policyengine_us_generated_variable_sources(
+    package_root: Path,
+    *,
+    version: str,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Return the audited generated-variable snapshot or fail closed."""
+
+    if version != _GENERATED_SOURCE_VERSION:
+        raise RuntimeError(
+            "PolicyEngine-US generated-variable metadata has not been audited for "
+            f"installed version {version!r}; expected {_GENERATED_SOURCE_VERSION!r}."
+        )
+    for relative_path, expected_digest in _GENERATED_SOURCE_SHA256.items():
+        source_path = package_root / relative_path
+        try:
+            actual_digest = sha256(source_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise RuntimeError(
+                f"Required PolicyEngine-US generated-variable source is unavailable: "
+                f"{source_path}."
+            ) from exc
+        if actual_digest != expected_digest:
+            raise RuntimeError(
+                "PolicyEngine-US generated-variable source changed without a "
+                f"metadata audit: {source_path}."
+            )
+
+    definitions: dict[str, _SourceVariableDefinition] = {}
+    for names, entity, dtype, formula_owned in _GENERATED_VARIABLE_GROUPS:
+        for name in names:
+            if name in definitions:
+                raise RuntimeError(
+                    f"Duplicate audited PolicyEngine-US generated variable {name!r}."
+                )
+            definitions[name] = _SourceVariableDefinition(
+                metadata=VariableMetadata(
+                    name=name,
+                    entity=entity,
+                    dtype=dtype,
+                    period="year",
+                ),
+                always_computed=formula_owned,
+                formula_starts=(),
+            )
+    return MappingProxyType(definitions)
+
+
+@lru_cache(maxsize=1)
+def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
+    try:
+        package = distribution("policyengine-us")
+    except PackageNotFoundError as exc:
+        raise ImportError(
+            "The PolicyEngine-US metadata index requires the 'policyengine-us' "
+            "package. Install it with 'populace-frame[policyengine]'."
+        ) from exc
+    package_root = Path(package.locate_file("policyengine_us"))
+    variables_root = package_root / "variables"
+    if not variables_root.is_dir():
+        raise RuntimeError(
+            "The installed PolicyEngine-US variable source tree is unavailable "
+            f"at {variables_root}."
+        )
+    generated = _index_policyengine_us_generated_variable_sources(
+        package_root,
+        version=package.version,
+    )
+    source_index = _index_policyengine_us_sources(
+        variables_root,
+        parameters_root=package_root / "parameters",
+    )
+    definitions = dict(source_index.definitions)
+    duplicates = sorted(set(definitions) & set(generated))
+    if duplicates:
+        raise RuntimeError(
+            "PolicyEngine-US generated-variable audit overlaps ordinary source "
+            f"classes: {duplicates}."
+        )
+    definitions.update(generated)
+    return _PolicyEngineUSSourceIndex(
+        definitions=MappingProxyType(definitions),
+        consumers=source_index.consumers,
+    )
+
+
+class PolicyEngineUSVariableMetadataIndex:
+    """Import-free PolicyEngine-US variable metadata read from installed source.
+
+    Importing :mod:`policyengine_us` constructs a complete tax-benefit system,
+    and constructing an adapter system registers thousands more variable
+    modules. Ownership and physical-dtype guards need only the variable class
+    declarations, so this index parses those declarations once and retains only
+    compact metadata. The default system's generated variables come from a
+    compact audited snapshot whose source and activation files are fingerprinted;
+    an unreviewed wheel version or source change fails closed.
+    """
+
+    def __init__(self) -> None:
+        source_index = _installed_policyengine_us_variable_sources()
+        self._definitions = source_index.definitions
+        self._consumers = source_index.consumers
+
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        definition = self._definitions.get(name)
+        if definition is None:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+        return definition.metadata
+
+    def variables(self) -> list[str]:
+        return sorted(
+            name
+            for name, definition in self._definitions.items()
+            if name not in _FORMULA_OWNED_COMPAT_COLUMNS
+            and not definition.formula_owned
+        )
+
+    def consumer_receipts(self, name: str) -> tuple[ConsumerReceipt, ...]:
+        """Return immutable external reference sites for an engine variable."""
+
+        if name not in self._definitions:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+        return self._consumers.get(name, ())
+
+    def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
+        requested = set(names)
+        return set(requested & _FORMULA_OWNED_COMPAT_COLUMNS) | {
+            name
+            for name in requested
+            if (definition := self._definitions.get(name)) is not None
+            and definition.formula_owned
+        }
+
+    def _engine_computed_columns(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+        *,
+        period: int | str,
+    ) -> set[str]:
+        present = {column for frame in tables.values() for column in frame.columns}
+        structural = {US_SCHEMA.person_id_column} | {
+            column
+            for group in US_SCHEMA.group_entities
+            for column in (
+                US_SCHEMA.id_column(group),
+                US_SCHEMA.membership_column(group),
+            )
+        }
+        return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
+            name
+            for name in present
+            if name not in structural
+            and (definition := self._definitions.get(name)) is not None
+            and definition.computed_at(period)
+        }
 
 
 def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
@@ -552,11 +810,11 @@ class PolicyEngineUSEngine:
                 f"PolicyEngine-US adapter requires the US entities "
                 f"{list(expected)}; bundle has {list(bundle.entities)}."
             )
-        tables = {name: bundle.table(name).copy() for name in expected}
-        tables["household"][_HOUSEHOLD_WEIGHT_COLUMN] = bundle.weights_for(
-            "household"
-        ).values
-        return tables
+        # The export contract materializes household weights only, so the
+        # entity set is pinned rather than inherited from the bundle's
+        # weighted entities.
+        tables = engine_tables(bundle, weighted_entities=("household",))
+        return {name: tables[name] for name in expected}
 
     def _build_dataset(
         self, tables: Mapping[str, pd.DataFrame], period: int | str

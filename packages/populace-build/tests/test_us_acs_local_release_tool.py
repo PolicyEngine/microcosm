@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,19 @@ def _load_tool_module():
     path = root / "tools" / "build_us_acs_local_release.py"
     spec = importlib.util.spec_from_file_location(
         "build_us_acs_local_release",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_staging_builder_module():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "build_us_acs_multispine_base.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_us_acs_multispine_base",
         path,
     )
     module = importlib.util.module_from_spec(spec)
@@ -155,6 +169,38 @@ def test_release_id_prefix_and_manifest_constants() -> None:
     assert module.RELEASE_NAMESPACE == "buildo_acs_local"
     assert module.ARTIFACT_FILENAME == "populace_us_2024_acs_local.h5"
     assert module.HF_REPO_ID == "policyengine/populace-us"
+
+
+def test_documented_staging_recipe_matches_legacy_and_release_parsers(
+    tmp_path: Path,
+) -> None:
+    release = _load_tool_module()
+    staging_builder = _load_staging_builder_module()
+    recipe = shlex.split(release.LEGACY_STAGING_REFRESH_RECIPE)
+
+    assert recipe[:3] == [
+        "uv",
+        "run",
+        "tools/build_us_acs_multispine_base.py",
+    ]
+    staging_args = staging_builder._legacy._parse_args(recipe[3:])
+    staging_summary = staging_args.summary or staging_args.out_h5.with_suffix(
+        ".summary.json"
+    )
+    release_args = release._parse_args(
+        [
+            "--stage",
+            "materialize",
+            "--staging-h5",
+            str(staging_args.out_h5),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--feed",
+            str(tmp_path / "facts.jsonl"),
+        ]
+    )
+
+    assert release._staging_summary_path(release_args) == staging_summary
 
 
 def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:

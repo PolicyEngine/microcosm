@@ -1,0 +1,1 @@
+Add an opt-in US pre-operator multispine assembly seam; enforce source-spine provenance at assembly, clone, and gate boundaries with a frozen channel/count manifest and cross-grain checks; route PUF operators by clone role; and gate transferred, take-up, and SSI distributions before calibration.

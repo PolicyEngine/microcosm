@@ -23,6 +23,18 @@ from populace.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
 )
+from populace.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_time_period,
+)
+from populace.build.uk_runtime.weighted_integrity import (
+    UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+    UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UKInputMassParityPolicy,
+    UKQRFTailConcentrationPolicy,
+    load_uk_input_mass_reference,
+    load_uk_reviewed_exclusion_register,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -38,6 +50,19 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help="Caller-owned path for the gated national staging H5.",
+    )
+    parser.add_argument(
+        "--release-id",
+        required=True,
+        help="Canonical release id to bind into the signed terminal report.",
+    )
+    parser.add_argument(
+        "--calibration-diagnostics-sha256",
+        required=True,
+        help=(
+            "Lowercase SHA-256 of the exact calibration_diagnostics.json bytes "
+            "that will ship with this release."
+        ),
     )
     parser.add_argument(
         "--frs-raw-dir",
@@ -60,12 +85,21 @@ def _parse_args() -> argparse.Namespace:
         required=True,
         help="Official HMRC Personal Incomes 2023-24 collated ODS.",
     )
-    parser.add_argument(
+    gate_output = parser.add_mutually_exclusive_group()
+    gate_output.add_argument(
+        "--terminal-gates-json",
+        type=Path,
+        help=(
+            "Consolidated terminal-gate report path. Defaults beside "
+            "--staging-h5 with suffix '.terminal_gates.json'."
+        ),
+    )
+    gate_output.add_argument(
         "--input-coverage-json",
         type=Path,
         help=(
-            "Coverage diagnostic path. Defaults beside --staging-h5 with "
-            "suffix '.input_coverage.json'."
+            "Legacy schema-1 input-coverage diagnostic path. Cannot be "
+            "supplied with the preferred terminal-gate option."
         ),
     )
     parser.add_argument(
@@ -94,14 +128,160 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
+    parser.add_argument(
+        "--input-mass-reference-json",
+        type=Path,
+        help=(
+            "Frozen weighted per-column reference totals (schema_version 1: "
+            "identity + totals) emitted by the #609 measurement tooling. "
+            "Supplying it arms the input_mass_parity terminal gate; both "
+            "--input-mass-* thresholds are then required."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-relative-tolerance",
+        type=float,
+        help=(
+            "Maximum |candidate - reference| / |reference| per column before "
+            "input_mass_parity fails. No default: the boundary comes from the "
+            "#609 measurement pass, not from the US 0.5."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-minimum-reference-total",
+        type=float,
+        help=(
+            "Reference-mass floor (GBP-scale) below which a column is not "
+            "checked. No default: the US 1e9 is a USD figure against a "
+            "different pool and must not be inherited (#609)."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-exclusions",
+        type=Path,
+        help=(
+            "Reviewed input-mass exclusion register overriding the committed "
+            f"{UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE}. Stale entries fail "
+            "the gate; dormant entries are reported."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-top-k",
+        type=int,
+        help=(
+            "Tail size for the qrf_tail_concentration terminal gate. "
+            "Supplying the three --qrf-tail-* thresholds together arms the "
+            "gate; no defaults are inherited from the US #462 calibration."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-max-top-share",
+        type=float,
+        help=(
+            "Blocking share of weighted |mass| the top-k records may carry "
+            "per declared QRF output, in (0, 1). Measured per #609."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-min-nonzero-records",
+        type=int,
+        help=(
+            "Columns with fewer weighted carriers are reported as thin and "
+            "not checked; must exceed --qrf-tail-top-k. Measured per #609."
+        ),
+    )
+    parser.add_argument(
+        "--qrf-tail-exclusions",
+        type=Path,
+        help=(
+            "Reviewed QRF tail-concentration exclusion register overriding "
+            f"the committed {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE}. Stale "
+            "entries fail the gate; dormant entries are reported."
+        ),
+    )
     return parser.parse_args()
+
+
+def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]:
+    """Assemble the increment-4 gate arguments, requiring complete arming."""
+
+    def parser_error(message: str) -> None:
+        raise SystemExit(f"error: {message}")
+
+    arguments: dict[str, object] = {}
+    input_mass_thresholds = (
+        args.input_mass_relative_tolerance,
+        args.input_mass_minimum_reference_total,
+    )
+    input_mass_requested = args.input_mass_reference_json is not None or any(
+        value is not None for value in input_mass_thresholds
+    )
+    if input_mass_requested:
+        if args.input_mass_reference_json is None or any(
+            value is None for value in input_mass_thresholds
+        ):
+            parser_error(
+                "arming input_mass_parity requires --input-mass-reference-json, "
+                "--input-mass-relative-tolerance, and "
+                "--input-mass-minimum-reference-total together."
+            )
+        arguments["input_mass_reference"] = load_uk_input_mass_reference(
+            args.input_mass_reference_json
+        )
+        arguments["input_mass_policy"] = UKInputMassParityPolicy(
+            relative_tolerance=args.input_mass_relative_tolerance,
+            minimum_reference_total=args.input_mass_minimum_reference_total,
+            reviewed_exclusions=load_uk_reviewed_exclusion_register(
+                args.input_mass_exclusions,
+                resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+            ),
+        )
+    elif args.input_mass_exclusions is not None:
+        parser_error(
+            "--input-mass-exclusions requires the input_mass_parity gate to be armed."
+        )
+    qrf_thresholds = (
+        args.qrf_tail_top_k,
+        args.qrf_tail_max_top_share,
+        args.qrf_tail_min_nonzero_records,
+    )
+    if any(value is not None for value in qrf_thresholds):
+        if any(value is None for value in qrf_thresholds):
+            parser_error(
+                "arming qrf_tail_concentration requires --qrf-tail-top-k, "
+                "--qrf-tail-max-top-share, and --qrf-tail-min-nonzero-records "
+                "together."
+            )
+        arguments["qrf_tail_policy"] = UKQRFTailConcentrationPolicy(
+            top_k=args.qrf_tail_top_k,
+            max_top_share=args.qrf_tail_max_top_share,
+            min_nonzero_records=args.qrf_tail_min_nonzero_records,
+            reviewed_exclusions=load_uk_reviewed_exclusion_register(
+                args.qrf_tail_exclusions,
+                resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+            ),
+        )
+    elif args.qrf_tail_exclusions is not None:
+        parser_error(
+            "--qrf-tail-exclusions requires the qrf_tail_concentration gate "
+            "to be armed."
+        )
+    return arguments
 
 
 def main() -> int:
     args = _parse_args()
-    coverage_path = args.input_coverage_json or args.staging_h5.with_suffix(
-        ".input_coverage.json"
+    legacy_input_coverage_path = args.input_coverage_json
+    terminal_gate_path = (
+        None
+        if legacy_input_coverage_path is not None
+        else (
+            args.terminal_gates_json
+            or args.staging_h5.with_suffix(".terminal_gates.json")
+        )
     )
+    gate_output_path = legacy_input_coverage_path or terminal_gate_path
+    assert gate_output_path is not None
     evidence_path = args.hmrc_evidence_json or args.staging_h5.with_suffix(
         ".hmrc_income.json"
     )
@@ -117,7 +297,7 @@ def main() -> int:
     _validate_distinct_paths(
         evidence_path=evidence_path,
         replay_path=replay_path,
-        coverage_path=coverage_path,
+        terminal_gate_path=gate_output_path,
         input_h5=args.input_h5,
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
@@ -125,7 +305,13 @@ def main() -> int:
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
         build_record_path=build_record_path,
+        input_mass_reference_path=args.input_mass_reference_json,
+        input_mass_exclusions_path=args.input_mass_exclusions,
+        qrf_tail_exclusions_path=args.qrf_tail_exclusions,
     )
+    # Read-only gate inputs are materialized before any sidecar unlink so a
+    # path collision cannot consume a just-deleted file.
+    weighted_integrity_arguments = _weighted_integrity_arguments(args)
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
@@ -139,9 +325,22 @@ def main() -> int:
         qrf_estimators=args.qrf_estimators,
     )
     try:
+        # This staging path performs no calibration and therefore has no real
+        # target-surface or target-fit evidence. Leave parity_evidence absent;
+        # the terminal report omits that trio instead of inventing passes.
+        # The weighted-integrity pair (#609) follows the same rule: it joins
+        # the battery only when the caller arms it with a frozen reference
+        # and measured thresholds.
+        gate_path_argument = (
+            {"input_coverage_path": legacy_input_coverage_path}
+            if legacy_input_coverage_path is not None
+            else {"terminal_gate_path": terminal_gate_path}
+        )
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
+            release_id=args.release_id,
+            calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
             stages=(
                 UKNationalStage(
                     name="frs_hmrc_retained_leaves",
@@ -152,7 +351,8 @@ def main() -> int:
                     transform=hmrc_transform,
                 ),
             ),
-            input_coverage_path=coverage_path,
+            **gate_path_argument,
+            **weighted_integrity_arguments,
         )
     except RuntimeError as error:
         if (
@@ -183,7 +383,7 @@ def main() -> int:
     artifact_paths = {
         "input_h5": result.input_h5,
         "staging_h5": result.staging_h5,
-        "input_coverage": coverage_path,
+        "terminal_gates": gate_output_path,
         "hmrc_evidence": evidence_path,
         "hmrc_replay": replay_path,
         "spi_donor": args.spi_tab,
@@ -191,9 +391,7 @@ def main() -> int:
         "frs_adult": retained_leaves_transform.adult_tab_path,
         "frs_benefits": retained_leaves_transform.benefits_tab_path,
     }
-    artifacts = {
-        role: _artifact_info(path) for role, path in artifact_paths.items()
-    }
+    artifacts = {role: _artifact_info(path) for role, path in artifact_paths.items()}
     build_record = _aggregate_build_record(
         result=result,
         artifacts=artifacts,
@@ -204,9 +402,10 @@ def main() -> int:
     )
     _write_json(build_record_path, build_record)
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "build_kind": "uk_national_staging_dataset",
         "stages": list(result.stage_names),
+        "terminal_gates": result.terminal_gates.to_manifest(),
         "input_coverage": {
             "passed": result.input_coverage.passed,
             "failures": list(result.input_coverage.failures),
@@ -269,13 +468,13 @@ def _aggregate_build_record(
             ),
             "reason": record.reason,
         }
-        for record in result.dataset.mass_log
+        for record in result.frame.mass_log
     ]
     household_weights = pd.to_numeric(
-        result.dataset.household["household_weight"], errors="raise"
+        result.frame.table("household")["household_weight"], errors="raise"
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "build_kind": "uk_national_staging_dataset",
         "status": "passed",
         "stages": list(result.stage_names),
@@ -284,20 +483,18 @@ def _aggregate_build_record(
             "qrf_estimators": int(qrf_estimators),
         },
         "dataset": {
-            "time_period": str(result.dataset.time_period),
+            "time_period": uk_time_period(result.frame),
             "entity_rows": {
-                "person": len(result.dataset.person),
-                "benunit": len(result.dataset.benunit),
-                "household": len(result.dataset.household),
+                "person": len(result.frame.table("person")),
+                "benunit": len(result.frame.table("benunit")),
+                "household": len(result.frame.table("household")),
             },
-            "household_weight_kind": result.dataset.household_weight_kind.value,
+            "household_weight_kind": uk_household_weight_kind(result.frame).value,
             "household_weight_total": float(household_weights.sum()),
             "mass_changes": mass_changes,
         },
         "source_rows": {
-            "frs_adult": int(
-                dict(retained_sources.get("adult", {})).get("rows", 0)
-            ),
+            "frs_adult": int(dict(retained_sources.get("adult", {})).get("rows", 0)),
             "frs_benefits": int(
                 dict(retained_sources.get("benefits", {})).get("rows", 0)
             ),
@@ -306,6 +503,7 @@ def _aggregate_build_record(
             ),
         },
         "source_vintages": dict(family_evidence.get("source_vintages", {})),
+        "terminal_gates": result.terminal_gates.to_manifest(),
         "input_coverage": {
             "passed": bool(result.input_coverage.passed),
             "failures": list(result.input_coverage.failures),
@@ -319,23 +517,15 @@ def _aggregate_build_record(
                 details.get("insufficient_effective_mass", ())
             ),
             "stale_exclusions": list(details.get("stale_exclusions", ())),
-            "effective_mass_policy": dict(
-                details.get("effective_mass_policy", {})
-            ),
-            "family_effective_mass": dict(
-                details.get("family_effective_mass", {})
-            ),
+            "effective_mass_policy": dict(details.get("effective_mass_policy", {})),
+            "family_effective_mass": dict(details.get("family_effective_mass", {})),
             "family_build_state": dict(details.get("family_build_state", {})),
         },
         "hmrc_replay": {
             "summary": dict(
-                dict(family_evidence.get("targets", {})).get(
-                    "classification", {}
-                )
+                dict(family_evidence.get("targets", {})).get("classification", {})
             ),
-            "post_draw_identity": dict(
-                family_evidence.get("post_draw_identity", {})
-            ),
+            "post_draw_identity": dict(family_evidence.get("post_draw_identity", {})),
         },
         "artifacts": safe_artifacts,
     }
@@ -376,6 +566,7 @@ def _write_stage_reports(
         "base_candidate": {
             "path": str(candidate.path),
             "filename": candidate.filename,
+            "tier": candidate.tier,
             "revision": candidate.revision,
             "sha256": candidate.sha256,
             "size_bytes": candidate.size_bytes,
@@ -390,14 +581,14 @@ def _write_stage_reports(
 def _is_final_release_gate_failure(error: RuntimeError) -> bool:
     """Match only the national seam's post-stage, pre-staging hard gate."""
 
-    return str(error).startswith("Release gates failed: Input coverage failed:")
+    return str(error).startswith("Release gates failed:")
 
 
 def _validate_distinct_paths(
     *,
     evidence_path: Path,
     replay_path: Path,
-    coverage_path: Path,
+    terminal_gate_path: Path,
     input_h5: Path,
     staging_h5: Path,
     spi_tab: Path,
@@ -405,6 +596,9 @@ def _validate_distinct_paths(
     adult_tab: Path,
     benefits_tab: Path,
     build_record_path: Path,
+    input_mass_reference_path: Path | None,
+    input_mass_exclusions_path: Path | None,
+    qrf_tail_exclusions_path: Path | None,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
@@ -414,10 +608,19 @@ def _validate_distinct_paths(
         "--frs-raw-dir/adult.tab": adult_tab.resolve(),
         "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
         "--build-record-json": build_record_path.resolve(),
-        "--input-coverage-json": coverage_path.resolve(),
+        "--terminal-gates-json/--input-coverage-json": terminal_gate_path.resolve(),
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),
     }
+    paths.update(
+        (label, path.resolve())
+        for label, path in {
+            "--input-mass-reference-json": input_mass_reference_path,
+            "--input-mass-exclusions": input_mass_exclusions_path,
+            "--qrf-tail-exclusions": qrf_tail_exclusions_path,
+        }.items()
+        if path is not None
+    )
     collisions = [
         (left_label, right_label, left_path, right_path)
         for (left_label, left_path), (right_label, right_path) in combinations(

@@ -332,6 +332,7 @@ def with_us_medicaid_take_up(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     diagnostics = us_medicaid_take_up_diagnostics(
         output, state_targets, substitutions=substitutions

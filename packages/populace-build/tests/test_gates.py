@@ -7,6 +7,7 @@ flip, investment-interest blow-up) as the cases the gate must catch.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from populace.build import (
@@ -60,6 +61,29 @@ class TestGateResultInvariants:
         manifest = report.to_manifest()
         assert manifest["passed"] is False
         assert manifest["gates"]["b"]["failures"] == ["broke"]
+
+    def test_report_manifest_deep_copies_nested_details(self) -> None:
+        details = {
+            "authority": {"surface": {"sha256": "a" * 64}},
+            "targets": [{"name": "person/income", "receipts": ["canonical"]}],
+        }
+        result = GateResult(name="authority", passed=True, details=details)
+
+        manifest = GateReport((result,)).to_manifest()
+        manifest_details = manifest["gates"]["authority"]["details"]
+
+        details["authority"]["surface"]["sha256"] = "b" * 64
+        details["targets"][0]["receipts"].append("source-tampered")
+        assert manifest_details["authority"]["surface"]["sha256"] == "a" * 64
+        assert manifest_details["targets"][0]["receipts"] == ["canonical"]
+
+        manifest_details["authority"]["surface"]["sha256"] = "c" * 64
+        manifest_details["targets"][0]["receipts"].append("manifest-tampered")
+        assert result.details["authority"]["surface"]["sha256"] == "b" * 64
+        assert result.details["targets"][0]["receipts"] == [
+            "canonical",
+            "source-tampered",
+        ]
 
 
 class TestParityGate:
@@ -416,6 +440,42 @@ class TestNonconstantColumnsGate:
 
 
 class TestDefaultValuedColumnsGate:
+    @pytest.mark.parametrize(
+        "values",
+        [
+            pd.Series([pd.NA, pd.NA], dtype="boolean"),
+            pd.Series([pd.NA, pd.NA], dtype="string"),
+            pd.Series([pd.NaT, pd.NaT], dtype="datetime64[ns]"),
+        ],
+        ids=["nullable_boolean", "nullable_string", "datetime_nat"],
+    )
+    def test_pandas_nullable_series_with_no_observations_fails(
+        self, values: pd.Series
+    ) -> None:
+        result = default_valued_columns_gate(
+            {"required_input": values},
+            {"required_input": 0.0},
+        )
+
+        assert not result.passed
+        assert result.details["default_valued_columns"] == {"required_input": None}
+        assert result.details["no_observed_value_columns"] == ["required_input"]
+
+    def test_column_with_no_finite_or_nonnull_values_fails(self) -> None:
+        result = default_valued_columns_gate(
+            {"stock_assets": np.asarray([np.nan, np.inf, -np.inf])},
+            {"stock_assets": 0.0},
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "stock_assets: no finite/non-null values were observed; the column "
+            "is degenerate and masks a missing or failed imputation — impute it, "
+            "drop it, or record a reviewed exclusion.",
+        )
+        assert result.details["default_valued_columns"] == {"stock_assets": None}
+        assert result.details["no_observed_value_columns"] == ["stock_assets"]
+
     def test_column_stuck_at_engine_default_fails(self) -> None:
         # The constant-40 hours incident: populated, plausible-looking, and
         # identical to the engine default for every record.
@@ -1803,6 +1863,18 @@ class TestTailConcentrationGate:
         )
         assert result.passed
         assert result.details["thin_columns"] == {"thin": 10}
+
+    def test_thin_reviewed_exclusion_is_dormant(self) -> None:
+        result = tail_concentration_gate(
+            {"thin": np.ones(10)},
+            {"thin": np.ones(10)},
+            reviewed_exclusions={"thin": "Documented while inactive."},
+        )
+
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {}
+        assert result.details["stale_exclusions"] == []
+        assert result.details["dormant_exclusions"] == ["thin"]
 
     def test_all_zero_column_is_thin_not_failing(self) -> None:
         result = tail_concentration_gate(

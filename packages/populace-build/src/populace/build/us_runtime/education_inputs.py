@@ -38,6 +38,12 @@ from populace.build.source_runtime import (
 from populace.build.us_runtime.education_assistance_source import (
     fill_asec_education_assistance_source,
 )
+from populace.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    has_support_role_metadata,
+    support_role_series,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -78,9 +84,6 @@ US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 )
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
-_ASEC_CHANNEL = "asec"
-_PUF_CHANNEL = "puf_tax_detail"
 # Qualified tuition is a PUF-only tax-detail chain target: on the two-channel
 # support pool it is exactly zero on the ASEC half BY DESIGN (like every other
 # PUF-only detail column — partnership income, charitable donations, mortgage
@@ -231,6 +234,7 @@ def with_us_education_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -257,9 +261,12 @@ def us_education_inputs_summary(frame: Frame) -> dict[str, object]:
         values = person[column].fillna(False).astype(bool).to_numpy()
         incoherent[column] = int(np.count_nonzero(values != tuition_positive))
     channels: dict[str, dict[str, float | int]] = {}
-    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
-        channel = person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
-        for name in (_ASEC_CHANNEL, _PUF_CHANNEL):
+    if has_support_role_metadata(person, entity="person"):
+        channel = support_role_series(person, entity="person").to_numpy()
+        for name in (
+            BASE_ASEC_SUPPORT_CHANNEL,
+            PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        ):
             mask = channel == name
             channel_weight = float(weights[mask].sum())
             channels[name] = {
@@ -348,14 +355,14 @@ def us_education_inputs_signal_gate(frame: Frame) -> GateResult:
 
     channels = summary.get("channels") or {}
     if channels:
-        asec = channels.get(_ASEC_CHANNEL, {})
+        asec = channels.get(BASE_ASEC_SUPPORT_CHANNEL, {})
         if int(asec.get("tuition_positive_rows", 0)):
             failures.append(
                 "qualified_tuition_expenses is a PUF-only tax-detail column but "
                 f"{asec['tuition_positive_rows']} ASEC-channel row(s) carry it; "
                 "the support channels have cross-contaminated."
             )
-        puf = channels.get(_PUF_CHANNEL, {})
+        puf = channels.get(PUF_TAX_DETAIL_SUPPORT_CHANNEL, {})
         puf_share = float(puf.get("tuition_positive_share", 0.0))
         puf_low, puf_high = _TUITION_PUF_CHANNEL_SHARE_BAND
         if not (puf_low <= puf_share <= puf_high):

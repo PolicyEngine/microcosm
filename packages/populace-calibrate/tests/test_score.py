@@ -49,6 +49,7 @@ def test_score_targets_evaluates_existing_weights_without_calibrating() -> None:
     np.testing.assert_allclose(result.weights, [2.0, 3.0])
     np.testing.assert_allclose(result.initial_weights, [2.0, 3.0])
     assert result.options["method"] == "score_only"
+    assert result.gate_open_probabilities is None
     assert result.n_nonzero == 2
     assert [diagnostic.name for diagnostic in result.diagnostics] == [
         "income@0",

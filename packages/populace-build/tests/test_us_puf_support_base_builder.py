@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -8,6 +9,7 @@ import pandas as pd
 import pytest
 
 from populace.build import FitWeightRecord
+from populace.build.outer_stage_runtime import frame_identity
 from populace.build.us_runtime import (
     US_PUF_SUPPORT_FIT_NAME,
     clone_us_frame_for_puf_support,
@@ -23,6 +25,17 @@ def _load_support_builder_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def _canonical_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _minimal_us_frame() -> Frame:
@@ -65,6 +78,165 @@ def _minimal_us_frame() -> Frame:
         )
     }
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def _raw_asec_frame() -> Frame:
+    source = _minimal_us_frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    person = tables["person"].drop(columns=["employment_income_before_lsr"])
+    person["source_year"] = np.asarray([2022, 2022, 2022], dtype=np.int64)
+    person["source_household_id"] = np.asarray([101, 101, 202], dtype=np.int64)
+    person["source_person_id"] = np.asarray(
+        [f"{value:022d}" for value in (1, 2, 3)],
+        dtype=object,
+    )
+    person["source_row_id"] = np.asarray([0, 1, 2], dtype=np.int64)
+    person["PERIDNUM"] = person["source_person_id"].to_numpy()
+    person["P_SEQ"] = np.asarray([1, 2, 1], dtype=np.int64)
+    person["A_LINENO"] = np.asarray([1, 2, 1], dtype=np.int64)
+    person["A_AGE"] = np.asarray([31, 29, 50], dtype=np.int64)
+    tables["person"] = person
+    return Frame(
+        tables,
+        source.schema,
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
+        pd.Series(["asec_2022"] * 3, name="stratum"),
+    )
+
+
+def _weeks_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "LKWEEKS": [7, -1, 12],
+        }
+    )
+    source.attrs["source_audit"] = {"rows": 3}
+    return source
+
+
+def _education_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "source_year": [2022, 2022, 2022],
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "ED_VAL": [0.0, 500.0, 1_000.0],
+        }
+    )
+    source.attrs["source_audit"] = {2022: {"rows": 3}}
+    return source
+
+
+def _public_assistance_type_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "source_year": [2022, 2022, 2022],
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "PAW_VAL": [0.0, 250.0, 125.0],
+            "PAW_TYP": [0, 1, 2],
+        }
+    )
+    source.attrs["source_audit"] = {2022: {"rows": 3}}
+    return source
+
+
+def _pooled_source_receipt(tmp_path: Path) -> dict[str, object]:
+    return {
+        "kind": "pooled_asec",
+        "target_year": 2022,
+        "sources": [
+            {
+                "year": 2022,
+                "path": str((tmp_path / "asec_2022.h5").resolve()),
+                "sha256": "a" * 64,
+                "share": 1.0,
+                "max_households": None,
+            }
+        ],
+        "support_spine_spec": None,
+        "metadata": {"weighted_person_population": 400.0},
+    }
+
+
+def _with_person_column(frame: Frame, column: str, values: np.ndarray) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][column] = values
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _raw_stage_args(builder, tmp_path: Path):
+    return builder._parse_args(
+        [
+            "--asec-h5",
+            f"2022={tmp_path / 'asec_2022.h5'}",
+            "--target-year",
+            "2022",
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--asec-2023-weeks-unemployed-source",
+            str(tmp_path / "asec_weeks.zip"),
+            "--asec-education-source",
+            f"2022={tmp_path / 'asec_education.zip'}",
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+            "--stage",
+            "source_construction",
+            "--checkpoint-dir",
+            str(tmp_path / "checkpoints"),
+        ]
+    )
+
+
+def _patch_raw_stage_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    builder,
+    *,
+    frame: Frame,
+    source_receipt: dict[str, object],
+) -> None:
+    monkeypatch.setattr(
+        builder,
+        "_load_base_frame_from_args",
+        lambda _args: (frame, source_receipt),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        lambda _path: _weeks_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_education_assistance_sources",
+        lambda _paths, *, income_years: _education_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_public_assistance_type_sources",
+        lambda _paths, *, income_years: _public_assistance_type_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "raw-stage-fixture"},
+    )
+    monkeypatch.setattr(builder, "_sha256", lambda _path: "f" * 64)
 
 
 def _support_donor() -> pd.DataFrame:
@@ -189,6 +361,197 @@ class TestBaseBuildWeightsAudit:
             record
         ]
 
+    @pytest.mark.parametrize("staged", [False, True])
+    def test_capital_gains_tail_stage_writes_and_binds_manifest(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        staged: bool,
+    ) -> None:
+        builder = _load_support_builder_module()
+        frame = _minimal_us_frame()
+        donor = pd.DataFrame({"donor": [1]})
+        manifest = {
+            "manifest_sha256": "payload-sha",
+            "donor_records_sha256": "donor-sha",
+            "assignment_sha256": "assignment-sha",
+            "record_count": 2,
+            "boundary": {"quantile": 0.995},
+            "weight_domain": {"assigned_tail_weight": 4.0},
+            "joint_vector_columns": ["short_term_capital_gains"],
+            "joint_vector_policy": {"legs_scaled_independently": False},
+            "clone": {"household_weight_difference": 0.0},
+            "carrier_reconciliation": {"passed": True},
+            "tail_distribution_receipts": {
+                "donor": {},
+                "frame_after_stage": {
+                    "positive_mass_five_x_target_exceeded": True,
+                },
+            },
+            "signed_leg_reconciliation": {"short_term_capital_gains": {}},
+            "tail_concentration_gate": {"passed": True},
+            "frame_after_stage_concentration_gate": {"passed": True},
+        }
+        captured: dict[str, object] = {}
+
+        def fake_transfer(actual_frame, actual_donor, *, seed):
+            captured["frame"] = actual_frame
+            captured["donor"] = actual_donor
+            captured["seed"] = seed
+            return actual_frame, manifest
+
+        def fake_write(path, actual_manifest):
+            captured.setdefault("paths", []).append(path)
+            captured["manifest"] = actual_manifest
+            return "file-sha"
+
+        monkeypatch.setattr(builder, "transfer_puf_capital_gains_tail", fake_transfer)
+        monkeypatch.setattr(
+            builder,
+            "write_puf_capital_gains_tail_manifest",
+            fake_write,
+        )
+        checkpoint_dir = tmp_path / "checkpoints" if staged else None
+        actual_frame, metadata = builder._capital_gains_tail_transfer_stage(
+            SimpleNamespace(
+                out=tmp_path,
+                checkpoint_dir=checkpoint_dir,
+                target_year=2024,
+                seed=567,
+            ),
+            frame,
+            donor=donor,
+        )
+
+        assert actual_frame is frame
+        manifest_filename = "base_populace_us_2024_puf_capital_gains_tail.manifest.json"
+        manifest_path = tmp_path / manifest_filename
+        checkpoint_manifest_path = manifest_path
+        expected_paths = [manifest_path]
+        if checkpoint_dir is not None:
+            checkpoint_manifest_path = checkpoint_dir / "artifacts" / manifest_filename
+            expected_paths.append(checkpoint_manifest_path)
+        assert captured == {
+            "frame": frame,
+            "donor": donor,
+            "seed": 567,
+            "paths": expected_paths,
+            "manifest": manifest,
+        }
+        assert metadata["manifest_file_sha256"] == "file-sha"
+        assert metadata["checkpoint_manifest_path"] == str(checkpoint_manifest_path)
+        assert metadata["manifest_sha256"] == "payload-sha"
+        assert metadata["record_count"] == 2
+        assert metadata["boundary"] == {"quantile": 0.995}
+        assert metadata["tail_concentration_gate"] == {"passed": True}
+
+    def test_capital_gains_tail_stage_enforces_five_x_target(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        builder = _load_support_builder_module()
+        monkeypatch.setattr(
+            builder,
+            "transfer_puf_capital_gains_tail",
+            lambda frame, _donor, *, seed: (
+                frame,
+                {
+                    "tail_distribution_receipts": {
+                        "frame_after_stage": {
+                            "positive_mass_five_x_target_exceeded": False,
+                            "positive_mass_five_x_ceiling": 1.2e12,
+                            "positive_mass_five_x_target": 1.2709e12,
+                        }
+                    }
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            builder,
+            "write_puf_capital_gains_tail_manifest",
+            lambda *_args: pytest.fail("failed ceiling was written"),
+        )
+
+        with pytest.raises(ValueError, match="did not clear"):
+            builder._capital_gains_tail_transfer_stage(
+                SimpleNamespace(
+                    out=tmp_path,
+                    checkpoint_dir=None,
+                    target_year=2024,
+                    seed=567,
+                ),
+                _minimal_us_frame(),
+                donor=pd.DataFrame({"donor": [1]}),
+            )
+
+    @pytest.mark.parametrize("damage", ["missing", "tampered"])
+    def test_capital_gains_tail_manifest_repairs_from_checkpoint_copy(
+        self,
+        damage: str,
+        tmp_path: Path,
+    ) -> None:
+        builder = _load_support_builder_module()
+        records: list[dict[str, object]] = []
+        manifest = {
+            "donor_records_sha256": _canonical_sha256(records),
+            "assignment_sha256": _canonical_sha256(records),
+            "record_count": 0,
+            "records": records,
+        }
+        manifest["manifest_sha256"] = _canonical_sha256(manifest)
+        output = tmp_path / "out" / "tail.json"
+        checkpoint = tmp_path / "checkpoints" / "artifacts" / "tail.json"
+        file_sha256 = builder.write_puf_capital_gains_tail_manifest(
+            output,
+            manifest,
+        )
+        assert (
+            builder.write_puf_capital_gains_tail_manifest(checkpoint, manifest)
+            == file_sha256
+        )
+        metadata = {
+            "manifest_path": str(output),
+            "checkpoint_manifest_path": str(checkpoint),
+            "manifest_file_sha256": file_sha256,
+            "manifest_sha256": manifest["manifest_sha256"],
+            "donor_records_sha256": manifest["donor_records_sha256"],
+            "assignment_sha256": manifest["assignment_sha256"],
+            "record_count": 0,
+        }
+        if damage == "missing":
+            output.unlink()
+        else:
+            output.write_text("{}\n", encoding="utf-8")
+
+        repaired = builder._ensure_capital_gains_tail_manifest(metadata)
+
+        assert repaired == manifest
+        assert output.read_bytes() == checkpoint.read_bytes()
+
+    def test_capital_gains_tail_manifest_refuses_when_both_copies_are_invalid(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        builder = _load_support_builder_module()
+        output = tmp_path / "out.json"
+        checkpoint = tmp_path / "checkpoint.json"
+        output.write_text("{}\n", encoding="utf-8")
+        checkpoint.write_text("{}\n", encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="No valid"):
+            builder._ensure_capital_gains_tail_manifest(
+                {
+                    "manifest_path": str(output),
+                    "checkpoint_manifest_path": str(checkpoint),
+                    "manifest_file_sha256": "expected",
+                    "manifest_sha256": "payload",
+                    "donor_records_sha256": "donor",
+                    "assignment_sha256": "assignment",
+                    "record_count": 1,
+                }
+            )
+
     def test_base_build_aborts_when_the_audit_fails(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -303,6 +666,7 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
         "clone_feature_extraction",
         "primary_qrf_chain",
         "qrf_finalization",
+        "capital_gains_tail_transfer",
         "capital_gain_distributions",
         "qbi_reconciliation",
         "wic_post_clone",
@@ -326,6 +690,187 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
     assert builder.PIPELINE_STEPS == expected
     assert builder.OUTER_STAGE_PIPELINE.names == expected
     assert tuple(name for name, _boundaries in builder.STAGE_BOUNDARIES) == expected
+
+
+def test_raw_stage_copy_adds_only_exact_source_mappings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    source = _raw_asec_frame()
+    before = frame_identity(source)
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        lambda _path: _weeks_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_education_assistance_sources",
+        lambda _paths, *, income_years: _education_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_public_assistance_type_sources",
+        lambda _paths, *, income_years: _public_assistance_type_source(),
+    )
+
+    raw, mappings = builder._asec_raw_source_mapping_frame(
+        args,
+        source,
+        weeks_path=tmp_path / "asec_weeks.zip",
+    )
+
+    assert frame_identity(source) == before
+    assert "LKWEEKS" not in source.table("person")
+    assert "ED_VAL" not in source.table("person")
+    assert "PAW_TYP" not in source.table("person")
+    assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
+    assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
+    assert set(mappings) == {"ED_VAL", "LKWEEKS", "PAW_TYP"}
+    assert all(
+        mapping["operation"] == "exact_source_join"
+        and mapping["join_keys"] == ["source_year", "PERIDNUM"]
+        for mapping in mappings.values()
+    )
+    builder.assert_operator_free_source_frame(raw, label="raw-stage fixture")
+
+
+def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    source = _raw_asec_frame()
+    _patch_raw_stage_sources(
+        monkeypatch,
+        builder,
+        frame=source,
+        source_receipt=_pooled_source_receipt(tmp_path),
+    )
+
+    def add_age(frame: Frame, **_kwargs) -> Frame:
+        return _with_person_column(
+            frame,
+            "age",
+            frame.table("person")["A_AGE"].to_numpy(),
+        )
+
+    baseline_runtime = builder.StageRuntime(
+        tmp_path / "legacy-baseline",
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=builder._stage_run_config(args),
+    )
+    baseline_source = baseline_runtime.complete("source_construction", source)
+    baseline_enriched = baseline_runtime.complete(
+        "pre_clone_enrichment",
+        add_age(source),
+    )
+
+    monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", add_age)
+    identity_transforms = (
+        "with_us_prior_year_income_inputs",
+        "with_us_relationship_inputs",
+        "with_us_medicare_take_up_input",
+        "with_us_eligibility_inputs",
+        "with_us_pregnancy_inputs",
+        "with_us_wic_claim_input",
+        "with_us_child_support_inputs",
+        "with_us_disability_benefits",
+        "with_us_workers_compensation",
+        "with_us_weeks_unemployed",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_retirement_distribution_inputs",
+        "with_us_immigration_inputs",
+    )
+    for name in identity_transforms:
+        monkeypatch.setattr(builder, name, lambda value, **_kwargs: value)
+    passing_gate = SimpleNamespace(passed=True, failures=(), details={})
+    for name in (
+        "us_relationship_inputs_signal_gate",
+        "us_medicare_take_up_signal_gate",
+        "us_housing_inputs_signal_gate",
+        "us_eligibility_inputs_signal_gate",
+        "us_pregnancy_signal_gate",
+        "us_wic_claim_signal_gate",
+    ):
+        monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
+
+    builder._run_outer_stage(args)
+    runtime = builder.StageRuntime(
+        args.checkpoint_dir,
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=builder._stage_run_config(args),
+    )
+    source_checkpoint = runtime.load("source_construction")
+    assert frame_identity(source_checkpoint.frame) == frame_identity(source)
+    assert source_checkpoint.path.read_bytes() == baseline_source.path.read_bytes()
+    assert "ED_VAL" not in source_checkpoint.frame.table("person")
+    assert "LKWEEKS" not in source_checkpoint.frame.table("person")
+    assert "PAW_TYP" not in source_checkpoint.frame.table("person")
+
+    raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    raw, raw_metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
+    assert raw_metadata["stage"] == "raw_source_mapping"
+    assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
+    assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
+    assert "age" not in raw.table("person")
+    assert [path.name for path in args.checkpoint_dir.glob("*.frame.h5")] == [
+        "000_source_construction.frame.h5"
+    ]
+
+    args.stage = "pre_clone_enrichment"
+    builder._run_outer_stage(args)
+    enriched_checkpoint = runtime.load("pre_clone_enrichment")
+    enriched = enriched_checkpoint.frame
+    assert enriched_checkpoint.path.read_bytes() == baseline_enriched.path.read_bytes()
+    assert enriched.table("person")["age"].tolist() == [31, 29, 50]
+    assert "ED_VAL" not in enriched.table("person")
+    assert "LKWEEKS" not in enriched.table("person")
+    assert "PAW_TYP" not in enriched.table("person")
+    assert sorted(path.name for path in args.checkpoint_dir.glob("*.frame.h5")) == [
+        "000_source_construction.frame.h5",
+        "001_pre_clone_enrichment.frame.h5",
+    ]
+
+
+def test_completed_source_stage_repairs_raw_auxiliary_without_rewriting_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    source = _raw_asec_frame()
+    _patch_raw_stage_sources(
+        monkeypatch,
+        builder,
+        frame=source,
+        source_receipt=_pooled_source_receipt(tmp_path),
+    )
+
+    builder._run_outer_stage(args)
+    raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    source_path = args.checkpoint_dir / "000_source_construction.frame.h5"
+    context_path = args.checkpoint_dir / "stage_run_context.json"
+    expected_raw = raw_path.read_bytes()
+    expected_source = source_path.read_bytes()
+    expected_context = context_path.read_bytes()
+    raw_path.unlink()
+
+    builder._run_outer_stage(args)
+
+    assert raw_path.read_bytes() == expected_raw
+    assert source_path.read_bytes() == expected_source
+    assert context_path.read_bytes() == expected_context
+    repaired, _metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
+    assert repaired.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert repaired.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
 
 
 def test_source_and_preclone_stages_round_trip_design_weight_kind(
@@ -411,6 +956,9 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "pre_clone_enrichment",
     )
     assert loaded.frame.weights_for("household").kind is WeightKind.DESIGN
+    assert not (
+        args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    ).exists()
 
 
 def test_weeks_post_clone_rejects_source_content_drift(
@@ -482,6 +1030,143 @@ def test_outer_stage_resume_rejects_changed_builder_code(
             args.checkpoint_dir,
             builder.OUTER_STAGE_PIPELINE,
             run_config=builder._stage_run_config(args),
+        )
+
+
+def test_puf_donor_builder_threads_explicit_source_year_agi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    path = tmp_path / "puf.h5"
+    source_path = tmp_path / "puf_2015.csv"
+    arrays = {
+        "tax_unit_id": np.asarray([10.0, 20.0]),
+        "household_weight": np.asarray([1.0, 2.0]),
+    }
+    adjusted_gross_income = np.asarray([-5_000.0, 250_000.0])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(builder, "_read_h5_arrays", lambda actual: arrays)
+
+    def fake_agi(
+        actual_source_path: Path,
+        *,
+        processed_tax_unit_ids,
+        processed_tax_unit_weights,
+    ) -> np.ndarray:
+        captured["source_path"] = actual_source_path
+        captured["processed_tax_unit_ids"] = processed_tax_unit_ids
+        captured["processed_tax_unit_weights"] = processed_tax_unit_weights
+        return adjusted_gross_income
+
+    def fake_donor(
+        actual_arrays,
+        *,
+        adjusted_gross_income,
+        donor_build_summary,
+    ):
+        captured["arrays"] = actual_arrays
+        captured["adjusted_gross_income"] = adjusted_gross_income
+        captured["donor_build_summary"] = donor_build_summary
+        donor_build_summary["mortgage_field_quarantine"] = {"screened_record_count": 2}
+        return "donor"
+
+    monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
+
+    donor_build_summary: dict[str, object] = {}
+    assert (
+        builder._puf_tax_unit_donor_from_h5(
+            path,
+            source_puf_csv=source_path,
+            donor_build_summary=donor_build_summary,
+        )
+        == "donor"
+    )
+    assert captured["source_path"] == source_path
+    assert captured["processed_tax_unit_ids"] is arrays["tax_unit_id"]
+    assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
+    assert captured["arrays"] is arrays
+    assert captured["adjusted_gross_income"] is adjusted_gross_income
+    assert captured["donor_build_summary"] is donor_build_summary
+    assert donor_build_summary == {
+        "mortgage_field_quarantine": {"screened_record_count": 2}
+    }
+
+
+def test_source_year_puf_input_content_is_checkpoint_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    source = tmp_path / "puf_2015.csv"
+    source.write_bytes(b"first")
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--puf-source-year-csv",
+            str(source),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+        ]
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "builder"},
+    )
+    first = builder._stage_run_config(args)
+    source.write_bytes(b"second")
+    second = builder._stage_run_config(args)
+
+    assert first["puf_source_year_csv"] == str(source.resolve())
+    assert first["puf_source_year_csv_sha256"] != second["puf_source_year_csv_sha256"]
+
+
+def test_processed_puf_input_content_is_checkpoint_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    puf = tmp_path / "puf.h5"
+    puf.write_bytes(b"first")
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(puf),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+        ]
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "builder"},
+    )
+    first = builder._stage_run_config(args)
+    builder.StageRuntime(
+        tmp_path / "checkpoints",
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=first,
+    )
+    puf.write_bytes(b"second")
+    second = builder._stage_run_config(args)
+
+    assert first["puf_h5"] == str(puf.resolve())
+    assert first["puf_h5_sha256"] != second["puf_h5_sha256"]
+    with pytest.raises(ValueError, match="run_config differs"):
+        builder.StageRuntime(
+            tmp_path / "checkpoints",
+            builder.OUTER_STAGE_PIPELINE,
+            run_config=second,
         )
 
 
@@ -701,9 +1386,17 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     frame = object()
     runtime = SimpleNamespace(
         load=lambda _stage: SimpleNamespace(frame=frame, path=checkpoint),
-        metadata={"final_export": metadata},
+        metadata={
+            builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME: {},
+            "final_export": metadata,
+        },
     )
     calls: list[object] = []
+    monkeypatch.setattr(
+        builder,
+        "_ensure_capital_gains_tail_manifest",
+        lambda _metadata: None,
+    )
     monkeypatch.setattr(
         builder,
         "_export_staged_result",
@@ -724,6 +1417,112 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     alias = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
     assert alias.is_file()
     assert alias.stat().st_ino == checkpoint.stat().st_ino
+
+
+def test_staged_export_serializes_e01000_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    frame = _minimal_us_frame()
+    basis = {"artifact_kind": "fixture-basis"}
+    tail = {"artifact_kind": "fixture-tail"}
+    receipt = {
+        "artifact_kind": "populace_puf_e01000_capital_gains_reconciliation",
+        "schema_version": 1,
+    }
+    captured: dict[str, object] = {}
+
+    class AllSignals(dict):
+        def __contains__(self, _key: object) -> bool:
+            return True
+
+        def __getitem__(self, key: str) -> object:
+            return {"name": key, "passed": True}
+
+    def fake_finalize(
+        actual_basis,
+        actual_tail,
+        *,
+        frame_columns,
+    ):
+        captured["basis"] = actual_basis
+        captured["tail"] = actual_tail
+        captured["frame_columns"] = frame_columns
+        return receipt
+
+    def fake_write(_args, _frame, path: Path) -> None:
+        path.write_bytes(b"fixture-h5")
+
+    monkeypatch.setattr(
+        builder,
+        "_ensure_capital_gains_tail_manifest",
+        lambda _metadata: None,
+    )
+    monkeypatch.setattr(builder, "_write_policyengine_dataset", fake_write)
+    monkeypatch.setattr(
+        builder,
+        "finalize_puf_e01000_reconciliation",
+        fake_finalize,
+    )
+    monkeypatch.setattr(
+        builder, "_merged_stage_signals", lambda _metadata: AllSignals()
+    )
+    monkeypatch.setattr(builder, "_channel_weight_totals", lambda _frame: {})
+    monkeypatch.setattr(builder, "_channel_output_totals", lambda _frame: {})
+    monkeypatch.setattr(
+        builder,
+        "us_immigration_composition_summary",
+        lambda _frame: {},
+    )
+    args = SimpleNamespace(
+        out=tmp_path,
+        target_year=2024,
+        seed=7,
+        n_estimators=4,
+        congressional_district_vintage_crosswalk=None,
+        block_ladder_artifact=None,
+    )
+    stage_metadata = {
+        "source_construction": {
+            "base_source": {"kind": "generated"},
+            "base_rows": {"household": 2},
+            "base_household_weight_total": 400.0,
+        },
+        "pre_clone_enrichment": {
+            "acs_h5": None,
+            "acs_sha256": None,
+            "acs_rent_donor_rows": None,
+            "weeks_unemployed_source": {},
+        },
+        "clone_feature_extraction": {
+            "puf_h5": "puf.h5",
+            "puf_sha256": "puf-sha",
+            "puf_source_year_csv": "puf_2015.csv",
+            "puf_source_year_csv_sha256": "source-sha",
+            "puf_donor_rows": 4,
+            "puf_donor_columns": ["weight"],
+            "puf_donor_build_summary": {},
+            "puf_e01000_reconciliation_basis": basis,
+        },
+        "qrf_finalization": {
+            "weights_audit": {"passed": True},
+            "puf_tax_detail_tail_bounds": [],
+        },
+        builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME: tail,
+        "congressional_district_assignment": {"congressional_district_assignment": {}},
+        "block_ladder_assignment": {"geography_ladder_assignment": {}},
+    }
+
+    result = builder._export_staged_result(args, frame, stage_metadata)
+
+    summary = json.loads(Path(result["summary_path"]).read_text())
+    assert summary["puf_e01000_reconciliation"] == receipt
+    assert captured["basis"] is basis
+    assert captured["tail"] is tail
+    assert captured["frame_columns"] == {
+        entity: tuple(frame.table(entity).columns) for entity in frame.entities
+    }
 
 
 def test_direct_named_stage_requires_fixed_python_hash_seed(
@@ -1043,11 +1842,12 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     salt_refund_gate_frames: list[object] = []
     adult_care_gate_frames: list[object] = []
     energy_subsidy_gate_frames: list[object] = []
-    retirement_distribution_calls: list[tuple[object, int, int]] = []
+    retirement_distribution_calls: list[tuple[object, int, int, bool]] = []
     retirement_distribution_gate_frames: list[object] = []
     prior_year_income_calls: list[tuple[object, int, int]] = []
     prior_year_income_gate_frames: list[object] = []
     prior_year_income_reconciliation_frames: list[object] = []
+    capital_gains_tail_calls: list[object] = []
     capital_gain_distributions_calls: list[object] = []
     qbi_reconciliation_calls: list[object] = []
 
@@ -1073,7 +1873,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "_load_base_frame_from_args",
         lambda args: ("raw", {"kind": "fixture"}),
     )
-    monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
+    monkeypatch.setattr(
+        builder,
+        "derive_us_cps_carried_inputs",
+        lambda frame, **_kwargs: "cps",
+    )
 
     def fake_prior_year_income(frame, *, seed, time_period):
         prior_year_income_calls.append((frame, seed, time_period))
@@ -1255,8 +2059,16 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         lambda frame, *, seed, time_period: frame,
     )
 
-    def fake_retirement_distributions(frame, *, seed, time_period):
-        retirement_distribution_calls.append((frame, seed, time_period))
+    def fake_retirement_distributions(
+        frame,
+        *,
+        seed,
+        time_period,
+        force_puf_imputation=False,
+    ):
+        retirement_distribution_calls.append(
+            (frame, seed, time_period, force_puf_imputation)
+        )
         if frame == "disability-benefits-direct":
             return "retirement-distributions-direct"
         return "retirement-distributions-puf"
@@ -1276,12 +2088,35 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "clone_us_frame_for_puf_support",
         lambda frame: "expanded",
     )
-    monkeypatch.setattr(builder, "_read_h5_arrays", lambda path: {})
-    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", lambda arrays: None)
+    monkeypatch.setattr(
+        builder,
+        "_puf_tax_unit_donor_from_h5",
+        lambda path, *, source_puf_csv, donor_build_summary: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_puf_e01000_reconciliation_basis",
+        lambda args, donor, donor_build_summary: {"fixture": True},
+    )
+    monkeypatch.setattr(
+        builder,
+        "finalize_puf_e01000_reconciliation",
+        lambda basis, tail, *, frame_columns: {"fixture": True},
+    )
     monkeypatch.setattr(
         builder,
         "impute_and_audit_us_puf_support",
         lambda expanded, donor, **kwargs: ("puf-imputed", {"passed": True}),
+    )
+
+    def fake_capital_gains_tail(args, frame, *, donor=None):
+        capital_gains_tail_calls.append((frame, donor))
+        return "capital-gains-tail", {}
+
+    monkeypatch.setattr(
+        builder,
+        "_capital_gains_tail_transfer_stage",
+        fake_capital_gains_tail,
     )
 
     def fake_capital_gain_distributions(args, frame):
@@ -1571,7 +2406,8 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     with pytest.raises(SystemExit, match=failure_message):
         builder.main()
 
-    assert capital_gain_distributions_calls == ["puf-imputed"]
+    assert capital_gains_tail_calls == [("puf-imputed", None)]
+    assert capital_gain_distributions_calls == ["capital-gains-tail"]
     assert qbi_reconciliation_calls == ["capital-gain-distributions"]
     if failing_gate == "wic_claim":
         assert child_support_calls == [("housing-direct", 7, 2024)]
@@ -1652,10 +2488,12 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         if failing_gate in {"energy_subsidy", "retirement_distributions"}
         else []
     )
-    expected_retirement_distribution_calls = [("disability-benefits-direct", 7, 2024)]
+    expected_retirement_distribution_calls = [
+        ("disability-benefits-direct", 7, 2024, False)
+    ]
     if failing_gate == "retirement_distributions":
         expected_retirement_distribution_calls.append(
-            ("disability-benefits-puf", 7, 2024)
+            ("disability-benefits-puf", 7, 2024, True)
         )
     assert retirement_distribution_calls == expected_retirement_distribution_calls
     assert retirement_distribution_gate_frames == (
@@ -1663,6 +2501,22 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         if failing_gate == "retirement_distributions"
         else []
     )
+
+
+def test_resume_retirement_stage_forces_puf_imputation() -> None:
+    """The resume-side ownership boundary is pinned (PR #557 round 2, low).
+
+    The live post-clone boundary is behaviorally asserted above; this pins
+    the named-stage resume branch so deleting its force flag fails a test
+    (source-pin precedent: the main-summary gate tests below).
+    """
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+    marker = 'elif stage == "retirement_distributions_post_clone":'
+    assert marker in source
+    window = source.split(marker, 1)[1].split("elif ", 1)[0]
+    assert "with_us_retirement_distribution_inputs(" in window
+    assert "force_puf_imputation=True" in window
 
 
 def test_main_summary_records_retirement_distribution_gate() -> None:
@@ -1733,6 +2587,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
     builder = _load_support_builder_module()
     puf = tmp_path / "puf.h5"
     puf.write_bytes(b"puf")
+    source_puf = tmp_path / "puf_2015.csv"
+    source_puf.write_bytes(b"source puf")
     sidecar = tmp_path / "asecpub24csv.zip"
     sidecar.write_bytes(b"zip")
     argv = [
@@ -1742,6 +2598,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
         f"2024={tmp_path / 'census_cps_2024.h5'}",
         "--puf-h5",
         str(puf),
+        "--puf-source-year-csv",
+        str(source_puf),
         "--asec-education-source",
         f"2023={sidecar}",
         "--target-year",

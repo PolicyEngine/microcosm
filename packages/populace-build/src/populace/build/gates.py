@@ -39,10 +39,13 @@ minimizes is exactly what the gates and scorers measure.
 from __future__ import annotations
 
 import math
+import pickle
 from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 from populace.calibrate.registry import TargetSpec
 from populace.calibrate.solve import relative_error_loss
@@ -99,6 +102,10 @@ RESOLVED_WEIGHT_KINDS = frozenset(
     {kind.value for kind in WeightKind} | {UNWEIGHTED_KIND, EXPLICIT_KIND}
 )
 
+_STACKED_AUTHORITY_GATE_NAMES = frozenset(
+    {"us_stacked_completeness", "us_by_origin_battery"}
+)
+
 
 @dataclass(frozen=True)
 class GateResult:
@@ -119,6 +126,12 @@ class GateResult:
     passed: bool
     failures: tuple[str, ...] = ()
     details: Mapping[str, object] = field(default_factory=dict)
+    _details_protocol_5_snapshot: bytes | None = field(
+        init=False,
+        repr=False,
+        compare=False,
+        default=None,
+    )
 
     def __post_init__(self) -> None:
         if self.passed and self.failures:
@@ -126,6 +139,12 @@ class GateResult:
         if not self.passed and not self.failures:
             raise ValueError(
                 f"Gate {self.name!r} cannot fail without naming a failure."
+            )
+        if self.name in _STACKED_AUTHORITY_GATE_NAMES:
+            object.__setattr__(
+                self,
+                "_details_protocol_5_snapshot",
+                pickle.dumps(dict(self.details), protocol=5),
             )
 
 
@@ -155,13 +174,88 @@ class GateReport:
 
     def to_manifest(self) -> dict[str, object]:
         """A JSON-ready summary for the release manifest."""
+        for result in self.results:
+            authority = result.details.get("authority")
+            components = (
+                authority.get("components") if isinstance(authority, Mapping) else None
+            )
+            targets = result.details.get("targets")
+            recognizable_stacked_receipt = (
+                isinstance(authority, Mapping)
+                and (
+                    str(authority.get("authority_id", "")).startswith(
+                        "us_stacked_spine_authority"
+                    )
+                    or bool(
+                        {
+                            "authority_form",
+                            "declared_authority_form",
+                            "canonical",
+                            "canonical_identity",
+                            "canonical_content",
+                            "integrity_valid",
+                            "digest_matches_declared",
+                            "production_manifest_permitted",
+                        }
+                        & set(authority)
+                    )
+                    or (
+                        isinstance(components, Mapping)
+                        and {
+                            "gap_fill_plan",
+                            "declared_surface",
+                            "metric_registry",
+                            "support_profile",
+                        }.issubset(components)
+                    )
+                )
+            ) or (
+                isinstance(targets, Mapping)
+                and any(
+                    isinstance(receipt, Mapping)
+                    and (
+                        "authority_form" in receipt
+                        or {
+                            "authority_sha256",
+                            "plan_sha256",
+                            "surface_sha256",
+                        }.issubset(receipt)
+                    )
+                    for receipt in targets.values()
+                )
+            )
+            if result.name not in _STACKED_AUTHORITY_GATE_NAMES:
+                if recognizable_stacked_receipt:
+                    raise ValueError(
+                        f"Gate {result.name!r} carries a stacked authority receipt "
+                        "under an unrecognized gate name; production manifest "
+                        "emission is forbidden."
+                    )
+                continue
+            snapshot = result._details_protocol_5_snapshot
+            if (
+                snapshot is None
+                or pickle.dumps(dict(result.details), protocol=5) != snapshot
+            ):
+                raise ValueError(
+                    f"Gate {result.name!r} details changed after evaluation; "
+                    "production manifest emission is forbidden."
+                )
+            # Import lazily to keep the generic gates shard independent during
+            # module initialization. The stacked doctrine owns the trusted
+            # canonical surface and digests; emission must not trust receipts.
+            from populace.build.us_runtime.stacked_spine import (
+                _validate_stacked_gate_manifest_details,
+            )
+
+            _validate_stacked_gate_manifest_details(result.name, result.details)
         return {
             "passed": self.passed,
             "gates": {
                 result.name: {
                     "passed": result.passed,
                     "failures": list(result.failures),
-                    "details": dict(result.details),
+                    "details": deepcopy(dict(result.details)),
                 }
                 for result in self.results
             },
@@ -540,18 +634,24 @@ def exported_nonzero_gate(
 
 def _observed_column_values(values: Iterable[object]) -> np.ndarray:
     arr = np.asarray(values)
+    if isinstance(values, pd.Series):
+        missing = values.isna().to_numpy(dtype=bool)
+    else:
+        # Object arrays need pandas' elementwise scalar classification so
+        # pd.NA, pd.NaT, None, and NaN are all treated as unobserved.
+        missing = np.asarray(pd.isna(arr), dtype=bool)
     if arr.ndim == 0:
         arr = arr.reshape(1)
+        missing = missing.reshape(1)
     else:
         arr = arr.reshape(-1)
+        missing = missing.reshape(-1)
     if arr.dtype.kind == "f":
-        return arr[np.isfinite(arr)]
+        return arr[~missing & np.isfinite(arr)]
     if arr.dtype.kind in {"b", "i", "u", "S", "U"}:
-        return arr
+        return arr[~missing]
     observed = []
-    for value in arr.astype(object):
-        if value is None:
-            continue
+    for value in arr[~missing].astype(object):
         if isinstance(value, (float, np.floating)) and not np.isfinite(float(value)):
             continue
         observed.append(value)
@@ -653,15 +753,16 @@ def default_valued_columns_gate(
     *,
     reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult:
-    """Refuse persisted input columns that carry only the engine default.
+    """Refuse persisted input columns with no signal beyond the engine default.
 
-    A column whose every observed value equals the engine's default for that
-    variable adds zero information — the dataset would behave identically
-    without it — while looking populated to anyone inspecting the artifact.
-    That is how a failed or missing imputation ships silently: a weekly-hours
-    column constant at the 40-hour default, or a take-up flag constant at
-    ``True``. Unlike :func:`nonconstant_columns_gate`, which checks a named
-    allowlist, this gate sweeps every column it is handed. It also
+    A column with no finite/non-null observed values, or whose every observed
+    value equals the engine's default for that variable, adds zero information
+    — the dataset would behave identically without it — while looking populated
+    to anyone inspecting the artifact. That is how a failed or missing
+    imputation ships silently: an all-null asset column, a weekly-hours column
+    constant at the 40-hour default, or a take-up flag constant at ``True``.
+    Unlike :func:`nonconstant_columns_gate`, which checks a named allowlist,
+    this gate sweeps every column it is handed. It also
     complements :func:`input_mass_parity_gate`: a parity check against a
     parent artifact passes when the parent is equally degenerate (the
     constant-40 hours column had full mass in every ancestor), while this
@@ -686,6 +787,7 @@ def default_valued_columns_gate(
     degenerate: dict[str, object] = {}
     excluded: dict[str, str] = {}
     constant_nondefault: dict[str, object] = {}
+    no_observed: list[str] = []
 
     for name in sorted(column_values):
         if name not in default_values:
@@ -693,6 +795,16 @@ def default_valued_columns_gate(
         checked_names.add(name)
         observed = _observed_column_values(column_values[name])
         if observed.size == 0:
+            no_observed.append(name)
+            if name in exclusions:
+                excluded[name] = exclusions[name]
+                continue
+            degenerate[name] = None
+            failures.append(
+                f"{name}: no finite/non-null values were observed; the column "
+                "is degenerate and masks a missing or failed imputation — "
+                "impute it, drop it, or record a reviewed exclusion."
+            )
             continue
         unique = _unique_observed_values(observed)
         if unique.size != 1:
@@ -728,6 +840,7 @@ def default_valued_columns_gate(
         details={
             "columns_checked": len(checked_names),
             "default_valued_columns": degenerate,
+            "no_observed_value_columns": no_observed,
             "constant_nondefault_columns": constant_nondefault,
             "reviewed_exclusions": excluded,
             "stale_exclusions": stale,
@@ -1539,6 +1652,7 @@ def input_column_coverage_gate(
     *,
     required_columns: Iterable[str],
     degenerate_columns: Iterable[str] = (),
+    no_observed_columns: Iterable[str] = (),
     reviewed_exclusions: Mapping[str, str] | None = None,
     name: str = "input_column_coverage",
     reference_label: str = "eCPS",
@@ -1559,10 +1673,11 @@ def input_column_coverage_gate(
 
     A required column fails when it is absent from ``present_columns`` (the
     engine defaults it at simulation time) or listed in ``degenerate_columns``
-    (present as a key but every observed value equals the engine default, so
-    the export writer's default-broadcast makes it indistinguishable from
-    absence). Both are the same silent-zero failure and both are refused unless
-    the column carries a reviewed exclusion.
+    (present as a key but with no finite/non-null observations, or every
+    observed value equals the engine default, so the export writer's
+    default-broadcast makes it indistinguishable from absence). Both are the
+    same silent-zero failure and both are refused unless the column carries a
+    reviewed exclusion.
 
     Reviewed exclusions accept a known, tracked gap by name with a reason (and,
     by convention, the tracking issue in the reason). They carry the #286
@@ -1578,8 +1693,12 @@ def input_column_coverage_gate(
         present_columns: Every input column the export persists as a key.
         required_columns: Columns that must be present and non-degenerate.
         degenerate_columns: The subset of present columns whose every observed
-            value equals the engine default (computed by the caller against the
-            engine's declared defaults). Columns not present are never here.
+            value equals the engine default or which have no finite/non-null
+            observed values (computed by the caller against the engine's
+            declared defaults). Columns not present are never here.
+        no_observed_columns: The subset of ``degenerate_columns`` with no
+            finite/non-null observed values. This preserves the reason in the
+            named release-gate finding.
         reviewed_exclusions: Column -> reason for tracked gaps allowed to be
             absent or degenerate. Each needs a non-empty reason; a stale entry
             fails the gate, a dormant entry is only reported.
@@ -1606,6 +1725,7 @@ def input_column_coverage_gate(
     exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
     present = {str(column) for column in present_columns}
     degenerate = {str(column) for column in degenerate_columns} & present
+    no_observed = {str(column) for column in no_observed_columns} & degenerate & present
     required = {str(column) for column in required_columns}
 
     both = sorted(required & set(exclusions))
@@ -1631,14 +1751,22 @@ def input_column_coverage_gate(
             )
         elif column in degenerate:
             degenerate_required.append(column)
-            failures.append(
-                f"{column}: required {reference_label} input column is present "
-                "but every "
-                "value equals the engine default; the export writer's "
-                "default-broadcast makes it indistinguishable from absence. "
-                "Impute it or record a reviewed exclusion with the tracking "
-                "issue."
-            )
+            if column in no_observed:
+                failures.append(
+                    f"{column}: required {reference_label} input column is "
+                    "present but has no finite/non-null observed values; the "
+                    "column is degenerate and carries no release input signal. "
+                    "Impute it or record a reviewed exclusion with the tracking "
+                    "issue."
+                )
+            else:
+                failures.append(
+                    f"{column}: required {reference_label} input column is "
+                    "present but every value equals the engine default; the "
+                    "export writer's default-broadcast makes it "
+                    "indistinguishable from absence. Impute it or record a "
+                    "reviewed exclusion with the tracking issue."
+                )
 
     signal_present = present - degenerate
     stale = sorted(column for column in exclusions if column in signal_present)
@@ -1658,6 +1786,7 @@ def input_column_coverage_gate(
             "present_columns": len(present),
             "missing": missing,
             "degenerate_required": degenerate_required,
+            "no_observed_required": sorted(no_observed & required),
             "reviewed_exclusions": {
                 column: reason
                 for column, reason in sorted(exclusions.items())
@@ -2373,7 +2502,7 @@ def tail_concentration_gate(
             concentrated (a documented, tracked defect or a genuinely
             concentrated instrument). A column now below the threshold is a
             stale entry and fails; an entry for a column absent from this
-            surface is dormant and only reported.
+            surface or too thin to check is dormant and only reported.
 
     Returns:
         Pass iff every checked, non-excluded column's top-``top_k`` weighted
@@ -2450,7 +2579,9 @@ def tail_concentration_gate(
             f"concentration threshold now, remove the exclusion: "
             f"{sorted(stale_exclusions)}."
         )
-    dormant_exclusions = sorted(set(exclusions) - set(column_values))
+    dormant_exclusions = sorted(
+        set(exclusions) - set(used_exclusions) - set(stale_exclusions)
+    )
 
     return GateResult(
         name="tail_concentration",

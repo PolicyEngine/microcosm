@@ -10,10 +10,15 @@ from populace.build.uk_runtime import (
     validate_uk_rowwise_dataset_tables,
     write_uk_rowwise_dataset,
 )
+from populace.build.uk_runtime.national_frame import uk_national_frame
+from populace.frame import MassChangeRecord, WeightKind
 
 
 class FakeUKDataset:
     time_period = "2023"
+    # In-memory datasets must declare their weight kind explicitly; only H5
+    # inputs keep the attribute-less design default.
+    household_weight_kind = WeightKind.DESIGN
 
     def __init__(
         self,
@@ -28,6 +33,8 @@ class FakeUKDataset:
 
 
 class FakeUKDatasetWithoutPeriod:
+    household_weight_kind = WeightKind.DESIGN
+
     def __init__(
         self,
         *,
@@ -178,6 +185,40 @@ def test_clone_uk_dataset_object_uses_dataset_time_period() -> None:
     )
 
     assert result.time_period == "2023"
+    assert result.household["household_id"].tolist() == [1, 2]
+    assert result.person["person_household_id"].tolist() == [1, 2, 2]
+
+
+def test_clone_uk_dataset_accepts_a_frame_without_downgrading_kind() -> None:
+    frame = uk_national_frame(
+        person=person_frame(),
+        benunit=benunit_frame(),
+        household=household_frame(),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(
+            MassChangeRecord(
+                entity="household",
+                old_total=30.0,
+                new_total=30.0,
+                declared_factor=1.0,
+                reason="Toy reviewed record.",
+            ),
+        ),
+    )
+
+    result = clone_uk_dataset_with_rowwise_geography(
+        frame,
+        crosswalk_frame(),
+        n_clones=1,
+        seed=1,
+    )
+
+    assert result.time_period == "2023"
+    # The typed weights carry the kind; a frame input can never silently
+    # downgrade to design the way a bare duck-carrier once could.
+    assert result.household_weight_kind is WeightKind.IMPORTANCE
+    assert len(result.mass_log) == 2
     assert result.household["household_id"].tolist() == [1, 2]
     assert result.person["person_household_id"].tolist() == [1, 2, 2]
 

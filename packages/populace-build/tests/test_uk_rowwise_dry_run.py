@@ -21,7 +21,7 @@ import pandas as pd
 import pytest
 
 from populace.build.uk_runtime import expected_uk_rowwise_area_support
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_frame import uk_national_frame
 from populace.frame import MassChangeRecord, WeightKind
 
 
@@ -250,7 +250,7 @@ def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
 ) -> None:
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from populace.build.uk_runtime import write_uk_national_dataset
+    from populace.build.uk_runtime import write_uk_national_frame
 
     builder = _load_builder_module()
     staging = tmp_path / "staging.h5"
@@ -270,12 +270,12 @@ def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
         }
     )
     benunit = pd.DataFrame({"benunit_id": [11, 12, 13, 14]})
-    dataset = UKNationalDataset(
+    dataset = uk_national_frame(
         person=person,
         benunit=benunit,
         household=household,
         time_period="2023",
-        household_weight_kind=WeightKind.IMPORTANCE,
+        weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -286,7 +286,7 @@ def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
             ),
         ),
     )
-    write_uk_national_dataset(dataset, staging)
+    write_uk_national_frame(dataset, staging)
     crosswalk_path = tmp_path / "crosswalk.csv.gz"
     _crosswalk_frame().to_csv(crosswalk_path, index=False)
     output_dir = tmp_path / "out"

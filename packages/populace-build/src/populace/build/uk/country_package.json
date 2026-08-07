@@ -8,7 +8,9 @@
     "hmrc_income_release_gate_report.json",
     "hmrc_income_replay_report.json",
     "hmrc_income_source_stages.json",
+    "input_mass_reviewed_exclusions.json",
     "national_staging_build_record.json",
+    "qrf_tail_reviewed_exclusions.json",
     "release_input_coverage_manifest.json",
     "uk_local_target_census.json"
   ]
