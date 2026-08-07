@@ -364,6 +364,12 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.stage_checkpoints import (
+    UK_FRAME_METADATA_KEY,
+    load_uk_stage_checkpoint,
+    load_uk_stage_predecessor,
+    uk_stage_metadata,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UK_MAX_TARGET_ABS_RELATIVE_ERROR,
@@ -398,6 +404,7 @@ __all__ = [
     "ARTIFACT_CLONE_INDEX_COLUMN",
     "UKRowwiseDoctrineSolve",
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
+    "UK_FRAME_METADATA_KEY",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_DOCTRINE",
     "UK_LOCAL_TARGET_LOSS_CAP",
@@ -406,6 +413,8 @@ __all__ = [
     "UK_CGT_TAXPAYER_COUNT_COLUMN",
     "UKCGTTargetMaterialization",
     "ladder_clone_index_column",
+    "load_uk_stage_checkpoint",
+    "load_uk_stage_predecessor",
     "materialize_uk_cgt_calibration_frame",
     "rowwise_calibration_mass_reason",
     "uk_cgt_annual_exempt_amount",
@@ -679,6 +688,7 @@ __all__ = [
     "uk_release_input_coverage_gate",
     "uk_release_input_coverage_required_columns",
     "uk_release_input_coverage_reviewed_exclusions",
+    "uk_stage_metadata",
     "uk_weight_summary",
     "uk_zero_weight_strata",
     "update_england_wales_lad_codes",
