@@ -1797,7 +1797,12 @@ def test_production_operator_invocations_are_total_and_guarded(
         (
             multispine_pool_module.derive_multispine_pool_inputs,
             POOL_DERIVE_OPERATOR_ORDER,
-            {"PoolStageOutput", "_run_source_operator_chain", "list"},
+            {
+                "PoolStageOutput",
+                "_run_source_operator_chain",
+                "list",
+                "us_qbi_reconciliation_universe_receipt",
+            },
         ),
     )
     for (

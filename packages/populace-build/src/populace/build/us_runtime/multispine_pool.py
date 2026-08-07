@@ -1566,7 +1566,6 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
-    qbi_universe_receipt = us_qbi_reconciliation_universe_receipt(frame)
     completed = _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
@@ -1576,6 +1575,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             "with_us_qbi_input_reconciliation": with_us_qbi_input_reconciliation,
         },
     )
+    qbi_universe_receipt = us_qbi_reconciliation_universe_receipt(completed.frame)
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
     return PoolStageOutput(
         completed.frame,
