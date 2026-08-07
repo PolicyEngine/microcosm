@@ -2379,6 +2379,144 @@ def test_restore_rename_is_durable_before_the_marker_is_removed(
     assert _read_set(out_dir) == _OLD_SET
 
 
+def test_migration_live_failure_restore_is_durable_before_the_marker(
+    tmp_path, monkeypatch
+):
+    """The IN-PROCESS migration failure handler restores previous -> out
+    and then removes the marker: the restore must be fsynced in between,
+    or a power loss after the marker deletion persisted could lose the
+    restore with no recovery state left."""
+
+    build_cli = _build_cli_module()
+    monkeypatch.setattr(build_cli, "_exchange_directories", lambda *args: False)
+    out_dir = tmp_path / "out"
+    staging = tmp_path / ".out.staging-livefail"
+    out_dir.mkdir()
+    _populate(out_dir, _OLD_SET)
+    _populate(staging, _NEW_SET)
+
+    events: list[tuple[str, str]] = []
+    real_rename = os.rename
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def interrupt_after_vacate(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        events.append(("rename", os.fspath(dst)))
+        if Path(os.fspath(src)) == out_dir:
+            raise KeyboardInterrupt
+        return result
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(os, "rename", interrupt_after_vacate)
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._publish_atomically(staging, out_dir)
+    finally:
+        monkeypatch.undo()
+    restore = next(
+        index
+        for index, (kind, path) in enumerate(events)
+        if kind == "rename" and Path(path) == out_dir
+    )
+    # The failed exchange attempt withdraws its own marker before the
+    # migration starts; the removal that matters is the one AFTER the
+    # handler's restore.
+    removal = next(
+        index
+        for index, (kind, _path) in enumerate(events)
+        if kind == "remove_marker" and index > restore
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[restore + 1 : removal]
+    ), "no parent fsync between the handler's restore and the marker removal"
+    assert _read_set(out_dir) == _OLD_SET
+    assert not (tmp_path / ".out.publish-recovery.json").exists()
+
+
+def test_interrupted_restore_retry_fsyncs_before_clearing_the_marker(
+    tmp_path, monkeypatch
+):
+    """A recovery pass interrupted right after its restore rename leaves
+    the marker in place; the RETRY then finds a healthy-looking public
+    directory and takes the 'publication intact' path — which must fsync
+    before the marker is cleared, because the restore it is blessing may
+    still be sitting in page cache."""
+
+    build_cli = _build_cli_module()
+    out_dir = tmp_path / "out"
+    previous = tmp_path / ".out.previous-interrupted"
+    _populate(previous, _OLD_SET)
+    marker_path = tmp_path / ".out.publish-recovery.json"
+    marker_path.write_text(
+        json.dumps(
+            {
+                "mode": "migrate",
+                "out": "out",
+                "staging": ".out.staging-gone",
+                "set": ".out.set-gone",
+                "link_tmp": ".out.linktmp-gone",
+                "previous": previous.name,
+            }
+        )
+    )
+    real_rename = os.rename
+
+    def interrupt_after_restore(src, dst, *args, **kwargs):
+        result = real_rename(src, dst, *args, **kwargs)
+        if Path(os.fspath(dst)) == out_dir:
+            raise KeyboardInterrupt
+        return result
+
+    monkeypatch.setattr(os, "rename", interrupt_after_restore)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert marker_path.exists(), "the interrupted pass must leave the marker"
+    assert _read_set(out_dir) == _OLD_SET
+
+    events: list[tuple[str, str]] = []
+    real_fsync_dir = build_cli._fsync_dir
+    real_remove_marker = build_cli._remove_marker
+
+    def recording_fsync_dir(path):
+        events.append(("fsync_dir", os.fspath(path)))
+        return real_fsync_dir(path)
+
+    def recording_remove_marker(target):
+        events.append(("remove_marker", os.fspath(target)))
+        return real_remove_marker(target)
+
+    monkeypatch.setattr(build_cli, "_fsync_dir", recording_fsync_dir)
+    monkeypatch.setattr(build_cli, "_remove_marker", recording_remove_marker)
+    try:
+        action = build_cli._recover_interrupted_publication(out_dir)
+    finally:
+        monkeypatch.undo()
+    assert action == "cleared an aborted layout migration (publication intact)"
+    removal = next(
+        index for index, (kind, _path) in enumerate(events) if kind == "remove_marker"
+    )
+    assert any(
+        kind == "fsync_dir" and Path(path) == tmp_path
+        for kind, path in events[:removal]
+    ), "no parent fsync before the retry cleared the marker"
+    assert not marker_path.exists()
+    assert _read_set(out_dir) == _OLD_SET
+
+
 def test_recovery_retarget_fsyncs_the_set_before_touching_the_public_name(
     tmp_path, monkeypatch
 ):

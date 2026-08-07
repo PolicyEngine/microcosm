@@ -812,8 +812,11 @@ def _migrate_real_dir_to_symlink_layout(staging: Path, out_dir: Path) -> None:
         if not out_dir.exists() and not out_dir.is_symlink() and previous.exists():
             # Inside the window: the previous publication was vacated and
             # the new link never landed — restore it first, everything
-            # else can wait.
+            # else can wait. The restore must be durable before the
+            # marker can be removed below, or a second power loss could
+            # keep the marker deletion and lose the restore.
             previous.rename(out_dir)
+            _fsync_dir(parent)
         if link_tmp.is_symlink():
             link_tmp.unlink()
         if set_dir.exists() and not staging.exists():
@@ -1090,6 +1093,11 @@ def _recover_migration(out_dir: Path, names: dict[str, object]) -> str:
         _fsync_dir(parent)
         return "restored the previous publication"
     if out_dir.exists():
+        # This branch can be reached on the retry AFTER an interrupted
+        # restore, with the restore rename observed but not yet durable;
+        # the marker is about to be removed, so make the state durable
+        # first.
+        _fsync_dir(parent)
         return "cleared an aborted layout migration (publication intact)"
     raise RuntimeError(
         f"Publication marker for {out_dir} names directories that no "
