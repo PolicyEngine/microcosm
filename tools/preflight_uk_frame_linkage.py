@@ -1,6 +1,6 @@
-"""Preflight UK H5 artifacts against populace Frame linkage invariants (#612).
+"""Preflight UK H5 artifacts against microcosm Frame linkage invariants (#612).
 
-The #612 carrier swap makes ``populace.frame.Frame`` validate the UK national
+The #612 carrier swap makes ``microcosm.frame.Frame`` validate the UK national
 tables at every stage boundary. Frame enforces invariants the UK path never
 checked — group ids sorted ascending (Frame raises, it does not reorder), and
 membership equality in *both* directions (a benunit or household with no
@@ -45,16 +45,16 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-frame" / "src")
+    0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-frame" / "src")
 )
 sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
+    0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
-from populace.build.uk_runtime.rowwise_dataset import (  # noqa: E402
+from microcosm.build.uk_runtime.rowwise_dataset import (  # noqa: E402
     read_uk_single_year_weight_metadata,
 )
-from populace.frame import EntitySchema, Frame, Weights  # noqa: E402
+from microcosm.frame import EntitySchema, Frame, Weights  # noqa: E402
 
 GROUP_ENTITIES = ("benunit", "household")
 UK_SCHEMA = EntitySchema(group_entities=GROUP_ENTITIES)
@@ -437,7 +437,7 @@ def _incomplete_artifact_report(path: Path) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Classify UK H5 artifacts against populace Frame linkage "
+            "Classify UK H5 artifacts against microcosm Frame linkage "
             "invariants (#612), with SDC-safe output."
         )
     )

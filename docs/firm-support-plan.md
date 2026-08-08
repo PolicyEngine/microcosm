@@ -1,11 +1,11 @@
 # UK Firm Support Plan
 
-Populace should support firms as a first-class population while keeping the
+Microcosm should support firms as a first-class population while keeping the
 same boundary that now applies to person and household calibration:
 
 - Ledger is the only source of calibration target values and target contracts.
 - Axiom is the executable policy/rules surface for VAT liabilities.
-- Populace owns frame construction, model features, target activation, solver
+- Microcosm owns frame construction, model features, target activation, solver
   inputs, diagnostics, and published population artifacts.
 
 The firm microsim paper remains a reference implementation and validation
@@ -29,12 +29,12 @@ The first integration should depend on these upstream artifacts:
   - `uk:policies/govuk/vat#recoverable_input_vat`
   - `uk:policies/govuk/vat#net_vat_liability`
 
-Populace should reject a UK firm build if those Ledger packages/profile are not
+Microcosm should reject a UK firm build if those Ledger packages/profile are not
 available. It should not fall back to repo-local CSV targets.
 
 ## Phase 1: Frame Contract
 
-Add a `firm` entity table contract in `populace-frame`:
+Add a `firm` entity table contract in `microcosm-frame`:
 
 - Required identifiers: `firm_id`, `source_firm_id`, `source_firm_key`.
 - Required weight column: `firm_weight`.
@@ -56,7 +56,7 @@ Acceptance gates:
 
 ## Phase 2: Ledger Target Activation
 
-Add a `populace-build` target-profile resolver for `uk_firms`:
+Add a `microcosm-build` target-profile resolver for `uk_firms`:
 
 - Read Ledger consumer facts and the `uk_firms` target profile.
 - Select only facts matching the profile's source names, source measure IDs,
@@ -65,7 +65,7 @@ Add a `populace-build` target-profile resolver for `uk_firms`:
   constraints, such as turnover and employment bands.
 - Preserve Ledger fact keys in diagnostics and release traces.
 
-Populace may decide whether a selected Ledger fact is active, warning-only, or
+Microcosm may decide whether a selected Ledger fact is active, warning-only, or
 unsupported, but it must not mutate the target value. Period alignment should
 follow the profile's declared `latest_not_after_build_base_period` policy.
 
@@ -94,7 +94,7 @@ Add an Axiom-backed `RulesEngine` adapter path for firm metrics:
 The initial implementation can accept `standard_rated_taxable_supplies_value` and
 `input_vat_on_business_purchases` as modeled or imputed columns. Classification
 of reduced-rate, zero-rated, and exempt supplies should be an explicit future
-rules/data task, not hidden in a Populace adapter.
+rules/data task, not hidden in a Microcosm adapter.
 
 Acceptance gates:
 
@@ -106,7 +106,7 @@ Acceptance gates:
 
 ## Phase 4: UK Firm Base Builder
 
-Add a `populace-build` UK firm builder that constructs an initial national firm
+Add a `microcosm-build` UK firm builder that constructs an initial national firm
 frame before calibration:
 
 - Seed firms from ONS turnover and employment structures.
@@ -126,7 +126,7 @@ Acceptance gates:
 
 ## Phase 5: Calibration and Release
 
-Use `populace-calibrate` to solve firm weights against activated Ledger targets:
+Use `microcosm-calibrate` to solve firm weights against activated Ledger targets:
 
 - ONS enterprise counts by annual-turnover band.
 - ONS enterprise counts by employment band.

@@ -1,0 +1,37 @@
+[project]
+name = "microcosm-fit"
+version = "0.1.0"
+description = "The microcosm conditional-models operator: weight-aware conditional models over the Frame — the canonical regime-gated, sequentially-chained, weighted-bootstrap quantile-regression-forest imputer"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    # Pin the kernel to its 0.x minor series (the import-time compat gate in
+    # __init__.py asserts the same floor): the constellation must resolve, not
+    # fail only at import.
+    "microcosm-frame>=0.1,<0.2",
+    # scikit-learn 1.9 removed sklearn.tree._tree.DTYPE and changed the
+    # sample-weight signature of the forest bootstrap helpers; quantile-forest
+    # 1.4.2 (2026-06-21) tracks both (zillow/quantile-forest#152, #153), so the
+    # floor below is the first release compatible with sklearn 1.9. No upper
+    # bound: this package's own sklearn usage (HistGradientBoostingClassifier,
+    # forest .fit() without sample_weight) is stable across 1.5-1.9.
+    "scikit-learn>=1.5",
+    "quantile-forest>=1.4.2",
+    "numpy>=2",
+    "pandas>=2.3",
+]
+
+[tool.uv.sources]
+microcosm-frame = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microcosm"]

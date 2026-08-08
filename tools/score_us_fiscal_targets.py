@@ -1,4 +1,4 @@
-"""Score a Populace US H5 against the current fiscal target surface.
+"""Score a Microcosm US H5 against the current fiscal target surface.
 
 This is the read-only companion to ``build_us_fiscal_refresh_release.py``:
 it materializes the same target frame, compiles the same constraint matrix,
@@ -20,9 +20,9 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from populace.calibrate import score_targets
-from populace.calibrate.diagnostics import write_calibration_diagnostics
-from populace.calibrate.solve import CalibrationResult
+from microcosm.calibrate import score_targets
+from microcosm.calibrate.diagnostics import write_calibration_diagnostics
+from microcosm.calibrate.solve import CalibrationResult
 
 
 def _parse_args() -> argparse.Namespace:
@@ -30,7 +30,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--h5",
         type=Path,
-        help="Populace US H5 to score. Defaults to HF latest.",
+        help="Microcosm US H5 to score. Defaults to HF latest.",
     )
     parser.add_argument(
         "--age-targets",
@@ -129,7 +129,7 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Read-only compatibility mode for legacy flat H5 files that "
             "store variables as root-level variable/<period> datasets instead "
-            "of Populace entity tables."
+            "of Microcosm entity tables."
         ),
     )
     return parser.parse_args()
@@ -257,7 +257,7 @@ def _load_legacy_pe_flat_frame(
 ) -> tuple[release.Frame, dict[str, object]]:
     """Load the historical flat PE H5 layout for scoring.
 
-    Old eCPS-style artifacts predate Populace entity-table H5s and store each
+    Old eCPS-style artifacts predate Microcosm entity-table H5s and store each
     variable as ``/<variable>/<period>``. This compatibility path exists only so
     the read-only scorer can compare old artifacts against the current target
     surface before replacing them.

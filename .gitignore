@@ -9,8 +9,8 @@ build/
 out/
 *.h5
 !packages/*/build/
-# populace.build is a real namespace package, not a build-artifact dir
-!packages/populace-build/src/populace/build/
+# microcosm.build is a real namespace package, not a build-artifact dir
+!packages/microcosm-build/src/microcosm/build/
 
 # Release alert webhooks (real file is machine-local; .example is tracked)
 tools/release.env

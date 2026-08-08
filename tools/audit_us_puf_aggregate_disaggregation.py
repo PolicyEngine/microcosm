@@ -1,4 +1,4 @@
-"""Audit IRS PUF aggregate-row disaggregation with Populace-native code."""
+"""Audit IRS PUF aggregate-row disaggregation with Microcosm-native code."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from populace.build.us_runtime.puf_aggregate_records import (
+from microcosm.build.us_runtime.puf_aggregate_records import (
     audit_puf_aggregate_disaggregation,
     disaggregate_puf_aggregate_records,
 )
@@ -18,7 +18,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Compare raw PUF totals against the old aggregate-row drop path and "
-            "the Populace aggregate-row disaggregation path."
+            "the Microcosm aggregate-row disaggregation path."
         )
     )
     parser.add_argument(

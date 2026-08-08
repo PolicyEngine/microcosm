@@ -1,4 +1,4 @@
-"""populace#299 Build H — direct dense CSR solve from the frame checkpoint.
+"""microcosm#299 Build H — direct dense CSR solve from the frame checkpoint.
 
 Adapted from Build G's experiments/learned_selection_prior/src/
 direct_replay_dense_weights.py (the proven 18-min direct solve). ONLY the feed
@@ -38,7 +38,7 @@ import numpy as np
 sys.path.insert(0, "tools")
 import build_us_fiscal_refresh_release as release  # noqa: E402
 
-from populace.calibrate import calibrate  # noqa: E402
+from microcosm.calibrate import calibrate  # noqa: E402
 
 RT = Path("/Users/maxghenis/PolicyEngine/_buildh-runtime")
 CKPT = RT / "checkpoints/buildh-dense/target_frame_checkpoint.h5"

@@ -30,7 +30,7 @@ jobs:
   wheels:
     # The charter-mandated packaging gate: editable installs hide packaging
     # breaks (path hacks, missing package dirs, namespace mistakes — the
-    # populace.build/.gitignore incident is the canonical example). Build
+    # microcosm.build/.gitignore incident is the canonical example). Build
     # real wheels for every shard, install them into a clean venv with pip
     # semantics, and run the suite against the installed constellation.
     runs-on: ubuntu-latest
@@ -59,11 +59,11 @@ jobs:
           from pathlib import Path
           import sys
 
-          import populace.build
-          import populace.calibrate
-          import populace.data
-          import populace.fit
-          import populace.frame
+          import microcosm.build
+          import microcosm.calibrate
+          import microcosm.data
+          import microcosm.fit
+          import microcosm.frame
 
           assert util.find_spec("policyengine_us") is None
           try:
@@ -75,11 +75,11 @@ jobs:
 
           prefix = Path(sys.prefix).resolve()
           modules = (
-              populace.frame,
-              populace.fit,
-              populace.calibrate,
-              populace.build,
-              populace.data,
+              microcosm.frame,
+              microcosm.fit,
+              microcosm.calibrate,
+              microcosm.build,
+              microcosm.data,
           )
           for module in modules:
               path = Path(module.__file__).resolve()

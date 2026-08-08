@@ -1,17 +1,17 @@
-# populace
+# microcosm
 
 The population stack: one kernel datatype — the **`Frame`**, a weighted
 sampling frame of entity tables — and packages as operators on it. One PEP 420
-`populace` namespace, shipped as shard distributions; a `populace` metapackage
+`microcosm` namespace, shipped as shard distributions; a `microcosm` metapackage
 will pin the constellation.
 
 | package | import | role | succeeds |
 |---|---|---|---|
-| `populace-frame` | `populace.frame` | the kernel: Frame, typed weights, strata, links, weighted accounting, unit structure, rules-engine protocol | microdf, microunit |
-| `populace-fit` | `populace.fit` | conditional models (weight-aware by construction) | ad hoc imputation scripts |
-| `populace-calibrate` | `populace.calibrate` | representation: targets → calibrated weights (APG / L0) | microcalibrate |
-| `populace-build` | `populace.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
-| `populace-data` | `populace.data` | published population registry and lazy engine loaders | country-specific data packages |
+| `microcosm-frame` | `microcosm.frame` | the kernel: Frame, typed weights, strata, links, weighted accounting, unit structure, rules-engine protocol | microdf, microunit |
+| `microcosm-fit` | `microcosm.fit` | conditional models (weight-aware by construction) | ad hoc imputation scripts |
+| `microcosm-calibrate` | `microcosm.calibrate` | representation: targets → calibrated weights (APG / L0) | microcalibrate |
+| `microcosm-build` | `microcosm.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
+| `microcosm-data` | `microcosm.data` | published population registry and lazy engine loaders | country-specific data packages |
 
 Firm support is **experimental**. The frame kernel can declare firm entity
 tables and validate person-firm `jobs` link tables, but link-aware operators,
@@ -25,7 +25,7 @@ next), longitudinal design (one weight per trajectory), and the process rules
 artifacts).
 
 Incumbent comparisons and historical replacement benchmarks live outside this
-repo. The live Populace repo owns the library, build contracts, published
+repo. The live Microcosm repo owns the library, build contracts, published
 population registry, and acceptance gates.
 
 ## Development
@@ -44,12 +44,12 @@ runs (best-effort — a missing token or failed upload never fails the build), s
 every candidate shows up on the staging dashboard before it is published.
 Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
 `POPULACE_STAGING_REPO_ID`. The build manifest records the staging run id, and
-`populace-publish-release` warns when publishing a release that has none:
+`microcosm-publish-release` warns when publishing a release that has none:
 
 ```bash
 python tools/build_us_fiscal_refresh_release.py \
   --ledger-facts consumer_facts.jsonl \
-  --out /tmp/populace-build
+  --out /tmp/microcosm-build
 ```
 
 This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
@@ -99,7 +99,7 @@ AT-RISK only, `0` clean):
 **Run it** at base-build exit, before any release launch, and after any change
 to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
-(`packages/populace-build/tests/test_us_release_gate_preflight.py`) run in the
+(`packages/microcosm-build/tests/test_us_release_gate_preflight.py`) run in the
 normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
 
 ## Releasing & alerts
@@ -112,7 +112,7 @@ on the build machine (it needs the freshly built H5), so it isn't a CI step:
 tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 ```
 
-`tools/publish_release.sh` is a thin wrapper around `populace-publish-release`
+`tools/publish_release.sh` is a thin wrapper around `microcosm-publish-release`
 (all arguments pass straight through). The moment `latest.json` goes live, the
 publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.

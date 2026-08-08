@@ -1,4 +1,4 @@
-"""Build the US import-entry margin artifacts (populace#615 P1).
+"""Build the US import-entry margin artifacts (microcosm#615 P1).
 
 Primary source: the Census monthly bulk *U.S. Imports of Merchandise*
 database (IMDB) archives — one public no-auth ZIP per month carrying the
@@ -81,7 +81,7 @@ Example::
 
     uv run python tools/build_us_import_entry_margins.py \
         --start 2025-01 --end 2026-06 \
-        --archive-dir ~/.cache/populace/us-trade/imdb \
+        --archive-dir ~/.cache/microcosm/us-trade/imdb \
         --out-dir out/us-import-entry-margins
 
 Exit code: 1 on any reconciliation failure or empty result (nothing is
@@ -108,10 +108,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
+    0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
-from populace.build.us_runtime.us_trade import (  # noqa: E402
+from microcosm.build.us_runtime.us_trade import (  # noqa: E402
     CBP_TRADE_STATS_URL,
     build_cbp_entry_fact_rows,
     build_district_entry_fact_rows,
@@ -126,7 +126,7 @@ from populace.build.us_runtime.us_trade import (  # noqa: E402
     summarize_imdb_month,
     write_consumer_artifact,
 )
-from populace.build.us_runtime.us_trade.imdb_bulk import (  # noqa: E402
+from microcosm.build.us_runtime.us_trade.imdb_bulk import (  # noqa: E402
     assemble_bulk_margins,
 )
 

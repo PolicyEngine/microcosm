@@ -9,7 +9,7 @@ and source per derived layer (``vintage_policy: error`` — the loader refuses
 an artifact missing any of them). No per-area files, the standing rule.
 
 The artifact is self-checked by loading it back through
-``populace.build.us_runtime.load_us_block_ladder`` before the summary is
+``microcosm.build.us_runtime.load_us_block_ladder`` before the summary is
 written, so a published ladder is by construction a loadable ladder.
 
 Example:
@@ -35,8 +35,8 @@ from pathlib import Path
 
 import numpy as np
 
-from populace.build.us_runtime import load_us_block_ladder
-from populace.build.us_runtime.block_ladder_sources import (
+from microcosm.build.us_runtime import load_us_block_ladder
+from microcosm.build.us_runtime.block_ladder_sources import (
     US_STATES,
     assemble_us_block_ladder,
     parse_baf_district_file,
@@ -147,7 +147,7 @@ def _download(url: str, cache_dir: Path) -> Path:
         return destination
     _log(f"  downloading {url}")
     request = urllib.request.Request(
-        url, headers={"User-Agent": "populace-build (block ladder artifact)"}
+        url, headers={"User-Agent": "microcosm-build (block ladder artifact)"}
     )
     with urllib.request.urlopen(request) as response:
         payload = response.read()

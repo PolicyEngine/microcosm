@@ -31,10 +31,10 @@ from pathlib import Path
 # surface — never re-declared here (this file sits beside it in tools/).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
+    0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
-from populace.build.us_runtime.release_gate_preflight import (  # noqa: E402
+from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: E402
     run_preflight,
 )
 

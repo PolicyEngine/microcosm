@@ -13,10 +13,10 @@ and sha256 per derived layer (``vintage_policy: error`` — the loader refuses a
 artifact missing any of them). No per-area files, the standing rule (#275).
 
 The artifact is self-checked by loading it back through
-``populace.build.uk_runtime.load_uk_oa_ladder`` before the summary is written,
+``microcosm.build.uk_runtime.load_uk_oa_ladder`` before the summary is written,
 so a published ladder is by construction a loadable ladder.
 
-Scotland and Northern Ireland vintages were pinned on populace#495
+Scotland and Northern Ireland vintages were pinned on microcosm#495
 (increment 3): both Scotland ladder-only layers come from the NRS Census
 2022 index zip, NI households from the NISRA table builder, and the NI ward
 analogue (DEA2014) from the pinned DZ2021 GeoJSON. The assignment still
@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from populace.build.uk_runtime import (
+from microcosm.build.uk_runtime import (
     ENGLAND_LAD_REGION_URL,
     EW_OA_CONSTITUENCY_URL,
     EW_OA_HIERARCHY_URL,
@@ -163,7 +163,7 @@ SOURCES = {
     },
 }
 
-#: Scotland and Northern Ireland sources (populace#495 increment 3). Only
+#: Scotland and Northern Ireland sources (microcosm#495 increment 3). Only
 #: fetched for --coverage uk.
 UK_EXTRA_SOURCES = {
     "scotland_dz_iz": {
@@ -284,7 +284,7 @@ def _download(url: str, cache_dir: Path, name: str) -> Path:
         return destination
     _log(f"  downloading {url}")
     request = urllib.request.Request(
-        url, headers={"User-Agent": "populace-build (UK OA ladder artifact)"}
+        url, headers={"User-Agent": "microcosm-build (UK OA ladder artifact)"}
     )
     with urllib.request.urlopen(request) as response:  # noqa: S310 (trusted ONS URLs)
         payload = response.read()

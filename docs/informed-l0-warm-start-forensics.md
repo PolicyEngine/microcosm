@@ -1,6 +1,6 @@
-# Informed-L0 / warm-start reconstruction — Phase 1 forensics (populace#328)
+# Informed-L0 / warm-start reconstruction — Phase 1 forensics (microcosm#328)
 
-This records the Phase 1 forensic findings for populace#328 — whether the frozen
+This records the Phase 1 forensic findings for microcosm#328 — whether the frozen
 57,240-record support behind the certified live default can be recovered, and how
 its record identities map onto a freshly-rebuilt base. It is the evidence base for
 the design in `informed-l0-warm-start-design.md`.
@@ -97,7 +97,7 @@ certified pattern) is implementable now with no change to the calibrate library*
 and is the first mode to ship. Informed-init mode (initialize L0 selection
 probabilities from the named artifact, then optimize) is designed as the drift-
 robust successor but requires a new selection-probability-init parameter in
-`populace-calibrate`; it is deferred behind mode (a) precisely because Phase 1
+`microcosm-calibrate`; it is deferred behind mode (a) precisely because Phase 1
 shows the current base needs no drift tolerance.
 
 ## Reproduction

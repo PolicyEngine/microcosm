@@ -1,4 +1,4 @@
-# Populace: system requirements for local builds
+# Microcosm: system requirements for local builds
 
 **Status:** measured 2026-06-15. Numbers are wall-clock and peak-RSS readings
 from the benchmark in the appendix, run against the workspace at this revision.
@@ -6,7 +6,7 @@ Re-run it on a new machine to refresh the certificate — these are operating
 figures, not guarantees.
 
 This document answers one question: **what does a machine need to develop and
-build populace locally?** It separates the cheap paths (edit the library, run
+build microcosm locally?** It separates the cheap paths (edit the library, run
 the contract suite, consume a published population) from the expensive ones
 (impute donor stages, calibrate a national pool), because they have very
 different footprints and a single "recommended spec" hides that.
@@ -21,7 +21,7 @@ single-threaded, so single-core speed dominates.
 
 | Machine RAM | What it can do |
 |---|---|
-| **16 GB** | Edit the library, run the full contract suite (11 GB peak), load and analyze a published populace population (~9 GB). **Cannot** run a national calibration build. Fine for a *consumer/contributor*, not a *builder*. |
+| **16 GB** | Edit the library, run the full contract suite (11 GB peak), load and analyze a published microcosm population (~9 GB). **Cannot** run a national calibration build. Fine for a *consumer/contributor*, not a *builder*. |
 | **32 GB** | Floor for building. Imputation stages and calibration up to ~300k records × ~3,700 targets (17 GB). Full-county calibration (6,288 targets) will swap. |
 | **48 GB** | Comfortable end-to-end local build at the matched-N / small generate-big scale (≤300k pool, full county targets, 29 GB peak) with headroom. **Recommended.** |
 | **64 GB+** | Headroom for bigger pools, but the 1M→3M generate-big rungs need cloud regardless (see [the cliffs](#where-the-cliffs-are)). |
@@ -29,27 +29,27 @@ single-threaded, so single-core speed dominates.
 **Recommended laptop:** MacBook Pro 14", M-series **Pro** (or Max), **48 GB**
 unified memory, **1 TB** SSD. Rationale in [Hardware notes](#hardware-notes).
 
-## What "building populace" involves
+## What "building microcosm" involves
 
 A US build is two heavy phases over a sampling Frame, plus loaders:
 
-1. **Imputation** (`populace.fit`) — donor stages attach variables onto the pool
+1. **Imputation** (`microcosm.fit`) — donor stages attach variables onto the pool
    with regime-gated, sequentially-chained, weighted-bootstrap quantile-regression
    forests: SCF wealth (~27 targets, the heavy one), SIPP tips/vehicles, CPS-ORG
    labor inputs, MEPS-IC premiums, prior-year ASEC income, ACS rent. Each stage
    is a QRF fit on a donor (tens of thousands of rows) then a predict onto the
    national pool. The US stages are declared in `US_SOURCE_MANIFEST`
-   (`populace.build.us`); the heavy primitive each one drives is `populace.fit`,
+   (`microcosm.build.us`); the heavy primitive each one drives is `microcosm.fit`,
    which is what the imputation benchmark below measures directly.
-2. **Calibration** (`populace.calibrate`) — compile targets (national + county
+2. **Calibration** (`microcosm.calibrate`) — compile targets (national + county
    control totals) into a sparse constraint matrix over the pool's weight
    vector, then optimize log-weights with torch Adam (capped weighted MAPE),
    optionally with L0 generate-big-then-prune. See
-   `packages/populace-calibrate/src/populace/calibrate/solve.py`.
-3. **Loaders** (`populace.data`) — pull a published population artifact from the
+   `packages/microcosm-calibrate/src/microcosm/calibrate/solve.py`.
+3. **Loaders** (`microcosm.data`) — pull a published population artifact from the
    Hugging Face Hub and return it as a policyengine engine dataset.
 
-The heavy primitives (`populace.fit`, `populace.calibrate`) are live and measured
+The heavy primitives (`microcosm.fit`, `microcosm.calibrate`) are live and measured
 below at build scale; the US source-stage wiring is currently a declared manifest
 being ported in, so the end-to-end build footprint is the projection of these
 primitive measurements onto the survey source artifacts above.
@@ -78,15 +78,15 @@ vintages accumulate.
 | Suite | Peak RSS | Notes |
 |---|---|---|
 | Full contract suite | **11.3 GB**, 82 s | dominated by the two below |
-| `populace-data` only | 9.1 GB | loads a published US population (national h5 + policyengine-us) |
-| `populace-frame` only | 3.8 GB | the policyengine-us adapter test |
-| `populace-calibrate` / `-fit` / `-build` | < 0.5 GB each | pure-library contract tests |
+| `microcosm-data` only | 9.1 GB | loads a published US population (national h5 + policyengine-us) |
+| `microcosm-frame` only | 3.8 GB | the policyengine-us adapter test |
+| `microcosm-calibrate` / `-fit` / `-build` | < 0.5 GB each | pure-library contract tests |
 
 Editing only the kernel/fit/calibrate logic and running *those* suites is a
 sub-gigabyte workflow. The 11 GB peak is real but comes entirely from the data
 loader and the rules-engine adapter, which a pure-library change can skip.
 
-### Imputation — `populace.fit.RegimeGatedQRF` (single-threaded)
+### Imputation — `microcosm.fit.RegimeGatedQRF` (single-threaded)
 
 Donor 30k rows, 8 predictors, predicting onto a 75k pool:
 
@@ -102,7 +102,7 @@ quantile prediction. The SCF wealth stage is the single most demanding step of a
 build, on both memory and wall-clock, and it runs on **one core** (it does not
 parallelize across the machine).
 
-### Calibration — `populace.calibrate.calibrate`
+### Calibration — `microcosm.calibrate.calibrate`
 
 County-style sparse system (per-county count + income-sum control totals plus
 national anchors), `epochs=256`, `max_weight_ratio=10`:
@@ -174,7 +174,7 @@ The calibration compile densifying to `n_targets × n_records` before compressin
 to sparse is the one avoidable ceiling here: building the CSR incrementally
 (accumulate `data`/`indices`/`indptr` per row, or `scipy.sparse.vstack` of
 per-row sparse rows) would cut compile RAM by ~`n_records×` and move the 1M–3M
-rungs within reach of a large box. Tracked as a `populace-calibrate` improvement;
+rungs within reach of a large box. Tracked as a `microcosm-calibrate` improvement;
 the existing sparse-path tests cover the equivalence this must preserve.
 
 ## Appendix: reproduction
@@ -200,9 +200,9 @@ system; `MODE` ∈ `sparse|dense|l0`:
 # bench_calibrate.py  N_HOUSEHOLDS N_TARGETS MODE [EPOCHS]
 import json, resource, sys, time
 import numpy as np, pandas as pd
-from populace.calibrate import Target, TargetSet, calibrate
-from populace.calibrate import solve as _solve
-from populace.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.calibrate import Target, TargetSet, calibrate
+from microcosm.calibrate import solve as _solve
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 def peak_gb():
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -251,8 +251,8 @@ print(json.dumps({"pool": n_hh, "targets": r.problem.n_targets, "mode": mode,
 # bench_fit.py  N_DONOR N_RECEIVER N_TARGETS [N_PREDICTORS]
 import json, resource, sys, time
 import numpy as np, pandas as pd
-from populace.fit import RegimeGatedQRF
-from populace.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.fit import RegimeGatedQRF
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 def peak_gb():
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

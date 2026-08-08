@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request
 
-from populace.build.logbook import (
+from microcosm.build.logbook import (
     LOGBOOK_ROW_FIELDS,
     LogbookRow,
     _validate_remote_url,
@@ -38,7 +38,7 @@ REMOTE_PAGE_SIZE = 500
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Operate the append-only Populace Logbook archive."
+        description="Operate the append-only Microcosm Logbook archive."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

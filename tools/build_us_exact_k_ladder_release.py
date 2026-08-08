@@ -65,7 +65,7 @@ if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
 import build_us_fiscal_refresh_release as fiscal_release
-from populace.build.us_runtime.h5_io import (
+from microcosm.build.us_runtime.h5_io import (
     load_simulation_ready_us_multispine_pool_manifest,
 )
 

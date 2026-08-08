@@ -1,12 +1,12 @@
 # Build H — identify the 4 floating PUF-input dimensions + re-run to certification
 
-Task: PolicyEngine/populace **#299 Build H**. Add real SOI calibration targets so the 4 export-mass
+Task: PolicyEngine/microcosm **#299 Build H**. Add real SOI calibration targets so the 4 export-mass
 residual columns become IDENTIFIED, then re-run the two Build G candidates (DENSE + FROZEN-SPARSE) to
 certification. **STAGING/LOCAL ONLY** — never touch prod HF / latest.json. Publication is Max's call.
 Detached compute (nohup+pidfile+logs). Three-strike stop with precise diagnosis. Every number from source.
 
 Runtime home (OUTSIDE repos, durable): `/Users/maxghenis/PolicyEngine/_buildh-runtime/`.
-Worktrees: populace `build-h-run` (off build-g-run lineage), ledger `build-h-soi-income-targets`.
+Worktrees: microcosm `build-h-run` (off build-g-run lineage), ledger `build-h-soi-income-targets`.
 
 ## Frozen invariants from Build G (only the FEED changes: v7 -> v8)
 base **18833fb6**, pe-us **1.764.6** / core 3.26.11, period 2024, λ=0, seed 0, feed v7 `735f326a`,
@@ -45,7 +45,7 @@ Reference = populace_us_2024.h5 (live-default 57k, c2065b64); ±50% band; min_re
   **PIVOTAL OPEN Q**: is PE-US `home_mortgage_interest` the Schedule-A itemizer-deducted amount (SOI $171B
   correct → pull down fixes JCT + export gate) or ALL-household mortgage interest (SOI itemizer too low →
   targeting distorts)? Raw base $345B, ref $311B, export $474–526B, SOI Sched A $171B. MUST verify PE-US
-  variable definition + imputation population + how a populace target maps to the export INPUT column.
+  variable definition + imputation population + how a microcosm target maps to the export INPUT column.
 - **non_sch_d_capital_gains** — component split of net_capital_gains (aggregate constrained ±0.2%, split
   not). Add SOI split line if it exists; else reviewed exclusion w/ component-split justification.
 - **estate_income** — purely unidentified. Add SOI Table 1.4 estate/trust net income line.
@@ -64,7 +64,7 @@ Reference = populace_us_2024.h5 (live-default 57k, c2065b64); ±50% band; min_re
 ## Feed mechanics (v7 -> v8)
 Feed = arch.consumer_fact.v1 JSONL. v7 = `_buildf-runtime/inputs/consumer_facts_buildf_v7.jsonl`
 sha 735f326a, 37,058 facts. Dedup key = lineage.source_record_id. SOI facts carry native tax_year period;
-populace maps to @2024 at compile time. v8 = v7 + new SOI target rows; sha-pin + ledgered supersession
+microcosm maps to @2024 at compile time. v8 = v7 + new SOI target rows; sha-pin + ledgered supersession
 (v6/v7 discipline). Ledger export = policyengine_ledger/consumer.py build_consumer_artifact. SOCA package
 may need parking for local ledger runs (Build E notes).
 
@@ -83,7 +83,7 @@ HF/latest.json untouched. Every number cited from its source document.
 - **Step 0 (setup).** Read #299 Build G comment 4902533514, #327, PROGRESS_BUILDG_RUN, build-g release
   logs (dense/sparse/chain). Verified venv resync clean (94 pkgs). Recorded exact export-mass residuals +
   ref bands (above). Prior agent left no repo commits (both worktrees clean); groundwork = SOI sourcing +
-  23in14ar.xls in scratch. Dispatched code-exploration on (1) populace fact→target→export-column mechanics
+  23in14ar.xls in scratch. Dispatched code-exploration on (1) microcosm fact→target→export-column mechanics
   + export-mass gate + #256 coverage pattern, (2) PE-US mortgage/income variable semantics.
 
 - **Step 1 (SOI values VERIFIED from committed workbooks).** Ledger has the raw .xls committed at
@@ -320,7 +320,7 @@ HF/latest.json untouched. Every number cited from its source document.
   decision table with actual DENSE outcomes + reviewed-exclusion rationale, #340 column-manifest table +
   scope caveat, both candidates' head-to-head vs Build G, integrity caveat that loss/within-10% are over
   different target surfaces while the export-mass parity is directly comparable). Posted ONE comment
-  (`--body-file`, no @-mention) → **https://github.com/PolicyEngine/populace/issues/299#issuecomment-4914302628**.
+  (`--body-file`, no @-mention) → **https://github.com/PolicyEngine/microcosm/issues/299#issuecomment-4914302628**.
   Final state clean: no stray processes/samplers; rc markers direct_solve=0, dense_ws=143 (intentional
   tail kill), sparse=1 (export-mass abort, expected). DENSE h5 1.886 GB present; SPARSE no h5 (correct).
 

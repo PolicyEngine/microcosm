@@ -5,7 +5,7 @@
 > adjudicated verdict landed in `experiments/build_j_recert/issue368_verdict.md`
 > and on issue #368. Later builds (K+) supersede this record.
 
-Task: PolicyEngine/populace **#368 (final phase)**. A full gated rebuild proving the whole
+Task: PolicyEngine/microcosm **#368 (final phase)**. A full gated rebuild proving the whole
 stack on `main`: base pool (restored columns) -> dense -> sparse (rmloss100 selection) ->
 ALL gates -> verdict on #368. The point vs Build I: the SCF-wealth asset columns (#373) and
 Daphne's SNAP-train inputs (#350/#352/#353) now flow, so SSI resource-limit reforms must
@@ -19,7 +19,7 @@ jetsam kills AND healthy-run watchdog kills taught this). Commit + this log afte
 Three-strike per chunk. Verbatim numbers only. Never @-mention; --body-file for GitHub bodies.
 
 ## Runtime + branch
-- Worktree: `/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert` branch
+- Worktree: `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-build-j-recert` branch
   **build-j-recert** off **origin/main `561c198`** (#385 release-native loading HEAD, which sits
   on #384 #373 #369 + Daphne's SNAP train #350/#352/#353).
 - Runtime home (durable, outside repos): `/Users/maxghenis/PolicyEngine/_buildj-runtime/`
@@ -139,7 +139,7 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
     signal on the 57k frame. Asset restoration works; the SSI probe (post-H5) was never reached.
   - Per the STOP rule (no usable RI value exists at source; do NOT synthesize — nearest-month,
     cross-source T-MSIS, or an exclusion register are #334 design decisions), Build J
-    certification STOPS here. Filed **populace#386** (full evidence + option space). Relaunch
+    certification STOPS here. Filed **microcosm#386** (full evidence + option space). Relaunch
     after the #386 decision is mechanical: all launchers staged/committed; if the fix changes
     facts, swap --ledger-facts to the re-exported feed and record the new registry version.
 - **Step 5 (#387 remedy merged; sparse RELAUNCHED).** #386's remedy landed on main as **#387
@@ -307,5 +307,5 @@ release dir holds every certification artifact. NO bypass flags are passed (gate
     population / immigration (#266) / validation-input-coverage (#278/9)** structural gates.
   A gate failure is a FINDING: diagnose precisely (three-strike per chunk), do NOT bypass.
 - **release_manifest.json** + exported **populace_us_2024.h5** — written last; `--skip-reform-validation`
-  avoids the Build I MD-UNKNOWN tail bug (policyengine-us#8975 / populace#367) without touching the
+  avoids the Build I MD-UNKNOWN tail bug (policyengine-us#8975 / microcosm#367) without touching the
   certified dataset (gates + export-mass + H5 all complete before the optional reform-validation tail).

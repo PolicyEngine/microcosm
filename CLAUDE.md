@@ -1,4 +1,4 @@
-# Populace — agent guide
+# Microcosm — agent guide
 
 Agent-operational notes only. The [README](README.md) covers usage and release
 operations; [DESIGN.md](DESIGN.md) is the architectural authority. On any
@@ -7,9 +7,9 @@ conflict, executable configuration (pyproject.toml, `.github/workflows/`,
 
 ## Layout
 
-uv workspace monorepo. Shards live in `packages/populace-<x>/` and import as
-the PEP 420 namespace `populace.<x>`: `frame`, `fit`, `calibrate`, `build`,
-`data`. There is no top-level `populace` package directory — never add an
+uv workspace monorepo. Shards live in `packages/microcosm-<x>/` and import as
+the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
+`data`. There is no top-level `microcosm` package directory — never add an
 `__init__.py` to the namespace root.
 
 ## Commands
@@ -35,7 +35,7 @@ mean the code contracts hold — they do **not** certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step (`tools/publish_release.sh` →
-`populace-publish-release`), gated by `tools/preflight_us_release_gates.py`;
+`microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
 see README "Releasing & alerts". Never publish or promote artifacts as a side
 effect of another task.
 

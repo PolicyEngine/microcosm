@@ -1,4 +1,4 @@
-"""Compare two Populace US calibration diagnostics on a shared target surface."""
+"""Compare two Microcosm US calibration diagnostics on a shared target surface."""
 
 from __future__ import annotations
 
@@ -416,7 +416,7 @@ def _format_loss(value: float) -> str:
 def _markdown_report(payload: Mapping[str, Any]) -> str:
     summary = payload["summary"]
     lines = [
-        "# Populace US Target Fit Comparison",
+        "# Microcosm US Target Fit Comparison",
         "",
         "## Summary",
         "",

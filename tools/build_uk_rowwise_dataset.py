@@ -1,7 +1,7 @@
-"""Build a Populace UK row-wise local-geography dataset.
+"""Build a Microcosm UK row-wise local-geography dataset.
 
 This is the narrow build driver for the UK local replacement path. It starts
-from an existing compact Populace UK single-year H5, builds or loads the
+from an existing compact Microcosm UK single-year H5, builds or loads the
 official-source geography crosswalk, clones the entity tables, assigns each
 household a finest available geography row, and writes diagnostics that prove
 coverage and weight preservation.
@@ -20,7 +20,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.uk_runtime import (
+from microcosm.build.uk_runtime import (
     MASS_CONSERVATION_RELATIVE_TOLERANCE,
     PERSON_ID_COLUMNS,
     POOL_SOURCE_LINEAGE_COLUMN,
@@ -56,7 +56,7 @@ def _parse_args() -> argparse.Namespace:
         "--input-h5",
         type=Path,
         required=True,
-        help="Compact Populace UK single-year H5 to clone.",
+        help="Compact Microcosm UK single-year H5 to clone.",
     )
     parser.add_argument(
         "--out",
@@ -709,7 +709,7 @@ def _ladder_dry_run_plan(
     # Fence parity with the real build (a plan must never bless a build that
     # would raise): weight validity, mass-chain currency, then the release
     # gate on the divided-weight assignment.
-    from populace.build.uk_runtime.rowwise_dataset import _assert_mass_log_current
+    from microcosm.build.uk_runtime.rowwise_dataset import _assert_mass_log_current
 
     weight_values = pd.to_numeric(
         household["household_weight"], errors="raise"

@@ -78,8 +78,8 @@ def _load_runtime():
     import build_us_fiscal_refresh_release as release
     import score_us_fiscal_targets as fiscal_scorer
 
-    from populace.calibrate import score_targets
-    from populace.calibrate.diagnostics import write_calibration_diagnostics
+    from microcosm.calibrate import score_targets
+    from microcosm.calibrate.diagnostics import write_calibration_diagnostics
 
     return release, fiscal_scorer, score_targets, write_calibration_diagnostics
 
@@ -161,7 +161,7 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Read-only compatibility mode for legacy flat H5 files that store "
             "variables as root-level variable/<period> datasets instead of "
-            "Populace entity tables."
+            "Microcosm entity tables."
         ),
     )
     parser.add_argument(

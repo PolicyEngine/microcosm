@@ -1,7 +1,7 @@
-"""Regenerate the US release input-column coverage manifest (populace #368).
+"""Regenerate the US release input-column coverage manifest (microcosm #368).
 
 The manifest is the declared column-coverage contract the release gate enforces:
-every input column the reference eCPS exports must be persisted by a populace
+every input column the reference eCPS exports must be persisted by a microcosm
 release as a real key with non-default signal, or carry a reviewed exclusion.
 
 Derivation (fully from checked-in, sha-pinned facts — no transient artifact):
@@ -28,7 +28,7 @@ them absent, countable resources are 0 for every record, so the SSI asset-limit
 reform probe scores $0; that is the failure the gate exists to surface.
 
 Run:  uv run python tools/build_us_release_input_coverage_manifest.py
-It rewrites packages/populace-build/src/populace/build/us/
+It rewrites packages/microcosm-build/src/microcosm/build/us/
 release_input_coverage_manifest.json. A test asserts the committed file matches
 this regeneration, so the manifest cannot silently drift from the pinned eCPS
 surface or the parity register.
@@ -42,9 +42,9 @@ from pathlib import Path
 US_PACKAGE_DIR = (
     Path(__file__).resolve().parents[1]
     / "packages"
-    / "populace-build"
+    / "microcosm-build"
     / "src"
-    / "populace"
+    / "microcosm"
     / "build"
     / "us"
 )
@@ -90,14 +90,14 @@ POST_REFERENCE_COLUMN_NOTES = {
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
         "split (memo component of long_term_capital_gains, written by the "
         "capital_gain_distributions source stage); required with NO reviewed "
-        "exclusion per PolicyEngine/populace#462 so a release whose export "
+        "exclusion per PolicyEngine/microcosm#462 so a release whose export "
         "drops the route (the Build M live default shipped it at $0 while "
         "non_sch_d_capital_gains carried 7.3x its SOI target) fails the "
         "coverage gate. Currently absent — this is the intended red gate "
         "until the Build N rebuild carries the split through."
     ),
     "health_insurance_premiums": (
-        "Self-employed premium attribution leaf (PolicyEngine/populace#451 "
+        "Self-employed premium attribution leaf (PolicyEngine/microcosm#451 "
         "item 2): the deterministic attribution operation of the "
         "other_health_insurance_premiums release stage copies the reported "
         "non-Part-B premium onto this person input for strictly-positive "
@@ -109,7 +109,7 @@ POST_REFERENCE_COLUMN_NOTES = {
     ),
     "is_self_employed": (
         "Gate flag for the self-employed premium attribution "
-        "(PolicyEngine/populace#451 item 2): opens the defined_for gate on "
+        "(PolicyEngine/microcosm#451 item 2): opens the defined_for gate on "
         "the engine's self_employed_health_insurance_premiums "
         "adds-aggregation for every strictly-positive Schedule C person. "
         "Written by the same attribution operation as "
@@ -117,7 +117,7 @@ POST_REFERENCE_COLUMN_NOTES = {
     ),
     "pre_subsidy_care_expenses": (
         "Adult/disabled-dependent care expense leaf of the section 21 CDCC "
-        "(PolicyEngine/populace#451 item 1), written by the adult_care_inputs "
+        "(PolicyEngine/microcosm#451 item 1), written by the adult_care_inputs "
         "base-builder stage: without it every CDCC reform binding through "
         "adult care scores exactly $0 (the #368 absent-input class). "
         "Currently absent — the intended red gate until the next base "
@@ -125,7 +125,7 @@ POST_REFERENCE_COLUMN_NOTES = {
     ),
     "is_incapable_of_self_care": (
         "Section 21 qualifying-individual flag for the CDCC adult-care leg "
-        "(PolicyEngine/populace#451 item 1), derived from the measured ASEC "
+        "(PolicyEngine/microcosm#451 item 1), derived from the measured ASEC "
         "self-care difficulty item PEDISDRS by the adult_care_inputs "
         "base-builder stage. Also read by SNAP/Medicaid work-requirement "
         "exemptions and state CDCC analogs in PolicyEngine-US 1.764.6. "
@@ -283,7 +283,7 @@ AOTC_EDUCATION_INPUTS = (
 #: the 2024 statutory $2,000 individual / $3,000 couple to $10,000 / $20,000 is
 #: a pure relaxation that binds only through ``ssi_countable_resources``. Nonzero
 #: iff the asset inputs are restored. Dense-native reference magnitudes: +$1.6B
-#: at $10k/$20k and ~+$16.1B with no limit (populace #356). ``min_abs_effect`` is
+#: at $10k/$20k and ~+$16.1B with no limit (microcosm #356). ``min_abs_effect`` is
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
@@ -312,7 +312,7 @@ REFORM_COVERAGE_PROBES = [
             "PolicyEngine-US 1.764.6 and remains protected by the hard "
             "non-default column gate."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "keogh_distribution_neutralization",
@@ -335,7 +335,7 @@ REFORM_COVERAGE_PROBES = [
             "Without the restored DST_SC*/DST_VAL* mapping the effect is a "
             "structural zero."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "tip_income_neutralization",
@@ -364,7 +364,7 @@ REFORM_COVERAGE_PROBES = [
             "2026). A structural zero means the tip attribution column was "
             "dropped or the deduction channel broke."
         ),
-        "issue": "PolicyEngine/populace#451",
+        "issue": "PolicyEngine/microcosm#451",
     },
     {
         "id": "fsla_overtime_premium_neutralization",
@@ -394,7 +394,7 @@ REFORM_COVERAGE_PROBES = [
             "A structural zero means the attribution column was dropped or "
             "the deduction channel broke."
         ),
-        "issue": "PolicyEngine/populace#451",
+        "issue": "PolicyEngine/microcosm#451",
     },
     {
         "id": "household_head_childcare_cap_neutralization",
@@ -416,7 +416,7 @@ REFORM_COVERAGE_PROBES = [
             "-$265.50 million. Without the restored P_SEQ input the "
             "neutralization is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "self_employed_health_premium_neutralization",
@@ -452,7 +452,7 @@ REFORM_COVERAGE_PROBES = [
             "close over this support. A structural zero means the attribution "
             "operation was dropped or the defined_for gate never opened."
         ),
-        "issue": "PolicyEngine/populace#451",
+        "issue": "PolicyEngine/microcosm#451",
     },
     {
         "id": "cdcc_adult_care_expense_neutralization",
@@ -481,7 +481,7 @@ REFORM_COVERAGE_PROBES = [
             "the base rebuild dropped the stage or the CDCC adult-care channel "
             "broke."
         ),
-        "issue": "PolicyEngine/populace#451",
+        "issue": "PolicyEngine/microcosm#451",
     },
     {
         "id": "spm_unit_energy_subsidy_neutralization",
@@ -502,7 +502,7 @@ REFORM_COVERAGE_PROBES = [
             "provision consumes this SPM resource, so the direct neutralization "
             "is the uniquely isolating policy-engine probe."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "medicare_take_up_neutralization",
@@ -522,7 +522,7 @@ REFORM_COVERAGE_PROBES = [
             "restored MCARE == 1 leaf must reduce aggregate Medicare cost; "
             "without the measured carry the probe is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
     {
         "id": "ssi_asset_limit_10k_20k",
@@ -549,9 +549,9 @@ REFORM_COVERAGE_PROBES = [
             "countable resources are 0 for every record, everyone already "
             "passes the resource test, and raising the limit scores exactly "
             "$0. Dense-native reference: +$1.6B at $10k/$20k, ~+$16.1B with no "
-            "limit (PolicyEngine/populace#356)."
+            "limit (PolicyEngine/microcosm#356)."
         ),
-        "issue": "PolicyEngine/populace#356",
+        "issue": "PolicyEngine/microcosm#356",
     },
     {
         "id": "ssi_disability_criteria_neutralization",
@@ -577,7 +577,7 @@ REFORM_COVERAGE_PROBES = [
             "ample sampling margin while rejecting a materially weakened "
             "criterion channel."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
     {
         "id": "ssi_take_up_neutralization",
@@ -604,7 +604,7 @@ REFORM_COVERAGE_PROBES = [
             "SSI. The $10 billion floor retains over 5.7x observed margin while "
             "rejecting a materially degenerate persisted flag."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
     {
         "id": "head_start_take_up_neutralization",
@@ -631,7 +631,7 @@ REFORM_COVERAGE_PROBES = [
             "Head Start. The $100 million floor retains over 45x observed "
             "margin while remaining far above numerical noise."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
     {
         "id": "aotc_abolition",
@@ -654,7 +654,7 @@ REFORM_COVERAGE_PROBES = [
             "inputs absent or degenerate, the baseline credit is a structural "
             "zero and the abolition scores exactly $0."
         ),
-        "issue": "PolicyEngine/populace#253",
+        "issue": "PolicyEngine/microcosm#253",
     },
     {
         "id": "savers_credit_abolition",
@@ -678,7 +678,7 @@ REFORM_COVERAGE_PROBES = [
             "inputs. If the desired-input family is absent or degenerate, "
             "the baseline credit is a structural zero and abolition scores $0."
         ),
-        "issue": "PolicyEngine/populace#278",
+        "issue": "PolicyEngine/microcosm#278",
     },
     {
         "id": "qbi_reit_ptp_rate_abolition",
@@ -698,7 +698,7 @@ REFORM_COVERAGE_PROBES = [
             "baseline-minus-reform QBID must be positive. Without populated "
             "qualified_reit_and_ptp_income the change is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#298",
+        "issue": "PolicyEngine/microcosm#298",
     },
     {
         "id": "qbi_wage_property_guardrails_zeroed",
@@ -730,7 +730,7 @@ REFORM_COVERAGE_PROBES = [
             "all-or-nothing SSTB routing leaves its SSTB-allocable copies to "
             "the hard signal gate rather than overclaiming reform coverage."
         ),
-        "issue": "PolicyEngine/populace#298",
+        "issue": "PolicyEngine/microcosm#298",
     },
     {
         "id": "qbi_farm_operations_income_exclusion",
@@ -759,12 +759,12 @@ REFORM_COVERAGE_PROBES = [
             "measured FRSE farm self-employment values (net-positive in the "
             "pooled frame) and the PUF channel carries the donor-pinned "
             "signed Schedule F values (net-negative, loss-heavy, "
-            "populace#435), so the aggregate QBID effect direction is a "
+            "microcosm#435), so the aggregate QBID effect direction is a "
             "property of the frame mix and the solve, not of coverage. The "
             "probe therefore requires a binding effect of at least the floor "
             "in either direction; a structural zero still fails."
         ),
-        "issue": "PolicyEngine/populace#298",
+        "issue": "PolicyEngine/microcosm#298",
     },
     {
         "id": "qbi_farm_rent_income_exclusion",
@@ -792,7 +792,7 @@ REFORM_COVERAGE_PROBES = [
             "staged candidate produces +$9.14M baseline-minus-reform QBID. "
             "Without farm_rent_income the reform is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#298",
+        "issue": "PolicyEngine/microcosm#298",
     },
     {
         "id": "domestic_production_ald_reactivation",
@@ -831,7 +831,7 @@ REFORM_COVERAGE_PROBES = [
             "baseline-minus-reform income tax must be positive. Without the "
             "restored E03240 input, reactivation is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#298",
+        "issue": "PolicyEngine/microcosm#298",
     },
     {
         "id": "form_4952_election_neutralization",
@@ -852,7 +852,7 @@ REFORM_COVERAGE_PROBES = [
             "must be positive. Without the restored E58990 input the "
             "neutralization is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#274",
+        "issue": "PolicyEngine/microcosm#274",
     },
     {
         "id": "salt_refund_income_neutralization",
@@ -873,7 +873,7 @@ REFORM_COVERAGE_PROBES = [
             "tax must be negative. Without the restored E00700 input the "
             "neutralization is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "collectibles_gain_neutralization",
@@ -894,7 +894,7 @@ REFORM_COVERAGE_PROBES = [
             "income tax must be positive. Without the restored leaf the "
             "neutralization is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#274",
+        "issue": "PolicyEngine/microcosm#274",
     },
     {
         "id": "unrecaptured_section_1250_gain_neutralization",
@@ -915,7 +915,7 @@ REFORM_COVERAGE_PROBES = [
             "be positive. Without the restored leaf the neutralization is a "
             "structural zero."
         ),
-        "issue": "PolicyEngine/populace#274",
+        "issue": "PolicyEngine/microcosm#274",
     },
     {
         "id": "child_support_received_snap_exclusion",
@@ -955,7 +955,7 @@ REFORM_COVERAGE_PROBES = [
             "recipients. Without the measured/QRF child-support receipt leaf, "
             "the source-list reform is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "child_support_expense_snap_deduction_abolition",
@@ -983,7 +983,7 @@ REFORM_COVERAGE_PROBES = [
             "net-income deduction. Without the measured/QRF positive expense "
             "leaf, abolition is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "disability_benefits_snap_exclusion",
@@ -1023,7 +1023,7 @@ REFORM_COVERAGE_PROBES = [
             "recipients. Without the measured/QRF non-workers-compensation "
             "benefit leaf, the source-list reform is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "workers_compensation_snap_exclusion",
@@ -1064,7 +1064,7 @@ REFORM_COVERAGE_PROBES = [
             "+$28.26M reform-minus-baseline; without the measured WC_VAL carry "
             "and PUF-half QRF, the source-list reform is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "wic_claim_neutralization",
@@ -1084,7 +1084,7 @@ REFORM_COVERAGE_PROBES = [
             "+$57.19M baseline-minus-neutralized; without the restored claim "
             "surface the probe is a structural zero."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
     {
         "id": "educator_expense_ald_abolition",
@@ -1120,7 +1120,7 @@ REFORM_COVERAGE_PROBES = [
             "some filers. Without the restored PUF E03220 leaf, abolition is a "
             "structural zero."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "alimony_expense_ald_abolition",
@@ -1145,7 +1145,7 @@ REFORM_COVERAGE_PROBES = [
             "With alimony_expense absent or degenerate, the abolition scores "
             "exactly $0."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "obbba_casualty_loss_limit",
@@ -1168,7 +1168,7 @@ REFORM_COVERAGE_PROBES = [
             "casualty-loss input absent or degenerate, the reactivation scores "
             "exactly $0."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "obbba_misc_itemized_deductions",
@@ -1190,7 +1190,7 @@ REFORM_COVERAGE_PROBES = [
             "pipeline's only populated miscellaneous-expense input, the "
             "reactivation is a structural zero on the export."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "obbba_cdcc",
@@ -1214,7 +1214,7 @@ REFORM_COVERAGE_PROBES = [
             "pre-subsidy childcare expenses absent or degenerate, no filer has "
             "qualifying care expenses and the reversion scores exactly $0."
         ),
-        "issue": "PolicyEngine/populace#278",
+        "issue": "PolicyEngine/microcosm#278",
     },
     {
         "id": "obbba_no_tax_on_tips",
@@ -1240,7 +1240,7 @@ REFORM_COVERAGE_PROBES = [
             "billion (ledger fact jct.obbba_title_vii.fy2026.no_tax_on_tips."
             "revenue_effect); certified Build N measures -$1.63 billion."
         ),
-        "issue": "PolicyEngine/populace#38",
+        "issue": "PolicyEngine/microcosm#38",
     },
     {
         "id": "obbba_no_tax_on_overtime",
@@ -1278,7 +1278,7 @@ REFORM_COVERAGE_PROBES = [
             "no_tax_on_overtime.revenue_effect); certified Build N measures "
             "-$16.86 billion."
         ),
-        "issue": "PolicyEngine/populace#242",
+        "issue": "PolicyEngine/microcosm#242",
     },
     {
         "id": "obbba_auto_loan_interest",
@@ -1299,7 +1299,7 @@ REFORM_COVERAGE_PROBES = [
             "passenger-vehicle loan interest absent or degenerate, the repeal "
             "scores exactly $0."
         ),
-        "issue": "PolicyEngine/populace#252",
+        "issue": "PolicyEngine/microcosm#252",
     },
     {
         "id": "tx_snap_additional_vehicle_exemption_abolition",
@@ -1322,10 +1322,10 @@ REFORM_COVERAGE_PROBES = [
             "PolicyEngine-US computes the exemption from both household "
             "vehicle count and value; if either restored SIPP vehicle input "
             "is absent or degenerate, this vehicle-specific reform loses its "
-            "intended binding channel. A persisted 30,000-household Populace "
+            "intended binding channel. A persisted 30,000-household Microcosm "
             "smoke scored +$3.58 million in 2026 SNAP."
         ),
-        "issue": "PolicyEngine/populace#49",
+        "issue": "PolicyEngine/microcosm#49",
     },
     {
         "id": "voluntary_filing_aca_ptc_neutralization",
@@ -1347,7 +1347,7 @@ REFORM_COVERAGE_PROBES = [
             "With the filing leaf absent or degenerate, this isolated response "
             "channel scores exactly $0."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
     {
         "id": "pre_subsidy_rent_neutralization",
@@ -1371,7 +1371,7 @@ REFORM_COVERAGE_PROBES = [
             "ASEC mappings and signal gate; household tenure_type has no "
             "standalone PolicyEngine-US 1.764.6 formula consumer."
         ),
-        "issue": "PolicyEngine/populace#32",
+        "issue": "PolicyEngine/microcosm#32",
     },
     {
         "id": "housing_assistance_take_up_neutralization",
@@ -1386,7 +1386,7 @@ REFORM_COVERAGE_PROBES = [
         "min_abs_effect": 100_000_000.0,
         "reason": (
             "PolicyEngine-US multiplies HUD HAP by the restored SPM-unit "
-            "take-up leaf after eligibility. Populace keeps that leaf exactly "
+            "take-up leaf after eligibility. Microcosm keeps that leaf exactly "
             "equal to source-backed housing-assistance receipt, so neutralizing "
             "it must remove the assistance paid to measured/imputed recipients. "
             "A 6,000-household production-ingredient smoke scored $202.795 "
@@ -1395,7 +1395,7 @@ REFORM_COVERAGE_PROBES = [
             "A default-only or absent carry makes the source reconciliation "
             "or this uniquely isolating probe fail."
         ),
-        "issue": "PolicyEngine/populace#312",
+        "issue": "PolicyEngine/microcosm#312",
     },
 ]
 
@@ -1449,7 +1449,7 @@ def build_manifest() -> dict:
                 # gate fails until Build J restores them.
                 column["note"] = (
                     "SSI countable-resource asset input; required with NO "
-                    "reviewed exclusion per PolicyEngine/populace#368 so the "
+                    "reviewed exclusion per PolicyEngine/microcosm#368 so the "
                     "gate fails until the asset stage is restored (Deliverable "
                     "2). Currently absent — this is the intended red gate."
                 )
@@ -1482,19 +1482,19 @@ def build_manifest() -> dict:
             "Column surface derived from the populated input layers of the "
             "pinned, sha-verified reference eCPS recorded in "
             "ecps_parity_reference.json (the launch parity contract, "
-            "PolicyEngine/populace#313) — the single allow-listed record of the "
+            "PolicyEngine/microcosm#313) — the single allow-listed record of the "
             "incumbent coordinates. This manifest names no data package."
         ),
     }
 
     return {
         "schema_version": 1,
-        "issue": "PolicyEngine/populace#368",
+        "issue": "PolicyEngine/microcosm#368",
         "description": (
             "Declared full-coverage contract for a US release: every input "
             "column the reference eCPS exports must be persisted as a key with "
             "non-default signal, or carry a reviewed exclusion. Enforced as a "
-            "hard release gate (populace.build.us_runtime.release_input_"
+            "hard release gate (microcosm.build.us_runtime.release_input_"
             "coverage) that generalizes assert_required_us_release_source_"
             "columns from 5 columns to the full eCPS input surface."
         ),
@@ -1508,14 +1508,14 @@ def build_manifest() -> dict:
             "meets_ssi_disability_criteria required by shipped validation "
             "probes, and the #282 Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
-            "(PolicyEngine/populace#462). "
+            "(PolicyEngine/microcosm#462). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "
             "(including the Section 199A QBI family), and the SSI countable-"
             "resource asset inputs (bank_account_assets, "
             "stock_assets, bond_assets), which are status='required' with NO "
-            "exclusion per PolicyEngine/populace#368 "
+            "exclusion per PolicyEngine/microcosm#368 "
             "so the gate fails on today's artifacts and asset restoration "
             "(Deliverable 2) turns it green. All other populated layers are "
             "'required'. Regenerate with "

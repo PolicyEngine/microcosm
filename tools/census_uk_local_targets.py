@@ -1,10 +1,10 @@
-"""Regenerate or check the UK local-target census artifact (populace#495).
+"""Regenerate or check the UK local-target census artifact (microcosm#495).
 
 The census inventories the UK local calibration surface: every household-side
 metric ``local_targets`` computes today, the official UK local statistics that
 could supply target values for each family, and the reviewed fences that
 constrain binding. The committed JSON lives next to the other UK evidence
-artifacts in ``populace.build.uk`` and is drift-gated by the test suite.
+artifacts in ``microcosm.build.uk`` and is drift-gated by the test suite.
 
 Usage:
     uv run python tools/census_uk_local_targets.py            # rewrite committed
@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 
-from populace.build.uk_runtime.local_target_census import (
+from microcosm.build.uk_runtime.local_target_census import (
     assert_uk_local_target_census_current,
     build_uk_local_target_census,
     committed_uk_local_target_census_path,
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         help=(
-            "Output JSON path. Defaults to the committed artifact in populace.build.uk."
+            "Output JSON path. Defaults to the committed artifact in microcosm.build.uk."
         ),
     )
     parser.add_argument(

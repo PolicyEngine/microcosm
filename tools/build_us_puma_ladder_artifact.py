@@ -16,7 +16,7 @@ file; block populations and 119th-CD assignments reuse the block-ladder
 parsers unchanged.
 
 The artifact is self-checked by loading it back through
-``populace.build.us_runtime.load_us_puma_ladder`` before the summary is
+``microcosm.build.us_runtime.load_us_puma_ladder`` before the summary is
 written, so a published ladder is by construction a loadable ladder. Every
 source's URL + SHA-256, the output SHA-256, and the national conservation
 totals are recorded in the summary JSON — the pinned-source manifest.
@@ -44,13 +44,13 @@ from pathlib import Path
 
 import numpy as np
 
-from populace.build.us_runtime import load_us_puma_ladder
-from populace.build.us_runtime.block_ladder_sources import (
+from microcosm.build.us_runtime import load_us_puma_ladder
+from microcosm.build.us_runtime.block_ladder_sources import (
     US_STATES,
     parse_national_cd_bef,
     parse_pl_geo_blocks,
 )
-from populace.build.us_runtime.puma_ladder_sources import (
+from microcosm.build.us_runtime.puma_ladder_sources import (
     assemble_us_puma_ladder,
     parse_tract_to_puma_relationship,
 )
@@ -139,7 +139,7 @@ def _download(url: str, cache_dir: Path) -> Path:
         return destination
     _log(f"  downloading {url}")
     request = urllib.request.Request(
-        url, headers={"User-Agent": "populace-build (puma ladder artifact)"}
+        url, headers={"User-Agent": "microcosm-build (puma ladder artifact)"}
     )
     with urllib.request.urlopen(request) as response:
         payload = response.read()

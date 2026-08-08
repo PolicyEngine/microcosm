@@ -8,7 +8,7 @@ count, top-carrier concentration shares, per-carrier weight pressure against
 the solver's weight-ratio cap, and household provenance (support channel,
 clone index, source id, state FIPS) for the top carriers.
 
-This is the read-only receipts tool behind the populace#462 / populace#451
+This is the read-only receipts tool behind the microcosm#462 / microcosm#451
 support forensics (tips carrier deficit, six-state medical blowout). It never
 modifies any artifact, never runs PolicyEngine, and never touches calibration:
 it decomposes what a shipped solve already saw, so support defects can be

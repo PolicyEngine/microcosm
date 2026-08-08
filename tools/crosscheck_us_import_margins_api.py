@@ -1,4 +1,4 @@
-"""Cross-check bulk-built import margins against the Census API (populace#615 P1).
+"""Cross-check bulk-built import margins against the Census API (microcosm#615 P1).
 
 The margins artifacts are built from the monthly bulk IMDB archives
 (``tools/build_us_import_entry_margins.py``). This tool re-fetches a
@@ -43,7 +43,7 @@ Example::
     CENSUS_API_KEY=... uv run python tools/crosscheck_us_import_margins_api.py \
         --margins out/us-import-entry-margins/margins_hts10_country_month.parquet \
         --totals out/us-import-entry-margins/census_totals_hts10_month.parquet \
-        --cache-dir ~/.cache/populace/us-trade/census-imports-hs \
+        --cache-dir ~/.cache/microcosm/us-trade/census-imports-hs \
         --out out/us-import-entry-margins/crosscheck_api_report.json
 
 Exit code: 1 on any dollar-measure mismatch (report still written), 0 on
@@ -63,10 +63,10 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
+    0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
-from populace.build.us_runtime.us_trade import fetch_imports_month  # noqa: E402
+from microcosm.build.us_runtime.us_trade import fetch_imports_month  # noqa: E402
 
 #: Stratified default sample: (month, chapters). Giants 84/85/87 exercise
 #: the prefix-split path; 01/02/41 are small; 30/61/90/94/98 mid-size; both

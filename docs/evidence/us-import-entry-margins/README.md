@@ -23,7 +23,7 @@ claims are reviewable and recomputable in-branch rather than prose:
 
 Chain of custody: the archive sha256s here equal the sha256s in the
 committed golden pack manifest
-(`packages/populace-build/tests/golden/us_trade/imdb/golden_manifest.json`)
+(`packages/microcosm-build/tests/golden/us_trade/imdb/golden_manifest.json`)
 for the two golden months, and the `build_report.json` sha256s equal the
 ones quoted in PR #620's evidence section. The heavyweight artifacts
 themselves (3.3 GB of archives, ~1 GB of parquet) live outside the repo;

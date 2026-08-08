@@ -1,8 +1,8 @@
 """Build a local US base H5 with a PUF tax-detail support channel.
 
-This diagnostic builder starts from an existing Populace US H5, clones the
+This diagnostic builder starts from an existing Microcosm US H5, clones the
 frame into ASEC and PUF-tax-detail support channels, imputes PUF-observed
-inputs onto the PUF channel with Populace's weighted QRF, and writes a fresh
+inputs onto the PUF channel with Microcosm's weighted QRF, and writes a fresh
 base H5 for the fiscal refresh calibration builder.
 """
 
@@ -23,10 +23,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from populace.build import FitWeightRecord, weights_audit_gate
-from populace.build.frame_checkpoint import write_frame_checkpoint
-from populace.build.ledger_artifact import load_ledger_consumer_artifact
-from populace.build.outer_stage_runtime import (
+from microcosm.build import FitWeightRecord, weights_audit_gate
+from microcosm.build.frame_checkpoint import write_frame_checkpoint
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.outer_stage_runtime import (
     Stage,
     StagePipeline,
     StageRuntime,
@@ -34,10 +34,13 @@ from populace.build.outer_stage_runtime import (
     assert_unchanged_identity,
     frame_identity,
 )
-from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
-from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from populace.build.stage_profile import profile_stage
-from populace.build.us_runtime import (
+from microcosm.build.source_manifest import (
+    SupportSpineSpec,
+    load_support_spine_manifest,
+)
+from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
+from microcosm.build.stage_profile import profile_stage
+from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
@@ -145,15 +148,15 @@ from populace.build.us_runtime import (
     with_us_workers_compensation,
     write_puf_capital_gains_tail_manifest,
 )
-from populace.build.us_runtime.puf_qrf_chain import (
+from microcosm.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
     run_primary_puf_qrf_chain,
 )
-from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
-from populace.frame import Frame, WeightKind, Weights
-from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
-from populace.frame.units import US_SCHEMA
+from microcosm.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
 DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
@@ -417,7 +420,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Diagnostic escape hatch for partial-spine smoke builds. By "
             "default a failing geography-ladder gate (e.g. the NYC "
-            "never-collapses-to-zero regression of populace #34) aborts the "
+            "never-collapses-to-zero regression of microcosm #34) aborts the "
             "build."
         ),
     )
@@ -447,7 +450,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.block_ladder_artifact is None and not args.without_block_ladder:
         parser.error(
             "US bases carry the block-anchored geography ladder by default "
-            "(populace #275): pass --block-ladder-artifact <npz> "
+            "(microcosm #275): pass --block-ladder-artifact <npz> "
             "(tools/build_us_block_ladder_artifact.py) or opt out "
             "explicitly with --without-block-ladder"
         )
@@ -1998,7 +2001,7 @@ def _asec_raw_source_mapping_frame(
             ],
         },
         # PAW_TYP lives in the same pinned survey-year person members as
-        # ED_VAL, so the mapping reuses those archive pins (populace#591).
+        # ED_VAL, so the mapping reuses those archive pins (microcosm#591).
         "PAW_TYP": {
             "audit": dict(public_assistance_type_source.attrs.get("source_audit", {})),
             "column": "PAW_TYP",
@@ -2940,9 +2943,9 @@ def impute_and_audit_us_puf_support(
     """Impute the PUF support channel and audit the fit's resolved weight kind.
 
     Runs the production PUF tax-detail support imputation, capturing the kind the
-    QRF *resolved* to via the build-level weights audit (populace #300): the fit
-    emits one :class:`~populace.build.FitWeightRecord`, and
-    :func:`~populace.build.weights_audit_gate` proves it did not silently resolve
+    QRF *resolved* to via the build-level weights audit (microcosm #300): the fit
+    emits one :class:`~microcosm.build.FitWeightRecord`, and
+    :func:`~microcosm.build.weights_audit_gate` proves it did not silently resolve
     unweighted. A failing audit **aborts the build** with a non-zero exit, exactly
     as the geography-ladder gate does — a support channel imputed by an unweighted
     fit is a broken donor whose on-surface residuals can still look perfect.
@@ -3115,7 +3118,7 @@ def _support_spine_spec_metadata(
         return None
     return {
         "path": (
-            "package:populace.build.us/support_spine.json"
+            "package:microcosm.build.us/support_spine.json"
             if args.support_spine_spec is not None
             and args.support_spine_spec.name == "default"
             else str(args.support_spine_spec.resolve())

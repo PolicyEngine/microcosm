@@ -23,22 +23,22 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build import (
+from microcosm.build import (
     FitWeightRecord,
     default_valued_columns_gate,
     weights_audit_gate,
 )
-from populace.build.us_runtime import acs_sources
-from populace.build.us_runtime.acs_multispine import (
+from microcosm.build.us_runtime import acs_sources
+from microcosm.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
     build_optional_acs_multispine,
 )
-from populace.build.us_runtime.acs_pums import (
+from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     DEFAULT_CHUNKSIZE,
     AcsPumsSource,
 )
-from populace.build.us_runtime.acs_transfer import (
+from microcosm.build.us_runtime.acs_transfer import (
     ACS_DONOR_CHANNEL_AUTO,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     TargetFamilies,
@@ -48,13 +48,13 @@ from populace.build.us_runtime.acs_transfer import (
     default_acs_transfer_target_families,
     resolve_acs_donor_channel,
 )
-from populace.build.us_runtime.base_pool import spine_column
-from populace.build.us_runtime.puma_ladder import (
+from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
 )
-from populace.frame import Frame, WeightKind, Weights
-from populace.frame.units import US_SCHEMA
+from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
 # This implementation moved from tools/ into tools/_legacy/ unchanged.
@@ -67,7 +67,7 @@ DEFAULT_STAGING_EXPORT_PEAK_LIMIT_BYTES = int(
 )
 _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
 _PACKAGED_MANIFEST_REFERENCE = (
-    "package:populace.build.us_runtime/acs_2024_1yr_sources.json"
+    "package:microcosm.build.us_runtime/acs_2024_1yr_sources.json"
 )
 
 
@@ -346,7 +346,7 @@ def _require_dense_donor_coverage(
     """Fail unless every column consumed by the QRF plan has donor signal."""
 
     if engine is None:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         engine = PolicyEngineUSEngine()
     selected, resolved_channel = _coverage_donor_channel(base, donor_channel)
@@ -998,7 +998,7 @@ def _write_dataset(
     period: int,
     artifact_kind: str = "nullable_precalibration_staging_h5",
 ) -> None:
-    """Write a populace US H5 with one-table-at-a-time verification."""
+    """Write a microcosm US H5 with one-table-at-a-time verification."""
 
     output = Path(path)
     output.unlink(missing_ok=True)
@@ -1071,7 +1071,7 @@ def _engine_input_null_audit(
     """Inventory nullable engine inputs for the reviewed-limitations summary."""
 
     if engine is None:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         engine = PolicyEngineUSEngine()
     input_names = set(engine.variables())

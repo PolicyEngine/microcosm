@@ -9,7 +9,7 @@ Engine: `policyengine-us==1.764.6`, `policyengine-core==3.26.11`
 This receipt adjudicates the pool-run-3 failure before changing the transfer
 plan. Engine facts were evaluated with the synced sibling virtual environment
 and this worktree on `PYTHONPATH`, so the installed engine was pinned while the
-Populace classifier and plan came from this branch.
+Microcosm classifier and plan came from this branch.
 
 ## Hours variables
 
@@ -17,7 +17,7 @@ Populace classifier and plan came from this branch.
 | --- | --- | --- | --- | --- |
 | `weekly_hours_worked_before_lsr` | `HRSWK` | person, float, year, default `40.0`, no formulas, input leaf | Built as `weekly_hours_worked`, QRF-imputed onto the PUF clone half, then renamed to the before-LSR leaf for export | Keep as a transferred input leaf |
 | `hours_worked_last_week` | `A_HRS1` | person, float, year, default `0`, no formulas, input leaf | Carried directly, QRF-imputed onto the PUF clone half, and exported as an input leaf; also consumed by the legacy FLSA derivation | Keep as a transferred input leaf |
-| `weeks_worked` | `WKSWORK`, clipped to 0--52 | person, int, year, default `0`, formula from `2025-01-01`; the formula returns the prior year's `weeks_worked`; formula-owned under Populace's period-agnostic classifier | Carried directly, QRF-imputed onto the PUF clone half, and deliberately exported for 2024 because the legacy guard classified formulas by dataset period; the same export failed for 2025 | Drop from the transfer plan and final pool input surface |
+| `weeks_worked` | `WKSWORK`, clipped to 0--52 | person, int, year, default `0`, formula from `2025-01-01`; the formula returns the prior year's `weeks_worked`; formula-owned under Microcosm's period-agnostic classifier | Carried directly, QRF-imputed onto the PUF clone half, and deliberately exported for 2024 because the legacy guard classified formulas by dataset period; the same export failed for 2025 | Drop from the transfer plan and final pool input surface |
 
 The current multispine pool does not run the ORG/FLSA operator before its
 simulation boundary. `org_wages.py` is a legitimate pre-simulation consumer in
@@ -30,7 +30,7 @@ consume a private/source representation and remove it before simulation.
 
 The behavioral deviation is explicit: the archived build treated
 `weeks_worked` as a valid 2024 input because its only engine formula begins in
-2025. The required Populace transfer guard treats a variable with a formula in
+2025. The required Microcosm transfer guard treats a variable with a formula in
 any period as formula-owned, so the corrected pool cannot preserve that 2024
 override.
 
