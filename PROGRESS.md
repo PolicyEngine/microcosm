@@ -74,11 +74,15 @@ ordered rejection contracts, and A1 precise changelog coverage.
   boundary-specific regressions that corrupt receipts only after earlier
   validation. The QBI, multispine runtime, and pool-tool focused suites pass
   together.
+- Completed the ordering authority and changelog coverage: certified ASEC
+  evidence and artifact counts, both named ACS rules, exact preflight and
+  nonfinite rejection semantics, v6 identities, full QBI authentication
+  lifecycle, and explicit fit-weight/checkpoint/manifest/publication audit
+  rows are now documented.
 
 ## Next
 
-1. Complete the changelog and the remaining authority/audit documentation.
-2. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
+1. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
    chunked foreground full workspace battery, and changed-file quality gates.
-3. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
+2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.

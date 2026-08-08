@@ -146,14 +146,25 @@ are allowed only when named by the ACS native-input receipt.
    arm (`clone_attachment_fraction`, default `1.0`) and runs one primary QRF
    pass across both survey origins. The strict recipient surface applies the
    [2024 ACS PUMS Data Dictionary](https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf)
-   universes for `WAGP` and `SEMP`. The certified ASEC producer maps its
-   earnings leaves with numeric zero for every person younger than 15 and
-   retains all-child tax units with zero earnings sums. Cross-arm comparison
-   therefore requires the ACS produced frame to use the same semantics: a
+   universes for `WAGP` and `SEMP`. The ASEC evidence is the established
+   producer, not a new convention: [`derive_us_cps_carried_inputs`](../packages/populace-build/src/populace/build/us_runtime/cps_carried.py#L150-L155)
+   maps `WSAL_VAL` and `SEMP_VAL`, while its [`_source`](../packages/populace-build/src/populace/build/us_runtime/cps_carried.py#L355-L362)
+   coercion materializes source blanks as numeric zero. A direct audit of the
+   certified Build J artifact (`populace-us-2024-buildj-sparse-rmloss100-75d5add-20260710T094201Z`,
+   built with PolicyEngine US 1.764.6) found all 15,509 under-15 ASEC people
+   numeric zero on raw and mapped earnings and retained all seven all-child
+   ASEC tax units with zero earnings sums. The PUF-detail ASEC clone likewise
+   has 21,737 under-15 zeros and 22 retained all-child units. Cross-arm
+   comparison therefore requires the ACS produced frame to use the same
+   semantics: a
    named pre-QRF operator materializes `0.0` only on declared under-15 mapped
-   leaves, records the exact person/unit counts and both rule IDs in its
-   receipt, and leaves raw `WAGP`/`SEMP` blanks unchanged. Eligible nulls still
-   fail at the original recipient-source preflight. All-child units remain
+   leaves, records the exact person/unit counts and the
+   `acs_2024_pums_wagp_age_15_plus` and
+   `acs_2024_pums_semp_age_15_plus` rule IDs in its receipt, and leaves raw
+   `WAGP`/`SEMP` blanks unchanged. Eligible mapped or raw nulls still fail in
+   [`_require_complete_recipient_predictor_sources`](../packages/populace-build/src/populace/build/us_runtime/puf_support.py#L3036-L3167)
+   with the original greppable `missing values before coercion` diagnostic and
+   the responsible rule ID. All-child units remain
    recipients with receipted zero earnings predictors; they are not generic
    `fillna` results. PUF earnings allocation is limited to age-15-plus people,
    so an under-15 first person and every member of an all-child unit remain
@@ -163,12 +174,24 @@ are allowed only when named by the ACS native-input receipt.
    same-named tax-unit/person source
    collision is ambiguous and fails instead of letting receipt and feature
    construction choose different grains.
+   The full ACS 2024 archive audit found exactly 510,098 under-15 people, equal
+   to the complete WAGP/SEMP blank set. At the 1% rung the original failure set
+   was exactly 2,998 recipient tax units touching 5,294 under-15 people: 2,980
+   mixed-age units and 18 units with no eligible member. These populations are
+   counted by the universe receipt; the latter 18 remain zero-basis recipients
+   to match the certified ASEC arm.
    Exact structural-person, affected-unit, mixed-unit, and empty-unit counts
    and lineage/feature digests bind the root QRF manifest, both immutable
    banks, every target checkpoint, live finalization, and the outer stacked
    receipt. PUF donors stay full. The clone-2 capital-gains-tail operator runs
    inside this pass; exact tail-owned and QRF-owned cells are checked after
    source completion and every later phase.
+   This semantic change is authority-gated: the primary-QRF root and target
+   checkpoint schema, outer stacked checkpoint materializer, and canonical
+   stacked authority are all version 6. The outer base identity binds the
+   primary-QRF schema plus the ACS universe and QBI reconciliation contract
+   identities. Every v1--v5 payload is stale and refused, including the former
+   strict v5 two-control payload.
 5. The post-clone source-completion chain runs, then the declared post-PUF
    transfer fills the targets first materialized by that chain or the PUF pass.
    Its complete model donor is the ASEC-origin PUF-detail role. Authority is
@@ -197,7 +220,17 @@ are allowed only when named by the ACS native-input receipt.
    digest, changed-row counts, exact preservation of every undeclared entity,
    link, weight, stratum, mass-log, and metadata surface, an exact
    structural-source exclusion count, and zero forbidden structural-source
-   mutations. The tool
+   mutations. Receipt generation recomputes the deterministic transition and
+   validates exact keys, types, nonnegative counts, nested universe receipts,
+   preservation claims, and every SHA-256. The same live-output digest and
+   kernel fixed-point checks run at simulated checkpoint emission, durable
+   checkpoint write and load, simulated resume, legacy and stacked manifest
+   construction, and both publication entry points. Legacy receipts must use
+   `derive.qbi_input_reconciliation`; stacked receipts must use
+   `derive.pool_derivation.qbi_input_reconciliation`; missing, wrong-route, or
+   ambiguous receipts fail. A forged envelope and a mutated output paired with
+   a rebound receipt therefore fail rather than becoming publication
+   authority. The tool
    retains the existing `assembled`, `transferred`, and `simulated` #599
    boundaries.
 8. A fresh `us_stacked_completeness` gate proves every declared input is
@@ -231,18 +264,22 @@ only after a comparison surface is complete and valid.
 | Early gap-fill handoff | Donors observe every declared target; every recipient null is filled except the exact ACS group-quarters rent rule. Nonstructural `unmodeled_rows` and residual nulls are forbidden. | The pre-clone ASEC source operators supply 48 early targets to the two ASEC-to-ACS directions. | No accepted starvation remains. A nonstructural residual fails before cloning; literal `insufficient_support` is not an early-transfer outcome. |
 | Clone attachment | Input rows are all clone 0; the seeded whole-household selection, lineage, pair weights, fraction, and seed agree exactly. | The completed gap-filled stack and the attachment sampler. | A permitted structural rent null is copied with its authority. Any other early residual has already failed. |
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
-| PUF tax-unit features | Every clone-1 recipient has a finite feature vector. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
+| PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
+| Outer pool checkpoint identity and resume | Schema/materializer/authority v6 plus the ACS-universe and QBI-mutation contract identities must match exactly before any cached stage is discovered. | Fresh input pins, live stack receipt, scale controls, code identity, and both semantic contract identities. | No. Every v1--v5 root, target, materializer, or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. |
 | Clone-2 capital-gains tail | Candidate recipients have the required filing-status/AGI support, positive donor mass, unique household lineage, and sufficient weight capacity; every selected donor is assigned once. | Completed clone-1 QRF output and full PUF tail donors. | No early residual is accepted. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Post-clone source completion | Each source operator preserves structure and emits its declared ASEC-evidenced outputs; unavailable peer cells remain null only until late transfer. | ASEC evidence rows plus completed PUF clone outputs. | Temporarily: peer nulls are intentional here, but the next zero-residual transfer must consume them. |
 | Post-PUF transfer | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 30 source targets, with three overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
+| Fit-weight audit | Every primary and post-PUF QRF fit receipts its resolved entity weight kind, and the collected fit records pass the weights audit before a transferred checkpoint can exist. | Calibrated household weights mapped by the frame to each modeled entity. | No. A missing, inconsistent, or manually substituted weight declaration fails before checkpoint emission. |
 | Tail preservation | Tail manifest, descendants, IDs, weights, provenance, joint vector, and non-tail QRF cells remain exact after completion, transfer, derive, seed, and simulation. | The tail manifest bound during the PUF pass. | Completeness receipts cannot authorize a mutation; any byte or identity change fails. |
 | Schedule-D derive | Both transferred parent columns are finite for every person and align to every tax unit. | Completed post-PUF transfer plus tail replacements. | No. A residual would fail late transfer first and derive again by name. |
-| QBI derive | All QBI detail outputs are finite; self-employment is finite wherever its source applies; every independent archived QBI identity holds. The declared surface includes the base self-employment rewrite and binds pre/post digests. | PUF/source detail plus ACS/ASEC native self-employment. | No silent starvation. Every ACS under-15 base source cell is held at its receipted universe zero across clone roles; all derived QBI cells remain in scope, and an in-universe null fails. |
+| QBI derive | All QBI detail outputs are finite; self-employment is finite wherever its source applies; every independent archived QBI identity holds. The declared surface includes the base self-employment rewrite and binds pre/post digests. Its exact receipt is recomputed and authenticated at every persisted and publication boundary. | PUF/source detail plus ACS/ASEC native self-employment. Raw under-15 ACS `SEMP` remains structurally blank; mapped `self_employment_income_before_lsr` is a named, receipted universe zero. | No silent starvation. Every mapped ACS under-15 base value is held at its receipted universe zero across clone roles; all derived QBI cells remain in scope, and an in-universe null, forged receipt, or non-kernel output fails. |
 | Take-up seed | Every administratively seeded variable completes; transfer-owned take-up cannot use a default; only explicitly non-transfer-owned inputs may use receipted engine defaults. | Seed kernels, the complete transfer surface, and declared defaults. | Transfer-owned residuals fail. A declared default is a separate modeled state, not an insufficient-support receipt. |
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
+| Simulated checkpoint pair and resume | The persistent input-only frame and temporary evaluation frame must share exact assembly provenance; SSI exists only on the evaluation half. The live QBI receipt must authenticate the persistent frame at emission, durable write/load, and resume. | Derived/seeded persistent inputs plus the separately materialized SSI evaluation output. | No. A forged QBI receipt, altered persistent value, invalid SSI binding, or mismatched pair invalidates the simulated checkpoint and falls back only to an independently valid earlier stage. |
 | Terminal completeness | All 131 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 131-target terminal surface. |
 | By-origin battery | All 131 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
+| Manifest construction and canonical publication closure | Legacy and stacked builders reauthenticate QBI live output, canonical stacked authority, terminal-gate receipts, H5/diagnostics run IDs, and artifact digests before readiness can be asserted. | The validated persistent pool, immutable stage receipts, terminal gate snapshot, and atomically staged publication files. | No. Construction rejects forged or wrong-route receipts; publication begins with a non-ready tombstone, and only one fully authenticated run can replace it with a ready manifest. |
 
 The audit leaves no generic “receipted but null” path into a hard consumer.
 Structural absence is target- and universe-exact; sample-size support affects
