@@ -121,9 +121,13 @@ ordered rejection contracts, and A1 precise changelog coverage.
   ACS fixtures now include SEMP and mapped self-employment zeros; the end-to-end
   fixture also makes unemployment incidence deterministic from the required
   `is_female` predictor. Both formerly failing cases pass together.
+- The corrected final US shard passes 1,092/1,092. Across all six foreground
+  workspace chunks, pytest reports 5,565 passed and 58 skipped outcomes. One UK
+  skip is a collection-level module skip, so the battery covers 5,622 collected
+  test functions plus that one module-level skip.
 
 ## Next
 
-1. Rerun the corrected final US chunk and run changed-file quality gates.
+1. Run changed-file quality gates and replay the twelve verifier probes.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
