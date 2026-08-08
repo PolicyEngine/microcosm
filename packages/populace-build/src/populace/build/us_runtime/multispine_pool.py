@@ -66,8 +66,9 @@ from populace.build.us_runtime.prior_year_income import (
 from populace.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.qbi_inputs import (
-    US_QBI_RECONCILED_PERSON_COLUMNS,
     us_qbi_reconciliation_change_receipt,
+    validate_us_qbi_reconciliation_live_output,
+    validate_us_qbi_reconciliation_transition,
     with_us_qbi_input_reconciliation,
 )
 from populace.build.us_runtime.relationship_inputs import (
@@ -1568,9 +1569,16 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
 
     def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
         reconciled = with_us_qbi_input_reconciliation(input_frame)
+        receipt = us_qbi_reconciliation_change_receipt(input_frame, reconciled)
+        validate_us_qbi_reconciliation_transition(
+            input_frame,
+            reconciled,
+            receipt,
+            boundary="multispine QBI reconciliation generation",
+        )
         return PoolStageOutput(
             reconciled,
-            us_qbi_reconciliation_change_receipt(input_frame, reconciled),
+            receipt,
         )
 
     completed = _run_source_operator_chain(
@@ -1584,17 +1592,18 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     )
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
     qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    validate_us_qbi_reconciliation_live_output(
+        completed.frame,
+        qbi_receipt,
+        boundary="multispine pool derivation output",
+    )
     return PoolStageOutput(
         completed.frame,
         {
             "phase": _POST_CLONE_PHASE,
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
-            "qbi_input_reconciliation": {
-                "columns": list(US_QBI_RECONCILED_PERSON_COLUMNS),
-                "operation": "shared_all_or_nothing_identity_reconciliation",
-                **qbi_receipt,
-            },
+            "qbi_input_reconciliation": dict(qbi_receipt),
         },
     )
 
@@ -2051,7 +2060,52 @@ def _validated_resume_checkpoint(
                 "Multispine pool simulated checkpoint evaluation provenance "
                 "differs from its persistent frame."
             )
-    return assembly_receipt, _checkpoint_stage_receipts(resume)
+    receipts = _checkpoint_stage_receipts(resume)
+    if resume.stage == "simulated":
+        _validate_qbi_stage_receipt(
+            resume.frame,
+            receipts,
+            boundary="multispine pool simulated checkpoint resume",
+        )
+    return assembly_receipt, receipts
+
+
+def _qbi_receipt_from_stage_receipts(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    boundary: str,
+) -> Mapping[str, object]:
+    derive = stage_receipts.get("derive")
+    if not isinstance(derive, Mapping):
+        raise ValueError(f"{boundary}: stage receipts have no derive object.")
+    pool_derivation = derive.get("pool_derivation")
+    if pool_derivation is not None:
+        raise ValueError(
+            f"{boundary}: legacy checkpoint used the stacked derive receipt route."
+        )
+    receipt = derive.get("qbi_input_reconciliation")
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: derive receipt has no QBI reconciliation object."
+        )
+    return receipt
+
+
+def _validate_qbi_stage_receipt(
+    frame: Frame,
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    boundary: str,
+) -> None:
+    receipt = _qbi_receipt_from_stage_receipts(
+        stage_receipts,
+        boundary=boundary,
+    )
+    validate_us_qbi_reconciliation_live_output(
+        frame,
+        receipt,
+        boundary=boundary,
+    )
 
 
 def _emit_pool_checkpoint(
@@ -2065,6 +2119,12 @@ def _emit_pool_checkpoint(
 ) -> None:
     if callback is None:
         return
+    if stage == "simulated":
+        _validate_qbi_stage_receipt(
+            frame,
+            stage_receipts,
+            boundary="multispine pool simulated checkpoint emission",
+        )
     callback(
         MultispinePoolCheckpoint(
             stage=stage,

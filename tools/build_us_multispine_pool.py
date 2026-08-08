@@ -147,6 +147,7 @@ from populace.build.us_runtime.puf_support import (
 )
 from populace.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_contract_identity,
+    validate_us_qbi_reconciliation_live_output,
 )
 from populace.build.us_runtime.stacked_spine import (
     CANONICAL_STACKED_GAP_FILL_SURFACE,
@@ -1343,6 +1344,14 @@ class _PoolStageCheckpointStore:
             checkpoint.frame,
             boundary=f"pool {stage} checkpoint write",
         )
+        qbi_route = _checkpoint_qbi_route(self._base_identity)
+        if stage == "simulated" and qbi_route is not None:
+            _validate_qbi_stage_receipt(
+                persistent_frame,
+                checkpoint.stage_receipts,
+                route=qbi_route,
+                boundary=f"pool {stage} durable checkpoint write",
+            )
         stored_frame = persistent_frame
         if stage == "simulated":
             if checkpoint.simulation_frame is None:
@@ -1734,6 +1743,15 @@ class _PoolStageCheckpointStore:
                     )
                 simulation_frame = frame
                 persistent_frame = _without_simulation_output(frame)
+
+            qbi_route = _checkpoint_qbi_route(self._base_identity)
+            if stage == "simulated" and qbi_route is not None:
+                _validate_qbi_stage_receipt(
+                    persistent_frame,
+                    restored_stage_receipts,
+                    route=qbi_route,
+                    boundary="pool simulated durable checkpoint load",
+                )
 
             checkpoint = MultispinePoolCheckpoint(
                 stage=stage,
@@ -2481,6 +2499,71 @@ def _validate_stacked_post_puf_stage_receipt(
     )
 
 
+def _qbi_receipt_from_stage_receipts(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    route: str,
+    boundary: str,
+) -> Mapping[str, object]:
+    """Resolve the exact legacy or stacked QBI receipt path without fallback."""
+
+    derive = stage_receipts.get("derive")
+    if not isinstance(derive, Mapping):
+        raise ValueError(f"{boundary}: stage receipts have no derive object.")
+    if route == "legacy":
+        if "pool_derivation" in derive:
+            raise ValueError(
+                f"{boundary}: legacy QBI receipt used the stacked derive route."
+            )
+        receipt = derive.get("qbi_input_reconciliation")
+    elif route == "stacked":
+        pool_derivation = derive.get("pool_derivation")
+        if not isinstance(pool_derivation, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked derive receipts have no pool_derivation object."
+            )
+        if "qbi_input_reconciliation" in derive:
+            raise ValueError(
+                f"{boundary}: stacked QBI receipt also appears at the legacy route."
+            )
+        receipt = pool_derivation.get("qbi_input_reconciliation")
+    else:  # pragma: no cover - internal callers pass a literal
+        raise ValueError(f"{boundary}: unknown QBI receipt route {route!r}.")
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: stage receipts have no QBI reconciliation object."
+        )
+    return receipt
+
+
+def _validate_qbi_stage_receipt(
+    frame: Frame,
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    route: str,
+    boundary: str,
+) -> None:
+    receipt = _qbi_receipt_from_stage_receipts(
+        stage_receipts,
+        route=route,
+        boundary=boundary,
+    )
+    validate_us_qbi_reconciliation_live_output(
+        frame,
+        receipt,
+        boundary=boundary,
+    )
+
+
+def _checkpoint_qbi_route(base_identity: Mapping[str, object]) -> str | None:
+    artifact_kind = base_identity.get("artifact_kind")
+    if artifact_kind == "populace_us_multispine_pool_checkpoint_identity":
+        return "legacy"
+    if artifact_kind == "populace_us_stacked_pool_checkpoint_identity":
+        return "stacked"
+    return None
+
+
 def _emit_stacked_checkpoint(
     callback: Callable[[MultispinePoolCheckpoint], None] | None,
     *,
@@ -2494,6 +2577,13 @@ def _emit_stacked_checkpoint(
         _validate_stacked_post_puf_stage_receipt(
             stage_receipts,
             boundary=f"stacked {stage} checkpoint emission",
+        )
+    if stage == "simulated":
+        _validate_qbi_stage_receipt(
+            frame,
+            stage_receipts,
+            route="stacked",
+            boundary="stacked simulated checkpoint emission",
         )
     if callback is None:
         return
@@ -2586,6 +2676,13 @@ def build_stacked_pool(
             _validate_stacked_post_puf_stage_receipt(
                 receipts,
                 boundary=f"stacked {resume_stage} checkpoint resume",
+            )
+        if resume_stage == "simulated":
+            _validate_qbi_stage_receipt(
+                current,
+                receipts,
+                route="stacked",
+                boundary="stacked simulated checkpoint resume",
             )
         for completed_phase in (
             "assembled",
@@ -2899,6 +2996,12 @@ def _manifest_payload(
     checkpoint_provenance: Mapping[str, object],
     publication_run_id: str,
 ) -> dict[str, object]:
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="legacy",
+        boundary="legacy production manifest",
+    )
     status = "simulation_ready" if result.simulation_ready else "agreement_failed"
     puf_donor_receipt = input_receipts.get("puf_donor")
     if not isinstance(puf_donor_receipt, Mapping):
@@ -2988,6 +3091,12 @@ def _stacked_manifest_payload(
 
     _validate_stacked_post_puf_stage_receipt(
         result.stage_receipts,
+        boundary="stacked production manifest",
+    )
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="stacked",
         boundary="stacked production manifest",
     )
     status = "simulation_ready" if result.simulation_ready else "gate_failed"
@@ -3169,6 +3278,12 @@ def _write_outputs(
     input_receipts: Mapping[str, object] | None = None,
     checkpoint_provenance: Mapping[str, object] | None = None,
 ) -> None:
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="legacy",
+        boundary="legacy publication entry",
+    )
     if input_receipts is None:
         if loaded is None:
             raise ValueError(
@@ -3253,6 +3368,12 @@ def _write_stacked_outputs(
 
     _validate_stacked_post_puf_stage_receipt(
         result.stage_receipts,
+        boundary="stacked publication entry",
+    )
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="stacked",
         boundary="stacked publication entry",
     )
     publication_run_id = _new_publication_run_id()

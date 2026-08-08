@@ -3,9 +3,9 @@
 ## State
 
 Round 5 is in progress on `smoke-gapfill-ordering-fix`, starting from exact
-HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1, C2, and C4 are implemented;
-C3's canonical transition validator is implemented and its persisted-boundary
-integration is in progress. Work is local and offline: no push, GitHub,
+HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1 through C4 are implemented;
+the remaining work is A1 documentation and the complete proof battery. Work is
+local and offline: no push, GitHub,
 network, 1% smoke, state shelving, or root build journal is in scope.
 
 The Round 4 verifier report has been read in full. Its five required changes
@@ -65,13 +65,20 @@ ordered rejection contracts, and A1 precise changelog coverage.
   authentication, live-output digest binding, and fixed-point validation.
   QBI unit tests cover forged SHA/count/extra-field receipts and both
   regenerated and post-receipt output mutations.
+- Enforced exact QBI receipt routing and live-frame authentication at
+  generation, simulated checkpoint emission, durable checkpoint write/load,
+  simulated resume, legacy/stacked manifest construction, and legacy/stacked
+  publication entry. Missing, wrong-route, ambiguous, forged, and rebound
+  receipts fail closed.
+- Added real frame-bound QBI receipts to checkpoint/publication fixtures and
+  boundary-specific regressions that corrupt receipts only after earlier
+  validation. The QBI, multispine runtime, and pool-tool focused suites pass
+  together.
 
 ## Next
 
-1. Authenticate QBI transition receipts at every checkpoint,
-   resume, manifest, and publication boundary.
-2. Complete the changelog and the remaining authority/audit documentation.
-3. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
+1. Complete the changelog and the remaining authority/audit documentation.
+2. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
    chunked foreground full workspace battery, and changed-file quality gates.
-4. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
+3. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
