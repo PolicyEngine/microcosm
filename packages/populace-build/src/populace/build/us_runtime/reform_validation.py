@@ -64,8 +64,10 @@ __all__ = [
     "write_reform_validation",
 ]
 
-#: Schema version of reform_validation.json. The calibration-diagnostics
-#: dashboard keys its reader on it; bump with any shape change.
+#: Schema version of reform_validation.json. Consumers key their readers on
+#: it; bump with any breaking shape change. Purely additive keys (consumers
+#: ignore unknown keys) do not bump: the per-row ``reform`` block and
+#: ``jct.publisher`` (populace#606) landed within v1.
 REFORM_VALIDATION_SCHEMA_VERSION = 1
 
 #: The budget effect of a reform is the weighted-sum change of this variable
@@ -112,6 +114,11 @@ class ReformValidationSpec:
     description: str = ""
     neutralized_variable: str | list[str] | None = None
     parameter_changes: dict[str, Any] | None = None
+    # Slug identifying who published the benchmark (e.g. "jct", "cbo",
+    # "ks_fiscal_note", "ca_admin"), so consumers attribute the claim exactly
+    # instead of parsing citation strings (populace#606). None when the row
+    # has no external benchmark.
+    benchmark_publisher: str | None = None
     # How the budget effect is signed relative to the simulations. JCT scores a
     # *tax expenditure* as the revenue raised by repeal (reform − baseline, the
     # neutralize convention), but scores an *enacted provision* as the effect of
@@ -222,6 +229,7 @@ def in_sample_reform_specs(
                 jct_source_url="",
                 budget_measure=reform.output_variable or DEFAULT_BUDGET_MEASURE,
                 neutralized_variable=reform.neutralized_variable,
+                benchmark_publisher="jct",
             )
         )
     return tuple(specs)
@@ -271,6 +279,7 @@ def out_of_sample_reform_specs(
                 effect_direction=str(
                     raw.get("effect_direction", "baseline_minus_reform")
                 ),
+                benchmark_publisher=jct.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -323,6 +332,7 @@ def tax_expenditure_reform_specs(
                 # Neutralizing the provision raises tax by the expenditure amount
                 # (positive), matching the positive published figure.
                 effect_direction="reform_minus_baseline",
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -375,6 +385,7 @@ def state_program_reform_specs(
                 # Repealing a credit raises state tax by the program's cost
                 # (positive), matching the positive published figure.
                 effect_direction="reform_minus_baseline",
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -433,6 +444,7 @@ def state_reform_specs(
                 effect_direction=str(
                     raw.get("effect_direction", "reform_minus_baseline")
                 ),
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -488,6 +500,9 @@ class BaselineLevelSpec:
     # Person-level boolean restricting a rate's population (e.g. ``is_child``
     # for child poverty). Only meaningful with statistic="rate".
     mask_variable: str | None = None
+    # Slug identifying who published the benchmark (e.g. "irs_soi", "census",
+    # "ca_admin") — see ReformValidationSpec.benchmark_publisher.
+    benchmark_publisher: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.variable:
@@ -530,6 +545,7 @@ def _baseline_level_specs_from_config(
                 benchmark_score_type=str(bench.get("score_type", "actual")),
                 statistic=str(raw.get("statistic", "total")),
                 mask_variable=raw.get("mask_variable") or None,
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -842,6 +858,13 @@ def reform_validation_payload(
         effective_jct = spec.jct_score
         if effective_jct is None and spec.in_sample and spec.id in targets:
             effective_jct = targets[spec.id]
+        neutralized = (
+            [spec.neutralized_variable]
+            if isinstance(spec.neutralized_variable, str)
+            else list(spec.neutralized_variable)
+            if spec.neutralized_variable
+            else None
+        )
         rows.append(
             {
                 "id": spec.id,
@@ -850,6 +873,16 @@ def reform_validation_payload(
                 "in_sample": spec.in_sample,
                 "period": spec.period,
                 "description": spec.description or None,
+                # The executable reform (populace#606): the exact policy world
+                # this row scored, so a consumer can key its claim identity on
+                # the reform itself instead of the row id. Level rows carry no
+                # block — a level is a score of the null reform.
+                "reform": {
+                    "framework": "policyengine_us",
+                    "parameter_changes": spec.parameter_changes or None,
+                    "neutralized_variables": neutralized,
+                    "effect_direction": spec.effect_direction,
+                },
                 "jct": {
                     "score": None if effective_jct is None else _finite(effective_jct),
                     "score_fy2027": (
@@ -861,6 +894,7 @@ def reform_validation_payload(
                     "window": spec.jct_window or None,
                     "source": spec.jct_source or None,
                     "source_url": spec.jct_source_url or None,
+                    "publisher": spec.benchmark_publisher,
                 },
                 "populace": {
                     "budget_effect": None if effect is None else _finite(effect),
@@ -979,6 +1013,7 @@ def reform_validation_payload(
                     "window": level.benchmark_year or None,
                     "source": level.source or None,
                     "source_url": level.source_url or None,
+                    "publisher": level.benchmark_publisher,
                 },
                 "populace": {
                     "budget_effect": None if total is None else _finite(total),
@@ -1009,6 +1044,12 @@ def reform_validation_payload(
         "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
     }
+    if obbba_pre_baseline_changes:
+        # The non-current-law scoring baseline for the OBBBA rows: every
+        # provision's revert merged, i.e. the TCJA-expiration counterfactual
+        # the stack starts from (populace#606). Each row's own
+        # parameter_changes is its revert patch relative to current law.
+        payload["obbba_pre_baseline_parameter_changes"] = obbba_pre_baseline_changes
     if release_id is not None:
         payload["release_id"] = release_id
     return payload

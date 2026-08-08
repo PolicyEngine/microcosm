@@ -9,6 +9,7 @@
    "neutralized_variable": "mn_child_and_working_families_credits",
    "period": 2024,
    "benchmark": {
+    "publisher": "mn_admin",
     "score": 755500000,
     "window": "TY2024",
     "source": "MN House Research, May 2026, p.1",
@@ -23,6 +24,7 @@
    "neutralized_variable": "ca_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ca_admin",
     "score": 941000000,
     "window": "TY2023",
     "source": "CA FTB EITC/YCTC/FYTC Report (Oct 2025), Table 1 p.8",
@@ -37,6 +39,7 @@
    "neutralized_variable": "ca_yctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ca_admin",
     "score": 413000000,
     "window": "TY2023",
     "source": "CA FTB EITC/YCTC/FYTC Report (Oct 2025), Table 1 p.8",
@@ -51,6 +54,7 @@
    "neutralized_variable": "ny_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ny_admin",
     "score": 1116252683,
     "window": "TY2024",
     "source": "NYS DTF open data, EITC Claims Table 3",
@@ -65,6 +69,7 @@
    "neutralized_variable": "ny_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ny_admin",
     "score": 693091767,
     "window": "TY2023",
     "source": "NYS DTF open data, ESCC Study",
@@ -79,6 +84,7 @@
    "neutralized_variable": "co_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "co_admin",
     "score": 356491619,
     "window": "TY2023",
     "source": "CO DOR ORA, Individual Income Tax Credits TY2023",
@@ -93,6 +99,7 @@
    "neutralized_variable": "co_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "co_admin",
     "score": 89158930,
     "window": "TY2023",
     "source": "CO DOR ORA, Individual Income Tax Credits TY2023",
@@ -107,6 +114,7 @@
    "neutralized_variable": "ct_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ct_admin",
     "score": 195066537,
     "window": "TY2024",
     "source": "CT DRS Annual Report FY2024-25, p.35",
@@ -121,6 +129,7 @@
    "neutralized_variable": "nm_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "nm_admin",
     "score": 130807000,
     "window": "TY2024",
     "source": "2025 NM Tax Expenditure Report, p.259",
@@ -135,6 +144,7 @@
    "neutralized_variable": "nm_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "nm_admin",
     "score": 133590000,
     "window": "TY2024",
     "source": "2025 NM Tax Expenditure Report, p.81",
@@ -152,6 +162,7 @@
    ],
    "period": 2024,
    "benchmark": {
+    "publisher": "md_admin",
     "score": 550881492,
     "window": "TY2024",
     "source": "Comptroller of Maryland, Income Tax Summary Report TY2024, pp.18-23",
@@ -166,6 +177,7 @@
    "neutralized_variable": "il_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "il_admin",
     "score": 487387169,
     "window": "TY2023",
     "source": "IDOR TY2023 final stratification p.1 (EITC $437,387,169) + IL GOMB FY2027 budget p.28 (IL CTC TY2024 estimate $50M): combined, because il_ctc = 20% x il_eitc is computed from the EITC and repealing il_eitc mechanically removes both",
