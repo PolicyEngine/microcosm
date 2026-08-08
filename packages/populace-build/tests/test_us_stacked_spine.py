@@ -3339,6 +3339,8 @@ def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
             len(person),
         )
         person["WAGP"] = person["employment_income_before_lsr"]
+        person["self_employment_income_before_lsr"] = 0.0
+        person["SEMP"] = 0.0
         for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
             person[column] = 0.0
         tax_unit = tables["tax_unit"]
@@ -5087,10 +5089,13 @@ def _asec_e2e_source() -> Frame:
     person["is_female"] = index % 2 == 0
     person["is_household_head"] = True
     person["employment_income_before_lsr"] = 20_000.0 + 1_500.0 * index
-    person["unemployment_compensation"] = np.where(index % 4 == 0, 2_400.0, 0.0)
+    person["self_employment_income_before_lsr"] = 0.0
     # Structurally learnable from a REQUIRED predictor with a stable share
-    # under any household subsample, so the gap-fill QRF reproduces the
-    # incidence on the seeded ACS sample without sampling-skew noise.
+    # under any household subsample, so the gap-fill QRF reproduces both
+    # incidences on the seeded ACS sample without sampling-skew noise.
+    person["unemployment_compensation"] = np.where(
+        person["is_female"], 2_400.0, 0.0
+    )
     person["is_disabled"] = person["is_female"].to_numpy()
     person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
     interest = np.where(index % 2 == 0, 1_200.0 + 40.0 * index, 0.0)
@@ -5140,6 +5145,8 @@ def _acs_e2e_source() -> Frame:
     person["is_household_head"] = True
     person["employment_income_before_lsr"] = 21_000.0 + 1_450.0 * index
     person["WAGP"] = person["employment_income_before_lsr"]
+    person["self_employment_income_before_lsr"] = 0.0
+    person["SEMP"] = 0.0
     person["acs_interest_dividend_rental_income"] = np.where(
         index % 2 == 0, 1_250.0 + 42.0 * index, 0.0
     )

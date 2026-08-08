@@ -116,9 +116,14 @@ ordered rejection contracts, and A1 precise changelog coverage.
 - The corrected second US-build shard passes in one uninterrupted foreground
   run: 1,270 passed and 2 skipped (1,272 collected outcomes). It includes both
   the produced-frame age-input paths and the raw-source operator boundary.
+- The first final-US-shard run found two synthetic stacked sources that defined
+  only the WAGP/employment half of the now-atomic twin earnings surface. Their
+  ACS fixtures now include SEMP and mapped self-employment zeros; the end-to-end
+  fixture also makes unemployment incidence deterministic from the required
+  `is_female` predictor. Both formerly failing cases pass together.
 
 ## Next
 
-1. Run the final US chunk and changed-file quality gates.
+1. Rerun the corrected final US chunk and run changed-file quality gates.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
