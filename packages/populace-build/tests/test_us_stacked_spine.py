@@ -5093,9 +5093,7 @@ def _asec_e2e_source() -> Frame:
     # Structurally learnable from a REQUIRED predictor with a stable share
     # under any household subsample, so the gap-fill QRF reproduces both
     # incidences on the seeded ACS sample without sampling-skew noise.
-    person["unemployment_compensation"] = np.where(
-        person["is_female"], 2_400.0, 0.0
-    )
+    person["unemployment_compensation"] = np.where(person["is_female"], 2_400.0, 0.0)
     person["is_disabled"] = person["is_female"].to_numpy()
     person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
     interest = np.where(index % 2 == 0, 1_200.0 + 40.0 * index, 0.0)

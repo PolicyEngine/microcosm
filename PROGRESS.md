@@ -125,9 +125,13 @@ ordered rejection contracts, and A1 precise changelog coverage.
   workspace chunks, pytest reports 5,565 passed and 58 skipped outcomes. One UK
   skip is a collection-level module skip, so the battery covers 5,622 collected
   test functions plus that one module-level skip.
+- Repository-wide Ruff lint and the full commit-range whitespace check pass.
+  Ruff reformatted one newly changed test expression; both affected stacked
+  tests still pass, and that file now passes its format check.
 
 ## Next
 
-1. Run changed-file quality gates and replay the twelve verifier probes.
+1. Rerun the complete changed-file format gate and replay the twelve verifier
+   probes.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
