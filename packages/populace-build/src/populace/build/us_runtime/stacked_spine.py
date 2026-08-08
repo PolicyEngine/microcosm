@@ -53,6 +53,9 @@ from populace.build.gates import (
     _sealed_stacked_gate_result,
 )
 from populace.build.serialization_dtypes import canonicalize_table_string_dtypes
+from populace.build.us_runtime.acs_income_universe import (
+    apply_acs_pums_earnings_universe_zeros,
+)
 from populace.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
@@ -5244,8 +5247,12 @@ def _run_stacked_puf_pass_evaluate(
             "The stacked PUF pass owns clone attachment; found nonzero person "
             "support clone indices on its input."
         )
-    cloned = clone_us_frame_for_puf_support(
+    universe_application = apply_acs_pums_earnings_universe_zeros(
         frame,
+        boundary="stacked PUF pass ACS earnings universe",
+    )
+    cloned = clone_us_frame_for_puf_support(
+        universe_application.frame,
         clone_attachment_fraction=clone_attachment_fraction,
         clone_attachment_seed=clone_attachment_seed,
     )
@@ -5390,6 +5397,9 @@ def _run_stacked_puf_pass_evaluate(
     return StackedPufPassResult(
         frame=output,
         receipt={
+            "acs_earnings_universe_application": _json_ready(
+                universe_application.receipt
+            ),
             "clone_attachment": _json_ready(attachment),
             "doctrines": {
                 "require_complete_recipient_predictors": True,

@@ -1,9 +1,10 @@
 """Declared ACS PUMS earnings-source universes for stacked builds.
 
 The 2024 ACS PUMS ``WAGP`` and ``SEMP`` fields apply to people age 15 and
-older.  Census encodes younger people as not applicable (blank), not as an
-observed zero.  Stacked builds preserve those person-grain blanks and apply
-the documented universe only where an additive tax-unit feature needs them.
+older. Census encodes younger people as not applicable (blank), while the
+certified ASEC arm produces explicit zero earnings for the same age universe.
+The stacked ACS arm therefore materializes mapped universe zeros under named,
+digest-bound rules while preserving the raw PUMS blanks as source authority.
 """
 
 from __future__ import annotations
@@ -29,6 +30,8 @@ __all__ = [
     "ACS_PUMS_EARNINGS_MINIMUM_AGE",
     "ACS_PUMS_EARNINGS_SOURCE_COLUMNS",
     "AcsPumsEarningsUniverse",
+    "AcsPumsEarningsUniverseApplication",
+    "apply_acs_pums_earnings_universe_zeros",
     "resolve_acs_pums_earnings_universe",
 ]
 
@@ -48,17 +51,122 @@ _ACS_SUPPORT_CHANNEL = "acs"
 _RULE_VERSION = 1
 _UNIVERSE_DESCRIPTION = "ACS persons age 15 and older"
 _AGGREGATION_SEMANTICS = (
-    "sum eligible person values; an empty eligible set is the derived "
-    "additive identity 0.0"
+    "sum explicit mapped universe-zero values with eligible person values; "
+    "an empty eligible set remains the receipted numeric total 0.0"
+)
+_PRODUCED_FRAME_SEMANTICS = (
+    "explicit zero below age 15, matching the certified ASEC produced frame"
 )
 
 
 @dataclass(frozen=True)
 class AcsPumsEarningsUniverse:
-    """Exact structural-absence masks plus their JSON-ready receipt."""
+    """Exact raw-source absence masks plus their JSON-ready receipt."""
 
     structural_absence_masks: Mapping[str, pd.Series]
     receipt: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class AcsPumsEarningsUniverseApplication:
+    """A frame with exact mapped universe zeros plus its application receipt."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+
+
+def apply_acs_pums_earnings_universe_zeros(
+    frame: Frame,
+    *,
+    columns: Sequence[str] = tuple(ACS_PUMS_EARNINGS_SOURCE_COLUMNS),
+    person_scope: Sequence[bool] | pd.Series | np.ndarray | None = None,
+    boundary: str,
+) -> AcsPumsEarningsUniverseApplication:
+    """Materialize mapped ACS earnings zeros only below the declared age floor.
+
+    Raw ``WAGP``/``SEMP`` blanks remain untouched. A pre-existing mapped zero is
+    accepted because resume reconstructs the same deterministic application;
+    any nonzero mapped value or nonblank raw value below the declared age floor
+    fails with the responsible rule id. Eligible nulls deliberately remain
+    null so the primary-QRF source preflight retains its original diagnostic.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError(f"{boundary}: ACS earnings universes require the US schema.")
+    requested = tuple(dict.fromkeys(columns))
+    unsupported = sorted(set(requested) - set(ACS_PUMS_EARNINGS_SOURCE_COLUMNS))
+    if unsupported:
+        raise ValueError(
+            f"{boundary}: unsupported ACS earnings-universe column(s) {unsupported}."
+        )
+
+    person = frame.table("person")
+    required = {
+        "age",
+        support_channel_column("person"),
+        *requested,
+        *(ACS_PUMS_EARNINGS_SOURCE_COLUMNS[column] for column in requested),
+    }
+    missing = sorted(required - set(person.columns))
+    if missing:
+        raise ValueError(
+            f"{boundary}: ACS earnings universe cannot materialize required person "
+            f"column(s) {missing}."
+        )
+    scope = _aligned_scope(person, person_scope, boundary=boundary)
+    channel = person[support_channel_column("person")].astype(str)
+    acs_scope = scope & channel.eq(_ACS_SUPPORT_CHANNEL)
+    age = pd.to_numeric(person["age"], errors="coerce")
+    invalid_age = acs_scope & (~np.isfinite(age.to_numpy(dtype=np.float64)))
+    if invalid_age.any():
+        raise ValueError(
+            f"{boundary}: ACS earnings universe has {int(invalid_age.sum())} "
+            "missing or nonfinite age value(s)."
+        )
+    structural = acs_scope & age.lt(ACS_PUMS_EARNINGS_MINIMUM_AGE)
+
+    failures: list[str] = []
+    for column in requested:
+        source_column = ACS_PUMS_EARNINGS_SOURCE_COLUMNS[column]
+        rule_id = f"acs_2024_pums_{source_column.lower()}_age_15_plus"
+        mapped = person[column]
+        mapped_numeric = pd.to_numeric(mapped, errors="coerce")
+        mapped_nonzero = structural & mapped.notna() & ~mapped_numeric.eq(0.0)
+        raw_nonblank = structural & person[source_column].notna()
+        if mapped_nonzero.any() or raw_nonblank.any():
+            failures.append(
+                f"{rule_id}: out_of_universe_mapped_nonzero_rows="
+                f"{int(mapped_nonzero.sum())}, raw_source_nonblank_rows="
+                f"{int(raw_nonblank.sum())}"
+            )
+    if failures:
+        raise ValueError(
+            f"{boundary}: ACS earnings universe-zero application failed:\n  "
+            + "\n  ".join(failures)
+        )
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    output_person = tables["person"]
+    for column in requested:
+        output_person.loc[structural, column] = 0.0
+    applied = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    resolved = resolve_acs_pums_earnings_universe(
+        applied,
+        columns=requested,
+        person_scope=scope,
+        boundary=boundary,
+    )
+    return AcsPumsEarningsUniverseApplication(
+        frame=applied,
+        receipt=resolved.receipt,
+    )
 
 
 def resolve_acs_pums_earnings_universe(
@@ -72,10 +180,10 @@ def resolve_acs_pums_earnings_universe(
 
     ``person_scope`` identifies the rows whose source role is being consumed.
     Primary-QRF preparation passes its clone-recipient rows; post-PUF QBI
-    reconciliation passes native rows only.  The function never mutates the
-    person table.  A null is authorized only on an ACS row below age 15, and
-    an observed value on such a row is also rejected so the declaration is an
-    exact source equation rather than a one-way tolerance.
+    reconciliation passes the live produced frame. The function never mutates
+    the person table. Raw PUMS values must be blank and mapped values must be
+    explicit zero below age 15. Eligible nulls are counted but deliberately
+    deferred to the caller's source-preflight boundary.
     """
 
     if frame.schema != US_SCHEMA:
@@ -121,50 +229,68 @@ def resolve_acs_pums_earnings_universe(
     for column in requested:
         values = person[column]
         null = values.isna()
+        numeric = pd.to_numeric(values, errors="coerce")
         in_universe_null = int((eligible_acs & null).sum())
-        out_of_universe_nonnull = int((structurally_absent & ~null).sum())
-        if in_universe_null or out_of_universe_nonnull:
-            failures.append(
-                f"{column}: in_universe_null_rows={in_universe_null}, "
-                "out_of_universe_nonnull_rows="
-                f"{out_of_universe_nonnull}"
-            )
         source_column = ACS_PUMS_EARNINGS_SOURCE_COLUMNS[column]
+        rule_id = f"acs_2024_pums_{source_column.lower()}_age_15_plus"
+        universe_zero_missing = int((structurally_absent & null).sum())
+        out_of_universe_nonzero = int(
+            (structurally_absent & ~null & ~numeric.eq(0.0)).sum()
+        )
+        mapped_universe_zero_rows = int(
+            (structurally_absent & ~null & numeric.eq(0.0)).sum()
+        )
         raw_source_present = source_column in person.columns
-        raw_source_mismatch_rows = 0
+        raw_in_universe_null_rows = 0
+        raw_out_of_universe_nonblank_rows = 0
         if not raw_source_present and acs_scope.any():
             failures.append(
-                f"{source_column}: raw_source_authority_missing_for_scoped_acs_rows"
+                f"{rule_id}: {source_column} "
+                "raw_source_authority_missing_for_scoped_acs_rows"
             )
         elif raw_source_present:
             raw_null = person[source_column].isna()
-            raw_source_mismatch_rows = int(
-                (
-                    acs_scope
-                    & (raw_null.to_numpy(dtype=bool) != structurally_absent.to_numpy())
-                ).sum()
+            raw_in_universe_null_rows = int((eligible_acs & raw_null).sum())
+            raw_out_of_universe_nonblank_rows = int(
+                (structurally_absent & ~raw_null).sum()
             )
-            if raw_source_mismatch_rows:
-                failures.append(
-                    f"{source_column}: raw_source_universe_mismatch_rows="
-                    f"{raw_source_mismatch_rows}"
-                )
+        if (
+            universe_zero_missing
+            or out_of_universe_nonzero
+            or raw_out_of_universe_nonblank_rows
+        ):
+            failures.append(
+                f"{rule_id}: universe_zero_missing_rows={universe_zero_missing}, "
+                "out_of_universe_mapped_nonzero_rows="
+                f"{out_of_universe_nonzero}, raw_source_nonblank_rows="
+                f"{raw_out_of_universe_nonblank_rows}"
+            )
         masks[column] = structurally_absent.copy()
         rule_receipts[column] = {
-            "rule_id": f"acs_2024_pums_{source_column.lower()}_age_15_plus",
+            "rule_id": rule_id,
             "source_column": source_column,
             "mapped_column": column,
+            "source_channel": _ACS_SUPPORT_CHANNEL,
             "source_universe": _UNIVERSE_DESCRIPTION,
+            "produced_frame_semantics": _PRODUCED_FRAME_SEMANTICS,
             "structurally_absent_person_rows": int(structurally_absent.sum()),
             "eligible_acs_person_rows": int(eligible_acs.sum()),
             "in_universe_null_rows": in_universe_null,
-            "out_of_universe_nonnull_rows": out_of_universe_nonnull,
+            "raw_in_universe_null_rows": raw_in_universe_null_rows,
+            "mapped_universe_zero_rows": mapped_universe_zero_rows,
+            "universe_zero_missing_rows": universe_zero_missing,
+            "out_of_universe_mapped_nonzero_rows": out_of_universe_nonzero,
             "raw_source_column_present": raw_source_present,
-            "raw_source_universe_mismatch_rows": raw_source_mismatch_rows,
-            "source_cells_sha256": _source_cells_sha256(
-                person,
-                column=column,
-                scope=scope,
+            "raw_source_nonblank_rows": raw_out_of_universe_nonblank_rows,
+            "source_cells_sha256": (
+                _source_cells_sha256(
+                    person,
+                    column=column,
+                    raw_source_column=source_column,
+                    scope=scope,
+                )
+                if raw_source_present
+                else None
             ),
         }
     if failures:
@@ -207,7 +333,7 @@ def resolve_acs_pums_earnings_universe(
     }
     receipt: dict[str, object] = {
         "version": _RULE_VERSION,
-        "policy": "exact_documented_source_universe",
+        "policy": "asec_consistent_receipted_universe_zero",
         "source_dataset": "2024 ACS 1-year PUMS",
         "source_document": "2024 ACS PUMS Data Dictionary (WAGP and SEMP)",
         "source_url": ACS_PUMS_2024_DATA_DICTIONARY_URL,
@@ -215,7 +341,12 @@ def resolve_acs_pums_earnings_universe(
         "age_column": "age (mapped from AGEP)",
         "minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
         "aggregation": _AGGREGATION_SEMANTICS,
-        "person_source_cells_mutated": False,
+        "produced_frame_semantics": _PRODUCED_FRAME_SEMANTICS,
+        "raw_pums_source_cells_mutated": False,
+        "mapped_person_cells_materialized": bool(
+            requested and structurally_absent.any()
+        ),
+        "mapped_universe_zero_cells": int(len(requested) * structurally_absent.sum()),
         "scoped_person_rows": int(scope.sum()),
         "scoped_acs_person_rows": int(acs_scope.sum()),
         "structurally_absent_person_rows": int(structurally_absent.sum()),
@@ -261,10 +392,11 @@ def _source_cells_sha256(
     person: pd.DataFrame,
     *,
     column: str,
+    raw_source_column: str,
     scope: pd.Series,
 ) -> str:
     lineage = support_source_id_column("person")
-    columns = ["person_tax_unit_id", column]
+    columns = ["person_tax_unit_id", column, raw_source_column]
     if lineage in person:
         columns.insert(0, lineage)
     cells = person.loc[scope, columns]

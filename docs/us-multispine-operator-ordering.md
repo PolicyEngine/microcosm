@@ -146,12 +146,20 @@ are allowed only when named by the ACS native-input receipt.
    arm (`clone_attachment_fraction`, default `1.0`) and runs one primary QRF
    pass across both survey origins. The strict recipient surface applies the
    [2024 ACS PUMS Data Dictionary](https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf)
-   universes for `WAGP` and `SEMP`: ACS people younger than 15 retain null
-   person-grain earnings sources, while each tax-unit predictor sums only
-   age-15-and-older ACS members. A unit with no eligible member receives the
-   derived empty-sum value `0.0` at feature grain; no person cell is coerced.
-   The mapped leaves' universe missingness must agree with the raw
-   `WAGP`/`SEMP` authority columns, which are mandatory on scoped ACS rows. A
+   universes for `WAGP` and `SEMP`. The certified ASEC producer maps its
+   earnings leaves with numeric zero for every person younger than 15 and
+   retains all-child tax units with zero earnings sums. Cross-arm comparison
+   therefore requires the ACS produced frame to use the same semantics: a
+   named pre-QRF operator materializes `0.0` only on declared under-15 mapped
+   leaves, records the exact person/unit counts and both rule IDs in its
+   receipt, and leaves raw `WAGP`/`SEMP` blanks unchanged. Eligible nulls still
+   fail at the original recipient-source preflight. All-child units remain
+   recipients with receipted zero earnings predictors; they are not generic
+   `fillna` results. PUF earnings allocation is limited to age-15-plus people,
+   so an under-15 first person and every member of an all-child unit remain
+   zero even when the unit prediction is positive. The mapped leaves' exact
+   universe zeros must agree with the raw `WAGP`/`SEMP` authority columns,
+   which are mandatory on scoped ACS rows. A
    same-named tax-unit/person source
    collision is ambiguous and fails instead of letting receipt and feature
    construction choose different grains.

@@ -20,6 +20,7 @@ import pandas as pd
 
 from populace.build.gates import FitWeightRecord
 from populace.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_MINIMUM_AGE,
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     resolve_acs_pums_earnings_universe,
 )
@@ -481,6 +482,12 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "estate_income",
     ),
 }
+_PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS = frozenset(
+    {
+        *ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
+        "sstb_self_employment_income_before_lsr",
+    }
+)
 _PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
     "employment_income": ("employment_income_before_lsr",),
     "self_employment_income": ("self_employment_income_before_lsr",),
@@ -1967,17 +1974,31 @@ def finalize_us_puf_tax_detail_predictions(
         tables["person"],
         entity="person",
     )
+    earnings_eligible_mask = _puf_earnings_allocation_mask(
+        tables["person"],
+        person_puf_mask=person_puf_mask,
+    )
     for column in person_outputs:
         _ensure_float_output_column(
             tables["person"],
             column,
             preserve_nulls=preserve_nulls,
         )
+        allocation_mask = person_puf_mask
+        if column in _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS:
+            allocation_mask = earnings_eligible_mask
+            # This is the explicit produced-frame universe zero. It applies
+            # only outside the age-15-plus allocation universe; no fillna or
+            # first-person fallback can reach these rows.
+            tables["person"].loc[
+                person_puf_mask & ~earnings_eligible_mask,
+                column,
+            ] = 0.0
         totals = pd.Series(predictions[column].to_numpy(), index=tax_unit_ids)
         if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
             _write_person_tax_unit_boolean_counts(
                 tables["person"],
-                mask=person_puf_mask,
+                mask=allocation_mask,
                 column=column,
                 totals=totals,
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
@@ -1987,7 +2008,7 @@ def finalize_us_puf_tax_detail_predictions(
         else:
             _write_person_tax_unit_totals(
                 tables["person"],
-                mask=person_puf_mask,
+                mask=allocation_mask,
                 column=column,
                 totals=totals,
                 nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
@@ -2672,6 +2693,7 @@ def _strict_recipient_predictor_surface(
         )
     )
     structural_absence_masks: Mapping[str, pd.Series] = {}
+    source_universe_rules: Mapping[str, object] = {}
     if universe_columns:
         universe_predictors = [
             predictor
@@ -2688,16 +2710,18 @@ def _strict_recipient_predictor_surface(
         )
         structural_absence_masks = universe.structural_absence_masks
         receipt = dict(universe.receipt)
+        source_universe_rules = receipt["rules"]
         receipt["source_universe_sha256"] = receipt.pop("sha256")
     else:
         receipt = {
             "version": 1,
-            "policy": "exact_documented_source_universe",
+            "policy": "asec_consistent_receipted_universe_zero",
             "rules": {},
             "structurally_absent_person_rows": 0,
             "affected_tax_unit_rows": 0,
             "empty_universe_tax_unit_rows": 0,
-            "person_source_cells_mutated": False,
+            "raw_pums_source_cells_mutated": False,
+            "mapped_person_cells_materialized": False,
         }
 
     _require_complete_recipient_predictor_sources(
@@ -2705,13 +2729,13 @@ def _strict_recipient_predictor_surface(
         recipient_mask,
         predictors,
         structural_absence_masks=structural_absence_masks,
+        source_universe_rules=source_universe_rules,
         source_plans=source_plans,
     )
     features = _tax_unit_feature_frame(
         frame,
         predictors,
         preserve_nulls=True,
-        structural_absence_masks=structural_absence_masks,
         source_plans=source_plans,
     )
     _require_complete_recipient_predictors(features, recipient_mask, predictors)
@@ -2724,10 +2748,44 @@ def _strict_recipient_predictor_surface(
                 recipient_features,
                 tax_unit.loc[recipient_mask, "tax_unit_id"],
             ),
+            "person_output_allocation": _earnings_allocation_receipt(
+                person,
+                person_scope=person_scope,
+            ),
         }
     )
     receipt["sha256"] = _receipt_sha256(receipt)
     return features, receipt
+
+
+def _earnings_allocation_receipt(
+    person: pd.DataFrame,
+    *,
+    person_scope: pd.Series,
+) -> dict[str, object]:
+    """Describe the exact cross-arm allocation universe bound into QRF banks."""
+
+    age = pd.to_numeric(person["age"], errors="coerce")
+    out_of_universe = person_scope & age.lt(ACS_PUMS_EARNINGS_MINIMUM_AGE)
+    scoped_people = person.loc[person_scope, ["person_tax_unit_id"]].copy()
+    scoped_people["eligible"] = (
+        age.loc[person_scope].ge(ACS_PUMS_EARNINGS_MINIMUM_AGE).to_numpy()
+    )
+    eligible_by_unit = scoped_people.groupby("person_tax_unit_id", sort=False)[
+        "eligible"
+    ].any()
+    return {
+        "minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
+        "person_outputs": sorted(_PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS),
+        "policy": "allocate only to age-15-plus persons; explicit zero otherwise",
+        "out_of_universe_person_rows": int(out_of_universe.sum()),
+        "empty_eligible_tax_unit_rows": int((~eligible_by_unit).sum()),
+        "first_person_fallback_out_of_universe_rows": 0,
+        "rule_ids": sorted(
+            f"acs_2024_pums_{source.lower()}_age_15_plus"
+            for source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values()
+        ),
+    }
 
 
 def _predictor_person_source_columns(
@@ -2812,7 +2870,6 @@ def _tax_unit_feature_frame(
     columns: Sequence[str],
     *,
     preserve_nulls: bool = False,
-    structural_absence_masks: Mapping[str, pd.Series] | None = None,
     source_plans: Mapping[str, _PredictorSourcePlan] | None = None,
 ) -> pd.DataFrame:
     """Build the tax-unit predictor surface under the active absence policy.
@@ -2823,9 +2880,10 @@ def _tax_unit_feature_frame(
     propagates as null (a leaf-alias sum is null wherever any undeclared
     component is null, and an entirely absent component column is null
     everywhere) so the strict recipient check can fail closed by name instead
-    of a silent fill. Exact documented source-universe blanks contribute only
-    the additive identity to this derived feature; the person cells remain
-    null. Structural person counts are not absence and stay zero-filled.
+    of a silent fill. Exact documented earnings-universe zeros are already
+    materialized on the person table by their named rule, so ordinary addition
+    handles child-only units without a special null coercion. Structural person
+    counts are not absence and stay zero-filled.
     """
 
     tax_unit = frame.table("tax_unit")
@@ -2870,7 +2928,6 @@ def _tax_unit_feature_frame(
                 frame,
                 source_column,
                 preserve_nulls=preserve_nulls,
-                structural_absence_masks=structural_absence_masks,
             )
     return result
 
@@ -2880,22 +2937,18 @@ def _person_tax_unit_sum(
     column: str,
     *,
     preserve_nulls: bool = False,
-    structural_absence_masks: Mapping[str, pd.Series] | None = None,
 ) -> np.ndarray:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
-    absence_masks = structural_absence_masks or {}
     if column == "dividend_income" and column not in person.columns:
         values = _optional_person(
             person,
             "non_qualified_dividend_income",
             preserve_nulls=preserve_nulls,
-            structural_absence_mask=absence_masks.get("non_qualified_dividend_income"),
         ) + _optional_person(
             person,
             "qualified_dividend_income",
             preserve_nulls=preserve_nulls,
-            structural_absence_mask=absence_masks.get("qualified_dividend_income"),
         )
     elif column not in person.columns and column in _PREDICTOR_LEAF_ALIASES:
         values = np.zeros(len(person), dtype=np.float64)
@@ -2904,7 +2957,6 @@ def _person_tax_unit_sum(
                 person,
                 leaf,
                 preserve_nulls=preserve_nulls,
-                structural_absence_mask=absence_masks.get(leaf),
             )
     else:
         if column not in person.columns:
@@ -2918,15 +2970,6 @@ def _person_tax_unit_sum(
         )
         if not preserve_nulls:
             numeric = numeric.fillna(0.0)
-        elif column in absence_masks:
-            mask = absence_masks[column]
-            if not mask.index.equals(person.index):
-                raise ValueError(
-                    f"Structural-absence mask for {column!r} is not aligned."
-                )
-            # This is an additive-feature identity, not a person-source fill:
-            # ``person`` is untouched and its documented ACS blank persists.
-            numeric = numeric.mask(mask, 0.0)
         values = numeric
     grouped_frame = pd.DataFrame(
         {
@@ -2950,7 +2993,6 @@ def _optional_person(
     column: str,
     *,
     preserve_nulls: bool = False,
-    structural_absence_mask: pd.Series | None = None,
 ) -> np.ndarray:
     if column not in person.columns:
         if preserve_nulls:
@@ -2962,10 +3004,6 @@ def _optional_person(
     )
     if not preserve_nulls:
         numeric = numeric.fillna(0.0)
-    elif structural_absence_mask is not None:
-        if not structural_absence_mask.index.equals(person.index):
-            raise ValueError(f"Structural-absence mask for {column!r} is not aligned.")
-        numeric = numeric.mask(structural_absence_mask, 0.0)
     return numeric.to_numpy(dtype=np.float64)
 
 
@@ -2975,6 +3013,7 @@ def _require_complete_recipient_predictor_sources(
     predictors: Sequence[str],
     *,
     structural_absence_masks: Mapping[str, pd.Series] | None = None,
+    source_universe_rules: Mapping[str, object] | None = None,
     source_plans: Mapping[str, _PredictorSourcePlan] | None = None,
 ) -> None:
     """Reject raw recipient absence before feature conversion or coercion."""
@@ -2983,8 +3022,11 @@ def _require_complete_recipient_predictor_sources(
     person = frame.table("person")
     recipient_ids = tax_unit.loc[recipient_mask, "tax_unit_id"]
     absence_masks = structural_absence_masks or {}
+    universe_rules = source_universe_rules or {}
     offenders: dict[str, int] = {}
+    offender_rule_ids: dict[str, list[str]] = {}
     for predictor in predictors:
+        predictor_rule_ids: set[str] = set()
         plan = (
             source_plans[str(predictor)]
             if source_plans is not None
@@ -3020,13 +3062,55 @@ def _require_complete_recipient_predictor_sources(
                 for source_column in source_columns:
                     source_null = person.loc[relevant, source_column].isna()
                     structural = absence_masks.get(source_column)
+                    rule = universe_rules.get(source_column)
                     if structural is not None:
                         if not structural.index.equals(person.index):
                             raise ValueError(
                                 "Recipient predictor structural-absence mask for "
                                 f"{source_column!r} is not aligned."
                             )
-                        source_null &= ~structural.loc[relevant]
+                        if not isinstance(rule, Mapping):
+                            raise ValueError(
+                                "Recipient predictor structural-absence mask for "
+                                f"{source_column!r} has no named universe rule."
+                            )
+                        rule_id = rule.get("rule_id")
+                        raw_source_column = rule.get("source_column")
+                        source_channel = rule.get("source_channel")
+                        if not isinstance(rule_id, str) or not rule_id:
+                            raise ValueError(
+                                "Recipient predictor source-universe rule for "
+                                f"{source_column!r} has no rule_id."
+                            )
+                        predictor_rule_ids.add(rule_id)
+                        if (
+                            not isinstance(raw_source_column, str)
+                            or not raw_source_column
+                        ):
+                            raise ValueError(
+                                f"{rule_id}: source-universe rule has no source_column."
+                            )
+                        if not isinstance(source_channel, str) or not source_channel:
+                            raise ValueError(
+                                f"{rule_id}: source-universe rule has no source_channel."
+                            )
+                        if raw_source_column not in person:
+                            source_null |= True
+                        else:
+                            raw_null = person.loc[relevant, raw_source_column].isna()
+                            raw_authority_scope = (
+                                person.loc[relevant, support_channel_column("person")]
+                                .astype(str)
+                                .eq(source_channel)
+                            )
+                            # Raw PUMS blanks are authorized only below the named
+                            # age floor. The mapped cell itself must already be the
+                            # rule-applied numeric zero on those rows.
+                            source_null |= (
+                                raw_null
+                                & raw_authority_scope
+                                & ~structural.loc[relevant]
+                            )
                     unauthorized_nulls[source_column] = source_null
                 null_source = unauthorized_nulls.any(axis=1)
                 null_ids = set(link.loc[relevant].loc[null_source].tolist())
@@ -3040,12 +3124,20 @@ def _require_complete_recipient_predictor_sources(
         count = int(missing.sum())
         if count:
             offenders[str(predictor)] = count
+            if predictor_rule_ids:
+                offender_rule_ids[str(predictor)] = sorted(predictor_rule_ids)
     if offenders:
+        named_rules = (
+            f" Named source-universe rules: {offender_rule_ids}."
+            if offender_rule_ids
+            else ""
+        )
         raise ValueError(
             "PUF recipient predictor source(s) have missing values before "
             f"coercion: {offenders} (of {int(len(recipient_ids))} recipient rows). "
             "This is a terminal stacked-spine failure; complete the source or "
             "declare its exact source universe before the PUF pass."
+            f"{named_rules}"
         )
 
 
@@ -3164,6 +3256,25 @@ def _snap_to_observed_values(
         observed_array[-1] if np.isposinf(observed_array[-1]) else observed_array[0]
     )
     return snapped
+
+
+def _puf_earnings_allocation_mask(
+    person: pd.DataFrame,
+    *,
+    person_puf_mask: pd.Series,
+) -> pd.Series:
+    """Return the age-15-plus mask for every PUF-allocated earnings output."""
+
+    if "age" not in person:
+        raise ValueError("PUF earnings allocation requires person.age.")
+    age = pd.to_numeric(person["age"], errors="coerce")
+    invalid = person_puf_mask & ~np.isfinite(age.to_numpy(dtype=np.float64))
+    if invalid.any():
+        raise ValueError(
+            "PUF earnings allocation has "
+            f"{int(invalid.sum())} missing or nonfinite age value(s)."
+        )
+    return person_puf_mask & age.ge(ACS_PUMS_EARNINGS_MINIMUM_AGE)
 
 
 def _write_person_tax_unit_boolean_counts(

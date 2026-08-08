@@ -188,7 +188,7 @@ def _optional_numeric(person: pd.DataFrame, column: str) -> np.ndarray:
 def _qbi_reconciliation_scope(
     frame: Frame,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Return active rows and an exact native-ACS source-universe receipt."""
+    """Return active rows and an exact all-role ACS source-universe receipt."""
 
     person = frame.table("person")
     clone_column = support_clone_index_column("person")
@@ -206,11 +206,10 @@ def _qbi_reconciliation_scope(
     clone_index = pd.to_numeric(person[clone_column], errors="coerce")
     if clone_index.isna().any():
         raise ValueError("US QBI reconciliation requires complete clone provenance.")
-    native_scope = clone_index.eq(0)
     universe = resolve_acs_pums_earnings_universe(
         frame,
         columns=(_SELF_EMPLOYMENT_COLUMN,),
-        person_scope=native_scope,
+        person_scope=np.ones(len(person), dtype=bool),
         boundary="US QBI reconciliation source universe",
     )
     structural = universe.structural_absence_masks[_SELF_EMPLOYMENT_COLUMN].to_numpy(
@@ -219,13 +218,13 @@ def _qbi_reconciliation_scope(
     active = ~structural
     receipt = dict(universe.receipt)
     receipt["source_universe_sha256"] = receipt.pop("sha256")
-    receipt["source_universe_resolution_mutated_person_cells"] = receipt.pop(
-        "person_source_cells_mutated"
+    receipt["source_universe_resolution_mutated_raw_pums_cells"] = receipt.pop(
+        "raw_pums_source_cells_mutated"
     )
     receipt.update(
         {
             "operation": (
-                "preserve the native ACS under-15 base self-employment blank; "
+                "preserve every receipted ACS under-15 base self-employment zero; "
                 "reconcile every derived QBI identity on every person row"
             ),
             "rows_excluded_from_base_self_employment_rewrite": int(structural.sum()),
