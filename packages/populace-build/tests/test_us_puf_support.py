@@ -115,6 +115,7 @@ def _minimal_us_frame() -> Frame:
             "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
             "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
             "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+            "age": np.asarray([42, 40, 51], dtype="int64"),
             "employment_income_before_lsr": np.asarray(
                 [50_000, 20_000, 125_000],
                 dtype="int64",

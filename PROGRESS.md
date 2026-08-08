@@ -106,10 +106,17 @@ ordered rejection contracts, and A1 precise changelog coverage.
   metadata expansion, and the driver digest binds the derived support role
   without reading source-channel columns. The full 215-test QBI/runtime/tool
   focus remains green after that correction.
+- The foreground workspace battery has completed the frame/fit/calibration/data,
+  generic-build, UK-build, and first US-build chunks: 831, 662, 777 collected
+  tests, and 988 outcomes respectively. The next US chunk exposed seven legacy
+  support-test call sites whose minimal frames predated the required
+  `person.age` allocation input. Both shared fixtures now declare adult ages;
+  all eight affected/adjacent cases pass without weakening the production
+  fail-closed rule.
 
 ## Next
 
-1. Run the chunked foreground full workspace battery and changed-file quality
-   gates.
+1. Rerun the corrected US chunk, run the final US chunk, and run changed-file
+   quality gates.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
