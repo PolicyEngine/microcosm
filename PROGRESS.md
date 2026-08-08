@@ -97,10 +97,19 @@ ordered rejection contracts, and A1 precise changelog coverage.
   the independent transition-authority propagation; focused regressions also
   prove authority mismatch rejection at resume, durable write, manifest
   construction, and publication.
+- All twelve verifier probes pass as 48 maintained cases: 8 source/universe
+  cases, 8 QRF/QBI cases, 15 stale-version cases, and 17 canonical-boundary
+  and starvation-ordering cases.
+- The #583 source-spine-blindness guard passes exactly 495 tests. Its first run
+  correctly caught an unrecognized metadata-rebuild expression and a direct
+  support-channel driver name; the authority binder now uses the guard-approved
+  metadata expansion, and the driver digest binds the derived support role
+  without reading source-channel columns. The full 215-test QBI/runtime/tool
+  focus remains green after that correction.
 
 ## Next
 
-1. Run the exact 495-test #583 guard, all twelve probes, the
-   chunked foreground full workspace battery, and changed-file quality gates.
+1. Run the chunked foreground full workspace battery and changed-file quality
+   gates.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.

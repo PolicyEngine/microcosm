@@ -137,7 +137,6 @@ _QBI_UNDECLARED_DRIVER_PERSON_COLUMNS: tuple[str, ...] = (
     "age",
     "SEMP",
     "person_tax_unit_id",
-    "person_support_channel",
     "person_support_clone_index",
     "person_source_id",
 )
@@ -495,10 +494,7 @@ def bind_us_qbi_reconciliation_transition_authority(
             "US QBI transition authority is already bound; refusing to overwrite "
             "the immutable generation anchor."
         )
-    metadata = dict(frame.metadata)
-    metadata[_QBI_TRANSITION_AUTHORITY_METADATA_KEY] = (
-        _qbi_transition_authority_receipt(validated)
-    )
+    authority = _qbi_transition_authority_receipt(validated)
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables.update({link: frame.link(link).copy() for link in frame.links})
     return Frame(
@@ -507,7 +503,10 @@ def bind_us_qbi_reconciliation_transition_authority(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
-        metadata=metadata,
+        metadata={
+            **frame.metadata,
+            _QBI_TRANSITION_AUTHORITY_METADATA_KEY: authority,
+        },
     )
 
 
@@ -1190,6 +1189,12 @@ def _qbi_live_driver_surface_sha256(frame: Frame) -> str:
     present_driver_columns = tuple(
         column for column in _QBI_UNDECLARED_DRIVER_PERSON_COLUMNS if column in person
     )
+    support_role_sha256 = None
+    if has_support_role_metadata(person, entity=frame.schema.person_entity):
+        roles = support_role_series(person, entity=frame.schema.person_entity)
+        support_role_sha256 = _qbi_table_values_sha256(
+            roles.rename("support_role").to_frame()
+        )
     payload = {
         "version": 1,
         "driver_presence": {
@@ -1198,6 +1203,7 @@ def _qbi_live_driver_surface_sha256(frame: Frame) -> str:
         "driver_values_sha256": _qbi_table_values_sha256(
             person.loc[:, list(present_driver_columns)]
         ),
+        "support_role_sha256": support_role_sha256,
     }
     return _qbi_receipt_sha256(payload)
 
