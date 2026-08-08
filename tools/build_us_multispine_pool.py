@@ -70,6 +70,9 @@ from populace.build.gates import (
 )
 from populace.build.logbook import record_build_attempt
 from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from populace.build.us_runtime.acs_income_universe import (
+    acs_pums_earnings_universe_contract_identity,
+)
 from populace.build.us_runtime.acs_inputs import map_acs_native_inputs
 from populace.build.us_runtime.acs_pums import (
     AcsPumsSource,
@@ -131,6 +134,7 @@ from populace.build.us_runtime.puf_capital_gains_tail import (
 )
 from populace.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
 from populace.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_MANIFEST_FILENAME,
     PRIMARY_QRF_TARGET_ORDER,
     finalize_primary_puf_qrf_chain,
@@ -140,6 +144,9 @@ from populace.build.us_runtime.puf_qrf_chain import (
 from populace.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     US_PUF_SUPPORT_FIT_NAME,
+)
+from populace.build.us_runtime.qbi_inputs import (
+    us_qbi_reconciliation_contract_identity,
 )
 from populace.build.us_runtime.stacked_spine import (
     CANONICAL_STACKED_GAP_FILL_SURFACE,
@@ -236,10 +243,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 5 reorients the early housing bank to its actual ASEC producer and
-# binds the channel-aware producer-precedence schedule. Earlier checkpoints
-# carry stale direction authority and target-bank identities and must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 5
+# Version 6 binds the ACS earnings-universe and whole-pool QBI reconciliation
+# contracts, plus primary-QRF schema 6. Earlier checkpoints can carry stale
+# recipient and mutation semantics and must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 6
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -1037,6 +1044,15 @@ def _stacked_checkpoint_base_identity(
             ),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
+            "primary_qrf_checkpoint_schema_version": (
+                PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+            ),
+            "acs_pums_earnings_universe_contract": (
+                acs_pums_earnings_universe_contract_identity()
+            ),
+            "us_qbi_reconciliation_contract": (
+                us_qbi_reconciliation_contract_identity()
+            ),
             "take_up_contract": take_up_contract_identity(),
             "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
             "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,

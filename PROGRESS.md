@@ -3,9 +3,10 @@
 ## State
 
 Round 5 is in progress on `smoke-gapfill-ordering-fix`, starting from exact
-HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1 and C4 are implemented and
-focused tests pass. Work is local and offline: no push, GitHub, network, 1%
-smoke, state shelving, or root build journal is in scope.
+HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1, C2, and C4 are implemented;
+C3's canonical transition validator is implemented and its persisted-boundary
+integration is in progress. Work is local and offline: no push, GitHub,
+network, 1% smoke, state shelving, or root build journal is in scope.
 
 The Round 4 verifier report has been read in full. Its five required changes
 are C1 cross-arm earnings-universe semantics, C2 authority/schema v6 bumps,
@@ -46,15 +47,31 @@ ordered rejection contracts, and A1 precise changelog coverage.
 - Added regressions for a mixed unit whose first person is under 15, an
   all-child unit, eligible nulls at preflight, and 14+/16+ rule mutations.
   The 11 focused earnings/universe/stacked-pass tests pass.
+- Closed the independent-review provenance gap: the universe application now
+  rejects any pre-existing mapped child value, including zero, so a generic
+  earlier fill cannot acquire a false named receipt. Added a raw-blank
+  end-to-end stacked-pass regression that verifies exact application counts,
+  raw preservation, mapped zeros, one mixed unit, and one all-child unit.
+- Bumped the primary-QRF checkpoint schema, stacked checkpoint materializer,
+  and stacked canonical authority to version 6. The outer base identity now
+  binds primary-QRF schema 6 plus canonical ACS earnings-universe and QBI
+  reconciliation contract identities.
+- Added parameterized rejection coverage for every stale v1--v5 primary-QRF
+  root/target, outer materializer, and self-consistent stacked authority,
+  including the former strict two-control v5 payload. New C2 tests pass 16/16;
+  the full primary-QRF suite passes.
+- Added the canonical QBI receipt-v2 schema, deterministic transition
+  recomputation, exact key/type/count/SHA validation, nested universe
+  authentication, live-output digest binding, and fixed-point validation.
+  QBI unit tests cover forged SHA/count/extra-field receipts and both
+  regenerated and post-receipt output mutations.
 
 ## Next
 
-1. Bump and bind both changed authority surfaces to v6 with stale-version
-   rejection coverage.
-2. Authenticate QBI transition receipts at every generation, checkpoint,
+1. Authenticate QBI transition receipts at every checkpoint,
    resume, manifest, and publication boundary.
-3. Complete the changelog and the remaining authority/audit documentation.
-4. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
+2. Complete the changelog and the remaining authority/audit documentation.
+3. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
    chunked foreground full workspace battery, and changed-file quality gates.
-5. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
+4. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.

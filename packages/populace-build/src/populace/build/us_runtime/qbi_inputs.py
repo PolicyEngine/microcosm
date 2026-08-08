@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from collections.abc import Mapping
 from importlib.resources import files
 
 import numpy as np
@@ -55,7 +57,11 @@ __all__ = [
     "us_qbi_inputs_stage_spec",
     "us_qbi_inputs_summary",
     "us_qbi_reconciliation_change_receipt",
+    "us_qbi_reconciliation_contract_identity",
     "us_qbi_reconciliation_universe_receipt",
+    "validate_us_qbi_reconciliation_live_output",
+    "validate_us_qbi_reconciliation_receipt",
+    "validate_us_qbi_reconciliation_transition",
     "with_us_qbi_input_reconciliation",
 ]
 
@@ -135,6 +141,117 @@ _NUMERIC_NONZERO_SHARE_BANDS: dict[str, tuple[float, float]] = {
     "w2_wages_from_qualified_business": (0.001, 0.35),
 }
 _INVARIANT_ATOL = 1e-8
+_QBI_RECONCILIATION_RECEIPT_VERSION = 2
+_QBI_RECONCILIATION_OPERATION = "shared_all_or_nothing_identity_reconciliation"
+_LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_QBI_CHANGE_RECEIPT_KEYS = frozenset(
+    {
+        "version",
+        "operation",
+        "declared_person_columns",
+        "recipient_source_universe",
+        "input_person_columns",
+        "input_person_table_sha256",
+        "output_declared_person_values_sha256",
+        "changed_person_rows",
+        "base_self_employment_changed_rows",
+        "structurally_absent_base_source_changed_rows",
+        "undeclared_surface_preservation",
+        "sha256",
+    }
+)
+_QBI_PRESERVATION_RECEIPT_KEYS = frozenset(
+    {
+        "undeclared_person_columns_verified",
+        "non_person_entity_tables_verified",
+        "link_tables_verified",
+        "weight_vectors_verified",
+        "strata_verified",
+        "mass_log_verified",
+        "metadata_verified",
+    }
+)
+_QBI_STACKED_UNIVERSE_RECEIPT_KEYS = frozenset(
+    {
+        "version",
+        "policy",
+        "source_dataset",
+        "source_document",
+        "source_url",
+        "source_channel",
+        "age_column",
+        "minimum_age",
+        "aggregation",
+        "produced_frame_semantics",
+        "mapped_person_cells_materialized",
+        "mapped_universe_zero_cells",
+        "scoped_person_rows",
+        "scoped_acs_person_rows",
+        "structurally_absent_person_rows",
+        "affected_tax_unit_rows",
+        "mixed_universe_tax_unit_rows",
+        "empty_universe_tax_unit_rows",
+        "structurally_absent_person_lineages_sha256",
+        "affected_tax_unit_ids_sha256",
+        "empty_universe_tax_unit_ids_sha256",
+        "by_origin_role",
+        "rules",
+        "source_universe_sha256",
+        "source_universe_resolution_mutated_raw_pums_cells",
+        "operation",
+        "rows_excluded_from_base_self_employment_rewrite",
+        "rows_included_in_other_qbi_reconciliation",
+        "structurally_absent_base_source_cells_mutated",
+        "sha256",
+    }
+)
+_QBI_UNSTACKED_UNIVERSE_RECEIPT_KEYS = frozenset(
+    {
+        "version",
+        "policy",
+        "rows_excluded_from_base_self_employment_rewrite",
+        "rows_included_in_other_qbi_reconciliation",
+        "structurally_absent_base_source_cells_mutated",
+        "sha256",
+    }
+)
+_QBI_UNIVERSE_RULE_KEYS = frozenset(
+    {
+        "rule_id",
+        "source_column",
+        "mapped_column",
+        "source_channel",
+        "source_universe",
+        "produced_frame_semantics",
+        "structurally_absent_person_rows",
+        "eligible_acs_person_rows",
+        "in_universe_null_rows",
+        "raw_in_universe_null_rows",
+        "mapped_universe_zero_rows",
+        "universe_zero_missing_rows",
+        "out_of_universe_mapped_nonzero_rows",
+        "raw_source_column_present",
+        "raw_source_nonblank_rows",
+        "source_cells_sha256",
+    }
+)
+
+
+def us_qbi_reconciliation_contract_identity() -> dict[str, object]:
+    """Return the immutable QBI mutation/receipt semantics for base identity."""
+
+    return {
+        "version": _QBI_RECONCILIATION_RECEIPT_VERSION,
+        "operation": _QBI_RECONCILIATION_OPERATION,
+        "execution_scope": "whole_pool",
+        "declared_person_columns": list(US_QBI_RECONCILED_PERSON_COLUMNS),
+        "kernel_binding": "after_equals_deterministic_kernel_of_before",
+        "live_output_binding": "declared_values_digest_and_kernel_fixed_point",
+        "receipt_schema": sorted(_QBI_CHANGE_RECEIPT_KEYS),
+        "acs_base_self_employment_policy": (
+            "preserve_receipted_age_under_15_universe_zero_in_every_clone_role"
+        ),
+    }
 
 
 def us_qbi_inputs_stage_spec() -> SourceStageSpec:
@@ -212,6 +329,18 @@ def _qbi_reconciliation_scope(
         person_scope=np.ones(len(person), dtype=bool),
         boundary="US QBI reconciliation source universe",
     )
+    universe_rule = universe.receipt["rules"][_SELF_EMPLOYMENT_COLUMN]
+    if (
+        universe_rule["in_universe_null_rows"]
+        or universe_rule["raw_in_universe_null_rows"]
+    ):
+        raise ValueError(
+            "US QBI reconciliation has missing eligible source values under "
+            f"{universe_rule['rule_id']}: in_universe_null_rows="
+            f"{universe_rule['in_universe_null_rows']}, "
+            "raw_in_universe_null_rows="
+            f"{universe_rule['raw_in_universe_null_rows']}."
+        )
     structural = universe.structural_absence_masks[_SELF_EMPLOYMENT_COLUMN].to_numpy(
         dtype=bool
     )
@@ -243,7 +372,7 @@ def us_qbi_reconciliation_universe_receipt(frame: Frame) -> dict[str, object]:
     return json.loads(json.dumps(receipt))
 
 
-def _qbi_receipt_sha256(receipt: dict[str, object]) -> str:
+def _qbi_receipt_sha256(receipt: Mapping[str, object]) -> str:
     return hashlib.sha256(
         json.dumps(
             receipt,
@@ -258,7 +387,29 @@ def us_qbi_reconciliation_change_receipt(
     before: Frame,
     after: Frame,
 ) -> dict[str, object]:
-    """Bind the QBI kernel's declared input/output surface and exact mutations."""
+    """Generate a receipt only for the live deterministic QBI transition."""
+
+    expected = with_us_qbi_input_reconciliation(before)
+    _assert_qbi_kernel_output_matches(
+        expected,
+        after,
+        boundary="US QBI reconciliation receipt generation",
+    )
+    receipt = _build_us_qbi_reconciliation_change_receipt(before, after)
+    validate_us_qbi_reconciliation_transition(
+        before,
+        after,
+        receipt,
+        boundary="US QBI reconciliation receipt generation",
+    )
+    return receipt
+
+
+def _build_us_qbi_reconciliation_change_receipt(
+    before: Frame,
+    after: Frame,
+) -> dict[str, object]:
+    """Build the canonical envelope after the kernel transition is established."""
 
     before_person = before.table("person")
     after_person = after.table("person")
@@ -294,7 +445,8 @@ def us_qbi_reconciliation_change_receipt(
             f"{structural_base_changes} structurally absent ACS base source cell(s)."
         )
     receipt: dict[str, object] = {
-        "version": 1,
+        "version": _QBI_RECONCILIATION_RECEIPT_VERSION,
+        "operation": _QBI_RECONCILIATION_OPERATION,
         "declared_person_columns": list(US_QBI_RECONCILED_PERSON_COLUMNS),
         "recipient_source_universe": universe_receipt,
         "input_person_columns": list(before_person.columns),
@@ -313,6 +465,409 @@ def us_qbi_reconciliation_change_receipt(
     }
     receipt["sha256"] = _qbi_receipt_sha256(receipt)
     return receipt
+
+
+def validate_us_qbi_reconciliation_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    """Validate the exact authenticated QBI receipt envelope and nested scope."""
+
+    _require_exact_qbi_keys(
+        receipt,
+        _QBI_CHANGE_RECEIPT_KEYS,
+        boundary=boundary,
+        label="receipt",
+    )
+    if receipt.get("version") != _QBI_RECONCILIATION_RECEIPT_VERSION:
+        raise ValueError(
+            f"{boundary}: QBI reconciliation receipt version must be "
+            f"{_QBI_RECONCILIATION_RECEIPT_VERSION}."
+        )
+    if receipt.get("operation") != _QBI_RECONCILIATION_OPERATION:
+        raise ValueError(f"{boundary}: QBI reconciliation operation changed.")
+    if receipt.get("declared_person_columns") != list(US_QBI_RECONCILED_PERSON_COLUMNS):
+        raise ValueError(f"{boundary}: QBI declared person columns changed.")
+    input_columns = receipt.get("input_person_columns")
+    if (
+        not isinstance(input_columns, list)
+        or not all(isinstance(column, str) and column for column in input_columns)
+        or len(input_columns) != len(set(input_columns))
+        or not set(US_QBI_RECONCILED_PERSON_COLUMNS).issubset(input_columns)
+    ):
+        raise ValueError(f"{boundary}: QBI input person columns are malformed.")
+    for field in (
+        "input_person_table_sha256",
+        "output_declared_person_values_sha256",
+    ):
+        _require_qbi_sha256(receipt.get(field), boundary=boundary, field=field)
+    for field in (
+        "changed_person_rows",
+        "base_self_employment_changed_rows",
+        "structurally_absent_base_source_changed_rows",
+    ):
+        _require_qbi_nonnegative_integer(
+            receipt.get(field), boundary=boundary, field=field
+        )
+    if receipt.get("structurally_absent_base_source_changed_rows") != 0:
+        raise ValueError(
+            f"{boundary}: QBI receipt reports a structurally absent base-source "
+            "mutation."
+        )
+    preservation = receipt.get("undeclared_surface_preservation")
+    if not isinstance(preservation, Mapping):
+        raise ValueError(f"{boundary}: QBI preservation receipt must be an object.")
+    _require_exact_qbi_keys(
+        preservation,
+        _QBI_PRESERVATION_RECEIPT_KEYS,
+        boundary=boundary,
+        label="undeclared-surface preservation receipt",
+    )
+    for field in (
+        "undeclared_person_columns_verified",
+        "non_person_entity_tables_verified",
+        "link_tables_verified",
+        "weight_vectors_verified",
+    ):
+        _require_qbi_nonnegative_integer(
+            preservation.get(field), boundary=boundary, field=field
+        )
+    for field in ("strata_verified", "mass_log_verified", "metadata_verified"):
+        if preservation.get(field) is not True:
+            raise ValueError(f"{boundary}: QBI preservation field {field!r} is false.")
+    universe = receipt.get("recipient_source_universe")
+    if not isinstance(universe, Mapping):
+        raise ValueError(f"{boundary}: QBI source-universe receipt must be an object.")
+    _validate_qbi_universe_receipt(universe, boundary=boundary)
+    changed_rows = receipt["changed_person_rows"]
+    base_changed_rows = receipt["base_self_employment_changed_rows"]
+    included_rows = universe["rows_included_in_other_qbi_reconciliation"]
+    if not (base_changed_rows <= changed_rows <= included_rows):
+        raise ValueError(
+            f"{boundary}: QBI changed-row counts violate "
+            "base <= any <= reconciliation-scope rows."
+        )
+    observed_sha256 = _require_qbi_sha256(
+        receipt.get("sha256"),
+        boundary=boundary,
+        field="sha256",
+    )
+    unsigned = dict(receipt)
+    unsigned.pop("sha256")
+    expected_sha256 = _qbi_receipt_sha256(unsigned)
+    if observed_sha256 != expected_sha256:
+        raise ValueError(f"{boundary}: QBI reconciliation receipt SHA-256 mismatch.")
+    return json.loads(json.dumps(receipt))
+
+
+def validate_us_qbi_reconciliation_transition(
+    before: Frame,
+    after: Frame,
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    """Authenticate receipt and output against the live deterministic transition."""
+
+    validated = validate_us_qbi_reconciliation_receipt(receipt, boundary=boundary)
+    expected_after = with_us_qbi_input_reconciliation(before)
+    _assert_qbi_kernel_output_matches(
+        expected_after,
+        after,
+        boundary=boundary,
+    )
+    expected_receipt = _build_us_qbi_reconciliation_change_receipt(
+        before,
+        expected_after,
+    )
+    if validated != expected_receipt:
+        raise ValueError(
+            f"{boundary}: QBI receipt is not bound to the live deterministic "
+            "input/output transition."
+        )
+    return validated
+
+
+def validate_us_qbi_reconciliation_live_output(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    """Bind a persisted receipt to live output values and the kernel fixed point."""
+
+    validated = validate_us_qbi_reconciliation_receipt(receipt, boundary=boundary)
+    person = frame.table("person")
+    missing = sorted(set(US_QBI_RECONCILED_PERSON_COLUMNS) - set(person.columns))
+    if missing:
+        raise ValueError(
+            f"{boundary}: live QBI output lacks declared person column(s) {missing}."
+        )
+    live_digest = _qbi_person_values_sha256(
+        person,
+        columns=US_QBI_RECONCILED_PERSON_COLUMNS,
+    )
+    if validated["output_declared_person_values_sha256"] != live_digest:
+        raise ValueError(
+            f"{boundary}: QBI receipt output digest does not match the live frame."
+        )
+    expected = with_us_qbi_input_reconciliation(frame)
+    _assert_qbi_kernel_output_matches(expected, frame, boundary=boundary)
+
+    live_universe = us_qbi_reconciliation_universe_receipt(frame)
+    recorded_universe = validated["recipient_source_universe"]
+    for field in (
+        "policy",
+        "rows_excluded_from_base_self_employment_rewrite",
+        "rows_included_in_other_qbi_reconciliation",
+        "structurally_absent_base_source_cells_mutated",
+    ):
+        if recorded_universe.get(field) != live_universe.get(field):
+            raise ValueError(
+                f"{boundary}: QBI source-universe field {field!r} does not match "
+                "the live frame."
+            )
+    if "rules" in recorded_universe:
+        recorded_rule = recorded_universe["rules"][_SELF_EMPLOYMENT_COLUMN]
+        live_rule = live_universe["rules"][_SELF_EMPLOYMENT_COLUMN]
+        for field in (
+            "rule_id",
+            "source_column",
+            "mapped_column",
+            "source_channel",
+            "structurally_absent_person_rows",
+            "eligible_acs_person_rows",
+            "mapped_universe_zero_rows",
+            "universe_zero_missing_rows",
+            "out_of_universe_mapped_nonzero_rows",
+            "raw_source_nonblank_rows",
+        ):
+            if recorded_rule.get(field) != live_rule.get(field):
+                raise ValueError(
+                    f"{boundary}: QBI source-universe rule field {field!r} does "
+                    "not match the live frame."
+                )
+    return validated
+
+
+def _assert_qbi_kernel_output_matches(
+    expected: Frame,
+    actual: Frame,
+    *,
+    boundary: str,
+) -> None:
+    _assert_qbi_undeclared_surface_unchanged(expected, actual)
+    expected_person = expected.table("person")
+    actual_person = actual.table("person")
+    if not expected_person.loc[:, US_QBI_RECONCILED_PERSON_COLUMNS].equals(
+        actual_person.loc[:, US_QBI_RECONCILED_PERSON_COLUMNS]
+    ):
+        changed = [
+            column
+            for column in US_QBI_RECONCILED_PERSON_COLUMNS
+            if not expected_person[column].equals(actual_person[column])
+        ]
+        raise ValueError(
+            f"{boundary}: QBI output differs from the deterministic kernel in "
+            f"declared person column(s) {changed}."
+        )
+
+
+def _validate_qbi_universe_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    policy = receipt.get("policy")
+    keys = (
+        _QBI_UNSTACKED_UNIVERSE_RECEIPT_KEYS
+        if policy == "all_rows_without_stacked_clone_provenance"
+        else _QBI_STACKED_UNIVERSE_RECEIPT_KEYS
+    )
+    _require_exact_qbi_keys(
+        receipt,
+        keys,
+        boundary=boundary,
+        label="source-universe receipt",
+    )
+    if receipt.get("version") != 1:
+        raise ValueError(f"{boundary}: QBI source-universe version changed.")
+    for field, value in receipt.items():
+        if field.endswith(("_rows", "_cells")) and not isinstance(value, bool):
+            _require_qbi_nonnegative_integer(value, boundary=boundary, field=field)
+    if receipt.get("structurally_absent_base_source_cells_mutated") is not False:
+        raise ValueError(
+            f"{boundary}: QBI source-universe receipt reports a forbidden mutation."
+        )
+    if policy != "all_rows_without_stacked_clone_provenance":
+        if policy != "asec_consistent_receipted_universe_zero":
+            raise ValueError(f"{boundary}: QBI source-universe policy changed.")
+        if receipt.get("minimum_age") != 15:
+            raise ValueError(f"{boundary}: QBI source-universe age floor changed.")
+        if receipt.get("operation") != (
+            "preserve every receipted ACS under-15 base self-employment zero; "
+            "reconcile every derived QBI identity on every person row"
+        ):
+            raise ValueError(f"{boundary}: QBI source-universe operation changed.")
+        if (
+            receipt.get("source_universe_resolution_mutated_raw_pums_cells")
+            is not False
+        ):
+            raise ValueError(
+                f"{boundary}: QBI source-universe resolution mutated raw PUMS cells."
+            )
+        if not isinstance(receipt.get("mapped_person_cells_materialized"), bool):
+            raise ValueError(
+                f"{boundary}: QBI mapped-person materialization flag is malformed."
+            )
+        rules = receipt.get("rules")
+        if not isinstance(rules, Mapping) or set(rules) != {_SELF_EMPLOYMENT_COLUMN}:
+            raise ValueError(f"{boundary}: QBI source-universe rules are not exact.")
+        rule = rules[_SELF_EMPLOYMENT_COLUMN]
+        if not isinstance(rule, Mapping):
+            raise ValueError(f"{boundary}: QBI source-universe rule must be an object.")
+        _require_exact_qbi_keys(
+            rule,
+            _QBI_UNIVERSE_RULE_KEYS,
+            boundary=boundary,
+            label="source-universe rule",
+        )
+        if rule.get("rule_id") != "acs_2024_pums_semp_age_15_plus":
+            raise ValueError(f"{boundary}: QBI SEMP universe rule ID changed.")
+        if (
+            rule.get("source_column") != "SEMP"
+            or rule.get("mapped_column") != _SELF_EMPLOYMENT_COLUMN
+        ):
+            raise ValueError(f"{boundary}: QBI SEMP universe mapping changed.")
+        if rule.get("raw_source_column_present") is not True:
+            raise ValueError(f"{boundary}: QBI SEMP raw authority is absent.")
+        for field, value in rule.items():
+            if field.endswith("_rows"):
+                _require_qbi_nonnegative_integer(
+                    value,
+                    boundary=boundary,
+                    field=f"source-universe rule {field}",
+                )
+        for field in (
+            "in_universe_null_rows",
+            "raw_in_universe_null_rows",
+            "universe_zero_missing_rows",
+            "out_of_universe_mapped_nonzero_rows",
+            "raw_source_nonblank_rows",
+        ):
+            if rule.get(field) != 0:
+                raise ValueError(
+                    f"{boundary}: QBI source-universe rule field {field!r} "
+                    "must be zero."
+                )
+        if (
+            rule.get("mapped_universe_zero_rows")
+            != rule.get("structurally_absent_person_rows")
+            or receipt.get("mapped_universe_zero_cells")
+            != receipt.get("structurally_absent_person_rows")
+            or receipt.get("rows_excluded_from_base_self_employment_rewrite")
+            != receipt.get("structurally_absent_person_rows")
+        ):
+            raise ValueError(
+                f"{boundary}: QBI source-universe zero/count equation failed."
+            )
+        _require_qbi_sha256(
+            rule.get("source_cells_sha256"),
+            boundary=boundary,
+            field="source_cells_sha256",
+        )
+        for field in (
+            "structurally_absent_person_lineages_sha256",
+            "affected_tax_unit_ids_sha256",
+            "empty_universe_tax_unit_ids_sha256",
+            "source_universe_sha256",
+        ):
+            _require_qbi_sha256(receipt.get(field), boundary=boundary, field=field)
+        by_origin_role = receipt.get("by_origin_role")
+        if not isinstance(by_origin_role, Mapping) or not all(
+            isinstance(name, str)
+            and name
+            and isinstance(count, int)
+            and not isinstance(count, bool)
+            and count >= 0
+            for name, count in by_origin_role.items()
+        ):
+            raise ValueError(
+                f"{boundary}: QBI universe by-origin counts are malformed."
+            )
+        source_receipt = {
+            key: value
+            for key, value in receipt.items()
+            if key
+            not in {
+                "source_universe_sha256",
+                "source_universe_resolution_mutated_raw_pums_cells",
+                "operation",
+                "rows_excluded_from_base_self_employment_rewrite",
+                "rows_included_in_other_qbi_reconciliation",
+                "structurally_absent_base_source_cells_mutated",
+                "sha256",
+            }
+        }
+        source_receipt["raw_pums_source_cells_mutated"] = receipt[
+            "source_universe_resolution_mutated_raw_pums_cells"
+        ]
+        if _qbi_receipt_sha256(source_receipt) != receipt["source_universe_sha256"]:
+            raise ValueError(
+                f"{boundary}: QBI nested ACS source-universe SHA-256 mismatch."
+            )
+    observed_sha256 = _require_qbi_sha256(
+        receipt.get("sha256"),
+        boundary=boundary,
+        field="source-universe sha256",
+    )
+    unsigned = dict(receipt)
+    unsigned.pop("sha256")
+    if observed_sha256 != _qbi_receipt_sha256(unsigned):
+        raise ValueError(f"{boundary}: QBI source-universe SHA-256 mismatch.")
+
+
+def _require_exact_qbi_keys(
+    value: Mapping[str, object],
+    expected: frozenset[str],
+    *,
+    boundary: str,
+    label: str,
+) -> None:
+    missing = sorted(expected - set(value))
+    extra = sorted(set(value) - expected)
+    if missing or extra:
+        raise ValueError(
+            f"{boundary}: QBI {label} schema mismatch; missing={missing}, "
+            f"extra={extra}."
+        )
+
+
+def _require_qbi_sha256(
+    value: object,
+    *,
+    boundary: str,
+    field: str,
+) -> str:
+    if not isinstance(value, str) or _LOWERCASE_SHA256.fullmatch(value) is None:
+        raise ValueError(
+            f"{boundary}: QBI receipt field {field!r} must be a lowercase SHA-256."
+        )
+    return value
+
+
+def _require_qbi_nonnegative_integer(
+    value: object,
+    *,
+    boundary: str,
+    field: str,
+) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(
+            f"{boundary}: QBI receipt field {field!r} must be a nonnegative integer."
+        )
+    return value
 
 
 def _assert_qbi_undeclared_surface_unchanged(

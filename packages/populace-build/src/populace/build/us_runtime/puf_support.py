@@ -1635,6 +1635,7 @@ def impute_us_puf_tax_detail_support(
             frame,
             puf_mask,
             predictors,
+            person_outputs=person_outputs,
         )
         if predictor_universe_receipts is not None:
             predictor_universe_receipts.append(
@@ -1742,6 +1743,7 @@ def prepare_us_puf_tax_detail_chain_inputs(
             frame,
             puf_mask,
             predictors,
+            person_outputs=person_outputs,
         )
     donor_tax_units = donor_tax_units.copy()
     _add_predictor_aliases(donor_tax_units, predictors)
@@ -1974,10 +1976,12 @@ def finalize_us_puf_tax_detail_predictions(
         tables["person"],
         entity="person",
     )
-    earnings_eligible_mask = _puf_earnings_allocation_mask(
-        tables["person"],
-        person_puf_mask=person_puf_mask,
-    )
+    earnings_eligible_mask: pd.Series | None = None
+    if set(person_outputs) & _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS:
+        earnings_eligible_mask = _puf_earnings_allocation_mask(
+            tables["person"],
+            person_puf_mask=person_puf_mask,
+        )
     for column in person_outputs:
         _ensure_float_output_column(
             tables["person"],
@@ -1986,6 +1990,8 @@ def finalize_us_puf_tax_detail_predictions(
         )
         allocation_mask = person_puf_mask
         if column in _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS:
+            if earnings_eligible_mask is None:  # pragma: no cover - loop invariant
+                raise AssertionError("PUF earnings allocation mask was not resolved.")
             allocation_mask = earnings_eligible_mask
             # This is the explicit produced-frame universe zero. It applies
             # only outside the age-15-plus allocation universe; no fillna or
@@ -2642,6 +2648,7 @@ def puf_recipient_predictor_universe_receipt(
     frame: Frame,
     *,
     predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
 ) -> dict[str, object]:
     """Recompute the strict recipient feature/universe receipt for validation."""
 
@@ -2653,6 +2660,7 @@ def puf_recipient_predictor_universe_receipt(
         frame,
         puf_mask,
         tuple(predictors),
+        person_outputs=tuple(person_outputs),
     )
     return json.loads(json.dumps(receipt))
 
@@ -2661,6 +2669,8 @@ def _strict_recipient_predictor_surface(
     frame: Frame,
     recipient_mask: np.ndarray,
     predictors: Sequence[str],
+    *,
+    person_outputs: Sequence[str],
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Build strict features and the exact source-universe receipt together."""
 
@@ -2751,6 +2761,7 @@ def _strict_recipient_predictor_surface(
             "person_output_allocation": _earnings_allocation_receipt(
                 person,
                 person_scope=person_scope,
+                person_outputs=person_outputs,
             ),
         }
     )
@@ -2762,9 +2773,27 @@ def _earnings_allocation_receipt(
     person: pd.DataFrame,
     *,
     person_scope: pd.Series,
+    person_outputs: Sequence[str],
 ) -> dict[str, object]:
     """Describe the exact cross-arm allocation universe bound into QRF banks."""
 
+    earnings_outputs = sorted(
+        set(person_outputs) & _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS
+    )
+    rule_ids = sorted(
+        f"acs_2024_pums_{source.lower()}_age_15_plus"
+        for source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values()
+    )
+    if not earnings_outputs:
+        return {
+            "minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
+            "person_outputs": [],
+            "policy": "not_applicable_without_earnings_person_outputs",
+            "out_of_universe_person_rows": 0,
+            "empty_eligible_tax_unit_rows": 0,
+            "first_person_fallback_out_of_universe_rows": 0,
+            "rule_ids": rule_ids,
+        }
     age = pd.to_numeric(person["age"], errors="coerce")
     out_of_universe = person_scope & age.lt(ACS_PUMS_EARNINGS_MINIMUM_AGE)
     scoped_people = person.loc[person_scope, ["person_tax_unit_id"]].copy()
@@ -2776,15 +2805,12 @@ def _earnings_allocation_receipt(
     ].any()
     return {
         "minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
-        "person_outputs": sorted(_PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS),
+        "person_outputs": earnings_outputs,
         "policy": "allocate only to age-15-plus persons; explicit zero otherwise",
         "out_of_universe_person_rows": int(out_of_universe.sum()),
         "empty_eligible_tax_unit_rows": int((~eligible_by_unit).sum()),
         "first_person_fallback_out_of_universe_rows": 0,
-        "rule_ids": sorted(
-            f"acs_2024_pums_{source.lower()}_age_15_plus"
-            for source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values()
-        ),
+        "rule_ids": rule_ids,
     }
 
 

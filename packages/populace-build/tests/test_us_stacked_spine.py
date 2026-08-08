@@ -901,6 +901,19 @@ def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
     )
 
 
+def test_acs_universe_application_rejects_unreceipted_preexisting_zero() -> None:
+    applied = _cloned_acs_earnings_universe_fixture()
+
+    with pytest.raises(
+        ValueError,
+        match=("acs_2024_pums_wagp_age_15_plus.*unreceipted_preexisting_mapped_rows"),
+    ):
+        apply_acs_pums_earnings_universe_zeros(
+            applied,
+            boundary="reapplied ACS universe fixture",
+        )
+
+
 def test_strict_recipient_predictors_reject_cross_grain_source_collision() -> None:
     cloned = _cloned_acs_earnings_universe_fixture()
     cloned.table("tax_unit")["employment_income"] = 777.0
@@ -2965,6 +2978,78 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
         )
 
 
+def test_run_stacked_puf_pass_receipts_raw_child_universe_application() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    person = gap_filled.table("person")
+    acs = person[support_channel_column("person")].eq("acs")
+    groups = list(
+        person.loc[acs].groupby("person_tax_unit_id", sort=False).groups.values()
+    )
+    mixed_group = list(next(group for group in groups if len(group) > 1))
+    all_child_group = list(next(group for group in groups if len(group) == 1))
+    structural_rows = [mixed_group[0], *all_child_group]
+    person.loc[structural_rows, "age"] = 12.0
+    for column in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "WAGP",
+        "SEMP",
+    ):
+        person.loc[structural_rows, column] = np.nan
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0, 70_000.0, 22_000.0],
+            "self_employment_income": [1_000.0, 0.0, 5_000.0, 200.0],
+            "taxable_interest_income": [120.0, 30.0, 900.0, 0.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+        gap_filled,
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_self_employment_income",
+        ),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        seed=578,
+        n_estimators=10,
+    )
+
+    receipt = result.receipt["acs_earnings_universe_application"]
+    assert receipt["structurally_absent_person_rows"] == 2
+    assert receipt["affected_tax_unit_rows"] == 2
+    assert receipt["mixed_universe_tax_unit_rows"] == 1
+    assert receipt["empty_universe_tax_unit_rows"] == 1
+    assert receipt["mapped_universe_zero_cells"] == 4
+    assert receipt["raw_pums_source_cells_mutated"] is False
+    assert receipt["mapped_person_cells_materialized"] is True
+    output_person = result.frame.table("person")
+    output_child = output_person[support_channel_column("person")].eq(
+        "acs"
+    ) & output_person["age"].lt(15)
+    assert int(output_child.sum()) == 4
+    assert (
+        output_person.loc[
+            output_child,
+            ["employment_income_before_lsr", "self_employment_income_before_lsr"],
+        ]
+        .eq(0.0)
+        .all()
+        .all()
+    )
+    assert output_person.loc[output_child, ["WAGP", "SEMP"]].isna().all().all()
+
+
 def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> None:
     gap_filled = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
@@ -3891,6 +3976,41 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
     )
     with pytest.raises(ValueError, match="production manifest emission is forbidden"):
         GateReport((result,)).to_manifest()
+
+
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5))
+def test_self_consistent_stale_stacked_authority_versions_are_rejected(
+    stale_version: int,
+) -> None:
+    canonical = stacked_spine_module._production_stacked_authority()
+    stale = stacked_spine_module._make_stacked_authority(
+        authority_id=canonical.authority_id,
+        version=stale_version,
+        gap_fill_plan=canonical.gap_fill_plan,
+        post_puf_transfer_surface=canonical.post_puf_transfer_surface,
+        post_puf_puf_producer_surface=canonical.post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=canonical.post_puf_source_producer_surface,
+        declared_surface=canonical.declared_surface,
+        metric_registry=canonical.metric_registry,
+        joint_metric_registry=canonical.joint_metric_registry,
+        support_profile=canonical.support_profile,
+        declared_form="CANONICAL",
+    )
+    stale_receipt = stacked_spine_module._authority_receipt(stale)
+
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 6
+    assert stale_receipt["version"] == stale_version
+    assert stale_receipt["integrity_valid"] is True
+    assert stale_receipt["digest_matches_declared"] is True
+    assert stale_receipt["canonical_content"] is False
+    with pytest.raises(
+        ValueError,
+        match="non-canonical stacked authority is forbidden",
+    ):
+        stacked_spine_module._validate_production_authority_receipt(
+            stale_receipt,
+            boundary=f"stale authority v{stale_version}",
+        )
 
 
 def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 
 import numpy as np
@@ -25,6 +26,8 @@ from populace.build.us_runtime.qbi_inputs import (
     us_qbi_inputs_summary,
     us_qbi_reconciliation_change_receipt,
     us_qbi_reconciliation_universe_receipt,
+    validate_us_qbi_reconciliation_live_output,
+    validate_us_qbi_reconciliation_receipt,
     with_us_qbi_input_reconciliation,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -238,21 +241,21 @@ def _stacked_qbi_universe_frame(*, child_age: float = 12.0) -> Frame:
     person["SEMP"] = person["self_employment_income_before_lsr"]
     child = 10
     person.loc[child, "age"] = child_age
-    person.loc[child, "self_employment_income_before_lsr"] = np.nan
+    person.loc[child, "self_employment_income_before_lsr"] = 0.0
     person.loc[child, "SEMP"] = np.nan
     person.loc[child, "business_is_sstb"] = True
     person.loc[child, "qualified_bdc_income"] = 321.0
     return _frame(person)
 
 
-def test_reconciliation_preserves_child_source_but_reconciles_other_qbi_cells() -> None:
+def test_reconciliation_preserves_child_universe_zero_and_other_qbi_cells() -> None:
     frame = _stacked_qbi_universe_frame()
 
     result = with_us_qbi_input_reconciliation(frame)
     after = result.table("person").loc[10]
     receipt = us_qbi_reconciliation_universe_receipt(frame)
 
-    assert pd.isna(after["self_employment_income_before_lsr"])
+    assert after["self_employment_income_before_lsr"] == 0.0
     assert after["business_is_sstb"] == 0
     assert after["sstb_self_employment_income_before_lsr"] == 0.0
     assert after["sstb_w2_wages_from_qualified_business"] == 0.0
@@ -268,7 +271,10 @@ def test_reconciliation_preserves_child_source_but_reconciles_other_qbi_cells() 
 def test_reconciliation_rejects_native_acs_in_universe_null() -> None:
     frame = _stacked_qbi_universe_frame(child_age=15.0)
 
-    with pytest.raises(ValueError, match="in_universe_null_rows=1"):
+    with pytest.raises(
+        ValueError,
+        match="acs_2024_pums_semp_age_15_plus.*raw_in_universe_null_rows=1",
+    ):
         with_us_qbi_input_reconciliation(frame)
 
 
@@ -306,7 +312,7 @@ def test_change_receipt_rejects_undeclared_output_mutation() -> None:
         us_qbi_reconciliation_change_receipt(frame, reconciled)
 
 
-def test_change_receipt_names_nullable_structural_source_mutation() -> None:
+def test_change_receipt_rejects_structural_universe_zero_mutation() -> None:
     frame = _stacked_qbi_universe_frame()
     person = frame.table("person")
     person["self_employment_income_before_lsr"] = person[
@@ -315,8 +321,51 @@ def test_change_receipt_names_nullable_structural_source_mutation() -> None:
     reconciled = with_us_qbi_input_reconciliation(frame)
     reconciled.table("person").loc[10, "self_employment_income_before_lsr"] = 1.0
 
-    with pytest.raises(ValueError, match="structurally absent ACS base source"):
+    with pytest.raises(ValueError, match="deterministic kernel"):
         us_qbi_reconciliation_change_receipt(frame, reconciled)
+
+
+@pytest.mark.parametrize("tamper", ["sha256", "negative_count", "extra_field"])
+def test_change_receipt_rejects_forged_envelopes(tamper: str) -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled = with_us_qbi_input_reconciliation(frame)
+    receipt = us_qbi_reconciliation_change_receipt(frame, reconciled)
+    forged = copy.deepcopy(receipt)
+    if tamper == "sha256":
+        forged["sha256"] = "0" * 64
+    elif tamper == "negative_count":
+        forged["changed_person_rows"] = -1
+    else:
+        forged["tampered"] = True
+
+    with pytest.raises(ValueError, match="QBI"):
+        validate_us_qbi_reconciliation_receipt(
+            forged,
+            boundary="forged QBI receipt test",
+        )
+
+
+def test_change_receipt_rejects_mutated_output_even_when_regenerated() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled = with_us_qbi_input_reconciliation(frame)
+    reconciled.table("person").loc[0, "qualified_bdc_income"] = 0.25
+
+    with pytest.raises(ValueError, match="deterministic kernel"):
+        us_qbi_reconciliation_change_receipt(frame, reconciled)
+
+
+def test_live_output_validation_rejects_post_receipt_mutation() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled = with_us_qbi_input_reconciliation(frame)
+    receipt = us_qbi_reconciliation_change_receipt(frame, reconciled)
+    reconciled.table("person").loc[0, "qualified_bdc_income"] = 0.25
+
+    with pytest.raises(ValueError, match="output digest"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            receipt,
+            boundary="mutated live QBI output test",
+        )
 
 
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:

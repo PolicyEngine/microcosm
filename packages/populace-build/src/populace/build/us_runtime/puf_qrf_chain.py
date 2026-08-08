@@ -74,7 +74,10 @@ from populace.frame import EntitySchema, Frame, WeightKind, Weights
 # Strict banks also bind the exact recipient source-universe/feature receipt;
 # its optional v5 field invalidates pre-declaration strict banks without
 # changing byte-identical legacy v5 manifests.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 5
+# v6 makes that recipient-universe authority a versioned chain semantic. Every
+# v1--v5 root or target must rebuild rather than sharing a schema label with a
+# chain whose root, banks, targets, and finalization bind the added receipt.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 6
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
@@ -129,8 +132,8 @@ def initialize_primary_puf_qrf_chain(
 
     The defaults preserve the historical two-spine chain exactly: recipient
     predictor absence is zero-filled, finalization globally zero-fills absent
-    outputs, and the three doctrine fields are omitted so legacy v5 bank bytes
-    do not change. Selecting either non-legacy control declares both settings
+    outputs, and the three doctrine fields are omitted so historical legacy-bank
+    payload bytes do not change. Selecting either non-legacy control declares both settings
     plus the recipient source-universe receipt in every immutable bank, the
     root manifest, and per-target receipts.
     """
@@ -747,7 +750,11 @@ def _load_manifest(root: Path) -> dict[str, object]:
     if manifest.get("artifact_kind") != _ARTIFACT_KIND:
         raise ValueError("Primary QRF manifest has the wrong artifact kind.")
     if manifest.get("schema_version") != PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION:
-        raise ValueError("Unsupported primary QRF checkpoint schema version.")
+        raise ValueError(
+            "Unsupported primary QRF checkpoint schema version: expected "
+            f"{PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION}, got "
+            f"{manifest.get('schema_version')!r}."
+        )
     target_order = _manifest_strings(manifest, "target_order")
     if manifest.get("target_order_sha256") != _ordered_strings_sha256(target_order):
         raise ValueError("Primary QRF manifest target order digest is invalid.")
@@ -839,6 +846,7 @@ def _assert_live_recipient_predictor_universe(
     live = puf_recipient_predictor_universe_receipt(
         frame,
         predictors=_manifest_strings(manifest, "predictors"),
+        person_outputs=_manifest_strings(manifest, "person_outputs"),
     )
     if live != expected:
         raise ValueError(
@@ -909,7 +917,7 @@ def _resolve_chain_doctrine_controls(
             f"{source} doctrine controls must declare all of "
             f"{_REQUIRE_COMPLETE_RECIPIENT_PREDICTORS!r} and "
             f"{_ABSENT_CELLS!r} and {_RECIPIENT_PREDICTOR_UNIVERSE!r}, "
-            "or none for a legacy v5 bank."
+            "or none for a legacy-mode bank."
         )
     if not has_require_complete:
         return False, PUF_ABSENT_CELLS_LEGACY_ZERO_FILL, {}, False

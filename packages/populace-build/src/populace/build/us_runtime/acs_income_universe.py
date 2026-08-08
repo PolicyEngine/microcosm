@@ -31,6 +31,7 @@ __all__ = [
     "ACS_PUMS_EARNINGS_SOURCE_COLUMNS",
     "AcsPumsEarningsUniverse",
     "AcsPumsEarningsUniverseApplication",
+    "acs_pums_earnings_universe_contract_identity",
     "apply_acs_pums_earnings_universe_zeros",
     "resolve_acs_pums_earnings_universe",
 ]
@@ -75,6 +76,43 @@ class AcsPumsEarningsUniverseApplication:
     receipt: Mapping[str, object]
 
 
+def acs_pums_earnings_universe_contract_identity() -> dict[str, object]:
+    """Return the complete cache identity for ACS earnings-universe semantics."""
+
+    rules = [
+        {
+            "rule_id": f"acs_2024_pums_{source.lower()}_age_15_plus",
+            "source_column": source,
+            "mapped_column": mapped,
+        }
+        for mapped, source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.items()
+    ]
+    body: dict[str, object] = {
+        "version": _RULE_VERSION,
+        "source_dataset": "2024 ACS 1-year PUMS",
+        "source_channel": _ACS_SUPPORT_CHANNEL,
+        "minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
+        "rules": rules,
+        "produced_frame_semantics": _PRODUCED_FRAME_SEMANTICS,
+        "out_of_universe_person_policy": (
+            "materialize mapped zero only through the named universe rule; "
+            "preserve the raw PUMS blank"
+        ),
+        "eligible_person_null_policy": (
+            "fail at recipient predictor source preflight before coercion"
+        ),
+        "empty_universe_tax_unit_policy": (
+            "retain the recipient with receipted zero earnings predictors"
+        ),
+        "person_allocation_policy": (
+            "allocate earnings only to age-eligible people; never use an "
+            "out-of-universe first-person fallback"
+        ),
+        "aggregation": _AGGREGATION_SEMANTICS,
+    }
+    return {**body, "sha256": _mapping_sha256(body)}
+
+
 def apply_acs_pums_earnings_universe_zeros(
     frame: Frame,
     *,
@@ -84,11 +122,11 @@ def apply_acs_pums_earnings_universe_zeros(
 ) -> AcsPumsEarningsUniverseApplication:
     """Materialize mapped ACS earnings zeros only below the declared age floor.
 
-    Raw ``WAGP``/``SEMP`` blanks remain untouched. A pre-existing mapped zero is
-    accepted because resume reconstructs the same deterministic application;
-    any nonzero mapped value or nonblank raw value below the declared age floor
-    fails with the responsible rule id. Eligible nulls deliberately remain
-    null so the primary-QRF source preflight retains its original diagnostic.
+    Raw ``WAGP``/``SEMP`` blanks remain untouched. Every mapped cell in the
+    structural scope must still be null at this producer boundary: even a
+    pre-existing zero is refused because it lacks this operator's receipt.
+    Eligible nulls deliberately remain null so the primary-QRF source preflight
+    retains its original diagnostic.
     """
 
     if frame.schema != US_SCHEMA:
@@ -130,13 +168,12 @@ def apply_acs_pums_earnings_universe_zeros(
         source_column = ACS_PUMS_EARNINGS_SOURCE_COLUMNS[column]
         rule_id = f"acs_2024_pums_{source_column.lower()}_age_15_plus"
         mapped = person[column]
-        mapped_numeric = pd.to_numeric(mapped, errors="coerce")
-        mapped_nonzero = structural & mapped.notna() & ~mapped_numeric.eq(0.0)
+        mapped_preexisting = structural & mapped.notna()
         raw_nonblank = structural & person[source_column].notna()
-        if mapped_nonzero.any() or raw_nonblank.any():
+        if mapped_preexisting.any() or raw_nonblank.any():
             failures.append(
-                f"{rule_id}: out_of_universe_mapped_nonzero_rows="
-                f"{int(mapped_nonzero.sum())}, raw_source_nonblank_rows="
+                f"{rule_id}: unreceipted_preexisting_mapped_rows="
+                f"{int(mapped_preexisting.sum())}, raw_source_nonblank_rows="
                 f"{int(raw_nonblank.sum())}"
             )
     if failures:

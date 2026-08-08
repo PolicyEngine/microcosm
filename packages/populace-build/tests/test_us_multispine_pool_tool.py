@@ -1589,7 +1589,81 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         assert changed_store.load_deepest() is None
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4))
+def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    stack = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(),
+        _many_household_source_frame(measured_offset=1_000.0),
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
+
+    def identity() -> dict[str, object]:
+        return pool_tool._stacked_checkpoint_base_identity(
+            verified,
+            stack_receipt=stack.receipt,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            policyengine_us_version="fixture-engine",
+        )
+
+    current = identity()
+    pool_code = current["pool_code"]
+    assert current["materializer_version"] == 6
+    assert current["stacked_authority"]["version"] == 6
+    assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
+    assert pool_code["acs_pums_earnings_universe_contract"] == (
+        pool_tool.acs_pums_earnings_universe_contract_identity()
+    )
+    assert pool_code["us_qbi_reconciliation_contract"] == (
+        pool_tool.us_qbi_reconciliation_contract_identity()
+    )
+
+    with monkeypatch.context() as changed:
+        changed.setattr(pool_tool, "PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION", 5)
+        stale_qrf = identity()
+    with monkeypatch.context() as changed:
+        acs_contract = copy.deepcopy(
+            pool_tool.acs_pums_earnings_universe_contract_identity()
+        )
+        acs_contract["minimum_age"] = 14
+        acs_body = dict(acs_contract)
+        acs_body.pop("sha256")
+        acs_contract["sha256"] = hashlib.sha256(
+            pool_tool._canonical_json_bytes(acs_body)
+        ).hexdigest()
+        changed.setattr(
+            pool_tool,
+            "acs_pums_earnings_universe_contract_identity",
+            lambda: acs_contract,
+        )
+        stale_acs = identity()
+    with monkeypatch.context() as changed:
+        qbi_contract = copy.deepcopy(
+            pool_tool.us_qbi_reconciliation_contract_identity()
+        )
+        qbi_contract["execution_scope"] = "recipient_subset"
+        changed.setattr(
+            pool_tool,
+            "us_qbi_reconciliation_contract_identity",
+            lambda: qbi_contract,
+        )
+        stale_qbi = identity()
+
+    digests = {
+        pool_tool._pool_checkpoint_identity_sha256(candidate)
+        for candidate in (current, stale_qrf, stale_acs, stale_qbi)
+    }
+    assert len(digests) == 4
+
+
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -1637,7 +1711,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 5
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 6
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
