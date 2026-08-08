@@ -2,11 +2,11 @@
 
 ## State
 
-Round 5 is in progress on `smoke-gapfill-ordering-fix`, starting from exact
-HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1 through C4 and A1 are
-implemented; the remaining work is the complete proof battery and final
-report. Work is local and offline: no push, GitHub,
-network, 1% smoke, state shelving, or root build journal is in scope.
+Round 5 is complete on `smoke-gapfill-ordering-fix`, starting from exact HEAD
+`b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1 through C4 and A1 are
+implemented, the proof battery is green, and `FINAL_REPORT.md` contains the
+gradeable receipts. Work remained local and offline: no push, GitHub, network,
+1% smoke, state shelving, or root build journal was used.
 
 The Round 4 verifier report has been read in full. Its five required changes
 are C1 cross-arm earnings-universe semantics, C2 authority/schema v6 bumps,
@@ -133,9 +133,14 @@ ordered rejection contracts, and A1 precise changelog coverage.
 - The final committed-code replay of all twelve verifier probes passes as 48
   maintained cases: probes 1--6 = 8, probes 7--9 = 8, probe 10 = 15 stale v1--v5
   cases, and probes 11--12 = 17 canonical-seam/starvation cases.
+- The explicit final C1/C4 universe and allocation selection passes 12/12, and
+  the standalone #583 source-spine-blindness guard passes exactly 495 tests on
+  final HEAD.
+- An independent read-only audit found no actionable Round 5 bug, regression,
+  missing required test, or evidence-count inconsistency. The complete report
+  is written to `FINAL_REPORT.md`.
 
 ## Next
 
-1. Complete the final line-level audit and independent review.
-2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
-   the final report to stdout.
+1. External verification may run the next 1% smoke; this round deliberately did
+   not run it.
