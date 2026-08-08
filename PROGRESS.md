@@ -1,48 +1,42 @@
-# Progress
+# Round 5 progress
 
 ## State
 
-Populace #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+Round 5 is in progress on `smoke-gapfill-ordering-fix`, starting from exact
+HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. The worktree was clean at
+start. Work is local and offline: no push, GitHub, network, 1% smoke, state
+shelving, or root build journal is in scope.
+
+The Round 4 verifier report has been read in full. Its five required changes
+are C1 cross-arm earnings-universe semantics, C2 authority/schema v6 bumps,
+C3 live QBI reconciliation receipt authentication, C4 named and correctly
+ordered rejection contracts, and A1 precise changelog coverage.
 
 ## Done
 
-- Confirmed a clean starting worktree at `aef1c56`.
-- Read the repository guidance and established the #515 donor carve as the
-  screen's required downstream boundary.
-- Started source-level audits of every donor-frame consumer, checkpoint
-  validation, row-count pins, and existing donor-fact summaries.
-- Attempted the requested GitNexus impact workflow; the managed filesystem
-  denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
-  call sites and tests.
-- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
-  structural rationale and pinned-artifact receipts.
-- Added a whole-row screen on grouped raw person `home_mortgage_interest`
-  after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
-- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
-  checkpoint regression track the live constant while retaining literal-v1
-  corruptions.
-- Added regression coverage for the exact grouped boundary, whole-row removal,
-  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
-- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
-  audit, expected 208,611-row real-artifact effect, verification results, count
-  sweep, and deliberately untouched surfaces.
+- Confirmed the requested branch and exact starting HEAD.
+- Confirmed the starting worktree was clean.
+- Read `AGENTS.md`, `CLAUDE.md`, `README.md`, and `DESIGN.md`.
+- Read the PolicyEngine data and development-standards skill instructions.
+- Read all 164 lines of the Round 4 verification report.
+- Recorded the verifier's exact twelve probes and full-workspace proof
+  requirements.
+- Inspected local base refs without fetching, as network use is prohibited.
+  The branch is 15 commits ahead of and 3 commits behind the locally available
+  `origin/main`; the user explicitly required continuing in this worktree.
 
 ## Next
 
-- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on populace#515.
+1. Trace the certified ASEC producer and artifact semantics, then encode the
+   same under-15 earnings representation for stacked ACS recipients and
+   person allocation.
+2. Bump and bind both changed authority surfaces to v6 with stale-version
+   rejection coverage.
+3. Authenticate QBI transition receipts at every generation, checkpoint,
+   resume, manifest, and publication boundary.
+4. Restore the named universe-mutation and eligible-null preflight contracts.
+5. Complete the changelog and ordering documentation.
+6. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
+   chunked foreground full workspace battery, and changed-file quality gates.
+7. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
+   the final report to stdout.
