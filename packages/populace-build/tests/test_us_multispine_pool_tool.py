@@ -23,7 +23,6 @@ import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 import populace.build.us_runtime.multispine_pool as multispine_pool_module
-import populace.build.us_runtime.qbi_inputs as qbi_inputs_module
 import populace.build.us_runtime.stacked_spine as stacked_spine_module
 from populace.build.gates import GateReport, GateResult
 from populace.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
@@ -44,6 +43,7 @@ from populace.build.us_runtime.puf_support import (
 )
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_OUTPUT_COLUMNS,
+    bind_us_qbi_reconciliation_transition_authority,
     us_qbi_reconciliation_change_receipt,
     with_us_qbi_input_reconciliation,
 )
@@ -57,6 +57,8 @@ from populace.build.us_runtime.take_up_contract import (
     take_up_contract_identity,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+_FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 
 @pytest.fixture(scope="module")
@@ -183,20 +185,22 @@ def _fixture_qbi_stage_output(
         person["SEMP"] = 0.0
     if "self_employment_income_before_lsr" not in person:
         person["self_employment_income_before_lsr"] = 0.0
+    if "non_qualified_dividend_income" not in person:
+        person["non_qualified_dividend_income"] = 0.0
     for column in US_QBI_OUTPUT_COLUMNS:
         if column not in person:
             person[column] = 0.0
     before = _replace_person(frame, person)
     after = with_us_qbi_input_reconciliation(before)
+    qbi_receipt = us_qbi_reconciliation_change_receipt(before, after)
+    after = bind_us_qbi_reconciliation_transition_authority(after, qbi_receipt)
     return PoolStageOutput(
         after,
         {
             **dict(receipt),
-            "qbi_input_reconciliation": us_qbi_reconciliation_change_receipt(
-                before,
-                after,
-            ),
+            "qbi_input_reconciliation": qbi_receipt,
         },
+        qbi_transition_authority_sha256=qbi_receipt["sha256"],
     )
 
 
@@ -321,9 +325,14 @@ def _red_pool_result(
                     _replace_person(frame, person),
                     {"fixture_stage": name},
                 )
+            receipt: dict[str, object] = {"fixture_stage": name}
+            if name == "seed" and authenticated_qbi:
+                receipt["programs"] = {
+                    _FIXTURE_SEED_PERSON_COLUMN: {"entity": "person"},
+                }
             return PoolStageOutput(
                 _replace_person(frame, person),
-                {"fixture_stage": name},
+                receipt,
             )
 
         return apply
@@ -335,7 +344,8 @@ def _red_pool_result(
         person["fixture_derived"] = person["fixture_transfer"] + 1.0
 
     def seed(person: pd.DataFrame) -> None:
-        person["fixture_seed"] = person["fixture_derived"] > 0.0
+        column = _FIXTURE_SEED_PERSON_COLUMN if authenticated_qbi else "fixture_seed"
+        person[column] = person["fixture_derived"] > 0.0
 
     def simulate(person: pd.DataFrame) -> None:
         channels = person[support_channel_column("person")]
@@ -545,6 +555,10 @@ def _run_checkpoint_fixture(
                     _replace_person(frame, person),
                     receipt,
                 )
+            if name == "seed" and authenticated_qbi:
+                receipt["programs"] = {
+                    _FIXTURE_SEED_PERSON_COLUMN: {"entity": "person"},
+                }
             return PoolStageOutput(_replace_person(frame, person), receipt)
 
         return apply
@@ -575,7 +589,7 @@ def _run_checkpoint_fixture(
         seed=stage(
             "seed",
             lambda person: person.__setitem__(
-                "fixture_seed",
+                (_FIXTURE_SEED_PERSON_COLUMN if authenticated_qbi else "fixture_seed"),
                 person["fixture_derived"] > 0.0,
             ),
         ),
@@ -610,6 +624,7 @@ def _run_production_impute_checkpoint_fixture(
         transform: Callable[[pd.DataFrame], None],
         *,
         reconcile_qbi: bool = False,
+        seed_person_output: str | None = None,
     ) -> Callable[[Frame], PoolStageOutput]:
         def apply(frame: Frame) -> PoolStageOutput:
             person = frame.table("person").copy()
@@ -619,9 +634,14 @@ def _run_production_impute_checkpoint_fixture(
                     _replace_person(frame, person),
                     {"fixture_stage": True},
                 )
+            receipt: dict[str, object] = {"fixture_stage": True}
+            if seed_person_output is not None:
+                receipt["programs"] = {
+                    seed_person_output: {"entity": "person"},
+                }
             return PoolStageOutput(
                 _replace_person(frame, person),
-                {"fixture_stage": True},
+                receipt,
             )
 
         return apply
@@ -641,7 +661,8 @@ def _run_production_impute_checkpoint_fixture(
             reconcile_qbi=True,
         ),
         seed=stage(
-            lambda person: person.__setitem__("fixture_seed", True),
+            lambda person: person.__setitem__(_FIXTURE_SEED_PERSON_COLUMN, True),
+            seed_person_output=_FIXTURE_SEED_PERSON_COLUMN,
         ),
         simulate=stage(
             lambda person: person.__setitem__(
@@ -2113,12 +2134,14 @@ def test_legacy_two_spine_fixture_is_origin_main_byte_exact(
     monkeypatch.setattr(
         multispine_pool_module,
         "_validate_qbi_stage_receipt",
-        lambda _frame, _stage_receipts, *, boundary: None,
+        lambda _frame, _stage_receipts, *, boundary, transition_authority_sha256: None,
     )
     monkeypatch.setattr(
         pool_tool,
         "_validate_qbi_stage_receipt",
-        lambda _frame, _stage_receipts, *, route, boundary: None,
+        lambda _frame, _stage_receipts, *, route, boundary, transition_authority_sha256: (
+            None
+        ),
     )
     store = _checkpoint_fixture_store(pool_tool, tmp_path / "checkpoints")
     store.bind_input_receipts(_checkpoint_fixture_input_receipts())
@@ -2205,7 +2228,9 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     monkeypatch.setattr(
         pool_tool,
         "_validate_qbi_stage_receipt",
-        lambda _frame, _stage_receipts, *, route, boundary: None,
+        lambda _frame, _stage_receipts, *, route, boundary, transition_authority_sha256: (
+            None
+        ),
     )
 
     output = tmp_path / "legacy-pool.h5"
@@ -3990,6 +4015,38 @@ def test_durable_checkpoint_write_rejects_forged_qbi_receipt(
     assert not store.checkpoint_path("simulated").exists()
 
 
+def test_durable_checkpoint_write_rejects_forged_qbi_transition_authority(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    checkpoint_root = tmp_path / "checkpoints"
+    store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+
+    def forge_after_emission(checkpoint: MultispinePoolCheckpoint) -> None:
+        if checkpoint.stage != "simulated":
+            store.write(checkpoint)
+            return
+        store.write(
+            replace(
+                checkpoint,
+                qbi_transition_authority_sha256="0" * 64,
+            )
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="independently carried transition authority",
+    ):
+        _run_checkpoint_fixture(
+            pool_tool,
+            tmp_path,
+            store=SimpleNamespace(write=forge_after_emission),
+        )
+
+    assert not store.checkpoint_path("simulated").exists()
+
+
 def test_durable_checkpoint_load_rejects_forged_qbi_receipt_and_falls_back(
     pool_tool: ModuleType,
     tmp_path: Path,
@@ -4180,6 +4237,7 @@ def test_stacked_manifest_and_publication_reject_forged_qbi_receipt(
     receipt["sha256"] = "0" * 64
     stacked = SimpleNamespace(
         frame=legacy.frame,
+        qbi_transition_authority_sha256=(legacy.qbi_transition_authority_sha256),
         stage_receipts={
             "impute": {
                 "stacked_post_puf_transfer": {
@@ -4240,19 +4298,13 @@ def test_publication_rejects_mutated_qbi_output_with_regenerated_receipt(
         tmp_path,
     )
     person = result.frame.table("person").copy()
-    person.loc[person.index[0], "qualified_bdc_income"] = 0.25
+    person.loc[person.index[0], "non_qualified_dividend_income"] = 100.0
+    person.loc[person.index[0], "qualified_bdc_income"] = 50.0
     mutated_frame = _replace_person(result.frame, person)
     receipts = copy.deepcopy(result.stage_receipts)
-    receipt = receipts["derive"]["qbi_input_reconciliation"]
-    receipt["output_declared_person_values_sha256"] = (
-        qbi_inputs_module._qbi_person_values_sha256(
-            person,
-            columns=qbi_inputs_module.US_QBI_RECONCILED_PERSON_COLUMNS,
-        )
+    receipts["derive"]["qbi_input_reconciliation"] = (
+        us_qbi_reconciliation_change_receipt(mutated_frame, mutated_frame)
     )
-    unsigned = dict(receipt)
-    unsigned.pop("sha256")
-    receipt["sha256"] = qbi_inputs_module._qbi_receipt_sha256(unsigned)
     forged = replace(
         result,
         frame=mutated_frame,
@@ -4261,7 +4313,27 @@ def test_publication_rejects_mutated_qbi_output_with_regenerated_receipt(
 
     with pytest.raises(
         ValueError,
-        match="legacy publication entry: QBI output differs from the deterministic kernel",
+        match=(
+            "legacy production manifest: QBI receipt differs from the "
+            "independently carried transition authority"
+        ),
+    ):
+        pool_tool._manifest_payload(
+            result=forged,
+            outputs=outputs,
+            verified_inputs=verified_inputs,
+            acs_source_manifest=source_manifest,
+            input_receipts={},
+            checkpoint_provenance={},
+            publication_run_id="reissued-qbi-manifest",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "legacy publication entry: QBI receipt differs from the "
+            "independently carried transition authority"
+        ),
     ):
         pool_tool._write_outputs(
             forged,

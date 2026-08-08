@@ -146,6 +146,7 @@ from populace.build.us_runtime.puf_support import (
     US_PUF_SUPPORT_FIT_NAME,
 )
 from populace.build.us_runtime.qbi_inputs import (
+    us_qbi_post_reconciliation_person_columns,
     us_qbi_reconciliation_contract_identity,
     validate_us_qbi_reconciliation_live_output,
 )
@@ -279,6 +280,7 @@ class StackedPoolBuildResult:
     stage_receipts: Mapping[str, Mapping[str, object]]
     terminal_gates: tuple[GateResult, GateResult]
     release_id: str
+    qbi_transition_authority_sha256: str | None = None
 
     @property
     def simulation_ready(self) -> bool:
@@ -1351,6 +1353,9 @@ class _PoolStageCheckpointStore:
                 checkpoint.stage_receipts,
                 route=qbi_route,
                 boundary=f"pool {stage} durable checkpoint write",
+                transition_authority_sha256=(
+                    checkpoint.qbi_transition_authority_sha256
+                ),
             )
         stored_frame = persistent_frame
         if stage == "simulated":
@@ -1411,6 +1416,10 @@ class _PoolStageCheckpointStore:
                 else None
             ),
         }
+        if checkpoint.qbi_transition_authority_sha256 is not None:
+            metadata["qbi_transition_authority_sha256"] = (
+                checkpoint.qbi_transition_authority_sha256
+            )
         path = self.checkpoint_path(stage)
         started_at = time.perf_counter()
         write_frame_checkpoint(path, stored_frame, metadata=metadata)
@@ -1434,6 +1443,15 @@ class _PoolStageCheckpointStore:
                 "row_counts": _frame_row_counts(stored_frame),
                 "frame_schema": _frame_schema_payload(stored_frame),
                 "frame_metadata": metadata["frame_metadata"],
+                **(
+                    {
+                        "qbi_transition_authority_sha256": metadata[
+                            "qbi_transition_authority_sha256"
+                        ]
+                    }
+                    if "qbi_transition_authority_sha256" in metadata
+                    else {}
+                ),
             },
         )
         receipts_record: dict[str, object] = {
@@ -1680,7 +1698,12 @@ class _PoolStageCheckpointStore:
                 expected_identity=expected_identity,
                 expected_identity_sha256=expected_identity_sha256,
             )
-            for key in ("row_counts", "frame_schema", "frame_metadata"):
+            for key in (
+                "row_counts",
+                "frame_schema",
+                "frame_metadata",
+                "qbi_transition_authority_sha256",
+            ):
                 if metadata.get(key) != manifest.get(key):
                     raise ValueError(
                         f"{stage} checkpoint {key} differs from its sidecar"
@@ -1704,6 +1727,9 @@ class _PoolStageCheckpointStore:
             )
             assembly_receipt = metadata.get("assembly_receipt")
             stage_receipts = metadata.get("stage_receipts")
+            qbi_transition_authority_sha256 = metadata.get(
+                "qbi_transition_authority_sha256"
+            )
             input_receipts = metadata.get("input_receipts")
             if not isinstance(assembly_receipt, Mapping):
                 raise ValueError(
@@ -1751,6 +1777,7 @@ class _PoolStageCheckpointStore:
                     restored_stage_receipts,
                     route=qbi_route,
                     boundary="pool simulated durable checkpoint load",
+                    transition_authority_sha256=(qbi_transition_authority_sha256),
                 )
 
             checkpoint = MultispinePoolCheckpoint(
@@ -1759,6 +1786,7 @@ class _PoolStageCheckpointStore:
                 assembly_receipt=dict(assembly_receipt),
                 stage_receipts=restored_stage_receipts,
                 simulation_frame=simulation_frame,
+                qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
             )
             self.bind_input_receipts(input_receipts)
             self._attempts[stage] = {
@@ -2542,6 +2570,7 @@ def _validate_qbi_stage_receipt(
     *,
     route: str,
     boundary: str,
+    transition_authority_sha256: str | None,
 ) -> None:
     receipt = _qbi_receipt_from_stage_receipts(
         stage_receipts,
@@ -2552,6 +2581,10 @@ def _validate_qbi_stage_receipt(
         frame,
         receipt,
         boundary=boundary,
+        expected_transition_authority_sha256=transition_authority_sha256,
+        allowed_post_reconciliation_person_columns=(
+            us_qbi_post_reconciliation_person_columns(stage_receipts.get("seed"))
+        ),
     )
 
 
@@ -2572,6 +2605,7 @@ def _emit_stacked_checkpoint(
     assembly_receipt: Mapping[str, object],
     stage_receipts: Mapping[str, Mapping[str, object]],
     simulation_frame: Frame | None = None,
+    qbi_transition_authority_sha256: str | None = None,
 ) -> None:
     if stage in {"transferred", "simulated"}:
         _validate_stacked_post_puf_stage_receipt(
@@ -2584,6 +2618,7 @@ def _emit_stacked_checkpoint(
             stage_receipts,
             route="stacked",
             boundary="stacked simulated checkpoint emission",
+            transition_authority_sha256=qbi_transition_authority_sha256,
         )
     if callback is None:
         return
@@ -2596,6 +2631,7 @@ def _emit_stacked_checkpoint(
                 name: dict(receipt) for name, receipt in stage_receipts.items()
             },
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
     )
 
@@ -2640,6 +2676,7 @@ def build_stacked_pool(
         )
         assembly_receipt = current.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
         receipts: dict[str, Mapping[str, object]] = {}
+        qbi_transition_authority_sha256: str | None = None
         resume_stage: str | None = None
         _emit_stacked_checkpoint(
             checkpoint,
@@ -2671,6 +2708,7 @@ def build_stacked_pool(
         receipts = {
             name: dict(receipt) for name, receipt in resume.stage_receipts.items()
         }
+        qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
         resume_stage = resume.stage
         if resume_stage in {"transferred", "simulated"}:
             _validate_stacked_post_puf_stage_receipt(
@@ -2683,6 +2721,7 @@ def build_stacked_pool(
                 receipts,
                 route="stacked",
                 boundary="stacked simulated checkpoint resume",
+                transition_authority_sha256=(qbi_transition_authority_sha256),
             )
         for completed_phase in (
             "assembled",
@@ -2890,6 +2929,7 @@ def build_stacked_pool(
             current
         )
         derived = derive_multispine_pool_inputs(derivation_input)
+        qbi_transition_authority_sha256 = derived.qbi_transition_authority_sha256
         current = canonicalize_frame_string_dtypes(
             derived.frame,
             boundary="stacked pool derive output",
@@ -2946,6 +2986,7 @@ def build_stacked_pool(
             assembly_receipt=assembly_receipt,
             stage_receipts=receipts,
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
         mark_phase("simulated")
     else:
@@ -2979,6 +3020,7 @@ def build_stacked_pool(
         stage_receipts=receipts,
         terminal_gates=(completeness, battery),
         release_id=release_id,
+        qbi_transition_authority_sha256=qbi_transition_authority_sha256,
     )
 
 
@@ -3001,6 +3043,7 @@ def _manifest_payload(
         result.stage_receipts,
         route="legacy",
         boundary="legacy production manifest",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
     )
     status = "simulation_ready" if result.simulation_ready else "agreement_failed"
     puf_donor_receipt = input_receipts.get("puf_donor")
@@ -3098,6 +3141,7 @@ def _stacked_manifest_payload(
         result.stage_receipts,
         route="stacked",
         boundary="stacked production manifest",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
     )
     status = "simulation_ready" if result.simulation_ready else "gate_failed"
     puf_donor_receipt = input_receipts.get("puf_donor")
@@ -3283,6 +3327,7 @@ def _write_outputs(
         result.stage_receipts,
         route="legacy",
         boundary="legacy publication entry",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
     )
     if input_receipts is None:
         if loaded is None:
@@ -3375,6 +3420,7 @@ def _write_stacked_outputs(
         result.stage_receipts,
         route="stacked",
         boundary="stacked publication entry",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
     )
     publication_run_id = _new_publication_run_id()
     _atomic_write_json(

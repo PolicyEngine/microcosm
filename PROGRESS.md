@@ -3,9 +3,9 @@
 ## State
 
 Round 5 is in progress on `smoke-gapfill-ordering-fix`, starting from exact
-HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1 through C4 are implemented;
-the remaining work is A1 documentation and the complete proof battery. Work is
-local and offline: no push, GitHub,
+HEAD `b4ecd763b21507f659d1122bfbca6fdb7d238fee`. C1 through C4 and A1 are
+implemented; the remaining work is the complete proof battery and final
+report. Work is local and offline: no push, GitHub,
 network, 1% smoke, state shelving, or root build journal is in scope.
 
 The Round 4 verifier report has been read in full. Its five required changes
@@ -79,10 +79,28 @@ ordered rejection contracts, and A1 precise changelog coverage.
   nonfinite rejection semantics, v6 identities, full QBI authentication
   lifecycle, and explicit fit-weight/checkpoint/manifest/publication audit
   rows are now documented.
+- Independent review found and reproduced the remaining QBI exactness gaps
+  before the workspace battery: subset-only live universe comparison, no live
+  binding for QBI drivers, Boolean count acceptance, a `None`-valued ambiguous
+  route, arbitrary added-column laundering, forged preservation counts, and a
+  self-consistent alternate fixed point with a freshly generated receipt. The
+  receipt now requires exact live universe equality, exact driver binding,
+  exact preservation equations, and a canonical seed-only person inventory;
+  Boolean counts and wrong-route key presence fail. Generation separately
+  anchors the validated transition in immutable frame metadata and a typed
+  receipt SHA carried outside stage receipts through results and checkpoints.
+  Durable checkpoint H5 metadata and sidecars content-bind that authority, and
+  every resume/manifest/publication boundary requires it. Coherently rehashed
+  universes, driver/output fixed points, laundered columns, forged counts, and
+  freshly reissued alternate-fixed-point receipts now fail closed.
+- The QBI (31), multispine runtime (49), and pool-tool (135) suites pass after
+  the independent transition-authority propagation; focused regressions also
+  prove authority mismatch rejection at resume, durable write, manifest
+  construction, and publication.
 
 ## Next
 
-1. Run focused tests, the exact 495-test #583 guard, all twelve probes, the
+1. Run the exact 495-test #583 guard, all twelve probes, the
    chunked foreground full workspace battery, and changed-file quality gates.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.

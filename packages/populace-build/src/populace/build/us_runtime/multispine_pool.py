@@ -66,6 +66,8 @@ from populace.build.us_runtime.prior_year_income import (
 from populace.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.qbi_inputs import (
+    bind_us_qbi_reconciliation_transition_authority,
+    us_qbi_post_reconciliation_person_columns,
     us_qbi_reconciliation_change_receipt,
     validate_us_qbi_reconciliation_live_output,
     validate_us_qbi_reconciliation_transition,
@@ -243,6 +245,7 @@ class PoolStageOutput:
 
     frame: Frame
     receipt: Mapping[str, object] = field(default_factory=dict)
+    qbi_transition_authority_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.frame, Frame):
@@ -252,6 +255,14 @@ class PoolStageOutput:
             )
         if not isinstance(self.receipt, Mapping):
             raise TypeError("PoolStageOutput.receipt must be a mapping.")
+        if self.qbi_transition_authority_sha256 is not None and not isinstance(
+            self.qbi_transition_authority_sha256,
+            str,
+        ):
+            raise TypeError(
+                "PoolStageOutput.qbi_transition_authority_sha256 must be a "
+                "string when present."
+            )
 
 
 @dataclass(frozen=True)
@@ -268,6 +279,7 @@ class MultispinePoolCheckpoint:
     assembly_receipt: Mapping[str, object]
     stage_receipts: Mapping[str, Mapping[str, object]]
     simulation_frame: Frame | None = None
+    qbi_transition_authority_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.stage not in POOL_CHECKPOINT_STAGE_ORDER:
@@ -303,6 +315,14 @@ class MultispinePoolCheckpoint:
                 "Only a simulated multispine pool checkpoint may carry a "
                 "simulation_frame."
             )
+        if self.qbi_transition_authority_sha256 is not None and not isinstance(
+            self.qbi_transition_authority_sha256,
+            str,
+        ):
+            raise TypeError(
+                "MultispinePoolCheckpoint.qbi_transition_authority_sha256 must "
+                "be a string when present."
+            )
 
 
 @dataclass(frozen=True)
@@ -314,6 +334,7 @@ class MultispinePoolResult:
     provenance_counts: Mapping[str, Mapping[str, object]]
     stage_receipts: Mapping[str, Mapping[str, object]]
     agreement_gate: GateResult
+    qbi_transition_authority_sha256: str | None = None
 
     @property
     def simulation_ready(self) -> bool:
@@ -1592,19 +1613,25 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     )
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
     qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
-    validate_us_qbi_reconciliation_live_output(
+    authorized = bind_us_qbi_reconciliation_transition_authority(
         completed.frame,
         qbi_receipt,
+    )
+    validate_us_qbi_reconciliation_live_output(
+        authorized,
+        qbi_receipt,
         boundary="multispine pool derivation output",
+        expected_transition_authority_sha256=qbi_receipt["sha256"],
     )
     return PoolStageOutput(
-        completed.frame,
+        authorized,
         {
             "phase": _POST_CLONE_PHASE,
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": dict(qbi_receipt),
         },
+        qbi_transition_authority_sha256=qbi_receipt["sha256"],
     )
 
 
@@ -2066,6 +2093,7 @@ def _validated_resume_checkpoint(
             resume.frame,
             receipts,
             boundary="multispine pool simulated checkpoint resume",
+            transition_authority_sha256=(resume.qbi_transition_authority_sha256),
         )
     return assembly_receipt, receipts
 
@@ -2078,8 +2106,7 @@ def _qbi_receipt_from_stage_receipts(
     derive = stage_receipts.get("derive")
     if not isinstance(derive, Mapping):
         raise ValueError(f"{boundary}: stage receipts have no derive object.")
-    pool_derivation = derive.get("pool_derivation")
-    if pool_derivation is not None:
+    if "pool_derivation" in derive:
         raise ValueError(
             f"{boundary}: legacy checkpoint used the stacked derive receipt route."
         )
@@ -2096,6 +2123,7 @@ def _validate_qbi_stage_receipt(
     stage_receipts: Mapping[str, Mapping[str, object]],
     *,
     boundary: str,
+    transition_authority_sha256: str | None,
 ) -> None:
     receipt = _qbi_receipt_from_stage_receipts(
         stage_receipts,
@@ -2105,6 +2133,10 @@ def _validate_qbi_stage_receipt(
         frame,
         receipt,
         boundary=boundary,
+        expected_transition_authority_sha256=transition_authority_sha256,
+        allowed_post_reconciliation_person_columns=(
+            us_qbi_post_reconciliation_person_columns(stage_receipts.get("seed"))
+        ),
     )
 
 
@@ -2116,6 +2148,7 @@ def _emit_pool_checkpoint(
     assembly_receipt: Mapping[str, object],
     stage_receipts: Mapping[str, Mapping[str, object]],
     simulation_frame: Frame | None = None,
+    qbi_transition_authority_sha256: str | None = None,
 ) -> None:
     if callback is None:
         return
@@ -2124,6 +2157,7 @@ def _emit_pool_checkpoint(
             frame,
             stage_receipts,
             boundary="multispine pool simulated checkpoint emission",
+            transition_authority_sha256=qbi_transition_authority_sha256,
         )
     callback(
         MultispinePoolCheckpoint(
@@ -2134,6 +2168,7 @@ def _emit_pool_checkpoint(
                 name: dict(receipt) for name, receipt in stage_receipts.items()
             },
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
     )
 
@@ -2204,6 +2239,7 @@ def run_multispine_pool_path(
             boundary="multispine pool assembly",
         )
         receipts: dict[str, Mapping[str, object]] = {}
+        qbi_transition_authority_sha256: str | None = None
         resume_stage = None
         _emit_pool_checkpoint(
             checkpoint,
@@ -2218,6 +2254,7 @@ def run_multispine_pool_path(
             resume.frame,
             boundary=f"multispine pool {resume.stage} resume",
         )
+        qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
         resume_stage = resume.stage
 
     if resume_stage in {None, "assembled"}:
@@ -2301,6 +2338,10 @@ def run_multispine_pool_path(
                 boundary=f"multispine pool {stage_name} output",
             )
             receipts[stage_name] = dict(outcome.receipt)
+            if stage_name == "derive":
+                qbi_transition_authority_sha256 = (
+                    outcome.qbi_transition_authority_sha256
+                )
 
         simulated = operators["simulate"](current)
         if not isinstance(simulated, PoolStageOutput):
@@ -2325,6 +2366,7 @@ def run_multispine_pool_path(
             assembly_receipt=assembly_receipt,
             stage_receipts=receipts,
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
     else:
         if resume.simulation_frame is None:  # pragma: no cover - dataclass validates
@@ -2358,4 +2400,5 @@ def run_multispine_pool_path(
         provenance_counts=counts,
         stage_receipts=receipts,
         agreement_gate=agreement,
+        qbi_transition_authority_sha256=qbi_transition_authority_sha256,
     )

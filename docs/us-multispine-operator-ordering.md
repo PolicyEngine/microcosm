@@ -217,19 +217,30 @@ are allowed only when named by the ACS native-input receipt.
    identities: every QBI detail row is still reconciled and checked. The
    operator declares the base self-employment rewrite alongside its QBI
    outputs and receipts a whole-person input-table digest, a declared-output
-   digest, changed-row counts, exact preservation of every undeclared entity,
-   link, weight, stratum, mass-log, and metadata surface, an exact
-   structural-source exclusion count, and zero forbidden structural-source
-   mutations. Receipt generation recomputes the deterministic transition and
-   validates exact keys, types, nonnegative counts, nested universe receipts,
-   preservation claims, and every SHA-256. The same live-output digest and
-   kernel fixed-point checks run at simulated checkpoint emission, durable
-   checkpoint write and load, simulated resume, legacy and stacked manifest
-   construction, and both publication entry points. Legacy receipts must use
+   digest, changed-row counts, exact preservation of every undeclared person
+   column, entity, link, weight, stratum, mass-log, and metadata surface, an
+   exact structural-source exclusion count, and zero forbidden
+   structural-source mutations. Receipt generation recomputes the complete
+   deterministic before/after transition and validates exact keys, types,
+   nonnegative counts, nested universe receipts, preservation claims, and
+   every SHA-256. Only after that succeeds does the derive boundary bind the
+   canonical receipt SHA and its preimage/output digests into deeply immutable
+   frame metadata and a separately carried transition-authority field.
+   Checkpoint H5 metadata and its sidecar content-bind that independent field.
+   Simulated checkpoint emission, durable checkpoint write and load, simulated
+   resume, legacy and stacked manifest construction, and both publication
+   entry points require the live receipt SHA to match the carried authority.
+   They also recompute the declared-output and QBI-driver digests, exact live
+   universe receipt, kernel fixed point, preservation-count equations, and
+   exact person-column inventory. The only later person additions permitted by
+   that inventory are outputs named by the checked-in take-up contract and the
+   seed-stage receipt; an arbitrary receipt cannot whitelist a column. Legacy
+   receipts must use
    `derive.qbi_input_reconciliation`; stacked receipts must use
    `derive.pool_derivation.qbi_input_reconciliation`; missing, wrong-route, or
-   ambiguous receipts fail. A forged envelope and a mutated output paired with
-   a rebound receipt therefore fail rather than becoming publication
+   ambiguous receipts fail. A forged envelope, a laundered input inventory,
+   and even a self-consistent alternate fixed point paired with a freshly
+   generated receipt therefore fail rather than becoming publication
    authority. The tool
    retains the existing `assembled`, `transferred`, and `simulated` #599
    boundaries.

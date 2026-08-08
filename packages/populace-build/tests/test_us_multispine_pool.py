@@ -66,6 +66,7 @@ from populace.build.us_runtime.puf_support import (
 )
 from populace.build.us_runtime.qbi_inputs import (
     US_QBI_OUTPUT_COLUMNS,
+    bind_us_qbi_reconciliation_transition_authority,
     us_qbi_reconciliation_change_receipt,
     with_us_qbi_input_reconciliation,
 )
@@ -85,6 +86,8 @@ from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
 )
+
+_FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
@@ -423,13 +426,28 @@ def _fixture_pool_operators(
             person[column] = 0.0
         before = _replace_person(frame, person)
         after = with_us_qbi_input_reconciliation(before)
+        receipt = us_qbi_reconciliation_change_receipt(before, after)
+        after = bind_us_qbi_reconciliation_transition_authority(after, receipt)
         return PoolStageOutput(
             after,
             {
                 "operator": "derive",
-                "qbi_input_reconciliation": (
-                    us_qbi_reconciliation_change_receipt(before, after)
-                ),
+                "qbi_input_reconciliation": receipt,
+            },
+            qbi_transition_authority_sha256=receipt["sha256"],
+        )
+
+    def seed(frame: Frame) -> PoolStageOutput:
+        order.append("seed")
+        person = frame.table("person").copy()
+        person[_FIXTURE_SEED_PERSON_COLUMN] = person["age"] >= 40
+        return PoolStageOutput(
+            _replace_person(frame, person),
+            {
+                "operator": "seed",
+                "programs": {
+                    _FIXTURE_SEED_PERSON_COLUMN: {"entity": "person"},
+                },
             },
         )
 
@@ -440,11 +458,7 @@ def _fixture_pool_operators(
             lambda person: person.__setitem__("transferred", person["age"]),
         ),
         "derive": derive,
-        "seed": _operator(
-            "seed",
-            order,
-            lambda person: person.__setitem__("seeded", person["age"] >= 40),
-        ),
+        "seed": seed,
         "simulate": _operator(
             "simulate",
             order,
@@ -646,6 +660,22 @@ def test_pool_checkpoint_emission_requires_qbi_receipt() -> None:
         )
 
 
+def test_legacy_runtime_qbi_route_rejects_present_stacked_none() -> None:
+    with pytest.raises(
+        ValueError,
+        match="legacy checkpoint used the stacked derive receipt route",
+    ):
+        multispine_pool_module._qbi_receipt_from_stage_receipts(
+            {
+                "derive": {
+                    "qbi_input_reconciliation": {"fixture": "legacy"},
+                    "pool_derivation": None,
+                }
+            },
+            boundary="ambiguous legacy QBI route test",
+        )
+
+
 def test_pool_simulated_resume_rejects_forged_qbi_receipt() -> None:
     checkpoints: list[MultispinePoolCheckpoint] = []
     run_multispine_pool_path(
@@ -664,6 +694,7 @@ def test_pool_simulated_resume_rejects_forged_qbi_receipt() -> None:
         assembly_receipt=simulated.assembly_receipt,
         stage_receipts=stage_receipts,
         simulation_frame=simulated.simulation_frame,
+        qbi_transition_authority_sha256=(simulated.qbi_transition_authority_sha256),
     )
 
     with pytest.raises(
@@ -672,6 +703,50 @@ def test_pool_simulated_resume_rejects_forged_qbi_receipt() -> None:
             "multispine pool simulated checkpoint resume: QBI reconciliation "
             "receipt SHA-256"
         ),
+    ):
+        run_multispine_pool_path(
+            None,
+            None,
+            **_fixture_pool_operators([]),
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+            resume=forged,
+        )
+
+
+def test_pool_simulated_resume_rejects_reissued_qbi_receipt() -> None:
+    checkpoints: list[MultispinePoolCheckpoint] = []
+    run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators([]),
+        agreement_gate=lambda _frame: GateResult("fixture", True),
+        checkpoint=checkpoints.append,
+    )
+    simulated = checkpoints[-1]
+    persistent_person = simulated.frame.table("person").copy()
+    persistent_person["non_qualified_dividend_income"] = 100.0
+    persistent_person["qualified_bdc_income"] = 50.0
+    persistent = _replace_person(simulated.frame, persistent_person)
+    simulation_person = simulated.simulation_frame.table("person").copy()
+    simulation_person["non_qualified_dividend_income"] = 100.0
+    simulation_person["qualified_bdc_income"] = 50.0
+    simulation = _replace_person(simulated.simulation_frame, simulation_person)
+    receipts = copy.deepcopy(simulated.stage_receipts)
+    receipts["derive"]["qbi_input_reconciliation"] = (
+        us_qbi_reconciliation_change_receipt(persistent, persistent)
+    )
+    forged = MultispinePoolCheckpoint(
+        stage="simulated",
+        frame=persistent,
+        assembly_receipt=simulated.assembly_receipt,
+        stage_receipts=receipts,
+        simulation_frame=simulation,
+        qbi_transition_authority_sha256=(simulated.qbi_transition_authority_sha256),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="independently carried transition authority",
     ):
         run_multispine_pool_path(
             None,
@@ -1887,6 +1962,7 @@ def test_production_operator_invocations_are_total_and_guarded(
             {
                 "PoolStageOutput",
                 "_run_source_operator_chain",
+                "bind_us_qbi_reconciliation_transition_authority",
                 "dict",
                 "list",
                 "us_qbi_reconciliation_change_receipt",
@@ -1933,7 +2009,15 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "phase": phase,
                 "operator_order": list(operator_names),
                 "suboperators": [
-                    {"operator": name, "kernel_receipt": {}} for name in operator_names
+                    {
+                        "operator": name,
+                        "kernel_receipt": (
+                            {"sha256": "0" * 64}
+                            if name == "with_us_qbi_input_reconciliation"
+                            else {}
+                        ),
+                    }
+                    for name in operator_names
                 ],
             },
         )
@@ -1946,7 +2030,12 @@ def test_production_operator_invocations_are_total_and_guarded(
     monkeypatch.setattr(
         multispine_pool_module,
         "validate_us_qbi_reconciliation_live_output",
-        lambda _frame, _receipt, *, boundary: {},
+        lambda _frame, _receipt, *, boundary, expected_transition_authority_sha256: {},
+    )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "bind_us_qbi_reconciliation_transition_authority",
+        lambda current, _receipt: current,
     )
     frame = _source_frame()
     multispine_pool_module.prepare_multispine_source_inputs_for_clone(

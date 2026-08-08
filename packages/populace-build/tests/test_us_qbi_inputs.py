@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from populace.build.us_runtime import puf_support as puf_support_module
+from populace.build.us_runtime import qbi_inputs as qbi_inputs_module
 from populace.build.us_runtime.qbi_inputs import (
     QBI_ARCHIVED_ASSUMPTIONS_URL,
     QBI_ARCHIVED_CLONE_URL,
@@ -354,10 +355,19 @@ def test_change_receipt_rejects_mutated_output_even_when_regenerated() -> None:
         us_qbi_reconciliation_change_receipt(frame, reconciled)
 
 
-def test_live_output_validation_rejects_post_receipt_mutation() -> None:
-    frame = _stacked_qbi_universe_frame()
+def _authorized_qbi_output(frame: Frame) -> tuple[Frame, dict[str, object]]:
     reconciled = with_us_qbi_input_reconciliation(frame)
     receipt = us_qbi_reconciliation_change_receipt(frame, reconciled)
+    authorized = qbi_inputs_module.bind_us_qbi_reconciliation_transition_authority(
+        reconciled,
+        receipt,
+    )
+    return authorized, receipt
+
+
+def test_live_output_validation_rejects_post_receipt_mutation() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
     reconciled.table("person").loc[0, "qualified_bdc_income"] = 0.25
 
     with pytest.raises(ValueError, match="output digest"):
@@ -365,6 +375,220 @@ def test_live_output_validation_rejects_post_receipt_mutation() -> None:
             reconciled,
             receipt,
             boundary="mutated live QBI output test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def _rehash_forged_stacked_universe_receipt(
+    receipt: dict[str, object],
+) -> None:
+    universe = receipt["recipient_source_universe"]
+    assert isinstance(universe, dict)
+    source_receipt = {
+        key: value
+        for key, value in universe.items()
+        if key
+        not in {
+            "source_universe_sha256",
+            "source_universe_resolution_mutated_raw_pums_cells",
+            "operation",
+            "rows_excluded_from_base_self_employment_rewrite",
+            "rows_included_in_other_qbi_reconciliation",
+            "structurally_absent_base_source_cells_mutated",
+            "sha256",
+        }
+    }
+    source_receipt["raw_pums_source_cells_mutated"] = universe[
+        "source_universe_resolution_mutated_raw_pums_cells"
+    ]
+    universe["source_universe_sha256"] = qbi_inputs_module._qbi_receipt_sha256(
+        source_receipt
+    )
+    unsigned_universe = dict(universe)
+    unsigned_universe.pop("sha256")
+    universe["sha256"] = qbi_inputs_module._qbi_receipt_sha256(unsigned_universe)
+    unsigned_receipt = dict(receipt)
+    unsigned_receipt.pop("sha256")
+    receipt["sha256"] = qbi_inputs_module._qbi_receipt_sha256(unsigned_receipt)
+
+
+def test_live_output_validation_rejects_rehashed_universe_semantic_forgery() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    forged = copy.deepcopy(receipt)
+    universe = forged["recipient_source_universe"]
+    assert isinstance(universe, dict)
+    universe["scoped_person_rows"] += 1
+    _rehash_forged_stacked_universe_receipt(forged)
+
+    with pytest.raises(ValueError, match="does not exactly match the live frame"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            forged,
+            boundary="rehashed QBI universe forgery test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def test_live_output_validation_rejects_rebound_driver_and_fixed_point_output() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    person = reconciled.table("person")
+    person.loc[0, "non_qualified_dividend_income"] = 100.0
+    person.loc[0, "qualified_bdc_income"] = 50.0
+    forged = copy.deepcopy(receipt)
+    forged["output_declared_person_values_sha256"] = (
+        qbi_inputs_module._qbi_person_values_sha256(
+            person,
+            columns=qbi_inputs_module.US_QBI_RECONCILED_PERSON_COLUMNS,
+        )
+    )
+    unsigned = dict(forged)
+    unsigned.pop("sha256")
+    forged["sha256"] = qbi_inputs_module._qbi_receipt_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="driver-surface digest"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            forged,
+            boundary="rebound QBI driver/output test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def test_live_output_validation_rejects_fresh_receipt_for_alternate_fixed_point() -> (
+    None
+):
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    person = reconciled.table("person")
+    person.loc[0, "non_qualified_dividend_income"] = 100.0
+    person.loc[0, "qualified_bdc_income"] = 50.0
+    fresh = us_qbi_reconciliation_change_receipt(reconciled, reconciled)
+
+    with pytest.raises(ValueError, match="independently carried transition authority"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            fresh,
+            boundary="alternate QBI fixed-point receipt test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def test_qbi_universe_receipt_rejects_boolean_count() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled = with_us_qbi_input_reconciliation(frame)
+    receipt = us_qbi_reconciliation_change_receipt(frame, reconciled)
+    forged = copy.deepcopy(receipt)
+    universe = forged["recipient_source_universe"]
+    assert isinstance(universe, dict)
+    universe["scoped_person_rows"] = True
+
+    with pytest.raises(ValueError, match="scoped_person_rows.*nonnegative integer"):
+        validate_us_qbi_reconciliation_receipt(
+            forged,
+            boundary="Boolean QBI count test",
+        )
+
+
+def test_live_output_validation_rejects_undeclared_added_person_column() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    reconciled.table("person")["post_receipt_undeclared_tamper"] = 1
+
+    with pytest.raises(ValueError, match="person-column inventory changed"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            receipt,
+            boundary="added QBI person-column test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def test_live_output_validation_rejects_receipt_laundered_added_column() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    added = "post_receipt_undeclared_tamper"
+    person = reconciled.table("person")
+    person[added] = 1
+    forged = copy.deepcopy(receipt)
+    forged["input_person_columns"].append(added)
+    forged["input_person_table_sha256"] = qbi_inputs_module._qbi_person_values_sha256(
+        person,
+        columns=tuple(forged["input_person_columns"]),
+    )
+    preservation = forged["undeclared_surface_preservation"]
+    assert isinstance(preservation, dict)
+    preservation["undeclared_person_columns_verified"] += 1
+    unsigned = dict(forged)
+    unsigned.pop("sha256")
+    forged["sha256"] = qbi_inputs_module._qbi_receipt_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="independently carried transition authority"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            forged,
+            boundary="laundered QBI person-column test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def test_live_output_validation_rejects_rehashed_preservation_count() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    forged = copy.deepcopy(receipt)
+    preservation = forged["undeclared_surface_preservation"]
+    assert isinstance(preservation, dict)
+    preservation["undeclared_person_columns_verified"] += 1
+    unsigned = dict(forged)
+    unsigned.pop("sha256")
+    forged["sha256"] = qbi_inputs_module._qbi_receipt_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="preservation receipt does not match"):
+        validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            forged,
+            boundary="rehashed QBI preservation-count test",
+            expected_transition_authority_sha256=receipt["sha256"],
+        )
+
+
+def test_live_output_validation_allows_only_canonical_seed_person_output() -> None:
+    frame = _stacked_qbi_universe_frame()
+    reconciled, receipt = _authorized_qbi_output(frame)
+    seed_column = "takes_up_medicaid_if_eligible"
+    reconciled.table("person")[seed_column] = False
+
+    assert (
+        qbi_inputs_module.validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            receipt,
+            boundary="canonical post-QBI seed output test",
+            expected_transition_authority_sha256=receipt["sha256"],
+            allowed_post_reconciliation_person_columns=(seed_column,),
+        )
+        == receipt
+    )
+    with pytest.raises(ValueError, match="allowed post-QBI person columns"):
+        qbi_inputs_module.validate_us_qbi_reconciliation_live_output(
+            reconciled,
+            receipt,
+            boundary="non-contract post-QBI seed output test",
+            expected_transition_authority_sha256=receipt["sha256"],
+            allowed_post_reconciliation_person_columns=(
+                "post_receipt_undeclared_tamper",
+            ),
+        )
+
+
+def test_qbi_seed_receipt_rejects_non_contract_person_output() -> None:
+    with pytest.raises(ValueError, match="non-contract program"):
+        qbi_inputs_module.us_qbi_post_reconciliation_person_columns(
+            {
+                "programs": {
+                    "post_receipt_undeclared_tamper": {"entity": "person"},
+                }
+            }
         )
 
 
