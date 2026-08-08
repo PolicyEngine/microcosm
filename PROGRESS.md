@@ -109,10 +109,10 @@ ordered rejection contracts, and A1 precise changelog coverage.
 - The foreground workspace battery has completed the frame/fit/calibration/data,
   generic-build, UK-build, and first US-build chunks: 831, 662, 777 collected
   tests, and 988 outcomes respectively. The next US chunk exposed seven legacy
-  support-test call sites whose minimal frames predated the required
-  `person.age` allocation input. Both shared fixtures now declare adult ages;
-  all eight affected/adjacent cases pass without weakening the production
-  fail-closed rule.
+  support-test call sites whose produced-frame fixtures predated the required
+  `person.age` allocation input. The imputation fixtures now declare adult
+  ages while raw-source fixtures remain operator-free; all affected/adjacent
+  cases pass without weakening the production fail-closed rule.
 
 ## Next
 
