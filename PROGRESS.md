@@ -113,10 +113,12 @@ ordered rejection contracts, and A1 precise changelog coverage.
   `person.age` allocation input. The imputation fixtures now declare adult
   ages while raw-source fixtures remain operator-free; all affected/adjacent
   cases pass without weakening the production fail-closed rule.
+- The corrected second US-build shard passes in one uninterrupted foreground
+  run: 1,270 passed and 2 skipped (1,272 collected outcomes). It includes both
+  the produced-frame age-input paths and the raw-source operator boundary.
 
 ## Next
 
-1. Rerun the corrected US chunk, run the final US chunk, and run changed-file
-   quality gates.
+1. Run the final US chunk and changed-file quality gates.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
