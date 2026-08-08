@@ -128,10 +128,14 @@ ordered rejection contracts, and A1 precise changelog coverage.
 - Repository-wide Ruff lint and the full commit-range whitespace check pass.
   Ruff reformatted one newly changed test expression; both affected stacked
   tests still pass, and that file now passes its format check.
+- Final quality replay passes repository-wide Ruff lint, Ruff format-check on
+  all 14 changed Python files, and `git diff --check b4ecd763..HEAD`.
+- The final committed-code replay of all twelve verifier probes passes as 48
+  maintained cases: probes 1--6 = 8, probes 7--9 = 8, probe 10 = 15 stale v1--v5
+  cases, and probes 11--12 = 17 canonical-seam/starvation cases.
 
 ## Next
 
-1. Rerun the complete changed-file format gate and replay the twelve verifier
-   probes.
+1. Complete the final line-level audit and independent review.
 2. Update this file and `FINAL_REPORT.md`, commit the final receipts, and print
    the final report to stdout.
