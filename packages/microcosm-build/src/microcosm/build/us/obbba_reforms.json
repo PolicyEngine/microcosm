@@ -1,0 +1,463 @@
+{
+  "_comment": "Out-of-sample reform-validation set: model-backed provisions of the 2025 One Big Beautiful Bill Act (OBBBA) that policyengine-us models in its baseline. Each row is encoded as the counterfactual patch that turns that provision off. The reform-validation producer merges all row patches into a pre-OBBBA present-law baseline, then scores each component by adding that provision back, so the simulated effect is comparable to JCX-35-25's enactment scores relative to the present-law baseline. Scores are FY2026 conventional/static revenue effects from JCX-35-25 in dollars. Rows with a null score are modeled provisions for which JCX-35-25 does not provide a standalone line.",
+  "schema_version": 1,
+  "jct_document": {
+    "id": "JCX-35-25",
+    "title": "Estimated Revenue Effects Relative to the Present Law Baseline of the Tax Provisions in Title VII-Finance of the substitute legislation as passed by the Senate (FY2025 budget reconciliation)",
+    "published": "2025-07-01",
+    "url": "https://www.jct.gov/publications/2025/jcx-35-25/"
+  },
+  "pre_obbba_reference_policy": {
+    "id": 95714,
+    "label": "OBBBA Reversal (TCJA Expiration Baseline)",
+    "api_version": "1.180.1",
+    "url": "https://api.policyengine.org/us/policy/95714",
+    "note": "Used as a reference for the pre-OBBBA present-law counterfactual. Microcosm keeps version-compatible parameter paths for the policyengine-us version used by the build."
+  },
+  "reforms": [
+    {
+      "id": "obbba_reduced_rates",
+      "name": "OBBBA - Reduced individual income tax rates",
+      "category": "OBBBA",
+      "description": "Permanent extension and limited enhancement of reduced individual income tax rates. Validated by reverting 2026 rates and brackets to the post-TCJA-expiration counterfactual.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.income.bracket.rates.2": { "2026-01-01.2026-12-31": 0.15 },
+        "gov.irs.income.bracket.rates.3": { "2026-01-01.2026-12-31": 0.25 },
+        "gov.irs.income.bracket.rates.4": { "2026-01-01.2026-12-31": 0.28 },
+        "gov.irs.income.bracket.rates.5": { "2026-01-01.2026-12-31": 0.33 },
+        "gov.irs.income.bracket.rates.7": { "2026-01-01.2026-12-31": 0.396 },
+        "gov.irs.income.bracket.thresholds.1.JOINT": { "2026-01-01.2026-12-31": 24300 },
+        "gov.irs.income.bracket.thresholds.2.JOINT": { "2026-01-01.2026-12-31": 98600 },
+        "gov.irs.income.bracket.thresholds.3.JOINT": { "2026-01-01.2026-12-31": 199000 },
+        "gov.irs.income.bracket.thresholds.4.JOINT": { "2026-01-01.2026-12-31": 303250 },
+        "gov.irs.income.bracket.thresholds.5.JOINT": { "2026-01-01.2026-12-31": 541550 },
+        "gov.irs.income.bracket.thresholds.6.JOINT": { "2026-01-01.2026-12-31": 611750 },
+        "gov.irs.income.bracket.thresholds.1.SINGLE": { "2026-01-01.2026-12-31": 12150 },
+        "gov.irs.income.bracket.thresholds.2.SINGLE": { "2026-01-01.2026-12-31": 49300 },
+        "gov.irs.income.bracket.thresholds.3.SINGLE": { "2026-01-01.2026-12-31": 119400 },
+        "gov.irs.income.bracket.thresholds.4.SINGLE": { "2026-01-01.2026-12-31": 249100 },
+        "gov.irs.income.bracket.thresholds.5.SINGLE": { "2026-01-01.2026-12-31": 541550 },
+        "gov.irs.income.bracket.thresholds.6.SINGLE": { "2026-01-01.2026-12-31": 543800 },
+        "gov.irs.income.bracket.thresholds.1.SEPARATE": { "2026-01-01.2026-12-31": 12150 },
+        "gov.irs.income.bracket.thresholds.2.SEPARATE": { "2026-01-01.2026-12-31": 49300 },
+        "gov.irs.income.bracket.thresholds.3.SEPARATE": { "2026-01-01.2026-12-31": 99500 },
+        "gov.irs.income.bracket.thresholds.4.SEPARATE": { "2026-01-01.2026-12-31": 151625 },
+        "gov.irs.income.bracket.thresholds.5.SEPARATE": { "2026-01-01.2026-12-31": 270775 },
+        "gov.irs.income.bracket.thresholds.6.SEPARATE": { "2026-01-01.2026-12-31": 305875 },
+        "gov.irs.income.bracket.thresholds.1.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 17350 },
+        "gov.irs.income.bracket.thresholds.2.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 66050 },
+        "gov.irs.income.bracket.thresholds.3.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 170550 },
+        "gov.irs.income.bracket.thresholds.4.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 276200 },
+        "gov.irs.income.bracket.thresholds.5.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 541550 },
+        "gov.irs.income.bracket.thresholds.6.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 577750 },
+        "gov.irs.income.bracket.thresholds.1.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 24300 },
+        "gov.irs.income.bracket.thresholds.2.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 98600 },
+        "gov.irs.income.bracket.thresholds.3.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 199000 },
+        "gov.irs.income.bracket.thresholds.4.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 303250 },
+        "gov.irs.income.bracket.thresholds.5.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 541550 },
+        "gov.irs.income.bracket.thresholds.6.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 611750 }
+      },
+      "jct": {
+        "score": -147679000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 1 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -222154000000
+      }
+    },
+    {
+      "id": "obbba_standard_deduction",
+      "name": "OBBBA - Increased standard deduction",
+      "category": "OBBBA",
+      "description": "Extension and enhancement of the increased standard deduction. Validated by reverting 2026 standard-deduction amounts to the post-TCJA-expiration counterfactual.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.standard.amount.JOINT": { "2026-01-01.2026-12-31": 16600 },
+        "gov.irs.deductions.standard.amount.SINGLE": { "2026-01-01.2026-12-31": 8300 },
+        "gov.irs.deductions.standard.amount.SEPARATE": { "2026-01-01.2026-12-31": 8300 },
+        "gov.irs.deductions.standard.amount.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 12150 },
+        "gov.irs.deductions.standard.amount.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 16600 }
+      },
+      "jct": {
+        "score": -92124000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 2 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -144689000000
+      }
+    },
+    {
+      "id": "obbba_personal_exemption_termination",
+      "name": "OBBBA - Termination of personal exemptions other than temporary senior deduction",
+      "category": "OBBBA",
+      "description": "Termination of the deduction for personal exemptions other than the temporary senior deduction \u2014 the combined provision of OBBBA Sec. 70103 exactly as JCX-35-25 Ch.1 line 3 scores it (the line nets the senior deduction's cost against exemption-termination revenue). Validated by unsuspending personal exemptions and zeroing the senior deduction in 2026, so the modeled scope matches the benchmark scope.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.income.exemption.suspended": { "2026-01-01.2026-12-31": false },
+        "gov.irs.deductions.senior_deduction.amount": { "2026-01-01.2026-12-31": 0 }
+      },
+      "jct": {
+        "score": 110625000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 3 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": 173453000000
+      }
+    },
+    {
+      "id": "obbba_child_tax_credit",
+      "name": "OBBBA - Increased child tax credit",
+      "category": "OBBBA",
+      "description": "Extension and enhancement of the increased child tax credit. Validated by reverting 2026 CTC amount, phase-out, refundable cap, phase-in threshold, and adult SSN requirement to the post-TCJA-expiration counterfactual.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.credits.ctc.amount.base[0].amount": { "2026-01-01.2026-12-31": 1000 },
+        "gov.irs.credits.ctc.amount.adult_dependent": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.credits.ctc.phase_out.threshold.JOINT": { "2026-01-01.2026-12-31": 110000 },
+        "gov.irs.credits.ctc.phase_out.threshold.SINGLE": { "2026-01-01.2026-12-31": 75000 },
+        "gov.irs.credits.ctc.phase_out.threshold.SEPARATE": { "2026-01-01.2026-12-31": 55000 },
+        "gov.irs.credits.ctc.phase_out.threshold.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 75000 },
+        "gov.irs.credits.ctc.phase_out.threshold.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 75000 },
+        "gov.irs.credits.ctc.refundable.individual_max": { "2026-01-01.2026-12-31": 1000 },
+        "gov.irs.credits.ctc.refundable.phase_in.threshold": { "2026-01-01.2026-12-31": 3000 },
+        "gov.irs.credits.ctc.adult_ssn_requirement_applies": { "2026-01-01.2026-12-31": false }
+      },
+      "jct": {
+        "score": -48769000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 4 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -87599000000
+      }
+    },
+    {
+      "id": "obbba_qbi_deduction",
+      "name": "OBBBA - Qualified business income deduction",
+      "category": "OBBBA",
+      "description": "Extension and enhancement of the qualified business income deduction. Validated by reverting the QBI deduction rates and OBBBA floor.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.qbi.max.rate": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.qbi.max.w2_wages.rate": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.qbi.max.w2_wages.alt_rate": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.qbi.max.business_property.rate": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.qbi.deduction_floor.in_effect": { "2026-01-01.2026-12-31": false },
+        "gov.irs.deductions.qbi.deduction_floor.amount[1].amount": { "2026-01-01.2026-12-31": 0 }
+      },
+      "jct": {
+        "score": -44331000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 5 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -74617000000
+      }
+    },
+    {
+      "id": "obbba_estate_gift_exemption",
+      "name": "OBBBA - Estate and gift tax exemption",
+      "category": "OBBBA",
+      "description": "Extension and enhancement of increased estate and gift tax exemption amounts. Validated by reverting the 2026 estate-tax base exclusion to the post-TCJA-expiration counterfactual, measured on estate_tax (estate tax is not a component of income_tax, so it stacks as its own measure group). Caveat: decedent estates are essentially absent from living-household survey microdata, so microcosm is expected to understate this provision regardless of calibration.",
+      "period": 2026,
+      "budget_measure": "estate_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.credits.estate.base": { "2026-01-01.2026-12-31": 6790000 }
+      },
+      "jct": {
+        "score": -3672000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 6 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -20276000000
+      }
+    },
+    {
+      "id": "obbba_amt",
+      "name": "OBBBA - Alternative minimum tax parameters",
+      "category": "OBBBA",
+      "description": "Extension of increased AMT exemption amounts, modification of phaseout thresholds, and increased phaseout rate. Validated by reverting 2026 AMT parameters to the post-TCJA-expiration counterfactual.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.income.amt.exemption.amount.JOINT": { "2026-01-01.2026-12-31": 109800 },
+        "gov.irs.income.amt.exemption.amount.SINGLE": { "2026-01-01.2026-12-31": 70600 },
+        "gov.irs.income.amt.exemption.amount.SEPARATE": { "2026-01-01.2026-12-31": 54900 },
+        "gov.irs.income.amt.exemption.amount.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 70600 },
+        "gov.irs.income.amt.exemption.amount.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 109800 },
+        "gov.irs.income.amt.exemption.phase_out.start.JOINT": { "2026-01-01.2026-12-31": 209200 },
+        "gov.irs.income.amt.exemption.phase_out.start.SINGLE": { "2026-01-01.2026-12-31": 156900 },
+        "gov.irs.income.amt.exemption.phase_out.start.SEPARATE": { "2026-01-01.2026-12-31": 104600 },
+        "gov.irs.income.amt.exemption.phase_out.start.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 156900 },
+        "gov.irs.income.amt.exemption.phase_out.start.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 209200 },
+        "gov.irs.income.amt.exemption.phase_out.rate": { "2026-01-01.2026-12-31": 0.25 },
+        "gov.irs.income.amt.exemption.separate_limit": { "2026-01-01.2026-12-31": 913900 }
+      },
+      "jct": {
+        "score": -76835000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 7 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -137508000000
+      }
+    },
+    {
+      "id": "obbba_mortgage_interest_limit",
+      "name": "OBBBA - Qualified residence interest limit",
+      "category": "OBBBA",
+      "description": "Extension of limitation on deduction for qualified residence interest. Validated by reverting mortgage-interest acquisition-debt caps to pre-TCJA levels. Scope note: the JCT line also includes the bill's permanent treatment of mortgage-insurance premiums as qualified residence interest, which this reform does not model (revenue-losing, so the benchmark sits slightly below a caps-only score).",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.interest.mortgage.cap.JOINT": { "2026-01-01.2026-12-31": 1000000 },
+        "gov.irs.deductions.itemized.interest.mortgage.cap.SINGLE": { "2026-01-01.2026-12-31": 1000000 },
+        "gov.irs.deductions.itemized.interest.mortgage.cap.SEPARATE": { "2026-01-01.2026-12-31": 500000 },
+        "gov.irs.deductions.itemized.interest.mortgage.cap.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 1000000 },
+        "gov.irs.deductions.itemized.interest.mortgage.cap.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 1000000 }
+      },
+      "jct": {
+        "score": 1639000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 8 (FY2026 1,639M / FY2027 3,110M)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": 3110000000
+      }
+    },
+    {
+      "id": "obbba_casualty_loss_limit",
+      "name": "OBBBA - Casualty loss deduction limit",
+      "category": "OBBBA",
+      "description": "Extension and modification of limitation on casualty loss deduction. Validated by reactivating the casualty expense deduction in 2026.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.casualty.active": { "2026-01-01.2026-12-31": true }
+      },
+      "jct": {
+        "score": 86000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 9 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": 128000000
+      }
+    },
+    {
+      "id": "obbba_misc_itemized_deductions",
+      "name": "OBBBA - Miscellaneous itemized deductions",
+      "category": "OBBBA",
+      "description": "Termination of miscellaneous itemized deductions other than educator expenses. Validated by reactivating miscellaneous itemized deductions in 2026.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.misc.applies": { "2026-01-01.2026-12-31": true }
+      },
+      "jct": {
+        "score": 13419000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 10 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": 23707000000
+      }
+    },
+    {
+      "id": "obbba_itemized_tax_benefit_limit",
+      "name": "OBBBA - Limitation on itemized deduction tax benefit",
+      "category": "OBBBA",
+      "description": "OBBBA limitation on the tax benefit of itemized deductions (a ~2/37 cap for top-bracket taxpayers that replaces the reinstated Pease limitation). Validated by reverting only the OBBBA cap (obbb.applies=False); limitation.applies stays True so the counterfactual is present-law Pease, and the effect is OBBBA cap minus Pease.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.limitation.obbb.applies": { "2026-01-01.2026-12-31": false }
+      },
+      "jct": {
+        "score": -16040000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 11 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -26393000000
+      }
+    },
+    {
+      "id": "obbba_salt_limit",
+      "name": "OBBBA - State and local tax deduction limit",
+      "category": "OBBBA",
+      "description": "Limitation on individual deductions for certain State and local taxes. Validated by reverting the SALT cap to the post-TCJA-expiration counterfactual in 2026.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.salt_and_real_estate.cap.JOINT": { "2026-01-01.2026-12-31": 1000000000000 },
+        "gov.irs.deductions.itemized.salt_and_real_estate.cap.SINGLE": { "2026-01-01.2026-12-31": 1000000000000 },
+        "gov.irs.deductions.itemized.salt_and_real_estate.cap.SEPARATE": { "2026-01-01.2026-12-31": 1000000000000 },
+        "gov.irs.deductions.itemized.salt_and_real_estate.cap.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 1000000000000 },
+        "gov.irs.deductions.itemized.salt_and_real_estate.cap.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 1000000000000 },
+        "gov.irs.deductions.itemized.salt_and_real_estate.phase_out.in_effect": { "2026-01-01.2026-12-31": false },
+        "gov.irs.deductions.itemized.salt_and_real_estate.phase_out.floor.applies": { "2026-01-01.2026-12-31": false }
+      },
+      "jct": {
+        "score": 31617000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.1 line 20 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": 79250000000
+      }
+    },
+    {
+      "id": "obbba_no_tax_on_tips",
+      "name": "OBBBA - No tax on tips",
+      "category": "OBBBA",
+      "description": "Deduction for qualified tip income. Validated by reverting the tip-income deduction cap to 0 in 2026. Scope note: per JCX-35-25 footnote [5], the line also bundles the section 45B employer tip-credit expansion (small nonzero effect persists after the individual deduction sunsets), which this reform does not model.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.tip_income.cap": { "2026-01-01.2026-12-31": 0 }
+      },
+      "jct": {
+        "score": -10121000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.2 line 1 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -7664000000
+      }
+    },
+    {
+      "id": "obbba_no_tax_on_overtime",
+      "name": "OBBBA - No tax on overtime",
+      "category": "OBBBA",
+      "description": "Deduction for qualified overtime premium income. Validated by reverting overtime-income deduction caps to 0 in 2026.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.overtime_income.cap.JOINT": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.overtime_income.cap.SINGLE": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.overtime_income.cap.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.overtime_income.cap.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.overtime_income.cap.SEPARATE": { "2026-01-01.2026-12-31": 0 }
+      },
+      "jct": {
+        "score": -32806000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.2 line 2 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -25672000000
+      }
+    },
+    {
+      "id": "obbba_auto_loan_interest",
+      "name": "OBBBA - No tax on car loan interest",
+      "category": "OBBBA",
+      "description": "Deduction for qualifying auto loan interest. Validated by reverting the auto-loan-interest deduction cap to 0 in 2026.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.auto_loan_interest.cap": { "2026-01-01.2026-12-31": 0 }
+      },
+      "jct": {
+        "score": -5400000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.2 line 3 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -8070000000
+      }
+    },
+    {
+      "id": "obbba_cdcc",
+      "name": "OBBBA - Child and dependent care tax credit",
+      "category": "OBBBA",
+      "description": "Enhancement of the child and dependent care tax credit. Validated by reverting 2026 CDCC rate and amended phase-out structure.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.credits.cdcc.phase_out.max": { "2026-01-01.2026-12-31": 0.35 },
+        "gov.irs.credits.cdcc.phase_out.min": { "2026-01-01.2026-12-31": 0.2 },
+        "gov.irs.credits.cdcc.phase_out.amended_structure.applies": { "2026-01-01.2026-12-31": false }
+      },
+      "jct": {
+        "score": -409000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.4.A line 5 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -1197000000
+      }
+    },
+    {
+      "id": "obbba_charitable_nonitemizer_deduction",
+      "name": "OBBBA - Non-itemizer charitable deduction",
+      "category": "OBBBA",
+      "description": "Permanent and expanded reinstatement of the partial deduction for charitable contributions of individuals who do not elect to itemize. Validated by reverting 2026 non-itemizer charitable deduction amounts to 0.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.charity.non_itemizers_amount.JOINT": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.itemized.charity.non_itemizers_amount.SINGLE": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.itemized.charity.non_itemizers_amount.SEPARATE": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.itemized.charity.non_itemizers_amount.HEAD_OF_HOUSEHOLD": { "2026-01-01.2026-12-31": 0 },
+        "gov.irs.deductions.itemized.charity.non_itemizers_amount.SURVIVING_SPOUSE": { "2026-01-01.2026-12-31": 0 }
+      },
+      "jct": {
+        "score": -1543000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.4.C line 4 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": -7791000000
+      }
+    },
+    {
+      "id": "obbba_charitable_floor",
+      "name": "OBBBA - Charitable deduction floor",
+      "category": "OBBBA",
+      "description": "0.5 percent floor on deduction of charitable contributions made by individuals. Validated by disabling the charitable donation floor in 2026.",
+      "period": 2026,
+      "budget_measure": "income_tax",
+      "effect_direction": "baseline_minus_reform",
+      "parameter_changes": {
+        "gov.irs.deductions.itemized.charity.floor.applies": { "2026-01-01.2026-12-31": false }
+      },
+      "jct": {
+        "score": 1346000000,
+        "score_type": "conventional",
+        "window": "FY2026",
+        "source": "JCX-35-25, Ch.4.C line 5 (FY2026)",
+        "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
+        "score_fy2027": 7083000000
+      }
+    }
+  ]
+}

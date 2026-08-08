@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# Publish a Populace release and fire its Slack alert, in one tracked path.
+# Publish a Microcosm release and fire its Slack alert, in one tracked path.
 #
-# Thin wrapper around `populace-publish-release` so that every ship goes
+# Thin wrapper around `microcosm-publish-release` so that every ship goes
 # through the same command and the release alert is guaranteed to be wired.
-# The alert itself lives in the publish CLI (populace.data.slack.notify_release)
+# The alert itself lives in the publish CLI (microcosm.data.slack.notify_release)
 # and is a no-op unless the channel webhook env var is set — this wrapper just
 # loads those from an optional gitignored env file and warns if they're missing.
 #
 # Usage:
 #   tools/publish_release.sh <release_dir> [--repo-id …] [--artifact-root …] …
-# All arguments are passed straight through to `populace-publish-release`.
+# All arguments are passed straight through to `microcosm-publish-release`.
 #
 # One-time setup on the build machine (see README "Releasing & alerts"):
 #   cp tools/release.env.example tools/release.env   # then fill in the URLs
@@ -32,4 +32,4 @@ if [[ -z "${SLACK_WEBHOOK_POPULACE_US:-}" && -z "${SLACK_WEBHOOK_POPULACE_UK:-}"
   echo "         $ENV_FILE (see README 'Releasing & alerts')." >&2
 fi
 
-exec populace-publish-release "$@"
+exec microcosm-publish-release "$@"

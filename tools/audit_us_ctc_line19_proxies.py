@@ -1,4 +1,4 @@
-"""Audit competing SOI CTC line-19 proxies on a Populace US H5.
+"""Audit competing SOI CTC line-19 proxies on a Microcosm US H5.
 
 The IRS SOI historic table CTC amount maps to Form 1040 line 19: Schedule
 8812 line 14, the smaller of the tentative CTC/ODC and Credit Limit Worksheet
@@ -23,8 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from populace.build.us_runtime import fiscal_targets as us_fiscal_targets
-from populace.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.us_runtime import fiscal_targets as us_fiscal_targets
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from tools.build_us_fiscal_refresh_release import (
     _as_bound,
     _calculate_array,

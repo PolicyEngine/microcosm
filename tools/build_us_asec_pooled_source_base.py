@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime import AsecSource, build_pooled_asec_unit_frame
+from microcosm.build.us_runtime import AsecSource, build_pooled_asec_unit_frame
 
 
 def _parse_args() -> argparse.Namespace:
@@ -57,7 +57,7 @@ def main() -> int:
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     if args.out_h5 is not None:
-        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         args.out_h5.parent.mkdir(parents=True, exist_ok=True)
         PolicyEngineUSEngine().write_dataset(

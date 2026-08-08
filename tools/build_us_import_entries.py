@@ -1,4 +1,4 @@
-"""Build the synthetic US import-entry file from the P1 margins (populace#615 P2).
+"""Build the synthetic US import-entry file from the P1 margins (microcosm#615 P2).
 
 Reads the P1 margin artifacts (``margins_hts10_country_month.parquet`` plus
 the archived CBP statistics page) and generates the **synthetic** weighted
@@ -50,14 +50,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "packages" / "populace-build" / "src")
+    0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
-from populace.build.us_runtime.us_trade.cbp_entry_stats import (  # noqa: E402
+from microcosm.build.us_runtime.us_trade.cbp_entry_stats import (  # noqa: E402
     fiscal_year_end,
     parse_cbp_trade_stats,
 )
-from populace.build.us_runtime.us_trade.entry_generator import (  # noqa: E402
+from microcosm.build.us_runtime.us_trade.entry_generator import (  # noqa: E402
     DEFAULT_INFORMAL_VALUE_THRESHOLD,
     DEFAULT_STRATA,
     assumption_to_json,
@@ -161,8 +161,8 @@ def main() -> int:
     # of the authenticated P1 publication, whose own timestamps carry the
     # retrieval provenance.
     generator_block = {
-        "producer": "populace.build.us_runtime.us_trade.entry_generator",
-        "issue": "PolicyEngine/populace#615",
+        "producer": "microcosm.build.us_runtime.us_trade.entry_generator",
+        "issue": "PolicyEngine/microcosm#615",
         "phase": "P2",
         "synthetic": True,
         "window": {"start": months[0], "end": months[-1]},

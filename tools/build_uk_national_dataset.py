@@ -11,23 +11,23 @@ from pathlib import Path
 
 import pandas as pd
 
-from populace.build.uk_runtime.frs_hmrc_leaves import (
+from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
-from populace.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
-from populace.build.uk_runtime.hmrc_restoration import (
+from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
+from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
 )
-from populace.build.uk_runtime.national_build import (
+from microcosm.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
 )
-from populace.build.uk_runtime.national_frame import (
+from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
 )
-from populace.build.uk_runtime.weighted_integrity import (
+from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,

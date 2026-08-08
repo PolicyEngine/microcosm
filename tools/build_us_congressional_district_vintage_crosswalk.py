@@ -10,15 +10,15 @@ consumes, plus a sidecar provenance JSON recording every source file's SHA-256,
 the build metadata, and per-state population conservation.
 
 The method and rationale live in
-``populace.build.us_runtime.congressional_district_vintage_crosswalk``. The
+``microcosm.build.us_runtime.congressional_district_vintage_crosswalk``. The
 crosswalk is a regenerable build artifact, not a Ledger fact (the fact-vs-
 computed boundary of PolicyEngine/ledger#71); it feeds the CD geography-vintage
-translation that PolicyEngine/populace#205 requires.
+translation that PolicyEngine/microcosm#205 requires.
 
 Example:
-    uv run --python 3.13 --package populace-build --group dev python \
+    uv run --python 3.13 --package microcosm-build --group dev python \
         tools/build_us_congressional_district_vintage_crosswalk.py \
-        --out packages/populace-build/src/populace/build/us_runtime/data/\
+        --out packages/microcosm-build/src/microcosm/build/us_runtime/data/\
 congressional_district_vintage_crosswalk.csv \
         --cache-dir ~/.cache/populace-us-geography
 
@@ -39,14 +39,14 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from populace.build.us_runtime.block_ladder_sources import (
+from microcosm.build.us_runtime.block_ladder_sources import (
     US_STATES,
     parse_pl_geo_blocks,
 )
-from populace.build.us_runtime.congressional_district_vintage import (
+from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
 )
-from populace.build.us_runtime.congressional_district_vintage_crosswalk import (
+from microcosm.build.us_runtime.congressional_district_vintage_crosswalk import (
     build_cd_vintage_crosswalk_rows,
     parse_baf_cd_layer,
     parse_national_cd_bef_districts,
@@ -115,7 +115,7 @@ def _download(url: str, cache_dir: Path) -> Path:
         return destination
     _log(f"  downloading {url}")
     request = urllib.request.Request(
-        url, headers={"User-Agent": "populace-build (cd vintage crosswalk)"}
+        url, headers={"User-Agent": "microcosm-build (cd vintage crosswalk)"}
     )
     with urllib.request.urlopen(request) as response:
         payload = response.read()

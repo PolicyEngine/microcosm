@@ -1,0 +1,65 @@
+[project]
+name = "microcosm-build"
+version = "0.1.0"
+description = "The build end of the microcosm stack: typed stage plans with declarative donor graphs, and the dataset acceptance gates (parity, support, aggregate-vs-admin, per-family fit, rotated holdout) every release must pass"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "PolicyEngine" }]
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2",
+    "scipy>=1.13",
+    "huggingface-hub>=0.20",
+    "microcosm-frame>=0.1,<0.2",
+    "microcosm-fit>=0.1,<0.2",
+    "microcosm-calibrate>=0.1,<0.2",
+    # Parquet is the artifact format for the us_trade margin and entry
+    # tables; pandas>=3 pulls pyarrow anyway, but the dependency is real.
+    "pyarrow>=15",
+]
+
+[project.optional-dependencies]
+# The US extra adds the rules engine for formula-owned export checks. Source
+# content is declared in packaged manifests and interpreted by shared Microcosm
+# runtimes; country source loaders must not depend on incumbent data packages.
+us = [
+    "policyengine-us>=1.745.0,<2",
+    "microcosm-data>=0.1,<0.2",
+    "h5py>=3",
+    "microunit>=0.1.0",
+    "tables>=3",
+]
+# The UK extra adds the rules engine for local metric generation from a
+# Microcosm UK H5. Target tables remain explicit inputs, and the base package
+# still does not import policyengine-uk at import time.
+uk = ["policyengine-uk>=2.88", "h5py>=3", "tables>=3"]
+
+[project.scripts]
+microcosm-export-us-l0-refit-h5 = "microcosm.build.us_runtime.l0_refit_export:main"
+
+[project.urls]
+Homepage = "https://microcosm.institute"
+Repository = "https://github.com/PolicyEngine/microcosm"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+# The package is literally named microcosm.build; pathspec's directory-negation
+# semantics differ from git's, so the repo's `build/` ignore pattern would
+# silently empty the wheel. Inclusion is explicit below — skip VCS ignores.
+ignore-vcs = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microcosm"]
+
+[tool.uv.sources]
+microcosm-frame = { workspace = true }
+microcosm-fit = { workspace = true }
+microcosm-calibrate = { workspace = true }
+microcosm-data = { workspace = true }

@@ -4,7 +4,7 @@ This note records both executable pool orderings in
 `tools/build_us_multispine_pool.py`: the production stacked pipeline selected
 by default and the byte-compatible retiring lineage selected explicitly with
 `--legacy-two-spine`. The assembly and agreement contracts originated in
-populace#581; the ratified populace#578 adoption replaces agreement with a
+microcosm#581; the ratified microcosm#578 adoption replaces agreement with a
 complete, origin-aware terminal battery on one stack. This documentation and
 its fixture tests do not certify a full-data output artifact.
 
@@ -63,7 +63,7 @@ sequence. Appending the transferred ACS records later does not cause those
 operators to run over the combined population.
 
 `build_us_acs_multispine_base.py` remains a deprecated but executable
-compatibility path until populace#578 increment 4 retires the ACS local-release
+compatibility path until microcosm#578 increment 4 retires the ACS local-release
 overlay. The public command warns and delegates to the preserved implementation
 under `tools/_legacy`; its summary and reviewed-null receipts remain the inputs
 expected by `build_us_acs_local_release.py`. New multispine work uses the pool
@@ -74,7 +74,7 @@ builder below, but the supported legacy release recipe is not left half-working.
 `build_us_multispine_pool.py` consumes only explicit local files and their
 declared SHA-256 values:
 
-- the dedicated `populace_us_asec_raw_stage` artifact emitted alongside the
+- the dedicated `microcosm_us_asec_raw_stage` artifact emitted alongside the
   producer's `source_construction` checkpoint. Its stage tag is
   `raw_source_mapping` and its operator status is `operator_untouched`;
 - the ACS household and person PUMS archives, whose caller-supplied hashes

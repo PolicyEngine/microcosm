@@ -13,7 +13,7 @@
 # #384 preflights. NO bypass flags. STAGING/LOCAL ONLY.
 set -u
 RT=/Users/maxghenis/PolicyEngine/_buildj-runtime
-WT=/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert
+WT=/Users/maxghenis/PolicyEngine/_worktrees/microcosm-build-j-recert
 BASE="$RT/out/base-j/base_populace_us_2024_puf_support.h5"
 REF=/Users/maxghenis/PolicyEngine/_buildg-runtime/forensics/populace_us_2024.h5   # c2065b64
 SEL=/Users/maxghenis/PolicyEngine/_buildi-runtime/inputs/buildi_rmloss100_selection_source.json

@@ -2,7 +2,7 @@
 
 ## State
 
-Populace #516 whole-row donor outlier screen is complete on
+Microcosm #516 whole-row donor outlier screen is complete on
 `mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
 interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
 whose grouped raw mortgage interest reaches $10M before the #515 carve
@@ -34,7 +34,7 @@ so post-carve pre-screen checkpoints rebuild.
 - Added regression coverage for the exact grouped boundary, whole-row removal,
   retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
 - Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; populace-data 138 with 1 skip. The directly affected tail-bound suite
+  139; microcosm-data 138 with 1 skip. The directly affected tail-bound suite
   adds 12 passes. Ruff format/check and `git diff --check` are clean.
 - Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
   audit, expected 208,611-row real-artifact effect, verification results, count
@@ -45,4 +45,4 @@ so post-carve pre-screen checkpoints rebuild.
 - PR #527 review cycle, then merge. After both #525 and #527: rebuild the
   base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
   run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on populace#515.
+- Root record-level ETL carve stays open on microcosm#515.

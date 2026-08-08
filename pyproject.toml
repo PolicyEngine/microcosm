@@ -1,7 +1,7 @@
 [project]
-name = "populace-workspace"
+name = "microcosm-workspace"
 version = "0.0.0"
-description = "Workspace root for the populace stack (not a published package)"
+description = "Workspace root for the microcosm stack (not a published package)"
 requires-python = ">=3.13"
 
 [tool.uv.workspace]
@@ -21,15 +21,15 @@ select = ["E", "F", "I", "N", "W", "UP", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-# populace#456 (#447): the release tool bounds BLAS/torch thread-pool env
+# microcosm#456 (#447): the release tool bounds BLAS/torch thread-pool env
 # defaults before numpy/torch load, which requires statements above the
 # import block.
 "tools/build_us_fiscal_refresh_release.py" = ["E402"]
 
 [tool.ruff.lint.isort]
-# populace is a PEP 420 namespace package (no top-level __init__.py), so
+# microcosm is a PEP 420 namespace package (no top-level __init__.py), so
 # first-party detection cannot infer it from the src layout.
-known-first-party = ["populace"]
+known-first-party = ["microcosm"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]

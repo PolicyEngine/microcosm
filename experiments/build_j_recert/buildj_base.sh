@@ -11,7 +11,7 @@
 # STAGING/LOCAL ONLY.
 set -u
 RT=/Users/maxghenis/PolicyEngine/_buildj-runtime
-WT=/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert
+WT=/Users/maxghenis/PolicyEngine/_worktrees/microcosm-build-j-recert
 USD=/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage
 BIN=/Users/maxghenis/PolicyEngine/_buildf-runtime/inputs   # canonical base inputs (Build F set)
 AGING_FACTS="$BIN/consumer_facts_builde_aging_v5.jsonl"     # a5d34d4a

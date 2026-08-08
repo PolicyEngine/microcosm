@@ -1,7 +1,7 @@
 Ported the two incident-purchased US weighted-integrity gates into the UK
 terminal battery (#609, increment 4 of the #578 parity plan). The shared
-`input_mass_totals` helper was promoted from `populace.build.us_runtime` to
-`populace.build.input_mass` (the US name remains a re-export), and a new
+`input_mass_totals` helper was promoted from `microcosm.build.us_runtime` to
+`microcosm.build.input_mass` (the US name remains a re-export), and a new
 `uk_runtime.weighted_integrity` module supplies the UK evidence plumbing:
 `uk_dataset_input_mass_totals` broadcasts household weights through the
 national person/benunit/household tables, `uk_input_mass_parity_gate` keeps
@@ -21,7 +21,7 @@ Thresholds carry no committed defaults — arming requires explicit
 `UKInputMassParityPolicy` / `UKQRFTailConcentrationPolicy` values, which are
 sealed into `policy_sha256`, alongside new `input_mass_parity` and
 `qrf_tail_concentration` evidence digests; the terminal-gate report schema
-moved to 3 and the attestation to 5, with the populace-data publication
+moved to 3 and the attestation to 5, with the microcosm-data publication
 contract updated in lockstep. Empty reviewed-exclusion registers are
 committed under the universal discipline (mandatory reason, dormant entries
 reported, stale entries fail — added on top of the shared input-mass gate,

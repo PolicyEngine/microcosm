@@ -23,8 +23,8 @@ validity-domain receipt, not a relaxed tolerance. Example (the committed
 
 .. code-block:: console
 
-   PYTHONPATH=packages/populace-frame/src:packages/populace-fit/src:packages/populace-calibrate/src:packages/populace-build/src:packages/populace-data/src \\
-     /path/to/populace/.venv/bin/python tools/build_us_multispine_pool.py \\
+   PYTHONPATH=packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-calibrate/src:packages/microcosm-build/src:packages/microcosm-data/src \\
+     /path/to/microcosm/.venv/bin/python tools/build_us_multispine_pool.py \\
      --sample-fraction 0.01 --sample-seed 578 \\
      --clone-attachment-fraction 1.0 --clone-attachment-seed 578 \\
      --asec-raw-stage-h5 "$ASEC_H5" --asec-raw-stage-h5-sha256 "$ASEC_SHA" \\
@@ -58,38 +58,38 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.frame_checkpoint import (
+from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
-from populace.build.gates import (
+from microcosm.build.gates import (
     FitWeightRecord,
     GateReport,
     GateResult,
     weights_audit_gate,
 )
-from populace.build.logbook import record_build_attempt
-from populace.build.serialization_dtypes import canonicalize_frame_string_dtypes
-from populace.build.us_runtime.acs_inputs import map_acs_native_inputs
-from populace.build.us_runtime.acs_pums import (
+from microcosm.build.logbook import record_build_attempt
+from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
+from microcosm.build.us_runtime.acs_pums import (
     AcsPumsSource,
     build_acs_pums_unit_frame,
 )
-from populace.build.us_runtime.acs_sources import (
+from microcosm.build.us_runtime.acs_sources import (
     AcsSourceArtifact,
     AcsSourceManifest,
     load_acs_source_manifest,
 )
-from populace.build.us_runtime.acs_transfer import (
+from microcosm.build.us_runtime.acs_transfer import (
     ACS_DONOR_CHANNEL_AUTO,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     transfer_acs_inputs,
 )
-from populace.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
-from populace.build.us_runtime.asec_checkpoint import (
+from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
+from microcosm.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
-from populace.build.us_runtime.h5_io import (
+from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
@@ -97,11 +97,11 @@ from populace.build.us_runtime.h5_io import (
     load_simulation_ready_us_multispine_pool_manifest,
     write_nullable_us_h5,
 )
-from populace.build.us_runtime.housing_inputs import (
+from microcosm.build.us_runtime.housing_inputs import (
     ACS_2022_RENT_ARTIFACT_SHA256,
     load_acs_2022_rent_donor,
 )
-from populace.build.us_runtime.multispine_pool import (
+from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_HOUSEHOLD_MASS_SHARES,
@@ -122,26 +122,26 @@ from populace.build.us_runtime.multispine_pool import (
     run_multispine_pool_path,
     seed_multispine_pool_inputs,
 )
-from populace.build.us_runtime.operator_boundary import (
+from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
 )
-from populace.build.us_runtime.puf_capital_gains_tail import (
+from microcosm.build.us_runtime.puf_capital_gains_tail import (
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
 )
-from populace.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
-from populace.build.us_runtime.puf_qrf_chain import (
+from microcosm.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
+from microcosm.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_MANIFEST_FILENAME,
     PRIMARY_QRF_TARGET_ORDER,
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
     run_primary_puf_qrf_chain,
 )
-from populace.build.us_runtime.puf_support import (
+from microcosm.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     US_PUF_SUPPORT_FIT_NAME,
 )
-from populace.build.us_runtime.stacked_spine import (
+from microcosm.build.us_runtime.stacked_spine import (
     assemble_stacked_spine,
     assert_stacked_tail_cells_preserved,
     by_origin_battery,
@@ -153,13 +153,13 @@ from populace.build.us_runtime.stacked_spine import (
     stacked_spine_authority_receipt,
     validate_stacked_spine_frame,
 )
-from populace.build.us_runtime.support_provenance import (
+from microcosm.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_provenance_counts,
     validate_assembly_provenance,
 )
-from populace.build.us_runtime.take_up_contract import take_up_contract_identity
-from populace.frame import US_SCHEMA, Frame
+from microcosm.build.us_runtime.take_up_contract import take_up_contract_identity
+from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
     "POOL_H5_ARTIFACT_KIND",

@@ -14,7 +14,7 @@ post-stage restoration record explains the two promotions.
 
 | Milestone | Coverage change | Evidence | Status |
 | --- | ---: | --- | --- |
-| Launch contract baseline | 143 required; 2 reviewed exclusions | SHA-pinned enhanced-FRS surface plus owning-entity effective-mass evidence from the certified Populace UK H5 | Complete |
+| Launch contract baseline | 143 required; 2 reviewed exclusions | SHA-pinned enhanced-FRS surface plus owning-entity effective-mass evidence from the certified Microcosm UK H5 | Complete |
 | Loader-override correction | +13 formula-owned persisted overrides | UK Simulation passes every engine-known persisted H5 column through `set_input`; exact cached-artifact replay covers all 145 | Complete |
 | Contract entity/pin integrity | No status change | All 145 reference and candidate columns carry owning-entity evidence; wrong-table columns and unproven HF revision mappings fail | Complete |
 | National orchestration seam | No status change | Ordered stage protocol, stable verified-byte binding, cheap preflight, final manifest gate, and atomic staging-H5 write | Complete |
@@ -35,7 +35,7 @@ orchestration seam was required before any family restoration could run.
 ## National orchestration seam
 
 `tools/build_uk_national_dataset.py`, backed by
-`populace.build.uk_runtime.national_build`, now performs the minimal reviewed
+`microcosm.build.uk_runtime.national_build`, now performs the minimal reviewed
 sequence:
 
 1. validate the checked-in input-coverage manifest and required stage plan;
