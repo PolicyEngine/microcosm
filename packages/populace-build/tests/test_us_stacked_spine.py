@@ -16,6 +16,7 @@ import pickle
 from collections import Counter
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,10 @@ from pandas.testing import assert_frame_equal
 import populace.build.us_runtime.acs_income_universe as universe_module
 import populace.build.us_runtime.puf_support as puf_support_module
 import populace.build.us_runtime.stacked_spine as stacked_spine_module
+from populace.build.frame_checkpoint import (
+    load_frame_checkpoint,
+    write_frame_checkpoint,
+)
 from populace.build.gates import GateReport, GateResult
 from populace.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from populace.build.us_runtime.acs_income_universe import (
@@ -796,7 +801,7 @@ def test_strict_recipient_predictors_fail_closed_on_absence() -> None:
 
 
 def _cloned_acs_earnings_universe_fixture() -> Frame:
-    """Apply receipted zeros to one mixed-age and one all-child ACS unit."""
+    """Apply receipted zeros to multi-child mixed and all-child ACS units."""
 
     cloned = _cloned_stacked_fixture()
     person = cloned.table("person")
@@ -806,11 +811,17 @@ def _cloned_acs_earnings_universe_fixture() -> Frame:
     detail_groups = list(
         person.loc[acs_detail].groupby("person_tax_unit_id", sort=False).groups.values()
     )
-    all_child_detail = list(detail_groups[0])
-    mixed_detail = list(next(group for group in detail_groups if len(group) > 1))
+    mixed_detail = list(next(group for group in detail_groups if len(group) >= 3))
+    all_child_detail = list(
+        next(
+            group
+            for group in detail_groups
+            if len(group) > 1 and list(group) != mixed_detail
+        )
+    )
     source_id = support_source_id_column("person")
     all_child_lineages = set(person.loc[all_child_detail, source_id])
-    mixed_child_lineage = person.loc[mixed_detail[0], source_id]
+    mixed_child_lineages = set(person.loc[mixed_detail[:-1], source_id])
 
     person["self_employment_income_before_lsr"] = 0.0
     person["WAGP"] = person["employment_income_before_lsr"]
@@ -823,7 +834,7 @@ def _cloned_acs_earnings_universe_fixture() -> Frame:
     person.loc[acs, "SEMP"] = 10.0
     structural = acs & (
         person[source_id].isin(all_child_lineages)
-        | person[source_id].eq(mixed_child_lineage)
+        | person[source_id].isin(mixed_child_lineages)
     )
     person.loc[structural, "age"] = 12.0
     for column in (
@@ -866,7 +877,7 @@ def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
     )
 
     receipt = prepared.recipient_predictor_universe
-    assert receipt["structurally_absent_person_rows"] == 2
+    assert receipt["structurally_absent_person_rows"] == 4
     assert receipt["affected_tax_unit_rows"] == 2
     assert receipt["mixed_universe_tax_unit_rows"] == 1
     assert receipt["empty_universe_tax_unit_rows"] == 1
@@ -898,6 +909,39 @@ def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
     pd.testing.assert_frame_equal(
         cloned.table("person")[before.columns],
         before,
+    )
+
+
+def test_acs_universe_raw_blanks_survive_checkpoint_round_trip(
+    tmp_path: Path,
+) -> None:
+    frame = _cloned_acs_earnings_universe_fixture()
+    person = frame.table("person")
+    raw_columns = ["WAGP", "SEMP"]
+    mapped_columns = [
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ]
+    raw_before = person[raw_columns].copy(deep=True)
+    mapped_before = person[mapped_columns].copy(deep=True)
+    assert raw_before.isna().sum().eq(8).all()
+    assert mapped_before.loc[raw_before.isna().any(axis=1)].eq(0.0).all().all()
+
+    checkpoint_path = tmp_path / "acs-earnings-universe.frame.h5"
+    write_frame_checkpoint(checkpoint_path, frame)
+    restored = load_frame_checkpoint(checkpoint_path).frame.table("person")
+
+    pd.testing.assert_frame_equal(
+        restored[raw_columns],
+        raw_before,
+        check_dtype=True,
+        check_exact=True,
+    )
+    pd.testing.assert_frame_equal(
+        restored[mapped_columns],
+        mapped_before,
+        check_dtype=True,
+        check_exact=True,
     )
 
 
@@ -1040,7 +1084,7 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
     detail_child = (
         acs & child & finalized_person[support_clone_index_column("person")].eq(1)
     )
-    assert int(native_child.sum()) == int(detail_child.sum()) == 2
+    assert int(native_child.sum()) == int(detail_child.sum()) == 4
     for column in predictions:
         assert finalized_person.loc[native_child, column].eq(0.0).all()
         assert finalized_person.loc[detail_child, column].eq(0.0).all()
@@ -1053,6 +1097,10 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
         lambda group: group["age"].lt(15).any() and group["age"].ge(15).any()
     )
     assert not mixed.empty
+    mixed_child_counts = mixed.groupby("person_tax_unit_id", sort=False)["age"].apply(
+        lambda age: int(age.lt(15).sum())
+    )
+    assert mixed_child_counts.eq(2).all()
     assert mixed.loc[mixed["age"].lt(15), list(predictions)].eq(0.0).all().all()
     mixed_adult_totals = (
         mixed.loc[mixed["age"].ge(15)]
@@ -1061,6 +1109,11 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
     )
     assert mixed_adult_totals["employment_income_before_lsr"].eq(1_000.0).all()
     assert mixed_adult_totals["self_employment_income_before_lsr"].eq(100.0).all()
+    all_child = detail_units.groupby("person_tax_unit_id", sort=False).filter(
+        lambda group: group["age"].lt(15).all()
+    )
+    assert len(all_child) == 2
+    assert all_child[list(predictions)].eq(0.0).all().all()
 
     derived = derive_multispine_pool_inputs(finalized)
     derived_person = derived.frame.table("person")
@@ -1080,7 +1133,7 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
         qbi_receipt["recipient_source_universe"][
             "rows_excluded_from_base_self_employment_rewrite"
         ]
-        == 4
+        == 8
     )
     assert qbi_receipt["structurally_absent_base_source_changed_rows"] == 0
     assert len(qbi_receipt["input_person_table_sha256"]) == 64

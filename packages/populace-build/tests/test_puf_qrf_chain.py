@@ -466,6 +466,58 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     run_primary_puf_qrf_chain(checkpoint_dir)
 
 
+def test_resumed_earnings_chain_keeps_children_out_of_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    person = frame.table("person")
+    source_age = {1: 12.0, 2: 40.0, 3: 10.0}
+    person["age"] = person["person_source_id"].map(source_age).astype("float64")
+    donor = _donor()
+    donor["employment_income_before_lsr"] = np.linspace(
+        1_000.0,
+        40_000.0,
+        len(donor),
+    )
+    checkpoint_dir = tmp_path / "primary_qrf_earnings_resume"
+    initialize_primary_puf_qrf_chain(
+        frame,
+        donor,
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=("employment_income_before_lsr",),
+        tax_unit_outputs=(),
+        n_estimators=2,
+        seed=19,
+    )
+    completed_target = run_primary_puf_qrf_target(checkpoint_dir, 0)
+    completed_bytes = completed_target.read_bytes()
+
+    # The supervisor resumes the exact completed prefix instead of rewriting it.
+    run_primary_puf_qrf_chain(checkpoint_dir)
+    assert completed_target.read_bytes() == completed_bytes
+    resumed, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+
+    assert weight_kind == "design"
+    resumed_person = resumed.table("person")
+    detail = resumed_person["person_support_channel"].eq("puf_tax_detail")
+    children = detail & resumed_person["age"].lt(15)
+    adults = detail & resumed_person["age"].ge(15)
+    assert int(children.sum()) == 2
+    assert resumed_person.loc[children, "employment_income_before_lsr"].eq(0.0).all()
+    assert resumed_person.loc[adults, "employment_income_before_lsr"].gt(0.0).all()
+    all_child_total = (
+        resumed_person.loc[detail]
+        .groupby("person_tax_unit_id", sort=False)["employment_income_before_lsr"]
+        .sum()
+        .loc[100020]
+    )
+    assert all_child_total == 0.0
+
+
 def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

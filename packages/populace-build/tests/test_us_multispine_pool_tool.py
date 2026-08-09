@@ -1685,6 +1685,7 @@ def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
@@ -1753,6 +1754,40 @@ def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
         for candidate in (current, stale_qrf, stale_acs, stale_qbi)
     }
     assert len(digests) == 4
+
+    # A checkpoint produced by the current materializer with the prior QRF
+    # schema is not merely identity-distinct: discovery must refuse it as stale.
+    checkpoint_root = tmp_path / "mixed-qrf-version-checkpoints"
+    stale_qrf_store = pool_tool._PoolStageCheckpointStore(
+        checkpoint_root,
+        base_identity=stale_qrf,
+    )
+    stale_qrf_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    stale_qrf_store.write(
+        pool_tool.MultispinePoolCheckpoint(
+            stage="assembled",
+            frame=stack.frame,
+            assembly_receipt=stack.frame.metadata[
+                pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY
+            ],
+            stage_receipts={},
+        )
+    )
+
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 6
+    assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
+    assert (
+        pool_tool._discover_stacked_checkpoint_identity(
+            checkpoint_root,
+            verified_inputs=verified,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+        )
+        is None
+    )
+    assert "checkpoint base identity is stale" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
