@@ -1,0 +1,730 @@
+"""Census of the UK local calibration target surface (microcosm#495).
+
+The UK dense/local arm calibrates cloned rowwise households against
+constituency and local-authority targets. Before any family binds, three
+questions must have executable answers: which household-side metrics the
+runtime computes today (``local_targets.metric_names``), which official UK
+local statistics could supply target values for them, and which reviewed
+fences constrain binding. This module answers all three as one committed,
+drift-gated JSON artifact.
+
+Design rules:
+
+* **Derived, never restated.** The metric inventory comes from
+  ``metric_names()`` at build time — including each area type's exact metric
+  order, so a reorder or duplicate drifts the artifact. A metric the
+  classifier does not recognize (exact names match exactly; prefixes must
+  match a declared family prefix) fails the build closed rather than shipping
+  unclassified.
+* **Scoped honestly.** The census covers the default in-code metric surface.
+  Ledger target-profile-driven surfaces are governed by their profile
+  contract and are explicitly out of scope here.
+* **Reviewed pointers, not scraped claims.** Source rows document official
+  products verified by a human-reviewed fetch on ``verified_on``. They start
+  ``documented_unpinned`` and move to ``pinned_in_ladder`` when a build
+  artifact sha-pins them per build, mirroring the HMRC/SPI source-contract
+  discipline.
+* **Fences by reference, enforcement declared.** The banded HMRC facts stay
+  fenced exactly as the national replay adjudicated them
+  (``FULL_FRS_TI_BAND_FENCE_ID``, ``HMRC_SPI_TARGET_RECORD_COUNT`` are
+  imported, never copied), and every census fence declares its enforcement
+  status: these are reviewed adjudication requirements recorded for binding
+  work — execution-time enforcement in the local solve lands with the solve
+  doctrine increment of microcosm#495.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
+from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
+from microcosm.build.uk_runtime.local_targets import AREA_TYPES, metric_names
+
+__all__ = [
+    "CENSUS_KIND",
+    "CENSUS_RESOURCE",
+    "CENSUS_SCHEMA_VERSION",
+    "METRIC_STATUS_BOUND_IN_CODE",
+    "SOURCE_STATUS_DOCUMENTED_UNPINNED",
+    "SOURCE_STATUS_PINNED_IN_LADDER",
+    "assert_uk_local_target_census_current",
+    "build_uk_local_target_census",
+    "committed_uk_local_target_census_path",
+    "load_uk_local_target_census",
+    "write_uk_local_target_census",
+]
+
+CENSUS_SCHEMA_VERSION = 1
+CENSUS_KIND = "uk_local_target_census"
+CENSUS_RESOURCE = "uk_local_target_census.json"
+
+METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
+SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
+SOURCE_STATUS_PINNED_IN_LADDER = "pinned_in_ladder"
+FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
+
+#: Review date for every source row below: each URL was fetched and its
+#: product description checked on this date (microcosm#495 scoping).
+_SOURCES_VERIFIED_ON = "2026-07-22"
+
+_SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
+_FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"
+_BHC_AHC_FENCE_ID = "ons_bhc_ahc_noncomparable"
+_UC_GRAIN_FENCE_ID = "uc_unit_vs_household_grain"
+_POPULATION_UNIVERSE_FENCE_ID = "population_universe_private_households"
+_CENSUS_DISCLOSURE_FENCE_ID = "census_disclosure_control_noise"
+
+#: Exact metric names mapping to a census family. Matching is equality only,
+#: so a near-miss such as ``uc_householdsX`` fails closed instead of
+#: inheriting the family.
+_EXACT_FAMILY_RULES: dict[str, str] = {
+    "uc_households": "uc_households",
+    "rent/private_rent": "private_rent",
+}
+
+#: Metric-name prefixes mapping to a census family. Every prefix ends at a
+#: separator so it cannot swallow near-miss sibling names.
+#: Exact names continued: the census household-count family is bound via
+#: the ladder artifact rather than an in-code engine metric alone.
+_EXACT_FAMILY_RULES["households"] = "census_households"
+
+_PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
+    ("hmrc/", "hmrc_income_by_area"),
+    ("age/", "age_structure"),
+    ("uc_hh_", "uc_households"),
+    ("ons/equiv_", "equivalised_income"),
+    ("tenure/", "tenure"),
+)
+
+_FAMILIES: tuple[dict[str, Any], ...] = (
+    {
+        "family": "hmrc_income_by_area",
+        "description": (
+            "SPI-frame employment and self-employment income amounts and "
+            "taxpayer counts by area."
+        ),
+        "sources": ["hmrc_personal_incomes_constituency_la"],
+        "adjudications": [
+            _SPI_FRAME_PROXY_FENCE_ID,
+            FULL_FRS_TI_BAND_FENCE_ID,
+        ],
+    },
+    {
+        "family": "age_structure",
+        "description": "Household members by ten-year age band.",
+        "sources": [
+            "ons_pcon_population_by_age",
+            "nomis_lad_population_single_year_age",
+        ],
+        "adjudications": [_POPULATION_UNIVERSE_FENCE_ID],
+    },
+    {
+        "family": "census_households",
+        "description": (
+            "Weighted household counts by area, bound to census occupied-"
+            "household totals summed from the sha-pinned UK OA ladder "
+            "artifact (constituency_household_targets / "
+            "local_authority_household_targets). Universe-compatible with "
+            "the FRS instrument: census occupied households match the "
+            "survey's own household frame, so the person-universe "
+            "adjudication does not bind here."
+        ),
+        "sources": [
+            "nomis_ts041_ew_oa_households",
+            "nrs_census_2022_index",
+            "nisra_dz21_households",
+        ],
+        "adjudications": [_CENSUS_DISCLOSURE_FENCE_ID],
+    },
+    {
+        "family": "uc_households",
+        "description": (
+            "Households on Universal Credit, and (constituency only, in code "
+            "today) the split by number of children."
+        ),
+        "sources": ["dwp_stat_xplore_uc"],
+        "adjudications": [_UC_GRAIN_FENCE_ID],
+    },
+    {
+        "family": "equivalised_income",
+        "description": (
+            "Equivalised household disposable income before/after housing "
+            "costs and implied housing costs (local-authority metrics)."
+        ),
+        "sources": ["ons_small_area_income_msoa"],
+        "adjudications": [_FRS_CIRCULARITY_FENCE_ID, _BHC_AHC_FENCE_ID],
+    },
+    {
+        "family": "tenure",
+        "description": "Households by tenure class (local-authority metrics).",
+        "sources": ["census2021_ts054_tenure"],
+        "adjudications": [],
+    },
+    {
+        "family": "private_rent",
+        "description": (
+            "Private rent paid by privately renting households "
+            "(local-authority metric)."
+        ),
+        "sources": ["ons_pipr_private_rents"],
+        "adjudications": [],
+    },
+)
+
+_SOURCES: tuple[dict[str, Any], ...] = (
+    {
+        "source_id": "hmrc_personal_incomes_constituency_la",
+        "publisher": "HM Revenue & Customs",
+        "product": (
+            "Personal incomes statistics, tables 3.12 to 3.15a: income and "
+            "tax by county and region, by borough/district/unitary "
+            "authority, and by Parliamentary constituency (Survey of "
+            "Personal Incomes)."
+        ),
+        "url": "https://www.gov.uk/government/collections/personal-incomes-statistics",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "tax year 2023 to 2024 (published 2026-04-29)",
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Unbanded area statistics — a different surface from the "
+            f"{HMRC_SPI_TARGET_RECORD_COUNT} banded Total Income facts held "
+            "fenced by the national adjudication. The constituency vintage "
+            "used by each table edition must be pinned at binding time (2024 "
+            "boundaries vs earlier). Historical table layouts publish "
+            "taxpayer counts with mean/median amounts; whether published "
+            "amount totals exist, or the amount metric needs a declared "
+            "count-times-mean construction with rounding-error bounds, must "
+            "be verified when the exact tables are pinned."
+        ),
+    },
+    {
+        "source_id": "ons_pcon_population_by_age",
+        "publisher": "Office for National Statistics",
+        "product": (
+            "Parliamentary constituency mid-year population estimates "
+            "(England and Wales), by year of age."
+        ),
+        "url": (
+            "https://www.ons.gov.uk/peoplepopulationandcommunity/"
+            "populationandmigration/populationestimates/datasets/"
+            "parliamentaryconstituencymidyearpopulationestimates"
+        ),
+        "geographies": ["constituency"],
+        "latest_vintage": (
+            "mid-2022 on this page; estimates for 2012 onwards now released "
+            "via Nomis (ONS notice dated 2024-11-25)"
+        ),
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Binding must pin the Nomis release carrying 2024-constituency "
+            "(PCON24) estimates to match the geography ladder's constituency "
+            "vintage, plus the Scotland/Northern Ireland equivalents. "
+            "Mid-year estimates cover the total usual-resident population — "
+            "see the population_universe_private_households adjudication."
+        ),
+    },
+    {
+        "source_id": "nomis_lad_population_single_year_age",
+        "publisher": "Office for National Statistics (via Nomis)",
+        "product": (
+            "Mid-year population estimates by single year of age, local "
+            "authority and above (UK), rebased to Census 2021/2022."
+        ),
+        "url": "https://www.nomisweb.co.uk/datasets/pestsyoala",
+        "geographies": ["la"],
+        "latest_vintage": "mid-2024",
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "UK-wide coverage at local-authority grain. Covers the total "
+            "usual-resident population — see the "
+            "population_universe_private_households adjudication."
+        ),
+    },
+    {
+        "source_id": "nomis_ts041_ew_oa_households",
+        "publisher": "Office for National Statistics (via Nomis)",
+        "product": (
+            "Census 2021 table TS041 (number of households), England and "
+            "Wales, output-area grain — the E&W leg of the ladder's "
+            "household counts."
+        ),
+        "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2021-03-21",
+        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py "
+            "(recorded in the artifact's source_files map)."
+        ),
+    },
+    {
+        "source_id": "nrs_census_2022_index",
+        "publisher": "National Records of Scotland",
+        "product": (
+            "Census 2022 index zip: Postcode_To_OA.csv census occupied "
+            "household counts (cell-key perturbed), summed by OA2022 — the "
+            "Scotland leg of the ladder's household counts."
+        ),
+        "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2022-03-20",
+        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; "
+            "the in-zip specification defines HouseholdCount as the 2022 "
+            "Census occupied household count."
+        ),
+    },
+    {
+        "source_id": "nisra_dz21_households",
+        "publisher": "Northern Ireland Statistics and Research Agency",
+        "product": (
+            "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain — "
+            "the NI leg of the ladder's household counts."
+        ),
+        "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2021-03-21",
+        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": ("Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py."),
+    },
+    {
+        "source_id": "dwp_stat_xplore_uc",
+        "publisher": "Department for Work and Pensions",
+        "product": (
+            "Stat-Xplore Universal Credit statistics: households and people "
+            "on UC, tabulated by Westminster parliamentary constituency or "
+            "local authority, with family-type/child breakdowns built as "
+            "custom tabulations."
+        ),
+        "url": "https://stat-xplore.dwp.gov.uk/webapi/jsf/dataCatalogueExplorer.xhtml",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": (
+            "UC statistics release cadence per DWP schedule (next noted "
+            "release 2026-08-18 at verification)"
+        ),
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Exact table definitions (households vs people, child-count "
+            "bands, constituency vintage) are chosen inside the tool and "
+            "must be pinned per tabulation at binding time. DWP UC official "
+            "statistics cover Great Britain: Northern Ireland Universal "
+            "Credit statistics are published separately by the NI Department "
+            "for Communities and are not yet documented here, so NI has no "
+            "declared supplier for this family. DWP counts UC claim "
+            "households — see the uc_unit_vs_household_grain adjudication."
+        ),
+    },
+    {
+        "source_id": "ons_small_area_income_msoa",
+        "publisher": "Office for National Statistics",
+        "product": (
+            "Income estimates for small areas, England and Wales: mean "
+            "household income at MSOA grain for four measures, including "
+            "net equivalised disposable income before and after housing "
+            "costs."
+        ),
+        "url": (
+            "https://www.ons.gov.uk/peoplepopulationandcommunity/"
+            "personalandhouseholdfinances/incomeandwealth/bulletins/"
+            "smallareamodelbasedincomeestimates/financialyearending2023"
+        ),
+        "geographies": ["msoa"],
+        "latest_vintage": "financial year ending 2023",
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Model-based estimates built from the Family Resources Survey — "
+            "see the frs_model_based_target_circularity adjudication. The "
+            "BHC and AHC measures are independently modelled and not "
+            "directly comparable — see the ons_bhc_ahc_noncomparable "
+            "adjudication. MSOA-to-local-authority aggregation method must "
+            "be declared at binding time; England and Wales only."
+        ),
+    },
+    {
+        "source_id": "census2021_ts054_tenure",
+        "publisher": "Office for National Statistics (via Nomis)",
+        "product": (
+            "Census 2021 table TS054 (tenure of household), England and "
+            "Wales, OA best-fit to higher geographies."
+        ),
+        "url": "https://www.nomisweb.co.uk/datasets/c2021ts054",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2021-03-21",
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "England and Wales only; Scotland's Census 2022 and Northern "
+            "Ireland's Census 2021 tenure tables need separate pinning for "
+            "full-UK coverage. Census tenure classes must be crosswalked to "
+            "the runtime's four tenure metrics explicitly."
+        ),
+    },
+    {
+        "source_id": "ons_pipr_private_rents",
+        "publisher": "Office for National Statistics",
+        "product": (
+            "Price Index of Private Rents (PIPR), UK: monthly price "
+            "statistics — rent indices, annual change, and price levels."
+        ),
+        "url": (
+            "https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/"
+            "priceindexofprivaterentsukmonthlypricestatistics"
+        ),
+        "geographies": ["la"],
+        "latest_vintage": "release of 2026-07-22 at verification",
+        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "The dataset landing page was verified. PIPR publishes average "
+            "rent price levels, not additive rent totals, and per the PIPR "
+            "QMI its local-authority granularity applies to England and "
+            "Wales with different geographies for Scotland and Northern "
+            "Ireland — so the runtime's additive private-rent metric needs "
+            "a declared count-times-mean construction and a declared "
+            "Scotland/NI treatment when the exact table is pinned."
+        ),
+    },
+)
+
+_BINDING_FENCES: tuple[dict[str, Any], ...] = (
+    {
+        "fence_id": FULL_FRS_TI_BAND_FENCE_ID,
+        "fenced_fact_count": HMRC_SPI_TARGET_RECORD_COUNT,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "No local target family may bind facts banded by SPI Total "
+            "Income: the FRS instrument cannot materialize complete Total "
+            "Income, so band membership is unassignable. This is the census's "
+            "application of the national adjudication that holds all "
+            f"{HMRC_SPI_TARGET_RECORD_COUNT} published banded facts as "
+            "fenced exclusions (the canonical fence text lives with the "
+            "national constants); minting banded local variants is "
+            "forbidden."
+        ),
+        "authority": (
+            "UK_COVERAGE_PROGRESS.md real-donor HMRC replay (2026-07-13); "
+            "canonical fences in microcosm.build.uk_runtime.hmrc_replay."
+        ),
+    },
+    {
+        "fence_id": _SPI_FRAME_PROXY_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The in-code HMRC area metrics gate frame membership on modeled "
+            "income_tax > 0 — a model-output proxy for 'taxpayer in the SPI "
+            "frame', not a source-faithful frame. Binding any HMRC area "
+            "family requires an explicit adjudication accepting or replacing "
+            "that proxy before targets enter a solve."
+        ),
+        "authority": (
+            "microcosm.build.uk_runtime.local_targets.compute_household_metrics "
+            "(in_spi_frame definition); microcosm#495 scoping."
+        ),
+    },
+    {
+        "fence_id": _FRS_CIRCULARITY_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "ONS income estimates for small areas are model-based outputs "
+            "built from the Family Resources Survey. Calibrating FRS-derived "
+            "microdata to them feeds the instrument back into itself; "
+            "binding requires an explicit adjudication of that circularity "
+            "(accept with documented rationale, or reject the family)."
+        ),
+        "authority": (
+            "ONS income estimates for small areas QMI (FRS-based method); "
+            "microcosm#495 scoping."
+        ),
+    },
+    {
+        "fence_id": _BHC_AHC_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The runtime's ons/equiv_housing_costs metric has no declared "
+            "supplier: ONS states its small-area BHC and AHC income "
+            "estimates are independently modelled and should not be "
+            "directly compared, so their difference is not a publishable "
+            "housing-costs target. Binding the equivalised-income family "
+            "must target the published BHC and AHC measures separately or "
+            "document a different housing-costs source."
+        ),
+        "authority": (
+            "ONS income estimates for small areas, England and Wales, "
+            "financial year ending 2023 (comparability guidance); "
+            "microcosm#495 scoping (cross-family review finding)."
+        ),
+    },
+    {
+        "fence_id": _UC_GRAIN_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The runtime maps benefit-unit-level UC receipt to household "
+            "grain: a physical household containing two UC benefit units "
+            "contributes 2 to uc_households but 1 to a child band. DWP UC "
+            "statistics count UC claim households, which align with benefit "
+            "units rather than physical FRS households. Binding must "
+            "declare the grain crosswalk (or change the runtime metric) "
+            "before either UC family enters a solve."
+        ),
+        "authority": (
+            "DWP Universal Credit official statistics Stat-Xplore user "
+            "guide (household definition); "
+            "microcosm.build.uk_runtime.local_targets.compute_household_metrics "
+            "(benunit-to-household mapping); microcosm#495 scoping "
+            "(cross-family review finding)."
+        ),
+    },
+    {
+        "fence_id": _CENSUS_DISCLOSURE_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "All three census household-count legs are disclosure-controlled "
+            "(ONS/NRS cell-key perturbation; NISRA flexible-table-builder "
+            "controls), so area counts carry small deliberate noise and do "
+            "not add exactly across grains (measured constituency-sum vs "
+            "national-total deltas at review: E&W +105, Scotland -554, NI "
+            "+3). Binding treats the published counts as the target values "
+            "with that noise documented — never as exact controls — and any "
+            "cross-grain reconciliation must name which grain wins."
+        ),
+        "authority": (
+            "ONS/NRS/NISRA statistical disclosure control documentation; "
+            "microcosm#495 scoping (cross-family review measurement)."
+        ),
+    },
+    {
+        "fence_id": _POPULATION_UNIVERSE_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The FRS covers private households, while ONS mid-year "
+            "population estimates cover the total usual-resident population "
+            "including communal establishments (care homes, student halls, "
+            "barracks, prisons). Binding age-structure targets must declare "
+            "the universe treatment (communal-establishment adjustment or "
+            "documented acceptance) per area type."
+        ),
+        "authority": (
+            "FRS background and methodology (private-household universe); "
+            "ONS population estimates methodology (communal-establishment "
+            "population); microcosm#495 scoping (cross-family review "
+            "finding)."
+        ),
+    },
+)
+
+_STATUS_DEFINITIONS: dict[str, str] = {
+    METRIC_STATUS_BOUND_IN_CODE: (
+        "The household-side metric is computed by "
+        "local_targets.compute_household_metrics today."
+    ),
+    SOURCE_STATUS_DOCUMENTED_UNPINNED: (
+        "The official product exists and was verified at the recorded URL "
+        "on verified_on, but no exact table, vintage, or hash is pinned; "
+        "binding work pins it per family."
+    ),
+    SOURCE_STATUS_PINNED_IN_LADDER: (
+        "The product is downloaded and sha-pinned per build by the UK OA "
+        "ladder artifact tool, which records every source hash in the "
+        "artifact metadata; target values derive from the artifact's own "
+        "sums."
+    ),
+    FENCE_ENFORCEMENT_REVIEW: (
+        "The fence is a reviewed adjudication requirement recorded for "
+        "binding work; execution-time enforcement in the local solve "
+        "configuration lands with the solve-doctrine increment of "
+        "microcosm#495."
+    ),
+}
+
+_SCOPE_NOTE = (
+    "This census covers the default in-code metric surface returned by "
+    "local_targets.metric_names(area_type) with no target profile. "
+    "Ledger target-profile-driven metric surfaces are governed by their "
+    "profile contract and are out of census scope."
+)
+
+
+def build_uk_local_target_census() -> dict[str, Any]:
+    """Build the census from the live metric surface plus reviewed registers."""
+
+    area_metric_order: dict[str, list[str]] = {}
+    metric_rows: dict[str, dict[str, Any]] = {}
+    for area_type in AREA_TYPES:
+        names = [str(name) for name in metric_names(area_type)]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(
+                f"UK local metric surface for {area_type!r} declares "
+                f"duplicate metric name(s): {duplicates}."
+            )
+        area_metric_order[area_type] = names
+        for name in names:
+            row = metric_rows.setdefault(
+                name,
+                {
+                    "name": name,
+                    "family": _family_for_metric(name),
+                    "area_types": [],
+                    "status": METRIC_STATUS_BOUND_IN_CODE,
+                },
+            )
+            if area_type not in row["area_types"]:
+                row["area_types"].append(area_type)
+
+    families = [dict(row) for row in _FAMILIES]
+    _require_unique_ids(families, key="family", label="family")
+    sources = [dict(row) for row in _SOURCES]
+    _require_unique_ids(sources, key="source_id", label="source")
+    fences = [dict(row) for row in _BINDING_FENCES]
+    _require_unique_ids(fences, key="fence_id", label="binding fence")
+
+    source_ids = {row["source_id"] for row in sources}
+    fence_ids = {row["fence_id"] for row in fences}
+    used_families = {row["family"] for row in metric_rows.values()}
+    declared_families = {row["family"] for row in families}
+    unused = sorted(declared_families - used_families)
+    if unused:
+        raise ValueError(f"census declares family(ies) with no metrics: {unused}.")
+    unknown_families = sorted(used_families - declared_families)
+    if unknown_families:
+        raise ValueError(
+            f"census classified metric(s) into undeclared family(ies): "
+            f"{unknown_families}."
+        )
+    for family in families:
+        unknown_sources = sorted(set(family["sources"]) - source_ids)
+        if unknown_sources:
+            raise ValueError(
+                f"family {family['family']!r} references unknown source(s): "
+                f"{unknown_sources}."
+            )
+        unknown_fences = sorted(set(family.get("adjudications", [])) - fence_ids)
+        if unknown_fences:
+            raise ValueError(
+                f"family {family['family']!r} references unknown fence(s): "
+                f"{unknown_fences}."
+            )
+
+    payload = {
+        "schema_version": CENSUS_SCHEMA_VERSION,
+        "census_kind": CENSUS_KIND,
+        "scope": _SCOPE_NOTE,
+        "area_types": list(AREA_TYPES),
+        "area_metric_order": area_metric_order,
+        "metrics": [metric_rows[name] for name in sorted(metric_rows)],
+        "families": families,
+        "sources": sources,
+        "binding_fences": fences,
+        "status_definitions": dict(_STATUS_DEFINITIONS),
+    }
+    return copy.deepcopy(payload)
+
+
+def committed_uk_local_target_census_path() -> Path:
+    """Path of the committed census artifact inside ``microcosm.build.uk``."""
+
+    return Path(str(files("microcosm.build.uk").joinpath(CENSUS_RESOURCE)))
+
+
+def load_uk_local_target_census(path: str | Path | None = None) -> dict[str, Any]:
+    """Load a census JSON, defaulting to the committed artifact."""
+
+    census_path = (
+        committed_uk_local_target_census_path() if path is None else Path(path)
+    )
+    payload = json.loads(census_path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError(f"{census_path}: census must be a JSON object.")
+    return payload
+
+
+def write_uk_local_target_census(
+    path: str | Path | None = None,
+    census: dict[str, Any] | None = None,
+) -> Path:
+    """Write the census JSON, defaulting to the committed artifact path."""
+
+    census_path = (
+        committed_uk_local_target_census_path() if path is None else Path(path)
+    )
+    payload = build_uk_local_target_census() if census is None else census
+    census_path.parent.mkdir(parents=True, exist_ok=True)
+    census_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    return census_path
+
+
+def assert_uk_local_target_census_current(path: str | Path | None = None) -> None:
+    """Fail if the committed census no longer matches the live surface.
+
+    Comparison is by canonical JSON serialization, not Python equality, so
+    JSON-visible type drift (``true`` vs ``1``, ``1.0`` vs ``1``) is stale.
+    """
+
+    committed = load_uk_local_target_census(path)
+    live = build_uk_local_target_census()
+    committed_text = json.dumps(committed, sort_keys=True)
+    live_text = json.dumps(live, sort_keys=True)
+    if committed_text != live_text:
+        drifted = _drifted_keys(committed, live)
+        raise ValueError(
+            "UK local-target census is stale: committed artifact does not "
+            f"match the live metric surface (drift in {drifted}). Regenerate "
+            "with `uv run python tools/census_uk_local_targets.py`."
+        )
+
+
+def _family_for_metric(name: str) -> str:
+    exact = _EXACT_FAMILY_RULES.get(name)
+    if exact is not None:
+        return exact
+    for prefix, family in _PREFIX_FAMILY_RULES:
+        if name.startswith(prefix):
+            return family
+    raise ValueError(
+        f"UK local metric {name!r} has no census family classification; add "
+        "a rule to local_target_census._EXACT_FAMILY_RULES or "
+        "_PREFIX_FAMILY_RULES with its official source(s) before shipping "
+        "it."
+    )
+
+
+def _require_unique_ids(
+    rows: list[dict[str, Any]],
+    *,
+    key: str,
+    label: str,
+) -> None:
+    ids = [str(row[key]) for row in rows]
+    duplicates = sorted({value for value in ids if ids.count(value) > 1})
+    if duplicates:
+        raise ValueError(f"census declares duplicate {label} id(s): {duplicates}.")
+
+
+def _drifted_keys(committed: dict[str, Any], live: dict[str, Any]) -> list[str]:
+    keys = sorted(set(committed) | set(live))
+    return [
+        key
+        for key in keys
+        if json.dumps(committed.get(key), sort_keys=True)
+        != json.dumps(live.get(key), sort_keys=True)
+    ]

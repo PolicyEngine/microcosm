@@ -30,11 +30,11 @@ from pathlib import Path
 
 import numpy as np
 
-WT = Path("/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert")
+WT = Path("/Users/maxghenis/PolicyEngine/_worktrees/microcosm-build-j-recert")
 sys.path.insert(0, str(WT / "tools"))
 import build_us_fiscal_refresh_release as release  # noqa: E402
 
-from populace.calibrate import calibrate  # noqa: E402
+from microcosm.calibrate import calibrate  # noqa: E402
 
 RT = Path("/Users/maxghenis/PolicyEngine/_buildj-runtime")
 CKPT = RT / "checkpoints/buildj-dense/target_frame_checkpoint.h5"
@@ -83,7 +83,7 @@ def main():
         congressional_district_vintage_crosswalk=None,
         age_targets=True, allow_unaged_dollar_targets=False,
         extra_support_exclusions=None)
-    from populace.build.us_runtime import apply_us_medicaid_enrollment_substitutions
+    from microcosm.build.us_runtime import apply_us_medicaid_enrollment_substitutions
     registry1, sub_records = apply_us_medicaid_enrollment_substitutions(registry0)
     target_specs = registry1.specs
     active_registry = release.TargetRegistry(target_specs, country="us")

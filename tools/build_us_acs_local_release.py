@@ -25,7 +25,7 @@ package; each is separately resumable):
                 --resume), write diagnostics and the calibrated weights onto
                 a copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
-                per-spine SSI incidence and intensity (the populace#403
+                per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
                 gate, spine-composition evidence) + the reviewed-limitations
@@ -37,7 +37,7 @@ package; each is separately resumable):
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
                 one-command refresh recipe) + sha256sums. Publication stays
-                a separate reviewed step (``populace-publish-release
+                a separate reviewed step (``microcosm-publish-release
                 <dir> --no-latest``); this tool never uploads and never
                 touches latest.json.
 """
@@ -146,14 +146,14 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
     Option B of the Build L runbook); ``'full'`` keeps them.
     """
 
-    from populace.build.ledger_artifact import load_ledger_consumer_artifact
-    from populace.build.us_runtime.fiscal_targets import (
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime.fiscal_targets import (
         compile_us_fiscal_target_registry,
     )
-    from populace.build.us_runtime.medicaid_take_up import (
+    from microcosm.build.us_runtime.medicaid_take_up import (
         apply_us_medicaid_enrollment_substitutions,
     )
-    from populace.calibrate.registry import TargetRegistry
+    from microcosm.calibrate.registry import TargetRegistry
 
     artifact = load_ledger_consumer_artifact(str(feed))
     registry = compile_us_fiscal_target_registry(
@@ -214,8 +214,8 @@ def project_input_only(base_frame, period: int = PERIOD):
     The H5 is never touched. Returns (projected_frame, dropped_by_entity).
     """
 
-    from populace.frame import Frame
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.frame import Frame
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
     adapter = PolicyEngineUSEngine()
     structural = set(adapter._structural_columns())
@@ -280,8 +280,8 @@ def fill_reviewed_nulls(
 
     from policyengine_us import CountryTaxBenefitSystem
 
-    from populace.build.us_runtime.base_pool import spine_column
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
     summary = json.loads(Path(summary_path).read_text())
     register = {
@@ -533,7 +533,7 @@ PERSON_STRUCT = [
 
 
 def ladder_population(ladder_path: Path, geographies: list[str]):
-    from populace.build.us_runtime.puma_ladder import load_us_puma_ladder
+    from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
     puma_states = (ladder.puma // 100_000).astype(int)
@@ -685,8 +685,8 @@ def write_lean_checkpoint(
 
 
 def load_lean_frame(checkpoint_h5: Path):
-    from populace.frame import Frame, WeightKind, Weights
-    from populace.frame.units import US_SCHEMA
+    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.frame.units import US_SCHEMA
 
     tables = {}
     with pd.HDFStore(checkpoint_h5, mode="r") as store:
@@ -876,8 +876,8 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
 
 
 def do_calibrate(args) -> None:
-    from populace.calibrate import calibrate
-    from populace.calibrate.target import Target, TargetSet
+    from microcosm.calibrate import calibrate
+    from microcosm.calibrate.target import Target, TargetSet
 
     identity = _verify_run_identity(args)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
@@ -1068,7 +1068,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
         return
     from build_us_acs_multispine_base import _write_dataset
 
-    from populace.frame import Frame, WeightKind, Weights
+    from microcosm.frame import Frame, WeightKind, Weights
 
     frame = _load_staging_frame(args.staging_h5)
     staging_ids = frame.table("household")["household_id"].to_numpy()
@@ -1133,9 +1133,9 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
 
 
 def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
-    """Per-spine composition evidence (the populace#403 skew signature)."""
+    """Per-spine composition evidence (the microcosm#403 skew signature)."""
 
-    from populace.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.base_pool import spine_column
 
     tag = spine_column("household")
     weights = np.asarray(weights, dtype=np.float64)
@@ -1179,7 +1179,7 @@ def do_qa(args) -> None:
     (the engine-pass contract was applied at export).
     """
 
-    from populace.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.base_pool import spine_column
 
     projected = _load_staging_frame(args.out_h5)
 
@@ -1193,7 +1193,7 @@ def do_qa(args) -> None:
     )
     person_tag = projected.table("person")[spine_column("person")].to_numpy()
 
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
     adapter = PolicyEngineUSEngine()
     per_spine: dict[str, dict[str, float]] = {}
@@ -1246,7 +1246,7 @@ def do_qa(args) -> None:
         "plain_consumption": True,
         "per_spine": per_spine,
         "note": (
-            "populace#403 re-measure: per-spine SSI incidence and intensity, "
+            "microcosm#403 re-measure: per-spine SSI incidence and intensity, "
             "computed by loading the packaged artifact bytes PLAIN (no "
             "private projection or fill) — the probe doubles as the "
             "consumer-loadability proof. Recorded as evidence, not gated."
@@ -1300,7 +1300,7 @@ def finalize_reviewed_limitations(
             "status": "reviewed_inherited_defect",
             "reason": (
                 "The donor lineage (base-O via the certified Build O sparse "
-                "release) carries the populace#507 SSI aged-band take-up "
+                "release) carries the microcosm#507 SSI aged-band take-up "
                 "collapse: the 65+ one-shot Bernoulli seed at 8.4% collapses "
                 "the aged SSI baseline to roughly 0.94M against SSA's 2.42M. "
                 "The QRF transfer replicates donor SSI participation onto "
@@ -1308,7 +1308,7 @@ def finalize_reviewed_limitations(
                 "defect by construction."
             ),
             "treatment": (
-                "populace#508 owns the fix; when the corrected base "
+                "microcosm#508 owns the fix; when the corrected base "
                 "certifies, this artifact's refresh_recipe re-runs the "
                 "chain against the new certified release in one command."
             ),
@@ -1325,12 +1325,12 @@ def finalize_reviewed_limitations(
             "affected_spines": ["asec_puf", "acs_2024_1yr"],
             "reason": (
                 "The donor pool's miscellaneous_income loss side remains "
-                "distorted (populace#393, open at build time; roughly 4.6x "
+                "distorted (microcosm#393, open at build time; roughly 4.6x "
                 "SOI's loss-return prevalence measured in the Build J dense "
                 "remedy experiments). The QRF transfer replicates the donor "
                 "distribution onto the ACS spine."
             ),
-            "treatment": "Tracked via populace#393; propagates on re-transfer.",
+            "treatment": "Tracked via microcosm#393; propagates on re-transfer.",
             "calibration_blocker": False,
         },
         {
@@ -1363,7 +1363,7 @@ def finalize_reviewed_limitations(
                 "households under the hard 5x weight cap with l2_lambda=0 "
                 "(kept for consistency with the certified default and the "
                 "Build L doctrine; no new calibration knobs per "
-                "populace#492)."
+                "microcosm#492)."
             ),
             "calibration_blocker": False,
         },
@@ -1408,7 +1408,7 @@ def finalize_reviewed_limitations(
 
 
 def do_finalize(args) -> None:
-    from populace.build.us_runtime.puma_ladder import (
+    from microcosm.build.us_runtime.puma_ladder import (
         load_us_puma_ladder,
         us_puma_ladder_gate,
     )
@@ -1513,7 +1513,7 @@ def do_finalize(args) -> None:
         "spine_composition": {
             "passed": True,
             "note": (
-                "Recorded evidence for the populace#403 weight-composition "
+                "Recorded evidence for the microcosm#403 weight-composition "
                 "signature; not a pass/fail bound."
             ),
             "detail": composition,
@@ -1661,7 +1661,7 @@ def do_package(args) -> dict:
     donor_release = (staging_summary.get("base") or {}).get("donor_release")
     refresh_recipe = {
         "note": (
-            "When the next certified default publishes (e.g. the populace#508 "
+            "When the next certified default publishes (e.g. the microcosm#508 "
             "SSI fix -> O-2), refresh this artifact by re-running the chain "
             "against the new certified release H5; everything else is "
             "unchanged."
@@ -1687,7 +1687,7 @@ def do_package(args) -> dict:
         "build_sha": code["sha"],
         "build_dirty": code["dirty"],
         "created_at": datetime.now(UTC).isoformat(),
-        "code": {"branch": code["branch"], "repo": "populace"},
+        "code": {"branch": code["branch"], "repo": "microcosm"},
         "runtime": {
             "policyengine_core": _version("policyengine-core"),
             "policyengine_us": _version("policyengine-us"),
@@ -1781,7 +1781,7 @@ def do_package(args) -> dict:
 
     release_manifest = {
         "schema_version": 1,
-        "data_package": {"name": "populace-data", "version": "0.1.0"},
+        "data_package": {"name": "microcosm-data", "version": "0.1.0"},
         # NON-DEFAULT: this artifact claims NO default dataset slot.
         # Publishing it must never flip latest.json; it is discoverable by
         # its immutable release id / tag only.

@@ -1,6 +1,6 @@
 """Diff the US target surface un-aged vs aged from one Ledger feed.
 
-The review harness behind PolicyEngine/populace#287: compiles the identical
+The review harness behind PolicyEngine/microcosm#287: compiles the identical
 target surface twice from the same consumer-fact feed — pre-contract behavior
 (un-aged, waived) and the release default (aged under cbo_growth_factor_aging)
 — and reports what calibration would be asked to hit. Because calibration
@@ -18,8 +18,8 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 
-from populace.build.ledger_artifact import load_ledger_consumer_artifact
-from populace.build.us_runtime.fiscal_targets import (
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.us_runtime.fiscal_targets import (
     compile_us_fiscal_target_registry,
 )
 

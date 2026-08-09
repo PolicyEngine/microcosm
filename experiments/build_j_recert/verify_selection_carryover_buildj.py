@@ -13,11 +13,11 @@ import hashlib
 import sys
 from pathlib import Path
 
-WT = Path("/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert")
+WT = Path("/Users/maxghenis/PolicyEngine/_worktrees/microcosm-build-j-recert")
 sys.path.insert(0, str(WT / "tools"))
 import build_us_fiscal_refresh_release as release  # noqa: E402
 
-from populace.build.us_runtime.warm_start_selection import (  # noqa: E402
+from microcosm.build.us_runtime.warm_start_selection import (  # noqa: E402
     load_selection_source_from_manifest,
 )
 

@@ -8,7 +8,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from populace.build.us_runtime.acs_sources import (
+from microcosm.build.us_runtime.acs_sources import (
     fetch_acs_pums_sources,
     load_acs_source_manifest,
 )

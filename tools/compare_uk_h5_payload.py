@@ -1,6 +1,6 @@
 """Compare two UK single-year H5 artifacts at payload level (#612 acceptance).
 
-Byte identity is not a valid acceptance test for populace HDF5 artifacts —
+Byte identity is not a valid acceptance test for microcosm HDF5 artifacts —
 ``HDFStore`` stamps object-header write times, so two runs of an unchanged
 writer already differ in bytes. What downstream readers depend on is the
 **payload**: the same store keys in the same write order, the same per-table

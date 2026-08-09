@@ -1,7 +1,7 @@
-# The Populace stack: design charter
+# The Microcosm stack: design charter
 
 **Status:** founding document, updated 2026-08-06. Decisions here were agreed
-between Max and Claude after building and scoring the first Populace
+between Max and Claude after building and scoring the first Microcosm
 population candidate, which surfaced every failure mode this design exists to
 prevent.
 
@@ -21,27 +21,27 @@ those seams:
   and required environment archaeology to run again.
 
 **No backward compatibility.** Legacy consumers pin the packages they still
-need. Populace is built as if from scratch.
+need. Microcosm is built as if from scratch.
 
 ## The kernel: one datatype, packages as operators
 
 ```
 packages/
-  populace-frame/      the kernel (import populace.frame): Frame + typed
+  microcosm-frame/      the kernel (import microcosm.frame): Frame + typed
                        weights + strata + links + metadata + weighted
                        accounting (absorbs microdf) + unit structure
                        (absorbs microunit) + the RulesEngine protocol
-  populace-fit/        conditional-models operator (import populace.fit;
+  microcosm-fit/        conditional-models operator (import microcosm.fit;
                        succeeds ad hoc imputation scripts)
-  populace-calibrate/  representation operator (import populace.calibrate;
+  microcosm-calibrate/  representation operator (import microcosm.calibrate;
                        succeeds microcalibrate)
-  populace-build/      typed build plans, donor graphs, stage contracts,
+  microcosm-build/      typed build plans, donor graphs, stage contracts,
                        country build stages, and release gates
-  populace-data/       published population registry and lazy rules-engine
+  microcosm-data/       published population registry and lazy rules-engine
                        dataset loaders
 ```
 
-### populace.frame.Frame
+### microcosm.frame.Frame
 
 The atom of the stack: a weighted *sampling frame* of entity tables — the
 survey-statistics sense of "frame", the list of units a sample is drawn from
@@ -75,7 +75,7 @@ and the thing weights refer back to, made executable. Holds:
   pandas-compat veneer may persist for migration, but the frame is the API.
 - **Time as a dimension, not a copy** (longitudinal-ready, see below).
 
-### populace.frame.rules: the RulesEngine protocol
+### microcosm.frame.rules: the RulesEngine protocol
 
 The rules engine is an *adapter interface*, not a dependency:
 
@@ -93,7 +93,7 @@ Adapters: `policyengine_us` today; **Axiom `rulespec-us` when it lands**
 (interface tests written against the protocol now so the swap is a new adapter,
 not a migration). Nothing outside the adapter imports a rules engine.
 
-### populace-fit: conditional models
+### microcosm-fit: conditional models
 
 - Weight-aware **by construction**: fits read the frame's typed weights; there
   is no unweighted default. A step that wants an unweighted fit writes
@@ -104,7 +104,7 @@ not a migration). Nothing outside the adapter imports a rules engine.
 - Draws sample the *weighted conditional*; tail support below pool resolution
   is the pool's job (strata), never the fit's.
 
-### populace-calibrate: representation
+### microcosm-calibrate: representation
 
 - The only place calibrated weights are produced. Sparse target-matrix
   compilation + APG / L0 (`target_records`) pruning as the core, not an option
@@ -199,27 +199,27 @@ extension, not a rewrite (the kernel must grow these hooks before then).
 
 ## Naming
 
-The stack is **populace**: one PEP 420 namespace package shipped as shard
-distributions — `populace-frame`, `populace-fit`, `populace-calibrate` —
-imported as `populace.frame`, `populace.fit`, `populace.calibrate`. No shard
-ships a top-level `populace/__init__.py` (implicit namespace), so the shards
-install side by side, and a `populace` metapackage pins the constellation in
+The stack is **microcosm**: one PEP 420 namespace package shipped as shard
+distributions — `microcosm-frame`, `microcosm-fit`, `microcosm-calibrate` —
+imported as `microcosm.frame`, `microcosm.fit`, `microcosm.calibrate`. No shard
+ships a top-level `microcosm/__init__.py` (implicit namespace), so the shards
+install side by side, and a `microcosm` metapackage pins the constellation in
 one line. New names let legacy package pins coexist without version gymnastics
 during the transition.
 
 **Why shards rather than one package with extras.** The justification is
 *independent heavy dependencies*, not modularity for its own sake:
-`populace-calibrate` pulls torch and L0/sparse solvers; `populace-fit` pulls
+`microcosm-calibrate` pulls torch and L0/sparse solvers; `microcosm-fit` pulls
 scikit-learn / quantile-forest; an analyst doing imputation should never
 install torch, and vice versa. Absent that, one distribution with extras would
 be simpler — so the shard split earns its keep only as long as the dependency
 footprints stay genuinely disjoint. Shards are NOT an invitation for third
-parties to publish into `populace.*`: the namespace is ours; external operators
+parties to publish into `microcosm.*`: the namespace is ours; external operators
 ship under their own names and register as contributions (see The commons),
 never as namespace squatters.
 
 **Constellation versioning has a mechanism, not just an intent.** Each shard
-pins `populace-frame>=X,<X+1` AND asserts kernel compatibility at import (a
+pins `microcosm-frame>=X,<X+1` AND asserts kernel compatibility at import (a
 cheap `frame.__version__` check) so pip's looser resolution can't silently
 assemble an incompatible set. CI builds the wheels and installs them **with
 pip** from a local index before running the contract suite — a standing
@@ -228,14 +228,14 @@ had no test.
 
 ## Sequencing
 
-1. `populace-frame` kernel: bundle + typed weights + strata + accounting + unit
+1. `microcosm-frame` kernel: bundle + typed weights + strata + accounting + unit
    structure port + RulesEngine protocol + policyengine-us adapter.
 2. Behavioral contract suite + CI.
-3. `populace-fit` canonical model (weighted-bootstrap QRF, regime gates,
+3. `microcosm-fit` canonical model (weighted-bootstrap QRF, regime gates,
    chaining).
-4. `populace-calibrate` (APG/L0 over bundle weights, multi-period constraint
+4. `microcosm-calibrate` (APG/L0 over bundle weights, multi-period constraint
    stacking).
-5. `populace-build` country stages and release manifests.
+5. `microcosm-build` country stages and release manifests.
 6. Dynamics operator + SIPP/PSID donors (social-security-model proving
    ground).
 

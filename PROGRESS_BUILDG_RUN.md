@@ -1,6 +1,6 @@
 # Build G certification candidates — assembly + run — PROGRESS
 
-Task: PolicyEngine/populace **#299 Build G run entry**. Assemble and run the two Build G
+Task: PolicyEngine/microcosm **#299 Build G run entry**. Assemble and run the two Build G
 certification candidates on the now-complete prerequisite stack (#317/#321/#324/#327/#328 + PR #330):
 - **SPARSE headline** = frozen-57k-support selection (committed manifest) + dense polish at production
   defaults (λ=0) — the ~57k laptop artifact.
@@ -9,14 +9,14 @@ certification candidates on the now-complete prerequisite stack (#317/#321/#324/
 **STAGING/LOCAL ONLY.** Never touch policyengine/populace-us prod repo, `latest.json`, or prod HF write
 paths. Publication is Max's call. All long compute DETACHED (nohup + pidfile + logs).
 
-Worktree: `/Users/maxghenis/PolicyEngine/_worktrees/populace-build-g-run` (branch `build-g-run`,
+Worktree: `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-build-g-run` (branch `build-g-run`,
 **fresh off origin/main HEAD 2bf603b = the #330 merge commit** — NOT the opener's stale `build-g`).
 Runtime home (OUTSIDE repo): `/Users/maxghenis/PolicyEngine/_buildg-runtime/` (durable; reused from opener + #330).
 
 ## Verified prerequisites (read before any change)
 - **#330 MERGED** to main (merge commit 2bf603b, 2026-07-06T22:42Z). `warm_start_selection.py` +
   `build_us_selection_source_manifest.py` + release-tool selection wiring present at origin/main.
-- **Base F H5** (REUSE, sha VERIFIED): `_worktrees/populace-build-f/out/base-f-20260705/base_populace_us_2024_puf_support.h5`
+- **Base F H5** (REUSE, sha VERIFIED): `_worktrees/microcosm-build-f/out/base-f-20260705/base_populace_us_2024_puf_support.h5`
   = `18833fb68e60ee74461608d81a5c5ab7d52435e17026d9e3b062d9de18d6871f` (matches required 18833fb6).
   3-year ASEC pool (2024+2023+2022 equal thirds) → 2× PUF clone = 337,704 hh. All 4 #278 leaves present.
 - **Committed selection manifest** (from #330): `_buildg-runtime/inputs/certified_57k_selection_source.json`
@@ -222,7 +222,7 @@ re-derived 20 M-CHIP); Build F dense attempt-5 = 5521 (M-CHIP skipped). With the
 sparse drops the 20 M-CHIP too → remaining sparse zero-support = 18 SOI + 1 TANF = the 19 in the exclusion
 file. Dense = 0 remaining.
 
-**Full populace-build suite launched detached** (build_suite.pid) to confirm no regressions before compute.
+**Full microcosm-build suite launched detached** (build_suite.pid) to confirm no regressions before compute.
 
 ### 2026-07-06 ~23:10 ET — RUN 1 (dense) failed early on the BASE-vs-reference gate — DIAGNOSED + FIXED (scope error in my own step-1 wiring)
 **Symptom:** dense run rc=1 right after ACA materialization (before calibration), on
@@ -272,7 +272,7 @@ extractable even if the export gate fails on residuals.
 Both dense AND sparse rc=1 on `_degenerate_input_signal_gate` (#286), BEFORE calibration (base-frame gate).
 Two documented items, exactly the #330/#324-flagged register refresh never merged from build-f:
 1. `second_home_mortgage_{balance,interest,origination_year}` = constant engine default → need reviewed
-   exclusion (un-imputed trio → populace#38).
+   exclusion (un-imputed trio → microcosm#38).
 2. Stale reviewed exclusions `['takes_up_eitc','takes_up_tanf_if_eligible']` — carry #315-seeded signal
    now → must be RETIRED.
 **Positive signal:** the dense run PASSED the base-vs-reference gate (advanced to the degenerate gate,
@@ -443,8 +443,8 @@ change did NOT make cold competitive → frozen selection's value CONFIRMED; inf
 remains the path, NOT a from-scratch reselection. Frozen-57k is unambiguously the headline candidate.
 
 ### 2026-07-07 ~06:05 ET — STEP 6 COMPLETE — reports posted, Build G run closed
-- #299 consolidated three-way report: https://github.com/PolicyEngine/populace/issues/299#issuecomment-4902533514
-- #324 pin-validation outcome: https://github.com/PolicyEngine/populace/issues/324#issuecomment-4902539459
+- #299 consolidated three-way report: https://github.com/PolicyEngine/microcosm/issues/299#issuecomment-4902533514
+- #324 pin-validation outcome: https://github.com/PolicyEngine/microcosm/issues/324#issuecomment-4902539459
 
 **FINAL VERDICT (per artifact):**
 - FROZEN-57k (headline): NOT certifiable tonight; the clear best candidate. Loss 0.02964 (beats certified

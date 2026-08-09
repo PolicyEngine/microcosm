@@ -26,7 +26,7 @@ all** (SPM resources embed survey-measured benefits and calculated
 taxes), and other models' survey-based tax-benefit estimates
 (TRIM3/ATTIS/DYNASIM outputs — comparators or seeds, never targets).
 
-Rationale: populace replaces the survey's tax-benefit measurement with
+Rationale: microcosm replaces the survey's tax-benefit measurement with
 imputed, computed, and admin-calibrated values — that is the product.
 Fitting a survey-derived tax-benefit quantity launders the
 measured-with-error version back in and destroys the held-out validation
@@ -152,6 +152,6 @@ Thin-support dollar targets ship with a matching
 pattern) so the pre-solve selection cannot crush the carriers the new target
 needs.
 
-Worked examples of the whole arc: populace#451 (anchors → support oracles →
+Worked examples of the whole arc: microcosm#451 (anchors → support oracles →
 ledger#105 facts → PR #465 wiring/probes), and the exclusion-register
 corrections in that PR.

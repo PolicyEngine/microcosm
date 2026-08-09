@@ -1,6 +1,6 @@
 # NZ public calibration-target inventory (v0, 2026-07-06)
 
-Public New Zealand data margins for **populace-nz** ([epic #343](https://github.com/PolicyEngine/populace/issues/343)) — calibrating donor microdata to NZ population/administrative margins, running tax-benefit microsimulation (rules from [rulespec-nz](https://github.com/TheAxiomFoundation/rulespec-nz)), and estimating **dollar** benefit take-up gaps.
+Public New Zealand data margins for **microcosm-nz** ([epic #343](https://github.com/PolicyEngine/microcosm/issues/343)) — calibrating donor microdata to NZ population/administrative margins, running tax-benefit microsimulation (rules from [rulespec-nz](https://github.com/TheAxiomFoundation/rulespec-nz)), and estimating **dollar** benefit take-up gaps.
 
 **Scope.** Public calibration targets only. For each source: dataset/table, URL (landing + direct download where confirmable), variables, geographic granularity, reference period, cadence, format, licence — and which targets enable **dollar-level** (not just count) calibration.
 
@@ -168,4 +168,4 @@ Also: `github.com/Treasury-Analytics-and-Insights/Calibration` (MIT, 2018) — "
 
 ---
 
-*Prepared for populace-nz (#343), 2026-07-06; all entries verified against live sources that day per the status column. Re-verify Infoshare URLs after the April 2027 ADE migration, IRD/MSD filenames each release cycle, and the HUD dashboard xlsx monthly. Companion: rulespec-nz provides the rules; the ~44% AS take-up (M6) and ~87% WfF take-up (M5) anchor the dollar take-up gap.*
+*Prepared for microcosm-nz (#343), 2026-07-06; all entries verified against live sources that day per the status column. Re-verify Infoshare URLs after the April 2027 ADE migration, IRD/MSD filenames each release cycle, and the HUD dashboard xlsx monthly. Companion: rulespec-nz provides the rules; the ~44% AS take-up (M6) and ~87% WfF take-up (M5) anchor the dollar take-up gap.*

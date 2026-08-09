@@ -3,7 +3,7 @@
 # Most by-origin comparisons receipt insufficient_support by design at 1%.
 set -euo pipefail
 
-: "${POPULACE_MAIN:?set to the main populace clone}"
+: "${POPULACE_MAIN:?set to the main microcosm clone}"
 : "${ASEC_H5:?}"
 : "${ASEC_SHA:?}"
 : "${ACS_H_ZIP:?}"
@@ -19,7 +19,7 @@ set -euo pipefail
 : "${OUT:?}"
 
 env \
-  PYTHONPATH=packages/populace-frame/src:packages/populace-fit/src:packages/populace-calibrate/src:packages/populace-build/src:packages/populace-data/src \
+  PYTHONPATH=packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-calibrate/src:packages/microcosm-build/src:packages/microcosm-data/src \
   "${POPULACE_MAIN}/.venv/bin/python" tools/build_us_multispine_pool.py \
   --sample-fraction 0.01 \
   --sample-seed 578 \

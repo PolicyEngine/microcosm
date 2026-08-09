@@ -1,0 +1,132 @@
+{
+  "_comment": "Out-of-sample baseline-level backtest: simulated baseline totals compared to published IRS SOI actuals for tax items that are NOT calibration targets (verified against the release target set \u2014 the calibrated national SOI concepts are income lines, EITC, and itemized components). Unlike the reform rows, these need no counterfactual: the microcosm value is the plain baseline weighted total of the variable at the dataset period, so all lines share one simulation. Benchmarks are tax-year actuals from the SOI Individual Complete Report (Publication 1304); the dataset period is 2024, so a one-year vintage gap (TY2023 actuals) plus population/income growth applies \u2014 microcosm should run slightly above the actuals.",
+  "schema_version": 1,
+  "source": {
+    "publication": "IRS Statistics of Income, Individual Complete Report (Publication 1304), Tax Year 2023 (rev. March 2026)",
+    "table_3_3": "https://www.irs.gov/pub/irs-soi/23in33ar.xls",
+    "table_1_4": "https://www.irs.gov/pub/irs-soi/23in14ar.xls"
+  },
+  "levels": [
+    {
+      "id": "soi_income_tax_net",
+      "name": "Total income tax (net of refundable credits)",
+      "variable": "income_tax",
+      "period": 2024,
+      "benchmark": {
+        "value": 2042047899000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (total income tax minus refundable credits)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "SOI total income tax minus refundable credits \u2014 the same net concept as microcosm's income_tax. Small known scope difference: the microcosm measure also includes qualified-retirement-plan penalty taxes and unreported payroll tax (~0.5% of the total), which SOI books outside income tax."
+    },
+    {
+      "id": "soi_amt",
+      "name": "Alternative minimum tax",
+      "variable": "alternative_minimum_tax",
+      "period": 2024,
+      "benchmark": {
+        "value": 2752164000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 1.4 (alternative minimum tax)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in14ar.xls"
+      },
+      "description": "Post-TCJA AMT is small (about 150,000 returns in TY2023), so this line is sensitive to the top tail of the income distribution."
+    },
+    {
+      "id": "soi_cdcc",
+      "name": "Child and dependent care credit",
+      "variable": "cdcc",
+      "period": 2024,
+      "benchmark": {
+        "value": 3468910000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (credit for child and dependent care)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "SOI reports the credit amount used to offset tax; the microcosm side is min(credit available, income tax before credits) per tax unit \u2014 an approximation that ignores IRS credit ordering, so microcosm remains a slight upper bound.",
+      "cap_variable": "income_tax_before_credits"
+    },
+    {
+      "id": "soi_education_credits",
+      "name": "Education credits (nonrefundable)",
+      "variable": "education_tax_credits",
+      "period": 2024,
+      "benchmark": {
+        "value": 7554668000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (nonrefundable education credit)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "microcosm's education_tax_credits is the nonrefundable American Opportunity credit plus the Lifetime Learning credit \u2014 the same scope as SOI's nonrefundable education credit column (the refundable AOTC portion is excluded on both sides). SOI reports the credit amount used to offset tax; the microcosm side is min(credit available, income tax before credits) per tax unit \u2014 an approximation that ignores IRS credit ordering, so microcosm remains a slight upper bound.",
+      "cap_variable": "income_tax_before_credits"
+    },
+    {
+      "id": "soi_savers_credit",
+      "name": "Retirement savings contribution (saver's) credit",
+      "variable": "savers_credit",
+      "period": 2024,
+      "benchmark": {
+        "value": 2037572000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (retirement savings contribution credit)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "SOI reports the credit amount used to offset tax; the microcosm side is min(credit available, income tax before credits) per tax unit \u2014 an approximation that ignores IRS credit ordering, so microcosm remains a slight upper bound.",
+      "cap_variable": "income_tax_before_credits"
+    },
+    {
+      "id": "soi_ctc_nonrefundable",
+      "name": "Child tax credit + ODC (nonrefundable)",
+      "variable": "non_refundable_ctc",
+      "period": 2024,
+      "benchmark": {
+        "value": 84418366000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (nonrefundable child and other dependent tax credit)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "SOI reports the credit amount used to offset tax; the microcosm side is min(credit available, income tax before credits) per tax unit \u2014 an approximation that ignores IRS credit ordering, so microcosm remains a slight upper bound.",
+      "cap_variable": "income_tax_before_credits"
+    },
+    {
+      "id": "soi_ctc_refundable",
+      "name": "Additional child tax credit (refundable)",
+      "variable": "refundable_ctc",
+      "period": 2024,
+      "benchmark": {
+        "value": 34533251000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (refundable child tax credit or additional child tax credit)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "SOI Table 3.3 refundable CTC/ACTC column \u2014 TOTAL claims ($34.53B = $32.06B refunded + $0.33B offsetting income tax + $2.13B offsetting other taxes), not the outlay-only line. Total claims is the consistent comparator for microcosm's refundable_ctc (the Form 8812 amount regardless of how IRS applies it)."
+    },
+    {
+      "id": "soi_niit",
+      "name": "Net investment income tax",
+      "variable": "net_investment_income_tax",
+      "period": 2024,
+      "benchmark": {
+        "value": 39330017000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (net investment income tax)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": "Concentrated in top-decile capital income, so this line tests the investment-income tail."
+    },
+    {
+      "id": "soi_se_tax",
+      "name": "Self-employment tax",
+      "variable": "self_employment_tax",
+      "period": 2024,
+      "benchmark": {
+        "value": 81087060000,
+        "year": "TY2023",
+        "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (self-employment tax)",
+        "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
+      },
+      "description": ""
+    }
+  ]
+}
