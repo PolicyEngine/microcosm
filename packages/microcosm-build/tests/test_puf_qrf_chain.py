@@ -466,6 +466,77 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     run_primary_puf_qrf_chain(checkpoint_dir)
 
 
+def test_resumed_earnings_chain_keeps_children_out_of_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    person = frame.table("person")
+    source_age = {1: 12.0, 2: 40.0, 3: 10.0}
+    person["age"] = person["person_source_id"].map(source_age).astype("float64")
+    donor = _donor()
+    donor["employment_income_before_lsr"] = np.linspace(
+        1_000.0,
+        40_000.0,
+        len(donor),
+    )
+    donor["self_employment_income_before_lsr"] = np.linspace(
+        100.0,
+        4_000.0,
+        len(donor),
+    )
+    checkpoint_dir = tmp_path / "primary_qrf_earnings_resume"
+    person_outputs = (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    )
+    manifest = initialize_primary_puf_qrf_chain(
+        frame,
+        donor,
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=person_outputs,
+        tax_unit_outputs=(),
+        n_estimators=2,
+        seed=19,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+    allocation = manifest["recipient_predictor_universe"]["person_output_allocation"]
+    assert allocation["person_outputs"] == sorted(person_outputs)
+    assert allocation["out_of_universe_person_rows"] == 2
+    assert allocation["empty_eligible_tax_unit_rows"] == 1
+    assert allocation["first_person_fallback_out_of_universe_rows"] == 0
+
+    completed_target = run_primary_puf_qrf_target(checkpoint_dir, 0)
+    completed_bytes = completed_target.read_bytes()
+    pending_target = puf_qrf_chain_module._target_path(checkpoint_dir, manifest, 1)
+    assert not pending_target.exists()
+
+    # The supervisor preserves the completed prefix and resumes the missing target.
+    run_primary_puf_qrf_chain(checkpoint_dir)
+    assert completed_target.read_bytes() == completed_bytes
+    assert pending_target.is_file()
+    resumed, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+
+    assert weight_kind == "design"
+    resumed_person = resumed.table("person")
+    detail = resumed_person["person_support_channel"].eq("puf_tax_detail")
+    children = detail & resumed_person["age"].lt(15)
+    adults = detail & resumed_person["age"].ge(15)
+    assert int(children.sum()) == 2
+    assert resumed_person.loc[children, list(person_outputs)].eq(0.0).all().all()
+    assert resumed_person.loc[adults, list(person_outputs)].gt(0.0).all().all()
+    all_child_totals = (
+        resumed_person.loc[detail]
+        .groupby("person_tax_unit_id", sort=False)[list(person_outputs)]
+        .sum()
+    )
+    assert all_child_totals.loc[100020].eq(0.0).all()
+
+
 def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -489,7 +560,9 @@ def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
     expected_controls = {
         "require_complete_recipient_predictors": True,
         "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        "recipient_predictor_universe": manifest["recipient_predictor_universe"],
     }
+    assert len(expected_controls["recipient_predictor_universe"]["sha256"]) == 64
     assert {name: manifest[name] for name in expected_controls} == expected_controls
     for filename in (
         puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME,
@@ -512,6 +585,14 @@ def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
     tampered_manifest["absent_cells"] = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL
     manifest_path.write_text(json.dumps(tampered_manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="doctrine controls"):
+        run_primary_puf_qrf_target(checkpoint_dir, 1)
+
+    tampered_manifest = dict(manifest)
+    tampered_universe = dict(manifest["recipient_predictor_universe"])
+    tampered_universe["recipient_tax_unit_rows"] += 1
+    tampered_manifest["recipient_predictor_universe"] = tampered_universe
+    manifest_path.write_text(json.dumps(tampered_manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="universe digest is invalid"):
         run_primary_puf_qrf_target(checkpoint_dir, 1)
 
 
@@ -553,7 +634,7 @@ def test_primary_qrf_chain_stacked_finalization_preserves_unowned_nulls(
     assert tax_unit.loc[tax_unit_clone.eq(1), "domestic_production_ald"].notna().all()
 
 
-def test_primary_qrf_chain_legacy_v5_manifest_defaults_remain_loadable(
+def test_primary_qrf_chain_legacy_doctrine_defaults_remain_loadable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -572,8 +653,10 @@ def test_primary_qrf_chain_legacy_v5_manifest_defaults_remain_loadable(
         n_estimators=2,
         seed=3,
     )
+    assert manifest["schema_version"] == 6
     assert "require_complete_recipient_predictors" not in manifest
     assert "absent_cells" not in manifest
+    assert "recipient_predictor_universe" not in manifest
     for filename in (
         puf_qrf_chain_module.PRIMARY_QRF_DONOR_FILENAME,
         puf_qrf_chain_module.PRIMARY_QRF_RECIPIENT_FILENAME,
@@ -581,6 +664,7 @@ def test_primary_qrf_chain_legacy_v5_manifest_defaults_remain_loadable(
         metadata = load_frame_checkpoint(checkpoint_dir / filename).metadata
         assert "require_complete_recipient_predictors" not in metadata
         assert "absent_cells" not in metadata
+        assert "recipient_predictor_universe" not in metadata
     for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
         run_primary_puf_qrf_target(checkpoint_dir, target_index)
 
@@ -615,15 +699,53 @@ def test_primary_qrf_chain_rejects_incomplete_stacked_predictors(
             require_complete_recipient_predictors=True,
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
         )
+    assert not (tmp_path / "primary_qrf").exists()
 
 
-def test_primary_qrf_rejects_stale_donor_construction_schema_versions(
+def test_primary_qrf_finalization_rejects_changed_recipient_features(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Loading validates no donor-construction identity, so stale roots and
-    # target checkpoints must reject every pre-field-local schema: pre-carve
-    # v1, pre-screen v2, national-carve v3, and whole-row-quarantine v4.
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame = _expanded_frame()
+    checkpoint_dir = tmp_path / "primary_qrf"
+    initialize_primary_puf_qrf_chain(
+        frame,
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(checkpoint_dir, target_index)
+    tax_unit = frame.table("tax_unit")
+    detail = tax_unit["tax_unit_support_clone_index"].eq(1)
+    row = tax_unit.index[detail][0]
+    tax_unit.loc[row, "filing_status_input"] = "SINGLE"
+
+    with pytest.raises(
+        ValueError,
+        match="changed the PUF recipient predictor source universe or feature values",
+    ):
+        finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+
+
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5))
+def test_primary_qrf_rejects_every_stale_schema_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stale_version: int,
+) -> None:
+    # Roots and target checkpoints must reject every schema predating the v6
+    # recipient-universe authority. In particular, the v5 case models the old
+    # strict two-control payload that omitted recipient_predictor_universe; its
+    # stale schema is rejected before that payload can be interpreted.
     monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     checkpoint_dir = tmp_path / "primary_qrf"
@@ -648,34 +770,45 @@ def test_primary_qrf_rejects_stale_donor_construction_schema_versions(
     manifest_path = checkpoint_dir / "manifest.json"
     original_manifest = json.loads(manifest_path.read_text())
     assert original_manifest["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    # This protects custom target-order standalone checkpoints whose manifests
-    # do not hash donor construction.
-    for stale_version in (1, 2, 3, 4):
-        stale_manifest = dict(original_manifest)
-        stale_manifest["schema_version"] = stale_version
-        manifest_path.write_text(json.dumps(stale_manifest))
-        with pytest.raises(ValueError, match="schema version"):
-            load_primary_puf_qrf_predictions(checkpoint_dir)
-        with pytest.raises(ValueError, match="schema version"):
-            run_primary_puf_qrf_chain(checkpoint_dir)
+    stale_manifest = dict(original_manifest)
+    stale_manifest["schema_version"] = stale_version
+    if stale_version == 5:
+        stale_manifest["require_complete_recipient_predictors"] = True
+        stale_manifest["absent_cells"] = PUF_ABSENT_CELLS_PRESERVE_NULLS
+    manifest_path.write_text(json.dumps(stale_manifest))
+    with pytest.raises(
+        ValueError,
+        match=rf"schema version: expected 6, got {stale_version}",
+    ):
+        load_primary_puf_qrf_predictions(checkpoint_dir)
+    with pytest.raises(
+        ValueError,
+        match=rf"schema version: expected 6, got {stale_version}",
+    ):
+        run_primary_puf_qrf_chain(checkpoint_dir)
     manifest_path.write_text(json.dumps(original_manifest))
 
     target_path = sorted((checkpoint_dir / "targets").glob("*.h5"))[0]
     with h5py.File(target_path, mode="r") as h5:
         pristine_metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
     assert pristine_metadata["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    for stale_version in (1, 2, 3, 4):
-        metadata = dict(pristine_metadata)
-        metadata["schema_version"] = stale_version
-        with h5py.File(target_path, mode="r+") as h5:
-            del h5["metadata_json"]
-            h5.create_dataset(
-                "metadata_json",
-                data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
-                track_times=False,
-            )
-        with pytest.raises(ValueError, match="invalid schema_version"):
-            load_primary_puf_qrf_predictions(checkpoint_dir)
+    metadata = dict(pristine_metadata)
+    metadata["schema_version"] = stale_version
+    if stale_version == 5:
+        metadata["require_complete_recipient_predictors"] = True
+        metadata["absent_cells"] = PUF_ABSENT_CELLS_PRESERVE_NULLS
+    with h5py.File(target_path, mode="r+") as h5:
+        del h5["metadata_json"]
+        h5.create_dataset(
+            "metadata_json",
+            data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
+            track_times=False,
+        )
+    with pytest.raises(
+        ValueError,
+        match=rf"invalid schema_version: expected 6, got {stale_version}",
+    ):
+        load_primary_puf_qrf_predictions(checkpoint_dir)
 
 
 def test_primary_qrf_resume_rejects_a_gap(
