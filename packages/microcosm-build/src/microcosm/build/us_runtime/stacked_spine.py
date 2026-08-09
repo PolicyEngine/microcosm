@@ -86,8 +86,11 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
     PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+    puf_capital_gains_tail_support_contract_identity,
+    puf_capital_gains_tail_terminal_support_receipt,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
+    validate_puf_capital_gains_tail_terminal_support_receipt,
 )
 from microcosm.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_MANIFEST_FILENAME,
@@ -1668,9 +1671,10 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v6 binds the ASEC-consistent ACS earnings-universe application and the
-# authenticated whole-pool QBI mutation semantics into the outer identity.
-_STACKED_AUTHORITY_VERSION = 6
+# v7 additionally binds the filing-status-exact capital-gains-tail recipient
+# support contract.  A thin stratum may be skipped only under that immutable,
+# counted contract; v1--v6 authority cannot authenticate the new semantics.
+_STACKED_AUTHORITY_VERSION = 7
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -1889,6 +1893,28 @@ class _BatterySupportProfile:
     min_effective_support: int
 
 
+def _freeze_authority_payload(value: object) -> object:
+    """Recursively freeze one JSON-shaped authority component."""
+
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {
+                str(key): _freeze_authority_payload(nested)
+                for key, nested in value.items()
+            }
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_authority_payload(nested) for nested in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(
+        "Stacked authority components must contain only canonical JSON values; "
+        f"got {type(value).__name__}."
+    )
+
+
 @dataclass(frozen=True)
 class _StackedAuthority:
     """One digest-carrying, deeply immutable stacked-spine authority bundle."""
@@ -1903,6 +1929,7 @@ class _StackedAuthority:
     metric_registry: Mapping[tuple[str, str, str, int], str]
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     support_profile: _BatterySupportProfile
+    puf_capital_gains_tail_support_contract: Mapping[str, object]
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
     declared_form: str
@@ -1950,6 +1977,16 @@ class _StackedAuthority:
             raise TypeError(
                 "Stacked authority support_profile must be a _BatterySupportProfile."
             )
+        if not isinstance(self.puf_capital_gains_tail_support_contract, Mapping):
+            raise TypeError(
+                "Stacked authority capital-gains-tail support contract must be "
+                "a mapping."
+            )
+        object.__setattr__(
+            self,
+            "puf_capital_gains_tail_support_contract",
+            _freeze_authority_payload(self.puf_capital_gains_tail_support_contract),
+        )
         component_digests = dict(self.declared_component_sha256)
         if set(component_digests) != {
             "gap_fill_plan",
@@ -1958,6 +1995,7 @@ class _StackedAuthority:
             "metric_registry",
             "joint_metric_registry",
             "support_profile",
+            "puf_capital_gains_tail_support_contract",
         }:
             raise ValueError(
                 "Stacked authority must carry every component's declared digest."
@@ -2251,6 +2289,7 @@ def _authority_component_payloads(
     metric_registry: Mapping[tuple[str, str, str, int], str],
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
     support_profile: _BatterySupportProfile,
+    puf_capital_gains_tail_support_contract: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
@@ -2270,6 +2309,9 @@ def _authority_component_payloads(
         "metric_registry": _metric_registry_payload(metric_registry),
         "joint_metric_registry": _joint_metric_registry_payload(joint_metric_registry),
         "support_profile": _support_profile_payload(support_profile),
+        "puf_capital_gains_tail_support_contract": _json_ready(
+            puf_capital_gains_tail_support_contract
+        ),
     }
 
 
@@ -2296,6 +2338,9 @@ def _authority_live_digests(
         metric_registry=authority.metric_registry,
         joint_metric_registry=authority.joint_metric_registry,
         support_profile=authority.support_profile,
+        puf_capital_gains_tail_support_contract=(
+            authority.puf_capital_gains_tail_support_contract
+        ),
     )
     component_digests = {
         name: _canonical_sha256(payload) for name, payload in payloads.items()
@@ -2322,6 +2367,7 @@ def _make_stacked_authority(
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
     declared_form: str,
+    puf_capital_gains_tail_support_contract: Mapping[str, object] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
@@ -2340,6 +2386,13 @@ def _make_stacked_authority(
     frozen_joint_registry = _freeze_joint_metric_registry(
         {} if joint_metric_registry is None else joint_metric_registry
     )
+    frozen_tail_support_contract = _freeze_authority_payload(
+        puf_capital_gains_tail_support_contract_identity()
+        if puf_capital_gains_tail_support_contract is None
+        else puf_capital_gains_tail_support_contract
+    )
+    if not isinstance(frozen_tail_support_contract, Mapping):
+        raise TypeError("Capital-gains-tail support contract must be a mapping.")
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         post_puf_transfer_surface=frozen_post_puf_surface,
@@ -2349,6 +2402,7 @@ def _make_stacked_authority(
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
+        puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
     )
     live_components = {
         name: _canonical_sha256(payload) for name, payload in component_payloads.items()
@@ -2371,6 +2425,7 @@ def _make_stacked_authority(
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
+        puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
         declared_component_sha256=(
             live_components
             if declared_component_sha256 is None
@@ -3330,6 +3385,16 @@ def _authority_receipt(
             "declared_sha256": authority.declared_component_sha256["support_profile"],
             "digest_matches_declared": component_integrity["support_profile"],
         },
+        "puf_capital_gains_tail_support_contract": {
+            "identity": _json_ready(authority.puf_capital_gains_tail_support_contract),
+            "sha256": live_components["puf_capital_gains_tail_support_contract"],
+            "declared_sha256": authority.declared_component_sha256[
+                "puf_capital_gains_tail_support_contract"
+            ],
+            "digest_matches_declared": component_integrity[
+                "puf_capital_gains_tail_support_contract"
+            ],
+        },
     }
     return {
         "authority_id": authority.authority_id,
@@ -3477,6 +3542,10 @@ def _authority_validation_failures(
         ("metric_registry", "metric registry"),
         ("joint_metric_registry", "joint metric registry"),
         ("support_profile", "support profile"),
+        (
+            "puf_capital_gains_tail_support_contract",
+            "PUF capital-gains-tail support contract",
+        ),
     ):
         component = receipt["components"][name]
         if not component["digest_matches_declared"]:
@@ -3636,6 +3705,17 @@ def _validate_stacked_gate_manifest_details(
         raise ValueError(
             f"{boundary}: {reason}; production manifest emission is forbidden."
         )
+
+    tail_support_receipt = details.get(_TAIL_SUPPORT_GATE_DETAIL_KEY)
+    if tail_support_receipt is not None:
+        if not isinstance(tail_support_receipt, Mapping):
+            reject("capital-gains-tail support receipt must be an object")
+        try:
+            validate_puf_capital_gains_tail_terminal_support_receipt(
+                tail_support_receipt
+            )
+        except (TypeError, ValueError) as error:
+            reject(f"capital-gains-tail support receipt is invalid: {error}")
 
     def nonnegative_int(
         receipt: Mapping[str, object],
@@ -5926,7 +6006,65 @@ def assert_stacked_tail_cells_preserved(
 # ---------------------------------------------------------------------------
 
 _COMPLETENESS_GATE_NAME = "us_stacked_completeness"
+_TAIL_SUPPORT_GATE_DETAIL_KEY = "puf_capital_gains_tail_support"
 _ANY_CHANNEL = "*"
+
+
+def _frame_has_clone_two_rows(frame: Frame) -> bool:
+    """Return whether any live entity carries the tail-owned clone role."""
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        clone_column = support_clone_index_column(entity)
+        if clone_column not in table:
+            continue
+        clone_index = pd.to_numeric(table[clone_column], errors="raise")
+        if clone_index.eq(2).any():
+            return True
+    return False
+
+
+def _terminal_tail_support_gate_receipt(
+    frame: Frame,
+    tail_manifest: Mapping[str, object] | None,
+    *,
+    boundary: str,
+) -> dict[str, object] | None:
+    """Authenticate the tail support receipt against the live clone identity."""
+
+    has_clone_two = _frame_has_clone_two_rows(frame)
+    if tail_manifest is None:
+        if has_clone_two:
+            raise ValueError(
+                f"{boundary}: live clone-2 rows require the bound PUF "
+                "capital-gains-tail manifest."
+            )
+        return None
+    if not has_clone_two:
+        raise ValueError(
+            f"{boundary}: a supplied PUF capital-gains-tail manifest requires "
+            "live clone-2 rows."
+        )
+
+    validate_puf_capital_gains_tail_manifest(tail_manifest)
+    terminal_receipt = puf_capital_gains_tail_terminal_support_receipt(tail_manifest)
+    validate_puf_capital_gains_tail_terminal_support_receipt(terminal_receipt)
+
+    if has_clone_two:
+        attachment = validate_puf_clone_attachment(
+            frame,
+            boundary=f"{boundary} tail attachment",
+        )
+        transform = attachment.get("post_attachment_transform")
+        if not isinstance(transform, Mapping) or transform.get(
+            "tail_manifest_sha256"
+        ) != tail_manifest.get("manifest_sha256"):
+            raise ValueError(
+                f"{boundary}: live clone-2 attachment is not bound to the "
+                "supplied PUF capital-gains-tail manifest."
+            )
+
+    return _json_ready(terminal_receipt)
 
 
 @dataclass(frozen=True)
@@ -6028,6 +6166,7 @@ def stacked_completeness_gate(
     frame: Frame,
     *,
     absence_proofs: Sequence[AbsenceProof] = (),
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Evaluate the canonical declared surface with no caller authority."""
 
@@ -6036,6 +6175,7 @@ def stacked_completeness_gate(
         authority=_production_stacked_authority(),
         production=True,
         absence_proofs=absence_proofs,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -6044,6 +6184,7 @@ def _stacked_completeness_gate_with_test_authority(
     *,
     authority: _StackedAuthority,
     absence_proofs: Sequence[AbsenceProof] = (),
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Explicit test-only completeness seam for a digested authority bundle."""
 
@@ -6053,6 +6194,7 @@ def _stacked_completeness_gate_with_test_authority(
         authority=authority,
         production=False,
         absence_proofs=absence_proofs,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -6062,6 +6204,7 @@ def _stacked_completeness_gate_evaluate(
     authority: _StackedAuthority,
     production: bool,
     absence_proofs: Sequence[AbsenceProof],
+    tail_manifest: Mapping[str, object] | None = None,
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
@@ -6081,6 +6224,11 @@ def _stacked_completeness_gate_evaluate(
     that target even at the explicitly non-canonical fixture seam.
     """
 
+    tail_support_receipt = _terminal_tail_support_gate_receipt(
+        frame,
+        tail_manifest,
+        boundary="stacked completeness gate",
+    )
     authority_receipt = _authority_receipt(authority)
     declared_surface = authority.declared_surface
     declared_count = len(_surface_target_keys(declared_surface))
@@ -6096,6 +6244,11 @@ def _stacked_completeness_gate_evaluate(
                 "authority": authority_receipt,
                 "declared_targets": declared_count,
                 "targets": {},
+                **(
+                    {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                    if tail_support_receipt is not None
+                    else {}
+                ),
             },
         )
 
@@ -6456,6 +6609,11 @@ def _stacked_completeness_gate_evaluate(
             "authority": authority_receipt,
             "declared_targets": declared_count,
             "targets": target_receipts,
+            **(
+                {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                if tail_support_receipt is not None
+                else {}
+            ),
         },
     )
 
@@ -6527,6 +6685,8 @@ class OriginBatterySpec:
 
 def by_origin_battery(
     frame: Frame,
+    *,
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Run the canonical 131-target plus joint by-origin battery."""
 
@@ -6534,6 +6694,7 @@ def by_origin_battery(
         frame,
         authority=_production_stacked_authority(),
         production=True,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -6541,6 +6702,7 @@ def _by_origin_battery_with_test_authority(
     frame: Frame,
     *,
     authority: _StackedAuthority,
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Explicit test-only battery seam for a digested authority bundle."""
 
@@ -6549,6 +6711,7 @@ def _by_origin_battery_with_test_authority(
         frame,
         authority=authority,
         production=False,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -6574,6 +6737,7 @@ def _by_origin_battery_evaluate(
     *,
     authority: _StackedAuthority,
     production: bool,
+    tail_manifest: Mapping[str, object] | None = None,
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
@@ -6597,6 +6761,11 @@ def _by_origin_battery_evaluate(
     both origins carry ample support.
     """
 
+    tail_support_receipt = _terminal_tail_support_gate_receipt(
+        frame,
+        tail_manifest,
+        boundary="by-origin battery",
+    )
     authority_receipt = _authority_receipt(authority)
     specs = _battery_specs_from_metric_registry(authority.metric_registry)
     registered_targets = set(authority.metric_registry)
@@ -6650,6 +6819,11 @@ def _by_origin_battery_evaluate(
                 "tested_comparisons": 0,
                 "untestable_comparisons": [],
                 "comparisons": {},
+                **(
+                    {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                    if tail_support_receipt is not None
+                    else {}
+                ),
             },
         )
     validate_stacked_spine_frame(frame, boundary="by-origin battery")
@@ -6906,6 +7080,11 @@ def _by_origin_battery_evaluate(
             "tested_comparisons": tested,
             "untestable_comparisons": sorted(untestable),
             "comparisons": comparisons,
+            **(
+                {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                if tail_support_receipt is not None
+                else {}
+            ),
         },
     )
 

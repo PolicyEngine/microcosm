@@ -1122,12 +1122,22 @@ def _install_stacked_entrypoint_stubs(
         simulate,
     )
 
-    def completeness(_frame: Frame) -> GateResult:
+    def completeness(
+        _frame: Frame,
+        *,
+        tail_manifest: Mapping[str, object],
+    ) -> GateResult:
         order.append("completeness")
+        assert tail_manifest == {"fixture": "tail"}
         return GateResult(name="fixture_completeness", passed=True)
 
-    def battery(_frame: Frame) -> GateResult:
+    def battery(
+        _frame: Frame,
+        *,
+        tail_manifest: Mapping[str, object],
+    ) -> GateResult:
         order.append("battery")
+        assert tail_manifest == {"fixture": "tail"}
         if terminal == "red":
             return GateResult(
                 name="fixture_battery",
@@ -1504,7 +1514,7 @@ def test_logbook_gate_receipts_are_immutable_across_later_attempts(
     monkeypatch.setattr(
         pool_tool,
         "by_origin_battery",
-        lambda _frame: GateResult(
+        lambda _frame, *, tail_manifest: GateResult(
             name="fixture_battery",
             passed=False,
             failures=("later red verdict",),
@@ -1681,7 +1691,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         assert changed_store.load_deepest() is None
 
 
-def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
+def test_stacked_checkpoint_identity_binds_v7_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1708,9 +1718,13 @@ def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
 
     current = identity()
     pool_code = current["pool_code"]
-    assert current["materializer_version"] == 6
-    assert current["stacked_authority"]["version"] == 6
+    assert current["materializer_version"] == 7
+    assert current["stacked_authority"]["version"] == 7
     assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
+    assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 2
+    assert pool_code["puf_capital_gains_tail_support_contract"] == (
+        pool_tool.puf_capital_gains_tail_support_contract_identity()
+    )
     assert pool_code["acs_pums_earnings_universe_contract"] == (
         pool_tool.acs_pums_earnings_universe_contract_identity()
     )
@@ -1748,12 +1762,33 @@ def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
             lambda: qbi_contract,
         )
         stale_qbi = identity()
+    with monkeypatch.context() as changed:
+        changed.setattr(pool_tool, "PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION", 1)
+        stale_tail_schema = identity()
+    with monkeypatch.context() as changed:
+        tail_contract = copy.deepcopy(
+            pool_tool.puf_capital_gains_tail_support_contract_identity()
+        )
+        tail_contract["required_minimum"] = "one_recipient_per_status"
+        changed.setattr(
+            pool_tool,
+            "puf_capital_gains_tail_support_contract_identity",
+            lambda: tail_contract,
+        )
+        stale_tail_contract = identity()
 
     digests = {
         pool_tool._pool_checkpoint_identity_sha256(candidate)
-        for candidate in (current, stale_qrf, stale_acs, stale_qbi)
+        for candidate in (
+            current,
+            stale_qrf,
+            stale_acs,
+            stale_qbi,
+            stale_tail_schema,
+            stale_tail_contract,
+        )
     }
-    assert len(digests) == 4
+    assert len(digests) == 6
 
     # A checkpoint produced by the current materializer with the prior QRF
     # schema is not merely identity-distinct: discovery must refuse it as stale.
@@ -1774,7 +1809,7 @@ def test_stacked_checkpoint_identity_binds_v6_semantic_contracts(
         )
     )
 
-    assert current["materializer_version"] == stale_qrf["materializer_version"] == 6
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 7
     assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
@@ -1868,7 +1903,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -1916,7 +1951,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 6
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 7
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -2326,7 +2361,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        "manifest": "94604e72e589675f89013d9d8eb9518abd32832d1ff53045fb7ae06e48c1b146",
+        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
     }
 
 
@@ -3424,11 +3459,11 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     }
 
 
-def test_simulated_v2_checkpoint_accepts_both_string_encodings_without_rewrite(
+def test_simulated_v3_checkpoint_accepts_both_string_encodings_without_rewrite(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """V2 authenticates both physical string encodings as one logical frame."""
+    """V3 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -3440,7 +3475,7 @@ def test_simulated_v2_checkpoint_accepts_both_string_encodings_without_rewrite(
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
     canonical_v2_bytes = checkpoint_path.read_bytes()
     canonical_identity = loaded.metadata["identity"]
-    assert loaded.metadata["materializer_version"] == 2
+    assert loaded.metadata["materializer_version"] == 3
     assert any(
         column["dtype"] == str(CANONICAL_STRING_DTYPE)
         for columns in loaded.metadata["frame_schema"]["entities"].values()
@@ -3471,7 +3506,7 @@ def test_simulated_v2_checkpoint_accepts_both_string_encodings_without_rewrite(
     banked_v2_bytes = checkpoint_path.read_bytes()
     assert banked_v2_bytes != canonical_v2_bytes
     assert legacy_metadata["identity"] == canonical_identity
-    assert legacy_metadata["materializer_version"] == 2
+    assert legacy_metadata["materializer_version"] == 3
     assert any(
         column["dtype"] == "object"
         for columns in legacy_metadata["frame_schema"]["entities"].values()
@@ -3812,18 +3847,58 @@ def test_take_up_contract_identity_mutation_rebuilds_every_pool_boundary(
         assert provenance["stages"][stage]["load_status"] == "identity_mismatch"
 
 
-def test_pool_materializer_v1_artifacts_fail_closed_with_named_receipts(
+def test_tail_support_contract_identity_mutation_rebuilds_pool_checkpoints(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkpoint_root = tmp_path / "tail-support-contract-checkpoints"
+    original = pool_tool.puf_capital_gains_tail_support_contract_identity()
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    assert (
+        cold_store.base_identity["pool_code"]["puf_capital_gains_tail_support_contract"]
+        == original
+    )
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    _run_checkpoint_fixture(pool_tool, tmp_path, store=cold_store)
+
+    changed = copy.deepcopy(original)
+    changed["insufficient_support_action"] = "silently_widen"
+    monkeypatch.setattr(
+        pool_tool,
+        "puf_capital_gains_tail_support_contract_identity",
+        lambda: changed,
+    )
+    changed_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+
+    assert (
+        changed_store.base_identity["pool_code"][
+            "puf_capital_gains_tail_support_contract"
+        ]
+        == changed
+    )
+    assert changed_store.base_identity_sha256 != cold_store.base_identity_sha256
+    assert changed_store.load_deepest() is None
+
+
+@pytest.mark.parametrize("legacy_version", (1, 2))
+def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    legacy_version: int,
 ) -> None:
-    checkpoint_root = tmp_path / "materializer-v1-checkpoints"
+    checkpoint_root = tmp_path / "legacy-materializer-checkpoints"
 
     with monkeypatch.context() as legacy:
-        legacy.setattr(pool_tool, "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION", 1)
+        legacy.setattr(
+            pool_tool,
+            "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
+            legacy_version,
+        )
         legacy_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-        assert legacy_store.base_identity["materializer_version"] == 1
+        assert legacy_store.base_identity["materializer_version"] == legacy_version
         legacy_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
         _run_checkpoint_fixture(pool_tool, tmp_path, store=legacy_store)
         for stage in pool_tool.POOL_CHECKPOINT_STAGE_ORDER:
@@ -3833,15 +3908,15 @@ def test_pool_materializer_v1_artifacts_fail_closed_with_named_receipts(
             manifest = pool_tool._read_json_object(
                 legacy_store.checkpoint_manifest_path(stage)
             )
-            assert metadata["materializer_version"] == 1
-            assert metadata["identity"]["materializer_version"] == 1
-            assert manifest["materializer_version"] == 1
-            assert manifest["identity"]["materializer_version"] == 1
+            assert metadata["materializer_version"] == legacy_version
+            assert metadata["identity"]["materializer_version"] == legacy_version
+            assert manifest["materializer_version"] == legacy_version
+            assert manifest["identity"]["materializer_version"] == legacy_version
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 2
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 3
     current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-    assert current_store.base_identity["materializer_version"] == 2
+    assert current_store.base_identity["materializer_version"] == 3
     assert current_store.load_deepest() is None
 
     output = capsys.readouterr().out

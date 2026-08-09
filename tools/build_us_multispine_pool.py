@@ -129,6 +129,8 @@ from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
+    puf_capital_gains_tail_support_contract_identity,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
 )
@@ -206,6 +208,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 2: The take-up contract identity binds the canonical SHA-256 of the entire
 #    parsed resource, plus readable explicit fields. Version-1 volume
 #    checkpoints are deliberately stale.
+# 3: The tail-manifest schema and filing-status-exact recipient-support
+#    contract are explicit identity fields.  Earlier checkpoints may have
+#    silently hard-failed a thin status and are deliberately stale.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -220,7 +225,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 2
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -245,10 +250,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 6 binds the ACS earnings-universe and whole-pool QBI reconciliation
-# contracts, plus primary-QRF schema 6. Earlier checkpoints can carry stale
-# recipient and mutation semantics and must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 6
+# Version 7 binds the capital-gains-tail filing-status support contract and
+# manifest schema in addition to the version-6 ACS earnings-universe,
+# whole-pool QBI, and primary-QRF identities. Earlier checkpoints must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 7
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -919,6 +924,12 @@ def _pool_checkpoint_base_identity(
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
             "take_up_contract": take_up_contract_identity(),
+            "puf_capital_gains_tail_manifest_schema_version": (
+                PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+            ),
+            "puf_capital_gains_tail_support_contract": (
+                puf_capital_gains_tail_support_contract_identity()
+            ),
             "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
             "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
             "acs_transfer_max_targets_per_fit": (
@@ -1057,6 +1068,12 @@ def _stacked_checkpoint_base_identity(
                 us_qbi_reconciliation_contract_identity()
             ),
             "take_up_contract": take_up_contract_identity(),
+            "puf_capital_gains_tail_manifest_schema_version": (
+                PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+            ),
+            "puf_capital_gains_tail_support_contract": (
+                puf_capital_gains_tail_support_contract_identity()
+            ),
             "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
             "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
             "acs_transfer_max_targets_per_fit": (
@@ -3002,8 +3019,14 @@ def build_stacked_pool(
         )
         assert_stacked_tail_cells_preserved(simulation_frame, tail_manifest)
 
-    completeness = stacked_completeness_gate(simulation_frame)
-    battery = by_origin_battery(simulation_frame)
+    completeness = stacked_completeness_gate(
+        simulation_frame,
+        tail_manifest=tail_manifest,
+    )
+    battery = by_origin_battery(
+        simulation_frame,
+        tail_manifest=tail_manifest,
+    )
     # Manifest conversion is itself the final canonical-authority check and
     # deliberately happens before publication or readiness is asserted.
     GateReport((completeness, battery)).to_manifest()

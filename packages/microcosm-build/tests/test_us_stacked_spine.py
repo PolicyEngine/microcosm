@@ -3255,6 +3255,34 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
     assert preservation["passed"] is True
     assert preservation["tail_owned_cell_count"] == 14
 
+    terminal_gates = (
+        stacked_completeness_gate(result.frame, tail_manifest=tail),
+        by_origin_battery(result.frame, tail_manifest=tail),
+    )
+    for gate in terminal_gates:
+        terminal_support = gate.details["puf_capital_gains_tail_support"]
+        assert terminal_support["tail_manifest_sha256"] == tail["manifest_sha256"]
+        assert terminal_support["recipient_support"] == tail["recipient_support"]
+
+    tampered_details = deepcopy(terminal_gates[0].details)
+    tampered_terminal = tampered_details["puf_capital_gains_tail_support"]
+    tampered_support = tampered_terminal["recipient_support"]
+    tampered_support["strata"][0]["observed_count"] += 1
+    support_payload = dict(tampered_support)
+    support_payload.pop("sha256")
+    tampered_support["sha256"] = stacked_spine_module._canonical_sha256(support_payload)
+    terminal_payload = dict(tampered_terminal)
+    terminal_payload.pop("sha256")
+    tampered_terminal["sha256"] = stacked_spine_module._canonical_sha256(
+        terminal_payload
+    )
+    with pytest.raises(ValueError, match="recipient-support candidate count"):
+        stacked_spine_module._validate_stacked_gate_manifest_details(
+            terminal_gates[0].name,
+            tampered_details,
+            passed=terminal_gates[0].passed,
+        )
+
     multi_person_record = next(
         record
         for record in tail["records"]
@@ -4033,7 +4061,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -4053,7 +4081,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 6
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 7
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -4466,7 +4494,9 @@ def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
         GateReport((stripped,)).to_manifest()
 
 
-def test_stripped_six_component_authority_cannot_escape_under_a_renamed_gate() -> None:
+def test_stripped_seven_component_authority_cannot_escape_under_a_renamed_gate() -> (
+    None
+):
     authority = stacked_spine_module.stacked_spine_authority_receipt()
     components = deepcopy(dict(authority["components"]))
     assert set(components) == {
@@ -4476,6 +4506,7 @@ def test_stripped_six_component_authority_cannot_escape_under_a_renamed_gate() -
         "metric_registry",
         "joint_metric_registry",
         "support_profile",
+        "puf_capital_gains_tail_support_contract",
     }
     stripped = GateResult(
         name="renamed_stacked_battery",
@@ -4662,8 +4693,8 @@ def _battery_frame(
     ).frame
 
 
-@pytest.mark.parametrize("clone_role", (0, 1, 2))
-def test_completeness_rejects_nonfinite_values_on_every_clone_role(
+@pytest.mark.parametrize("clone_role", (0, 1))
+def test_completeness_rejects_nonfinite_values_on_every_non_tail_clone_role(
     clone_role: int,
 ) -> None:
     base = _battery_frame(
@@ -4680,10 +4711,6 @@ def test_completeness_rejects_nonfinite_values_on_every_clone_role(
         clone_attachment_seed=578,
     )
     tables = {entity: attached.table(entity).copy() for entity in attached.entities}
-    if clone_role == 2:
-        for entity, table in tables.items():
-            clone_column = support_clone_index_column(entity)
-            table.loc[table[clone_column].eq(1), clone_column] = 2
     person = tables["person"]
     clone_column = support_clone_index_column("person")
     invalid = person[clone_column].eq(clone_role)
@@ -4716,6 +4743,36 @@ def test_completeness_rejects_nonfinite_values_on_every_clone_role(
         for failure in result.failures
     )
     json.dumps(GateReport((result,)).to_manifest(), allow_nan=False)
+
+
+def test_terminal_gate_requires_manifest_for_live_clone_two_rows() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _battery_frame(
+            {
+                "taxable_interest_income": (
+                    np.asarray([100.0] * 8),
+                    np.asarray([100.0] * 11),
+                )
+            }
+        ),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    tables = {entity: attached.table(entity).copy() for entity in attached.entities}
+    for entity, table in tables.items():
+        clone_column = support_clone_index_column(entity)
+        table.loc[table[clone_column].eq(1), clone_column] = 2
+    frame = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(ValueError, match="clone-2 rows require the bound"):
+        stacked_completeness_gate(frame)
 
 
 @pytest.mark.parametrize(
