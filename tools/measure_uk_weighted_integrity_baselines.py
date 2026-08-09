@@ -44,15 +44,15 @@ from pathlib import Path
 
 import numpy as np
 
-from populace.build.uk_runtime.hmrc_source_contract import (
+from microcosm.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
-from populace.build.uk_runtime.national_build import load_uk_national_frame
-from populace.build.uk_runtime.weighted_integrity import (
+from microcosm.build.uk_runtime.national_build import load_uk_national_frame
+from microcosm.build.uk_runtime.weighted_integrity import (
     uk_dataset_input_mass_totals,
     uk_qrf_tail_concentration_columns,
 )
-from populace.frame import engine_tables
+from microcosm.frame import engine_tables
 
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never

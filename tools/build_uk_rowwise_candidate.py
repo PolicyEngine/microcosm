@@ -32,8 +32,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.gates import GateResult
-from populace.build.uk_runtime import (
+from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime import (
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
@@ -54,10 +54,10 @@ from populace.build.uk_runtime import (
     uk_time_period,
     write_uk_rowwise_dataset,
 )
-from populace.frame import MassChangeRecord, WeightKind, assert_kind_transition
+from microcosm.frame import MassChangeRecord, WeightKind, assert_kind_transition
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
-CANDIDATE_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise_candidate.h5"
+CANDIDATE_FILENAME_TEMPLATE = "microcosm_uk_{source_year}_rowwise_candidate.h5"
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 SOLVE_DIAGNOSTICS_FILENAME = "solve_diagnostics.csv"
 AREA_SUPPORT_FILENAME = "area_support_summary.csv"
@@ -96,7 +96,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--input-h5",
         type=Path,
         required=True,
-        help="National Populace UK staging H5.",
+        help="National Microcosm UK staging H5.",
     )
     parser.add_argument(
         "--ladder",

@@ -1,6 +1,6 @@
-# populace-nz v1 plan: the New Zealand dollar take-up engine
+# microcosm-nz v1 plan: the New Zealand dollar take-up engine
 
-Working plan for [epic #343](https://github.com/PolicyEngine/populace/issues/343). Companion inventory: [nz-calibration-targets.md](./nz-calibration-targets.md). Rules: [rulespec-nz](https://github.com/TheAxiomFoundation/rulespec-nz) through the Frame `RulesEngine` protocol via the Axiom adapter (shared with the Belgium pilot under #259 — NZ adds coverage, not adapter code).
+Working plan for [epic #343](https://github.com/PolicyEngine/microcosm/issues/343). Companion inventory: [nz-calibration-targets.md](./nz-calibration-targets.md). Rules: [rulespec-nz](https://github.com/TheAxiomFoundation/rulespec-nz) through the Frame `RulesEngine` protocol via the Axiom adapter (shared with the Belgium pilot under #259 — NZ adds coverage, not adapter code).
 
 ## Product definition
 
@@ -9,7 +9,7 @@ For each major NZ transfer, estimate **predicted entitlement dollars** (rules ×
 ## Method (Belgium pilot recipe, recalibrated)
 
 1. **Donor pool**: the populace-us support pool (57,240 households / 166,302 persons in the BE pilot vintage). Donor records are US support records and are never presented as NZ microdata; support-stratum labels ship with the artifact.
-2. **Reweighting**: populace-calibrate against the v1 target set below. Two BE-pilot solver lessons apply verbatim: initialize design weights at the destination population scale (or `target_loss_cap` saturates and gradients vanish), and consume total rows, not component+total double counts, from multi-row target tables.
+2. **Reweighting**: microcosm-calibrate against the v1 target set below. Two BE-pilot solver lessons apply verbatim: initialize design weights at the destination population scale (or `target_loss_cap` saturates and gradients vanish), and consume total rows, not component+total double counts, from multi-row target tables.
 3. **Rules leg**: rulespec-nz composed modules via the Axiom adapter. Child support is excluded from composed outputs until the income-shares re-encode lands (rulespec-nz#74).
 4. **Periods**: tax year 2026-27 primary (1 Apr 2026 rates are current across the encoded surface); PPL/rates-rebate use their 1 July steps.
 
@@ -40,7 +40,7 @@ Deliberate non-targets: Treasury DistributionExplorer values (full-entitlement m
 
 ## The joint-income problem
 
-NZ publishes no couple/family joint income distribution (the inventory's top structural gap). The WfF and AS abatement surfaces depend on it. v1 strategy: inherit the donor pool's within-household income correlation structure, calibrate the individual margins hard, then check the implied family-income distribution against the one published conditional slice we have — the IRD WfF recipient-family income distribution (I3, 2020+). If the implied distribution misses that slice materially, escalate to a copula adjustment as a general populace-fit operator (never NZ-specific code).
+NZ publishes no couple/family joint income distribution (the inventory's top structural gap). The WfF and AS abatement surfaces depend on it. v1 strategy: inherit the donor pool's within-household income correlation structure, calibrate the individual margins hard, then check the implied family-income distribution against the one published conditional slice we have — the IRD WfF recipient-family income distribution (I3, 2020+). If the implied distribution misses that slice materially, escalate to a copula adjustment as a general microcosm-fit operator (never NZ-specific code).
 
 ## Validation gates (phase 2, before any published number)
 

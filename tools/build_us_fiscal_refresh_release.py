@@ -1,17 +1,17 @@
-"""Build a contract-valid US fiscal refresh release from a Populace H5.
+"""Build a contract-valid US fiscal refresh release from a Microcosm H5.
 
 This is a narrow release builder for the Issue #40 fiscal target surface. It
-starts from an existing Populace US H5, materializes the current structured
+starts from an existing Microcosm US H5, materializes the current structured
 fiscal target rows, recalibrates only the household weights, writes a fresh
 PolicyEngine-US H5, and emits the release contract files required by
-``populace-publish-release``.
+``microcosm-publish-release``.
 """
 
 from __future__ import annotations
 
 import os
 
-# populace#456 (#447 ops note): bound the default BLAS/OpenMP/joblib thread
+# microcosm#456 (#447 ops note): bound the default BLAS/OpenMP/joblib thread
 # pools instead of inheriting machine geometry — per-thread scratch buffers
 # scale the resident set with core count (measured 125 GB anon-RSS at 16 vCPU
 # vs 249 GB at 32 vCPU for the same build). OpenBLAS and torch read these at
@@ -50,7 +50,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.gates import (
+from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
     default_valued_columns_gate,
@@ -61,10 +61,10 @@ from populace.build.gates import (
     target_fit_gate,
     target_profile_coverage_gate,
 )
-from populace.build.ledger_artifact import load_ledger_consumer_artifact
-from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from populace.build.staging import StagingTelemetry
-from populace.build.us_runtime import (
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
+from microcosm.build.staging import StagingTelemetry
+from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -207,87 +207,87 @@ from populace.build.us_runtime import (
     write_us_ssi_take_up_diagnostics,
     write_us_take_up_participation_diagnostics,
 )
-from populace.build.us_runtime.demographics import (
+from microcosm.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
     geography_coverage_payload,
     population_by_age_from_sim,
     write_demographics,
 )
-from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
-from populace.build.us_runtime.exact_k_ladder import (
+from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
+from microcosm.build.us_runtime.exact_k_ladder import (
     ExactKLadderCalibration,
     assert_exact_k_realized_count,
     calibrate_exact_k_ladder,
     exact_k_ladder_manifest_payload,
 )
-from populace.build.us_runtime.fiscal_targets import (
+from microcosm.build.us_runtime.fiscal_targets import (
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
-from populace.build.us_runtime.h5_io import (
+from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     load_simulation_ready_us_multispine_pool,
 )
-from populace.build.us_runtime.input_mass import us_input_mass_totals
-from populace.build.us_runtime.l0_refit_export import (
+from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
 )
-from populace.build.us_runtime.nonzero_shares import us_nonzero_shares
-from populace.build.us_runtime.parity_reference import (
+from microcosm.build.us_runtime.nonzero_shares import us_nonzero_shares
+from microcosm.build.us_runtime.parity_reference import (
     EcpsParityReference,
     ParityKnownGap,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
-from populace.build.us_runtime.puf_capital_gains_tail import (
+from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
-from populace.build.us_runtime.reform_validation import (
+from microcosm.build.us_runtime.reform_validation import (
     default_baseline_level_specs,
     default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
     write_reform_validation,
 )
-from populace.build.us_runtime.ssi_take_up import (
+from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
 )
-from populace.build.us_runtime.warm_start_selection import (
+from microcosm.build.us_runtime.warm_start_selection import (
     DEFAULT_SELECTION_JOIN_KEY,
     SELECTION_MODES,
     load_selection_source_from_h5,
     load_selection_source_from_manifest,
     select_frozen_support,
 )
-from populace.calibrate import (
+from microcosm.calibrate import (
     TargetRegistry,
     TargetSpec,
     calibrate,
     calibrate_l0_refit,
     relative_error_loss,
 )
-from populace.calibrate.diagnostics import (
+from microcosm.calibrate.diagnostics import (
     diagnostics_payload,
     write_calibration_diagnostics,
 )
-from populace.data.us_critical_targets import (
+from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
     US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
     is_congressional_district_target,
 )
-from populace.data.us_critical_targets import (
+from microcosm.data.us_critical_targets import (
     US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
 )
-from populace.frame import Frame, MassChange, WeightKind, Weights
-from populace.frame.adapters.policyengine_us import (
+from microcosm.frame import Frame, MassChange, WeightKind, Weights
+from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
 )
-from populace.frame.units import US_SCHEMA
+from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
@@ -299,7 +299,7 @@ FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
 FINAL_HOUSEHOLD_WEIGHTS_SCHEMA_VERSION = 1
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
-# populace#566/#567 dense-arm adjudication: populace#508 delivered-weight
+# microcosm#566/#567 dense-arm adjudication: microcosm#508 delivered-weight
 # recomputes have not landed the dense frame's adult band pair in the
 # envelope on either observed frame. P2 is the clean one-retry record
 # (current-frame attempt then its one permitted recompute: 18-64
@@ -312,18 +312,18 @@ POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 # extended: the miss ships in the scorecard as a known boundary, never as
 # an enforced contract and never as saturation-as-success. The sparse
 # certified default passes no fences and keeps hard enforcement.
-# RE-ADJUDICATES when populace#566's damped fixed-point protocol lands.
+# RE-ADJUDICATES when microcosm#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
-    "Fenced for the dense diagnostic arm (populace#566/#567): "
-    "populace#508 delivered-weight recomputes have not landed the adult "
+    "Fenced for the dense diagnostic arm (microcosm#566/#567): "
+    "microcosm#508 delivered-weight recomputes have not landed the adult "
     "band pair in the envelope on either observed frame (P2, current-"
     "frame attempt then its one permitted recompute: +5.8%/+24.8% -> "
     "+8.2%/+20.0%; P3, attempts already anchored on delivered bases: "
     "65+ +34.6%, then +8.3%/+19.8% after recomputing again — a chain "
-    "the populace#508 loader now refuses). Further recomputes are the "
-    "deleted populace#463-class loop. This band's miss ships in the "
+    "the microcosm#508 loader now refuses). Further recomputes are the "
+    "deleted microcosm#463-class loop. This band's miss ships in the "
     "scorecard as a known boundary — never as an enforced contract. "
-    "Re-adjudicates when the populace#566 damped fixed-point protocol "
+    "Re-adjudicates when the microcosm#566 damped fixed-point protocol "
     "lands. The sparse certified default keeps hard enforcement."
 )
 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
@@ -380,7 +380,7 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # actually move with takes_up_ssi_if_eligible is an engine-graph
     # question this build must not answer by assumption, so the digest
     # invalidates reform vectors too — correctness over cache warmth
-    # (populace#507/#508 sol review round 2, finding 2).
+    # (microcosm#507/#508 sol review round 2, finding 2).
     "ssi_take_up_assignment_sha256",
     # The selected identities determine which household rows the vectors
     # describe. Same-length supports can share positional SSI flag bytes, so
@@ -392,7 +392,7 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "target_frame_materializer_identity_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
-# 2: the medicaid_take_up stage (populace #331) changed base_frame's
+# 2: the medicaid_take_up stage (microcosm #331) changed base_frame's
 # takes_up_medicaid_if_eligible before target-frame materialization, so
 # medicaid_enrolled target columns differ from version-1 checkpoints; the
 # checkpoint identity hashes the on-disk base dataset, not the staged frame,
@@ -410,13 +410,13 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # materialization. The source is external to the on-disk base hash, so old
 # checkpoints must not survive the new measured input.
 # 7: SSI take-up became a one-shot seeded Bernoulli at registry band priors
-# (populace#469) — checkpoints materialized from count-matched flags must
+# (microcosm#469) — checkpoints materialized from count-matched flags must
 # not survive, or the solve would run on old SSI rows while the frame
 # carries the new assignment (PR #477 review finding 2).
 # 8: the ORG full-year-equivalence stage (#539) rewrites the staged org-wage
 # inputs before target materialization while the on-disk base hash is
 # unchanged; pre-#539 checkpoints carry the old ORG rows and must not be
-# reused (populace#543, post-merge audit).
+# reused (microcosm#543, post-merge audit).
 # 9: #374 SIPP+SCF financial-asset blend changes the pre-materialization
 # frame; warm SCF-only checkpoints must not calibrate the blended frame.
 # 10: #557 preserves the staged retirement-distribution surface through
@@ -435,7 +435,7 @@ def _collect_batch_garbage() -> None:
 
 
 def _collect_family_garbage() -> None:
-    """Full collection at target-family boundaries (populace#456).
+    """Full collection at target-family boundaries (microcosm#456).
 
     ``release_engine_simulation`` frees each batch's array mass by refcount,
     but the residual simulation skeletons are cyclic, and anything promoted
@@ -519,7 +519,7 @@ US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS
 
 #: Blanket within-tolerance blocking for every national SOI Pub 1304 Table 1.4
-#: dollar row (populace#462). The exact-name register above only blocks rows
+#: dollar row (microcosm#462). The exact-name register above only blocks rows
 #: someone enumerated; Build M shipped the Table 1.4 capital-gain-distributions
 #: dollar row at +634.8% relative error (and net capital gains at -25.6%) with
 #: both recorded in its own calibration_diagnostics.json, because no register
@@ -545,7 +545,7 @@ US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT = TargetFitRequirement(
     ),
     max_abs_relative_error=US_SOI_TABLE_1_4_NATIONAL_DOLLAR_MAX_ABS_RELATIVE_ERROR,
     notes=(
-        "populace#462: the Build M live default shipped non_sch_d_capital_gains "
+        "microcosm#462: the Build M live default shipped non_sch_d_capital_gains "
         "at $74.6B against its $10.2B SOI target with no blocking tolerance on "
         "the dollar row."
     ),
@@ -652,20 +652,20 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
     "second_home_mortgage_balance": (
         "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/populace#38)."
+        " engine default (PolicyEngine/microcosm#38)."
     ),
     "second_home_mortgage_interest": (
         "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/populace#38)."
+        " engine default (PolicyEngine/microcosm#38)."
     ),
     "second_home_mortgage_origination_year": (
         "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/populace#38)."
+        " engine default (PolicyEngine/microcosm#38)."
     ),
     "takes_up_early_head_start_if_eligible": (
         "Early Head Start person enrollment is absent from every locked source; "
         "see the archived-derivation and source-domain evidence in the parity "
-        "gap register (PolicyEngine/populace#312)."
+        "gap register (PolicyEngine/microcosm#312)."
     ),
     # ssn_card_type and immigration_status_str are intentionally NOT excluded:
     # PR #266 imputes them from CPS ASEC citizenship, so a base where they are
@@ -673,7 +673,7 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "is_wic_at_nutritional_risk": (
         "Person-level nutritional-risk assessments are absent from all locked "
         "sources; see the archived-derivation evidence in the parity gap "
-        "register (PolicyEngine/populace#312)."
+        "register (PolicyEngine/microcosm#312)."
     ),
     "s_corp_income": (
         "Combined partnership/S-corp income is carried in partnership_income "
@@ -683,12 +683,12 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
 
 #: Person inputs SNAP work-requirement rules read that have NO CPS ASEC
 #: source and are not seeded: they default to False in the engine, so the
-#: compliance/exemption channels they drive never fire (populace #351,
+#: compliance/exemption channels they drive never fire (microcosm #351,
 #: #249 for the work-program family). They are not
 #: persisted columns, so the degenerate-input gate cannot see them; this
 #: register makes the assumption visible in every release manifest instead.
 #: is_pregnant is NOT here: the pregnancy stage seeds it. Likewise
-#: is_incapable_of_self_care left this register with populace#451 item 1:
+#: is_incapable_of_self_care left this register with microcosm#451 item 1:
 #: the adult_care_inputs base stage seeds it from the measured ASEC
 #: PEDISDRS self-care difficulty item, which is the direct instrument
 #: operationalization the original entry believed absent.
@@ -702,29 +702,29 @@ US_DOCUMENTED_ABSENT_INPUTS = {
     "is_homeless": (
         "No ASEC source: the CPS samples the housed population, so the "
         "pre-HR1 SNAP ABAWD homeless exemption cannot fire "
-        "(PolicyEngine/populace#351)."
+        "(PolicyEngine/microcosm#351)."
     ),
     "was_in_foster_care": (
         "No ASEC item for foster-care history, so the pre-HR1 former-"
         "foster-youth ABAWD exemption (7 CFR 273.24(c)(9)) cannot fire "
-        "(PolicyEngine/populace#351)."
+        "(PolicyEngine/microcosm#351)."
     ),
     "is_snap_work_program_participant": (
         "No ASEC item measures SNAP E&T or qualifying work-program "
         "participation, so compliance via program participation never "
         "fires; USDA reports E&T reaches a small minority of "
         "participants, so the always-False default understates "
-        "compliance only modestly (PolicyEngine/populace#249)."
+        "compliance only modestly (PolicyEngine/microcosm#249)."
     ),
     "weekly_snap_work_program_hours": (
         "No ASEC item measures qualifying work-program hours, so combined "
         "work-plus-program hours toward the 20-hour ABAWD test omit "
-        "program hours (PolicyEngine/populace#249)."
+        "program hours (PolicyEngine/microcosm#249)."
     ),
     "is_snap_workfare_participant": (
         "No ASEC item measures workfare participation under 7 CFR "
         "273.7(m), which satisfies the ABAWD requirement regardless of "
-        "hours; defaults False (PolicyEngine/populace#249)."
+        "hours; defaults False (PolicyEngine/microcosm#249)."
     ),
 }
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
@@ -814,7 +814,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--base-h5",
         type=Path,
-        help="Existing Populace US H5 to recalibrate. Defaults to HF latest.",
+        help="Existing Microcosm US H5 to recalibrate. Defaults to HF latest.",
     )
     parser.add_argument(
         "--pool-manifest",
@@ -858,7 +858,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "PolicyEngine Ledger consumer artifact directory (manifest.json "
             "+ consumer_facts.jsonl, hash-verified) or a bare "
             "consumer_facts.jsonl file, used to resolve every fiscal target "
-            "value. Populace package resources declare target references "
+            "value. Microcosm package resources declare target references "
             "only. The artifact identity is recorded in the build and "
             "release manifests."
         ),
@@ -883,7 +883,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Waive the period contract: compile observation dollar levels at "
             "a build period other than their fact period without aging "
-            "(PolicyEngine/ledger#71; populace#212). Every waived target "
+            "(PolicyEngine/ledger#71; microcosm#212). Every waived target "
             "carries period_contract_waiver metadata in diagnostics. Without "
             "this flag such targets fail the build unless --age-targets "
             "transforms them."
@@ -896,7 +896,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional JSON mapping source_record_id -> reason of per-run, "
             "per-artifact support-expressibility exclusions that augment the "
             "standing US_FISCAL_TARGET_SUPPORT_EXCLUSIONS registry for THIS "
-            "build only (PolicyEngine/populace#299 Build G). A sparse "
+            "build only (PolicyEngine/microcosm#299 Build G). A sparse "
             "artifact's frozen support cannot populate narrow state/tail cells "
             "the dense parent can; declare those cells here so they do not "
             "fail the zero-support gate, with each reason recorded in the "
@@ -909,7 +909,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional JSON object of export column -> reason for sparse "
             "QRF-imputed columns allowed past the tail-concentration "
-            "top-share threshold (populace#464 gate). Stale entries fail the "
+            "top-share threshold (microcosm#464 gate). Stale entries fail the "
             "gate; the file sha and entries are recorded in the release "
             "diagnostics."
         ),
@@ -924,7 +924,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "pool at base weights, never hardcoded) is injected as a "
             "synthetic national calibration target, so the refit cannot "
             "crush the carriers a protect-swap placed in the frozen "
-            "selection (PolicyEngine/populace#445; #434). Repeatable. The "
+            "selection (PolicyEngine/microcosm#445; #434). Repeatable. The "
             "protection lifts when the concept gains a real Ledger fact."
         ),
     )
@@ -966,7 +966,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "income columns the raw base structurally under-reports; use it "
             "only when the reference is itself an uncalibrated base of the same "
             "lineage. For the calibrated-export comparison, use "
-            "--export-input-mass-reference-h5 (populace#327)."
+            "--export-input-mass-reference-h5 (microcosm#327)."
         ),
     )
     parser.add_argument(
@@ -975,7 +975,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional certified release H5 whose persisted PolicyEngine input "
             "mass the CALIBRATED EXPORT frame is compared against, instead of "
-            "the raw pre-calibration base (populace#327). Calibration correctly "
+            "the raw pre-calibration base (microcosm#327). Calibration correctly "
             "scales PUF-imputed income up toward SOI/CBO targets, so comparing "
             "the export to the raw base flags those correct gains; a certified "
             "reference puts them in-band while a genuine #278 zeroing still "
@@ -1022,7 +1022,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--allow-input-coverage-gaps",
         action="store_true",
         help=(
-            "Diagnostic escape hatch (populace#368): record the release "
+            "Diagnostic escape hatch (microcosm#368): record the release "
             "input-column coverage gate result — required eCPS input columns "
             "the export drops or leaves degenerate — without failing the "
             "build. Release builds must leave this unset; the gate is a hard "
@@ -1033,7 +1033,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--allow-qrf-tail-concentration",
         action="store_true",
         help=(
-            "Diagnostic escape hatch (populace#462): record the QRF "
+            "Diagnostic escape hatch (microcosm#462): record the QRF "
             "tail-concentration gate result — sparse QRF-imputed dollar "
             "columns whose top-k weighted records carry an implausible share "
             "of the weighted mass (the non_sch_d_capital_gains donor-ceiling "
@@ -1045,7 +1045,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--skip-reform-coverage-smoke",
         action="store_true",
         help=(
-            "Do not run the reform-coverage smoke gate (populace#368): the "
+            "Do not run the reform-coverage smoke gate (microcosm#368): the "
             "pinned bound-reform probes (SSI $10k/$20k asset limits) that must "
             "score nonzero on the written release. Skipping loses the "
             "end-to-end $0-reform backstop; release builds should leave it on."
@@ -1055,7 +1055,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--allow-reform-coverage-smoke-failures",
         action="store_true",
         help=(
-            "Diagnostic escape hatch (populace#368): record the reform-coverage "
+            "Diagnostic escape hatch (microcosm#368): record the reform-coverage "
             "smoke gate result without failing the build when a bound reform "
             "probe scores ~$0. Release builds must leave this unset."
         ),
@@ -1154,7 +1154,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "predecessor release's). The SSI take-up Bernoulli thresholds are "
             "then computed against that attempt's delivered per-band candidate "
             "capacities instead of this run's pre-calibration weights — the "
-            "populace#508 fix for the populace#507 aged-band collapse: "
+            "microcosm#508 fix for the microcosm#507 aged-band collapse: "
             "thresholds truthful against release-kind weights, still drawn "
             "exactly once, with no reconcile loop. The artifact must carry the "
             "same SSA band target contract this build compiles; the enforced-"
@@ -1171,15 +1171,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "release's manifest (or the failed attempt's error message). "
             "Pinning the hash in the launch command makes the basis choice "
             "an auditable receipt instead of whatever bytes sit at the "
-            "path (populace#507/#508)."
+            "path (microcosm#507/#508)."
         ),
     )
     parser.add_argument(
         "--selection-source-h5",
         type=Path,
         help=(
-            "Optional populace US H5 whose record set defines a frozen support "
-            "to recover onto the base pool (populace#328). The base frame is "
+            "Optional microcosm US H5 whose record set defines a frozen support "
+            "to recover onto the base pool (microcosm#328). The base frame is "
             "reduced to exactly the source's records — matched by stable source "
             "identity (see --selection-join-key), not row order — before target "
             "materialization and calibration. This reconstructs the certified "
@@ -1238,7 +1238,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Path to the Federal Reserve SCF 2022 public summary extract "
             "(rscfp2022.dta) that feeds the signed household net-worth and SSI "
             "countable-resource asset imputations (scf_wealth stage, "
-            "populace#49/#356/#368). When omitted the fixed-vintage extract is "
+            "microcosm#49/#356/#368). When omitted the fixed-vintage extract is "
             "fetched and cached from the Federal Reserve."
         ),
     )
@@ -1401,7 +1401,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
             "weight columns. Defaults to the packaged Census-built crosswalk "
-            "(populace.build.us_runtime.data; see "
+            "(microcosm.build.us_runtime.data; see "
             "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) when "
             "congressional-district targets are requested; pass a path to "
             "override it."
@@ -1448,7 +1448,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=True,
         help=(
             "Compile-time period aging of dollar-amount targets whose source "
-            "period differs from the build period (PolicyEngine/populace#116, "
+            "period differs from the build period (PolicyEngine/microcosm#116, "
             "#212), on by default under the named cbo_growth_factor_aging "
             "model: dollar amounts are scaled by CBO revenue-projection "
             "growth ratios drawn from the Ledger facts feed (matching "
@@ -1612,12 +1612,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def _finite_or_none(value: float) -> float | None:
     """A loss for the diagnostics payload, scrubbed the way JSON needs it.
 
-    Mirrors ``populace.calibrate.diagnostics._finite``: the artifact
+    Mirrors ``microcosm.calibrate.diagnostics._finite``: the artifact
     serializes strict JSON (``allow_nan=False``), and a non-finite loss is
     an EXPECTED batched gate failure — ``_release_gate_failures`` records it
     and the run continues to the terminal batch. Smuggling the raw value
     into the payload makes the failure destroy the artifact that reports it
-    (populace#547).
+    (microcosm#547).
     """
 
     value = float(value)
@@ -1655,10 +1655,10 @@ def _copy_base_h5_for_local_audit(
 
 def _runtime_versions() -> dict[str, str]:
     packages = (
-        "populace-build",
-        "populace-calibrate",
-        "populace-data",
-        "populace-frame",
+        "microcosm-build",
+        "microcosm-calibrate",
+        "microcosm-data",
+        "microcosm-frame",
         "policyengine-core",
         "policyengine-us",
         "numpy",
@@ -1846,7 +1846,7 @@ def _write_reform_income_tax_cache(
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     """Fail loud when --out/--release-id points at a certified release.
 
-    populace#568 round 3: a failed retry into a directory that already
+    microcosm#568 round 3: a failed retry into a directory that already
     carries a certified release would write failed-attempt weight evidence
     beside the prior run's manifest and H5 — mixing attempts the manifest
     knows nothing about. Release ids are immutable once certified; reruns
@@ -1872,7 +1872,7 @@ def _write_final_household_weight_evidence(
 ) -> dict[str, object]:
     """Atomically persist the final release-grain household weight vector.
 
-    Written on the gate-failure path only (populace#568 review): a failed
+    Written on the gate-failure path only (microcosm#568 review): a failed
     pre-export run minted no H5, so this evidence pair — the weight vector
     plus the ORDERED household ids it aligns to, bound to the target-frame
     identity — is the only way to reattach weights to records for
@@ -2015,7 +2015,7 @@ def _selection_mass_protection_specs(
                 measure=f"selection_mass_protection.{column}",
                 source=(
                     "Locked-source mass measured on the base pool at base "
-                    "weights (PolicyEngine/populace#445; #434 protect-swap)"
+                    "weights (PolicyEngine/microcosm#445; #434 protect-swap)"
                 ),
                 signed=mass < 0,
                 metadata={
@@ -2026,7 +2026,7 @@ def _selection_mass_protection_specs(
                     "protected_column": column,
                     "protected_entity": owner,
                     "base_pool_carriers": str(carriers),
-                    "issue": "PolicyEngine/populace#445",
+                    "issue": "PolicyEngine/microcosm#445",
                 },
             )
         )
@@ -2061,13 +2061,13 @@ def _target_frame_checkpoint_identity(
         # The frozen SSI take-up decisions (flags + priors + basis
         # provenance) feed the materialized ssi target columns; a retry
         # under a different prior basis must invalidate the checkpoint
-        # (populace#507/#508). Always present, so every pre-#507 checkpoint
+        # (microcosm#507/#508). Always present, so every pre-#507 checkpoint
         # — built on the collapsed Build-N-class flags — also misses once.
         "ssi_take_up_assignment_sha256": str(ssi_take_up_assignment_sha256),
         # The frozen-support selection prunes the base pool before assignment
         # and materialization. Its identity-set digest is independent of the
         # positional SSI assignment digest: different same-length supports can
-        # carry identical flag bytes (populace#507).
+        # carry identical flag bytes (microcosm#507).
         "selection_identities_sha256": (
             None
             if selection_identities_sha256 is None
@@ -2081,7 +2081,7 @@ def _target_frame_checkpoint_identity(
         # The SSI prior-weight basis (#524) changes the take-up flags the
         # materialized target frame is built on, but arrives via a flag the
         # base hash cannot see: O attempt 3 warm-hit attempt 2's checkpoint
-        # and solved on the other basis's rows (populace#543, instance 2).
+        # and solved on the other basis's rows (microcosm#543, instance 2).
         # Unconditional None-able key — v8 starts a fresh checkpoint world,
         # so no legacy-identity preservation applies.
         "ssi_take_up_prior_weight_basis_sha256": (
@@ -2415,7 +2415,7 @@ def _load_frame(path: Path) -> Frame:
 def _resolve_selection_source(args):
     """Build the frozen-support selection source from CLI args, or None.
 
-    Reconstructs the certified informed-L0/warm-start selection (populace#328) as
+    Reconstructs the certified informed-L0/warm-start selection (microcosm#328) as
     a committed input: either a source H5 whose record set defines the support, or
     a committed selection-source manifest naming the identities directly. Returns
     ``(source, join_key)`` or ``(None, join_key)`` when no selection is requested.
@@ -2515,7 +2515,7 @@ def _read_cd_vintage_support_provenance(h5_path: Path) -> dict[str, object]:
         raise RuntimeError(
             "Reading congressional-district support provenance requires h5py. "
             "Run the fiscal refresh builder with the US extra, for example "
-            "`uv run --python 3.13 --package populace-build --extra us --group "
+            "`uv run --python 3.13 --package microcosm-build --extra us --group "
             "dev python tools/build_us_fiscal_refresh_release.py ...`. This "
             "preflight is intentionally before calibration or donor imputation."
         ) from exc
@@ -2585,7 +2585,7 @@ def _load_incumbent_diagnostics_payload(path: Path | None) -> dict[str, object]:
     payload = json.loads(path.read_text())
     if not isinstance(payload, dict):
         raise ValueError(
-            f"{path} is not a Populace calibration_diagnostics.json file: "
+            f"{path} is not a Microcosm calibration_diagnostics.json file: "
             "expected a JSON object."
         )
     return payload
@@ -2608,7 +2608,7 @@ def _load_verified_incumbent_diagnostics_payload(
     payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise ValueError(
-            f"{path} is not a Populace calibration_diagnostics.json file: "
+            f"{path} is not a Microcosm calibration_diagnostics.json file: "
             "expected a JSON object."
         )
     return payload, observed_sha256
@@ -2623,7 +2623,7 @@ def _diagnostics_by_target_name(
     if not isinstance(targets, list):
         label = str(path) if path is not None else "diagnostics payload"
         raise ValueError(
-            f"{label} is not a Populace calibration_diagnostics.json file: "
+            f"{label} is not a Microcosm calibration_diagnostics.json file: "
             "missing targets list."
         )
     diagnostics: dict[str, Mapping[str, object]] = {}
@@ -3097,7 +3097,7 @@ def _medicaid_source_target_table(target_specs: tuple) -> pd.DataFrame:
     Mirrors :func:`_aca_source_target_tables` for the ``medicaid_enrollment``
     target role: month-tagged December 2024 state snapshot facts
     (``cms_medicaid.month2024_12.state_enrollment.*``), point-in-time
-    semantics per populace #332.
+    semantics per microcosm #332.
     """
     rows: list[dict[str, object]] = []
     for spec in target_specs:
@@ -3296,10 +3296,10 @@ def _with_medicaid_take_up_outputs(
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> tuple[Frame, dict[str, object]]:
-    """Assign Medicaid take-up (populace #331) and return frame + diagnostics.
+    """Assign Medicaid take-up (microcosm #331) and return frame + diagnostics.
 
     ``substitutions`` are the reviewed CMS enrollment substitution records
-    (populace#386) produced by :func:`apply_us_medicaid_enrollment_substitutions`;
+    (microcosm#386) produced by :func:`apply_us_medicaid_enrollment_substitutions`;
     they ride the take-up diagnostics so the gate can rot-check a backfilled
     substitution and the ``us_medicaid_take_up.json`` release artifact records
     exactly which states shipped a substituted point-in-time count.
@@ -3515,7 +3515,7 @@ def _with_snap_state_take_up_outputs(
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> tuple[Frame, dict[str, object]]:
-    """Assign state-calibrated SNAP take-up (populace #372): frame + diagnostics."""
+    """Assign state-calibrated SNAP take-up (microcosm #372): frame + diagnostics."""
     target_table = _snap_state_target_table(target_specs)
     if target_table.empty:
         raise RuntimeError(
@@ -3749,7 +3749,7 @@ class _BatchedReformValidationSimulation:
                 if self._reform is None:
                     simulation = self._microsimulation_cls(dataset=dataset)
                 else:
-                    # populace#456: one reform system per scored reform, not
+                    # microcosm#456: one reform system per scored reform, not
                     # one per batch (each engine build permanently leaks
                     # ~5,600 sys.modules entries).
                     if self._reform_system is None:
@@ -3814,7 +3814,7 @@ def _reform_household_income_tax(
     _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
-    # populace#456: a reform simulation cannot reuse the engine's shared
+    # microcosm#456: a reform simulation cannot reuse the engine's shared
     # class-level system instance, so letting each batch construct its own
     # ``Microsimulation(reform=...)`` rebuilt the full tax-benefit system per
     # batch — measured at ~0.45 GB and ~5,600 permanently-leaked sys.modules
@@ -4467,7 +4467,7 @@ def _materialize_target_frame(
         age_lower = spec.metadata.get("age_lower_bound")
         age_upper = spec.metadata.get("age_upper_bound")
         if age_lower is not None or age_upper is not None:
-            # Age-banded person-variable targets (populace#470, the SSA SSI
+            # Age-banded person-variable targets (microcosm#470, the SSA SSI
             # recipients-by-age counts): mask the person-entity base variable
             # by the fact's age constraints BEFORE the household collapse —
             # the state/CD masks below act on household values and cannot
@@ -4685,7 +4685,7 @@ def _materialize_target_frame(
         eitc_child_count,
         tax_unit_itemizes,
     )
-    # populace#456: the base simulation is pinned past its ``del`` by the
+    # microcosm#456: the base simulation is pinned past its ``del`` by the
     # shared system instance's ``simulation`` backref — for the full pool that
     # is tens of GB held across the entire reform phase. Release it properly.
     release_engine_simulation(simulation)
@@ -4992,7 +4992,7 @@ def _ecps_parity_gate(
 
     The launch contract for replacing the enhanced-CPS: every layer the
     incumbent populates, the candidate must populate or exempt by documented
-    name (populace #313). Unlike :func:`_input_mass_reference_gate`, whose
+    name (microcosm #313). Unlike :func:`_input_mass_reference_gate`, whose
     reference mass is recomputed live from a reference H5, the parity reference
     is a *pinned* per-variable nonzero-share file computed once from the
     sha-verified incumbent artifact — a candidate cannot move the bar by
@@ -5038,7 +5038,7 @@ def _ecps_parity_gate(
     )
 
 
-# Build H (populace#299): export-input-mass reviewed exclusions.
+# Build H (microcosm#299): export-input-mass reviewed exclusions.
 #
 # The export-mass gate compares each calibrated export column against the
 # live-default 57k reference with a +/-50% band. It never re-references to a
@@ -5071,7 +5071,7 @@ def _ecps_parity_gate(
 #                          excluded (non_sch_d class: total pinned, split not).
 #   partnership_self_employment_net_earnings ref $61.740B
 #                          band [$30.870B, $92.610B]; EXPORT-side defect
-#                          (misc/#393 class), remedy tracked in populace#432;
+#                          (misc/#393 class), remedy tracked in microcosm#432;
 #                          exclusion lifts with the base rebuild.
 #   farm_income            ref $62.387B  band [$31.194B, $93.581B]
 #                          UNPINNED free dimension (attempt 12, 6584dfa, the
@@ -5081,7 +5081,7 @@ def _ecps_parity_gate(
 #                          ($4.10B); zero farm facts in the feed, zero farm
 #                          specs compiled; exports wander J -25.6% ->
 #                          att11 -43.2% -> att12 -62.4% on an identical
-#                          pool. Excluded per populace#441; lifts with the
+#                          pool. Excluded per microcosm#441; lifts with the
 #                          SOI Table 1.4 Schedule F identification.
 # Deliberately NOT excluded (parity checks stay live; the run adjudicates):
 #   miscellaneous_income   ref $47.401B  band [$23.700B, $71.101B]; SOI net
@@ -5091,9 +5091,9 @@ def _ecps_parity_gate(
 #                          pins the itemizer share and pulls the full column
 #                          down toward the band from $474-526B.
 #   first_home_mortgage_interest follows home_mortgage_interest (second-home
-#                          leg un-imputed / 0 per populace#38).
+#                          leg un-imputed / 0 per microcosm#38).
 #   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
-#                          populace#489 adjudication VINDICATED this
+#                          microcosm#489 adjudication VINDICATED this
 #                          reference: SOI Pub 1304 Table 1.4 puts taxable
 #                          interest at $313.813B TY2023 (23in14ar.xls; a
 #                          x2.349 realized explosion over TY2022's
@@ -5153,7 +5153,7 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "fix the QRF chain for this column in the staged base builder and "
         "rebuild (single-chain, checkpointed), then identify the concept "
         "with an SOI Schedule SE target so the solve stops treating it as "
-        "a free dimension (populace#432). This exclusion lifts with that "
+        "a free dimension (microcosm#432). This exclusion lifts with that "
         "rebuild."
     ),
     "farm_income": (
@@ -5169,14 +5169,14 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "them in the frozen rmloss100+keogh-swap selection ($4.10B at "
         "base weights); reaching the band floor ($31.19B) would require "
         "stretching those 109 records 7.6x toward the incidental value. "
-        "Unpinned exports wander exactly as populace#432 describes: "
+        "Unpinned exports wander exactly as microcosm#432 describes: "
         "Build J -25.6% in-band, attempt 11 -43.2% in-band, attempt 12 "
         "-62.4% ($23.45B) out — on an identical pool. Excluded per "
-        "populace#441; the exclusion lifts when SOI Table 1.4 farm net "
+        "microcosm#441; the exclusion lifts when SOI Table 1.4 farm net "
         "income (Schedule F) is identified as a Ledger target."
     ),
     "miscellaneous_income": (
-        "Source concept mismatch, established by populace#393's remedy "
+        "Source concept mismatch, established by microcosm#393's remedy "
         "experiments: the PUF pipeline maps miscellaneous_income = E01200, "
         "but E01200 is Form 4797 / 1040 line 14 (business-property gains/"
         "losses), not the SOI Table 1.4 line-21 concept the reference "
@@ -5187,12 +5187,12 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "10x; income-leg plateaus at -52% through 20x). The sparse arm "
         "holds the band via selection and stays gated. Remedy = remap "
         "E01200 to other_net_gain and rebuild the processed PUF "
-        "(populace#393 final determination); this exclusion lifts with "
+        "(microcosm#393 final determination); this exclusion lifts with "
         "that rebuild."
     ),
     "short_term_capital_gains": (
         "Untargeted signed dimension measured against an incidental reference "
-        "(the populace#432/#433 rental_income class, called in advance by the "
+        "(the microcosm#432/#433 rental_income class, called in advance by the "
         "release-gate preflight: 'confirm the calibration surface targets this "
         "column — an untargeted one fails the export-mass parity gate'). The "
         "compiled register carries NO short-term-specific target (verified on "
@@ -5219,7 +5219,7 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "the incumbent weight solve (nothing pinned this column before Build "
         "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
         "input only), so pinning it identifies the export dimension without "
-        "moving revenue (PolicyEngine/populace#299 Build H)."
+        "moving revenue (PolicyEngine/microcosm#299 Build H)."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
@@ -5231,7 +5231,7 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "constrained, the component split was not). The band's lower edge "
         "($37.874B) sits far above the true SOI level, so a correctly "
         "calibrated column cannot pass this parity check "
-        "(PolicyEngine/populace#299 Build H)."
+        "(PolicyEngine/microcosm#299 Build H)."
     ),
 }
 
@@ -5257,7 +5257,7 @@ def _export_input_mass_gate(
     a raw pooled-ASEC base, calibration is *supposed* to scale PUF-imputed
     income columns up toward their SOI/CBO fiscal targets, and comparing the
     calibrated export against the raw base flags those correct, target-aligned
-    gains as failures (populace #327). Passing a certified-release
+    gains as failures (microcosm #327). Passing a certified-release
     ``reference_frame`` (the live default) puts calibration-driven upward
     alignment of under-reported PUF income in-band while a genuine sparse
     zeroing (candidate == 0 or candidate << reference — the #278 signature)
@@ -5276,7 +5276,7 @@ def _export_input_mass_gate(
     )
 
 
-#: QRF tail-concentration gate parameters (populace#462). top_k=100 and the
+#: QRF tail-concentration gate parameters (microcosm#462). top_k=100 and the
 #: 0.75 share threshold are calibrated to the incident: the Build M
 #: non_sch_d_capital_gains column carried 89% of its weighted mass in its top
 #: 100 records (a repeated $594,484 donor-ceiling value) across 2,295
@@ -5313,7 +5313,7 @@ def _qrf_tail_concentration_gate(
 ) -> tuple[GateResult, dict[str, object]]:
     """Tail-concentration gate over the sparse QRF-imputed export columns.
 
-    Runs :func:`populace.build.gates.tail_concentration_gate` on every
+    Runs :func:`microcosm.build.gates.tail_concentration_gate` on every
     QRF-imputed source-stage output the export persists that is sparse
     (nonzero share at most :data:`US_QRF_SPARSE_NONZERO_SHARE_MAX` of its
     entity's records), at the export's calibrated weights. Returns the gate
@@ -5831,7 +5831,7 @@ def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, fl
 
     The SSI take-up stage derives its Bernoulli priors from the same
     ledger-fed band targets the weight solve enforces (role
-    :data:`SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE`, populace#469/#470): one
+    :data:`SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE`, microcosm#469/#470): one
     official measure, bound once, never hardcoded in the module. Bands are
     matched on the facts' first-class age constraints. Fails closed when the
     feed does not carry all three SSA age bands.
@@ -5893,7 +5893,7 @@ def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, fl
             f"targets (role {SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE!r}) in "
             f"the fiscal registry; missing band(s) {missing}. The consumer "
             "facts feed must carry the ssa ssi_federal_payment_recipients "
-            "by_age rows (populace#470)."
+            "by_age rows (microcosm#470)."
         )
     return band_targets
 
@@ -5914,7 +5914,7 @@ def _load_ssi_take_up_prior_weight_basis(
     enforces the release-final phase and full diagnostics-gate pass for the
     current schema, while schemas 2/3 contribute legacy capacity/floor seeds
     only; same-target-contract and enforced-band-feasibility rules apply to
-    every accepted version (populace#507/#508). The caller must pin the
+    every accepted version (microcosm#507/#508). The caller must pin the
     artifact's sha256 in the launch command so the basis is an auditable
     receipt, never whatever bytes happen to sit at the path.
     """
@@ -5984,7 +5984,7 @@ def _final_medicaid_diagnostics_or_quarantine(
     quarantined — recorded as not evaluated, never mis-measured.
     Delivery-only degradation still evaluates, but an evaluation crash in
     degraded mode records a line instead of masking the earlier failures
-    and destroying the diagnostics artifact (populace#547). On the green
+    and destroying the diagnostics artifact (microcosm#547). On the green
     path a crash raises exactly as before.
     """
 
@@ -5993,7 +5993,7 @@ def _final_medicaid_diagnostics_or_quarantine(
             "Medicaid final diagnostics not evaluated: SSI decision "
             "integrity failed upstream (Bernoulli-law violation) and "
             "Medicaid eligibility consumes the frozen SSI decisions; "
-            "quarantined instead of mis-measured (populace#547)."
+            "quarantined instead of mis-measured (microcosm#547)."
         ]
     try:
         return evaluate(), []
@@ -6018,7 +6018,7 @@ def _ssi_take_up_assignment_digest(
     that generated it, so a retry whose thresholds differ — the
     --ssi-take-up-prior-weight-basis path — can never reuse a target-frame
     checkpoint or materialized-column cache built on the previous flags
-    (populace#507 sol review finding 2).
+    (microcosm#507 sol review finding 2).
     """
 
     flags = frame.table("person")[US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]]
@@ -6046,9 +6046,9 @@ def _enforce_ssi_take_up_delivery(
 ) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
 
-    populace#507/#508: a miss beyond tolerance on release weights fails the
+    microcosm#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. ``enforcement_fences``
-    (populace#566/#567) fences normally-enforced bands for the dense
+    (microcosm#566/#567) fences normally-enforced bands for the dense
     diagnostic arm, where delivered-weight recomputes have not landed
     the adult pair in band on either observed frame (P2's clean
     one-retry record; P3's refused delivered-basis chain) — fenced
@@ -6057,11 +6057,11 @@ def _enforce_ssi_take_up_delivery(
     diagnostics are written before returning failures — that artifact IS the
     remedy: the retry passes it via ``--ssi-take-up-prior-weight-basis`` so
     the thresholds are recomputed exactly once from measured delivery, never
-    iterated in-process (the populace#463-class loop stays deleted,
-    populace#477). Failures return to the caller and join the #437 batched
+    iterated in-process (the microcosm#463-class loop stays deleted,
+    microcosm#477). Failures return to the caller and join the #437 batched
     terminal gates rather than raising here: an early raise destroyed the
     failed run's calibration diagnostics and skipped every other gate group
-    (populace#547 — the 2026-07-25 sparsecd retest left no target-surface
+    (microcosm#547 — the 2026-07-25 sparsecd retest left no target-surface
     evidence). Enforcement is unchanged: any returned failure still aborts
     the release at the terminal batch and certification manifests are never
     written.
@@ -6078,7 +6078,7 @@ def _enforce_ssi_take_up_delivery(
     # nonfinite delivered weight both fails the gate AND makes the strict
     # JSON writer (allow_nan=False) raise — the reporting crash would have
     # masked the gate failure and skipped the diagnostics artifact
-    # (populace#547, confirm round 2 finding 1).
+    # (microcosm#547, confirm round 2 finding 1).
     failures = [
         f"SSI take-up delivery failed: {failure}" for failure in delivery_gate.failures
     ]
@@ -6127,7 +6127,7 @@ def _ssi_assignment_priors_from_diagnostics(
 
     The final release-weight measurement republishes these verbatim and
     re-verifies every frozen flag against the seeded law they define
-    (populace#469) — recomputing priors from release weights would
+    (microcosm#469) — recomputing priors from release weights would
     misdocument the one-shot assignment.
     """
 
@@ -6446,7 +6446,7 @@ def _release_gate_failures(
             target_registry=target_registry,
         )
     )
-    # populace#462: every national SOI Pub 1304 Table 1.4 dollar row is
+    # microcosm#462: every national SOI Pub 1304 Table 1.4 dollar row is
     # within-tolerance-blocking, by name pattern rather than enumeration, so
     # rows the exact-name register above never listed (the +634.8%
     # capital-gain-distributions defect) cannot certify. No incumbent-
@@ -7181,7 +7181,7 @@ def _write_reform_validation(
     release_id: str,
     simulate_out_of_sample: bool,
 ) -> None:
-    """Emit reform_validation.json: populace budget effects vs JCT scores.
+    """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
     In-sample JCT tax-expenditure reforms come straight from the calibration
     fit; out-of-sample OBBBA provisions are simulated on the freshly written
@@ -7330,7 +7330,7 @@ def _build_manifests(
         # published while running, so a release without one is auditable.
         "staging": dict(staging) if staging else None,
         "code": {
-            "repository": "PolicyEngine/populace",
+            "repository": "PolicyEngine/microcosm",
             "git_commit": commit,
             "git_dirty": False,
         },
@@ -7360,7 +7360,7 @@ def _build_manifests(
                 "version": registry.version,
                 "n_specs": len(registry),
             },
-            # Reviewed CMS Medicaid enrollment substitutions (populace#386):
+            # Reviewed CMS Medicaid enrollment substitutions (microcosm#386):
             # the per-state records the register applied to the compiled target
             # surface, so a release artifact shows exactly which point-in-time
             # counts were substituted (and why) alongside the registry version
@@ -7398,7 +7398,7 @@ def _build_manifests(
             **(
                 {
                     # The delivery gate result is the release's enforcement
-                    # receipt: under the populace#566/#567 dense-arm fences a
+                    # receipt: under the microcosm#566/#567 dense-arm fences a
                     # green release no longer implies every adult band was
                     # ENFORCED, so the manifest must say which bands were
                     # (enforced_band_keys) and which were fenced with their
@@ -7532,8 +7532,8 @@ def _build_manifests(
     release_manifest = {
         "schema_version": 1,
         "data_package": {
-            "name": "populace-data",
-            "version": runtime["populace-data"],
+            "name": "microcosm-data",
+            "version": runtime["microcosm-data"],
         },
         "default_datasets": {"national": dataset_key},
         "build": {
@@ -7559,7 +7559,7 @@ def _build_manifests(
             "default_dataset": default_dataset_payload,
             **(
                 {
-                    # populace#566/#567: release_manifest.json alone must
+                    # microcosm#566/#567: release_manifest.json alone must
                     # distinguish fenced from enforced SSI delivery — the
                     # effective enforced set and the fenced rows (with
                     # their adjudication text) ride here as well as in
@@ -7733,7 +7733,7 @@ def _load_zero_support_exclusions(path: Path | None) -> dict[str, str]:
 
     The file is a JSON object of ``source_record_id -> reason``. Each reason
     must be a non-empty string documenting why the sparse artifact's frozen
-    support cannot express that cell (PolicyEngine/populace#299 Build G). These
+    support cannot express that cell (PolicyEngine/microcosm#299 Build G). These
     augment the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` for a single
     build; the module constant is never mutated. Returns an empty mapping when
     no path is given.
@@ -8111,7 +8111,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     timing: dict[str, float] = {}
 
     if args.release_id:
-        # populace#568 round 4: when the id is known up front (every launcher
+        # microcosm#568 round 4: when the id is known up front (every launcher
         # passes one), refuse certified-dir reuse before ANY side effect —
         # including the base download and cache writes below. The
         # auto-generated-id path derives its id from the base digest, so its
@@ -8181,7 +8181,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _assert_exact_k_release_id(release_id, args.exact_k)
         # The immutable release id is the dataset's exact-count name. Keep the
         # files at the registry's canonical paths so a later *manual* pointer
-        # flip remains loadable by populace-data.
+        # flip remains loadable by microcosm-data.
         dataset_key = "populace_us_2024"
         dataset_filename = DATASET_FILENAME
         calibration_key = "populace_us_2024_calibration"
@@ -8214,7 +8214,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # Preflight (before the expensive calibration): every provision-critical
     # input leaf the reform-validation configs depend on must be produced by a
     # source stage or be an allowlisted known gap. This catches the
-    # structurally-missing-input class (PolicyEngine/populace#252, #253) before a
+    # structurally-missing-input class (PolicyEngine/microcosm#252, #253) before a
     # validation row can ship a silent structural zero. The registry is first
     # checked against the live PolicyEngine-US graph so a stale entry cannot mask
     # a real gap.
@@ -8228,13 +8228,13 @@ def main(argv: Sequence[str] | None = None) -> None:
                 for failure in validation_input_coverage_gate.failures
             )
         )
-    # Preflight (populace#368): the release input-column coverage manifest must
+    # Preflight (microcosm#368): the release input-column coverage manifest must
     # still equal the pinned reference eCPS input surface, keep the SSI
     # countable-resource assets as hard requirements, and declare only live
     # PolicyEngine-US input leaves. A drifted manifest fails here before the
     # expensive calibration so a stale contract cannot silently narrow coverage.
     assert_release_input_coverage_manifest_current()
-    # Preflight (populace#377): no column may be required-to-signal by one
+    # Preflight (microcosm#377): no column may be required-to-signal by one
     # register (seeded/count-calibrated take-up, health nonconstant, coverage
     # 'required') and excused as absent/degenerate by another (degenerate
     # reviewed exclusions, coverage reviewed exclusions, parity known gaps,
@@ -8254,7 +8254,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 for failure in register_consistency_gate.failures
             )
         )
-    # Preflight (populace#381): the checked-in take-up contract must still match
+    # Preflight (microcosm#381): the checked-in take-up contract must still match
     # the installed policyengine-us (entity/default/engine_class of every
     # ``takes_up_*`` flag) and its curated treatments must not contradict the
     # engine class. These are cheap engine-metadata checks; running them here,
@@ -8286,7 +8286,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
         extra_support_exclusions=extra_support_exclusions,
     )
-    # Reviewed CMS Medicaid enrollment substitutions (populace#386): a state
+    # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
     # nearest-prior-month count instead of failing the take-up gate closed.
     # The records ride the take-up diagnostics; the gate fails a stale entry
@@ -8327,7 +8327,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
-    # populace#507/#508): the band targets come from the same ledger-fed
+    # microcosm#507/#508): the band targets come from the same ledger-fed
     # registry rows the solve enforces, and an invalid delivered-weight
     # basis artifact must fail here, not after the imputation stages.
     ssi_band_targets = _ssi_take_up_band_targets_from_registry(target_specs)
@@ -8356,7 +8356,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     release_dir = release_root / "releases" / release_id
     # Unconditional refusal BEFORE any output-directory creation: a hostile
     # --checkpoint-root beneath releases/<id> must not mutate a certified
-    # directory before the raise (populace#568 round 4).
+    # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
@@ -8457,7 +8457,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # after that prune would erase the underlying measured ASEC reporter.
     ssi_reporter_source_ids = us_ssi_take_up_reporter_source_ids(base_frame)
 
-    # Frozen-support recovery (populace#328): if a selection source is supplied,
+    # Frozen-support recovery (microcosm#328): if a selection source is supplied,
     # reduce the base pool to exactly that support by stable source identity,
     # BEFORE the population mass repair — matching the certified sequence, where
     # the 340.1M-person frozen support is rescaled to the 334.2M Census benchmark
@@ -8469,7 +8469,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         if args.selection_mode != "frozen_support":
             raise ValueError(
                 f"--selection-mode {args.selection_mode!r} is not yet wired into "
-                "calibration; only 'frozen_support' is implemented (populace#328)."
+                "calibration; only 'frozen_support' is implemented (microcosm#328)."
             )
         if telemetry is not None:
             telemetry.stage(
@@ -8567,7 +8567,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             "non_sch_d_cgd_repair",
             message=(
                 "Pinned non_sch_d_capital_gains to the registry's SOI Table "
-                "1.4 dollar fact (populace#462 donor-uprating interim "
+                "1.4 dollar fact (microcosm#462 donor-uprating interim "
                 "repair; aging recorded in target_aged_to)."
             ),
             applied=non_sch_d_cgd_repair.get("applied"),
@@ -9297,7 +9297,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "household blend."
             ),
         )
-    # populace#49/#356/#368/#374: restore signed household net_worth plus the three
+    # microcosm#49/#356/#368/#374: restore signed household net_worth plus the three
     # SSI countable-resource asset inputs (bank_account_assets / stock_assets /
     # bond_assets). One seeded household source draw selects all three leaves
     # from either the SCF or SIPP donor; SCF still anchors signed net worth.
@@ -9429,7 +9429,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         telemetry.stage(
             "ssi_take_up",
             message=(
-                "Assigning SSI take-up once (populace#469): ASEC reporter "
+                "Assigning SSI take-up once (microcosm#469): ASEC reporter "
                 "anchors plus a seeded Bernoulli draw at the registry's SSA "
                 "age-band priors."
             ),
@@ -9439,11 +9439,11 @@ def main(argv: Sequence[str] | None = None) -> None:
                 else dict(ssi_take_up_prior_basis.provenance())
             ),
         )
-    # One-shot assignment before any target materialization (populace#469).
+    # One-shot assignment before any target materialization (microcosm#469).
     # The priors derive from the same ledger-fed SSA band counts the weight
-    # solve enforces as ordinary targets (populace#470), over either this
+    # solve enforces as ordinary targets (microcosm#470), over either this
     # frame's capacities or the delivered-weight basis resolved at startup
-    # (populace#507/#508); the flags are frozen from here and the
+    # (microcosm#507/#508); the flags are frozen from here and the
     # enforced-band delivery is gated on release weights.
     ssi_uncapped_amount = _ssi_person_uncapped_amount(
         base_frame,
@@ -9485,7 +9485,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     ssi_assignment_prior_basis = ssi_take_up_prior_basis_from_diagnostics(
         ssi_take_up_stage_diagnostics
     )
-    # populace#507 sol review finding 2: the frozen SSI decisions and their
+    # microcosm#507 sol review finding 2: the frozen SSI decisions and their
     # basis are materialization inputs. A retry with different flags MUST
     # miss the previous attempt's target-frame checkpoint and target
     # materialization cache — otherwise the solve runs against the stale
@@ -10018,7 +10018,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             ).get("sha256"),
             # Conservative on purpose: a changed SSI assignment invalidates
             # every cached materialized column, not only the SSI-dependent
-            # ones — correctness over cache warmth (populace#507/#508).
+            # ones — correctness over cache warmth (microcosm#507/#508).
             "ssi_take_up_assignment_sha256": ssi_take_up_assignment_sha256,
             # Reform vectors are computed over the selected support. Thread
             # the source identity-set digest directly; the report manifest
@@ -10028,7 +10028,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             ),
             # Reform caches store absolute income-tax vectors, which are
             # subtracted from a freshly materialized baseline. Bind both sides
-            # to one complete materializer identity (populace#557).
+            # to one complete materializer identity (microcosm#557).
             "target_frame_materializer_identity_sha256": (
                 target_frame_materializer_identity_sha256
             ),
@@ -10289,7 +10289,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             # Same scrub as default_dataset["final_loss"] below: these losses
             # ride the diagnostics build payload, which serializes strict JSON
             # (allow_nan=False), and a non-finite loss is a BATCHED gate
-            # failure the artifact must survive to report (populace#547).
+            # failure the artifact must survive to report (microcosm#547).
             "selection_final_loss": _finite_or_none(result.selection.final_loss),
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
@@ -10299,11 +10299,11 @@ def main(argv: Sequence[str] | None = None) -> None:
             "take_up_final_diagnostics",
             message=(
                 "Applying release weights and measuring the frozen take-up "
-                "assignments (report-only; populace#469)."
+                "assignments (report-only; microcosm#469)."
             ),
         )
     # SSI take-up was assigned once before target materialization
-    # (populace#469): apply the release weights to the same support, measure
+    # (microcosm#469): apply the release weights to the same support, measure
     # the frozen flags for the published diagnostics, and let the gap to the
     # SSA band counts ship in the scorecard as calibration's residual on the
     # #470 registry targets — like every other program's take-up miss.
@@ -10333,7 +10333,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # The delivered-weight measurement is written the moment it exists —
     # BEFORE any gate can raise — because this artifact is the retry's
     # prior basis and the forensic record. A simultaneous integrity and
-    # delivery failure must still leave it on disk (populace#507 sol
+    # delivery failure must still leave it on disk (microcosm#507 sol
     # review finding 3).
     write_us_ssi_take_up_diagnostics(
         ssi_take_up_diagnostics,
@@ -10349,13 +10349,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     # SSI gate failures join the #437 batched terminal gates instead of
     # raising here: an early raise destroyed the failed run's calibration
-    # diagnostics and skipped every other gate group (populace#547). A law
+    # diagnostics and skipped every other gate group (microcosm#547). A law
     # violation additionally quarantines SSI-dependent evaluations below.
     ssi_law_degraded = not final_ssi_take_up_gate.passed
     if not final_ssi_take_up_gate.passed:
         # Failures enter the list BEFORE any reporting: the telemetry stage
         # performs local writes and must not be able to mask the gate
-        # failure by raising (populace#547, confirm round 2 finding 1).
+        # failure by raising (microcosm#547, confirm round 2 finding 1).
         early_terminal_gate_failures.extend(
             f"SSI take-up final measurement failed: {failure}"
             for failure in final_ssi_take_up_gate.failures
@@ -10381,7 +10381,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             release_dir=release_dir,
             telemetry=telemetry,
             # The dense diagnostic arm fences its adult bands per the
-            # populace#566/#567 fence adjudication; the sparse certified
+            # microcosm#566/#567 fence adjudication; the sparse certified
             # arm passes no fences and keeps hard enforcement.
             enforcement_fences=(
                 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
@@ -10413,7 +10413,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     try:
         health_input_gate = _health_input_signal_gate(export_frame)
     except Exception as error:
-        # Degraded-mode guard (populace#547): record instead of masking; the
+        # Degraded-mode guard (microcosm#547): record instead of masking; the
         # downstream gate-failure evaluation is itself guarded, so a None
         # gate cannot re-destroy the evidence. Green path raises as before.
         if not early_terminal_gate_failures:
@@ -10440,7 +10440,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         and not other_health_insurance_gate.passed
     ):
         # Batched, not raised: an in-place raise here masked co-occurring
-        # SSI failures and destroyed the diagnostics artifact (populace#547).
+        # SSI failures and destroyed the diagnostics artifact (microcosm#547).
         early_terminal_gate_failures.extend(
             f"Other health insurance signal failed on the export frame: {failure}"
             for failure in other_health_insurance_gate.failures
@@ -10472,7 +10472,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 ],
             )
     except Exception as error:
-        # Degraded-mode guard (populace#547): telemetry writes locally and
+        # Degraded-mode guard (microcosm#547): telemetry writes locally and
         # sits in the corridor between SSI collection and the diagnostics
         # write. Green path raises as before.
         if not early_terminal_gate_failures:
@@ -10483,7 +10483,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     # The path travels separately so the fallback can null it: the
     # diagnostics writer re-hashes any non-None incumbent path, which would
-    # replay the exact I/O failure the guard just caught (populace#547,
+    # replay the exact I/O failure the guard just caught (microcosm#547,
     # confirm round 2 finding 2).
     current_target_surface: Mapping[str, object] | None = None
     incumbent_diagnostics_path: Path | None = args.incumbent_diagnostics
@@ -10524,7 +10524,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         incumbent_loss_basis = _incumbent_target_loss_basis(incumbent_payload)
     except Exception as error:
-        # Degraded-mode guard (populace#547): with earlier terminal failures
+        # Degraded-mode guard (microcosm#547): with earlier terminal failures
         # pending, an incumbent load/validation crash must record a line and
         # fall back to the no-incumbent gate shape, not mask the failures
         # and destroy the diagnostics artifact. Green path raises as before.
@@ -10601,7 +10601,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             target_registry=registry,
         )
     except Exception as error:
-        # Degraded-mode guard (populace#547): the batch must still form and
+        # Degraded-mode guard (microcosm#547): the batch must still form and
         # the diagnostics artifact must still be written when earlier
         # terminal failures are pending. Green path raises as before.
         if not early_terminal_gate_failures:
@@ -10614,7 +10614,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # The early terminal failures (SSI gates, other-health signal, degraded-
     # mode guard lines) ride the same list as every other gate group, so the
     # diagnostics artifact records them and the terminal batch aborts on
-    # them (populace#547).
+    # them (microcosm#547).
     exact_k_fit_failures = (
         []
         if exact_k_incumbent_fit_gate is None
@@ -10696,7 +10696,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         message="Writing PolicyEngine-US H5.",
     )
     release_engine = PolicyEngineUSEngine()
-    # populace#368: full eCPS input-column coverage as a HARD release gate.
+    # microcosm#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
     # export as a key with non-default signal, or carry a reviewed exclusion.
     # This generalizes assert_required_us_release_source_columns (5 SNAP/ACA/
@@ -10789,7 +10789,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 if args.export_input_mass_reference_h5 is not None
                 else "base_frame"
             ),
-            # Build H (populace#299): the two SOI-identified columns whose true
+            # Build H (microcosm#299): the two SOI-identified columns whose true
             # target level provably cannot sit inside the live-default reference
             # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
             # and both mortgage columns are deliberately NOT excluded so the run
@@ -10853,7 +10853,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 failures=list(export_input_mass_gate.failures),
                 force_upload=True,
             )
-    # populace#462: tail-concentration gate over the sparse QRF-imputed dollar
+    # microcosm#462: tail-concentration gate over the sparse QRF-imputed dollar
     # columns at the export's calibrated weights. The Build M defect — 89% of
     # the shipped non_sch_d_capital_gains mass in 100 records via a repeated
     # $594,484 donor-ceiling value — is invisible to support clipping (every
@@ -10953,7 +10953,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
-        # Gate-failure path ONLY (populace#568 review): a batched pre-export
+        # Gate-failure path ONLY (microcosm#568 review): a batched pre-export
         # failure mints no H5, so the exact calibrated weight vector — with
         # the ordered household ids it aligns to, bound to the target-frame
         # identity — is persisted here as the run's only record-level weight
@@ -10975,7 +10975,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
     # A green run must not inherit a prior failed attempt's weight evidence
-    # (populace#568 round 2): with --out/--release-id reuse, stale evidence
+    # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
     # files would coexist with a certified release whose manifest knows
     # nothing about them. The batched gates have passed, so any evidence
     # present here belongs to a superseded attempt — remove it before the
@@ -10990,10 +10990,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
     # the batched pre-export raise so a gate-failed run never produces it.
-    # populace#443: #437 dropped this call while inserting the batched raise,
+    # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
-    # populace#368: reform-coverage smoke on the WRITTEN release H5. The column
+    # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
     # end-to-end backstop: each pinned probe (first: SSI asset limits at
     # $10k/$20k) mechanically binds through named input leaves and must move
@@ -11128,7 +11128,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
-    # Per-run, per-artifact support-expressibility exclusions (populace#299
+    # Per-run, per-artifact support-expressibility exclusions (microcosm#299
     # Build G): recorded separately from the standing global registry so the
     # manifest documents exactly which cells this artifact declared un-
     # expressible on its support, without mutating the module constant.
@@ -11170,7 +11170,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     # us_ssi_take_up.json was already written the moment the final
     # measurement existed, ahead of the integrity and delivery gates
-    # (populace#507/#508) — nothing mutates the dict in between.
+    # (microcosm#507/#508) — nothing mutates the dict in between.
     write_us_snap_state_take_up_diagnostics(
         snap_state_take_up_diagnostics,
         release_dir / "us_snap_state_take_up.json",

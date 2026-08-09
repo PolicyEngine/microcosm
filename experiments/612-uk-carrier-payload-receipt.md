@@ -9,7 +9,7 @@ the post-review hardened version on the #618 branch).
 
 ## Provenance
 
-- Input to both sides: the certified Populace UK candidate
+- Input to both sides: the certified Microcosm UK candidate
   `populace_uk_2023.h5`, revision
   `populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z`, sha256 `f17306cc…`
   (verified against the pinned `CERTIFIED_UK_CANDIDATE_SHA256` before use).
@@ -36,4 +36,4 @@ The receipt is SDC-safe: it contains schema names, row counts, booleans, and
 file digests only — no unit-record values.
 
 Full acceptance context (gate-report parity, timings, the preflight):
-https://github.com/PolicyEngine/populace/issues/612 (comments of 2026-08-06).
+https://github.com/PolicyEngine/microcosm/issues/612 (comments of 2026-08-06).

@@ -1,4 +1,4 @@
-# Contract findings: populace#462 fix 3
+# Contract findings: microcosm#462 fix 3
 
 ## Original stop state (subsequently adjudicated)
 
@@ -17,11 +17,11 @@ now the authoritative contract for scope 3a.
   uses `long_term_capital_gains_before_response` as its source, writes
   `schedule_d_capital_gain_distributions`, and treats
   `non_sch_d_capital_gains` only as an eligibility exclusion
-  (`packages/populace-build/src/populace/build/us/source_stages.json:742-764`).
+  (`packages/microcosm-build/src/microcosm/build/us/source_stages.json:742-764`).
 - The packaged share is `0.09852561497474391`. It is specifically the TY2015
   Schedule-D CGD residual divided by long-term net gains excluding the direct
   route; it is not a share for repartitioning the existing $30.27B CGD total
-  (`packages/populace-build/src/populace/build/us/soca_capital_gain_distribution_shares.json:16-22`).
+  (`packages/microcosm-build/src/microcosm/build/us/soca_capital_gain_distribution_shares.json:16-22`).
 - The executor computes, for source `L`, direct-route value `D`, and declared
   share `q`:
 
@@ -33,13 +33,13 @@ now the authoritative contract for scope 3a.
 
   It copies the frame, adds only the output, and never subtracts from or
   otherwise changes `non_sch_d_capital_gains`
-  (`packages/populace-build/src/populace/build/us_runtime/capital_gain_distributions.py:203-214`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/capital_gain_distributions.py:203-214`).
 - Consequently, whenever the stage emits a positive Schedule-D value,
   `non_sch_d_after + schedule_d` is greater than the pre-stage
   `non_sch_d_capital_gains` value. The requested per-tax-unit conservation
   assertion cannot hold. The existing unit test also explicitly pins the
   current memo-component behavior and an untouched source
-  (`packages/populace-build/tests/test_us_capital_gain_distributions.py:81-120`).
+  (`packages/microcosm-build/tests/test_us_capital_gain_distributions.py:81-120`).
 - Wiring the executor leaves the verified $30.27B direct-route total at
   $30.27B. Even if the declared 9.8526% share were incorrectly applied to that
   total with subtraction, it would produce about $2.98B Schedule-D and
@@ -47,7 +47,7 @@ now the authoritative contract for scope 3a.
   class.
 - The executor already fails loudly when its output exists, so a second run is
   rejected as requested
-  (`packages/populace-build/src/populace/build/us_runtime/capital_gain_distributions.py:191-195`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/capital_gain_distributions.py:191-195`).
   It provides no separate signal or conservation gate; inventing one would not
   repair the incompatible transform.
 
@@ -60,10 +60,10 @@ now the authoritative contract for scope 3a.
   `qbi_reconciliation` (`:134-156`, `:981-1004`, and `:1840-1868`). Adding an
   outer stage there would make checkpointed builds record it automatically in
   `stage_run_context.json` under `pipeline`, `completed`, and `stage_records`
-  (`packages/populace-build/src/populace/build/outer_stage_runtime.py:437-575`).
+  (`packages/microcosm-build/src/microcosm/build/outer_stage_runtime.py:437-575`).
 - There is an additional grain seam: both input columns produced by the PUF
   QRF are person-grain outputs
-  (`packages/populace-build/src/populace/build/us_runtime/puf_support.py:94-105`),
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py:94-105`),
   while the manifest reads a tax-unit table. No existing wrapper declares how
   to aggregate the inputs and place the output, and no later builder transform
   performs the missing subtraction.

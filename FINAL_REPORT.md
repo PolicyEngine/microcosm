@@ -1,4 +1,4 @@
-# Final report: populace #462 register alignment
+# Final report: microcosm #462 register alignment
 
 ## Outcome
 
@@ -9,7 +9,7 @@ two consumers, builder contract-row gating, and behavioral containment of the
 publish contract.
 
 The critical-row loss multiplier was removed entirely per
-[populace#492](https://github.com/PolicyEngine/populace/issues/492). There is no
+[microcosm#492](https://github.com/PolicyEngine/microcosm/issues/492). There is no
 constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
 provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
 source-identical to `origin/main`, and its output therefore preserves main's
@@ -39,7 +39,7 @@ bit-level behavior for the same registry and family multipliers.
    Field comparisons remain as fast checks, and any added conjunctive prefix
    is proven to trip the guard.
 
-The [#490](https://github.com/PolicyEngine/populace/issues/490) medical 0.25
+The [#490](https://github.com/PolicyEngine/microcosm/issues/490) medical 0.25
 adjudication tolerance and its adjacent comment in `us_critical_targets.py`
 remain byte-for-byte unchanged, as required.
 
@@ -75,7 +75,7 @@ The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
 environment in the network-restricted sandbox:
 
 ```text
-uv run --package populace-build --extra us --group dev python -m pytest packages/populace-data/tests packages/populace-build/tests/test_us_fiscal_refresh_builder.py packages/populace-build/tests/test_us_state_files_scorer.py -q
+uv run --package microcosm-build --extra us --group dev python -m pytest packages/microcosm-data/tests packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py packages/microcosm-build/tests/test_us_state_files_scorer.py -q
 264 passed, 3 skipped (267 collected)
 ```
 
@@ -94,8 +94,8 @@ Additional receipts:
 
 ## Remediation commits
 
-- `5077f95` — start populace#462 Sol remediation progress.
-- `c48ba37` — remove the populace#462 loss multiplier per populace#492.
+- `5077f95` — start microcosm#462 Sol remediation progress.
+- `c48ba37` — remove the microcosm#462 loss multiplier per microcosm#492.
 - `afa910a` — fix Sol finding 1 selector parity.
 - `89f74f4` — fix Sol finding 2 CD classifier parity.
 - `77040fb` — fix Sol finding 3 relative-error shape.

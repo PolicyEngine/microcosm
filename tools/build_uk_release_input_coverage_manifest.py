@@ -5,7 +5,7 @@ statuses evidence-based:
 
 * surface: every populated effective loader input in the sha-pinned enhanced
   FRS reference;
-* ``required``: the certified Populace UK candidate persists the column with
+* ``required``: the certified Microcosm UK candidate persists the column with
   PolicyEngine-UK-default-aware signal on rows carrying at least the reviewed
   share of owning-entity effective population mass, or a pinned post-candidate
   source-family restoration carries that signal through the release seam; and
@@ -31,14 +31,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.uk_runtime.release_identity import (
+from microcosm.build.uk_runtime.release_identity import (
     UK_RELEASE_TIER_FRS,
     validate_uk_release_tier,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE_DIR = (
-    REPO_ROOT / "packages" / "populace-build" / "src" / "populace" / "build" / "uk"
+    REPO_ROOT / "packages" / "microcosm-build" / "src" / "microcosm" / "build" / "uk"
 )
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
@@ -147,7 +147,7 @@ def _sha256(path: Path) -> str:
 
 def _verify_candidate(path: Path) -> None:
     if not path.is_file():
-        raise FileNotFoundError(f"Populace UK candidate artifact not found: {path}.")
+        raise FileNotFoundError(f"Microcosm UK candidate artifact not found: {path}.")
     size = path.stat().st_size
     if size != CANDIDATE_SIZE_BYTES:
         raise ValueError(
@@ -583,7 +583,7 @@ def build_known_gaps(
         "description": (
             "Canonical UK enhanced-FRS parity debt ledger. A reference-"
             "populated loader input appears in known_gaps when neither the "
-            "sha-pinned certified Populace UK candidate nor a pinned post-"
+            "sha-pinned certified Microcosm UK candidate nor a pinned post-"
             "candidate source-family restoration carries non-default signal "
             "on the reviewed minimum share of effective population mass."
         ),

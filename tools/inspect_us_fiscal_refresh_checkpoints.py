@@ -1,4 +1,4 @@
-"""Inspect Populace US fiscal refresh checkpoints without starting a build.
+"""Inspect Microcosm US fiscal refresh checkpoints without starting a build.
 
 This is a handoff/preflight tool. It reports whether the release builder has
 the inputs it needs, whether congressional-district support geography is
@@ -15,7 +15,7 @@ import math
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from populace.build.us_runtime import (
+from microcosm.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
@@ -139,8 +139,8 @@ def read_h5_provenance(path: Path) -> Mapping[str, object]:
             "read_error_kind": "missing_h5py",
             "error": (
                 "h5py is not installed. Run this preflight with "
-                "`uv run --python 3.13 --package populace-build --extra us "
-                "--group dev ...` or install `populace-build[us]`."
+                "`uv run --python 3.13 --package microcosm-build --extra us "
+                "--group dev ...` or install `microcosm-build[us]`."
             ),
         }
 
@@ -288,7 +288,7 @@ def _recommended_next_action(
         if not support_provenance.get("readable", True):
             if support_provenance.get("read_error_kind") != "missing_h5py":
                 return "fix_unreadable_base_h5"
-            return "rerun_preflight_with_populace_build_us_extra"
+            return "rerun_preflight_with_microcosm_build_us_extra"
         if support_provenance.get("has_current_cd_lookup"):
             return "stamp_cd_provenance_attrs"
         return "build_support_h5_with_current_cd_lookup"

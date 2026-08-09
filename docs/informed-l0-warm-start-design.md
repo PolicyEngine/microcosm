@@ -1,4 +1,4 @@
-# Informed-L0 / warm-start selection — design (populace#328)
+# Informed-L0 / warm-start selection — design (microcosm#328)
 
 Reconstructs the informed-L0 / warm-start selection behind the certified US
 default as **committed, spec-declared machinery**, closing the #159 discipline gap
@@ -27,13 +27,13 @@ input.
 **(a) Frozen-support mode** — select *exactly* the named record set, then calibrate
 weights on that fixed support. This is the certified pattern: reduce the candidate
 frame to the frozen 57,240 support, then run the dense polish (or an L0-refit) on
-it. Requires no change to `populace-calibrate`.
+it. Requires no change to `microcosm-calibrate`.
 
 **(b) Informed-init mode** — initialize the L0 selection *probabilities* from the
 named artifact's selection, then let L0 optimize. More robust to base drift (a
 selected source record that no longer exists just starts cold instead of failing),
 but requires a new per-record selection-probability-init parameter in
-`populace-calibrate.calibrate_l0_refit` (which today exposes only a scalar
+`microcosm-calibrate.calibrate_l0_refit` (which today exposes only a scalar
 `init_mean`).
 
 ### Which first, and why
@@ -54,7 +54,7 @@ A release declares a **selection source** naming an artifact plus the **join
 contract**. Two surfaces, same underlying object:
 
 1. **CLI** on `tools/build_us_fiscal_refresh_release.py`:
-   - `--selection-source-h5 PATH` — a populace US H5 whose record set defines the
+   - `--selection-source-h5 PATH` — a microcosm US H5 whose record set defines the
      frozen support (e.g. the certified live default).
    - `--selection-join-key KEY` — the identity key; default
      `source_year,source_household_id,household_support_channel,household_support_clone_index`
@@ -105,7 +105,7 @@ uncommitted `a7a77c4` selection.
 
 ### Runtime support code (`us_runtime/`, never `build/us/`)
 
-New module `packages/populace-build/src/populace/build/us_runtime/warm_start_selection.py`:
+New module `packages/microcosm-build/src/microcosm/build/us_runtime/warm_start_selection.py`:
 
 - `SelectionSource` — a frozen dataclass: the join key (validated against the
   whitelist), the identity rows, and provenance (source sha / repo / revision, or
@@ -192,7 +192,7 @@ identity omission (#326) is orthogonal and not blocking here.
 
 ## Testing (synthetic fixtures + refusal)
 
-Unit tests in `packages/populace-build/tests/test_us_warm_start_selection.py`, all
+Unit tests in `packages/microcosm-build/tests/test_us_warm_start_selection.py`, all
 on tiny synthetic frames (no network, no large H5):
 
 1. **Join maps a clone-aware support** — a base with 2-year × 2-clone records; a

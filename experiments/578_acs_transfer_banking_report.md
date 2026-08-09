@@ -1,4 +1,4 @@
-# Populace #578: ACS-transfer per-target banking report
+# Microcosm #578: ACS-transfer per-target banking report
 
 ## Outcome
 
@@ -16,7 +16,7 @@ journal edit was performed.
 
 The transfer derives an ordered bank index from the normalized, bounded target
 registry and enters the banked path only when a store is supplied
-([acs_transfer.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer.py#L880-L923)).
+([acs_transfer.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py#L880-L923)).
 Within each active family it builds the ordinary availability-pattern QRF
 contexts, then processes model targets in chain order. For each target it:
 
@@ -29,10 +29,10 @@ contexts, then processes model targets in chain order. For each target it:
 5. writes a checkpoint only after all patterns for that target complete.
 
 That loop and the post-load transition validation are in
-[acs_transfer.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer.py#L1284-L1580).
+[acs_transfer.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py#L1284-L1580).
 The approach preserves the QRF chain contract that later targets condition on
 the exact raw prior draws
-([qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L1151-L1195)).
+([qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L1151-L1195)).
 
 Each target artifact contains:
 
@@ -45,15 +45,15 @@ Each target artifact contains:
   canonical metadata digest.
 
 The serialization and atomic write are implemented in
-[acs_transfer_bank.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer_bank.py#L232-L329).
+[acs_transfer_bank.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer_bank.py#L232-L329).
 Writes use a unique same-directory temporary HDF5, close/flush and `fsync` it,
 then `os.replace` the final target path. A missing final with an orphan
 temporary, a truncated/unreadable HDF5, a digest change, an unexpected target
 descriptor, a row-count change, a pattern-order change, or a non-continuing
 QRF state fails closed to rebuild. Named receipts distinguish `missing`,
 `resumed`, `identity_mismatch`, `invalid_rebuild`, and `rebuilt`
-([acs_transfer_bank.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer_bank.py#L102-L230),
-[acs_transfer_bank.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer_bank.py#L331-L450)).
+([acs_transfer_bank.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer_bank.py#L102-L230),
+[acs_transfer_bank.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer_bank.py#L331-L450)).
 
 The prompt's live receipt describes 114 ACS-transfer targets. The checked-out
 registry currently declares 118 exported leaves and 117 model targets before
@@ -84,24 +84,24 @@ batch size
 ([build_us_multispine_pool.py](../tools/build_us_multispine_pool.py#L619-L671)).
 The target-bank artifact has its own schema-v1 and materializer-v2 ledger as an
 additional fail-closed layer
-([acs_transfer_bank.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer_bank.py#L25-L35)).
+([acs_transfer_bank.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer_bank.py#L25-L35)).
 
 The bank receipt is published inside `impute.acs_qrf_transfer.target_bank`
 ([build_us_multispine_pool.py](../tools/build_us_multispine_pool.py#L1447-L1474)).
 It is acceleration evidence, not a new stage boundary. The `transferred`
 checkpoint is still emitted only after the whole impute operator, including
 tail transfer and all ACS targets, returns successfully
-([multispine_pool.py](../packages/populace-build/src/populace/build/us_runtime/multispine_pool.py#L2067-L2085)).
+([multispine_pool.py](../packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py#L2067-L2085)).
 The agreement gate is still evaluated after simulation/resume, outside the
 checkpointed operators
-([multispine_pool.py](../packages/populace-build/src/populace/build/us_runtime/multispine_pool.py#L2089-L2146)).
+([multispine_pool.py](../packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py#L2089-L2146)).
 
 ## Tail-transfer decision
 
 The capital-gains tail transfer was not banked. Unlike ACS QRF transfer, it is
 a deterministic joint-vector selection/assignment and validation pass with no
 per-target forest fits
-([puf_capital_gains_tail.py](../packages/populace-build/src/populace/build/us_runtime/puf_capital_gains_tail.py#L490-L605)).
+([puf_capital_gains_tail.py](../packages/microcosm-build/src/microcosm/build/us_runtime/puf_capital_gains_tail.py#L490-L605)).
 
 Foreground fixture benchmark, timing only
 `transfer_puf_capital_gains_tail` after imports:
@@ -125,27 +125,27 @@ Therefore that note was not treated as evidence that tail itself is expensive.
 
 ACS work does not parallelize across targets today. The family loop is serial
 and the banked model-target loop is serial
-([acs_transfer.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer.py#L887-L925),
-[acs_transfer.py](../packages/populace-build/src/populace/build/us_runtime/acs_transfer.py#L1434-L1521)).
+([acs_transfer.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py#L887-L925),
+[acs_transfer.py](../packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py#L1434-L1521)).
 The ordinary QRF implementation also fits chained targets serially and draws
 them serially because each target depends on its predecessors
-([qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L1087-L1098),
-[qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L1523-L1534)).
+([qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L1087-L1098),
+[qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L1523-L1534)).
 Primary-QRF target subprocesses are likewise launched synchronously, one
 target at a time, rather than through a process pool
-([puf_qrf_chain.py](../packages/populace-build/src/populace/build/us_runtime/puf_qrf_chain.py#L180-L225)).
+([puf_qrf_chain.py](../packages/microcosm-build/src/microcosm/build/us_runtime/puf_qrf_chain.py#L180-L225)).
 
 One target can use multiple cores:
 
 - forest fitting defaults to `n_jobs=-1` when
   `POPULACE_FIT_N_JOBS` is unset, and that width is passed to the quantile
   forest
-  ([qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L404-L427),
-  [qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L488-L514));
+  ([qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L404-L427),
+  [qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L488-L514));
 - prediction divides rows into chunks and uses a `ThreadPoolExecutor`, with an
   unset worker override resolving to `os.cpu_count()`
-  ([qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L318-L350),
-  [qrf.py](../packages/populace-fit/src/populace/fit/qrf.py#L430-L449)).
+  ([qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L318-L350),
+  [qrf.py](../packages/microcosm-fit/src/microcosm/fit/qrf.py#L430-L449)).
 
 Thus `cpu=32` would be visible to intra-target fit and draw workers when those
 overrides are unset. Whether it would *materially* reduce the observed phase
@@ -171,8 +171,8 @@ with named receipt; truncated final and orphan temporary rebuilds; a mixed
 banked/missing/banked hole; the joint immigration codec; bound production
 path/stage identity and bank receipt wiring; unchanged transferred boundary;
 and unchanged fresh agreement behavior
-([test_us_acs_transfer.py](../packages/populace-build/tests/test_us_acs_transfer.py#L894-L1105),
-[test_us_multispine_pool_tool.py](../packages/populace-build/tests/test_us_multispine_pool_tool.py#L503-L747)).
+([test_us_acs_transfer.py](../packages/microcosm-build/tests/test_us_acs_transfer.py#L894-L1105),
+[test_us_multispine_pool_tool.py](../packages/microcosm-build/tests/test_us_multispine_pool_tool.py#L503-L747)).
 
 The warnings were non-failing numeric/runtime warnings already exercised by
 the workspace (joblib core detection, intentional overflow/non-finite test

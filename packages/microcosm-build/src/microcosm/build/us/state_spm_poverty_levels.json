@@ -1,0 +1,1616 @@
+{
+ "_comment": "Census SPM poverty-rate backtests: the microcosm baseline's weighted share of persons in SPM poverty (in_poverty; child rows restrict to is_child), sliced by state, vs Census P60-287 published rates. State rows use the 2022-2024 three-year averages (CPS state single-year samples are too noisy); the two US rows use single-year 2024. Out-of-sample: poverty appears nowhere in the calibration target surface — person and child counts per state ARE calibrated, pinning the denominators but not the rates. Caveats: the simulation period is 2024 against a 2022-2024 average benchmark, and small-state 3-year averages still carry wide CPS margins of error, so treat single-state gaps of a couple of points as noise; the systematic pattern across states is the signal.",
+ "schema_version": 1,
+ "levels": [
+  {
+   "id": "spm_poverty_us",
+   "name": "United States SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.129,
+    "year": "2024",
+    "source": "Poverty in the United States: 2024 (P60-287), Figure 6 / Table B-1",
+    "source_url": "https://www.census.gov/library/publications/2025/demo/p60-287.html"
+   },
+   "description": "National SPM poverty rate, single-year 2024."
+  },
+  {
+   "id": "spm_child_poverty_us",
+   "name": "United States SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.134,
+    "year": "2024",
+    "source": "Poverty in the United States: 2024 (P60-287), Table B-2 (under 18)",
+    "source_url": "https://www.census.gov/library/publications/2025/demo/p60-287.html"
+   },
+   "description": "National SPM child (under 18) poverty rate, single-year 2024."
+  },
+  {
+   "id": "spm_poverty_ak",
+   "name": "Alaska SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "AK",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.104,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Alaska residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ak",
+   "name": "Alaska SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "AK",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.106,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Alaska children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_al",
+   "name": "Alabama SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "AL",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.135,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Alabama residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_al",
+   "name": "Alabama SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "AL",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.146,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Alabama children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ar",
+   "name": "Arkansas SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "AR",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.136,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Arkansas residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ar",
+   "name": "Arkansas SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "AR",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.146,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Arkansas children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_az",
+   "name": "Arizona SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "AZ",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.129,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Arizona residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_az",
+   "name": "Arizona SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "AZ",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.147,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Arizona children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ca",
+   "name": "California SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "CA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.177,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all California residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ca",
+   "name": "California SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "CA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.182,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of California children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_co",
+   "name": "Colorado SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "CO",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.103,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Colorado residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_co",
+   "name": "Colorado SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "CO",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.077,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Colorado children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ct",
+   "name": "Connecticut SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "CT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.099,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Connecticut residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ct",
+   "name": "Connecticut SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "CT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.109,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Connecticut children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_dc",
+   "name": "District of Columbia SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "DC",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.153,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all District of Columbia residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_dc",
+   "name": "District of Columbia SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "DC",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.187,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of District of Columbia children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_de",
+   "name": "Delaware SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "DE",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.093,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Delaware residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_de",
+   "name": "Delaware SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "DE",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.103,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Delaware children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_fl",
+   "name": "Florida SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "FL",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.16,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Florida residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_fl",
+   "name": "Florida SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "FL",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.176,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Florida children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ga",
+   "name": "Georgia SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "GA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.135,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Georgia residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ga",
+   "name": "Georgia SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "GA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.137,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Georgia children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_hi",
+   "name": "Hawaii SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "HI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.108,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Hawaii residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_hi",
+   "name": "Hawaii SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "HI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.122,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Hawaii children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ia",
+   "name": "Iowa SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "IA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.077,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Iowa residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ia",
+   "name": "Iowa SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "IA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.07,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Iowa children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_id",
+   "name": "Idaho SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "ID",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.084,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Idaho residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_id",
+   "name": "Idaho SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "ID",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.058,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Idaho children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_il",
+   "name": "Illinois SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "IL",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.111,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Illinois residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_il",
+   "name": "Illinois SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "IL",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.109,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Illinois children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_in",
+   "name": "Indiana SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "IN",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.093,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Indiana residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_in",
+   "name": "Indiana SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "IN",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.091,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Indiana children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ks",
+   "name": "Kansas SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "KS",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.091,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Kansas residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ks",
+   "name": "Kansas SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "KS",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.097,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Kansas children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ky",
+   "name": "Kentucky SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "KY",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.143,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Kentucky residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ky",
+   "name": "Kentucky SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "KY",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.158,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Kentucky children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_la",
+   "name": "Louisiana SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "LA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.177,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Louisiana residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_la",
+   "name": "Louisiana SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "LA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.189,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Louisiana children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ma",
+   "name": "Massachusetts SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.117,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Massachusetts residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ma",
+   "name": "Massachusetts SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.116,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Massachusetts children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_md",
+   "name": "Maryland SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MD",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.112,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Maryland residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_md",
+   "name": "Maryland SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MD",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.124,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Maryland children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_me",
+   "name": "Maine SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "ME",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.067,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Maine residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_me",
+   "name": "Maine SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "ME",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.05,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Maine children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_mi",
+   "name": "Michigan SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.105,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Michigan residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_mi",
+   "name": "Michigan SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.103,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Michigan children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_mn",
+   "name": "Minnesota SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MN",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.075,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Minnesota residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_mn",
+   "name": "Minnesota SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MN",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.063,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Minnesota children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_mo",
+   "name": "Missouri SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MO",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.1,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Missouri residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_mo",
+   "name": "Missouri SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MO",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.108,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Missouri children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ms",
+   "name": "Mississippi SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MS",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.164,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Mississippi residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ms",
+   "name": "Mississippi SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MS",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.171,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Mississippi children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_mt",
+   "name": "Montana SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "MT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.094,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Montana residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_mt",
+   "name": "Montana SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "MT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.081,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Montana children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_nc",
+   "name": "North Carolina SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NC",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.14,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all North Carolina residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_nc",
+   "name": "North Carolina SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NC",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.152,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of North Carolina children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_nd",
+   "name": "North Dakota SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "ND",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.082,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all North Dakota residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_nd",
+   "name": "North Dakota SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "ND",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.092,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of North Dakota children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ne",
+   "name": "Nebraska SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NE",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.082,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Nebraska residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ne",
+   "name": "Nebraska SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NE",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.064,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Nebraska children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_nh",
+   "name": "New Hampshire SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NH",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.086,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all New Hampshire residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_nh",
+   "name": "New Hampshire SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NH",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.07,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of New Hampshire children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_nj",
+   "name": "New Jersey SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NJ",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.124,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all New Jersey residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_nj",
+   "name": "New Jersey SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NJ",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.141,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of New Jersey children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_nm",
+   "name": "New Mexico SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NM",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.124,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all New Mexico residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_nm",
+   "name": "New Mexico SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NM",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.103,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of New Mexico children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_nv",
+   "name": "Nevada SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NV",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.147,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Nevada residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_nv",
+   "name": "Nevada SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NV",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.15,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Nevada children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ny",
+   "name": "New York SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "NY",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.144,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all New York residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ny",
+   "name": "New York SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "NY",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.155,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of New York children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_oh",
+   "name": "Ohio SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "OH",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.093,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Ohio residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_oh",
+   "name": "Ohio SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "OH",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.1,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Ohio children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ok",
+   "name": "Oklahoma SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "OK",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.116,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Oklahoma residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ok",
+   "name": "Oklahoma SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "OK",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.112,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Oklahoma children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_or",
+   "name": "Oregon SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "OR",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.111,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Oregon residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_or",
+   "name": "Oregon SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "OR",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.11,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Oregon children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_pa",
+   "name": "Pennsylvania SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "PA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.106,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Pennsylvania residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_pa",
+   "name": "Pennsylvania SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "PA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.11,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Pennsylvania children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ri",
+   "name": "Rhode Island SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "RI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.091,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Rhode Island residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ri",
+   "name": "Rhode Island SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "RI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.081,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Rhode Island children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_sc",
+   "name": "South Carolina SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "SC",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.117,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all South Carolina residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_sc",
+   "name": "South Carolina SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "SC",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.128,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of South Carolina children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_sd",
+   "name": "South Dakota SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "SD",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.079,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all South Dakota residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_sd",
+   "name": "South Dakota SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "SD",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.074,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of South Dakota children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_tn",
+   "name": "Tennessee SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "TN",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.101,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Tennessee residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_tn",
+   "name": "Tennessee SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "TN",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.082,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Tennessee children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_tx",
+   "name": "Texas SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "TX",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.143,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Texas residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_tx",
+   "name": "Texas SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "TX",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.158,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Texas children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_ut",
+   "name": "Utah SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "UT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.084,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Utah residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_ut",
+   "name": "Utah SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "UT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.059,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Utah children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_va",
+   "name": "Virginia SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "VA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.105,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Virginia residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_va",
+   "name": "Virginia SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "VA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.111,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Virginia children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_vt",
+   "name": "Vermont SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "VT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.095,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Vermont residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_vt",
+   "name": "Vermont SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "VT",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.08,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Vermont children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_wa",
+   "name": "Washington SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "WA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.108,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Washington residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_wa",
+   "name": "Washington SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "WA",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.096,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Washington children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_wi",
+   "name": "Wisconsin SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "WI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.077,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Wisconsin residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_wi",
+   "name": "Wisconsin SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "WI",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.065,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Wisconsin children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_wv",
+   "name": "West Virginia SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "WV",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.125,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all West Virginia residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_wv",
+   "name": "West Virginia SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "WV",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.11,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of West Virginia children (under 18) below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_poverty_wy",
+   "name": "Wyoming SPM poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "state": "WY",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.083,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by State and Different Poverty Measures Using 3-Year Average Over: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state.xlsx"
+   },
+   "description": "Share of all Wyoming residents below the SPM poverty threshold."
+  },
+  {
+   "id": "spm_child_poverty_wy",
+   "name": "Wyoming SPM child poverty rate",
+   "variable": "in_poverty",
+   "statistic": "rate",
+   "mask_variable": "is_child",
+   "state": "WY",
+   "period": 2024,
+   "benchmark": {
+    "value": 0.064,
+    "year": "2022-2024 3-year average",
+    "source": "Number and Percentage of People in Poverty by Age, State, and Different Poverty Measures Using 3-Year Average: 2022, 2023, and 2024 (P60-287, Poverty in the United States: 2024)",
+    "source_url": "https://www2.census.gov/programs-surveys/demo/tables/p60/287/spm_opm_state_by_age.xlsx"
+   },
+   "description": "Share of Wyoming children (under 18) below the SPM poverty threshold."
+  }
+ ]
+}

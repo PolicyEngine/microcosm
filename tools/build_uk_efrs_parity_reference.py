@@ -39,7 +39,7 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE_DIR = (
-    REPO_ROOT / "packages" / "populace-build" / "src" / "populace" / "build" / "uk"
+    REPO_ROOT / "packages" / "microcosm-build" / "src" / "microcosm" / "build" / "uk"
 )
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 
@@ -391,7 +391,7 @@ def build_weighted_totals(source_h5: Path) -> dict[str, Any]:
         ) from exc
     from types import SimpleNamespace
 
-    from populace.build.uk_runtime.weighted_integrity import (
+    from microcosm.build.uk_runtime.weighted_integrity import (
         uk_dataset_input_mass_totals,
     )
 

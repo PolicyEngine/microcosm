@@ -1,7 +1,7 @@
 """Regenerate the US release target-parity manifest and feed-family inventory.
 
 The target-side analog of ``tools/build_us_release_input_coverage_manifest.py``.
-It declares which administrative target *families* the compiled populace registry
+It declares which administrative target *families* the compiled microcosm registry
 must carry — the families the retired us-data/eCPS pipeline calibrated to.
 
 Chesterton's fence is the governing rule. A category label (``macro_control_total``,
@@ -39,15 +39,15 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from populace.build.us_runtime import (
+from microcosm.build.us_runtime import (
     default_congressional_district_vintage_crosswalk_path,
     load_congressional_district_vintage_crosswalk,
 )
-from populace.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
-from populace.build.us_runtime.medicaid_take_up import (
+from microcosm.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
+from microcosm.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
 )
-from populace.build.us_runtime.release_target_parity import (
+from microcosm.build.us_runtime.release_target_parity import (
     COMPILED_STATUS,
     REVIEWED_EXCLUSION_STATUS,
     SOURCE_ABSENT_CLASSIFICATION,
@@ -56,7 +56,7 @@ from populace.build.us_runtime.release_target_parity import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 US_PACKAGE_DIR = (
-    REPO_ROOT / "packages" / "populace-build" / "src" / "populace" / "build" / "us"
+    REPO_ROOT / "packages" / "microcosm-build" / "src" / "microcosm" / "build" / "us"
 )
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
@@ -147,7 +147,7 @@ _NAMESPACE_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
 _RETIREMENT_CONTRIBUTION_EXCLUSION = (
     "input_side",
     "IRS SOI / W-2 retirement-contribution aggregate the retired pipeline "
-    "calibrated (PR #496/#554) but which it and populace both moved to the input "
+    "calibrated (PR #496/#554) but which it and microcosm both moved to the input "
     "side: modeled as imputed pre-limit contribution INPUT columns, not "
     "reweighting targets.",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS declares the *_contributions_desired "
@@ -165,7 +165,7 @@ _RETIREMENT_CONTRIBUTION_EXCLUSION = (
             'match the deduction, not total contributions" (loss.py)'
         ),
         verdict_basis=(
-            "architecture retires it: us-data PR #1125 and populace both govern "
+            "architecture retires it: us-data PR #1125 and microcosm both govern "
             "retirement contributions as imputed pre-limit INPUT columns "
             "(*_contributions_desired, POST_REFERENCE_ECPS_REQUIRED_INPUTS in the "
             "input-coverage contract) with PolicyEngine-US applying statutory "
@@ -203,7 +203,7 @@ _JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION = (
     "deferred",
     "JCT OBBBA Title VII no-tax-on-tips / no-tax-on-overtime revenue-effect "
     "projections (JCX-35-25, FY2026-FY2029), banked as the exact-valued "
-    "official anchors for the OBBBA deduction channels (populace#451 items "
+    "official anchors for the OBBBA deduction channels (microcosm#451 items "
     "3-4; the only such anchors — no BLS or Census FLSA-premium aggregate "
     "exists, and Treasury filing-season releases publish claim floors only). "
     "Not compilable at the 2024 target period: both provisions are effective "
@@ -220,7 +220,7 @@ _JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION = (
         origin=(
             "not a us-data calibration target: OBBBA (P.L. 119-21, July 2025) "
             "postdates the retired us-data pipeline. The anchors enter with "
-            "the populace#451 quartet sourcing (ledger "
+            "the microcosm#451 quartet sourcing (ledger "
             "jct-obbba-revenue-estimates-2025 package, JCX-35-25 pinned)."
         ),
         purpose=(
@@ -256,7 +256,7 @@ _ESI_ANCHOR_EXCLUSION = (
     "not_modeled",
     "NHE employer-contribution ESI premium aggregate: a retired us-data "
     "calibration target (loss.py 1_002.9e9, removed at 9f320d2c) whose "
-    "anchor v9.2 re-banks (2026-07-21) for populace#454's future gate. The pe-us input it would anchor "
+    "anchor v9.2 re-banks (2026-07-21) for microcosm#454's future gate. The pe-us input it would anchor "
     "(employer_sponsored_insurance_premiums, the employer-paid share per "
     "the variable's own documentation) has no live producer in the "
     "hermetic lineage, so a target would bind against a structural zero. "
@@ -264,7 +264,7 @@ _ESI_ANCHOR_EXCLUSION = (
     "and private employees alike); the private-employer subset rides as its "
     "cross-check.",
     "ecps_parity_known_gaps.json entry employer_sponsored_insurance_"
-    "premiums (NOW_* source-unavailability evidence); populace#454 "
+    "premiums (NOW_* source-unavailability evidence); microcosm#454 "
     "descope comment 2026-07-21",
     _fence(
         origin=(
@@ -294,7 +294,7 @@ _ESI_ANCHOR_EXCLUSION = (
             "three required NOW_* fields are missing from the sha-pinned "
             "2022-2024 ASEC h5 inputs (recorded parity known-gap), so a "
             "target would bind against a structural zero. Compiles when "
-            "populace#454 restores the source fields or lands a validated "
+            "microcosm#454 restores the source fields or lands a validated "
             "PHIP_VAL+MEPS re-derivation; the anchor value is already "
             "banked in the feed."
         ),
@@ -461,7 +461,7 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
                 "medicaid_cost_if_enrolled an SLCSP allocation from state totals "
                 "normalized against enrollees — person_weight-dependent, so "
                 "reweighting recomputes per-person costs and it is not a linear "
-                "calibration row. populace keeps it calibration_role="
+                "calibration row. microcosm keeps it calibration_role="
                 "validation_only in DIRECT_LEDGER_TARGETS."
             ),
         ),
@@ -543,7 +543,7 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     # The return_count sub-row alone remains a support exclusion
     # (US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: tip support is under 1% of the
     # 6.04M-return Box 7 class; the count target waits for support widening,
-    # populace#451 item 3).
+    # microcosm#451 item 3).
     "kff.marketplace_effectuated_enrollment": (
         "superseded",
         "Kaiser Family Foundation state marketplace enrollment — a secondary "
@@ -744,7 +744,7 @@ def build_manifest(
                 "compile_us_fiscal_target_registry(age_targets=True, "
                 f"include_congressional_district_targets={CD_SURFACE_REGIME == 'on'}) "
                 "+ apply_us_medicaid_enrollment_substitutions "
-                f"(CD_SURFACE_REGIME={CD_SURFACE_REGIME!r}, populace#449)"
+                f"(CD_SURFACE_REGIME={CD_SURFACE_REGIME!r}, microcosm#449)"
             ),
             "us_data_source": (
                 "retired us-data pipeline (archived): utils/loss.py (eCPS loss "
