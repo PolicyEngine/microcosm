@@ -66,7 +66,11 @@ from microcosm.build.us_runtime.prior_year_income import (
 from microcosm.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.qbi_inputs import (
-    US_QBI_OUTPUT_COLUMNS,
+    bind_us_qbi_reconciliation_transition_authority,
+    us_qbi_post_reconciliation_person_columns,
+    us_qbi_reconciliation_change_receipt,
+    validate_us_qbi_reconciliation_live_output,
+    validate_us_qbi_reconciliation_transition,
     with_us_qbi_input_reconciliation,
 )
 from microcosm.build.us_runtime.relationship_inputs import (
@@ -127,8 +131,12 @@ __all__ = [
     "derive_multispine_pool_inputs",
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
-    "pool_transfer_target_families",
     "pool_input_surface",
+    "pool_post_puf_puf_producer_target_families",
+    "pool_post_puf_source_producer_target_families",
+    "pool_post_puf_transfer_target_families",
+    "pool_pre_clone_gap_fill_target_families",
+    "pool_transfer_target_families",
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
     "run_multispine_pool_path",
@@ -237,6 +245,7 @@ class PoolStageOutput:
 
     frame: Frame
     receipt: Mapping[str, object] = field(default_factory=dict)
+    qbi_transition_authority_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.frame, Frame):
@@ -246,6 +255,14 @@ class PoolStageOutput:
             )
         if not isinstance(self.receipt, Mapping):
             raise TypeError("PoolStageOutput.receipt must be a mapping.")
+        if self.qbi_transition_authority_sha256 is not None and not isinstance(
+            self.qbi_transition_authority_sha256,
+            str,
+        ):
+            raise TypeError(
+                "PoolStageOutput.qbi_transition_authority_sha256 must be a "
+                "string when present."
+            )
 
 
 @dataclass(frozen=True)
@@ -262,6 +279,7 @@ class MultispinePoolCheckpoint:
     assembly_receipt: Mapping[str, object]
     stage_receipts: Mapping[str, Mapping[str, object]]
     simulation_frame: Frame | None = None
+    qbi_transition_authority_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.stage not in POOL_CHECKPOINT_STAGE_ORDER:
@@ -297,6 +315,14 @@ class MultispinePoolCheckpoint:
                 "Only a simulated multispine pool checkpoint may carry a "
                 "simulation_frame."
             )
+        if self.qbi_transition_authority_sha256 is not None and not isinstance(
+            self.qbi_transition_authority_sha256,
+            str,
+        ):
+            raise TypeError(
+                "MultispinePoolCheckpoint.qbi_transition_authority_sha256 must "
+                "be a string when present."
+            )
 
 
 @dataclass(frozen=True)
@@ -308,6 +334,7 @@ class MultispinePoolResult:
     provenance_counts: Mapping[str, Mapping[str, object]]
     stage_receipts: Mapping[str, Mapping[str, object]]
     agreement_gate: GateResult
+    qbi_transition_authority_sha256: str | None = None
 
     @property
     def simulation_ready(self) -> bool:
@@ -568,6 +595,113 @@ def pool_transfer_target_families() -> TargetFamilies:
         for entity, targets in additions.items():
             plan.setdefault(entity, {})[f"source_operator_{family}"] = targets
     return plan
+
+
+def _partition_pool_transfer_target_families(
+    target_families: TargetFamilies,
+) -> tuple[TargetFamilies, TargetFamilies]:
+    """Split the legacy transfer surface at its declared producer boundary.
+
+    Targets emitted by a pre-clone source operator are eligible for the early
+    cross-origin gap-fill. Every other target is produced only by the primary
+    PUF pass or post-clone source completion and therefore belongs to the
+    post-PUF transfer. The partition preserves the legacy entity, family, and
+    target order so fit identities stay deterministic.
+    """
+
+    pre_clone_outputs = {
+        (entity, column)
+        for operator_name in POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            POOL_OPERATOR_CONTRACTS[operator_name].family
+        ].items()
+        for column in columns
+    }
+    early: dict[str, dict[str, tuple[str, ...]]] = {}
+    late: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, families in target_families.items():
+        for family, targets in families.items():
+            early_targets = tuple(
+                target for target in targets if (entity, target) in pre_clone_outputs
+            )
+            late_targets = tuple(
+                target
+                for target in targets
+                if (entity, target) not in pre_clone_outputs
+            )
+            if early_targets:
+                early.setdefault(entity, {})[family] = early_targets
+            if late_targets:
+                late.setdefault(entity, {})[family] = late_targets
+    return early, late
+
+
+def pool_pre_clone_gap_fill_target_families() -> TargetFamilies:
+    """Return targets available after native pre-clone source preparation."""
+
+    early, _late = _partition_pool_transfer_target_families(
+        pool_transfer_target_families()
+    )
+    return early
+
+
+def pool_post_puf_transfer_target_families() -> TargetFamilies:
+    """Return targets first available after PUF and source completion."""
+
+    _early, late = _partition_pool_transfer_target_families(
+        pool_transfer_target_families()
+    )
+    return late
+
+
+def _filter_target_families_by_outputs(
+    target_families: TargetFamilies,
+    outputs: set[tuple[str, str]],
+) -> TargetFamilies:
+    """Preserve declaration order while retaining targets with named producers."""
+
+    filtered: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, families in target_families.items():
+        for family, targets in families.items():
+            produced = tuple(
+                target for target in targets if (entity, target) in outputs
+            )
+            if produced:
+                filtered.setdefault(entity, {})[family] = produced
+    return filtered
+
+
+def pool_post_puf_puf_producer_target_families() -> TargetFamilies:
+    """Return late targets whose producer role is a live PUF clone."""
+
+    puf_outputs = {
+        (entity, target)
+        for entity, targets in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            "primary_puf_qrf"
+        ].items()
+        for target in targets
+    }
+    return _filter_target_families_by_outputs(
+        pool_post_puf_transfer_target_families(),
+        puf_outputs,
+    )
+
+
+def pool_post_puf_source_producer_target_families() -> TargetFamilies:
+    """Return late targets whose producer role is an ASEC source clone."""
+
+    source_outputs = {
+        (entity, target)
+        for operator_name in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        for entity, targets in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            POOL_OPERATOR_CONTRACTS[operator_name].family
+        ].items()
+        for target in targets
+    }
+    return _filter_target_families_by_outputs(
+        pool_post_puf_transfer_target_families(),
+        source_outputs,
+    )
 
 
 def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
@@ -1454,27 +1588,50 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
+    def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
+        reconciled = with_us_qbi_input_reconciliation(input_frame)
+        receipt = us_qbi_reconciliation_change_receipt(input_frame, reconciled)
+        validate_us_qbi_reconciliation_transition(
+            input_frame,
+            reconciled,
+            receipt,
+            boundary="multispine QBI reconciliation generation",
+        )
+        return PoolStageOutput(
+            reconciled,
+            receipt,
+        )
+
     completed = _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
         operator_names=POOL_DERIVE_OPERATOR_ORDER,
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
-            "with_us_qbi_input_reconciliation": with_us_qbi_input_reconciliation,
+            "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
         },
     )
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
-    return PoolStageOutput(
+    qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    authorized = bind_us_qbi_reconciliation_transition_authority(
         completed.frame,
+        qbi_receipt,
+    )
+    validate_us_qbi_reconciliation_live_output(
+        authorized,
+        qbi_receipt,
+        boundary="multispine pool derivation output",
+        expected_transition_authority_sha256=qbi_receipt["sha256"],
+    )
+    return PoolStageOutput(
+        authorized,
         {
             "phase": _POST_CLONE_PHASE,
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
-            "qbi_input_reconciliation": {
-                "columns": list(US_QBI_OUTPUT_COLUMNS),
-                "operation": "shared_all_or_nothing_identity_reconciliation",
-            },
+            "qbi_input_reconciliation": dict(qbi_receipt),
         },
+        qbi_transition_authority_sha256=qbi_receipt["sha256"],
     )
 
 
@@ -1930,7 +2087,57 @@ def _validated_resume_checkpoint(
                 "Multispine pool simulated checkpoint evaluation provenance "
                 "differs from its persistent frame."
             )
-    return assembly_receipt, _checkpoint_stage_receipts(resume)
+    receipts = _checkpoint_stage_receipts(resume)
+    if resume.stage == "simulated":
+        _validate_qbi_stage_receipt(
+            resume.frame,
+            receipts,
+            boundary="multispine pool simulated checkpoint resume",
+            transition_authority_sha256=(resume.qbi_transition_authority_sha256),
+        )
+    return assembly_receipt, receipts
+
+
+def _qbi_receipt_from_stage_receipts(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    boundary: str,
+) -> Mapping[str, object]:
+    derive = stage_receipts.get("derive")
+    if not isinstance(derive, Mapping):
+        raise ValueError(f"{boundary}: stage receipts have no derive object.")
+    if "pool_derivation" in derive:
+        raise ValueError(
+            f"{boundary}: legacy checkpoint used the stacked derive receipt route."
+        )
+    receipt = derive.get("qbi_input_reconciliation")
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: derive receipt has no QBI reconciliation object."
+        )
+    return receipt
+
+
+def _validate_qbi_stage_receipt(
+    frame: Frame,
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    boundary: str,
+    transition_authority_sha256: str | None,
+) -> None:
+    receipt = _qbi_receipt_from_stage_receipts(
+        stage_receipts,
+        boundary=boundary,
+    )
+    validate_us_qbi_reconciliation_live_output(
+        frame,
+        receipt,
+        boundary=boundary,
+        expected_transition_authority_sha256=transition_authority_sha256,
+        allowed_post_reconciliation_person_columns=(
+            us_qbi_post_reconciliation_person_columns(stage_receipts.get("seed"))
+        ),
+    )
 
 
 def _emit_pool_checkpoint(
@@ -1941,9 +2148,17 @@ def _emit_pool_checkpoint(
     assembly_receipt: Mapping[str, object],
     stage_receipts: Mapping[str, Mapping[str, object]],
     simulation_frame: Frame | None = None,
+    qbi_transition_authority_sha256: str | None = None,
 ) -> None:
     if callback is None:
         return
+    if stage == "simulated":
+        _validate_qbi_stage_receipt(
+            frame,
+            stage_receipts,
+            boundary="multispine pool simulated checkpoint emission",
+            transition_authority_sha256=qbi_transition_authority_sha256,
+        )
     callback(
         MultispinePoolCheckpoint(
             stage=stage,
@@ -1953,6 +2168,7 @@ def _emit_pool_checkpoint(
                 name: dict(receipt) for name, receipt in stage_receipts.items()
             },
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
     )
 
@@ -2023,6 +2239,7 @@ def run_multispine_pool_path(
             boundary="multispine pool assembly",
         )
         receipts: dict[str, Mapping[str, object]] = {}
+        qbi_transition_authority_sha256: str | None = None
         resume_stage = None
         _emit_pool_checkpoint(
             checkpoint,
@@ -2037,6 +2254,7 @@ def run_multispine_pool_path(
             resume.frame,
             boundary=f"multispine pool {resume.stage} resume",
         )
+        qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
         resume_stage = resume.stage
 
     if resume_stage in {None, "assembled"}:
@@ -2120,6 +2338,10 @@ def run_multispine_pool_path(
                 boundary=f"multispine pool {stage_name} output",
             )
             receipts[stage_name] = dict(outcome.receipt)
+            if stage_name == "derive":
+                qbi_transition_authority_sha256 = (
+                    outcome.qbi_transition_authority_sha256
+                )
 
         simulated = operators["simulate"](current)
         if not isinstance(simulated, PoolStageOutput):
@@ -2144,6 +2366,7 @@ def run_multispine_pool_path(
             assembly_receipt=assembly_receipt,
             stage_receipts=receipts,
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
     else:
         if resume.simulation_frame is None:  # pragma: no cover - dataclass validates
@@ -2177,4 +2400,5 @@ def run_multispine_pool_path(
         provenance_counts=counts,
         stage_receipts=receipts,
         agreement_gate=agreement,
+        qbi_transition_authority_sha256=qbi_transition_authority_sha256,
     )

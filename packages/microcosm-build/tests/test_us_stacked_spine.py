@@ -16,18 +16,28 @@ import pickle
 from collections import Counter
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
+import microcosm.build.us_runtime.acs_income_universe as universe_module
 import microcosm.build.us_runtime.puf_support as puf_support_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
+from microcosm.build.frame_checkpoint import (
+    load_frame_checkpoint,
+    write_frame_checkpoint,
+)
 from microcosm.build.gates import GateReport, GateResult
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.us_runtime.acs_income_universe import (
+    apply_acs_pums_earnings_universe_zeros,
+)
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from microcosm.build.us_runtime.multispine_pool import (
+    derive_multispine_pool_inputs,
     pool_transfer_target_families,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
@@ -43,6 +53,10 @@ from microcosm.build.us_runtime.puf_support import (
     prepare_us_puf_tax_detail_chain_inputs,
     validate_puf_clone_attachment,
 )
+from microcosm.build.us_runtime.qbi_inputs import (
+    US_QBI_BOOLEAN_OUTPUT_COLUMNS,
+    US_QBI_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.stacked_spine import (
     DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES,
@@ -50,6 +64,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     STACKED_PILOT_ACS_SAMPLE_SEED,
     STACKED_SPINE_MANIFEST_KEY,
     AbsenceProof,
+    GapFillAbsenceRule,
     GapFillDirection,
     OriginBatterySpec,
     assemble_stacked_spine,
@@ -59,6 +74,8 @@ from microcosm.build.us_runtime.stacked_spine import (
     sample_acs_households,
     stacked_completeness_gate,
     stacked_gap_fill_plan,
+    stacked_gap_fill_producer_schedule_receipt,
+    transfer_stacked_post_puf_inputs,
     validate_stacked_spine_frame,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -148,8 +165,12 @@ def _acs_source() -> Frame:
         household_ids=list(range(101, 111)),
         persons_per_household={103: 3, 107: 2},
         weights=[float(10 * position) for position in range(1, 11)],
-        extra_person_columns={"acs_native_aggregate": 15.0},
-        extra_household_columns={"puma": "0600101"},
+        extra_person_columns={"acs_native_aggregate": 15.0, "WAGP": 15.0},
+        extra_household_columns={
+            "puma": "0600101",
+            "TYPEHUGQ": 1,
+            "tenure_type": "RENTED",
+        },
         stratum="acs_2024_1yr",
     )
 
@@ -232,7 +253,7 @@ def test_production_sampling_is_uniform_and_composition_preserving() -> None:
         sample_seed=578,
     )
 
-    assert result.receipt["version"] == 2
+    assert result.receipt["version"] == 4
     assert result.receipt["sample_fraction"] == 0.5
     assert result.receipt["sample_seed"] == 578
     samples = result.receipt["survey_samples"]
@@ -779,6 +800,445 @@ def test_strict_recipient_predictors_fail_closed_on_absence() -> None:
     assert zero_filled.eq(0.0).all()
 
 
+def _cloned_acs_earnings_universe_fixture() -> Frame:
+    """Apply receipted zeros to multi-child mixed and all-child ACS units."""
+
+    cloned = _cloned_stacked_fixture()
+    person = cloned.table("person")
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = person[support_clone_index_column("person")]
+    acs_detail = channel.eq("acs") & clone_index.eq(1)
+    detail_groups = list(
+        person.loc[acs_detail].groupby("person_tax_unit_id", sort=False).groups.values()
+    )
+    mixed_detail = list(next(group for group in detail_groups if len(group) >= 3))
+    all_child_detail = list(
+        next(
+            group
+            for group in detail_groups
+            if len(group) > 1 and list(group) != mixed_detail
+        )
+    )
+    source_id = support_source_id_column("person")
+    all_child_lineages = set(person.loc[all_child_detail, source_id])
+    mixed_child_lineages = set(person.loc[mixed_detail[:-1], source_id])
+
+    person["self_employment_income_before_lsr"] = 0.0
+    person["WAGP"] = person["employment_income_before_lsr"]
+    person["SEMP"] = person["self_employment_income_before_lsr"]
+    acs = channel.eq("acs")
+    person.loc[acs, "age"] = 40.0
+    person.loc[acs, "employment_income_before_lsr"] = 100.0
+    person.loc[acs, "self_employment_income_before_lsr"] = 10.0
+    person.loc[acs, "WAGP"] = 100.0
+    person.loc[acs, "SEMP"] = 10.0
+    structural = acs & (
+        person[source_id].isin(all_child_lineages)
+        | person[source_id].isin(mixed_child_lineages)
+    )
+    person.loc[structural, "age"] = 12.0
+    for column in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "WAGP",
+        "SEMP",
+    ):
+        person.loc[structural, column] = np.nan
+    return apply_acs_pums_earnings_universe_zeros(
+        cloned,
+        boundary="stacked ACS earnings-universe fixture",
+    ).frame
+
+
+def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    before = cloned.table("person")[
+        ["employment_income_before_lsr", "self_employment_income_before_lsr"]
+    ].copy(deep=True)
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "self_employment_income": [1_000.0, 0.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    prepared = prepare_us_puf_tax_detail_chain_inputs(
+        cloned,
+        donor,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_self_employment_income",
+        ),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        require_complete_recipient_predictors=True,
+    )
+
+    receipt = prepared.recipient_predictor_universe
+    assert receipt["structurally_absent_person_rows"] == 4
+    assert receipt["affected_tax_unit_rows"] == 2
+    assert receipt["mixed_universe_tax_unit_rows"] == 1
+    assert receipt["empty_universe_tax_unit_rows"] == 1
+    assert receipt["raw_pums_source_cells_mutated"] is False
+    assert receipt["mapped_person_cells_materialized"] is True
+    assert len(receipt["sha256"]) == 64
+    employment = prepared.recipient_features["puf_predictor_employment_income"]
+    self_employment = prepared.recipient_features[
+        "puf_predictor_self_employment_income"
+    ]
+    recipient_tax_units = cloned.table("tax_unit").loc[
+        prepared.recipient_features.index
+    ]
+    acs_recipient = recipient_tax_units[support_channel_column("tax_unit")].eq("acs")
+    assert employment.loc[acs_recipient].eq(0.0).sum() == 1
+    assert self_employment.loc[acs_recipient].eq(0.0).sum() == 1
+    assert employment.notna().all()
+    assert self_employment.notna().all()
+    assert receipt["predictor_source_mapping"] == {
+        "puf_predictor_employment_income": {
+            "entity": "person",
+            "columns": ["employment_income_before_lsr"],
+        },
+        "puf_predictor_self_employment_income": {
+            "entity": "person",
+            "columns": ["self_employment_income_before_lsr"],
+        },
+    }
+    pd.testing.assert_frame_equal(
+        cloned.table("person")[before.columns],
+        before,
+    )
+
+
+def test_acs_universe_raw_blanks_survive_checkpoint_round_trip(
+    tmp_path: Path,
+) -> None:
+    frame = _cloned_acs_earnings_universe_fixture()
+    person = frame.table("person")
+    raw_columns = ["WAGP", "SEMP"]
+    mapped_columns = [
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ]
+    raw_before = person[raw_columns].copy(deep=True)
+    mapped_before = person[mapped_columns].copy(deep=True)
+    assert raw_before.isna().sum().eq(8).all()
+    assert mapped_before.loc[raw_before.isna().any(axis=1)].eq(0.0).all().all()
+
+    checkpoint_path = tmp_path / "acs-earnings-universe.frame.h5"
+    write_frame_checkpoint(checkpoint_path, frame)
+    restored = load_frame_checkpoint(checkpoint_path).frame.table("person")
+
+    pd.testing.assert_frame_equal(
+        restored[raw_columns],
+        raw_before,
+        check_dtype=True,
+        check_exact=True,
+    )
+    pd.testing.assert_frame_equal(
+        restored[mapped_columns],
+        mapped_before,
+        check_dtype=True,
+        check_exact=True,
+    )
+
+
+def test_acs_universe_application_rejects_unreceipted_preexisting_zero() -> None:
+    applied = _cloned_acs_earnings_universe_fixture()
+
+    with pytest.raises(
+        ValueError,
+        match=("acs_2024_pums_wagp_age_15_plus.*unreceipted_preexisting_mapped_rows"),
+    ):
+        apply_acs_pums_earnings_universe_zeros(
+            applied,
+            boundary="reapplied ACS universe fixture",
+        )
+
+
+def test_strict_recipient_predictors_reject_cross_grain_source_collision() -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    cloned.table("tax_unit")["employment_income"] = 777.0
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="ambiguous across entity grains"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
+def test_strict_recipient_predictors_reject_infinite_feature() -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    person = cloned.table("person")
+    candidate = (
+        person[support_channel_column("person")].eq("acs")
+        & person[support_clone_index_column("person")].eq(1)
+        & person["age"].ge(15.0)
+    )
+    row = person.index[candidate][0]
+    person.loc[row, "employment_income_before_lsr"] = np.inf
+    person.loc[row, "WAGP"] = np.inf
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="nonfinite values.*employment"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("raw_source", "predictor"),
+    [
+        ("WAGP", "puf_predictor_employment_income"),
+        ("SEMP", "puf_predictor_self_employment_income"),
+    ],
+)
+def test_strict_recipient_predictors_require_raw_acs_universe_authority(
+    raw_source: str,
+    predictor: str,
+) -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    cloned.table("person").drop(columns=[raw_source], inplace=True)
+    donor_source = predictor.removeprefix("puf_predictor_")
+    donor = pd.DataFrame(
+        {
+            donor_source: [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="raw_source_authority_missing"):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=(predictor,),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
+def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
+    frame = _cloned_acs_earnings_universe_fixture()
+    person = frame.table("person")
+    for column in US_QBI_OUTPUT_COLUMNS:
+        person[column] = False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+    person["long_term_capital_gains_before_response"] = 0.0
+    person["non_sch_d_capital_gains"] = 0.0
+    tax_unit = frame.table("tax_unit")
+    detail_tax_units = tax_unit[support_clone_index_column("tax_unit")].eq(1)
+    predictions = pd.DataFrame(
+        {
+            "employment_income_before_lsr": 1_000.0,
+            "self_employment_income_before_lsr": 100.0,
+        },
+        index=tax_unit.index[detail_tax_units],
+    )
+    donor = pd.DataFrame(
+        {
+            "employment_income_before_lsr": [1_000.0, 2_000.0],
+            "self_employment_income_before_lsr": [100.0, 200.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    finalized = finalize_us_puf_tax_detail_predictions(
+        frame,
+        donor,
+        predictions,
+        person_outputs=tuple(predictions.columns),
+        tax_unit_outputs=(),
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+    finalized_person = finalized.table("person")
+    acs = finalized_person[support_channel_column("person")].eq("acs")
+    child = finalized_person["age"].lt(15)
+    native_child = (
+        acs & child & finalized_person[support_clone_index_column("person")].eq(0)
+    )
+    detail_child = (
+        acs & child & finalized_person[support_clone_index_column("person")].eq(1)
+    )
+    assert int(native_child.sum()) == int(detail_child.sum()) == 4
+    for column in predictions:
+        assert finalized_person.loc[native_child, column].eq(0.0).all()
+        assert finalized_person.loc[detail_child, column].eq(0.0).all()
+
+    detail = finalized_person[support_clone_index_column("person")].eq(1)
+    detail_units = finalized_person.loc[
+        detail, ["person_tax_unit_id", "age", *predictions.columns]
+    ]
+    mixed = detail_units.groupby("person_tax_unit_id", sort=False).filter(
+        lambda group: group["age"].lt(15).any() and group["age"].ge(15).any()
+    )
+    assert not mixed.empty
+    mixed_child_counts = mixed.groupby("person_tax_unit_id", sort=False)["age"].apply(
+        lambda age: int(age.lt(15).sum())
+    )
+    assert mixed_child_counts.eq(2).all()
+    assert mixed.loc[mixed["age"].lt(15), list(predictions)].eq(0.0).all().all()
+    mixed_adult_totals = (
+        mixed.loc[mixed["age"].ge(15)]
+        .groupby("person_tax_unit_id", sort=False)[list(predictions)]
+        .sum()
+    )
+    assert mixed_adult_totals["employment_income_before_lsr"].eq(1_000.0).all()
+    assert mixed_adult_totals["self_employment_income_before_lsr"].eq(100.0).all()
+    all_child = detail_units.groupby("person_tax_unit_id", sort=False).filter(
+        lambda group: group["age"].lt(15).all()
+    )
+    assert len(all_child) == 2
+    assert all_child[list(predictions)].eq(0.0).all().all()
+
+    derived = derive_multispine_pool_inputs(finalized)
+    derived_person = derived.frame.table("person")
+    qbi_receipt = derived.receipt["qbi_input_reconciliation"]
+
+    assert (
+        derived_person.loc[native_child, "self_employment_income_before_lsr"]
+        .eq(0.0)
+        .all()
+    )
+    assert (
+        derived_person.loc[detail_child, "self_employment_income_before_lsr"]
+        .eq(0.0)
+        .all()
+    )
+    assert (
+        qbi_receipt["recipient_source_universe"][
+            "rows_excluded_from_base_self_employment_rewrite"
+        ]
+        == 8
+    )
+    assert qbi_receipt["structurally_absent_base_source_changed_rows"] == 0
+    assert len(qbi_receipt["input_person_table_sha256"]) == 64
+    assert len(qbi_receipt["output_declared_person_values_sha256"]) == 64
+
+
+@pytest.mark.parametrize(
+    ("age", "value", "message"),
+    [
+        (
+            15.0,
+            np.nan,
+            "missing values before coercion.*acs_2024_pums_wagp_age_15_plus",
+        ),
+        (
+            12.0,
+            1.0,
+            "acs_2024_pums_wagp_age_15_plus.*out_of_universe_mapped_nonzero_rows=1",
+        ),
+    ],
+)
+def test_strict_recipient_predictors_reject_acs_universe_mismatch(
+    age: float,
+    value: float,
+    message: str,
+) -> None:
+    cloned = _cloned_acs_earnings_universe_fixture()
+    person = cloned.table("person")
+    candidate = (
+        person[support_channel_column("person")].eq("acs")
+        & person[support_clone_index_column("person")].eq(1)
+        & person["age"].eq(12.0)
+    )
+    row = person.index[candidate][0]
+    person.loc[row, "age"] = age
+    person.loc[row, "employment_income_before_lsr"] = value
+    person.loc[row, "WAGP"] = value
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match=message):
+        prepare_us_puf_tax_detail_chain_inputs(
+            cloned,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("minimum_age", "row_age", "value"),
+    [
+        (14, 14.0, np.nan),
+        (16, 15.0, 100.0),
+    ],
+)
+def test_acs_universe_age_rule_mutations_fail_closed_by_rule_id(
+    monkeypatch: pytest.MonkeyPatch,
+    minimum_age: int,
+    row_age: float,
+    value: float,
+) -> None:
+    frame = _cloned_acs_earnings_universe_fixture()
+    person = frame.table("person")
+    candidate = person[support_channel_column("person")].eq("acs") & person[
+        support_clone_index_column("person")
+    ].eq(1)
+    row = person.index[candidate][0]
+    person.loc[row, "age"] = row_age
+    person.loc[row, "employment_income_before_lsr"] = value
+    person.loc[row, "WAGP"] = value
+    monkeypatch.setattr(
+        universe_module,
+        "ACS_PUMS_EARNINGS_MINIMUM_AGE",
+        minimum_age,
+    )
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0],
+            "taxable_interest_income": [120.0, 30.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="acs_2024_pums_wagp_age_15_plus",
+    ):
+        prepare_us_puf_tax_detail_chain_inputs(
+            frame,
+            donor,
+            predictors=("puf_predictor_employment_income",),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=(),
+            require_complete_recipient_predictors=True,
+        )
+
+
 def test_strict_recipient_predictors_reject_null_filing_status_before_coercion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -833,6 +1293,10 @@ def _asec_gap_source() -> Frame:
     person["is_female"] = np.asarray([False, True, True, False, True, False])
     person["is_household_head"] = np.asarray([True, False, True, True, False, True])
     person["employment_income_before_lsr"] = np.linspace(10_000.0, 60_000.0, count)
+    person["self_employment_income_before_lsr"] = 0.0
+    person["pre_subsidy_rent"] = np.asarray(
+        [12_000.0, 0.0, 0.0, 9_600.0, 0.0, 14_400.0]
+    )
     person["unemployment_compensation"] = np.asarray(
         [0.0, 1_200.0, 0.0, 3_600.0, 0.0, 2_400.0]
     )
@@ -876,25 +1340,14 @@ def _acs_gap_source() -> Frame:
     person["is_female"] = np.asarray([position % 2 == 0 for position in range(count)])
     person["is_household_head"] = ~person["person_household_id"].duplicated()
     person["employment_income_before_lsr"] = np.linspace(8_000.0, 90_000.0, count)
+    person["WAGP"] = person["employment_income_before_lsr"]
+    person["self_employment_income_before_lsr"] = 0.0
+    person["SEMP"] = 0.0
     person["acs_interest_dividend_rental_income"] = np.asarray(
         [0.0, 400.0, 0.0, 150.0, 900.0, 0.0, 250.0, 0.0, 3_000.0, 120.0, 60.0]
     )
-    person["pre_subsidy_rent"] = np.asarray(
-        [
-            0.0,
-            14_400.0,
-            0.0,
-            0.0,
-            9_600.0,
-            12_000.0,
-            0.0,
-            18_000.0,
-            0.0,
-            7_200.0,
-            15_600.0,
-        ]
-    )
     household = frame.table("household").copy()
+    household["TYPEHUGQ"] = np.asarray([1] * 9 + [2], dtype=np.int64)
     household["tenure_type"] = pd.Series(
         [
             "OWNED_OUTRIGHT",
@@ -906,7 +1359,7 @@ def _acs_gap_source() -> Frame:
             "OWNED_WITH_MORTGAGE",
             "RENTED",
             "OWNED_OUTRIGHT",
-            "RENTED",
+            np.nan,
         ],
         dtype=object,
     )
@@ -919,6 +1372,14 @@ def _acs_gap_source() -> Frame:
         {"household": frame.weights_for("household")},
         frame.strata,
     )
+
+
+_CANONICAL_RENT_ABSENCE_RULE = GapFillAbsenceRule(
+    **{
+        field: getattr(stacked_gap_fill_plan()[1].recipient_absence_rules[0], field)
+        for field in ("rule_id", "entity", "column", "selection", "reason")
+    }
+)
 
 
 _GAP_FILL_TEST_PLAN = (
@@ -934,10 +1395,11 @@ _GAP_FILL_TEST_PLAN = (
         },
     ),
     GapFillDirection(
-        name="acs_housing_to_asec",
-        recipient_channel="asec",
-        donor_channel="acs",
+        name="asec_housing_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
         target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+        recipient_absence_rules=(_CANONICAL_RENT_ABSENCE_RULE,),
     ),
 )
 
@@ -945,6 +1407,7 @@ _GAP_FILL_TEST_PLAN = (
 def test_production_entrypoints_take_no_authority_parameters() -> None:
     production_entrypoints = (
         gap_fill_stacked_spine,
+        transfer_stacked_post_puf_inputs,
         stacked_completeness_gate,
         by_origin_battery,
     )
@@ -975,6 +1438,13 @@ def test_production_entrypoints_take_no_authority_parameters() -> None:
 
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
     plan = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
+    post_puf_surface = stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    puf_producer_surface = (
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+    )
+    source_producer_surface = (
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+    )
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     joint_registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
@@ -983,6 +1453,12 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
     assert isinstance(plan, tuple)
     with pytest.raises(TypeError):
         plan[0].target_families["person"]["model_required_numeric"] = ()
+    with pytest.raises(TypeError):
+        post_puf_surface["person"]["puf_tax_itemization"] = ()
+    with pytest.raises(TypeError):
+        puf_producer_surface["person"]["puf_tax_itemization"] = ()
+    with pytest.raises(TypeError):
+        source_producer_surface["person"]["model_required_boolean"] = ()
     with pytest.raises(TypeError):
         surface["person"]["model_required_numeric"] = ()
     with pytest.raises(TypeError):
@@ -1046,8 +1522,39 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for family, targets in families.items()
         for target in targets
     }
-    assert len(gap_targets) == 118
-    assert gap_targets < surface_targets
+    post_puf_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    puf_producer_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    source_producer_targets = {
+        (entity, family, target, 0)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    assert len(gap_targets) == 48
+    assert len(post_puf_targets) == 70
+    assert len(puf_producer_targets) == 43
+    assert len(source_producer_targets) == 30
+    assert len(puf_producer_targets & source_producer_targets) == 3
+    assert puf_producer_targets | source_producer_targets == post_puf_targets
+    assert gap_targets.isdisjoint(post_puf_targets)
+    assert len(gap_targets | post_puf_targets) == 118
+    assert gap_targets | post_puf_targets < surface_targets
     assert not {
         "bank_account_assets",
         "bond_assets",
@@ -1160,21 +1667,260 @@ def _stacked_gap_fixture() -> Frame:
     ).frame
 
 
+def test_stacked_assembly_binds_native_acs_group_quarters_lineage() -> None:
+    stacked = _stacked_gap_fixture()
+    receipt = stacked.metadata[STACKED_SPINE_MANIFEST_KEY]["acs_native_group_quarters"]
+
+    assert receipt["version"] == 1
+    assert receipt["household_count"] == 1
+    assert receipt["person_count"] == 1
+    assert len(receipt["household_spine_source_ids_sha256"]) == 64
+    assert len(receipt["person_spine_lineages_sha256"]) == 64
+    validate_stacked_spine_frame(stacked, boundary="native ACS GQ receipt fixture")
+
+
+@pytest.mark.parametrize(
+    ("from_kind", "to_kind"),
+    ((1, 2), (2, 1)),
+)
+def test_native_acs_group_quarters_reclassification_fails_closed(
+    from_kind: int,
+    to_kind: int,
+) -> None:
+    stacked = _stacked_gap_fixture()
+    household = stacked.table("household").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    row = household.index[channel.eq("acs") & kind.eq(from_kind)][0]
+    household.loc[row, "TYPEHUGQ"] = to_kind
+    household.loc[row, "tenure_type"] = np.nan if to_kind in (2, 3) else "RENTED"
+    tables = {entity: stacked.table(entity) for entity in stacked.entities}
+    tables["household"] = household
+    corrupted = Frame(
+        tables,
+        stacked.schema,
+        {entity: stacked.weights_for(entity) for entity in stacked.weighted_entities},
+        stacked.strata,
+        mass_log=stacked.mass_log,
+        metadata=stacked.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="native ACS group-quarters household lineage differs",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="reclassified ACS GQ fixture",
+        )
+
+
+def test_acs_group_quarters_reclassification_across_clone_roles_fails_closed() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    household = attached.table("household").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    row = household.index[channel.eq("acs") & clone.eq(1) & kind.isin((2, 3))][0]
+    household.loc[row, "TYPEHUGQ"] = 1
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["household"] = household
+    corrupted = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="classification differs across clone roles",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="reclassified ACS GQ clone fixture",
+        )
+
+
+def test_acs_clone_cannot_substitute_group_quarters_support_lineage() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    household = attached.table("household").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    gq_row = household.index[channel.eq("acs") & clone.eq(1) & kind.isin((2, 3))][0]
+    housing_unit_row = household.index[channel.eq("acs") & clone.eq(1) & kind.eq(1)][0]
+    household.loc[
+        housing_unit_row,
+        support_source_id_column("household"),
+    ] = household.loc[gq_row, support_source_id_column("household")]
+    household.loc[housing_unit_row, "TYPEHUGQ"] = 2
+    household.loc[housing_unit_row, "tenure_type"] = np.nan
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["household"] = household
+    corrupted = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=("full-clone identity failed|support/raw household lineage pairs differ"),
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="substituted ACS GQ clone fixture",
+        )
+
+
+def test_acs_housing_unit_cannot_substitute_group_quarters_raw_identity() -> None:
+    filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    household = filled.table("household").copy()
+    person = filled.table("person").copy()
+    channel = household[support_channel_column("household")].astype(str)
+    clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    acs_native = channel.eq("acs") & clone.eq(0)
+    person_counts = person["person_household_id"].value_counts()
+    one_person_households = household["household_id"].map(person_counts).eq(1)
+    housing_unit_row = household.index[acs_native & kind.eq(1) & one_person_households][
+        0
+    ]
+    gq_row = household.index[acs_native & kind.isin((2, 3))][0]
+    housing_unit_id = household.loc[housing_unit_row, "household_id"]
+    gq_id = household.loc[gq_row, "household_id"]
+    housing_unit_person = person.index[
+        person["person_household_id"].eq(housing_unit_id)
+    ][0]
+    gq_person = person.index[person["person_household_id"].eq(gq_id)][0]
+
+    for column in ("TYPEHUGQ", "tenure_type", spine_source_id_column("household")):
+        housing_unit_value = household.loc[housing_unit_row, column]
+        household.loc[housing_unit_row, column] = household.loc[gq_row, column]
+        household.loc[gq_row, column] = housing_unit_value
+    housing_unit_person_source = person.loc[
+        housing_unit_person, spine_source_id_column("person")
+    ]
+    person.loc[housing_unit_person, spine_source_id_column("person")] = person.loc[
+        gq_person, spine_source_id_column("person")
+    ]
+    person.loc[gq_person, spine_source_id_column("person")] = housing_unit_person_source
+    housing_unit_rent = person.loc[housing_unit_person, "pre_subsidy_rent"]
+    person.loc[housing_unit_person, "pre_subsidy_rent"] = np.nan
+    person.loc[gq_person, "pre_subsidy_rent"] = housing_unit_rent
+
+    tables = {entity: filled.table(entity) for entity in filled.entities}
+    tables["household"] = household
+    tables["person"] = person
+    corrupted = Frame(
+        tables,
+        filled.schema,
+        {entity: filled.weights_for(entity) for entity in filled.weighted_entities},
+        filled.strata,
+        mass_log=filled.mass_log,
+        metadata=filled.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="support/raw/classification mapping differs",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="substituted native ACS GQ identity fixture",
+        )
+
+
+def test_acs_clone_person_cannot_substitute_group_quarters_parent() -> None:
+    filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    attached = clone_us_frame_for_puf_support(
+        filled,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    household = attached.table("household")
+    person = attached.table("person").copy()
+    household_channel = household[support_channel_column("household")].astype(str)
+    household_clone = household[support_clone_index_column("household")]
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    clone_one = household_channel.eq("acs") & household_clone.eq(1)
+    person_counts = person["person_household_id"].value_counts()
+    one_person_households = household["household_id"].map(person_counts).eq(1)
+    housing_unit_id = household.loc[
+        clone_one & kind.eq(1) & one_person_households,
+        "household_id",
+    ].iloc[0]
+    gq_id = household.loc[clone_one & kind.isin((2, 3)), "household_id"].iloc[0]
+    housing_unit_person = person.index[
+        person["person_household_id"].eq(housing_unit_id)
+    ][0]
+    gq_person = person.index[person["person_household_id"].eq(gq_id)][0]
+
+    person.loc[housing_unit_person, "person_household_id"] = gq_id
+    person.loc[gq_person, "person_household_id"] = housing_unit_id
+    housing_unit_rent = person.loc[housing_unit_person, "pre_subsidy_rent"]
+    person.loc[housing_unit_person, "pre_subsidy_rent"] = np.nan
+    person.loc[gq_person, "pre_subsidy_rent"] = housing_unit_rent
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["person"] = person
+    corrupted = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person support/raw/parent/classification lineages differ",
+    ):
+        validate_stacked_spine_frame(
+            corrupted,
+            boundary="substituted clone ACS GQ parent fixture",
+        )
+
+
 def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     plan = stacked_gap_fill_plan()
     assert [direction.name for direction in plan] == [
         "asec_survey_to_acs",
-        "acs_housing_to_asec",
+        "asec_housing_to_acs",
     ]
     survey, housing = plan
     assert survey.recipient_channel == "acs"
     assert survey.donor_channel == "asec"
-    assert housing.recipient_channel == "asec"
-    assert housing.donor_channel == "acs"
+    assert housing.recipient_channel == "acs"
+    assert housing.donor_channel == "asec"
     assert set(housing.target_families) == {"person"}
     assert housing.target_families["person"] == {"housing": ("pre_subsidy_rent",)}
 
-    declared = pool_transfer_target_families()
+    declared = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
     recombined: dict[str, dict[str, tuple[str, ...]]] = {}
     for direction in plan:
         for entity, families in direction.target_families.items():
@@ -1183,6 +1929,140 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     assert recombined == {
         entity: {family: tuple(targets) for family, targets in families.items()}
         for entity, families in declared.items()
+    }
+    early_keys = {
+        (entity, family, target)
+        for entity, families in recombined.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    late_keys = {
+        (entity, family, target)
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    full_keys = {
+        (entity, family, target)
+        for entity, families in pool_transfer_target_families().items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    assert early_keys.isdisjoint(late_keys)
+    assert early_keys | late_keys == full_keys
+
+
+def test_every_declared_direction_producer_precedes_its_activation_check() -> None:
+    receipt = stacked_gap_fill_producer_schedule_receipt()
+    assert receipt["status"] == "all_producers_precede_activation"
+    assert receipt["direction_count"] == 2
+    assert receipt["target_count"] == 48
+    assert [direction["target_count"] for direction in receipt["directions"]] == [
+        47,
+        1,
+    ]
+
+    schedule = stacked_spine_module._build_gap_fill_producer_schedule(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    )
+    rent_record = next(
+        record for record in schedule if record.target == "pre_subsidy_rent"
+    )
+    late_schedule = tuple(
+        replace(
+            record,
+            producer_stage=stacked_spine_module._POST_GAP_FILL_STAGE,
+        )
+        if record == rent_record
+        else record
+        for record in schedule
+    )
+    failures = stacked_spine_module._gap_fill_producer_precedence_failures(
+        stacked_gap_fill_plan(),
+        late_schedule,
+    )
+    assert len(failures) == 1
+    assert "asec_housing_to_acs/person/housing/pre_subsidy_rent" in failures[0]
+    assert "does not precede activation stage" in failures[0]
+
+
+def test_gap_fill_producer_guard_rejects_unknown_execution_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schedule = stacked_spine_module._build_gap_fill_producer_schedule(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    )
+    rent_record = next(
+        record for record in schedule if record.target == "pre_subsidy_rent"
+    )
+    contract = stacked_spine_module.POOL_OPERATOR_CONTRACTS[rent_record.operator]
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "POOL_OPERATOR_CONTRACTS",
+        {
+            **stacked_spine_module.POOL_OPERATOR_CONTRACTS,
+            rent_record.operator: replace(
+                contract,
+                execution_scope="bogus_source",
+            ),
+        },
+    )
+
+    mutated = stacked_spine_module._build_gap_fill_producer_schedule(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    )
+    failures = stacked_spine_module._gap_fill_producer_precedence_failures(
+        stacked_gap_fill_plan(),
+        mutated,
+    )
+
+    assert len(failures) == 3
+    assert all(
+        "unknown execution scope 'bogus_source'" in failure for failure in failures
+    )
+    assert any(
+        "asec_housing_to_acs/person/housing/pre_subsidy_rent" in failure
+        for failure in failures
+    )
+
+
+def test_housing_activation_requires_asec_rent_producer_to_run_first() -> None:
+    produced = _stacked_gap_fixture()
+    tables = {entity: produced.table(entity) for entity in produced.entities}
+    tables["person"] = tables["person"].drop(columns=["pre_subsidy_rent"])
+    unproduced = Frame(
+        tables,
+        produced.schema,
+        {entity: produced.weights_for(entity) for entity in produced.weighted_entities},
+        produced.strata,
+        mass_log=produced.mass_log,
+        metadata=produced.metadata,
+    )
+    housing = _GAP_FILL_TEST_PLAN[1]
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"asec_housing_to_acs/person/housing/pre_subsidy_rent: "
+            r"declared gap-fill target column is absent"
+        ),
+    ):
+        stacked_spine_module._verify_gap_fill_activation_authority(
+            unproduced,
+            direction=housing,
+        )
+
+    assert stacked_spine_module._verify_gap_fill_activation_authority(
+        produced,
+        direction=housing,
+    ) == {
+        ("person", "pre_subsidy_rent"): {
+            "authorized_null_rows": 11,
+            "recipient_rows": 11,
+            "donor_rows": 6,
+        }
     }
 
 
@@ -1199,9 +2079,17 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     channel = person[support_channel_column("person")]
     acs_rows = channel.eq("acs")
     asec_rows = channel.eq("asec")
+    gq_household_ids = result.frame.table("household").loc[
+        pd.to_numeric(
+            result.frame.table("household")["TYPEHUGQ"], errors="coerce"
+        ).isin((2, 3)),
+        "household_id",
+    ]
+    acs_gq_rows = acs_rows & person["person_household_id"].isin(gq_household_ids)
     for column in ("unemployment_compensation", "is_disabled"):
         assert person.loc[acs_rows, column].notna().all()
-    assert person.loc[asec_rows, "pre_subsidy_rent"].notna().all()
+    assert person.loc[acs_rows & ~acs_gq_rows, "pre_subsidy_rent"].notna().all()
+    assert person.loc[acs_gq_rows, "pre_subsidy_rent"].isna().all()
 
     before_person = stacked.table("person")
     for column in ("unemployment_compensation", "is_disabled"):
@@ -1211,8 +2099,8 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
             check_names=False,
         )
     pd.testing.assert_series_equal(
-        person.loc[acs_rows, "pre_subsidy_rent"],
-        before_person.loc[acs_rows.to_numpy(), "pre_subsidy_rent"],
+        person.loc[asec_rows, "pre_subsidy_rent"],
+        before_person.loc[asec_rows.to_numpy(), "pre_subsidy_rent"],
         check_names=False,
     )
 
@@ -1226,10 +2114,17 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     assert unemployment["authorized_null_rows"] == int(acs_rows.sum())
     assert unemployment["imputed_rows"] == int(acs_rows.sum())
     assert unemployment["residual_null_rows"] == 0
-    housing = directions["acs_housing_to_asec"]
+    housing = directions["asec_housing_to_acs"]
     rent = housing["targets"]["person/housing/pre_subsidy_rent"]
-    assert rent["imputed_rows"] == int(asec_rows.sum())
-    assert rent["residual_null_rows"] == 0
+    assert rent["imputed_rows"] == int((acs_rows & ~acs_gq_rows).sum())
+    assert rent["residual_null_rows"] == int(acs_gq_rows.sum()) == 1
+    assert rent["unmodeled_rows"] == 1
+    absence = rent["recipient_absence_authority"]
+    assert absence["rule_id"] == "acs_native_group_quarters_without_housing_unit"
+    assert absence["status"] == "exact_structural_absence"
+    assert absence["rows"] == 1
+    assert absence["unexpected_null_rows"] == 0
+    assert absence["structural_rows_filled"] == 0
 
     survey_transfer = result.transfer_results["asec_survey_to_acs"]
     native_predictor_used = any(
@@ -1281,6 +2176,54 @@ def test_gap_fill_outcome_rejects_forged_residual_receipt(
         "activation accounting equation failed: authorized_null_rows=11 "
         "!= imputed_rows=11 + unmodeled_rows=1" in str(error.value)
     )
+
+
+def test_gap_fill_rejects_honestly_accounted_undeclared_residual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accounting alone cannot authorize a residual that starves later gates."""
+
+    transfer = stacked_spine_module.transfer_acs_inputs
+
+    def leave_one_unmodeled(*args: object, **kwargs: object) -> object:
+        result = transfer(*args, **kwargs)
+        person = result.frame.table("person")
+        recipient = person[support_channel_column("person")].eq("acs")
+        row = person.index[recipient][0]
+        person.loc[row, "unemployment_compensation"] = np.nan
+        return replace(
+            result,
+            imputed_inputs=tuple(
+                replace(
+                    record,
+                    imputed_recipient_rows=record.imputed_recipient_rows - 1,
+                    unmodeled_recipient_rows=1,
+                )
+                if record.column == "unemployment_compensation"
+                else record
+                for record in result.imputed_inputs
+            ),
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "transfer_acs_inputs",
+        leave_one_unmodeled,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "undeclared gap-fill residual is forbidden; "
+            "unmodeled_rows=1, residual_null_rows=1"
+        ),
+    ):
+        _gap_fill_with_test_authority(
+            _stacked_gap_fixture(),
+            plan=_GAP_FILL_TEST_PLAN,
+            seed=578,
+            n_estimators=10,
+        )
 
 
 def test_gap_fill_rejects_signed_zero_donor_byte_change(
@@ -1498,6 +2441,212 @@ def test_gap_fill_rejects_cloned_frames() -> None:
         _gap_fill_with_test_authority(cloned, plan=_GAP_FILL_TEST_PLAN, seed=578)
 
 
+def _post_puf_transfer_fixture() -> Frame:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=0.75,
+        clone_attachment_seed=578,
+    )
+    person = attached.table("person").copy()
+    source_producer_rows = (
+        person[support_channel_column("person")].astype(str).eq("asec")
+    )
+    person["is_pregnant"] = pd.Series(
+        pd.NA,
+        index=person.index,
+        dtype="boolean",
+    )
+    person.loc[source_producer_rows, "is_pregnant"] = np.resize(
+        np.asarray([True, False]),
+        int(source_producer_rows.sum()),
+    )
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+
+def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
+    frame = _post_puf_transfer_fixture()
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    before = frame.table("person")["is_pregnant"].copy(deep=True)
+    result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+        frame,
+        authority=authority,
+        seed=578,
+        n_estimators=10,
+    )
+
+    person = result.frame.table("person")
+    producer_rows = person[support_channel_column("person")].astype(str).eq("asec")
+    assert person["is_pregnant"].notna().all()
+    pd.testing.assert_series_equal(
+        person.loc[producer_rows, "is_pregnant"],
+        before.loc[producer_rows],
+    )
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
+    assert receipt["producer_roles"] == ["asec_source"]
+    assert receipt["producer_rows"] == int(producer_rows.sum())
+    assert receipt["authorized_null_rows"] == int((~producer_rows).sum())
+    assert receipt["imputed_rows"] == int((~producer_rows).sum())
+    assert receipt["unmodeled_rows"] == 0
+    assert receipt["residual_null_rows"] == 0
+
+
+@pytest.mark.parametrize(
+    "clone_index",
+    (
+        pytest.param(0, id="source_nondonor"),
+        pytest.param(1, id="model_donor"),
+    ),
+)
+def test_post_puf_transfer_rejects_incomplete_source_producer(
+    clone_index: int,
+) -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    source_producer_rows = person[support_channel_column("person")].astype(str).eq(
+        "asec"
+    ) & person[support_clone_index_column("person")].eq(clone_index)
+    person.loc[person.index[source_producer_rows][0], "is_pregnant"] = pd.NA
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    incomplete = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"post_puf_transfer/person/model_required_boolean/is_pregnant:.*"
+        r"upstream producers must observe every producer-owned target",
+    ):
+        stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+            incomplete,
+            authority=authority,
+            seed=578,
+            n_estimators=10,
+        )
+
+
+def _post_puf_puf_producer_fixture() -> Frame:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    )
+    producer_rows = clone_index.gt(0)
+    person["educator_expense"] = np.nan
+    person.loc[producer_rows, "educator_expense"] = 10.0 * np.arange(
+        1,
+        int(producer_rows.sum()) + 1,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_post_puf_transfer_preserves_every_live_puf_clone_producer() -> None:
+    frame = _post_puf_puf_producer_fixture()
+    surface = {"person": {"puf_tax_itemization": ("educator_expense",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    before = frame.table("person")["educator_expense"].copy(deep=True)
+
+    result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+        frame,
+        authority=authority,
+        seed=578,
+        n_estimators=10,
+    )
+
+    person = result.frame.table("person")
+    producer_rows = pd.to_numeric(
+        person[support_clone_index_column("person")], errors="raise"
+    ).gt(0)
+    assert person["educator_expense"].notna().all()
+    pd.testing.assert_series_equal(
+        person.loc[producer_rows, "educator_expense"],
+        before.loc[producer_rows],
+    )
+    receipt = result.receipt["targets"]["person/puf_tax_itemization/educator_expense"]
+    assert receipt["producer_roles"] == ["puf_clone"]
+    assert receipt["producer_rows"] == int(producer_rows.sum())
+    assert receipt["authorized_null_rows"] == int((~producer_rows).sum())
+    assert receipt["imputed_rows"] == int((~producer_rows).sum())
+    assert receipt["unmodeled_rows"] == 0
+    assert receipt["residual_null_rows"] == 0
+
+
+def test_post_puf_transfer_rejects_incomplete_acs_puf_clone_producer() -> None:
+    frame = _post_puf_puf_producer_fixture()
+    person = frame.table("person").copy()
+    corrupted_rows = person[support_channel_column("person")].astype(str).eq(
+        "acs"
+    ) & person[support_clone_index_column("person")].eq(1)
+    person.loc[person.index[corrupted_rows][0], "educator_expense"] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    incomplete = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    surface = {"person": {"puf_tax_itemization": ("educator_expense",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"post_puf_transfer/person/puf_tax_itemization/educator_expense:.*"
+        r"upstream producers must observe every producer-owned target",
+    ):
+        stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+            incomplete,
+            authority=authority,
+            seed=578,
+            n_estimators=10,
+        )
+
+
 def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
     identity = {"pilot": "stacked-gap-fill", "seed": 578}
     banks = {
@@ -1505,7 +2654,7 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
             tmp_path / "survey",
             identity=identity,
         ),
-        "acs_housing_to_asec": AcsTransferTargetBankStore(
+        "asec_housing_to_acs": AcsTransferTargetBankStore(
             tmp_path / "housing",
             identity=identity,
         ),
@@ -1527,7 +2676,7 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
             tmp_path / "survey",
             identity=identity,
         ),
-        "acs_housing_to_asec": AcsTransferTargetBankStore(
+        "asec_housing_to_acs": AcsTransferTargetBankStore(
             tmp_path / "housing",
             identity=identity,
         ),
@@ -1772,6 +2921,63 @@ def test_clone_attachment_manifest_mutation_fails_closed() -> None:
         validate_puf_clone_attachment(tampered, boundary="tampered attachment")
 
 
+def test_stacked_validator_rejects_an_unreceipted_clone_role() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    tables = {entity: attached.table(entity).copy() for entity in attached.entities}
+    for entity, table in tables.items():
+        clone_column = support_clone_index_column(entity)
+        table.loc[table[clone_column].eq(1), clone_column] = 3
+    relabeled = Frame(
+        tables,
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+    with pytest.raises(ValueError, match="unreceipted stacked clone roles.*3"):
+        validate_stacked_spine_frame(
+            relabeled,
+            boundary="unreceipted clone-role fixture",
+        )
+
+
+def test_stacked_validator_rejects_a_partial_attachment_receipt() -> None:
+    attached = clone_us_frame_for_puf_support(
+        _stacked_gap_fixture(),
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=578,
+    )
+    canonical = attached.metadata[PUF_CLONE_ATTACHMENT_MANIFEST_KEY]
+    malformed = Frame(
+        {entity: attached.table(entity) for entity in attached.entities},
+        attached.schema,
+        {entity: attached.weights_for(entity) for entity in attached.weighted_entities},
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata={
+            **attached.metadata,
+            PUF_CLONE_ATTACHMENT_MANIFEST_KEY: {
+                "realized_household_count": canonical["realized_household_count"],
+                "selected_household_source_ids_sha256": canonical[
+                    "selected_household_source_ids_sha256"
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="clone attachment manifest is malformed"):
+        validate_stacked_spine_frame(
+            malformed,
+            boundary="partial attachment receipt fixture",
+        )
+
+
 def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
     gap_filled = _gap_fill_with_test_authority(
         _stacked_gap_fixture(),
@@ -1811,6 +3017,10 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
     assert set(by_origin) == {"asec", "acs"}
     assert all(count > 0 for count in by_origin.values())
     assert result.receipt["doctrines"]["absent_cells"] == "preserve_nulls"
+    universe = result.receipt["primary_puf_qrf"]["recipient_predictor_universe"]
+    assert universe["rules"]["employment_income_before_lsr"]["source_column"] == "WAGP"
+    assert universe["raw_pums_source_cells_mutated"] is False
+    assert len(universe["sha256"]) == 64
 
     with pytest.raises(ValueError, match="clone attachment"):
         stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
@@ -1819,6 +3029,78 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
             clone_attachment_fraction=0.5,
             clone_attachment_seed=578,
         )
+
+
+def test_run_stacked_puf_pass_receipts_raw_child_universe_application() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    person = gap_filled.table("person")
+    acs = person[support_channel_column("person")].eq("acs")
+    groups = list(
+        person.loc[acs].groupby("person_tax_unit_id", sort=False).groups.values()
+    )
+    mixed_group = list(next(group for group in groups if len(group) > 1))
+    all_child_group = list(next(group for group in groups if len(group) == 1))
+    structural_rows = [mixed_group[0], *all_child_group]
+    person.loc[structural_rows, "age"] = 12.0
+    for column in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "WAGP",
+        "SEMP",
+    ):
+        person.loc[structural_rows, column] = np.nan
+    donor = pd.DataFrame(
+        {
+            "employment_income": [45_000.0, 8_000.0, 70_000.0, 22_000.0],
+            "self_employment_income": [1_000.0, 0.0, 5_000.0, 200.0],
+            "taxable_interest_income": [120.0, 30.0, 900.0, 0.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+        gap_filled,
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_self_employment_income",
+        ),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        seed=578,
+        n_estimators=10,
+    )
+
+    receipt = result.receipt["acs_earnings_universe_application"]
+    assert receipt["structurally_absent_person_rows"] == 2
+    assert receipt["affected_tax_unit_rows"] == 2
+    assert receipt["mixed_universe_tax_unit_rows"] == 1
+    assert receipt["empty_universe_tax_unit_rows"] == 1
+    assert receipt["mapped_universe_zero_cells"] == 4
+    assert receipt["raw_pums_source_cells_mutated"] is False
+    assert receipt["mapped_person_cells_materialized"] is True
+    output_person = result.frame.table("person")
+    output_child = output_person[support_channel_column("person")].eq(
+        "acs"
+    ) & output_person["age"].lt(15)
+    assert int(output_child.sum()) == 4
+    assert (
+        output_person.loc[
+            output_child,
+            ["employment_income_before_lsr", "self_employment_income_before_lsr"],
+        ]
+        .eq(0.0)
+        .all()
+        .all()
+    )
+    assert output_person.loc[output_child, ["WAGP", "SEMP"]].isna().all().all()
 
 
 def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> None:
@@ -2109,12 +3391,18 @@ def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
             100_000.0 + income_shift,
             len(person),
         )
+        person["WAGP"] = person["employment_income_before_lsr"]
+        person["self_employment_income_before_lsr"] = 0.0
+        person["SEMP"] = 0.0
         for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
             person[column] = 0.0
         tax_unit = tables["tax_unit"]
         tax_unit["filing_status_input"] = "SINGLE"
         for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
             tax_unit[column] = 0.0
+        household = tables["household"]
+        household["TYPEHUGQ"] = 1
+        household["tenure_type"] = "RENTED"
         return Frame(
             tables,
             US_SCHEMA,
@@ -2228,7 +3516,109 @@ def test_completeness_gate_passes_on_filled_and_proven_surface() -> None:
     statuses = {
         label: receipt["status"] for label, receipt in result.details["targets"].items()
     }
-    assert set(statuses.values()) == {"complete"}
+    assert set(statuses.values()) == {"complete", "proven_absent"}
+    rent = result.details["targets"]["person/housing/pre_subsidy_rent"]
+    assert rent["recipient_absence_authority"]["rows"] == 1
+    assert rent["proven"]["acs/clone_0"]["structural_absence_rule_id"] == (
+        "acs_native_group_quarters_without_housing_unit"
+    )
+
+
+def test_structural_rent_absence_covers_every_clone_role_and_battery_scope() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    attached = clone_us_frame_for_puf_support(
+        gap_filled,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    surface = {"person": {"housing": ("pre_subsidy_rent",)}}
+    housing_plan = (_GAP_FILL_TEST_PLAN[1],)
+    completeness = _completeness_with_test_authority(
+        attached,
+        declared_surface=surface,
+        declared_gap_fill_plan=housing_plan,
+    )
+    assert completeness.passed, completeness.failures
+    target = completeness.details["targets"]["person/housing/pre_subsidy_rent"]
+    assert set(target["proven"]) == {"acs/clone_0", "acs/clone_1"}
+    assert target["recipient_absence_authority"]["by_origin_role"] == {
+        "acs/clone_0": 1,
+        "acs/clone_1": 1,
+    }
+
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=housing_plan,
+        metric_registry={
+            (
+                "person",
+                "housing",
+                "pre_subsidy_rent",
+                0,
+            ): "monetary_sign_separated"
+        },
+    )
+    battery = stacked_spine_module._by_origin_battery_with_test_authority(
+        attached,
+        authority=authority,
+    )
+    comparison = battery.details["comparisons"][
+        "person/housing/pre_subsidy_rent[clone_0]"
+    ]
+    assert comparison["status"] != "null_in_scope"
+    assert comparison["recipient_absence_authority"]["rows_excluded_from_scope"] == 1
+    assert not any(
+        "exact structural-absence" in failure for failure in battery.failures
+    )
+
+
+def test_structural_rent_absence_rejects_a_non_gq_recipient_null() -> None:
+    gap_filled = _gap_fill_with_test_authority(
+        _stacked_gap_fixture(),
+        plan=_GAP_FILL_TEST_PLAN,
+        seed=578,
+        n_estimators=10,
+    ).frame
+    person = gap_filled.table("person").copy()
+    channel = person[support_channel_column("person")].astype(str)
+    household = gap_filled.table("household")
+    gq_households = set(
+        household.loc[
+            pd.to_numeric(household["TYPEHUGQ"], errors="coerce").isin((2, 3)),
+            "household_id",
+        ]
+    )
+    non_gq = channel.eq("acs") & ~person["person_household_id"].isin(gq_households)
+    person.loc[person.index[non_gq][0], "pre_subsidy_rent"] = np.nan
+    tables = {entity: gap_filled.table(entity) for entity in gap_filled.entities}
+    tables["person"] = person
+    corrupted = Frame(
+        tables,
+        gap_filled.schema,
+        {
+            entity: gap_filled.weights_for(entity)
+            for entity in gap_filled.weighted_entities
+        },
+        gap_filled.strata,
+        mass_log=gap_filled.mass_log,
+        metadata=gap_filled.metadata,
+    )
+    result = _completeness_with_test_authority(
+        corrupted,
+        declared_surface={"person": {"housing": ("pre_subsidy_rent",)}},
+        declared_gap_fill_plan=(_GAP_FILL_TEST_PLAN[1],),
+    )
+    assert not result.passed
+    assert any(
+        "exact structural-absence equation failed" in failure
+        and "unexpected_null_rows=1" in failure
+        for failure in result.failures
+    )
 
 
 def test_completeness_gate_names_a_silently_missing_family() -> None:
@@ -2386,6 +3776,38 @@ def test_completeness_gate_empty_plan_cannot_launder_canonical_target() -> None:
     )
 
 
+def test_completeness_gate_cannot_launder_post_puf_transfer_target() -> None:
+    frame = _post_puf_transfer_fixture()
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+    result = stacked_spine_module._stacked_completeness_gate_with_test_authority(
+        frame,
+        authority=authority,
+        absence_proofs=tuple(
+            AbsenceProof(
+                entity="person",
+                column="is_pregnant",
+                channel="*",
+                clone_index=clone_index,
+                reason="POST-PUF WILDCARD LAUNDER",
+            )
+            for clone_index in (0, 1)
+        ),
+    )
+
+    assert not result.passed
+    assert any(
+        "person/model_required_boolean/is_pregnant" in failure
+        and "zero-residual post-PUF transfer contract" in failure
+        and "absence proofs are forbidden" in failure
+        for failure in result.failures
+    )
+
+
 def test_completeness_gate_empty_surface_is_terminal() -> None:
     authority = stacked_spine_module._make_test_stacked_authority(
         declared_surface={},
@@ -2488,10 +3910,12 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
         == authority
     )
     plan_sha256 = authority["components"]["gap_fill_plan"]["sha256"]
+    post_puf_sha256 = authority["components"]["post_puf_transfer_surface"]["sha256"]
     surface_sha256 = authority["components"]["declared_surface"]["sha256"]
     for receipt in canonical.details["targets"].values():
         assert receipt["authority_form"] == "observed_complete"
         assert receipt["plan_sha256"] == plan_sha256
+        assert receipt["post_puf_surface_sha256"] == post_puf_sha256
         assert receipt["surface_sha256"] == surface_sha256
 
     stacked = _stacked_gap_fixture()
@@ -2579,6 +4003,9 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         authority_id="us_stacked_spine_authority",
         version=1,
         gap_fill_plan=(),
+        post_puf_transfer_surface={},
+        post_puf_puf_producer_surface={},
+        post_puf_source_producer_surface={},
         declared_surface=surface,
         metric_registry={
             ("person", "test_only", "unemployment_compensation", 0): (
@@ -2606,6 +4033,41 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5))
+def test_self_consistent_stale_stacked_authority_versions_are_rejected(
+    stale_version: int,
+) -> None:
+    canonical = stacked_spine_module._production_stacked_authority()
+    stale = stacked_spine_module._make_stacked_authority(
+        authority_id=canonical.authority_id,
+        version=stale_version,
+        gap_fill_plan=canonical.gap_fill_plan,
+        post_puf_transfer_surface=canonical.post_puf_transfer_surface,
+        post_puf_puf_producer_surface=canonical.post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=canonical.post_puf_source_producer_surface,
+        declared_surface=canonical.declared_surface,
+        metric_registry=canonical.metric_registry,
+        joint_metric_registry=canonical.joint_metric_registry,
+        support_profile=canonical.support_profile,
+        declared_form="CANONICAL",
+    )
+    stale_receipt = stacked_spine_module._authority_receipt(stale)
+
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 6
+    assert stale_receipt["version"] == stale_version
+    assert stale_receipt["integrity_valid"] is True
+    assert stale_receipt["digest_matches_declared"] is True
+    assert stale_receipt["canonical_content"] is False
+    with pytest.raises(
+        ValueError,
+        match="non-canonical stacked authority is forbidden",
+    ):
+        stacked_spine_module._validate_production_authority_receipt(
+            stale_receipt,
+            boundary=f"stale authority v{stale_version}",
+        )
+
+
 def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2614,6 +4076,9 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
         authority_id="us_stacked_spine_authority",
         version=1,
         gap_fill_plan=(),
+        post_puf_transfer_surface={},
+        post_puf_puf_producer_surface={},
+        post_puf_source_producer_surface={},
         declared_surface=surface,
         metric_registry={
             ("person", "test_only", "unemployment_compensation", 0): (
@@ -2626,11 +4091,15 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
     rebound = {
         "_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR": forged.declared_surface,
         "_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR": forged.gap_fill_plan,
+        "_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR": (
+            forged.post_puf_transfer_surface
+        ),
         "_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR": forged.metric_registry,
         "_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR": (forged.support_profile),
         "_CANONICAL_STACKED_AUTHORITY_ANCHOR": forged,
         "_STACKED_DECLARED_SURFACE": forged.declared_surface,
         "_STACKED_GAP_FILL_PLAN": forged.gap_fill_plan,
+        "_STACKED_POST_PUF_TRANSFER_SURFACE": forged.post_puf_transfer_surface,
         "_BATTERY_METRIC_REGISTRY": forged.metric_registry,
         "_BATTERY_SUPPORT_PROFILE": forged.support_profile,
     }
@@ -2654,6 +4123,7 @@ def test_rebound_anchor_aliases_cannot_replace_captured_canonical_authority(
         "support_threshold",
         "surface_count",
         "direction_count",
+        "post_puf_target_count",
         "target_binding",
     ),
 )
@@ -2677,6 +4147,8 @@ def test_stacked_manifest_rejects_pre_emission_nested_receipt_mutation(
         authority["components"]["declared_surface"]["target_count"] = 0
     elif mutation == "direction_count":
         authority["components"]["gap_fill_plan"]["direction_count"] = 0
+    elif mutation == "post_puf_target_count":
+        authority["components"]["post_puf_transfer_surface"]["target_count"] = 0
     else:
         target = next(iter(result.details["targets"].values()))
         target["authority_form"] = "wildcard_no_declared_donor_plan"
@@ -2783,6 +4255,9 @@ def test_fresh_gate_result_cannot_forge_a_donor_origin_proof() -> None:
     binding = {
         "authority_sha256": authority["sha256"],
         "plan_sha256": authority["components"]["gap_fill_plan"]["sha256"],
+        "post_puf_surface_sha256": authority["components"]["post_puf_transfer_surface"][
+            "sha256"
+        ],
         "surface_sha256": authority["components"]["declared_surface"]["sha256"],
     }
     label = "person/puf_tax_itemization/taxable_interest_income"
@@ -2813,6 +4288,65 @@ def test_fresh_gate_result_cannot_forge_a_donor_origin_proof() -> None:
         GateReport((forged,)).to_manifest()
 
 
+def test_fresh_gate_result_cannot_forge_structural_rent_absence() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = stacked_completeness_gate(frame)
+    assert canonical.passed, canonical.failures
+    details = deepcopy(dict(canonical.details))
+    rent = details["targets"]["person/housing/pre_subsidy_rent"]
+    rent["recipient_absence_authority"]["reason"] = "FORGED STRUCTURAL ABSENCE"
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="structural-absence doctrine mismatch.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+@pytest.mark.parametrize(
+    "evaluate",
+    (stacked_completeness_gate, by_origin_battery),
+    ids=("completeness", "battery"),
+)
+def test_canonical_structural_receipt_cannot_be_grafted_between_evaluations(
+    evaluate: object,
+) -> None:
+    columns = {
+        "taxable_interest_income": (
+            np.asarray([100.0] * 8),
+            np.asarray([100.0] * 11),
+        )
+    }
+    no_gq = evaluate(_battery_frame(columns))
+    one_gq = evaluate(_battery_frame(columns, acs_group_quarters=True))
+    assert no_gq.passed, no_gq.failures
+    assert one_gq.passed, one_gq.failures
+
+    # Every field in the replacement receipt is canonical: it came from a
+    # real evaluation of the same gate and authority.  It still cannot stand
+    # in for the evaluator's evidence about another frame.
+    with pytest.raises(TypeError, match="init=False"):
+        replace(
+            no_gq,
+            details=deepcopy(dict(one_gq.details)),
+            _stacked_authority_seal=b"caller-recomputed-seal",
+        )
+    forged = replace(no_gq, details=deepcopy(dict(one_gq.details)))
+    with pytest.raises(
+        ValueError,
+        match="was not sealed by its evaluator.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
 def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None:
     frame = _battery_frame(
         {
@@ -2837,6 +4371,29 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
     with pytest.raises(
         ValueError,
         match="coverage receipt must bind all 131 targets.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_fresh_battery_result_requires_structural_scope_receipt() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = by_origin_battery(frame)
+    assert canonical.passed, canonical.failures
+    details = deepcopy(dict(canonical.details))
+    rent_label = "person/housing/pre_subsidy_rent[clone_0]"
+    details["comparisons"][rent_label].pop("recipient_absence_authority")
+    forged = replace(canonical, details=details)
+
+    with pytest.raises(
+        ValueError,
+        match="must carry canonical recipient-absence authority.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 
@@ -2909,10 +4466,17 @@ def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
         GateReport((stripped,)).to_manifest()
 
 
-def test_stripped_five_component_authority_cannot_escape_under_a_renamed_gate() -> None:
+def test_stripped_six_component_authority_cannot_escape_under_a_renamed_gate() -> None:
     authority = stacked_spine_module.stacked_spine_authority_receipt()
     components = deepcopy(dict(authority["components"]))
-    assert "joint_metric_registry" in components
+    assert set(components) == {
+        "gap_fill_plan",
+        "post_puf_transfer_surface",
+        "declared_surface",
+        "metric_registry",
+        "joint_metric_registry",
+        "support_profile",
+    }
     stripped = GateResult(
         name="renamed_stacked_battery",
         passed=True,
@@ -3043,7 +4607,11 @@ def _with_declared_battery_defaults(
     )
 
 
-def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
+def _battery_frame(
+    columns: dict[str, tuple[np.ndarray, np.ndarray]],
+    *,
+    acs_group_quarters: bool = False,
+) -> Frame:
     """A stacked frame with hand-set asec/acs person columns.
 
     ``columns`` maps a column name to its (asec values, acs values) pair.
@@ -3068,8 +4636,17 @@ def _battery_frame(columns: dict[str, tuple[np.ndarray, np.ndarray]]) -> Frame:
         person = frame.table("person").copy()
         for column, values in columns.items():
             person[column] = values[position]
+        if position == 1 and acs_group_quarters:
+            person.loc[person.index[0], "pre_subsidy_rent"] = np.nan
         tables = {entity: frame.table(entity) for entity in frame.entities}
         tables["person"] = person
+        household = tables["household"].copy()
+        household["TYPEHUGQ"] = np.ones(len(household), dtype=np.int64)
+        household["tenure_type"] = "RENTED"
+        if position == 1 and acs_group_quarters:
+            household.loc[household.index[0], "TYPEHUGQ"] = 2
+            household.loc[household.index[0], "tenure_type"] = np.nan
+        tables["household"] = household
         return Frame(
             tables,
             US_SCHEMA,
@@ -3565,11 +5142,13 @@ def _asec_e2e_source() -> Frame:
     person["is_female"] = index % 2 == 0
     person["is_household_head"] = True
     person["employment_income_before_lsr"] = 20_000.0 + 1_500.0 * index
-    person["unemployment_compensation"] = np.where(index % 4 == 0, 2_400.0, 0.0)
+    person["self_employment_income_before_lsr"] = 0.0
     # Structurally learnable from a REQUIRED predictor with a stable share
-    # under any household subsample, so the gap-fill QRF reproduces the
-    # incidence on the seeded ACS sample without sampling-skew noise.
+    # under any household subsample, so the gap-fill QRF reproduces both
+    # incidences on the seeded ACS sample without sampling-skew noise.
+    person["unemployment_compensation"] = np.where(person["is_female"], 2_400.0, 0.0)
     person["is_disabled"] = person["is_female"].to_numpy()
+    person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
     interest = np.where(index % 2 == 0, 1_200.0 + 40.0 * index, 0.0)
     person["taxable_interest_income"] = interest
     for column in (
@@ -3581,6 +5160,7 @@ def _asec_e2e_source() -> Frame:
     ):
         person[column] = 0.0
     household = frame.table("household").copy()
+    household["TYPEHUGQ"] = np.ones(40, dtype=np.int64)
     household["tenure_type"] = pd.Series(
         ["RENTED" if position % 2 else "OWNED_WITH_MORTGAGE" for position in range(40)],
         dtype=object,
@@ -3615,11 +5195,14 @@ def _acs_e2e_source() -> Frame:
     person["is_female"] = index % 2 == 1
     person["is_household_head"] = True
     person["employment_income_before_lsr"] = 21_000.0 + 1_450.0 * index
+    person["WAGP"] = person["employment_income_before_lsr"]
+    person["self_employment_income_before_lsr"] = 0.0
+    person["SEMP"] = 0.0
     person["acs_interest_dividend_rental_income"] = np.where(
         index % 2 == 0, 1_250.0 + 42.0 * index, 0.0
     )
-    person["pre_subsidy_rent"] = np.where(index % 2 == 1, 11_000.0 + 150.0 * index, 0.0)
     household = frame.table("household").copy()
+    household["TYPEHUGQ"] = np.ones(40, dtype=np.int64)
     household["tenure_type"] = pd.Series(
         ["RENTED" if position % 2 else "OWNED_OUTRIGHT" for position in range(40)],
         dtype=object,
@@ -3655,10 +5238,11 @@ _E2E_GAP_FILL_PLAN = (
         },
     ),
     GapFillDirection(
-        name="acs_housing_to_asec",
-        recipient_channel="asec",
-        donor_channel="acs",
+        name="asec_housing_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
         target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+        recipient_absence_rules=(_CANONICAL_RENT_ABSENCE_RULE,),
     ),
 )
 

@@ -70,6 +70,9 @@ from microcosm.build.gates import (
 )
 from microcosm.build.logbook import record_build_attempt
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.acs_income_universe import (
+    acs_pums_earnings_universe_contract_identity,
+)
 from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
 from microcosm.build.us_runtime.acs_pums import (
     AcsPumsSource,
@@ -131,6 +134,7 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
 )
 from microcosm.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
 from microcosm.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_MANIFEST_FILENAME,
     PRIMARY_QRF_TARGET_ORDER,
     finalize_primary_puf_qrf_chain,
@@ -141,7 +145,14 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     US_PUF_SUPPORT_FIT_NAME,
 )
+from microcosm.build.us_runtime.qbi_inputs import (
+    us_qbi_post_reconciliation_person_columns,
+    us_qbi_reconciliation_contract_identity,
+    validate_us_qbi_reconciliation_live_output,
+)
 from microcosm.build.us_runtime.stacked_spine import (
+    CANONICAL_STACKED_GAP_FILL_SURFACE,
+    CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE,
     assemble_stacked_spine,
     assert_stacked_tail_cells_preserved,
     by_origin_battery,
@@ -150,7 +161,10 @@ from microcosm.build.us_runtime.stacked_spine import (
     run_stacked_puf_pass,
     stacked_completeness_gate,
     stacked_gap_fill_plan,
+    stacked_gap_fill_producer_schedule_receipt,
     stacked_spine_authority_receipt,
+    transfer_stacked_post_puf_inputs,
+    validate_stacked_post_puf_transfer_receipt,
     validate_stacked_spine_frame,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -231,9 +245,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 2 binds the complete clone-2 tail provenance and attachment-descendant
-# metadata. Version-1 stacked checkpoints predate that state and must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 2
+# Version 6 binds the ACS earnings-universe and whole-pool QBI reconciliation
+# contracts, plus primary-QRF schema 6. Earlier checkpoints can carry stale
+# recipient and mutation semantics and must rebuild.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 6
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -265,6 +280,7 @@ class StackedPoolBuildResult:
     stage_receipts: Mapping[str, Mapping[str, object]]
     terminal_gates: tuple[GateResult, GateResult]
     release_id: str
+    qbi_transition_authority_sha256: str | None = None
 
     @property
     def simulation_ready(self) -> bool:
@@ -1012,6 +1028,7 @@ def _stacked_checkpoint_base_identity(
                 "gap_fill_stacked_spine",
                 "run_stacked_puf_pass",
                 "complete_multispine_source_inputs",
+                "transfer_stacked_post_puf_inputs",
                 "prepare_stacked_tail_derivation",
                 "derive_multispine_pool_inputs",
                 "seed_multispine_pool_inputs",
@@ -1022,11 +1039,23 @@ def _stacked_checkpoint_base_identity(
             "pre_clone_source_operator_order": list(
                 POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
             ),
+            "gap_fill_producer_schedule": (
+                stacked_gap_fill_producer_schedule_receipt()
+            ),
             "post_clone_source_operator_order": list(
                 POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
             ),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
+            "primary_qrf_checkpoint_schema_version": (
+                PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+            ),
+            "acs_pums_earnings_universe_contract": (
+                acs_pums_earnings_universe_contract_identity()
+            ),
+            "us_qbi_reconciliation_contract": (
+                us_qbi_reconciliation_contract_identity()
+            ),
             "take_up_contract": take_up_contract_identity(),
             "primary_qrf_n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
             "acs_transfer_n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
@@ -1317,6 +1346,17 @@ class _PoolStageCheckpointStore:
             checkpoint.frame,
             boundary=f"pool {stage} checkpoint write",
         )
+        qbi_route = _checkpoint_qbi_route(self._base_identity)
+        if stage == "simulated" and qbi_route is not None:
+            _validate_qbi_stage_receipt(
+                persistent_frame,
+                checkpoint.stage_receipts,
+                route=qbi_route,
+                boundary=f"pool {stage} durable checkpoint write",
+                transition_authority_sha256=(
+                    checkpoint.qbi_transition_authority_sha256
+                ),
+            )
         stored_frame = persistent_frame
         if stage == "simulated":
             if checkpoint.simulation_frame is None:
@@ -1376,6 +1416,10 @@ class _PoolStageCheckpointStore:
                 else None
             ),
         }
+        if checkpoint.qbi_transition_authority_sha256 is not None:
+            metadata["qbi_transition_authority_sha256"] = (
+                checkpoint.qbi_transition_authority_sha256
+            )
         path = self.checkpoint_path(stage)
         started_at = time.perf_counter()
         write_frame_checkpoint(path, stored_frame, metadata=metadata)
@@ -1399,6 +1443,15 @@ class _PoolStageCheckpointStore:
                 "row_counts": _frame_row_counts(stored_frame),
                 "frame_schema": _frame_schema_payload(stored_frame),
                 "frame_metadata": metadata["frame_metadata"],
+                **(
+                    {
+                        "qbi_transition_authority_sha256": metadata[
+                            "qbi_transition_authority_sha256"
+                        ]
+                    }
+                    if "qbi_transition_authority_sha256" in metadata
+                    else {}
+                ),
             },
         )
         receipts_record: dict[str, object] = {
@@ -1645,7 +1698,12 @@ class _PoolStageCheckpointStore:
                 expected_identity=expected_identity,
                 expected_identity_sha256=expected_identity_sha256,
             )
-            for key in ("row_counts", "frame_schema", "frame_metadata"):
+            for key in (
+                "row_counts",
+                "frame_schema",
+                "frame_metadata",
+                "qbi_transition_authority_sha256",
+            ):
                 if metadata.get(key) != manifest.get(key):
                     raise ValueError(
                         f"{stage} checkpoint {key} differs from its sidecar"
@@ -1669,6 +1727,9 @@ class _PoolStageCheckpointStore:
             )
             assembly_receipt = metadata.get("assembly_receipt")
             stage_receipts = metadata.get("stage_receipts")
+            qbi_transition_authority_sha256 = metadata.get(
+                "qbi_transition_authority_sha256"
+            )
             input_receipts = metadata.get("input_receipts")
             if not isinstance(assembly_receipt, Mapping):
                 raise ValueError(
@@ -1709,12 +1770,23 @@ class _PoolStageCheckpointStore:
                 simulation_frame = frame
                 persistent_frame = _without_simulation_output(frame)
 
+            qbi_route = _checkpoint_qbi_route(self._base_identity)
+            if stage == "simulated" and qbi_route is not None:
+                _validate_qbi_stage_receipt(
+                    persistent_frame,
+                    restored_stage_receipts,
+                    route=qbi_route,
+                    boundary="pool simulated durable checkpoint load",
+                    transition_authority_sha256=(qbi_transition_authority_sha256),
+                )
+
             checkpoint = MultispinePoolCheckpoint(
                 stage=stage,
                 frame=persistent_frame,
                 assembly_receipt=dict(assembly_receipt),
                 stage_receipts=restored_stage_receipts,
                 simulation_frame=simulation_frame,
+                qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
             )
             self.bind_input_receipts(input_receipts)
             self._attempts[stage] = {
@@ -2406,6 +2478,16 @@ def _stacked_direction_bank_identity(
     }
 
 
+def _stacked_post_puf_bank_identity(
+    checkpoint_identity: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        **_pool_checkpoint_stage_identity(checkpoint_identity, "transferred"),
+        "stacked_transfer_stage": "post_puf_source_completion",
+        "stacked_transfer_name": "asec_clone_1_to_missing",
+    }
+
+
 def _stacked_tail_manifest(
     stage_receipts: Mapping[str, Mapping[str, object]],
 ) -> Mapping[str, object]:
@@ -2421,6 +2503,100 @@ def _stacked_tail_manifest(
     return manifest
 
 
+def _validate_stacked_post_puf_stage_receipt(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    boundary: str,
+) -> None:
+    """Require the nested late-transfer receipt to carry canonical authority."""
+
+    impute = stage_receipts.get("impute")
+    if not isinstance(impute, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked transferred receipts have no impute object."
+        )
+    transfer_receipt = impute.get("stacked_post_puf_transfer")
+    if not isinstance(transfer_receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked transferred receipts have no post-PUF "
+            "transfer object."
+        )
+    validate_stacked_post_puf_transfer_receipt(
+        transfer_receipt,
+        boundary=boundary,
+    )
+
+
+def _qbi_receipt_from_stage_receipts(
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    route: str,
+    boundary: str,
+) -> Mapping[str, object]:
+    """Resolve the exact legacy or stacked QBI receipt path without fallback."""
+
+    derive = stage_receipts.get("derive")
+    if not isinstance(derive, Mapping):
+        raise ValueError(f"{boundary}: stage receipts have no derive object.")
+    if route == "legacy":
+        if "pool_derivation" in derive:
+            raise ValueError(
+                f"{boundary}: legacy QBI receipt used the stacked derive route."
+            )
+        receipt = derive.get("qbi_input_reconciliation")
+    elif route == "stacked":
+        pool_derivation = derive.get("pool_derivation")
+        if not isinstance(pool_derivation, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked derive receipts have no pool_derivation object."
+            )
+        if "qbi_input_reconciliation" in derive:
+            raise ValueError(
+                f"{boundary}: stacked QBI receipt also appears at the legacy route."
+            )
+        receipt = pool_derivation.get("qbi_input_reconciliation")
+    else:  # pragma: no cover - internal callers pass a literal
+        raise ValueError(f"{boundary}: unknown QBI receipt route {route!r}.")
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: stage receipts have no QBI reconciliation object."
+        )
+    return receipt
+
+
+def _validate_qbi_stage_receipt(
+    frame: Frame,
+    stage_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    route: str,
+    boundary: str,
+    transition_authority_sha256: str | None,
+) -> None:
+    receipt = _qbi_receipt_from_stage_receipts(
+        stage_receipts,
+        route=route,
+        boundary=boundary,
+    )
+    validate_us_qbi_reconciliation_live_output(
+        frame,
+        receipt,
+        boundary=boundary,
+        expected_transition_authority_sha256=transition_authority_sha256,
+        allowed_post_reconciliation_person_columns=(
+            us_qbi_post_reconciliation_person_columns(stage_receipts.get("seed"))
+        ),
+    )
+
+
+def _checkpoint_qbi_route(base_identity: Mapping[str, object]) -> str | None:
+    artifact_kind = base_identity.get("artifact_kind")
+    if artifact_kind == "populace_us_multispine_pool_checkpoint_identity":
+        return "legacy"
+    if artifact_kind == "populace_us_stacked_pool_checkpoint_identity":
+        return "stacked"
+    return None
+
+
 def _emit_stacked_checkpoint(
     callback: Callable[[MultispinePoolCheckpoint], None] | None,
     *,
@@ -2429,7 +2605,21 @@ def _emit_stacked_checkpoint(
     assembly_receipt: Mapping[str, object],
     stage_receipts: Mapping[str, Mapping[str, object]],
     simulation_frame: Frame | None = None,
+    qbi_transition_authority_sha256: str | None = None,
 ) -> None:
+    if stage in {"transferred", "simulated"}:
+        _validate_stacked_post_puf_stage_receipt(
+            stage_receipts,
+            boundary=f"stacked {stage} checkpoint emission",
+        )
+    if stage == "simulated":
+        _validate_qbi_stage_receipt(
+            frame,
+            stage_receipts,
+            route="stacked",
+            boundary="stacked simulated checkpoint emission",
+            transition_authority_sha256=qbi_transition_authority_sha256,
+        )
     if callback is None:
         return
     callback(
@@ -2441,6 +2631,7 @@ def _emit_stacked_checkpoint(
                 name: dict(receipt) for name, receipt in stage_receipts.items()
             },
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
     )
 
@@ -2485,6 +2676,7 @@ def build_stacked_pool(
         )
         assembly_receipt = current.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
         receipts: dict[str, Mapping[str, object]] = {}
+        qbi_transition_authority_sha256: str | None = None
         resume_stage: str | None = None
         _emit_stacked_checkpoint(
             checkpoint,
@@ -2516,7 +2708,21 @@ def build_stacked_pool(
         receipts = {
             name: dict(receipt) for name, receipt in resume.stage_receipts.items()
         }
+        qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
         resume_stage = resume.stage
+        if resume_stage in {"transferred", "simulated"}:
+            _validate_stacked_post_puf_stage_receipt(
+                receipts,
+                boundary=f"stacked {resume_stage} checkpoint resume",
+            )
+        if resume_stage == "simulated":
+            _validate_qbi_stage_receipt(
+                current,
+                receipts,
+                route="stacked",
+                boundary="stacked simulated checkpoint resume",
+                transition_authority_sha256=(qbi_transition_authority_sha256),
+            )
         for completed_phase in (
             "assembled",
             *(
@@ -2598,12 +2804,6 @@ def build_stacked_pool(
             primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
         )
         mark_phase("puf_passed")
-        weights_audit = weights_audit_gate(fit_records)
-        if not weights_audit.passed:
-            raise ValueError(
-                "Stacked imputation weights audit failed:\n  "
-                + "\n  ".join(weights_audit.failures)
-            )
 
         puf_receipt = dict(puf_result.receipt)
         primary_qrf_receipt = puf_receipt.pop("primary_puf_qrf")
@@ -2642,8 +2842,34 @@ def build_stacked_pool(
             source_completion.frame,
             tail_manifest,
         )
-        current = canonicalize_frame_string_dtypes(
+        post_puf_target_bank = AcsTransferTargetBankStore(
+            acs_transfer_checkpoint_dir / "post_puf_transfer",
+            identity=_stacked_post_puf_bank_identity(checkpoint_identity),
+        )
+        post_puf_transfer = transfer_stacked_post_puf_inputs(
             source_completion.frame,
+            seed=POOL_RANDOM_SEED,
+            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+            target_bank=post_puf_target_bank,
+        )
+        validate_stacked_post_puf_transfer_receipt(
+            post_puf_transfer.receipt,
+            boundary="stacked cold-build post-PUF transfer",
+        )
+        fit_records.extend(post_puf_transfer.transfer_result.fit_records)
+        weights_audit = weights_audit_gate(fit_records)
+        if not weights_audit.passed:
+            raise ValueError(
+                "Stacked imputation weights audit failed:\n  "
+                + "\n  ".join(weights_audit.failures)
+            )
+        post_puf_preservation = assert_stacked_tail_cells_preserved(
+            post_puf_transfer.frame,
+            tail_manifest,
+        )
+        current = canonicalize_frame_string_dtypes(
+            post_puf_transfer.frame,
             boundary="stacked pool transferred checkpoint",
             in_place=True,
         )
@@ -2657,12 +2883,19 @@ def build_stacked_pool(
                 "post_primary_completion": dict(source_completion.receipt),
             },
             "stacked_gap_fill": dict(gap_filled.receipt),
+            "stacked_post_puf_transfer": dict(post_puf_transfer.receipt),
             "primary_puf_qrf": primary_qrf_receipt,
             "puf_capital_gains_tail_transfer": dict(tail_manifest),
             "stacked_puf_pass": puf_receipt,
             "tail_preservation_after_source_completion": completion_preservation,
+            "tail_preservation_after_post_puf_transfer": post_puf_preservation,
             "acs_qrf_transfer": {
-                "target_families": _json_ready(pool_transfer_target_families()),
+                "target_families": {
+                    "early_gap_fill": _json_ready(CANONICAL_STACKED_GAP_FILL_SURFACE),
+                    "post_puf_transfer": _json_ready(
+                        CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+                    ),
+                },
                 "n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
                 "max_targets_per_fit": DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
                 "target_bank": {
@@ -2671,6 +2904,7 @@ def build_stacked_pool(
                         name: bank.receipt()
                         for name, bank in sorted(target_banks.items())
                     },
+                    "post_puf_transfer": post_puf_target_bank.receipt(),
                 },
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),
@@ -2695,6 +2929,7 @@ def build_stacked_pool(
             current
         )
         derived = derive_multispine_pool_inputs(derivation_input)
+        qbi_transition_authority_sha256 = derived.qbi_transition_authority_sha256
         current = canonicalize_frame_string_dtypes(
             derived.frame,
             boundary="stacked pool derive output",
@@ -2751,6 +2986,7 @@ def build_stacked_pool(
             assembly_receipt=assembly_receipt,
             stage_receipts=receipts,
             simulation_frame=simulation_frame,
+            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
         )
         mark_phase("simulated")
     else:
@@ -2784,6 +3020,7 @@ def build_stacked_pool(
         stage_receipts=receipts,
         terminal_gates=(completeness, battery),
         release_id=release_id,
+        qbi_transition_authority_sha256=qbi_transition_authority_sha256,
     )
 
 
@@ -2801,6 +3038,13 @@ def _manifest_payload(
     checkpoint_provenance: Mapping[str, object],
     publication_run_id: str,
 ) -> dict[str, object]:
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="legacy",
+        boundary="legacy production manifest",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
+    )
     status = "simulation_ready" if result.simulation_ready else "agreement_failed"
     puf_donor_receipt = input_receipts.get("puf_donor")
     if not isinstance(puf_donor_receipt, Mapping):
@@ -2888,6 +3132,17 @@ def _stacked_manifest_payload(
 ) -> dict[str, object]:
     """Build the stacked-only manifest without changing the legacy envelope."""
 
+    _validate_stacked_post_puf_stage_receipt(
+        result.stage_receipts,
+        boundary="stacked production manifest",
+    )
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="stacked",
+        boundary="stacked production manifest",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
+    )
     status = "simulation_ready" if result.simulation_ready else "gate_failed"
     puf_donor_receipt = input_receipts.get("puf_donor")
     if not isinstance(puf_donor_receipt, Mapping):
@@ -2909,6 +3164,7 @@ def _stacked_manifest_payload(
             "gap_fill_stacked_spine",
             "run_stacked_puf_pass",
             "complete_multispine_source_inputs",
+            "transfer_stacked_post_puf_inputs",
             "prepare_stacked_tail_derivation",
             "derive_multispine_pool_inputs",
             "seed_multispine_pool_inputs",
@@ -3066,6 +3322,13 @@ def _write_outputs(
     input_receipts: Mapping[str, object] | None = None,
     checkpoint_provenance: Mapping[str, object] | None = None,
 ) -> None:
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="legacy",
+        boundary="legacy publication entry",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
+    )
     if input_receipts is None:
         if loaded is None:
             raise ValueError(
@@ -3148,6 +3411,17 @@ def _write_stacked_outputs(
 ) -> dict[str, object]:
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
+    _validate_stacked_post_puf_stage_receipt(
+        result.stage_receipts,
+        boundary="stacked publication entry",
+    )
+    _validate_qbi_stage_receipt(
+        result.frame,
+        result.stage_receipts,
+        route="stacked",
+        boundary="stacked publication entry",
+        transition_authority_sha256=(result.qbi_transition_authority_sha256),
+    )
     publication_run_id = _new_publication_run_id()
     _atomic_write_json(
         outputs.manifest,

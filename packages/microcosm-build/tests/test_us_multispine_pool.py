@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import importlib
 import inspect
@@ -42,6 +43,10 @@ from microcosm.build.us_runtime.multispine_pool import (
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
     pool_input_surface,
+    pool_post_puf_puf_producer_target_families,
+    pool_post_puf_source_producer_target_families,
+    pool_post_puf_transfer_target_families,
+    pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
@@ -59,6 +64,12 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     clone_us_frame_for_puf_support,
 )
+from microcosm.build.us_runtime.qbi_inputs import (
+    US_QBI_OUTPUT_COLUMNS,
+    bind_us_qbi_reconciliation_transition_authority,
+    us_qbi_reconciliation_change_receipt,
+    with_us_qbi_input_reconciliation,
+)
 from microcosm.build.us_runtime.spine_agreement import (
     SpineAgreementSpec,
     default_spine_agreement_registry,
@@ -75,6 +86,8 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
 )
+
+_FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
@@ -138,6 +151,7 @@ def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+    "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
 }
 
 
@@ -402,22 +416,49 @@ def _operator(
 def _fixture_pool_operators(
     order: list[str],
 ) -> dict[str, Callable[[Frame], PoolStageOutput]]:
+    def derive(frame: Frame) -> PoolStageOutput:
+        order.append("derive")
+        person = frame.table("person").copy()
+        person["derived"] = person["transferred"] * 2
+        person["SEMP"] = 0.0
+        person["self_employment_income_before_lsr"] = 0.0
+        for column in US_QBI_OUTPUT_COLUMNS:
+            person[column] = 0.0
+        before = _replace_person(frame, person)
+        after = with_us_qbi_input_reconciliation(before)
+        receipt = us_qbi_reconciliation_change_receipt(before, after)
+        after = bind_us_qbi_reconciliation_transition_authority(after, receipt)
+        return PoolStageOutput(
+            after,
+            {
+                "operator": "derive",
+                "qbi_input_reconciliation": receipt,
+            },
+            qbi_transition_authority_sha256=receipt["sha256"],
+        )
+
+    def seed(frame: Frame) -> PoolStageOutput:
+        order.append("seed")
+        person = frame.table("person").copy()
+        person[_FIXTURE_SEED_PERSON_COLUMN] = person["age"] >= 40
+        return PoolStageOutput(
+            _replace_person(frame, person),
+            {
+                "operator": "seed",
+                "programs": {
+                    _FIXTURE_SEED_PERSON_COLUMN: {"entity": "person"},
+                },
+            },
+        )
+
     return {
         "impute": _operator(
             "impute",
             order,
             lambda person: person.__setitem__("transferred", person["age"]),
         ),
-        "derive": _operator(
-            "derive",
-            order,
-            lambda person: person.__setitem__("derived", person["transferred"] * 2),
-        ),
-        "seed": _operator(
-            "seed",
-            order,
-            lambda person: person.__setitem__("seeded", person["age"] >= 40),
-        ),
+        "derive": derive,
+        "seed": seed,
         "simulate": _operator(
             "simulate",
             order,
@@ -589,6 +630,131 @@ def test_pool_checkpoint_callbacks_capture_each_fixed_boundary() -> None:
     assert "ssi" in checkpoints[2].simulation_frame.table("person")
     for checkpoint in checkpoints:
         assert checkpoint.assembly_receipt == result.assembly_receipt
+
+
+def test_pool_checkpoint_emission_requires_qbi_receipt() -> None:
+    order: list[str] = []
+    operators = _fixture_pool_operators(order)
+    operators["derive"] = _operator(
+        "derive",
+        order,
+        lambda person: person.__setitem__(
+            "derived",
+            person["transferred"] * 2,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "multispine pool simulated checkpoint emission: derive receipt "
+            "has no QBI reconciliation object"
+        ),
+    ):
+        run_multispine_pool_path(
+            _source_frame(),
+            _source_frame(),
+            **operators,
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+            checkpoint=lambda _checkpoint: None,
+        )
+
+
+def test_legacy_runtime_qbi_route_rejects_present_stacked_none() -> None:
+    with pytest.raises(
+        ValueError,
+        match="legacy checkpoint used the stacked derive receipt route",
+    ):
+        multispine_pool_module._qbi_receipt_from_stage_receipts(
+            {
+                "derive": {
+                    "qbi_input_reconciliation": {"fixture": "legacy"},
+                    "pool_derivation": None,
+                }
+            },
+            boundary="ambiguous legacy QBI route test",
+        )
+
+
+def test_pool_simulated_resume_rejects_forged_qbi_receipt() -> None:
+    checkpoints: list[MultispinePoolCheckpoint] = []
+    run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators([]),
+        agreement_gate=lambda _frame: GateResult("fixture", True),
+        checkpoint=checkpoints.append,
+    )
+    simulated = checkpoints[-1]
+    stage_receipts = copy.deepcopy(simulated.stage_receipts)
+    stage_receipts["derive"]["qbi_input_reconciliation"]["sha256"] = "0" * 64
+    forged = MultispinePoolCheckpoint(
+        stage="simulated",
+        frame=simulated.frame,
+        assembly_receipt=simulated.assembly_receipt,
+        stage_receipts=stage_receipts,
+        simulation_frame=simulated.simulation_frame,
+        qbi_transition_authority_sha256=(simulated.qbi_transition_authority_sha256),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "multispine pool simulated checkpoint resume: QBI reconciliation "
+            "receipt SHA-256"
+        ),
+    ):
+        run_multispine_pool_path(
+            None,
+            None,
+            **_fixture_pool_operators([]),
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+            resume=forged,
+        )
+
+
+def test_pool_simulated_resume_rejects_reissued_qbi_receipt() -> None:
+    checkpoints: list[MultispinePoolCheckpoint] = []
+    run_multispine_pool_path(
+        _source_frame(),
+        _source_frame(),
+        **_fixture_pool_operators([]),
+        agreement_gate=lambda _frame: GateResult("fixture", True),
+        checkpoint=checkpoints.append,
+    )
+    simulated = checkpoints[-1]
+    persistent_person = simulated.frame.table("person").copy()
+    persistent_person["non_qualified_dividend_income"] = 100.0
+    persistent_person["qualified_bdc_income"] = 50.0
+    persistent = _replace_person(simulated.frame, persistent_person)
+    simulation_person = simulated.simulation_frame.table("person").copy()
+    simulation_person["non_qualified_dividend_income"] = 100.0
+    simulation_person["qualified_bdc_income"] = 50.0
+    simulation = _replace_person(simulated.simulation_frame, simulation_person)
+    receipts = copy.deepcopy(simulated.stage_receipts)
+    receipts["derive"]["qbi_input_reconciliation"] = (
+        us_qbi_reconciliation_change_receipt(persistent, persistent)
+    )
+    forged = MultispinePoolCheckpoint(
+        stage="simulated",
+        frame=persistent,
+        assembly_receipt=simulated.assembly_receipt,
+        stage_receipts=receipts,
+        simulation_frame=simulation,
+        qbi_transition_authority_sha256=(simulated.qbi_transition_authority_sha256),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="independently carried transition authority",
+    ):
+        run_multispine_pool_path(
+            None,
+            None,
+            **_fixture_pool_operators([]),
+            agreement_gate=lambda _frame: GateResult("fixture", True),
+            resume=forged,
+        )
 
 
 def test_fresh_pool_path_rejects_missing_source_frames() -> None:
@@ -827,6 +993,48 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
         == "74fd985208c62ee51a96c161ee2766118e4d92020ce2897bf2942e2625db9484"
     )
+
+
+def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> None:
+    def keys(target_families):
+        return {
+            (entity, family, target)
+            for entity, families in target_families.items()
+            for family, targets in families.items()
+            for target in targets
+        }
+
+    full = keys(pool_transfer_target_families())
+    early = keys(pool_pre_clone_gap_fill_target_families())
+    late = keys(pool_post_puf_transfer_target_families())
+    puf_producers = keys(pool_post_puf_puf_producer_target_families())
+    source_producers = keys(pool_post_puf_source_producer_target_families())
+
+    assert len(early) == 48
+    assert len(late) == 70
+    assert early.isdisjoint(late)
+    assert early | late == full
+    assert len(puf_producers) == 43
+    assert len(source_producers) == 30
+    assert len(puf_producers & source_producers) == 3
+    assert puf_producers | source_producers == late
+    assert ("person", "source_operator_cps_carried", "strike_benefits") in early
+    assert ("person", "model_required_boolean", "is_pregnant") in late
+    assert (
+        "tax_unit",
+        "puf_tax_itemization",
+        "health_savings_account_ald",
+    ) in late
+    assert (
+        "tax_unit",
+        "puf_tax_itemization",
+        "health_savings_account_ald",
+    ) in puf_producers
+    assert (
+        "person",
+        "model_required_boolean",
+        "is_pregnant",
+    ) in source_producers
 
 
 def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
@@ -1751,7 +1959,17 @@ def test_production_operator_invocations_are_total_and_guarded(
         (
             multispine_pool_module.derive_multispine_pool_inputs,
             POOL_DERIVE_OPERATOR_ORDER,
-            {"PoolStageOutput", "_run_source_operator_chain", "list"},
+            {
+                "PoolStageOutput",
+                "_run_source_operator_chain",
+                "bind_us_qbi_reconciliation_transition_authority",
+                "dict",
+                "list",
+                "us_qbi_reconciliation_change_receipt",
+                "validate_us_qbi_reconciliation_live_output",
+                "validate_us_qbi_reconciliation_transition",
+                "with_us_qbi_input_reconciliation",
+            },
         ),
     )
     for (
@@ -1791,7 +2009,15 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "phase": phase,
                 "operator_order": list(operator_names),
                 "suboperators": [
-                    {"operator": name, "kernel_receipt": {}} for name in operator_names
+                    {
+                        "operator": name,
+                        "kernel_receipt": (
+                            {"sha256": "0" * 64}
+                            if name == "with_us_qbi_input_reconciliation"
+                            else {}
+                        ),
+                    }
+                    for name in operator_names
                 ],
             },
         )
@@ -1800,6 +2026,16 @@ def test_production_operator_invocations_are_total_and_guarded(
         multispine_pool_module,
         "_run_source_operator_chain",
         observe_guarded_chain,
+    )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "validate_us_qbi_reconciliation_live_output",
+        lambda _frame, _receipt, *, boundary, expected_transition_authority_sha256: {},
+    )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "bind_us_qbi_reconciliation_transition_authority",
+        lambda current, _receipt: current,
     )
     frame = _source_frame()
     multispine_pool_module.prepare_multispine_source_inputs_for_clone(
@@ -1869,9 +2105,10 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     person = frame.table("person").copy()
     person["long_term_capital_gains_before_response"] = 100.0
     person["non_sch_d_capital_gains"] = 0.0
-    for column in multispine_pool_module.US_QBI_OUTPUT_COLUMNS:
+    for column in US_QBI_OUTPUT_COLUMNS:
         person[column] = 0.0
     person["self_employment_income_before_lsr"] = 10.0
+    person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
     frame = _replace_person(frame, person)
 
@@ -1879,9 +2116,79 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
+    assert (
+        result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
+            "rows_excluded_from_base_self_employment_rewrite"
+        ]
+        == 0
+    )
+    assert result.receipt["qbi_input_reconciliation"][
+        "base_self_employment_changed_rows"
+    ] == len(derived)
+    assert (
+        result.receipt["qbi_input_reconciliation"][
+            "structurally_absent_base_source_changed_rows"
+        ]
+        == 0
+    )
     assert derived["schedule_d_capital_gain_distributions"].notna().all()
     assert derived["self_employment_income_before_lsr"].eq(15.0).all()
     assert derived["sstb_self_employment_income_before_lsr"].eq(0.0).all()
+
+
+def _qbi_ready_derive_frame() -> Frame:
+    assembled = assemble_spines(
+        {"asec": _source_frame(), "acs": _source_frame()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    frame = clone_us_frame_for_puf_support(assembled)
+    person = frame.table("person").copy()
+    person["long_term_capital_gains_before_response"] = 100.0
+    person["non_sch_d_capital_gains"] = 0.0
+    for column in US_QBI_OUTPUT_COLUMNS:
+        person[column] = 0.0
+    person["self_employment_income_before_lsr"] = 10.0
+    person["SEMP"] = 10.0
+    person["sstb_self_employment_income_before_lsr"] = 5.0
+    return _replace_person(frame, person)
+
+
+def test_derive_stage_rejects_forged_qbi_kernel_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "us_qbi_reconciliation_change_receipt",
+        lambda _before, _after: {
+            "version": 2,
+            "sha256": "0" * 64,
+            "changed_person_rows": -1,
+            "tampered": True,
+        },
+    )
+
+    with pytest.raises(ValueError, match="QBI.*schema mismatch"):
+        multispine_pool_module.derive_multispine_pool_inputs(_qbi_ready_derive_frame())
+
+
+def test_derive_stage_rejects_mutated_qbi_output_with_fresh_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_kernel = multispine_pool_module.with_us_qbi_input_reconciliation
+
+    def mutate_kernel(frame: Frame) -> Frame:
+        result = real_kernel(frame)
+        result.table("person").loc[0, "qualified_bdc_income"] = 0.25
+        return result
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "with_us_qbi_input_reconciliation",
+        mutate_kernel,
+    )
+
+    with pytest.raises(ValueError, match="deterministic kernel"):
+        multispine_pool_module.derive_multispine_pool_inputs(_qbi_ready_derive_frame())
 
 
 def test_prior_year_contract_fails_on_raw_clone_and_succeeds_in_clone_stage(

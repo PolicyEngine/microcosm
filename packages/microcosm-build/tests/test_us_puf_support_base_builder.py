@@ -250,6 +250,14 @@ def _support_donor() -> pd.DataFrame:
     )
 
 
+def _minimal_us_puf_support_frame() -> Frame:
+    return _with_person_column(
+        _minimal_us_frame(),
+        "age",
+        np.asarray([42, 40, 51], dtype="int64"),
+    )
+
+
 def test_equivalence_h5_metadata_mode_disables_all_leaf_timestamps(
     tmp_path: Path,
 ) -> None:
@@ -300,7 +308,7 @@ class TestBaseBuildWeightsAudit:
         builder = _load_support_builder_module()
 
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
-            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
             **_SUPPORT_FIT_KWARGS,
         )
@@ -316,7 +324,7 @@ class TestBaseBuildWeightsAudit:
         builder = _load_support_builder_module()
 
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
-            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
             **_SUPPORT_FIT_KWARGS,
         )

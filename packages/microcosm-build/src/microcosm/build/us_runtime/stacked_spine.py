@@ -47,8 +47,15 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
-from microcosm.build.gates import FitWeightRecord, GateResult
+from microcosm.build.gates import (
+    FitWeightRecord,
+    GateResult,
+    _sealed_stacked_gate_result,
+)
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
+from microcosm.build.us_runtime.acs_income_universe import (
+    apply_acs_pums_earnings_universe_zeros,
+)
 from microcosm.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
@@ -57,8 +64,17 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.multispine_pool import (
+    POOL_OPERATOR_CONTRACTS,
+    POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    pool_post_puf_puf_producer_target_families,
+    pool_post_puf_source_producer_target_families,
+    pool_post_puf_transfer_target_families,
+    pool_pre_clone_gap_fill_target_families,
     pool_transfer_target_families,
+)
+from microcosm.build.us_runtime.operator_boundary import (
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -77,10 +93,12 @@ from microcosm.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_MANIFEST_FILENAME,
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
+    primary_puf_qrf_recipient_predictor_universe_receipt,
     run_primary_puf_qrf_chain,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     US_PUF_SUPPORT_FIT_NAME,
@@ -92,6 +110,7 @@ from microcosm.build.us_runtime.puf_support import (
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_CLONE_INDEX,
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_source_id_column,
     support_channel_column,
@@ -109,16 +128,21 @@ __all__ = [
     "CANONICAL_STACKED_DECLARED_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_SURFACE",
     "CANONICAL_STACKED_GAP_FILL_PLAN",
+    "CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE",
+    "CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE",
+    "CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE",
     "DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES",
     "ORIGIN_BATTERY_METRIC_KINDS",
     "STACKED_PILOT_ACS_SAMPLE_FRACTION",
     "STACKED_PILOT_ACS_SAMPLE_SEED",
     "STACKED_SPINE_MANIFEST_KEY",
     "AbsenceProof",
+    "GapFillAbsenceRule",
     "GapFillDirection",
     "GapFillResult",
     "OriginBatterySpec",
     "StackedPufPassResult",
+    "StackedPostPufTransferResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
     "assert_stacked_tail_cells_preserved",
@@ -129,7 +153,10 @@ __all__ = [
     "sample_acs_households",
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
+    "stacked_gap_fill_producer_schedule_receipt",
     "stacked_spine_authority_receipt",
+    "transfer_stacked_post_puf_inputs",
+    "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
 
@@ -146,12 +173,14 @@ DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES: Mapping[str, float] = {
 
 STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
 _LEGACY_STACKED_SPINE_MANIFEST_VERSION = 1
-_STACKED_SPINE_MANIFEST_VERSION = 2
+_STACKED_SPINE_MANIFEST_VERSION = 4
 _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS = {
     _LEGACY_STACKED_SPINE_MANIFEST_VERSION,
     _STACKED_SPINE_MANIFEST_VERSION,
 }
 _EXACT_COUNT_RULE = "floor(fraction * eligible)"
+_ACS_NATIVE_GQ_LINEAGE_VERSION = 1
+_ACS_NATIVE_GQ_SELECTION = "TYPEHUGQ in {2,3} on sampled native ACS rows"
 _MASS_RTOL = 1e-9
 
 #: The ratified pilot stack configuration (#578 revision): a seeded 10% ACS
@@ -282,6 +311,167 @@ def sample_acs_households(
         seed=seed,
         source_name="ACS",
     )
+
+
+def _acs_native_group_quarters_receipt(
+    sampled_acs: Frame,
+    assembled: Frame,
+) -> dict[str, object]:
+    """Bind source GQ evidence to immutable assembly-time ACS lineages."""
+
+    household = sampled_acs.table("household")
+    person = sampled_acs.table("person")
+    missing_household = sorted({"household_id", "TYPEHUGQ"} - set(household))
+    missing_person = sorted({"person_id", "person_household_id"} - set(person))
+    if missing_household or missing_person:
+        raise ValueError(
+            "Stacked ACS assembly cannot bind native group-quarters lineage; "
+            f"missing_household={missing_household}, missing_person={missing_person}."
+        )
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    invalid = ~kind.isin((1, 2, 3))
+    if invalid.any():
+        raise ValueError(
+            "Stacked ACS assembly requires every sampled household to carry a "
+            f"TYPEHUGQ 1/2/3 source classification; found {int(invalid.sum())} "
+            "invalid row(s)."
+        )
+    gq_households = kind.isin((2, 3))
+    household_ids = np.sort(
+        household.loc[gq_households, "household_id"].to_numpy(dtype=np.int64)
+    )
+    gq_people = person["person_household_id"].isin(household_ids)
+    person_lineages = person.loc[
+        gq_people, ["person_id", "person_household_id"]
+    ].to_numpy(dtype=np.int64)
+    if len(person_lineages):
+        person_lineages = person_lineages[
+            np.lexsort((person_lineages[:, 1], person_lineages[:, 0]))
+        ]
+    else:
+        person_lineages = person_lineages.reshape(0, 2)
+    linked_counts = person.loc[gq_people, "person_household_id"].value_counts()
+    if len(linked_counts) != len(household_ids) or not linked_counts.eq(1).all():
+        raise ValueError(
+            "Stacked ACS assembly requires exactly one native person per "
+            "TYPEHUGQ 2/3 group-quarters household."
+        )
+
+    assembled_household = assembled.table("household")
+    assembled_person = assembled.table("person")
+    household_channel = assembled_household[support_channel_column("household")].astype(
+        str
+    )
+    household_clone = pd.to_numeric(
+        assembled_household[support_clone_index_column("household")],
+        errors="raise",
+    ).astype("int64")
+    native_acs_household = household_channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & (
+        household_clone.eq(0)
+    )
+    assembled_kind = pd.to_numeric(assembled_household["TYPEHUGQ"], errors="coerce")
+    native_household_lineages = np.column_stack(
+        (
+            assembled_household.loc[native_acs_household, "household_id"].to_numpy(
+                dtype=np.int64
+            ),
+            assembled_household.loc[
+                native_acs_household,
+                support_source_id_column("household"),
+            ].to_numpy(dtype=np.int64),
+            assembled_household.loc[
+                native_acs_household,
+                spine_source_id_column("household"),
+            ].to_numpy(dtype=np.int64),
+            assembled_kind.loc[native_acs_household].to_numpy(dtype=np.int64),
+        )
+    )
+    sorted_household_lineages = native_household_lineages[
+        np.lexsort(
+            tuple(
+                native_household_lineages[:, column]
+                for column in reversed(range(native_household_lineages.shape[1]))
+            )
+        )
+    ]
+
+    native_household_support_by_id = pd.Series(
+        assembled_household.loc[
+            native_acs_household,
+            support_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+        index=assembled_household.loc[native_acs_household, "household_id"].to_numpy(
+            dtype=np.int64
+        ),
+    )
+    native_household_kind_by_id = pd.Series(
+        assembled_kind.loc[native_acs_household].to_numpy(dtype=np.int64),
+        index=assembled_household.loc[native_acs_household, "household_id"].to_numpy(
+            dtype=np.int64
+        ),
+    )
+    person_channel = assembled_person[support_channel_column("person")].astype(str)
+    person_clone = pd.to_numeric(
+        assembled_person[support_clone_index_column("person")], errors="raise"
+    ).astype("int64")
+    native_acs_person = person_channel.eq(
+        ACS_STACKED_SUPPORT_CHANNEL
+    ) & person_clone.eq(0)
+    parent_support = assembled_person.loc[native_acs_person, "person_household_id"].map(
+        native_household_support_by_id
+    )
+    parent_kind = assembled_person.loc[native_acs_person, "person_household_id"].map(
+        native_household_kind_by_id
+    )
+    if parent_support.isna().any() or parent_kind.isna().any():
+        raise ValueError(
+            "Stacked ACS assembly cannot bind native person-to-household lineages."
+        )
+    native_person_lineages = np.column_stack(
+        (
+            assembled_person.loc[native_acs_person, "person_id"].to_numpy(
+                dtype=np.int64
+            ),
+            assembled_person.loc[
+                native_acs_person,
+                support_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+            assembled_person.loc[
+                native_acs_person,
+                spine_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+            parent_support.to_numpy(dtype=np.int64),
+            parent_kind.to_numpy(dtype=np.int64),
+        )
+    )
+    sorted_person_lineages = native_person_lineages[
+        np.lexsort(
+            tuple(
+                native_person_lineages[:, column]
+                for column in reversed(range(native_person_lineages.shape[1]))
+            )
+        )
+    ]
+    return {
+        "version": _ACS_NATIVE_GQ_LINEAGE_VERSION,
+        "source_channel": ACS_STACKED_SUPPORT_CHANNEL,
+        "selection": _ACS_NATIVE_GQ_SELECTION,
+        "one_person_per_household": True,
+        "household_count": int(len(household_ids)),
+        "person_count": int(len(person_lineages)),
+        "household_spine_source_ids_sha256": _ids_sha256(household_ids),
+        "person_spine_lineages_sha256": _integer_rows_sha256(person_lineages),
+        "native_household_count": int(len(native_household_lineages)),
+        "native_person_count": int(len(native_person_lineages)),
+        "native_household_mapping_sha256": _integer_rows_sha256(
+            sorted_household_lineages
+        ),
+        "native_household_order_sha256": _integer_rows_sha256(
+            native_household_lineages
+        ),
+        "native_person_mapping_sha256": _integer_rows_sha256(sorted_person_lineages),
+        "native_person_order_sha256": _integer_rows_sha256(native_person_lineages),
+    }
 
 
 def _normalize_sampled_household_mass(
@@ -462,6 +652,10 @@ def assemble_stacked_spine(
         household_mass_shares=shares,
         mass_anchor_channel=mass_anchor_channel,
     )
+    acs_native_group_quarters = _acs_native_group_quarters_receipt(
+        sampled_acs,
+        assembled,
+    )
 
     harmonization = _harmonization_receipt(
         assembled,
@@ -477,6 +671,7 @@ def assemble_stacked_spine(
         },
         "mass_anchor_channel": mass_anchor_channel,
         "weight_harmonization": harmonization,
+        "acs_native_group_quarters": acs_native_group_quarters,
     }
     # The assembly metadata is preserved in full and augmented with the stack
     # manifest; the mass history is carried unchanged from the same source.
@@ -604,6 +799,587 @@ def _validate_survey_sample_receipt(
             )
 
 
+def _validated_acs_native_group_quarters_masks(
+    frame: Frame,
+    manifest: Mapping[str, object],
+    *,
+    boundary: str,
+) -> tuple[pd.Series, pd.Series]:
+    """Prove live ACS GQ classifications against assembly-bound lineages."""
+
+    receipt = manifest.get("acs_native_group_quarters")
+    required_receipt_keys = {
+        "version",
+        "source_channel",
+        "selection",
+        "one_person_per_household",
+        "household_count",
+        "person_count",
+        "household_spine_source_ids_sha256",
+        "person_spine_lineages_sha256",
+        "native_household_count",
+        "native_person_count",
+        "native_household_mapping_sha256",
+        "native_household_order_sha256",
+        "native_person_mapping_sha256",
+        "native_person_order_sha256",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != required_receipt_keys:
+        raise ValueError(
+            f"{boundary}: stacked spine native ACS group-quarters lineage "
+            "receipt is absent or malformed."
+        )
+    if (
+        receipt.get("version") != _ACS_NATIVE_GQ_LINEAGE_VERSION
+        or receipt.get("source_channel") != ACS_STACKED_SUPPORT_CHANNEL
+        or receipt.get("selection") != _ACS_NATIVE_GQ_SELECTION
+        or receipt.get("one_person_per_household") is not True
+    ):
+        raise ValueError(
+            f"{boundary}: stacked spine native ACS group-quarters lineage "
+            "receipt declares unsupported authority."
+        )
+    for receipt_field in (
+        "household_count",
+        "person_count",
+        "native_household_count",
+        "native_person_count",
+    ):
+        value = receipt.get(receipt_field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"{boundary}: stacked spine native ACS group-quarters "
+                f"{receipt_field} "
+                f"must be a non-negative integer, got {value!r}."
+            )
+    for receipt_field in (
+        "household_spine_source_ids_sha256",
+        "person_spine_lineages_sha256",
+        "native_household_mapping_sha256",
+        "native_household_order_sha256",
+        "native_person_mapping_sha256",
+        "native_person_order_sha256",
+    ):
+        value = receipt.get(receipt_field)
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise ValueError(
+                f"{boundary}: stacked spine native ACS group-quarters "
+                f"{receipt_field} "
+                "must be a lowercase SHA-256 digest."
+            )
+
+    household = frame.table("household")
+    person = frame.table("person")
+    required_household = {
+        "household_id",
+        "TYPEHUGQ",
+        spine_source_id_column("household"),
+        support_source_id_column("household"),
+        support_channel_column("household"),
+        support_clone_index_column("household"),
+    }
+    required_person = {
+        "person_id",
+        "person_household_id",
+        spine_source_id_column("person"),
+        support_source_id_column("person"),
+        support_channel_column("person"),
+        support_clone_index_column("person"),
+    }
+    missing_household = sorted(required_household - set(household))
+    missing_person = sorted(required_person - set(person))
+    if missing_household or missing_person:
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters lineage cannot be "
+            f"validated; missing_household={missing_household}, "
+            f"missing_person={missing_person}."
+        )
+
+    household_channel = household[support_channel_column("household")].astype(str)
+    household_clone = pd.to_numeric(
+        household[support_clone_index_column("household")], errors="raise"
+    ).astype("int64")
+    acs_household = household_channel.eq(ACS_STACKED_SUPPORT_CHANNEL)
+    native_acs_household = acs_household & household_clone.eq(0)
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    invalid_kind = acs_household & ~kind.isin((1, 2, 3))
+    if invalid_kind.any():
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters lineage has "
+            f"{int(invalid_kind.sum())} row(s) without TYPEHUGQ 1/2/3."
+        )
+    gq_household = acs_household & kind.isin((2, 3))
+    native_gq_household = native_acs_household & gq_household
+    native_household_ids = np.sort(
+        household.loc[
+            native_gq_household,
+            spine_source_id_column("household"),
+        ].to_numpy(dtype=np.int64)
+    )
+    if (
+        len(native_household_ids) != receipt["household_count"]
+        or _ids_sha256(native_household_ids)
+        != receipt["household_spine_source_ids_sha256"]
+    ):
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters household lineage "
+            "differs from its assembly-bound count or digest."
+        )
+
+    native_support_ids = household.loc[
+        native_acs_household,
+        support_source_id_column("household"),
+    ]
+    if native_support_ids.duplicated().any():
+        raise ValueError(
+            f"{boundary}: live native ACS household support lineages are not unique."
+        )
+    native_household_lineages = np.column_stack(
+        (
+            household.loc[native_acs_household, "household_id"].to_numpy(
+                dtype=np.int64
+            ),
+            native_support_ids.to_numpy(dtype=np.int64),
+            household.loc[
+                native_acs_household,
+                spine_source_id_column("household"),
+            ].to_numpy(dtype=np.int64),
+            kind.loc[native_acs_household].to_numpy(dtype=np.int64),
+        )
+    )
+    sorted_household_lineages = native_household_lineages[
+        np.lexsort(
+            tuple(
+                native_household_lineages[:, column]
+                for column in reversed(range(native_household_lineages.shape[1]))
+            )
+        )
+    ]
+    if (
+        len(native_household_lineages) != receipt["native_household_count"]
+        or _integer_rows_sha256(sorted_household_lineages)
+        != receipt["native_household_mapping_sha256"]
+        or _integer_rows_sha256(native_household_lineages)
+        != receipt["native_household_order_sha256"]
+    ):
+        raise ValueError(
+            f"{boundary}: live native ACS household support/raw/classification "
+            "mapping differs from its assembly-bound digest."
+        )
+    native_classification = pd.Series(
+        gq_household.loc[native_acs_household].to_numpy(dtype=bool),
+        index=native_support_ids.to_numpy(dtype=np.int64),
+    )
+    native_spine_source_by_support = pd.Series(
+        household.loc[
+            native_acs_household,
+            spine_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+        index=native_support_ids.to_numpy(dtype=np.int64),
+    )
+    live_acs_support_ids = household.loc[
+        acs_household,
+        support_source_id_column("household"),
+    ]
+    expected_classification = live_acs_support_ids.map(native_classification)
+    expected_spine_source = live_acs_support_ids.map(native_spine_source_by_support)
+    if expected_classification.isna().any() or not np.array_equal(
+        expected_classification.to_numpy(dtype=bool),
+        gq_household.loc[acs_household].to_numpy(dtype=bool),
+    ):
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters classification differs across "
+            "clone roles from its assembly-bound native lineage."
+        )
+    if expected_spine_source.isna().any() or not np.array_equal(
+        expected_spine_source.to_numpy(dtype=np.int64),
+        household.loc[
+            acs_household,
+            spine_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+    ):
+        raise ValueError(
+            f"{boundary}: live ACS support/raw household lineage pairs differ "
+            "from their assembly-bound native lineage."
+        )
+    native_pairs = set(
+        zip(
+            native_support_ids.to_numpy(dtype=np.int64),
+            household.loc[
+                native_acs_household,
+                spine_source_id_column("household"),
+            ].to_numpy(dtype=np.int64),
+            strict=True,
+        )
+    )
+    for clone_role in sorted(int(value) for value in household_clone.unique()):
+        role = acs_household & household_clone.eq(clone_role)
+        role_pairs = list(
+            zip(
+                household.loc[
+                    role,
+                    support_source_id_column("household"),
+                ].to_numpy(dtype=np.int64),
+                household.loc[
+                    role,
+                    spine_source_id_column("household"),
+                ].to_numpy(dtype=np.int64),
+                strict=True,
+            )
+        )
+        if len(role_pairs) != len(set(role_pairs)):
+            raise ValueError(
+                f"{boundary}: live ACS household lineages are not unique in "
+                f"clone role {clone_role}."
+            )
+        if (
+            clone_role == PUF_TAX_DETAIL_CLONE_INDEX
+            and PUF_CLONE_ATTACHMENT_MANIFEST_KEY not in frame.metadata
+            and set(role_pairs) != native_pairs
+        ):
+            raise ValueError(
+                f"{boundary}: unreceipted ACS clone role {clone_role} does not "
+                "exactly preserve every native support/raw lineage pair."
+            )
+    attachment = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
+    if attachment is not None:
+        if not isinstance(attachment, Mapping):
+            raise ValueError(f"{boundary}: clone attachment receipt is malformed.")
+        detail = household_clone.eq(PUF_TAX_DETAIL_CLONE_INDEX)
+        selected_support_ids = np.sort(
+            household.loc[
+                detail,
+                support_source_id_column("household"),
+            ].to_numpy(dtype=np.int64)
+        )
+        if attachment.get("realized_household_count") != int(
+            len(selected_support_ids)
+        ) or attachment.get("selected_household_source_ids_sha256") != _ids_sha256(
+            selected_support_ids
+        ):
+            raise ValueError(
+                f"{boundary}: live clone-1 household lineages differ from the "
+                "attachment-bound selection count or digest."
+            )
+
+    person_channel = person[support_channel_column("person")].astype(str)
+    person_clone = pd.to_numeric(
+        person[support_clone_index_column("person")], errors="raise"
+    ).astype("int64")
+    native_acs_person = person_channel.eq(
+        ACS_STACKED_SUPPORT_CHANNEL
+    ) & person_clone.eq(0)
+    native_household_support_by_live_id = pd.Series(
+        household.loc[
+            native_acs_household,
+            support_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+        index=household.loc[native_acs_household, "household_id"].to_numpy(
+            dtype=np.int64
+        ),
+    )
+    native_household_kind_by_live_id = pd.Series(
+        kind.loc[native_acs_household].to_numpy(dtype=np.int64),
+        index=household.loc[native_acs_household, "household_id"].to_numpy(
+            dtype=np.int64
+        ),
+    )
+    native_parent_support = person.loc[native_acs_person, "person_household_id"].map(
+        native_household_support_by_live_id
+    )
+    native_parent_kind = person.loc[native_acs_person, "person_household_id"].map(
+        native_household_kind_by_live_id
+    )
+    if native_parent_support.isna().any() or native_parent_kind.isna().any():
+        raise ValueError(
+            f"{boundary}: live native ACS person-to-household lineage cannot be "
+            "resolved."
+        )
+    native_person_mapping = np.column_stack(
+        (
+            person.loc[native_acs_person, "person_id"].to_numpy(dtype=np.int64),
+            person.loc[
+                native_acs_person,
+                support_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+            person.loc[
+                native_acs_person,
+                spine_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+            native_parent_support.to_numpy(dtype=np.int64),
+            native_parent_kind.to_numpy(dtype=np.int64),
+        )
+    )
+    sorted_person_mapping = native_person_mapping[
+        np.lexsort(
+            tuple(
+                native_person_mapping[:, column]
+                for column in reversed(range(native_person_mapping.shape[1]))
+            )
+        )
+    ]
+    if (
+        len(native_person_mapping) != receipt["native_person_count"]
+        or _integer_rows_sha256(sorted_person_mapping)
+        != receipt["native_person_mapping_sha256"]
+        or _integer_rows_sha256(native_person_mapping)
+        != receipt["native_person_order_sha256"]
+    ):
+        raise ValueError(
+            f"{boundary}: live native ACS person support/raw/parent mapping "
+            "differs from its assembly-bound digest."
+        )
+
+    native_person_support = person.loc[
+        native_acs_person,
+        support_source_id_column("person"),
+    ]
+    if native_person_support.duplicated().any():
+        raise ValueError(
+            f"{boundary}: live native ACS person support lineages are not unique."
+        )
+    native_person_raw_by_support = pd.Series(
+        person.loc[
+            native_acs_person,
+            spine_source_id_column("person"),
+        ].to_numpy(dtype=np.int64),
+        index=native_person_support.to_numpy(dtype=np.int64),
+    )
+    native_person_parent_by_support = pd.Series(
+        native_parent_support.to_numpy(dtype=np.int64),
+        index=native_person_support.to_numpy(dtype=np.int64),
+    )
+    native_person_parent_kind_by_support = pd.Series(
+        native_parent_kind.to_numpy(dtype=np.int64),
+        index=native_person_support.to_numpy(dtype=np.int64),
+    )
+
+    acs_person = person_channel.eq(ACS_STACKED_SUPPORT_CHANNEL)
+    acs_household_live_ids = household.loc[acs_household, "household_id"]
+    if acs_household_live_ids.duplicated().any():
+        raise ValueError(f"{boundary}: live ACS household IDs are not unique.")
+    household_support_by_live_id = pd.Series(
+        household.loc[
+            acs_household,
+            support_source_id_column("household"),
+        ].to_numpy(dtype=np.int64),
+        index=acs_household_live_ids.to_numpy(dtype=np.int64),
+    )
+    household_kind_by_live_id = pd.Series(
+        kind.loc[acs_household].to_numpy(dtype=np.int64),
+        index=acs_household_live_ids.to_numpy(dtype=np.int64),
+    )
+    household_clone_by_live_id = pd.Series(
+        household_clone.loc[acs_household].to_numpy(dtype=np.int64),
+        index=acs_household_live_ids.to_numpy(dtype=np.int64),
+    )
+    live_person_support = person.loc[
+        acs_person,
+        support_source_id_column("person"),
+    ]
+    expected_person_raw = live_person_support.map(native_person_raw_by_support)
+    expected_parent_support = live_person_support.map(native_person_parent_by_support)
+    expected_parent_kind = live_person_support.map(native_person_parent_kind_by_support)
+    live_parent_support = person.loc[acs_person, "person_household_id"].map(
+        household_support_by_live_id
+    )
+    live_parent_kind = person.loc[acs_person, "person_household_id"].map(
+        household_kind_by_live_id
+    )
+    live_parent_clone = person.loc[acs_person, "person_household_id"].map(
+        household_clone_by_live_id
+    )
+    unresolved_person_lineage = any(
+        values.isna().any()
+        for values in (
+            expected_person_raw,
+            expected_parent_support,
+            expected_parent_kind,
+            live_parent_support,
+            live_parent_kind,
+            live_parent_clone,
+        )
+    )
+    if unresolved_person_lineage or not (
+        np.array_equal(
+            expected_person_raw.to_numpy(dtype=np.int64),
+            person.loc[
+                acs_person,
+                spine_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+        )
+        and np.array_equal(
+            expected_parent_support.to_numpy(dtype=np.int64),
+            live_parent_support.to_numpy(dtype=np.int64),
+        )
+        and np.array_equal(
+            expected_parent_kind.to_numpy(dtype=np.int64),
+            live_parent_kind.to_numpy(dtype=np.int64),
+        )
+        and np.array_equal(
+            person_clone.loc[acs_person].to_numpy(dtype=np.int64),
+            live_parent_clone.to_numpy(dtype=np.int64),
+        )
+    ):
+        raise ValueError(
+            f"{boundary}: live ACS person support/raw/parent/classification "
+            "lineages differ from their assembly-bound native mappings."
+        )
+
+    for clone_role in sorted(int(value) for value in household_clone.unique()):
+        role_households = acs_household & household_clone.eq(clone_role)
+        role_parent_support = set(
+            household.loc[
+                role_households,
+                support_source_id_column("household"),
+            ].to_numpy(dtype=np.int64)
+        )
+        expected_role_people = set(
+            native_person_parent_by_support.index[
+                native_person_parent_by_support.isin(role_parent_support)
+            ].to_numpy(dtype=np.int64)
+        )
+        role_people = acs_person & person_clone.eq(clone_role)
+        role_person_support = person.loc[
+            role_people,
+            support_source_id_column("person"),
+        ].to_numpy(dtype=np.int64)
+        if (
+            len(role_person_support) != len(set(role_person_support))
+            or set(role_person_support) != expected_role_people
+        ):
+            raise ValueError(
+                f"{boundary}: live ACS clone role {clone_role} person lineages "
+                "do not exactly cover its assembly-bound household selection."
+            )
+    native_gq_household_live_ids = household.loc[native_gq_household, "household_id"]
+    native_gq_person = native_acs_person & person["person_household_id"].isin(
+        native_gq_household_live_ids
+    )
+    household_spine_source_by_live_id = pd.Series(
+        household[spine_source_id_column("household")].to_numpy(dtype=np.int64),
+        index=household["household_id"].to_numpy(dtype=np.int64),
+    )
+    native_person_parent_sources = person.loc[
+        native_gq_person, "person_household_id"
+    ].map(household_spine_source_by_live_id)
+    if native_person_parent_sources.isna().any():
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters person parent lineage "
+            "cannot be resolved."
+        )
+    native_person_lineages = np.column_stack(
+        (
+            person.loc[
+                native_gq_person,
+                spine_source_id_column("person"),
+            ].to_numpy(dtype=np.int64),
+            native_person_parent_sources.to_numpy(dtype=np.int64),
+        )
+    )
+    if len(native_person_lineages):
+        native_person_lineages = native_person_lineages[
+            np.lexsort((native_person_lineages[:, 1], native_person_lineages[:, 0]))
+        ]
+    else:
+        native_person_lineages = native_person_lineages.reshape(0, 2)
+    if (
+        len(native_person_lineages) != receipt["person_count"]
+        or _integer_rows_sha256(native_person_lineages)
+        != receipt["person_spine_lineages_sha256"]
+    ):
+        raise ValueError(
+            f"{boundary}: live native ACS group-quarters person lineage differs "
+            "from its assembly-bound count or digest."
+        )
+
+    gq_household_live_ids = household.loc[gq_household, "household_id"]
+    gq_person = person_channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & person[
+        "person_household_id"
+    ].isin(gq_household_live_ids)
+    linked_counts = person.loc[gq_person, "person_household_id"].value_counts()
+    if len(linked_counts) != int(gq_household.sum()) or not linked_counts.eq(1).all():
+        raise ValueError(
+            f"{boundary}: live ACS group-quarters lineage requires exactly one "
+            "linked person per household in every clone role."
+        )
+    return gq_household, gq_person
+
+
+def _validate_stacked_clone_role_lifecycle(
+    frame: Frame,
+    *,
+    boundary: str,
+) -> None:
+    """Require one exact clone-role set authorized by the live lifecycle."""
+
+    role_sets: dict[str, set[int]] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        clone_column = support_clone_index_column(entity)
+        if clone_column not in table:
+            raise ValueError(
+                f"{boundary}: live stacked {entity} rows lack {clone_column!r}."
+            )
+        numeric = pd.to_numeric(table[clone_column], errors="raise")
+        if numeric.isna().any() or not np.equal(numeric, np.floor(numeric)).all():
+            raise ValueError(
+                f"{boundary}: live stacked {entity} clone roles must be integers."
+            )
+        role_sets[entity] = set(numeric.to_numpy(dtype=np.int64).tolist())
+
+    household_roles = role_sets["household"]
+    attachment = frame.metadata.get(PUF_CLONE_ATTACHMENT_MANIFEST_KEY)
+    if attachment is None:
+        if household_roles == {0}:
+            expected_roles = {0}
+        elif household_roles == {0, PUF_TAX_DETAIL_CLONE_INDEX}:
+            validate_puf_clone_attachment(
+                frame,
+                boundary=f"{boundary} full clone identity",
+                expected_fraction=1.0,
+                # Full-clone frames intentionally carry no attachment
+                # metadata, so the seed is not part of frame identity.  The
+                # validator uses this value only in its returned receipt.
+                expected_seed=0,
+            )
+            expected_roles = {0, PUF_TAX_DETAIL_CLONE_INDEX}
+        else:
+            raise ValueError(
+                f"{boundary}: unreceipted stacked clone roles "
+                f"{sorted(household_roles)} are unauthorized."
+            )
+    else:
+        validated_attachment = validate_puf_clone_attachment(
+            frame,
+            boundary=f"{boundary} clone attachment",
+        )
+        version = validated_attachment.get("version")
+        if version == 1:
+            expected_roles = {0, PUF_TAX_DETAIL_CLONE_INDEX}
+        elif version == 2:
+            expected_roles = {0, PUF_TAX_DETAIL_CLONE_INDEX, 2}
+        else:  # pragma: no cover - the attachment validator rejects this first.
+            raise ValueError(
+                f"{boundary}: clone attachment authorizes no known role lifecycle."
+            )
+
+    inconsistent = {
+        entity: sorted(roles)
+        for entity, roles in role_sets.items()
+        if roles != expected_roles
+    }
+    if inconsistent:
+        raise ValueError(
+            f"{boundary}: stacked clone roles must exactly equal "
+            f"{sorted(expected_roles)} in every entity; got {inconsistent}."
+        )
+
+
 def validate_stacked_spine_frame(
     frame: Frame,
     *,
@@ -643,6 +1419,7 @@ def validate_stacked_spine_frame(
             f"{boundary}: stacked spine requires exactly the channels "
             f"{sorted(expected_channels)}; assembly declares {sorted(channels)}."
         )
+    _validate_stacked_clone_role_lifecycle(frame, boundary=boundary)
 
     if version == _LEGACY_STACKED_SPINE_MANIFEST_VERSION:
         fraction = manifest.get("acs_sample_fraction")
@@ -701,6 +1478,12 @@ def validate_stacked_spine_frame(
             boundary=boundary,
             require_normalization=version == _STACKED_SPINE_MANIFEST_VERSION,
         )
+
+    _validated_acs_native_group_quarters_masks(
+        frame,
+        manifest,
+        boundary=boundary,
+    )
 
     household = frame.table("household")
     channel_values = household[support_channel_column("household")].astype(str)
@@ -830,6 +1613,17 @@ def _ids_sha256(ids: np.ndarray) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _integer_rows_sha256(rows: np.ndarray) -> str:
+    values = np.asarray(rows, dtype=np.int64)
+    if values.ndim != 2:
+        raise ValueError("Lineage digest rows must be a two-dimensional array.")
+    payload = json.dumps(
+        [[int(value) for value in row] for row in values.tolist()],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def _validate_fraction(fraction: float, *, boundary: str | None = None) -> None:
     prefix = f"{boundary}: " if boundary else ""
     if (
@@ -871,12 +1665,22 @@ def _json_ready(value: object) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
-_GAP_FILL_ACS_TO_ASEC = "acs_housing_to_asec"
+_GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-_STACKED_AUTHORITY_VERSION = 2
+# v6 binds the ASEC-consistent ACS earnings-universe application and the
+# authenticated whole-pool QBI mutation semantics into the outer identity.
+_STACKED_AUTHORITY_VERSION = 6
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
+_PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
+_POST_GAP_FILL_STAGE = "after_gap_fill_stacked_spine"
+_ACS_GQ_RENT_ABSENCE_RULE_ID = "acs_native_group_quarters_without_housing_unit"
+_ACS_GQ_RENT_ABSENCE_SELECTION = "acs_typehugq_2_or_3_person"
+_ACS_GQ_RENT_ABSENCE_REASON = (
+    "ACS TYPEHUGQ 2/3 rows have no observed housing unit; rent must remain "
+    "structurally absent rather than be synthesized as zero or donor housing."
+)
 
 
 def _freeze_target_families(target_families: TargetFamilies) -> TargetFamilies:
@@ -908,6 +1712,30 @@ def _freeze_target_families(target_families: TargetFamilies) -> TargetFamilies:
 
 
 @dataclass(frozen=True)
+class GapFillAbsenceRule:
+    """One digest-bound exact recipient-universe rule for structural nulls."""
+
+    rule_id: str
+    entity: str
+    column: str
+    selection: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("rule_id", self.rule_id),
+            ("entity", self.entity),
+            ("column", self.column),
+            ("selection", self.selection),
+            ("reason", self.reason),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"GapFillAbsenceRule.{label} must be a non-empty string."
+                )
+
+
+@dataclass(frozen=True)
 class GapFillDirection:
     """One declared cross-origin fill: recipient origin <- donor origin.
 
@@ -924,6 +1752,7 @@ class GapFillDirection:
     recipient_channel: str
     donor_channel: str
     target_families: TargetFamilies
+    recipient_absence_rules: tuple[GapFillAbsenceRule, ...] = ()
 
     def __post_init__(self) -> None:
         for label, value in (
@@ -951,6 +1780,43 @@ class GapFillDirection:
             "target_families",
             _freeze_target_families(self.target_families),
         )
+        rules = tuple(self.recipient_absence_rules)
+        if any(not isinstance(rule, GapFillAbsenceRule) for rule in rules):
+            raise TypeError(
+                "GapFillDirection recipient_absence_rules require "
+                "GapFillAbsenceRule values."
+            )
+        target_keys = {
+            (entity, target)
+            for entity, families in self.target_families.items()
+            for targets in families.values()
+            for target in targets
+        }
+        rule_keys = [(rule.entity, rule.column) for rule in rules]
+        outside = sorted(set(rule_keys) - target_keys)
+        duplicates = sorted(
+            key for key, count in Counter(rule_keys).items() if count > 1
+        )
+        if outside or duplicates:
+            raise ValueError(
+                f"GapFillDirection {self.name!r} has invalid recipient absence "
+                f"rules; outside_targets={outside}, duplicate_targets={duplicates}."
+            )
+        object.__setattr__(self, "recipient_absence_rules", rules)
+
+
+@dataclass(frozen=True)
+class _GapFillProducerRecord:
+    """One channel-aware proof that a declared target exists before its check."""
+
+    entity: str
+    family: str
+    target: str
+    operator: str
+    operator_order_index: int
+    execution_scope: str
+    produced_channel: str
+    producer_stage: str
 
 
 @dataclass(frozen=True)
@@ -990,10 +1856,19 @@ def _build_stacked_gap_fill_plan(
     if housing_families:
         directions.append(
             GapFillDirection(
-                name=_GAP_FILL_ACS_TO_ASEC,
-                recipient_channel=BASE_ASEC_SUPPORT_CHANNEL,
-                donor_channel=ACS_STACKED_SUPPORT_CHANNEL,
+                name=_GAP_FILL_ASEC_HOUSING_TO_ACS,
+                recipient_channel=ACS_STACKED_SUPPORT_CHANNEL,
+                donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
                 target_families=housing_families,
+                recipient_absence_rules=(
+                    GapFillAbsenceRule(
+                        rule_id=_ACS_GQ_RENT_ABSENCE_RULE_ID,
+                        entity="person",
+                        column="pre_subsidy_rent",
+                        selection=_ACS_GQ_RENT_ABSENCE_SELECTION,
+                        reason=_ACS_GQ_RENT_ABSENCE_REASON,
+                    ),
+                ),
             )
         )
     return tuple(directions)
@@ -1021,6 +1896,9 @@ class _StackedAuthority:
     authority_id: str
     version: int
     gap_fill_plan: tuple[GapFillDirection, ...]
+    post_puf_transfer_surface: TargetFamilies
+    post_puf_puf_producer_surface: TargetFamilies
+    post_puf_source_producer_surface: TargetFamilies
     declared_surface: TargetFamilies
     metric_registry: Mapping[tuple[str, str, str, int], str]
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
@@ -1038,6 +1916,21 @@ class _StackedAuthority:
         if any(not isinstance(direction, GapFillDirection) for direction in plan):
             raise TypeError("Stacked authority plans require GapFillDirection values.")
         object.__setattr__(self, "gap_fill_plan", plan)
+        object.__setattr__(
+            self,
+            "post_puf_transfer_surface",
+            _freeze_target_families(self.post_puf_transfer_surface),
+        )
+        object.__setattr__(
+            self,
+            "post_puf_puf_producer_surface",
+            _freeze_target_families(self.post_puf_puf_producer_surface),
+        )
+        object.__setattr__(
+            self,
+            "post_puf_source_producer_surface",
+            _freeze_target_families(self.post_puf_source_producer_surface),
+        )
         object.__setattr__(
             self,
             "declared_surface",
@@ -1060,6 +1953,7 @@ class _StackedAuthority:
         component_digests = dict(self.declared_component_sha256)
         if set(component_digests) != {
             "gap_fill_plan",
+            "post_puf_transfer_surface",
             "declared_surface",
             "metric_registry",
             "joint_metric_registry",
@@ -1187,9 +2081,126 @@ def _plan_payload(plan: Sequence[GapFillDirection]) -> list[dict[str, object]]:
             "recipient_channel": direction.recipient_channel,
             "donor_channel": direction.donor_channel,
             "target_families": _surface_payload(direction.target_families),
+            "recipient_absence_rules": [
+                {
+                    "rule_id": rule.rule_id,
+                    "entity": rule.entity,
+                    "column": rule.column,
+                    "selection": rule.selection,
+                    "reason": rule.reason,
+                }
+                for rule in direction.recipient_absence_rules
+            ],
         }
         for direction in plan
     ]
+
+
+def _build_gap_fill_producer_schedule(
+    surface: TargetFamilies,
+) -> tuple[_GapFillProducerRecord, ...]:
+    """Resolve every early target to its actual pre-clone producer contract."""
+
+    records: list[_GapFillProducerRecord] = []
+    for entity, families in surface.items():
+        for family, targets in families.items():
+            for target in targets:
+                for operator_order_index, operator in enumerate(
+                    POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
+                ):
+                    contract = POOL_OPERATOR_CONTRACTS[operator]
+                    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[contract.family]
+                    if target not in outputs.get(entity, ()):
+                        continue
+                    if contract.execution_scope == "cps_source":
+                        produced_channel = BASE_ASEC_SUPPORT_CHANNEL
+                    elif contract.execution_scope == "whole_pool":
+                        produced_channel = "*"
+                    else:
+                        produced_channel = f"<unsupported:{contract.execution_scope}>"
+                    records.append(
+                        _GapFillProducerRecord(
+                            entity=entity,
+                            family=family,
+                            target=target,
+                            operator=operator,
+                            operator_order_index=operator_order_index,
+                            execution_scope=contract.execution_scope,
+                            produced_channel=produced_channel,
+                            producer_stage=_PRE_CLONE_PREPARATION_STAGE,
+                        )
+                    )
+    return tuple(records)
+
+
+def _gap_fill_activation_stage(direction_name: str) -> str:
+    return f"gap_fill_stacked_spine.activation[{direction_name}]"
+
+
+def _gap_fill_producer_precedence_failures(
+    plan: Sequence[GapFillDirection],
+    schedule: Sequence[_GapFillProducerRecord],
+) -> list[str]:
+    """Fail unless every direction reads a donor its producer already populated."""
+
+    stage_order = {
+        _PRE_CLONE_PREPARATION_STAGE: 0,
+        **{
+            _gap_fill_activation_stage(direction.name): index + 1
+            for index, direction in enumerate(plan)
+        },
+        _POST_GAP_FILL_STAGE: len(plan) + 1,
+    }
+    producer_index: dict[tuple[str, str, str], list[_GapFillProducerRecord]] = {}
+    for record in schedule:
+        producer_index.setdefault(
+            (record.entity, record.family, record.target), []
+        ).append(record)
+
+    failures: list[str] = []
+    for direction in plan:
+        check_stage = _gap_fill_activation_stage(direction.name)
+        check_order = stage_order[check_stage]
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                for target in targets:
+                    label = f"{direction.name}/{entity}/{family}/{target}"
+                    records = producer_index.get((entity, family, target), [])
+                    if len(records) != 1:
+                        failures.append(
+                            f"{label}: expected exactly one declared pre-clone "
+                            f"producer, found {len(records)}."
+                        )
+                        continue
+                    record = records[0]
+                    if record.execution_scope not in {"cps_source", "whole_pool"}:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} declares "
+                            f"unknown execution scope {record.execution_scope!r}."
+                        )
+                        continue
+                    producer_order = stage_order.get(record.producer_stage)
+                    if producer_order is None:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} declares "
+                            f"unknown stage {record.producer_stage!r}."
+                        )
+                    elif producer_order >= check_order:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} runs at "
+                            f"{record.producer_stage!r}, which does not precede "
+                            f"activation stage {check_stage!r}."
+                        )
+                    if record.produced_channel not in {
+                        direction.donor_channel,
+                        "*",
+                    }:
+                        failures.append(
+                            f"{label}: producer {record.operator!r} populates "
+                            f"channel {record.produced_channel!r}, but activation "
+                            f"declares donor {direction.donor_channel!r}."
+                        )
+    return failures
 
 
 def _metric_registry_payload(
@@ -1233,6 +2244,9 @@ def _support_profile_payload(profile: _BatterySupportProfile) -> dict[str, objec
 def _authority_component_payloads(
     *,
     gap_fill_plan: Sequence[GapFillDirection],
+    post_puf_transfer_surface: TargetFamilies,
+    post_puf_puf_producer_surface: TargetFamilies,
+    post_puf_source_producer_surface: TargetFamilies,
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
@@ -1240,6 +2254,18 @@ def _authority_component_payloads(
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
+        "post_puf_transfer_surface": {
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "recipient_selection": (
+                "target_specific_complement_of_declared_producer_rows"
+            ),
+            "producer_surfaces": {
+                "puf_clone": _surface_payload(post_puf_puf_producer_surface),
+                "post_clone_source": _surface_payload(post_puf_source_producer_surface),
+            },
+            "target_families": _surface_payload(post_puf_transfer_surface),
+        },
         "declared_surface": _surface_payload(declared_surface),
         "metric_registry": _metric_registry_payload(metric_registry),
         "joint_metric_registry": _joint_metric_registry_payload(joint_metric_registry),
@@ -1263,6 +2289,9 @@ def _authority_live_digests(
 ) -> tuple[dict[str, str], str]:
     payloads = _authority_component_payloads(
         gap_fill_plan=authority.gap_fill_plan,
+        post_puf_transfer_surface=authority.post_puf_transfer_surface,
+        post_puf_puf_producer_surface=(authority.post_puf_puf_producer_surface),
+        post_puf_source_producer_surface=(authority.post_puf_source_producer_surface),
         declared_surface=authority.declared_surface,
         metric_registry=authority.metric_registry,
         joint_metric_registry=authority.joint_metric_registry,
@@ -1286,6 +2315,9 @@ def _make_stacked_authority(
     authority_id: str,
     version: int,
     gap_fill_plan: Sequence[GapFillDirection],
+    post_puf_transfer_surface: TargetFamilies,
+    post_puf_puf_producer_surface: TargetFamilies,
+    post_puf_source_producer_surface: TargetFamilies,
     declared_surface: TargetFamilies,
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
@@ -1296,6 +2328,13 @@ def _make_stacked_authority(
     declared_sha256: str | None = None,
 ) -> _StackedAuthority:
     frozen_plan = tuple(gap_fill_plan)
+    frozen_post_puf_surface = _freeze_target_families(post_puf_transfer_surface)
+    frozen_post_puf_puf_producer_surface = _freeze_target_families(
+        post_puf_puf_producer_surface
+    )
+    frozen_post_puf_source_producer_surface = _freeze_target_families(
+        post_puf_source_producer_surface
+    )
     frozen_surface = _freeze_target_families(declared_surface)
     frozen_registry = _freeze_metric_registry(metric_registry)
     frozen_joint_registry = _freeze_joint_metric_registry(
@@ -1303,6 +2342,9 @@ def _make_stacked_authority(
     )
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
+        post_puf_transfer_surface=frozen_post_puf_surface,
+        post_puf_puf_producer_surface=frozen_post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=frozen_post_puf_source_producer_surface,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
@@ -1322,6 +2364,9 @@ def _make_stacked_authority(
         authority_id=authority_id,
         version=version,
         gap_fill_plan=frozen_plan,
+        post_puf_transfer_surface=frozen_post_puf_surface,
+        post_puf_puf_producer_surface=frozen_post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=frozen_post_puf_source_producer_surface,
         declared_surface=frozen_surface,
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
@@ -1839,12 +2884,33 @@ def _explicit_origin_battery_metric_registry(
 
 
 CANONICAL_STACKED_GAP_FILL_SURFACE = _freeze_target_families(
-    pool_transfer_target_families()
+    pool_pre_clone_gap_fill_target_families()
+)
+CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE = _freeze_target_families(
+    pool_post_puf_transfer_target_families()
+)
+CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE = _freeze_target_families(
+    pool_post_puf_puf_producer_target_families()
+)
+CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE = _freeze_target_families(
+    pool_post_puf_source_producer_target_families()
 )
 CANONICAL_STACKED_DECLARED_SURFACE = _terminal_surface_from_pool_registry()
 CANONICAL_STACKED_GAP_FILL_PLAN = _build_stacked_gap_fill_plan(
     CANONICAL_STACKED_GAP_FILL_SURFACE
 )
+_CANONICAL_STACKED_GAP_FILL_PRODUCER_SCHEDULE = _build_gap_fill_producer_schedule(
+    CANONICAL_STACKED_GAP_FILL_SURFACE
+)
+_canonical_producer_precedence_failures = _gap_fill_producer_precedence_failures(
+    CANONICAL_STACKED_GAP_FILL_PLAN,
+    _CANONICAL_STACKED_GAP_FILL_PRODUCER_SCHEDULE,
+)
+if _canonical_producer_precedence_failures:
+    raise RuntimeError(
+        "Canonical stacked gap-fill producer precedence is invalid:\n  "
+        + "\n  ".join(_canonical_producer_precedence_failures)
+    )
 CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _explicit_origin_battery_metric_registry(
     CANONICAL_STACKED_DECLARED_SURFACE
 )
@@ -1869,6 +2935,15 @@ CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
 _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR = CANONICAL_STACKED_DECLARED_SURFACE
 _CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR = CANONICAL_STACKED_GAP_FILL_SURFACE
 _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR = CANONICAL_STACKED_GAP_FILL_PLAN
+_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR = (
+    CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+)
+_CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR = (
+    CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+)
+_CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR = (
+    CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+)
 _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR = (
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
 )
@@ -1885,6 +2960,11 @@ _CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR = (
 _STACKED_DECLARED_SURFACE = CANONICAL_STACKED_DECLARED_SURFACE
 _STACKED_GAP_FILL_SURFACE = CANONICAL_STACKED_GAP_FILL_SURFACE
 _STACKED_GAP_FILL_PLAN = CANONICAL_STACKED_GAP_FILL_PLAN
+_STACKED_POST_PUF_TRANSFER_SURFACE = CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+_STACKED_POST_PUF_PUF_PRODUCER_SURFACE = CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE = (
+    CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+)
 _BATTERY_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
 _BATTERY_JOINT_METRIC_REGISTRY = CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
 _BATTERY_SUPPORT_PROFILE = CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
@@ -1893,6 +2973,13 @@ _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
     authority_id=_STACKED_AUTHORITY_ID,
     version=_STACKED_AUTHORITY_VERSION,
     gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
+    post_puf_transfer_surface=(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR),
+    post_puf_puf_producer_surface=(
+        _CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR
+    ),
+    post_puf_source_producer_surface=(
+        _CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR
+    ),
     declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
     metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
     joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
@@ -1907,6 +2994,15 @@ def _production_stacked_authority(
     _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
     _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
     _canonical_gap_surface: TargetFamilies = CANONICAL_STACKED_GAP_FILL_SURFACE,
+    _canonical_post_puf_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    ),
+    _canonical_post_puf_puf_producer_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+    ),
+    _canonical_post_puf_source_producer_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+    ),
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_registry: Mapping[
         tuple[str, str, str, int], str
@@ -1921,6 +3017,11 @@ def _production_stacked_authority(
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
+        and _STACKED_POST_PUF_TRANSFER_SURFACE is _canonical_post_puf_surface
+        and _STACKED_POST_PUF_PUF_PRODUCER_SURFACE
+        is _canonical_post_puf_puf_producer_surface
+        and _STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE
+        is _canonical_post_puf_source_producer_surface
         and _STACKED_DECLARED_SURFACE is _canonical_surface
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
         and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
@@ -1932,6 +3033,9 @@ def _production_stacked_authority(
         authority_id=_STACKED_AUTHORITY_ID,
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=_STACKED_GAP_FILL_PLAN,
+        post_puf_transfer_surface=_STACKED_POST_PUF_TRANSFER_SURFACE,
+        post_puf_puf_producer_surface=_STACKED_POST_PUF_PUF_PRODUCER_SURFACE,
+        post_puf_source_producer_surface=(_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE),
         declared_surface=_STACKED_DECLARED_SURFACE,
         metric_registry=_BATTERY_METRIC_REGISTRY,
         joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
@@ -1957,10 +3061,31 @@ def _metric_registry_for_surface(
     )
 
 
+def _restrict_surface_to_declared_targets(
+    surface: TargetFamilies,
+    declared: TargetFamilies,
+) -> TargetFamilies:
+    declared_keys = set(_surface_target_keys(declared))
+    restricted: dict[str, dict[str, tuple[str, ...]]] = {}
+    for entity, families in surface.items():
+        for family, targets in families.items():
+            retained = tuple(
+                target
+                for target in targets
+                if (entity, family, target, 0) in declared_keys
+            )
+            if retained:
+                restricted.setdefault(entity, {})[family] = retained
+    return restricted
+
+
 def _make_test_stacked_authority(
     *,
     declared_surface: TargetFamilies | None = None,
     gap_fill_plan: Sequence[GapFillDirection] | None = None,
+    post_puf_transfer_surface: TargetFamilies | None = None,
+    post_puf_puf_producer_surface: TargetFamilies | None = None,
+    post_puf_source_producer_surface: TargetFamilies | None = None,
     metric_registry: Mapping[tuple[str, str, str, int], str] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
@@ -1974,6 +3099,25 @@ def _make_test_stacked_authority(
         else declared_surface
     )
     plan = CANONICAL_STACKED_GAP_FILL_PLAN if gap_fill_plan is None else gap_fill_plan
+    post_puf_surface = (
+        {} if post_puf_transfer_surface is None else post_puf_transfer_surface
+    )
+    puf_producer_surface = (
+        _restrict_surface_to_declared_targets(
+            CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE,
+            post_puf_surface,
+        )
+        if post_puf_puf_producer_surface is None
+        else post_puf_puf_producer_surface
+    )
+    source_producer_surface = (
+        _restrict_surface_to_declared_targets(
+            CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE,
+            post_puf_surface,
+        )
+        if post_puf_source_producer_surface is None
+        else post_puf_source_producer_surface
+    )
     registry = (
         _metric_registry_for_surface(surface)
         if metric_registry is None
@@ -1995,6 +3139,9 @@ def _make_test_stacked_authority(
         authority_id=f"{_STACKED_AUTHORITY_ID}.test",
         version=_STACKED_AUTHORITY_VERSION,
         gap_fill_plan=plan,
+        post_puf_transfer_surface=post_puf_surface,
+        post_puf_puf_producer_surface=puf_producer_surface,
+        post_puf_source_producer_surface=source_producer_surface,
         declared_surface=surface,
         metric_registry=registry,
         joint_metric_registry=joints,
@@ -2011,6 +3158,59 @@ def stacked_gap_fill_plan() -> tuple[GapFillDirection, ...]:
     """Return the immutable canonical two-direction stacked gap-fill plan."""
 
     return _STACKED_GAP_FILL_PLAN
+
+
+def stacked_gap_fill_producer_schedule_receipt() -> Mapping[str, object]:
+    """Return the live channel-aware proof that every producer precedes its check."""
+
+    plan = stacked_gap_fill_plan()
+    schedule = _build_gap_fill_producer_schedule(
+        pool_pre_clone_gap_fill_target_families()
+    )
+    failures = _gap_fill_producer_precedence_failures(plan, schedule)
+    if failures:
+        raise ValueError(
+            "Stacked gap-fill producer precedence failed:\n  " + "\n  ".join(failures)
+        )
+    schedule_by_target = {
+        (record.entity, record.family, record.target): record for record in schedule
+    }
+    directions: list[dict[str, object]] = []
+    for index, direction in enumerate(plan):
+        targets: list[dict[str, object]] = []
+        for entity, families in direction.target_families.items():
+            for family, columns in families.items():
+                for column in columns:
+                    record = schedule_by_target[(entity, family, column)]
+                    targets.append(
+                        {
+                            "entity": entity,
+                            "family": family,
+                            "column": column,
+                            "producer": record.operator,
+                            "producer_order_index": record.operator_order_index,
+                            "execution_scope": record.execution_scope,
+                            "produced_channel": record.produced_channel,
+                            "producer_stage": record.producer_stage,
+                        }
+                    )
+        directions.append(
+            {
+                "name": direction.name,
+                "order_index": index,
+                "donor_channel": direction.donor_channel,
+                "activation_stage": _gap_fill_activation_stage(direction.name),
+                "target_count": len(targets),
+                "targets": targets,
+            }
+        )
+    payload: dict[str, object] = {
+        "status": "all_producers_precede_activation",
+        "direction_count": len(directions),
+        "target_count": len(schedule),
+        "directions": directions,
+    }
+    return {**payload, "sha256": _canonical_sha256(payload)}
 
 
 def stacked_spine_authority_receipt() -> Mapping[str, object]:
@@ -2082,6 +3282,27 @@ def _authority_receipt(
             "direction_count": len(authority.gap_fill_plan),
             "digest_matches_declared": component_integrity["gap_fill_plan"],
         },
+        "post_puf_transfer_surface": {
+            "sha256": live_components["post_puf_transfer_surface"],
+            "declared_sha256": authority.declared_component_sha256[
+                "post_puf_transfer_surface"
+            ],
+            "target_count": len(
+                _surface_target_keys(authority.post_puf_transfer_surface)
+            ),
+            "puf_producer_target_count": len(
+                _surface_target_keys(authority.post_puf_puf_producer_surface)
+            ),
+            "source_producer_target_count": len(
+                _surface_target_keys(authority.post_puf_source_producer_surface)
+            ),
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "recipient_selection": (
+                "target_specific_complement_of_declared_producer_rows"
+            ),
+            "digest_matches_declared": component_integrity["post_puf_transfer_surface"],
+        },
         "declared_surface": {
             "sha256": live_components["declared_surface"],
             "declared_sha256": authority.declared_component_sha256["declared_surface"],
@@ -2148,12 +3369,42 @@ def _authority_validation_failures(
     failures: list[str] = []
     surface_targets = _surface_target_keys(authority.declared_surface)
     plan_targets = _plan_target_keys(authority.gap_fill_plan)
+    post_puf_targets = _surface_target_keys(authority.post_puf_transfer_surface)
+    post_puf_puf_producer_targets = _surface_target_keys(
+        authority.post_puf_puf_producer_surface
+    )
+    post_puf_source_producer_targets = _surface_target_keys(
+        authority.post_puf_source_producer_surface
+    )
     duplicate_surface_targets = sorted(
         target for target, count in Counter(surface_targets).items() if count > 1
     )
     duplicate_plan_targets = sorted(
         target for target, count in Counter(plan_targets).items() if count > 1
     )
+    duplicate_post_puf_targets = sorted(
+        target for target, count in Counter(post_puf_targets).items() if count > 1
+    )
+    duplicate_post_puf_producer_targets = sorted(
+        {
+            target
+            for targets in (
+                post_puf_puf_producer_targets,
+                post_puf_source_producer_targets,
+            )
+            for target, count in Counter(targets).items()
+            if count > 1
+        }
+    )
+    if production:
+        failures.extend(
+            _gap_fill_producer_precedence_failures(
+                authority.gap_fill_plan,
+                _build_gap_fill_producer_schedule(
+                    pool_pre_clone_gap_fill_target_families()
+                ),
+            )
+        )
     if duplicate_surface_targets:
         failures.append(
             "declared surface repeats target(s): "
@@ -2170,8 +3421,58 @@ def _authority_validation_failures(
             )
             + "."
         )
+    if duplicate_post_puf_targets:
+        failures.append(
+            "post-PUF transfer surface repeats target(s): "
+            + ", ".join(
+                _battery_target_label(target) for target in duplicate_post_puf_targets
+            )
+            + "."
+        )
+    if duplicate_post_puf_producer_targets:
+        failures.append(
+            "post-PUF producer surfaces repeat target(s) within a role: "
+            + ", ".join(
+                _battery_target_label(target)
+                for target in duplicate_post_puf_producer_targets
+            )
+            + "."
+        )
+    overlap = sorted(set(plan_targets) & set(post_puf_targets))
+    if overlap:
+        failures.append(
+            "early gap-fill and post-PUF transfer surfaces overlap: "
+            + ", ".join(_battery_target_label(target) for target in overlap)
+            + "."
+        )
+    outside_declared = sorted(set(post_puf_targets) - set(surface_targets))
+    if outside_declared:
+        failures.append(
+            "post-PUF transfer targets are absent from the declared terminal "
+            "surface: "
+            + ", ".join(_battery_target_label(target) for target in outside_declared)
+            + "."
+        )
+    producer_targets = set(post_puf_puf_producer_targets) | set(
+        post_puf_source_producer_targets
+    )
+    unowned_post_puf = sorted(set(post_puf_targets) - producer_targets)
+    outside_post_puf = sorted(producer_targets - set(post_puf_targets))
+    if unowned_post_puf:
+        failures.append(
+            "post-PUF transfer targets have no declared producer role: "
+            + ", ".join(_battery_target_label(target) for target in unowned_post_puf)
+            + "."
+        )
+    if outside_post_puf:
+        failures.append(
+            "post-PUF producer roles name targets outside the transfer surface: "
+            + ", ".join(_battery_target_label(target) for target in outside_post_puf)
+            + "."
+        )
     for name, label in (
         ("gap_fill_plan", "gap-fill plan"),
+        ("post_puf_transfer_surface", "post-PUF transfer surface"),
         ("declared_surface", "declared surface"),
         ("metric_registry", "metric registry"),
         ("joint_metric_registry", "joint metric registry"),
@@ -2269,6 +3570,24 @@ def _validate_production_authority_receipt(
         )
 
 
+def validate_stacked_post_puf_transfer_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    """Reject a late-transfer receipt unless it carries canonical authority."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError(f"{boundary}: stacked post-PUF transfer receipt is absent.")
+    authority = receipt.get("authority")
+    if not isinstance(authority, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer receipt has no authority; "
+            "production manifest emission is forbidden."
+        )
+    _validate_production_authority_receipt(authority, boundary=boundary)
+
+
 def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> None:
     """Keep the explicit fixture seam visibly and terminally non-production."""
 
@@ -2285,6 +3604,7 @@ def _validate_stacked_gate_manifest_details(
     gate_name: str,
     details: Mapping[str, object],
     *,
+    passed: bool,
     _canonical_surface: TargetFamilies = CANONICAL_STACKED_DECLARED_SURFACE,
     _canonical_plan: tuple[GapFillDirection, ...] = CANONICAL_STACKED_GAP_FILL_PLAN,
     _canonical_registry: Mapping[
@@ -2306,6 +3626,9 @@ def _validate_stacked_gate_manifest_details(
     _validate_production_authority_receipt(authority, boundary=boundary)
     authority_sha256 = authority["sha256"]
     plan_sha256 = authority["components"]["gap_fill_plan"]["sha256"]
+    post_puf_surface_sha256 = authority["components"]["post_puf_transfer_surface"][
+        "sha256"
+    ]
     surface_sha256 = authority["components"]["declared_surface"]["sha256"]
     expected_keys = _surface_target_keys(_canonical_surface)
 
@@ -2313,6 +3636,94 @@ def _validate_stacked_gate_manifest_details(
         raise ValueError(
             f"{boundary}: {reason}; production manifest emission is forbidden."
         )
+
+    def nonnegative_int(
+        receipt: Mapping[str, object],
+        field_name: str,
+        *,
+        label: str,
+    ) -> int:
+        value = receipt.get(field_name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            reject(f"{label} {field_name} must be a non-negative integer")
+        return value
+
+    def validate_structural_absence_receipt(
+        raw_receipt: object,
+        *,
+        label: str,
+        battery: bool,
+    ) -> tuple[int, dict[str, int]]:
+        if not isinstance(raw_receipt, Mapping):
+            reject(f"{label} must carry canonical recipient-absence authority")
+        expected_fields = {
+            "rule_id",
+            "selection",
+            "reason",
+            "status",
+            "rows",
+            "by_origin_role",
+            "unexpected_null_rows",
+            "structural_rows_filled",
+        }
+        if battery:
+            expected_fields.update(
+                {"comparison_clone_index", "rows_excluded_from_scope"}
+            )
+        if set(raw_receipt) != expected_fields:
+            reject(f"{label} structural-absence receipt schema mismatch")
+        if (
+            raw_receipt.get("rule_id") != _ACS_GQ_RENT_ABSENCE_RULE_ID
+            or raw_receipt.get("selection") != _ACS_GQ_RENT_ABSENCE_SELECTION
+            or raw_receipt.get("reason") != _ACS_GQ_RENT_ABSENCE_REASON
+            or raw_receipt.get("status") != "exact_structural_absence"
+        ):
+            reject(f"{label} structural-absence doctrine mismatch")
+        rows = nonnegative_int(raw_receipt, "rows", label=label)
+        unexpected = nonnegative_int(
+            raw_receipt,
+            "unexpected_null_rows",
+            label=label,
+        )
+        filled = nonnegative_int(
+            raw_receipt,
+            "structural_rows_filled",
+            label=label,
+        )
+        raw_by_role = raw_receipt.get("by_origin_role")
+        if not isinstance(raw_by_role, Mapping):
+            reject(f"{label} structural by-origin-role counts are not a mapping")
+        by_role: dict[str, int] = {}
+        for cell, count in raw_by_role.items():
+            cell_channel, separator, clone_role = str(cell).partition("/clone_")
+            if (
+                not separator
+                or cell_channel != ACS_STACKED_SUPPORT_CHANNEL
+                or not clone_role.isdigit()
+                or isinstance(count, bool)
+                or not isinstance(count, int)
+                or count <= 0
+            ):
+                reject(f"{label} structural by-origin-role receipt is malformed")
+            by_role[str(cell)] = count
+        if rows != sum(by_role.values()):
+            reject(f"{label} structural row count does not equal its role counts")
+        if passed and (unexpected != 0 or filled != 0):
+            reject(f"{label} passing structural-absence equation is not exact")
+        if battery:
+            if raw_receipt.get("comparison_clone_index") != 0:
+                reject(f"{label} structural battery clone scope must be clone 0")
+            excluded = nonnegative_int(
+                raw_receipt,
+                "rows_excluded_from_scope",
+                label=label,
+            )
+            if excluded != by_role.get(f"{ACS_STACKED_SUPPORT_CHANNEL}/clone_0", 0):
+                reject(
+                    f"{label} structural battery exclusion count differs from "
+                    "its clone-0 authority"
+                )
+        return rows, by_role
 
     if gate_name == _COMPLETENESS_GATE_NAME:
         expected_labels = {
@@ -2349,6 +3760,8 @@ def _validate_stacked_gate_manifest_details(
             if (
                 target_receipt.get("authority_sha256") != authority_sha256
                 or target_receipt.get("plan_sha256") != plan_sha256
+                or target_receipt.get("post_puf_surface_sha256")
+                != post_puf_surface_sha256
                 or target_receipt.get("surface_sha256") != surface_sha256
             ):
                 reject(f"{label} target receipt is not bound to canonical authority")
@@ -2358,6 +3771,10 @@ def _validate_stacked_gate_manifest_details(
             proven = target_receipt.get("proven", {})
             if not isinstance(proven, Mapping):
                 reject(f"{label} proven-absence receipts are not a mapping")
+            unproven = target_receipt.get("unproven", {})
+            if not isinstance(unproven, Mapping):
+                reject(f"{label} unproven-absence counts are not a mapping")
+            proven_rows = 0
             for cell, proof_receipt in proven.items():
                 if not isinstance(proof_receipt, Mapping):
                     reject(f"{label} {cell} proof receipt is not a mapping")
@@ -2370,10 +3787,13 @@ def _validate_stacked_gate_manifest_details(
                 cell_channel, separator, _clone_role = str(cell).partition("/clone_")
                 if (
                     not separator
+                    or not _clone_role.isdigit()
                     or cell_channel != direction.recipient_channel
                     or proof_receipt.get("authority_form") != "origin_exact_recipient"
                     or proof_receipt.get("authority_sha256") != authority_sha256
                     or proof_receipt.get("plan_sha256") != plan_sha256
+                    or proof_receipt.get("post_puf_surface_sha256")
+                    != post_puf_surface_sha256
                     or proof_receipt.get("surface_sha256") != surface_sha256
                     or proof_receipt.get("declared_direction") != direction.name
                     or proof_receipt.get("declared_donor_channel")
@@ -2384,6 +3804,114 @@ def _validate_stacked_gate_manifest_details(
                     reject(
                         f"{label} {cell} proof is not recipient-exact canonical authority"
                     )
+                proven_rows += nonnegative_int(
+                    proof_receipt,
+                    "null_rows",
+                    label=f"{label} {cell} proof",
+                )
+            unproven_rows = 0
+            for cell, count in unproven.items():
+                cell_channel, separator, clone_role = str(cell).partition("/clone_")
+                if (
+                    not separator
+                    or not clone_role.isdigit()
+                    or not isinstance(cell_channel, str)
+                    or not cell_channel
+                    or isinstance(count, bool)
+                    or not isinstance(count, int)
+                    or count <= 0
+                ):
+                    reject(f"{label} unproven-absence receipt is malformed")
+                unproven_rows += count
+            status = target_receipt.get("status")
+            null_rows = target_receipt.get("null_rows")
+            if passed:
+                if status not in {"complete", "proven_absent"}:
+                    reject(f"{label} passing completeness status is {status!r}")
+                if (
+                    isinstance(null_rows, bool)
+                    or not isinstance(null_rows, int)
+                    or null_rows < 0
+                ):
+                    reject(f"{label} passing null_rows is not a non-negative integer")
+                if unproven_rows:
+                    reject(f"{label} passing receipt carries unproven nulls")
+                invalid_rows = nonnegative_int(
+                    target_receipt,
+                    "invalid_rows",
+                    label=label,
+                )
+                if invalid_rows:
+                    reject(f"{label} passing receipt carries invalid values")
+                if status == "complete" and (
+                    null_rows != 0
+                    or proven_rows != 0
+                    or authority_form != "observed_complete"
+                ):
+                    reject(f"{label} complete receipt has contradictory null authority")
+                if status == "proven_absent" and (
+                    null_rows <= 0
+                    or proven_rows != null_rows
+                    or authority_form != "origin_exact_recipient"
+                ):
+                    reject(f"{label} proven-absence count arithmetic is inconsistent")
+
+        rent_label = "person/housing/pre_subsidy_rent"
+        rent_target = targets[rent_label]
+        validate_rent_structure = passed or rent_target.get("status") not in {
+            "missing",
+            "missing_entity",
+        }
+        if validate_rent_structure:
+            rent_rows, rent_by_role = validate_structural_absence_receipt(
+                rent_target.get("recipient_absence_authority"),
+                label=rent_label,
+                battery=False,
+            )
+        else:
+            rent_rows, rent_by_role = 0, {}
+        if passed:
+            rent_null_rows = nonnegative_int(
+                rent_target,
+                "null_rows",
+                label=rent_label,
+            )
+            if rent_null_rows != rent_rows:
+                reject(f"{rent_label} null count differs from structural authority")
+            rent_proven = rent_target.get("proven", {})
+            if not isinstance(rent_proven, Mapping):
+                reject(f"{rent_label} proven-absence receipts are not a mapping")
+            if set(rent_proven) != set(rent_by_role):
+                reject(f"{rent_label} proven roles differ from structural authority")
+            direction = direction_by_label[rent_label]
+            expected_proof_fields = {
+                "null_rows",
+                "reason",
+                "authority_form",
+                "authority_sha256",
+                "plan_sha256",
+                "post_puf_surface_sha256",
+                "surface_sha256",
+                "declared_direction",
+                "declared_donor_channel",
+                "declared_recipient_channel",
+                "structural_absence_rule_id",
+                "structural_absence_selection",
+            }
+            for cell, count in rent_by_role.items():
+                proof = rent_proven[cell]
+                if (
+                    not isinstance(proof, Mapping)
+                    or set(proof) != expected_proof_fields
+                    or proof.get("null_rows") != count
+                    or proof.get("reason") != _ACS_GQ_RENT_ABSENCE_REASON
+                    or proof.get("structural_absence_rule_id")
+                    != _ACS_GQ_RENT_ABSENCE_RULE_ID
+                    or proof.get("structural_absence_selection")
+                    != _ACS_GQ_RENT_ABSENCE_SELECTION
+                    or proof.get("declared_direction") != direction.name
+                ):
+                    reject(f"{rent_label} {cell} structural proof is not canonical")
         return
 
     if gate_name == _BATTERY_GATE_NAME:
@@ -2434,6 +3962,46 @@ def _validate_stacked_gate_manifest_details(
                 or comparison.get("metric") != metric
             ):
                 reject(f"{label} comparison must use canonical metric {metric!r}")
+        if passed:
+            allowed_statuses = {"tested", "insufficient_support"}
+            statuses = {
+                label: comparison.get("status")
+                for label, comparison in comparisons.items()
+                if isinstance(comparison, Mapping)
+            }
+            invalid_statuses = {
+                label: status
+                for label, status in statuses.items()
+                if status not in allowed_statuses
+            }
+            if invalid_statuses:
+                reject(
+                    "passing battery carries failing comparison statuses "
+                    f"{invalid_statuses}"
+                )
+            tested_labels = {
+                label for label, status in statuses.items() if status == "tested"
+            }
+            untestable_labels = sorted(
+                label
+                for label, status in statuses.items()
+                if status == "insufficient_support"
+            )
+            if details.get("tested_comparisons") != len(tested_labels):
+                reject("passing battery tested-comparison count is inconsistent")
+            if details.get("untestable_comparisons") != untestable_labels:
+                reject("passing battery untestable-comparison list is inconsistent")
+
+        rent_label = "person/housing/pre_subsidy_rent[clone_0]"
+        rent_comparison = comparisons[rent_label]
+        if not isinstance(rent_comparison, Mapping):
+            reject(f"{rent_label} comparison is not a mapping")
+        if passed or rent_comparison.get("status") != "missing_column":
+            validate_structural_absence_receipt(
+                rent_comparison.get("recipient_absence_authority"),
+                label=rent_label,
+                battery=True,
+            )
         return
 
     reject("unknown stacked authority gate")
@@ -2442,15 +4010,39 @@ def _validate_stacked_gate_manifest_details(
 _canonical_surface_keys = _surface_target_keys(
     _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
 )
+_canonical_early_transfer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR)
+)
+_canonical_late_transfer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR)
+)
+_canonical_late_puf_producer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR)
+)
+_canonical_late_source_producer_keys = set(
+    _surface_target_keys(_CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR)
+)
+_canonical_full_transfer_keys = set(
+    _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
+)
 if (
     len(_canonical_surface_keys) != 131
     or len(set(_canonical_surface_keys)) != 131
-    or len(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR)) != 118
+    or len(_canonical_early_transfer_keys) != 48
+    or len(_canonical_late_transfer_keys) != 70
+    or len(_canonical_late_puf_producer_keys) != 43
+    or len(_canonical_late_source_producer_keys) != 30
+    or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
+    != 3
+    or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
+    != _canonical_late_transfer_keys
+    or _canonical_early_transfer_keys & _canonical_late_transfer_keys
+    or _canonical_early_transfer_keys | _canonical_late_transfer_keys
+    != _canonical_full_transfer_keys
+    or len(_canonical_full_transfer_keys) != 118
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
-    != set(_surface_target_keys(_CANONICAL_STACKED_GAP_FILL_SURFACE_ANCHOR))
-    or not set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR)).issubset(
-        _canonical_surface_keys
-    )
+    != _canonical_early_transfer_keys
+    or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
     or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
     != set(_canonical_surface_keys)
     or len(_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR) != 1
@@ -2467,8 +4059,11 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must bind an exact 118-target gap-fill "
-        "plan inside an exact 131-target terminal surface and metric registry."
+        "Canonical stacked authority must partition the exact 118-target "
+        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
+        "inside an exact 131-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 43 PUF-clone and 30 "
+        "ASEC-source producer targets with their declared three-target overlap."
     )
 
 
@@ -2646,6 +4241,101 @@ def _direction_entity_targets(
             collected.extend(targets)
         result[entity] = tuple(collected)
     return result
+
+
+def _direction_absence_rule_index(
+    direction: GapFillDirection,
+) -> dict[tuple[str, str], GapFillAbsenceRule]:
+    return {
+        (rule.entity, rule.column): rule for rule in direction.recipient_absence_rules
+    }
+
+
+def _gap_fill_absence_rule_mask(
+    frame: Frame,
+    *,
+    direction: GapFillDirection,
+    rule: GapFillAbsenceRule,
+) -> tuple[pd.Series, dict[str, object]]:
+    """Resolve one structural-null rule to an exact, live row mask and receipt."""
+
+    if (
+        rule.rule_id != _ACS_GQ_RENT_ABSENCE_RULE_ID
+        or rule.selection != _ACS_GQ_RENT_ABSENCE_SELECTION
+        or rule.entity != "person"
+        or rule.column != "pre_subsidy_rent"
+        or direction.recipient_channel != ACS_STACKED_SUPPORT_CHANNEL
+    ):
+        raise ValueError(
+            f"Gap-fill direction {direction.name!r} declares unsupported "
+            f"recipient absence rule {rule.rule_id!r}."
+        )
+
+    manifest = frame.metadata.get(STACKED_SPINE_MANIFEST_KEY)
+    if not isinstance(manifest, Mapping):
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} requires the stacked "
+            "assembly manifest."
+        )
+    gq_households, mask = _validated_acs_native_group_quarters_masks(
+        frame,
+        manifest,
+        boundary=f"gap-fill absence rule {rule.rule_id!r}",
+    )
+    household = frame.table("household")
+    person = frame.table("person")
+    required_household = {
+        "tenure_type",
+        support_channel_column("household"),
+    }
+    required_person = {
+        "person_household_id",
+        support_channel_column("person"),
+        support_clone_index_column("person"),
+    }
+    missing_household = sorted(required_household - set(household.columns))
+    missing_person = sorted(required_person - set(person.columns))
+    if missing_household or missing_person:
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} cannot resolve its exact "
+            "universe; "
+            f"missing_household={missing_household}, missing_person={missing_person}."
+        )
+
+    nonnull_gq_tenure = gq_households & household["tenure_type"].notna()
+    if nonnull_gq_tenure.any():
+        raise ValueError(
+            f"Gap-fill absence rule {rule.rule_id!r} found "
+            f"{int(nonnull_gq_tenure.sum())} ACS group-quarters household row(s) "
+            "with synthesized tenure."
+        )
+    person_channel = person[support_channel_column("person")].astype(str)
+
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")], errors="raise"
+    ).astype("int64")
+    by_origin_role = {
+        f"{channel}/clone_{int(clone)}": int(count)
+        for (channel, clone), count in (
+            pd.DataFrame(
+                {
+                    "channel": person_channel.loc[mask],
+                    "clone_index": clone_index.loc[mask],
+                }
+            )
+            .groupby(["channel", "clone_index"], sort=True)
+            .size()
+            .items()
+        )
+    }
+    return mask, {
+        "rule_id": rule.rule_id,
+        "selection": rule.selection,
+        "reason": rule.reason,
+        "status": "exact_structural_absence",
+        "rows": int(mask.sum()),
+        "by_origin_role": by_origin_role,
+    }
 
 
 def _origin_projection(frame: Frame, *, channel: str) -> Frame:
@@ -2920,6 +4610,7 @@ def _verify_gap_fill_outcome(
         (record.entity, record.column): record for record in result.imputed_inputs
     }
     target_receipts: dict[str, dict[str, object]] = {}
+    absence_rules = _direction_absence_rule_index(direction)
     for entity, families in direction.target_families.items():
         table = frame.table(entity)
         channel = table[support_channel_column(entity)].astype(str)
@@ -2956,7 +4647,8 @@ def _verify_gap_fill_outcome(
                         "changed during gap-fill transfer."
                     )
                 null_mask = table[target].isna()
-                residual_nulls = int((null_mask & recipient_rows).sum())
+                residual_mask = null_mask & recipient_rows
+                residual_nulls = int(residual_mask.sum())
                 outside_nulls = int((null_mask & ~recipient_rows).sum())
                 if outside_nulls:
                     failures.append(
@@ -2981,12 +4673,40 @@ def _verify_gap_fill_outcome(
                         f"authorized_null_rows={authorized} != "
                         f"imputed_rows={imputed} + unmodeled_rows={unmodeled}."
                     )
-                target_receipts[f"{entity}/{family}/{target}"] = {
+                target_receipt: dict[str, object] = {
                     "authorized_null_rows": authorized,
                     "imputed_rows": imputed,
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
+                rule = absence_rules.get((entity, target))
+                if rule is not None:
+                    expected_absence, absence_receipt = _gap_fill_absence_rule_mask(
+                        frame,
+                        direction=direction,
+                        rule=rule,
+                    )
+                    unexpected = int((residual_mask & ~expected_absence).sum())
+                    synthesized = int((expected_absence & ~residual_mask).sum())
+                    if unexpected or synthesized:
+                        failures.append(
+                            f"{label}: exact structural-absence equation failed; "
+                            f"unexpected_null_rows={unexpected}, "
+                            f"structural_rows_filled={synthesized}."
+                        )
+                    target_receipt["recipient_absence_authority"] = {
+                        **absence_receipt,
+                        "unexpected_null_rows": unexpected,
+                        "structural_rows_filled": synthesized,
+                    }
+                elif unmodeled or residual_nulls:
+                    failures.append(
+                        f"{label}: undeclared gap-fill residual is forbidden; "
+                        f"unmodeled_rows={unmodeled}, "
+                        f"residual_null_rows={residual_nulls}. Every downstream "
+                        "consumer requires this early target complete."
+                    )
+                target_receipts[f"{entity}/{family}/{target}"] = target_receipt
     if failures:
         raise ValueError(
             "Stacked gap-fill outcome verification failed:\n  " + "\n  ".join(failures)
@@ -3003,6 +4723,434 @@ def _verify_gap_fill_outcome(
             for record in result.fit_records
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Post-PUF transfer of outputs that do not exist at the early gap-fill stage
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StackedPostPufTransferResult:
+    """The completed stacked frame plus late-transfer provenance."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+    transfer_result: AcsTransferResult
+
+
+def transfer_stacked_post_puf_inputs(
+    frame: Frame,
+    *,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
+) -> StackedPostPufTransferResult:
+    """Transfer canonical late-produced inputs after source completion."""
+
+    return _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=_production_stacked_authority(),
+        production=True,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+    )
+
+
+def _transfer_stacked_post_puf_inputs_with_test_authority(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
+) -> StackedPostPufTransferResult:
+    """Explicit non-production seam for fixture-sized late surfaces."""
+
+    _validate_test_authority(authority, boundary="post-PUF transfer test seam")
+    return _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=authority,
+        production=False,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+    )
+
+
+def _transfer_stacked_post_puf_inputs_evaluate(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    production: bool,
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+    target_bank: AcsTransferTargetBank | None,
+) -> StackedPostPufTransferResult:
+    """Run the late transfer from the one role carrying every declared target."""
+
+    authority_receipt = _authority_receipt(authority)
+    authority_failures = _authority_validation_failures(
+        authority,
+        production=production,
+    )
+    if authority_failures:
+        raise ValueError(
+            "Stacked post-PUF transfer authority validation failed:\n  "
+            + "\n  ".join(authority_failures)
+        )
+    if production:
+        _validate_production_authority_receipt(
+            authority_receipt,
+            boundary="stacked post-PUF transfer entry",
+        )
+    validate_stacked_spine_frame(frame, boundary="stacked post-PUF transfer entry")
+    validate_puf_clone_attachment(
+        frame,
+        boundary="stacked post-PUF transfer attachment",
+    )
+    surface = authority.post_puf_transfer_surface
+    if not _surface_target_keys(surface):
+        raise ValueError("Stacked post-PUF transfer requires at least one target.")
+
+    pre_counts = _verify_post_puf_transfer_activation_authority(
+        frame,
+        target_families=surface,
+        puf_producer_families=authority.post_puf_puf_producer_surface,
+        source_producer_families=authority.post_puf_source_producer_surface,
+    )
+    donor = _post_puf_donor_projection(frame)
+    puf_producer_keys = set(
+        _surface_target_keys(authority.post_puf_puf_producer_surface)
+    )
+    source_producer_keys = set(
+        _surface_target_keys(authority.post_puf_source_producer_surface)
+    )
+    producer_snapshot = {
+        (entity, target): _post_puf_producer_snapshot(
+            frame,
+            entity=entity,
+            target=target,
+            puf_produced=(entity, family, target, 0) in puf_producer_keys,
+            source_produced=(entity, family, target, 0) in source_producer_keys,
+        )
+        for entity, families in surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    transfer = transfer_acs_inputs(
+        frame,
+        donor,
+        target_families=surface,
+        donor_channel=None,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+    )
+    target_receipts = _verify_post_puf_transfer_outcome(
+        transfer.frame,
+        target_families=surface,
+        puf_producer_families=authority.post_puf_puf_producer_surface,
+        source_producer_families=authority.post_puf_source_producer_surface,
+        pre_counts=pre_counts,
+        producer_snapshot=producer_snapshot,
+        result=transfer,
+    )
+    validate_stacked_spine_frame(
+        transfer.frame,
+        boundary="stacked post-PUF transfer output",
+    )
+    return StackedPostPufTransferResult(
+        frame=transfer.frame,
+        receipt={
+            "authority": authority_receipt,
+            "donor_selection": "owner_projection_of_asec_origin_clone_1",
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "recipient_selection": (
+                "target_specific_complement_of_declared_producer_rows"
+            ),
+            "resolved_donor_channel": transfer.resolved_donor_channel,
+            "targets": target_receipts,
+            "fit_records": [
+                {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+                for record in transfer.fit_records
+            ],
+        },
+        transfer_result=transfer,
+    )
+
+
+def _post_puf_role_mask(frame: Frame, *, entity: str) -> pd.Series:
+    table = frame.table(entity)
+    return table[support_channel_column(entity)].astype(str).eq(
+        BASE_ASEC_SUPPORT_CHANNEL
+    ) & pd.to_numeric(
+        table[support_clone_index_column(entity)],
+        errors="raise",
+    ).eq(PUF_TAX_DETAIL_CLONE_INDEX)
+
+
+def _post_puf_donor_projection(frame: Frame) -> Frame:
+    person_mask = _post_puf_role_mask(frame, entity=frame.schema.person_entity)
+    if not person_mask.any():
+        raise ValueError(
+            "Stacked post-PUF transfer has no ASEC-origin clone-1 donor rows."
+        )
+    return frame.select(person_mask.to_numpy(dtype=bool))
+
+
+def _verify_post_puf_cross_grain_clone_provenance(frame: Frame) -> None:
+    """Require each person to share the clone role of every parent entity."""
+
+    person_entity = frame.schema.person_entity
+    person = frame.table(person_entity)
+    person_clone = pd.to_numeric(
+        person[support_clone_index_column(person_entity)],
+        errors="raise",
+    )
+    failures: list[str] = []
+    for group in frame.schema.group_entities:
+        membership_column = frame.schema.membership_column(group)
+        group_id_column = frame.schema.entity_id_column(group)
+        group_table = frame.table(group)
+        group_clone = pd.to_numeric(
+            group_table.set_index(group_id_column)[support_clone_index_column(group)],
+            errors="raise",
+        )
+        expected = person[membership_column].map(group_clone)
+        mismatch = expected.isna() | expected.ne(person_clone)
+        if mismatch.any():
+            failures.append(
+                f"{int(mismatch.sum())} person/{group} link(s) disagree on "
+                "support clone index"
+            )
+    if failures:
+        raise ValueError(
+            "Stacked post-PUF transfer cross-grain clone provenance failed:\n  "
+            + "\n  ".join(failures)
+        )
+
+
+def _post_puf_producer_mask(
+    frame: Frame,
+    *,
+    entity: str,
+    puf_produced: bool,
+    source_produced: bool,
+) -> pd.Series:
+    table = frame.table(entity)
+    producer_rows = pd.Series(False, index=table.index, dtype=bool)
+    if puf_produced:
+        producer_rows |= pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).gt(0)
+    if source_produced:
+        producer_rows |= (
+            table[support_channel_column(entity)]
+            .astype(str)
+            .eq(BASE_ASEC_SUPPORT_CHANNEL)
+        )
+    return producer_rows
+
+
+def _post_puf_producer_snapshot(
+    frame: Frame,
+    *,
+    entity: str,
+    target: str,
+    puf_produced: bool,
+    source_produced: bool,
+) -> pd.Series:
+    table = frame.table(entity)
+    producer_rows = _post_puf_producer_mask(
+        frame,
+        entity=entity,
+        puf_produced=puf_produced,
+        source_produced=source_produced,
+    )
+    return table.loc[producer_rows, target].copy(deep=True)
+
+
+def _verify_post_puf_transfer_activation_authority(
+    frame: Frame,
+    *,
+    target_families: TargetFamilies,
+    puf_producer_families: TargetFamilies,
+    source_producer_families: TargetFamilies,
+) -> dict[tuple[str, str], dict[str, int]]:
+    """Require complete declared producers before authorizing recipient nulls."""
+
+    failures: list[str] = []
+    counts: dict[tuple[str, str], dict[str, int]] = {}
+    _verify_post_puf_cross_grain_clone_provenance(frame)
+    puf_producer_keys = set(_surface_target_keys(puf_producer_families))
+    source_producer_keys = set(_surface_target_keys(source_producer_families))
+    for entity, families in target_families.items():
+        table = frame.table(entity)
+        donor_rows = _post_puf_role_mask(frame, entity=entity)
+        donor_count = int(donor_rows.sum())
+        if donor_count == 0:
+            failures.append(
+                f"post_puf_transfer/{entity}: declared ASEC clone-1 donor role "
+                "has no live rows."
+            )
+        for family, targets in families.items():
+            for target in targets:
+                label = f"post_puf_transfer/{entity}/{family}/{target}"
+                key = (entity, family, target, 0)
+                puf_produced = key in puf_producer_keys
+                source_produced = key in source_producer_keys
+                producer_rows = _post_puf_producer_mask(
+                    frame,
+                    entity=entity,
+                    puf_produced=puf_produced,
+                    source_produced=source_produced,
+                )
+                recipient_rows = ~producer_rows
+                if target not in table.columns:
+                    failures.append(
+                        f"{label}: declared post-PUF transfer target column is "
+                        "absent from the stacked spine."
+                    )
+                    continue
+                null_mask = table[target].isna()
+                producer_nulls = int((null_mask & producer_rows).sum())
+                if producer_nulls:
+                    roles = ", ".join(
+                        role
+                        for role, active in (
+                            ("PUF clone", puf_produced),
+                            ("ASEC source", source_produced),
+                        )
+                        if active
+                    )
+                    failures.append(
+                        f"{label}: declared {roles} producer role(s) have "
+                        f"{producer_nulls} null cell(s); upstream producers must "
+                        "observe every producer-owned target."
+                    )
+                counts[(entity, target)] = {
+                    "authorized_null_rows": int((null_mask & recipient_rows).sum()),
+                    "recipient_rows": int(recipient_rows.sum()),
+                    "producer_rows": int(producer_rows.sum()),
+                    "donor_rows": donor_count,
+                }
+    if failures:
+        raise ValueError(
+            "Stacked post-PUF transfer activation authority failed:\n  "
+            + "\n  ".join(failures)
+        )
+    return counts
+
+
+def _verify_post_puf_transfer_outcome(
+    frame: Frame,
+    *,
+    target_families: TargetFamilies,
+    puf_producer_families: TargetFamilies,
+    source_producer_families: TargetFamilies,
+    pre_counts: Mapping[tuple[str, str], Mapping[str, int]],
+    producer_snapshot: Mapping[tuple[str, str], pd.Series],
+    result: AcsTransferResult,
+) -> dict[str, dict[str, object]]:
+    """Prove producers were preserved and every authorized null was filled."""
+
+    failures: list[str] = []
+    imputed_by_target = {
+        (record.entity, record.column): record for record in result.imputed_inputs
+    }
+    target_receipts: dict[str, dict[str, object]] = {}
+    puf_producer_keys = set(_surface_target_keys(puf_producer_families))
+    source_producer_keys = set(_surface_target_keys(source_producer_families))
+    for entity, families in target_families.items():
+        table = frame.table(entity)
+        for family, family_targets in families.items():
+            for target in family_targets:
+                label = f"post_puf_transfer/{entity}/{family}/{target}"
+                key = (entity, family, target, 0)
+                puf_produced = key in puf_producer_keys
+                source_produced = key in source_producer_keys
+                producer_rows = _post_puf_producer_mask(
+                    frame,
+                    entity=entity,
+                    puf_produced=puf_produced,
+                    source_produced=source_produced,
+                )
+                recipient_rows = ~producer_rows
+                before = producer_snapshot.get((entity, target))
+                after = table.loc[producer_rows, target].copy(deep=True)
+                if before is None or _canonical_donor_series_payload(
+                    before,
+                    boundary=f"{label} producer identity before transfer",
+                ) != _canonical_donor_series_payload(
+                    after,
+                    boundary=f"{label} producer identity after transfer",
+                ):
+                    failures.append(
+                        f"{label}: producer byte identity failed; a declared "
+                        "producer payload changed during transfer."
+                    )
+                null_mask = table[target].isna()
+                producer_nulls = int((null_mask & producer_rows).sum())
+                recipient_nulls = int((null_mask & recipient_rows).sum())
+                residual_nulls = int(null_mask.sum())
+                record = imputed_by_target.get((entity, target))
+                imputed = record.imputed_recipient_rows if record else 0
+                unmodeled = record.unmodeled_recipient_rows if record else 0
+                authorized = pre_counts[(entity, target)]["authorized_null_rows"]
+                if producer_nulls:
+                    failures.append(
+                        f"{label}: {producer_nulls} producer null cell(s) appeared "
+                        "during transfer."
+                    )
+                if recipient_nulls != unmodeled:
+                    failures.append(
+                        f"{label}: residual-null equation failed: "
+                        f"recipient_null_rows={recipient_nulls} != "
+                        f"unmodeled_rows={unmodeled}."
+                    )
+                if authorized != imputed + unmodeled:
+                    failures.append(
+                        f"{label}: activation accounting equation failed: "
+                        f"authorized_null_rows={authorized} != "
+                        f"imputed_rows={imputed} + unmodeled_rows={unmodeled}."
+                    )
+                if unmodeled or residual_nulls:
+                    failures.append(
+                        f"{label}: declared post-PUF transfer left "
+                        f"unmodeled_rows={unmodeled}, "
+                        f"residual_null_rows={residual_nulls}; zero are allowed."
+                    )
+                target_receipts[f"{entity}/{family}/{target}"] = {
+                    "producer_roles": [
+                        role
+                        for role, active in (
+                            ("puf_clone", puf_produced),
+                            ("asec_source", source_produced),
+                        )
+                        if active
+                    ],
+                    "producer_rows": pre_counts[(entity, target)]["producer_rows"],
+                    "authorized_null_rows": authorized,
+                    "imputed_rows": imputed,
+                    "unmodeled_rows": unmodeled,
+                    "residual_null_rows": residual_nulls,
+                }
+    if failures:
+        raise ValueError(
+            "Stacked post-PUF transfer outcome verification failed:\n  "
+            + "\n  ".join(failures)
+        )
+    return target_receipts
 
 
 # ---------------------------------------------------------------------------
@@ -3101,8 +5249,12 @@ def _run_stacked_puf_pass_evaluate(
             "The stacked PUF pass owns clone attachment; found nonzero person "
             "support clone indices on its input."
         )
-    cloned = clone_us_frame_for_puf_support(
+    universe_application = apply_acs_pums_earnings_universe_zeros(
         frame,
+        boundary="stacked PUF pass ACS earnings universe",
+    )
+    cloned = clone_us_frame_for_puf_support(
+        universe_application.frame,
         clone_attachment_fraction=clone_attachment_fraction,
         clone_attachment_seed=clone_attachment_seed,
     )
@@ -3121,6 +5273,7 @@ def _run_stacked_puf_pass_evaluate(
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
     if primary_qrf_checkpoint_dir is None:
+        predictor_universe_receipts: list[dict[str, object]] = []
         imputed = impute_us_puf_tax_detail_support(
             cloned,
             donor_tax_units,
@@ -3128,13 +5281,20 @@ def _run_stacked_puf_pass_evaluate(
             n_estimators=n_estimators,
             fit_records=fit_records,
             tail_bound_diagnostics=tail_bound_diagnostics,
+            predictor_universe_receipts=predictor_universe_receipts,
             require_complete_recipient_predictors=True,
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
             **kwargs,
         )
+        if len(predictor_universe_receipts) != 1:
+            raise AssertionError(
+                "Stacked monolithic PUF pass emitted the wrong number of "
+                "recipient predictor universe receipts."
+            )
         primary_qrf_receipt: dict[str, object] = {
             "mode": "monolithic",
             "resume_status": "not_applicable",
+            "recipient_predictor_universe": predictor_universe_receipts[0],
         }
     else:
         checkpoint_dir = Path(primary_qrf_checkpoint_dir)
@@ -3158,6 +5318,9 @@ def _run_stacked_puf_pass_evaluate(
                 **kwargs,
             )
             resume_status = "initialized"
+        predictor_universe_receipt = (
+            primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
+        )
         run_primary_puf_qrf_chain(checkpoint_dir)
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
@@ -3170,6 +5333,7 @@ def _run_stacked_puf_pass_evaluate(
             "mode": "checkpoint_chain",
             "resume_status": resume_status,
             "checkpoint_manifest": str(manifest_path.resolve()),
+            "recipient_predictor_universe": predictor_universe_receipt,
         }
 
     validate_stacked_spine_frame(imputed, boundary="stacked primary PUF output")
@@ -3187,7 +5351,18 @@ def _run_stacked_puf_pass_evaluate(
             seed=seed,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
-        tail_receipt = _bind_stacked_tail_origin_receipt(output, tail_receipt)
+        # The tail producer creates clone role 2 before its final origin
+        # receipt can be added to the tail manifest.  Bind the producer's
+        # original manifest into a provisional attachment first, so no
+        # unreceipted clone role crosses the stacked validation boundary used
+        # to derive that origin receipt.  Rebind once more to the final tail
+        # digest below.
+        provisional = bind_puf_clone_attachment_tail_descendant(
+            output,
+            attachment_receipt=attachment,
+            tail_manifest=tail_receipt,
+        )
+        tail_receipt = _bind_stacked_tail_origin_receipt(provisional, tail_receipt)
         output = bind_puf_clone_attachment_tail_descendant(
             output,
             attachment_receipt=attachment,
@@ -3224,6 +5399,9 @@ def _run_stacked_puf_pass_evaluate(
     return StackedPufPassResult(
         frame=output,
         receipt={
+            "acs_earnings_universe_application": _json_ready(
+                universe_application.receipt
+            ),
             "clone_attachment": _json_ready(attachment),
             "doctrines": {
                 "require_complete_recipient_predictors": True,
@@ -3887,6 +6065,9 @@ def _stacked_completeness_gate_evaluate(
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
+    _canonical_post_puf_surface: TargetFamilies = (
+        CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    ),
 ) -> GateResult:
     """Prove every declared target is filled or carries absence authority.
 
@@ -3907,7 +6088,7 @@ def _stacked_completeness_gate_evaluate(
     if declared_count == 0:
         failures.append("declared stacked surface contains zero targets.")
     if failures:
-        return GateResult(
+        return _sealed_stacked_gate_result(
             name=_COMPLETENESS_GATE_NAME,
             passed=False,
             failures=tuple(failures),
@@ -3919,6 +6100,9 @@ def _stacked_completeness_gate_evaluate(
         )
 
     declared_directions: dict[tuple[str, str], GapFillDirection] = {}
+    declared_absence_rules: dict[
+        tuple[str, str], tuple[GapFillDirection, GapFillAbsenceRule]
+    ] = {}
     for direction in authority.gap_fill_plan:
         for entity, targets in _direction_entity_targets(direction).items():
             for target in targets:
@@ -3931,6 +6115,8 @@ def _stacked_completeness_gate_evaluate(
                         f"{direction.name!r}."
                     )
                 declared_directions[key] = direction
+        for rule in direction.recipient_absence_rules:
+            declared_absence_rules[(rule.entity, rule.column)] = (direction, rule)
     canonical_direction_keys: set[tuple[str, str]] = set()
     for direction in _canonical_gap_fill_plan:
         for entity, targets in _direction_entity_targets(direction).items():
@@ -3938,6 +6124,21 @@ def _stacked_completeness_gate_evaluate(
                 key = (entity, target)
                 canonical_direction_keys.add(key)
                 declared_directions[key] = direction
+        for rule in direction.recipient_absence_rules:
+            declared_absence_rules[(rule.entity, rule.column)] = (direction, rule)
+    declared_post_puf_keys = {
+        (entity, target)
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for targets in families.values()
+        for target in targets
+    }
+    canonical_post_puf_keys = {
+        (entity, target)
+        for entity, families in _canonical_post_puf_surface.items()
+        for targets in families.values()
+        for target in targets
+    }
+    post_puf_keys = declared_post_puf_keys | canonical_post_puf_keys
 
     proof_index: dict[tuple[str, str], dict[tuple[str, int], str]] = {}
     for proof in absence_proofs:
@@ -3959,6 +6160,9 @@ def _stacked_completeness_gate_evaluate(
     }
     authority_sha256 = authority_receipt["sha256"]
     plan_sha256 = authority_receipt["components"]["gap_fill_plan"]["sha256"]
+    post_puf_surface_sha256 = authority_receipt["components"][
+        "post_puf_transfer_surface"
+    ]["sha256"]
     surface_sha256 = authority_receipt["components"]["declared_surface"]["sha256"]
 
     def authority_binding(authority_form: str) -> dict[str, object]:
@@ -3966,6 +6170,7 @@ def _stacked_completeness_gate_evaluate(
             "authority_form": authority_form,
             "authority_sha256": authority_sha256,
             "plan_sha256": plan_sha256,
+            "post_puf_surface_sha256": post_puf_surface_sha256,
             "surface_sha256": surface_sha256,
         }
 
@@ -4007,6 +6212,32 @@ def _stacked_completeness_gate_evaluate(
                     }
                     continue
                 null_mask = table[target].isna()
+                structural_absence_receipt: dict[str, object] | None = None
+                structural_absence_mismatch = False
+                structural_rule = declared_absence_rules.get((entity, target))
+                if structural_rule is not None:
+                    rule_direction, rule = structural_rule
+                    structural_mask, structural_absence_receipt = (
+                        _gap_fill_absence_rule_mask(
+                            frame,
+                            direction=rule_direction,
+                            rule=rule,
+                        )
+                    )
+                    unexpected = int((null_mask & ~structural_mask).sum())
+                    synthesized = int((structural_mask & ~null_mask).sum())
+                    structural_absence_receipt = {
+                        **structural_absence_receipt,
+                        "unexpected_null_rows": unexpected,
+                        "structural_rows_filled": synthesized,
+                    }
+                    structural_absence_mismatch = bool(unexpected or synthesized)
+                    if structural_absence_mismatch:
+                        failures.append(
+                            f"{label}: exact structural-absence equation failed; "
+                            f"unexpected_null_rows={unexpected}, "
+                            f"structural_rows_filled={synthesized}."
+                        )
                 metric = metric_by_target[(entity, family, target)]
                 invalid_mask, invalidity = _declared_metric_invalidity(
                     table[target],
@@ -4038,7 +6269,13 @@ def _stacked_completeness_gate_evaluate(
                     )
                 if not null_mask.any():
                     target_receipts[label] = {
-                        "status": ("invalid_values" if invalid_rows else "complete"),
+                        "status": (
+                            "structural_absence_mismatch"
+                            if structural_absence_mismatch
+                            else "invalid_values"
+                            if invalid_rows
+                            else "complete"
+                        ),
                         "null_rows": 0,
                         "metric": metric,
                         "invalid_rows": invalid_rows,
@@ -4049,10 +6286,39 @@ def _stacked_completeness_gate_evaluate(
                             if invalid_rows
                             else "observed_complete"
                         ),
+                        **(
+                            {
+                                "recipient_absence_authority": (
+                                    structural_absence_receipt
+                                )
+                            }
+                            if structural_absence_receipt is not None
+                            else {}
+                        ),
                     }
                     continue
-                proofs = proof_index.get((entity, target), {})
+                proofs = dict(proof_index.get((entity, target), {}))
+                if structural_rule is not None:
+                    proofs = {}
+                    if not structural_absence_mismatch:
+                        _rule_direction, rule = structural_rule
+                        structural_mask, _receipt = _gap_fill_absence_rule_mask(
+                            frame,
+                            direction=_rule_direction,
+                            rule=rule,
+                        )
+                        structural_channels = channel.loc[structural_mask]
+                        structural_clones = clone_index.loc[structural_mask]
+                        for cell_channel, cell_clone in set(
+                            zip(
+                                structural_channels.astype(str),
+                                structural_clones.astype(int),
+                                strict=True,
+                            )
+                        ):
+                            proofs[(str(cell_channel), int(cell_clone))] = rule.reason
                 declared_direction = declared_directions.get((entity, target))
+                post_puf_target = (entity, target) in post_puf_keys
                 null_channels = channel.loc[null_mask]
                 null_clones = clone_index.loc[null_mask]
                 unproven: dict[str, int] = {}
@@ -4068,6 +6334,15 @@ def _stacked_completeness_gate_evaluate(
                     cell_clone = int(cell_clone)
                     reason = proofs.get((cell_channel, cell_clone))
                     authority_form = "origin_exact"
+                    if post_puf_target:
+                        if reason is not None or (_ANY_CHANNEL, cell_clone) in proofs:
+                            failures.append(
+                                f"{label}: absence authority is forbidden because "
+                                "the declared post-PUF transfer requires zero "
+                                f"residual nulls; found {int(count)} null cell(s) "
+                                f"on {cell_channel}/clone_{cell_clone}."
+                            )
+                        reason = None
                     if declared_direction is not None and reason is not None:
                         if cell_channel != declared_direction.recipient_channel:
                             failures.append(
@@ -4080,7 +6355,11 @@ def _stacked_completeness_gate_evaluate(
                             reason = None
                         else:
                             authority_form = "origin_exact_recipient"
-                    if reason is None and declared_direction is None:
+                    if (
+                        reason is None
+                        and declared_direction is None
+                        and not post_puf_target
+                    ):
                         reason = proofs.get((_ANY_CHANNEL, cell_clone))
                         authority_form = "wildcard_no_declared_donor_plan"
                     key = f"{cell_channel}/clone_{cell_clone}"
@@ -4096,6 +6375,12 @@ def _stacked_completeness_gate_evaluate(
                                 f"{declared_direction.donor_channel!r} and recipient "
                                 f"{declared_direction.recipient_channel!r}; wildcard "
                                 "authority is forbidden."
+                            )
+                        elif post_puf_target:
+                            failures.append(
+                                f"{label}: {int(count)} null cell(s) on {key} "
+                                "violate the zero-residual post-PUF transfer "
+                                "contract; absence proofs are forbidden."
                             )
                     else:
                         proof_receipt: dict[str, object] = {
@@ -4113,6 +6398,14 @@ def _stacked_completeness_gate_evaluate(
                                     "declared_recipient_channel": (
                                         declared_direction.recipient_channel
                                     ),
+                                }
+                            )
+                        if structural_rule is not None:
+                            _rule_direction, rule = structural_rule
+                            proof_receipt.update(
+                                {
+                                    "structural_absence_rule_id": rule.rule_id,
+                                    "structural_absence_selection": rule.selection,
                                 }
                             )
                         proven[key] = proof_receipt
@@ -4149,8 +6442,13 @@ def _stacked_completeness_gate_evaluate(
                         if invalid_rows and not unproven
                         else target_authority_form
                     ),
+                    **(
+                        {"recipient_absence_authority": (structural_absence_receipt)}
+                        if structural_absence_receipt is not None
+                        else {}
+                    ),
                 }
-    return GateResult(
+    return _sealed_stacked_gate_result(
         name=_COMPLETENESS_GATE_NAME,
         passed=not failures,
         failures=tuple(failures),
@@ -4276,6 +6574,9 @@ def _by_origin_battery_evaluate(
     *,
     authority: _StackedAuthority,
     production: bool,
+    _canonical_gap_fill_plan: tuple[
+        GapFillDirection, ...
+    ] = CANONICAL_STACKED_GAP_FILL_PLAN,
 ) -> GateResult:
     """Compare declared statistics between origins within the one spine.
 
@@ -4339,7 +6640,7 @@ def _by_origin_battery_evaluate(
         "support_profile": support_profile_receipt,
     }
     if registration_failures:
-        return GateResult(
+        return _sealed_stacked_gate_result(
             name=_BATTERY_GATE_NAME,
             passed=False,
             failures=tuple(registration_failures),
@@ -4355,8 +6656,15 @@ def _by_origin_battery_evaluate(
 
     failures: list[str] = []
     comparisons: dict[str, object] = {}
+    structural_absence_receipts: dict[str, dict[str, object]] = {}
     untestable: list[str] = []
     tested = 0
+    declared_absence_rules: dict[
+        tuple[str, str], tuple[GapFillDirection, GapFillAbsenceRule]
+    ] = {}
+    for direction in (*authority.gap_fill_plan, *_canonical_gap_fill_plan):
+        for rule in direction.recipient_absence_rules:
+            declared_absence_rules[(rule.entity, rule.column)] = (direction, rule)
     for spec in specs:
         table = frame.table(spec.entity)
         channel = table[support_channel_column(spec.entity)].astype(str)
@@ -4369,8 +6677,6 @@ def _by_origin_battery_evaluate(
             dtype=np.float64,
         )
         scope = (clone_index.eq(spec.clone_index)).to_numpy() & (weights > 0.0)
-        left_rows = scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
-        right_rows = scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
         for column, metric in spec.column_metrics.items():
             label = f"{spec.entity}/{spec.family}/{column}[clone_{spec.clone_index}]"
             if column not in table.columns:
@@ -4381,7 +6687,44 @@ def _by_origin_battery_evaluate(
                 }
                 continue
             series = table[column]
-            scoped_nulls = int(series.isna().to_numpy(dtype=bool)[scope].sum())
+            target_scope = scope.copy()
+            structural_rule = declared_absence_rules.get((spec.entity, column))
+            if structural_rule is not None:
+                rule_direction, rule = structural_rule
+                structural_mask, structural_receipt = _gap_fill_absence_rule_mask(
+                    frame,
+                    direction=rule_direction,
+                    rule=rule,
+                )
+                scoped_structural = structural_mask.to_numpy(dtype=bool) & scope
+                scoped_null_mask = series.isna().to_numpy(dtype=bool) & scope
+                unexpected = int((scoped_null_mask & ~scoped_structural).sum())
+                synthesized = int((scoped_structural & ~scoped_null_mask).sum())
+                structural_receipt = {
+                    **structural_receipt,
+                    "comparison_clone_index": spec.clone_index,
+                    "rows_excluded_from_scope": int(scoped_structural.sum()),
+                    "unexpected_null_rows": unexpected,
+                    "structural_rows_filled": synthesized,
+                }
+                structural_absence_receipts[label] = structural_receipt
+                if unexpected or synthesized:
+                    failures.append(
+                        f"{label}: exact structural-absence equation failed; "
+                        f"unexpected_null_rows={unexpected}, "
+                        f"structural_rows_filled={synthesized}."
+                    )
+                    comparisons[label] = {
+                        "status": "structural_absence_mismatch",
+                        "metric": metric,
+                    }
+                    continue
+                target_scope &= ~scoped_structural
+            left_rows = target_scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+            right_rows = (
+                target_scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()
+            )
+            scoped_nulls = int(series.isna().to_numpy(dtype=bool)[target_scope].sum())
             if scoped_nulls:
                 failures.append(
                     f"{label}: {scoped_nulls} null value(s) inside the "
@@ -4397,7 +6740,7 @@ def _by_origin_battery_evaluate(
             invalid_mask, invalidity = _declared_metric_invalidity(
                 series,
                 metric=metric,
-                scope=scope,
+                scope=target_scope,
             )
             invalid_rows = int(invalid_mask.sum())
             if invalid_rows:
@@ -4420,7 +6763,7 @@ def _by_origin_battery_evaluate(
                     label,
                     series,
                     metric=metric,
-                    scope=scope,
+                    scope=target_scope,
                     failures=failures,
                 )
                 if values is None:
@@ -4540,7 +6883,11 @@ def _by_origin_battery_evaluate(
             failures=failures,
             comparisons=comparisons,
         )
-    return GateResult(
+    for label, receipt in structural_absence_receipts.items():
+        comparison = comparisons.get(label)
+        if isinstance(comparison, dict):
+            comparison["recipient_absence_authority"] = receipt
+    return _sealed_stacked_gate_result(
         name=_BATTERY_GATE_NAME,
         passed=not failures,
         failures=tuple(failures),

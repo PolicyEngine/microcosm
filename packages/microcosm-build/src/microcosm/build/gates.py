@@ -126,6 +126,12 @@ class GateResult:
     passed: bool
     failures: tuple[str, ...] = ()
     details: Mapping[str, object] = field(default_factory=dict)
+    _stacked_authority_seal: bytes | None = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _details_protocol_5_snapshot: bytes | None = field(
         init=False,
         repr=False,
@@ -146,6 +152,29 @@ class GateResult:
                 "_details_protocol_5_snapshot",
                 pickle.dumps(dict(self.details), protocol=5),
             )
+
+
+def _sealed_stacked_gate_result(
+    *,
+    name: str,
+    passed: bool,
+    failures: tuple[str, ...],
+    details: Mapping[str, object],
+) -> GateResult:
+    """Mint a stacked-gate result whose evaluated evidence cannot be replaced."""
+
+    seal = pickle.dumps(
+        (name, passed, failures, dict(details)),
+        protocol=5,
+    )
+    result = GateResult(
+        name=name,
+        passed=passed,
+        failures=failures,
+        details=details,
+    )
+    object.__setattr__(result, "_stacked_authority_seal", seal)
+    return result
 
 
 @dataclass(frozen=True)
@@ -248,7 +277,25 @@ class GateReport:
                 _validate_stacked_gate_manifest_details,
             )
 
-            _validate_stacked_gate_manifest_details(result.name, result.details)
+            _validate_stacked_gate_manifest_details(
+                result.name,
+                result.details,
+                passed=result.passed,
+            )
+            expected_seal = pickle.dumps(
+                (
+                    result.name,
+                    result.passed,
+                    result.failures,
+                    dict(result.details),
+                ),
+                protocol=5,
+            )
+            if result._stacked_authority_seal != expected_seal:
+                raise ValueError(
+                    f"Gate {result.name!r} was not sealed by its evaluator; "
+                    "production manifest emission is forbidden."
+                )
         return {
             "passed": self.passed,
             "gates": {
