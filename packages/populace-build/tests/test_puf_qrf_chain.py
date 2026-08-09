@@ -482,23 +482,43 @@ def test_resumed_earnings_chain_keeps_children_out_of_allocation(
         40_000.0,
         len(donor),
     )
+    donor["self_employment_income_before_lsr"] = np.linspace(
+        100.0,
+        4_000.0,
+        len(donor),
+    )
     checkpoint_dir = tmp_path / "primary_qrf_earnings_resume"
-    initialize_primary_puf_qrf_chain(
+    person_outputs = (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    )
+    manifest = initialize_primary_puf_qrf_chain(
         frame,
         donor,
         checkpoint_dir,
         predictors=_PREDICTORS,
-        person_outputs=("employment_income_before_lsr",),
+        person_outputs=person_outputs,
         tax_unit_outputs=(),
         n_estimators=2,
         seed=19,
+        require_complete_recipient_predictors=True,
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
     )
+    allocation = manifest["recipient_predictor_universe"]["person_output_allocation"]
+    assert allocation["person_outputs"] == sorted(person_outputs)
+    assert allocation["out_of_universe_person_rows"] == 2
+    assert allocation["empty_eligible_tax_unit_rows"] == 1
+    assert allocation["first_person_fallback_out_of_universe_rows"] == 0
+
     completed_target = run_primary_puf_qrf_target(checkpoint_dir, 0)
     completed_bytes = completed_target.read_bytes()
+    pending_target = puf_qrf_chain_module._target_path(checkpoint_dir, manifest, 1)
+    assert not pending_target.exists()
 
-    # The supervisor resumes the exact completed prefix instead of rewriting it.
+    # The supervisor preserves the completed prefix and resumes the missing target.
     run_primary_puf_qrf_chain(checkpoint_dir)
     assert completed_target.read_bytes() == completed_bytes
+    assert pending_target.is_file()
     resumed, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
 
     assert weight_kind == "design"
@@ -507,15 +527,14 @@ def test_resumed_earnings_chain_keeps_children_out_of_allocation(
     children = detail & resumed_person["age"].lt(15)
     adults = detail & resumed_person["age"].ge(15)
     assert int(children.sum()) == 2
-    assert resumed_person.loc[children, "employment_income_before_lsr"].eq(0.0).all()
-    assert resumed_person.loc[adults, "employment_income_before_lsr"].gt(0.0).all()
-    all_child_total = (
+    assert resumed_person.loc[children, list(person_outputs)].eq(0.0).all().all()
+    assert resumed_person.loc[adults, list(person_outputs)].gt(0.0).all().all()
+    all_child_totals = (
         resumed_person.loc[detail]
-        .groupby("person_tax_unit_id", sort=False)["employment_income_before_lsr"]
+        .groupby("person_tax_unit_id", sort=False)[list(person_outputs)]
         .sum()
-        .loc[100020]
     )
-    assert all_child_total == 0.0
+    assert all_child_totals.loc[100020].eq(0.0).all()
 
 
 def test_primary_qrf_chain_manifest_binds_stacked_doctrines(
