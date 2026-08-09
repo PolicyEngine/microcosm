@@ -14,6 +14,11 @@ from microcosm.build.us_runtime import (
     US_PUF_SUPPORT_FIT_NAME,
     clone_us_frame_for_puf_support,
 )
+from microcosm.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
+    PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
+    puf_capital_gains_tail_support_contract_identity,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -36,6 +41,105 @@ def _canonical_sha256(value: object) -> str:
             ensure_ascii=True,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _valid_capital_gains_tail_manifest() -> dict[str, object]:
+    """Return the smallest schema-current manifest for repair-path tests."""
+
+    record = {
+        "donor_source_id": 1,
+        "donor_weight": 1.0,
+        "assigned_weight": 1.0,
+        "donor_filing_status_code": 1,
+        "donor_filing_status": "SINGLE",
+        "donor_agi_band_index": 0,
+        "donor_agi_band": "fixture",
+        "donor_is_synthetic": False,
+        "joint_vector": {},
+        "recipient_household_source_id": 1,
+        "recipient_tax_unit_source_id": 1,
+        "recipient_household_id": 1,
+        "recipient_tax_unit_id": 1,
+        "tail_household_id": 2,
+        "tail_tax_unit_id": 2,
+        "tail_person_id": 2,
+    }
+    records = [record]
+    strata = [
+        {
+            "filing_status_code": code,
+            "filing_status": name,
+            "status": "attached" if code == 1 else "not_applicable",
+            "observed_count": 1 if code == 1 else 0,
+            "required_minimum": 1 if code == 1 else 0,
+            "attached_donor_count": 1 if code == 1 else 0,
+            "skipped_donor_count": 0,
+        }
+        for code, name in (
+            (1, "SINGLE"),
+            (2, "JOINT"),
+            (3, "SEPARATE"),
+            (4, "HEAD_OF_HOUSEHOLD"),
+            (5, "SURVIVING_SPOUSE"),
+        )
+    ]
+    recipient_support: dict[str, object] = {
+        "contract": puf_capital_gains_tail_support_contract_identity(),
+        "candidate_count": 1,
+        "selected_donor_count": 1,
+        "attached_donor_count": 1,
+        "skipped_donor_count": 0,
+        "attached_stratum_count": 1,
+        "insufficient_support_stratum_count": 0,
+        "not_applicable_stratum_count": 4,
+        "insufficient_support_strata": [],
+        "strata": strata,
+    }
+    recipient_support["sha256"] = _canonical_sha256(recipient_support)
+    donor_projection = [
+        {
+            key: record[key]
+            for key in (
+                "donor_source_id",
+                "donor_weight",
+                "donor_filing_status_code",
+                "donor_filing_status",
+                "donor_agi_band_index",
+                "donor_agi_band",
+                "donor_is_synthetic",
+                "joint_vector",
+            )
+        }
+    ]
+    assignment_projection = [
+        {
+            key: record[key]
+            for key in (
+                "donor_source_id",
+                "assigned_weight",
+                "recipient_household_source_id",
+                "recipient_tax_unit_source_id",
+                "recipient_household_id",
+                "recipient_tax_unit_id",
+                "tail_household_id",
+                "tail_tax_unit_id",
+                "tail_person_id",
+            )
+        }
+    ]
+    manifest: dict[str, object] = {
+        "artifact_kind": "populace_puf_capital_gains_tail_transfer",
+        "schema_version": PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
+        "stage": PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
+        "boundary": {"tail_record_count": 1},
+        "recipient_support": recipient_support,
+        "donor_records_sha256": _canonical_sha256(donor_projection),
+        "assignment_sha256": _canonical_sha256(assignment_projection),
+        "record_count": 1,
+        "records": records,
+    }
+    manifest["manifest_sha256"] = _canonical_sha256(manifest)
+    return manifest
 
 
 def _minimal_us_frame() -> Frame:
@@ -500,14 +604,7 @@ class TestBaseBuildWeightsAudit:
         tmp_path: Path,
     ) -> None:
         builder = _load_support_builder_module()
-        records: list[dict[str, object]] = []
-        manifest = {
-            "donor_records_sha256": _canonical_sha256(records),
-            "assignment_sha256": _canonical_sha256(records),
-            "record_count": 0,
-            "records": records,
-        }
-        manifest["manifest_sha256"] = _canonical_sha256(manifest)
+        manifest = _valid_capital_gains_tail_manifest()
         output = tmp_path / "out" / "tail.json"
         checkpoint = tmp_path / "checkpoints" / "artifacts" / "tail.json"
         file_sha256 = builder.write_puf_capital_gains_tail_manifest(
@@ -525,7 +622,7 @@ class TestBaseBuildWeightsAudit:
             "manifest_sha256": manifest["manifest_sha256"],
             "donor_records_sha256": manifest["donor_records_sha256"],
             "assignment_sha256": manifest["assignment_sha256"],
-            "record_count": 0,
+            "record_count": 1,
         }
         if damage == "missing":
             output.unlink()

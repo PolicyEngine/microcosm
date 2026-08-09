@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -43,21 +44,26 @@ __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS",
     "PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET",
     "PUF_CAPITAL_GAINS_TAIL_QUANTILE",
+    "PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION",
     "PUF_CAPITAL_GAINS_TAIL_STAGE_NAME",
     "PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL",
     "PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS",
     "PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN",
     "assert_puf_capital_gains_tail_survives_selection",
     "puf_capital_gains_tail_concentration_gate",
+    "puf_capital_gains_tail_support_contract_identity",
+    "puf_capital_gains_tail_terminal_support_receipt",
     "select_puf_capital_gains_tail_donors",
     "transfer_puf_capital_gains_tail",
     "validate_puf_capital_gains_tail_manifest",
+    "validate_puf_capital_gains_tail_terminal_support_receipt",
     "write_puf_capital_gains_tail_manifest",
 ]
 
 PUF_CAPITAL_GAINS_TAIL_STAGE_NAME = "capital_gains_tail_transfer"
 PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
-PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 1
+PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 2
+PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION = 1
 PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET = 1_270_900_000_000.0
 
 # microcosm#567 diagnostic geometry: recipient predictors are bounded by the
@@ -136,6 +142,32 @@ _AGI_UPPER_BOUNDS = np.asarray(
     ],
     dtype=np.float64,
 )
+
+
+def puf_capital_gains_tail_support_contract_identity() -> dict[str, object]:
+    """Return the immutable per-filing-status recipient-support doctrine."""
+
+    return {
+        "contract_id": "puf_capital_gains_tail_per_filing_status_support",
+        "version": PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION,
+        "partition": "filing_status",
+        "filing_statuses": [
+            {"filing_status_code": code, "filing_status": name}
+            for code, name in _FILING_STATUS_BY_CODE.items()
+        ],
+        "candidate_universe": (
+            "unique single-tax-unit PUF-detail recipient households with "
+            "weight capacity for the global maximum assigned tail-donor weight"
+        ),
+        "required_minimum": "selected_q99_5_tail_donor_count_in_filing_status",
+        "insufficient_support_action": (
+            "skip_entire_filing_status_attachment_without_widening"
+        ),
+        "agi_band_policy": (
+            "nearest_band_first_then_all_agi_bands_within_filing_status"
+        ),
+        "agi_band_count": len(US_PUF_E19200_AGI_BANDS),
+    }
 
 
 def select_puf_capital_gains_tail_donors(
@@ -511,7 +543,7 @@ def transfer_puf_capital_gains_tail(
         raise ValueError("PUF capital-gains tail seed must be a nonnegative integer.")
 
     resolved_spec = spec or load_default_puf_aggregate_disaggregation_spec()
-    tail, selection = select_puf_capital_gains_tail_donors(
+    selected_tail, selection = select_puf_capital_gains_tail_donors(
         donor,
         spec=resolved_spec,
     )
@@ -520,15 +552,15 @@ def transfer_puf_capital_gains_tail(
         raise ValueError("PUF donor total weight must be positive and finite.")
     frame_household_weight_total = frame.weights_for("household").total
     design_weight_normalization = frame_household_weight_total / donor_weight_total
-    assigned_weights = (
-        tail["weight"].to_numpy(dtype=np.float64) * design_weight_normalization
+    selected_assigned_weights = (
+        selected_tail["weight"].to_numpy(dtype=np.float64) * design_weight_normalization
     )
-    if not (assigned_weights > 0.0).all():
+    if not (selected_assigned_weights > 0.0).all():
         raise ValueError("Every selected PUF tail donor must receive positive mass.")
 
     concentration = puf_capital_gains_tail_concentration_gate(
-        tail,
-        weights=assigned_weights,
+        selected_tail,
+        weights=selected_assigned_weights,
     )
     if not concentration.passed:
         raise ValueError(
@@ -538,9 +570,30 @@ def transfer_puf_capital_gains_tail(
 
     candidates = _recipient_candidates(
         frame,
-        maximum_transfer_weight=float(assigned_weights.max()),
+        maximum_transfer_weight=float(selected_assigned_weights.max()),
         seed=int(seed),
     )
+    recipient_support = _recipient_support_receipt(selected_tail, candidates)
+    attached_codes = {
+        int(stratum["filing_status_code"])
+        for stratum in recipient_support["strata"]
+        if stratum["status"] == "attached"
+    }
+    attached_mask = (
+        pd.to_numeric(selected_tail["filing_status_code"], errors="raise")
+        .astype("int64")
+        .isin(attached_codes)
+        .to_numpy()
+    )
+    if not attached_mask.any():
+        insufficient = recipient_support["insufficient_support_strata"]
+        raise ValueError(
+            "PUF capital-gains tail no_attachable_strata: every selected "
+            "filing-status stratum has insufficient support; "
+            f"insufficient_support={insufficient}."
+        )
+    tail = selected_tail.loc[attached_mask].reset_index(drop=True)
+    assigned_weights = selected_assigned_weights[attached_mask]
     assignments = _assign_tail_donors(
         tail,
         assigned_weights=assigned_weights,
@@ -621,6 +674,10 @@ def transfer_puf_capital_gains_tail(
         tail[_TAIL_COMBINED_COLUMN].to_numpy(dtype=np.float64),
         tail["weight"].to_numpy(dtype=np.float64),
     )
+    selected_donor_tail_distribution = _distribution_receipt(
+        selected_tail[_TAIL_COMBINED_COLUMN].to_numpy(dtype=np.float64),
+        selected_tail["weight"].to_numpy(dtype=np.float64),
+    )
     signed_reconciliation: dict[str, dict[str, float]] = {}
     for column in (
         "short_term_capital_gains",
@@ -678,7 +735,12 @@ def transfer_puf_capital_gains_tail(
             "frame_household_weight_total": frame_household_weight_total,
             "design_weight_normalization": float(design_weight_normalization),
             "assigned_tail_weight": float(assigned_weights.sum()),
+            "selected_tail_weight": float(selected_assigned_weights.sum()),
+            "skipped_tail_weight": float(
+                selected_assigned_weights.sum() - assigned_weights.sum()
+            ),
         },
+        "recipient_support": recipient_support,
         "joint_vector_columns": list(_JOINT_VECTOR_COLUMNS),
         "joint_vector_policy": {
             "amount_scale": 1.0,
@@ -691,6 +753,7 @@ def transfer_puf_capital_gains_tail(
         "carrier_reconciliation": carrier_reconciliation,
         "tail_distribution_receipts": {
             "donor": donor_tail_distribution,
+            "selected_donor": selected_donor_tail_distribution,
             "frame_transferred": frame_tail_distribution,
             "frame_before_stage": before_distribution,
             "frame_after_stage": after_distribution,
@@ -737,16 +800,289 @@ def write_puf_capital_gains_tail_manifest(
     return hashlib.sha256(output.read_bytes()).hexdigest()
 
 
+def _validate_recipient_support_receipt(
+    receipt: object,
+    *,
+    records: Sequence[Mapping[str, object]] | None,
+    selected_donor_count: int | None,
+) -> None:
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            "PUF capital-gains tail manifest recipient support must be an object."
+        )
+    support = dict(receipt)
+    claimed = support.pop("sha256", None)
+    actual = _canonical_sha256(support)
+    if claimed != actual:
+        raise ValueError(
+            "PUF capital-gains tail recipient-support SHA mismatch: "
+            f"claimed {claimed!r}, computed {actual!r}."
+        )
+    expected_fields = {
+        "contract",
+        "candidate_count",
+        "selected_donor_count",
+        "attached_donor_count",
+        "skipped_donor_count",
+        "attached_stratum_count",
+        "insufficient_support_stratum_count",
+        "not_applicable_stratum_count",
+        "insufficient_support_strata",
+        "strata",
+    }
+    if set(support) != expected_fields:
+        raise ValueError(
+            "PUF capital-gains tail recipient-support receipt schema mismatch."
+        )
+    if support["contract"] != puf_capital_gains_tail_support_contract_identity():
+        raise ValueError(
+            "PUF capital-gains tail recipient-support contract identity changed."
+        )
+
+    def nonnegative_integer(field: str) -> int:
+        value = support.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                "PUF capital-gains tail recipient-support "
+                f"{field} must be a nonnegative integer."
+            )
+        return value
+
+    strata = support.get("strata")
+    if not isinstance(strata, list) or len(strata) != len(_FILING_STATUS_BY_CODE):
+        raise ValueError(
+            "PUF capital-gains tail recipient-support strata must enumerate "
+            "all five filing statuses exactly once."
+        )
+    expected_stratum_fields = {
+        "filing_status_code",
+        "filing_status",
+        "status",
+        "observed_count",
+        "required_minimum",
+        "attached_donor_count",
+        "skipped_donor_count",
+    }
+    required_total = 0
+    observed_total = 0
+    attached_total = 0
+    skipped_total = 0
+    attached_strata = 0
+    insufficient: list[str] = []
+    not_applicable = 0
+    attached_by_code: dict[int, int] = {}
+    for (expected_code, expected_name), raw_stratum in zip(
+        _FILING_STATUS_BY_CODE.items(),
+        strata,
+        strict=True,
+    ):
+        if not isinstance(raw_stratum, Mapping) or set(raw_stratum) != (
+            expected_stratum_fields
+        ):
+            raise ValueError(
+                "PUF capital-gains tail recipient-support stratum schema mismatch."
+            )
+        stratum = dict(raw_stratum)
+        if (
+            stratum["filing_status_code"] != expected_code
+            or stratum["filing_status"] != expected_name
+        ):
+            raise ValueError(
+                "PUF capital-gains tail recipient-support filing-status order "
+                "or identity changed."
+            )
+        counts: dict[str, int] = {}
+        for field in (
+            "observed_count",
+            "required_minimum",
+            "attached_donor_count",
+            "skipped_donor_count",
+        ):
+            value = stratum[field]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(
+                    "PUF capital-gains tail recipient-support stratum counts "
+                    "must be nonnegative integers."
+                )
+            counts[field] = value
+        observed = counts["observed_count"]
+        required = counts["required_minimum"]
+        attached = counts["attached_donor_count"]
+        skipped = counts["skipped_donor_count"]
+        status = stratum["status"]
+        if required == 0:
+            valid = status == "not_applicable" and attached == skipped == 0
+            not_applicable += 1
+        elif observed < required:
+            valid = (
+                status == "insufficient_support"
+                and attached == 0
+                and skipped == required
+            )
+            insufficient.append(expected_name)
+        else:
+            valid = status == "attached" and attached == required and skipped == 0
+            attached_strata += 1
+        if not valid:
+            raise ValueError(
+                "PUF capital-gains tail recipient-support status/count "
+                f"arithmetic is inconsistent for {expected_name}."
+            )
+        required_total += required
+        observed_total += observed
+        attached_total += attached
+        skipped_total += skipped
+        attached_by_code[expected_code] = attached
+
+    if nonnegative_integer("candidate_count") != observed_total:
+        raise ValueError(
+            "PUF capital-gains tail recipient-support candidate count does not "
+            "equal its strata."
+        )
+    receipt_selected = nonnegative_integer("selected_donor_count")
+    if receipt_selected != required_total or (
+        selected_donor_count is not None and receipt_selected != selected_donor_count
+    ):
+        raise ValueError(
+            "PUF capital-gains tail recipient-support selected donor count does "
+            "not equal its declared requirement."
+        )
+    expected_summary = {
+        "attached_donor_count": attached_total,
+        "skipped_donor_count": skipped_total,
+        "attached_stratum_count": attached_strata,
+        "insufficient_support_stratum_count": len(insufficient),
+        "not_applicable_stratum_count": not_applicable,
+    }
+    for field, expected in expected_summary.items():
+        if nonnegative_integer(field) != expected:
+            raise ValueError(
+                "PUF capital-gains tail recipient-support summary arithmetic "
+                f"is inconsistent for {field}."
+            )
+    if support.get("insufficient_support_strata") != insufficient:
+        raise ValueError(
+            "PUF capital-gains tail insufficient-support stratum names changed."
+        )
+    if records is not None:
+        record_counts: Counter[int] = Counter()
+        for record in records:
+            if not isinstance(record, Mapping):
+                raise ValueError(
+                    "PUF capital-gains tail manifest records must contain objects."
+                )
+            try:
+                code = int(record["donor_filing_status_code"])
+                name = str(record["donor_filing_status"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "PUF capital-gains tail record filing status is malformed."
+                ) from error
+            if _FILING_STATUS_BY_CODE.get(code) != name:
+                raise ValueError(
+                    "PUF capital-gains tail record filing-status identity changed."
+                )
+            record_counts[code] += 1
+        if dict(record_counts) != {
+            code: count for code, count in attached_by_code.items() if count
+        }:
+            raise ValueError(
+                "PUF capital-gains tail attached records do not equal the "
+                "recipient-support status counts."
+            )
+
+
+def puf_capital_gains_tail_terminal_support_receipt(
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    """Project one validated tail-support receipt into sealed terminal gates."""
+
+    validate_puf_capital_gains_tail_manifest(manifest)
+    payload: dict[str, object] = {
+        "artifact_kind": "populace_puf_capital_gains_tail_terminal_support",
+        "tail_manifest_schema_version": PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
+        "tail_manifest_sha256": manifest["manifest_sha256"],
+        "recipient_support": json.loads(
+            json.dumps(manifest["recipient_support"], allow_nan=False)
+        ),
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def validate_puf_capital_gains_tail_terminal_support_receipt(
+    receipt: Mapping[str, object],
+) -> str:
+    """Fail closed on a mutated terminal projection of tail support."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError("PUF capital-gains tail terminal support must be an object.")
+    payload = dict(receipt)
+    claimed = payload.pop("sha256", None)
+    if set(payload) != {
+        "artifact_kind",
+        "tail_manifest_schema_version",
+        "tail_manifest_sha256",
+        "recipient_support",
+    }:
+        raise ValueError("PUF capital-gains tail terminal support schema mismatch.")
+    if (
+        payload["artifact_kind"] != "populace_puf_capital_gains_tail_terminal_support"
+        or payload["tail_manifest_schema_version"]
+        != PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+    ):
+        raise ValueError("PUF capital-gains tail terminal support identity changed.")
+    tail_sha = payload["tail_manifest_sha256"]
+    if (
+        not isinstance(tail_sha, str)
+        or len(tail_sha) != 64
+        or any(character not in "0123456789abcdef" for character in tail_sha)
+    ):
+        raise ValueError(
+            "PUF capital-gains tail terminal support manifest SHA is malformed."
+        )
+    _validate_recipient_support_receipt(
+        payload["recipient_support"],
+        records=None,
+        selected_donor_count=None,
+    )
+    actual = _canonical_sha256(payload)
+    if claimed != actual:
+        raise ValueError(
+            "PUF capital-gains tail terminal-support SHA mismatch: "
+            f"claimed {claimed!r}, computed {actual!r}."
+        )
+    return actual
+
+
 def validate_puf_capital_gains_tail_manifest(
     manifest: Mapping[str, object],
 ) -> str:
     """Validate all manifest hashes and return the canonical payload SHA-256."""
 
+    if not isinstance(manifest, Mapping):
+        raise ValueError("PUF capital-gains tail manifest must be an object.")
     payload = dict(manifest)
     claimed = payload.pop("manifest_sha256", None)
+    if (
+        payload.get("artifact_kind") != "populace_puf_capital_gains_tail_transfer"
+        or payload.get("schema_version")
+        != PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+        or payload.get("stage") != PUF_CAPITAL_GAINS_TAIL_STAGE_NAME
+    ):
+        raise ValueError(
+            "PUF capital-gains tail manifest artifact/schema/stage identity changed."
+        )
     records = payload.get("records")
     if not isinstance(records, list):
         raise ValueError("PUF capital-gains tail manifest records must be a list.")
+    record_count = payload.get("record_count")
+    if (
+        isinstance(record_count, bool)
+        or not isinstance(record_count, int)
+        or record_count != len(records)
+    ):
+        raise ValueError("PUF capital-gains tail manifest record count changed.")
     donor_records_sha256 = _canonical_sha256(_donor_record_projection(records))
     if payload.get("donor_records_sha256") != donor_records_sha256:
         raise ValueError(
@@ -761,6 +1097,23 @@ def validate_puf_capital_gains_tail_manifest(
             f"claimed {payload.get('assignment_sha256')!r}, "
             f"computed {assignment_sha256!r}."
         )
+    boundary = payload.get("boundary")
+    if not isinstance(boundary, Mapping):
+        raise ValueError("PUF capital-gains tail manifest boundary is malformed.")
+    selected_donor_count = boundary.get("tail_record_count")
+    if (
+        isinstance(selected_donor_count, bool)
+        or not isinstance(selected_donor_count, int)
+        or selected_donor_count <= 0
+    ):
+        raise ValueError(
+            "PUF capital-gains tail manifest selected donor count is malformed."
+        )
+    _validate_recipient_support_receipt(
+        payload.get("recipient_support"),
+        records=records,
+        selected_donor_count=selected_donor_count,
+    )
     actual = _canonical_sha256(payload)
     if claimed != actual:
         raise ValueError(
@@ -905,6 +1258,91 @@ def _recipient_candidates(
     rng = np.random.default_rng(seed)
     puf_tax_units["seeded_order"] = rng.random(len(puf_tax_units))
     return puf_tax_units.reset_index(drop=True)
+
+
+def _recipient_support_receipt(
+    tail: pd.DataFrame,
+    candidates: pd.DataFrame,
+) -> dict[str, object]:
+    """Count the declared support universe before any status is attached."""
+
+    donor_codes = pd.to_numeric(tail["filing_status_code"], errors="raise").astype(
+        "int64"
+    )
+    candidate_codes = pd.to_numeric(
+        candidates["recipient_filing_status_code"],
+        errors="raise",
+    ).astype("int64")
+    unknown_donor_codes = sorted(set(donor_codes) - set(_FILING_STATUS_BY_CODE))
+    unknown_candidate_codes = sorted(set(candidate_codes) - set(_FILING_STATUS_BY_CODE))
+    if unknown_donor_codes or unknown_candidate_codes:
+        raise ValueError(
+            "PUF capital-gains tail support audit found unknown filing-status "
+            f"codes: donors={unknown_donor_codes}, "
+            f"candidates={unknown_candidate_codes}."
+        )
+    if candidates["recipient_household_id"].duplicated().any():
+        raise ValueError(
+            "PUF capital-gains tail support candidates must be unique households."
+        )
+
+    required_counts = donor_codes.value_counts().to_dict()
+    observed_counts = candidate_codes.value_counts().to_dict()
+    strata: list[dict[str, object]] = []
+    for code, name in _FILING_STATUS_BY_CODE.items():
+        required = int(required_counts.get(code, 0))
+        observed = int(observed_counts.get(code, 0))
+        if required == 0:
+            status = "not_applicable"
+            attached = 0
+            skipped = 0
+        elif observed < required:
+            status = "insufficient_support"
+            attached = 0
+            skipped = required
+        else:
+            status = "attached"
+            attached = required
+            skipped = 0
+        strata.append(
+            {
+                "filing_status_code": code,
+                "filing_status": name,
+                "status": status,
+                "observed_count": observed,
+                "required_minimum": required,
+                "attached_donor_count": attached,
+                "skipped_donor_count": skipped,
+            }
+        )
+
+    insufficient = [
+        str(stratum["filing_status"])
+        for stratum in strata
+        if stratum["status"] == "insufficient_support"
+    ]
+    payload: dict[str, object] = {
+        "contract": puf_capital_gains_tail_support_contract_identity(),
+        "candidate_count": int(len(candidates)),
+        "selected_donor_count": int(len(tail)),
+        "attached_donor_count": int(
+            sum(int(stratum["attached_donor_count"]) for stratum in strata)
+        ),
+        "skipped_donor_count": int(
+            sum(int(stratum["skipped_donor_count"]) for stratum in strata)
+        ),
+        "attached_stratum_count": int(
+            sum(stratum["status"] == "attached" for stratum in strata)
+        ),
+        "insufficient_support_stratum_count": len(insufficient),
+        "not_applicable_stratum_count": int(
+            sum(stratum["status"] == "not_applicable" for stratum in strata)
+        ),
+        "insufficient_support_strata": insufficient,
+        "strata": strata,
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    return payload
 
 
 def _assign_tail_donors(
