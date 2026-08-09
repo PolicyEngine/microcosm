@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import pickle
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -204,6 +205,25 @@ def _replace_entity_table(frame: Frame, entity: str, table: pd.DataFrame) -> Fra
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _frame_digest(frame: Frame) -> str:
+    """Hash every frame byte-bearing surface for pre-fix parity checks."""
+
+    payload = (
+        [(entity, frame.table(entity)) for entity in frame.entities],
+        [
+            (
+                entity,
+                frame.weights_for(entity).values,
+                frame.weights_for(entity).kind.value,
+            )
+            for entity in frame.weighted_entities
+        ],
+        frame.strata,
+        frame.mass_log,
+    )
+    return hashlib.sha256(pickle.dumps(payload, protocol=5)).hexdigest()
 
 
 def _load_support_builder_module():
@@ -517,6 +537,78 @@ def test_tail_transfer_splits_weights_and_copies_joint_vectors(
     ).hexdigest()
     with pytest.raises(ValueError, match="assignment SHA mismatch"):
         write_puf_capital_gains_tail_manifest(manifest_path, tampered)
+
+
+def test_thin_filing_status_is_named_counted_and_not_attached() -> None:
+    """A thin status is skipped whole while an adequate peer still attaches."""
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    donor.loc[donor["tax_unit_id"].eq(20), "filing_status_code"] = 3.0
+
+    transferred, manifest = transfer_puf_capital_gains_tail(
+        frame,
+        donor,
+        seed=567,
+    )
+
+    support = manifest["recipient_support"]
+    by_status = {receipt["filing_status"]: receipt for receipt in support["strata"]}
+    assert support["insufficient_support_stratum_count"] == 1
+    assert support["insufficient_support_strata"] == ["SEPARATE"]
+    assert by_status["SEPARATE"] == {
+        "filing_status_code": 3,
+        "filing_status": "SEPARATE",
+        "status": "insufficient_support",
+        "observed_count": 0,
+        "required_minimum": 1,
+        "attached_donor_count": 0,
+        "skipped_donor_count": 1,
+    }
+    assert by_status["SINGLE"]["status"] == "attached"
+    assert by_status["SINGLE"]["observed_count"] == 2
+    assert by_status["SINGLE"]["required_minimum"] == 1
+    assert by_status["SURVIVING_SPOUSE"]["status"] == "not_applicable"
+    assert manifest["record_count"] == 1
+    assert {record["donor_filing_status"] for record in manifest["records"]} == {
+        "SINGLE"
+    }
+    assert transferred.n("household") == frame.n("household") + 1
+
+
+def test_adequate_strata_match_pre_fix_frame_bytes() -> None:
+    """All-adequate fixtures preserve the exact pre-#652 allocation bytes."""
+
+    transferred, manifest = transfer_puf_capital_gains_tail(
+        _expanded_recipient_frame(),
+        _donor(),
+        seed=567,
+    )
+
+    assert _frame_digest(transferred) == (
+        "ce6457a535c83b71d17712a5dc214494f7d225c2d5071ed450e8447e99a66505"
+    )
+    assert manifest["assignment_sha256"] == (
+        "1b2262da65fa851e0a990ca9f04dee661de0145724f82aef679557bc92418937"
+    )
+    assert manifest["recipient_support"]["insufficient_support_strata"] == []
+
+
+def test_tail_support_receipt_tampering_fails_closed() -> None:
+    """Rehashing only the envelope cannot launder a changed support count."""
+
+    _transferred, manifest = transfer_puf_capital_gains_tail(
+        _expanded_recipient_frame(),
+        _donor(),
+        seed=567,
+    )
+    tampered = json.loads(json.dumps(manifest))
+    tampered["recipient_support"]["strata"][0]["observed_count"] += 1
+    tampered.pop("manifest_sha256")
+    tampered["manifest_sha256"] = tail_module._canonical_sha256(tampered)
+
+    with pytest.raises(ValueError, match="recipient-support SHA mismatch"):
+        tail_module.validate_puf_capital_gains_tail_manifest(tampered)
 
 
 def test_tail_transfer_rejects_group_membership_crossing_households() -> None:
