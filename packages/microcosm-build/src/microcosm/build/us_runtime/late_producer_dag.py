@@ -403,6 +403,8 @@ def _absence_receipt_matches(
     receipt: object,
     requirement: ProducerInput,
     rows: int,
+    *,
+    producer: str,
 ) -> bool:
     return bool(
         isinstance(receipt, Mapping)
@@ -412,6 +414,8 @@ def _absence_receipt_matches(
         and receipt.get("column") == requirement.column
         and receipt.get("required_scope") == requirement.required_scope
         and receipt.get("rows") == rows
+        and receipt.get("producer") == producer
+        and receipt.get("reason") == "optional availability-pattern input"
     )
 
 
@@ -489,6 +493,7 @@ def run_producer_when_ready[ResultT](
                 absence_receipts.get(receipt_id),
                 requirement,
                 rows,
+                producer=contract.name,
             )
             for receipt_id in requirement.tolerated_absence_receipts
         )

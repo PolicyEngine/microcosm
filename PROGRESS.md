@@ -295,6 +295,17 @@ the final tree after those findings close.
   proves the universe producer runs first, and proves primary sees explicit
   receipted zeros; a missing universe receipt refuses primary before callback
   and names its producing stage.
+- Closed both persisted-readiness integrity gaps: the receipt validator now
+  recomputes each logical requirement's missing and invalid counts from its
+  exact physical alternatives, rejects inconsistent duplicate evidence, and
+  enforces kind-specific input/output status and scope schemas. Completed
+  producers cannot emit absent declared outputs. Generic absence receipts now
+  bind the consuming producer and canonical reason, so a receipt cannot cross
+  producer boundaries. The stronger row doctrine is checkpoint-bound in the
+  schema-v9 payload; schedule SHA remains
+  `070fdaac27446c7b367d24a160cb75a2df666c07135bd5d98961328b004ad303`
+  and the final payload SHA is
+  `525c1f47698a6a6bd54db7a3a1eb39bd2647680455770cfaa6be3ec1ef9a2994`.
 
 ## Next
 

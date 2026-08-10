@@ -658,6 +658,11 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
                                 if resource_receipt is not None
                                 else "2" * 64
                             ),
+                            **(
+                                {"weight_kind": "household_weight"}
+                                if column.column == "@resolved_weight"
+                                else {}
+                            ),
                         }
                     )
                 alternatives.append(physical_evidence)
@@ -679,9 +684,14 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
                 "entity": output.entity,
                 "column": output.column,
                 "coverage_scope": output.coverage_scope,
-                "scope_rows": 1,
                 "status": "present",
                 "content_sha256": "3" * 64,
+                **({} if output.entity == "frame" else {"scope_rows": 1}),
+                **(
+                    {"weight_kind": "household_weight"}
+                    if output.column == "@resolved_weight"
+                    else {}
+                ),
             }
             for output in contract.outputs
         ]

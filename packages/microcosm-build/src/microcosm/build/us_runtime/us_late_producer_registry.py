@@ -1831,8 +1831,8 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
         "execution_receipt_contract": {
             "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
             "row_binding": (
-                "declared_input_and_output_content_callback_receipt_and_"
-                "previous_execution_sha256"
+                "declared_reconciled_input_and_exact_output_content_callback_"
+                "receipt_and_previous_execution_sha256"
             ),
             "virtual_resource_binding": (
                 "exact_kind_specific_semantic_payload_and_sha256"

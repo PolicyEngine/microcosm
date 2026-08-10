@@ -1099,6 +1099,11 @@ def _canonical_late_dag_receipt(
                                 if resource_receipt is not None
                                 else "a" * 64
                             ),
+                            **(
+                                {"weight_kind": "household_weight"}
+                                if column.column == "@resolved_weight"
+                                else {}
+                            ),
                         }
                     )
                 alternatives.append(physical_evidence)
@@ -1130,7 +1135,14 @@ def _canonical_late_dag_receipt(
                 "entity": output.entity,
                 "column": output.column,
                 "coverage_scope": output.coverage_scope,
+                "status": "present",
                 "content_sha256": "b" * 64,
+                **({} if output.entity == "frame" else {"scope_rows": 1}),
+                **(
+                    {"weight_kind": "household_weight"}
+                    if output.column == "@resolved_weight"
+                    else {}
+                ),
             }
             for output in contract.outputs
         ]

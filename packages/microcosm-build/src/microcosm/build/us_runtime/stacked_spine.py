@@ -5395,6 +5395,10 @@ def _validate_late_execution_row(
                 f"{requirement.entity}.{requirement.column} evidence changed "
                 "its alternative surface."
             )
+        column_states: dict[
+            ProducerInputColumn, tuple[int, int, dict[str, object]]
+        ] = {}
+        alternative_missing_counts: list[int] = []
         for declared_alternative, raw_alternative in zip(
             requirement.alternatives,
             alternatives,
@@ -5408,6 +5412,7 @@ def _validate_late_execution_row(
                     f"{requirement.entity}.{requirement.column} evidence changed "
                     "one physical alternative."
                 )
+            alternative_missing = 0
             for declared_column, raw_column in zip(
                 declared_alternative,
                 raw_alternative,
@@ -5427,6 +5432,26 @@ def _validate_late_execution_row(
                         f"{requirement.entity}.{requirement.column} evidence "
                         "is misbound to its physical columns."
                     )
+                expected_column_keys = {
+                    "entity",
+                    "column",
+                    "value_kind",
+                    "required_scope",
+                    "scope_rows",
+                    "missing_rows",
+                    "invalid_rows",
+                    "status",
+                    "content_sha256",
+                }
+                if declared_column.column == "@resolved_weight":
+                    expected_column_keys.add("weight_kind")
+                if set(raw_column) != expected_column_keys:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} input "
+                        f"{requirement.entity}.{requirement.column} evidence "
+                        f"schema drifted for {declared_column.entity}."
+                        f"{declared_column.column}."
+                    )
                 for count_field in ("scope_rows", "missing_rows", "invalid_rows"):
                     count = raw_column.get(count_field)
                     if (
@@ -5438,12 +5463,90 @@ def _validate_late_execution_row(
                             f"{boundary}: late producer {contract.name!r} "
                             f"input evidence has invalid {count_field}={count!r}."
                         )
+                scope_rows = int(raw_column["scope_rows"])
+                missing_rows = int(raw_column["missing_rows"])
+                evidence_invalid_rows = int(raw_column["invalid_rows"])
+                status = raw_column.get("status")
+                if status not in {"present", "absent"}:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} input "
+                        f"evidence has invalid status={status!r}."
+                    )
+                is_virtual = (
+                    declared_column.column.startswith("@")
+                    and declared_column.column != "@resolved_weight"
+                    and declared_column.entity != "frame"
+                )
+                if declared_column.entity == "frame" and scope_rows != 1:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} frame "
+                        "input evidence must have scope_rows=1."
+                    )
+                if status == "absent":
+                    expected_missing = (
+                        1
+                        if declared_column.entity == "frame"
+                        else max(1, scope_rows)
+                        if is_virtual
+                        else scope_rows
+                    )
+                    if (
+                        missing_rows != expected_missing
+                        or evidence_invalid_rows != 0
+                        or raw_column.get("content_sha256")
+                        != _canonical_sha256({"absent": True})
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            "absent input evidence has inconsistent counts or "
+                            "content identity."
+                        )
+                elif declared_column.entity == "frame" or is_virtual:
+                    if missing_rows != 0 or evidence_invalid_rows != 0:
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            "present virtual input evidence has nonzero "
+                            "readiness counts."
+                        )
+                elif declared_column.column == "@resolved_weight":
+                    if (
+                        missing_rows != 0
+                        or not isinstance(raw_column.get("weight_kind"), str)
+                        or not raw_column.get("weight_kind")
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            "resolved-weight evidence is malformed."
+                        )
+                elif (
+                    missing_rows > scope_rows
+                    or evidence_invalid_rows > scope_rows
+                    or missing_rows + evidence_invalid_rows > scope_rows
+                ):
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} physical "
+                        "input evidence counts exceed its declared scope."
+                    )
                 _validate_sha256(
                     raw_column.get("content_sha256"),
                     boundary=(
                         f"{boundary} late producer {contract.name!r} input content"
                     ),
                 )
+                normalized_column = dict(raw_column)
+                previous_state = column_states.get(declared_column)
+                current_state = (
+                    missing_rows,
+                    evidence_invalid_rows,
+                    normalized_column,
+                )
+                if previous_state is not None and previous_state != current_state:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} repeats "
+                        "one physical input with inconsistent evidence."
+                    )
+                column_states[declared_column] = current_state
+                alternative_missing += missing_rows
                 if (
                     declared_column.column.startswith("@")
                     and declared_column.column != "@resolved_weight"
@@ -5455,6 +5558,17 @@ def _validate_late_execution_row(
                     evidenced_available_sha256[evidence_key] = str(
                         raw_column["content_sha256"]
                     )
+            alternative_missing_counts.append(alternative_missing)
+        recomputed_unfilled = min(alternative_missing_counts)
+        recomputed_invalid = sum(state[1] for state in column_states.values())
+        if rows != recomputed_unfilled or invalid != recomputed_invalid:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} readiness counts "
+                "disagree with its physical evidence; "
+                f"declared=({rows}, {invalid}), "
+                f"recomputed=({recomputed_unfilled}, {recomputed_invalid})."
+            )
 
     raw_absence = raw_row.get("declared_absence_receipts")
     if not isinstance(raw_absence, Mapping):
@@ -5572,17 +5686,56 @@ def _validate_late_execution_row(
             f"exact {len(contract.outputs)}-output content surface."
         )
     for output, raw_output in zip(contract.outputs, output_surface, strict=True):
-        if not isinstance(raw_output, Mapping) or any(
-            raw_output.get(field) != value
-            for field, value in {
-                "entity": output.entity,
-                "column": output.column,
-                "coverage_scope": output.coverage_scope,
-            }.items()
+        expected_output = {
+            "entity": output.entity,
+            "column": output.column,
+            "coverage_scope": output.coverage_scope,
+        }
+        expected_output_keys = {
+            *expected_output,
+            "status",
+            "content_sha256",
+        }
+        if output.entity != "frame":
+            expected_output_keys.add("scope_rows")
+        if output.column == "@resolved_weight":
+            expected_output_keys.add("weight_kind")
+        if (
+            not isinstance(raw_output, Mapping)
+            or set(raw_output) != expected_output_keys
+            or any(
+                raw_output.get(field) != value
+                for field, value in expected_output.items()
+            )
         ):
             raise ValueError(
                 f"{boundary}: late producer {contract.name!r} output evidence "
                 f"drifted from {output.entity}.{output.column}."
+            )
+        if raw_output.get("status") != "present":
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} completed with "
+                f"absent output {output.entity}.{output.column}."
+            )
+        if output.entity != "frame":
+            scope_rows = raw_output.get("scope_rows")
+            if (
+                isinstance(scope_rows, bool)
+                or not isinstance(scope_rows, int)
+                or scope_rows < 0
+            ):
+                raise ValueError(
+                    f"{boundary}: late producer {contract.name!r} output "
+                    f"{output.entity}.{output.column} has invalid "
+                    f"scope_rows={scope_rows!r}."
+                )
+        if output.column == "@resolved_weight" and (
+            not isinstance(raw_output.get("weight_kind"), str)
+            or not raw_output.get("weight_kind")
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} resolved-weight "
+                "output evidence is malformed."
             )
         _validate_sha256(
             raw_output.get("content_sha256"),
@@ -8245,6 +8398,16 @@ def run_stacked_late_producer_dag(
             )
             for output in contract.outputs
         ]
+        absent_outputs = [
+            f"{item['entity']}.{item['column']}"
+            for item in output_surface
+            if item.get("status") != "present"
+        ]
+        if absent_outputs:
+            raise ValueError(
+                f"Late producer {producer_name!r} completed without declared "
+                f"output(s) {absent_outputs}."
+            )
         execution_row: dict[str, object] = {
             "execution_index": schedule_index,
             "producer": producer_name,

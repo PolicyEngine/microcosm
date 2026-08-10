@@ -3609,7 +3609,10 @@ def test_late_receipt_rejects_forged_absent_required_virtual_input(
     del primary["available_input_receipts"][config_key]
     _rehash_late_receipt_after_fixture_mutation(forged)
 
-    with pytest.raises(ValueError, match="every mandatory available resource"):
+    with pytest.raises(
+        ValueError,
+        match="inconsistent counts or content identity",
+    ):
         stacked_spine_module.validate_stacked_late_producer_receipt(
             forged,
             boundary="forged required virtual input",
@@ -3642,6 +3645,54 @@ def test_late_receipt_rejects_virtual_evidence_receipt_digest_disagreement(
         stacked_spine_module.validate_stacked_late_producer_receipt(
             forged,
             boundary="forged virtual input digest",
+        )
+
+
+def test_late_receipt_recomputes_readiness_from_physical_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    primary = next(
+        row
+        for row in forged["execution"]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+    filing_status = next(
+        item
+        for item in primary["declared_inputs"]
+        if item["column"] == "@effective:filing_status"
+    )
+    physical = filing_status["evidence"]["alternatives"][0][0]
+    physical["missing_rows"] = 1
+    filing_status["evidence"]["sha256"] = stacked_spine_module._canonical_sha256(
+        {"alternatives": filing_status["evidence"]["alternatives"]}
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="readiness counts disagree"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged readiness counts",
+        )
+
+
+def test_late_receipt_rejects_completed_absent_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    universe = forged["execution"][0]
+    universe["output_surface"][0]["status"] = "absent"
+    universe["output_surface_sha256"] = stacked_spine_module._canonical_sha256(
+        universe["output_surface"]
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="completed with absent output"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged absent output",
         )
 
 

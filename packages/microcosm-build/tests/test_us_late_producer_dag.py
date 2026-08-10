@@ -134,6 +134,42 @@ def test_declared_absence_never_tolerates_invalid_input() -> None:
         )
 
 
+def test_declared_absence_rejects_a_cross_producer_receipt() -> None:
+    receipt_id = "optional_input:consumer:predictor"
+    requirement = ProducerInput(
+        entity="person",
+        column="@effective:predictor",
+        required_scope="whole_pool",
+        producing_stage="post_clone_input_surface",
+        tolerated_absence_receipts=(receipt_id,),
+    )
+    consumer = ProducerContract("consumer", "fixture", (requirement,), ())
+    wrong_owner = {
+        receipt_id: {
+            "receipt_id": receipt_id,
+            "status": "declared_absence",
+            "entity": "person",
+            "column": "@effective:predictor",
+            "required_scope": "whole_pool",
+            "rows": 1,
+            "producer": "different_consumer",
+            "reason": "optional availability-pattern input",
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"(?s)consumer.*@effective:predictor.*1 unfilled",
+    ):
+        run_producer_when_ready(
+            consumer,
+            lambda: pytest.fail("cross-producer absence reached callback"),
+            unfilled_rows={requirement: 1},
+            invalid_rows={requirement: 0},
+            absence_receipts=wrong_owner,
+        )
+
+
 def test_readiness_requires_exact_declared_count_surfaces() -> None:
     requirement = ProducerInput(
         entity="person",
@@ -437,8 +473,8 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     assert receipt["execution_receipt_contract"] == {
         "version": 2,
         "row_binding": (
-            "declared_input_and_output_content_callback_receipt_and_"
-            "previous_execution_sha256"
+            "declared_reconciled_input_and_exact_output_content_callback_"
+            "receipt_and_previous_execution_sha256"
         ),
         "virtual_resource_binding": ("exact_kind_specific_semantic_payload_and_sha256"),
         "top_binding": (
