@@ -3,7 +3,7 @@
 ## State
 
 The failure mechanism, complete late-producer/source-input inventory, and
-36-node executable DAG are implemented and documented on
+37-node executable DAG are implemented on
 `tail-stratum-support-652`, based on the three preserved #652 commits. The
 checkout was clean at the start and was three commits ahead of the locally
 available `origin/main` (`e9a352ca`). No fetch was performed because this task
@@ -12,10 +12,12 @@ Git report the branch behind by one; the task remains on its required checkout
 without rebasing, resetting, or shelving. Focused verification is green; the
 exact #583 shard and every foreground workspace chunk were green, but final
 independent review found additional doctrine gaps. Implementation is reopened:
-optional absence must not excuse invalid numerics, every transfer's cross-grain
-validation inputs must be declared, and persisted readiness/source/transfer
-proofs need content binding. Final report assembly is paused until those gaps
-and the complete proof rerun are closed.
+optional absence no longer excuses invalid numerics, every transfer's
+cross-grain validation inputs is declared, and source finalization is an
+explicit producer. Persisted readiness/source/transfer proofs still need
+content binding to the live frame and independent authority propagation. Final
+report assembly is paused until that last integrity gap and the complete proof
+rerun are closed.
 
 ## Done
 
@@ -195,9 +197,12 @@ and the complete proof rerun are closed.
 
 ## Next
 
-- Add red production-level regressions for the final-review findings, implement
-  the strengthened input/readiness/transition contracts, and commit each
-  coherent step.
+- Add red production-level regressions for forged or stale transition receipts,
+  bind each producer row to its declared input/output content and the full DAG
+  receipt to the live frame, then propagate an independent authority digest
+  through checkpoints, manifests, publication, and H5 loading.
+- Update the operator-ordering doctrine and changelog for the final 37-node,
+  70-edge registry and new schema identities.
 - Rerun focused, exact #583, all foreground chunks, and Ruff/diff gates after
   the final fixes.
 - Write the final gradeable mechanism/edge/fix/proof report to the requested
