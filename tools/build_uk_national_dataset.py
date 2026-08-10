@@ -404,6 +404,7 @@ def main() -> int:
         retained_leaves_transform=retained_leaves_transform,
         seed=args.seed,
         qrf_estimators=args.qrf_estimators,
+        sampled_rung=args.sample_fraction != 1.0,
     )
     try:
         # This staging path performs no calibration and therefore has no real
