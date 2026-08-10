@@ -377,44 +377,40 @@ def run_producer_when_ready[ResultT](
         raise TypeError("Producer readiness requires a ProducerContract.")
     if not callable(callback):
         raise TypeError(f"Late producer {contract.name!r} callback is not callable.")
-    unexpected = sorted(
-        set(unfilled_rows) - set(contract.inputs),
-        key=lambda item: (
+    declared_inputs = set(contract.inputs)
+
+    def sort_key(item: ProducerInput) -> tuple[str, str, str, str]:
+        return (
             item.entity,
             item.column,
             item.required_scope,
             item.producing_stage,
-        ),
-    )
-    if unexpected:
-        raise ValueError(
-            f"Late producer {contract.name!r} readiness named undeclared "
-            f"input(s): {unexpected}."
         )
-    unexpected_invalid = sorted(
-        set(invalid_rows) - set(contract.inputs),
-        key=lambda item: (
-            item.entity,
-            item.column,
-            item.required_scope,
-            item.producing_stage,
-        ),
-    )
-    if unexpected_invalid:
+
+    missing_unfilled = sorted(declared_inputs - set(unfilled_rows), key=sort_key)
+    unexpected_unfilled = sorted(set(unfilled_rows) - declared_inputs, key=sort_key)
+    if missing_unfilled or unexpected_unfilled:
         raise ValueError(
-            f"Late producer {contract.name!r} invalid-value readiness named "
-            f"undeclared input(s): {unexpected_invalid}."
+            f"Late producer {contract.name!r} unfilled-row readiness surface "
+            f"drifted; missing={missing_unfilled}, extra={unexpected_unfilled}."
+        )
+    missing_invalid = sorted(declared_inputs - set(invalid_rows), key=sort_key)
+    unexpected_invalid = sorted(set(invalid_rows) - declared_inputs, key=sort_key)
+    if missing_invalid or unexpected_invalid:
+        raise ValueError(
+            f"Late producer {contract.name!r} invalid-value readiness surface "
+            f"drifted; missing={missing_invalid}, extra={unexpected_invalid}."
         )
     failures: list[str] = []
     for requirement in contract.inputs:
-        rows = unfilled_rows.get(requirement, 0)
+        rows = unfilled_rows[requirement]
         if isinstance(rows, bool) or not isinstance(rows, int) or rows < 0:
             raise ValueError(
                 f"Late producer {contract.name!r} unfilled count for "
                 f"{requirement.entity}.{requirement.column} must be a "
                 f"non-negative integer; got {rows!r}."
             )
-        invalid = invalid_rows.get(requirement, 0)
+        invalid = invalid_rows[requirement]
         if isinstance(invalid, bool) or not isinstance(invalid, int) or invalid < 0:
             raise ValueError(
                 f"Late producer {contract.name!r} invalid count for "

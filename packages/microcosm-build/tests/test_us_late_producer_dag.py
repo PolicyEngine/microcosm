@@ -131,6 +131,40 @@ def test_declared_absence_never_tolerates_invalid_input() -> None:
         )
 
 
+def test_readiness_requires_exact_declared_count_surfaces() -> None:
+    requirement = ProducerInput(
+        entity="person",
+        column="required_input",
+        required_scope="whole_pool",
+        producing_stage="producer",
+    )
+    consumer = ProducerContract("consumer", "fixture", (requirement,), ())
+
+    with pytest.raises(
+        ValueError,
+        match=r"consumer.*unfilled-row readiness.*missing=.*required_input",
+    ):
+        run_producer_when_ready(
+            consumer,
+            lambda: pytest.fail("omitted input reached callback"),
+            unfilled_rows={},
+            invalid_rows={requirement: 0},
+            absence_receipts={},
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=r"consumer.*invalid-value readiness.*missing=.*required_input",
+    ):
+        run_producer_when_ready(
+            consumer,
+            lambda: pytest.fail("omitted input reached callback"),
+            unfilled_rows={requirement: 0},
+            invalid_rows={},
+            absence_receipts={},
+        )
+
+
 def test_synthetic_producer_cycle_is_rejected_with_named_cycle() -> None:
     registry = {
         "alpha": _contract("alpha", "charlie"),

@@ -160,6 +160,9 @@ and the complete proof rerun are closed.
   infinite, or nonfinite values always refuse the callback and name both the
   logical input and declared producing stage. The generic and canonical
   transfer regressions pass, as does the real 36-node executor regression.
+- Made both readiness maps exact contract surfaces: omitting a declared input
+  can no longer default to a false zero, and extra inputs also fail with a
+  canonical diagnostic. The focused DAG file now passes all 14 regressions.
 
 ## Next
 
