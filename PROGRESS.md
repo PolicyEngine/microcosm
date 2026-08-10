@@ -34,10 +34,13 @@ checkout without rebasing, resetting, or shelving.
   `fillna(0.0)` and incorrectly claims the tuition passthrough as a source
   output. The DAG must make tuition PUF-only, transfer it before education,
   and make nonfinite tuition fail closed.
+- Added red regressions for unfilled-input refusal before callback invocation,
+  a deterministic named synthetic cycle, and byte-stable topology under
+  reversed registry iteration. The focused test fails at collection because
+  the deliberately specified DAG module does not yet exist.
 
 ## Next
 
-- Add red DAG regressions before implementing and binding the derived schedule.
 - Implement role-aware declared producer inputs and outputs, deterministic
   cycle-checked topology, scoped runtime readiness checks, and DAG-derived late
   execution without changing nulls to zeros.
