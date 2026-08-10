@@ -2797,6 +2797,128 @@ def test_transfer_refuses_missing_validation_metadata_before_fit(
         )
 
 
+def _late_table_digest_vector() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "boolean": pd.array([True, False, pd.NA], dtype="boolean"),
+            "integer": pd.array([1, -2, pd.NA], dtype="Int64"),
+            "float": np.array([np.inf, -0.0, np.nan], dtype=np.float64),
+            "string": pd.array(["", "café", pd.NA], dtype=CANONICAL_STRING_DTYPE),
+        },
+        index=pd.Index([7, 3, 11], dtype=np.int64, name="row_id"),
+    )
+
+
+def test_late_table_content_digest_is_byte_stable_for_typed_scalar_vector() -> None:
+    table = _late_table_digest_vector()
+
+    first = stacked_spine_module._late_table_values_sha256(table)
+    second = stacked_spine_module._late_table_values_sha256(table.copy(deep=True))
+
+    assert (
+        first
+        == second
+        == ("da35b24dd68ac7a8917e27c37c81a44d8ab4fbc4888539e29999f904ce741254")
+    )
+    assert len(first) == 64
+    assert set(first) <= set("0123456789abcdef")
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    (
+        ([True], [1]),
+        ([1], [1.0]),
+        ([None], [""]),
+        (["ab", "c"], ["a", "bc"]),
+        ([0.0], [-0.0]),
+    ),
+)
+def test_late_table_content_digest_domain_separates_object_scalars(
+    left: list[object],
+    right: list[object],
+) -> None:
+    left_table = pd.DataFrame({"value": pd.Series(left, dtype=object)})
+    right_table = pd.DataFrame({"value": pd.Series(right, dtype=object)})
+
+    assert stacked_spine_module._late_table_values_sha256(
+        left_table
+    ) != stacked_spine_module._late_table_values_sha256(right_table)
+
+
+def test_late_table_content_digest_canonicalizes_null_float_payloads() -> None:
+    ordinary_nan = np.array([np.nan], dtype=np.float64)
+    alternate_nan = np.array([0x7FF8_0000_0000_0001], dtype="<u8").view("<f8")
+    ordinary = pd.DataFrame({"value": ordinary_nan})
+    alternate = pd.DataFrame({"value": alternate_nan})
+
+    assert (
+        ordinary["value"].to_numpy().tobytes()
+        != alternate["value"].to_numpy().tobytes()
+    )
+    assert stacked_spine_module._late_table_values_sha256(
+        ordinary
+    ) == stacked_spine_module._late_table_values_sha256(alternate)
+
+
+def test_late_table_content_digest_normalizes_serialized_string_dtype() -> None:
+    index = pd.Index([9, 4], dtype=np.int64, name="row_id")
+    object_strings = pd.DataFrame(
+        {
+            "label": pd.Series(
+                ["RENTED", None],
+                index=index,
+                dtype=object,
+            )
+        },
+        index=index,
+    )
+    canonical_strings = pd.DataFrame(
+        {
+            "label": pd.Series(
+                ["RENTED", pd.NA],
+                index=index,
+                dtype=CANONICAL_STRING_DTYPE,
+            )
+        },
+        index=index,
+    )
+
+    assert stacked_spine_module._late_table_values_sha256(
+        object_strings,
+        normalize_strings=True,
+    ) == stacked_spine_module._late_table_values_sha256(
+        canonical_strings,
+        normalize_strings=True,
+    )
+    assert stacked_spine_module._late_table_values_sha256(
+        object_strings,
+        normalize_strings=False,
+    ) != stacked_spine_module._late_table_values_sha256(
+        canonical_strings,
+        normalize_strings=False,
+    )
+
+
+def test_late_table_content_digest_binds_dtype_index_and_order() -> None:
+    base = pd.DataFrame(
+        {"value": np.array([1, 2], dtype=np.int32)},
+        index=pd.Index([4, 8], name="row_id"),
+    )
+    digest = stacked_spine_module._late_table_values_sha256(base)
+    variants = (
+        base.astype({"value": np.int64}),
+        base.iloc[::-1],
+        base.rename_axis("different_index"),
+        base.rename(columns={"value": "different_column"}),
+    )
+
+    assert all(
+        stacked_spine_module._late_table_values_sha256(variant) != digest
+        for variant in variants
+    )
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
