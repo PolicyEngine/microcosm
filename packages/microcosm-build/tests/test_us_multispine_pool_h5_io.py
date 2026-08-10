@@ -1003,6 +1003,39 @@ def test_ready_stacked_pool_cannot_be_downgraded_to_legacy(
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
+def test_ready_stacked_pool_cannot_be_stripped_into_legacy_shape(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 4
+    for field in (
+        "pipeline",
+        "release_id",
+        "sampling",
+        "clone_attachment",
+        "input_pins_digest",
+        "late_producer_transition_authority_sha256",
+        "stack_manifest",
+        "terminal_gates",
+        "operator_order",
+        "stage_receipts",
+    ):
+        manifest.pop(field, None)
+    diagnostics["schema_version"] = 4
+    for field in ("pipeline", "semantic_kind", "release_id", "terminal_gates"):
+        diagnostics.pop(field, None)
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="canonical legacy envelope"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
 @pytest.mark.parametrize("authority", [None, "0" * 64])
 def test_ready_stacked_pool_loader_rejects_late_authority_mismatch(
     tmp_path: Path,

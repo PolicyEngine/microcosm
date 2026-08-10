@@ -20,6 +20,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY,
     US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
     US_LATE_EXTERNAL_STAGES,
     US_LATE_PRIMARY_PUF_STAGE,
@@ -517,6 +518,36 @@ def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:
         assert "@post_clone_source_execution_config" in physical_columns
         assert "@weeks_unemployed_sidecar" not in physical_columns
         assert "@education_assistance_sidecar" not in physical_columns
+
+
+def test_acs_earnings_universe_declares_every_receipt_affecting_input() -> None:
+    inventory = US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY
+
+    assert len(inventory.requirements) == 10
+    assert {requirement.label for requirement in inventory.requirements} == {
+        "age",
+        "support_channel",
+        "person_tax_unit_link",
+        "support_clone_index",
+        "stable_person_lineage",
+        "raw_source:WAGP",
+        "raw_source:SEMP",
+        "mapped_earnings:employment_income_before_lsr",
+        "mapped_earnings:self_employment_income_before_lsr",
+        "execution_config",
+    }
+    lineage = next(
+        requirement
+        for requirement in inventory.requirements
+        if requirement.label == "stable_person_lineage"
+    )
+    assert [
+        [(column.entity, column.column) for column in alternative]
+        for alternative in lineage.alternatives
+    ] == [
+        [("person", "person_source_id")],
+        [("person", "person_id")],
+    ]
 
 
 def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> None:

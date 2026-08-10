@@ -23,8 +23,14 @@ controls, and target-bank identities. The legacy envelope is restored to its
 pre-#653 identity and cannot be selected by stripping stacked markers. The
 operator-ordering doctrine and changelog now publish the final 38-node,
 71-edge, six-wave graph, complete inventories, schema ledger, and canonical
-hashes. Focused suites and all final proof gates will be rerun from this final
-tree.
+hashes. A final independent review reopened the implementation after proving
+five fail-open boundaries: receipt scope cardinality, duplicate physical input
+evidence, source-receipt output binding, stripped stacked-envelope downgrade,
+and primary callback/resource coupling. It also found three undeclared ACS
+earnings-universe inputs and an out-of-scope ASEC value in the universe receipt
+hash. Seven focused regressions now reproduce all findings and fail on the
+pre-fix tree. Implementation and every proof gate remain pending; no readiness
+verdict has been issued.
 
 ## Done
 
@@ -336,9 +342,19 @@ tree.
 - Repository-wide Ruff found two import-order-only findings in the edited
   stacked executor and registry. Canonically reordered those imports; the
   repository-wide lint gate now passes.
+- Added seven independent-review regressions. They prove the current validator
+  accepts rehashed output-scope, cross-logical physical-input, and detached
+  source-receipt contradictions; the pool loader accepts a fully stripped
+  schema-4 disguise; the executor accepts a callback whose clone seed differs
+  from its declared resource receipt; the universe inventory has seven rather
+  than ten requirements; and ASEC earnings values outside the ACS operator
+  scope alter its callback receipt without altering the declared input surface.
+  The targeted red run produced exactly seven expected failures.
 
 ## Next
 
+- Close all seven red regressions, bump and publish the changed DAG/receipt
+  bindings, and request another independent review.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,

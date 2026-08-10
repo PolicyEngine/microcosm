@@ -3207,6 +3207,7 @@ def _run_real_late_executor_fixture(
     *,
     bank_identity_sha256: str | None = None,
     bound_clone_attachment_seed: int = 578,
+    asec_earnings_delta: float = 0.0,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
     primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
@@ -3229,6 +3230,13 @@ def _run_real_late_executor_fixture(
             "self_employment_income_before_lsr",
         ],
     ] = np.nan
+    if asec_earnings_delta:
+        asec_row = initial_person.index[
+            initial_person[support_channel_column("person")].eq("asec")
+        ][0]
+        initial_person.loc[asec_row, "employment_income_before_lsr"] += (
+            asec_earnings_delta
+        )
     events: list[str] = []
     finalizer_calls = 0
 
@@ -3239,6 +3247,18 @@ def _run_real_late_executor_fixture(
     def universe(frame: Frame):
         events.append(stacked_spine_module.US_LATE_ACS_EARNINGS_UNIVERSE_STAGE)
         return materialize_universe(frame)
+
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+    actual_primary_resources = (
+        stacked_spine_module.stacked_late_primary_resource_receipts(
+            donor,
+            primary_qrf_checkpoint_identity_sha256="a" * 64,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            seed=0,
+            n_estimators=100,
+        )
+    )
 
     def primary(frame: Frame):
         events.append(stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE)
@@ -3266,7 +3286,14 @@ def _run_real_late_executor_fixture(
             contracts=tuple(registry.values()),
             include_outputs=True,
         )
-        return stacked_spine_module.StackedPufPassResult(completed, {})
+        return stacked_spine_module.StackedPufPassResult(
+            completed,
+            {
+                "primary_resource_receipts_sha256": (
+                    stacked_spine_module._canonical_sha256(actual_primary_resources)
+                )
+            },
+        )
 
     def source(frame: Frame, operator: str) -> PoolStageOutput:
         events.append(f"source:{operator}")
@@ -3365,7 +3392,7 @@ def _run_real_late_executor_fixture(
         transfer,
     )
     resources = stacked_spine_module.stacked_late_primary_resource_receipts(
-        pd.DataFrame({"fixture_donor": [1.0]}),
+        donor,
         primary_qrf_checkpoint_identity_sha256="a" * 64,
         clone_attachment_fraction=1.0,
         clone_attachment_seed=bound_clone_attachment_seed,
@@ -3450,17 +3477,7 @@ def test_late_executor_authority_binds_every_transfer_bank_identity(
         monkeypatch,
         bank_identity_sha256="b" * 64,
     )
-    changed_primary_config, _events, _finalizer_calls = _run_real_late_executor_fixture(
-        monkeypatch,
-        bank_identity_sha256="a" * 64,
-        bound_clone_attachment_seed=579,
-    )
-
     assert first.transition_authority_sha256 != second.transition_authority_sha256
-    assert (
-        first.transition_authority_sha256
-        != changed_primary_config.transition_authority_sha256
-    )
     transfer_rows = [
         row for row in first.receipt["execution"] if row["kind"] == "late_transfer"
     ]
@@ -3479,6 +3496,37 @@ def test_late_executor_authority_binds_every_transfer_bank_identity(
             "mode": "identity_bound_checkpoint",
             "identity_sha256": "a" * 64,
         }
+
+
+def test_late_executor_rejects_primary_callback_resource_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="primary callback receipt disagrees with its declared resources",
+    ):
+        _run_real_late_executor_fixture(
+            monkeypatch,
+            bound_clone_attachment_seed=579,
+        )
+
+
+def test_universe_receipt_excludes_out_of_scope_asec_earnings_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    changed, _events, _finalizer_calls = _run_real_late_executor_fixture(
+        monkeypatch,
+        asec_earnings_delta=1.0,
+    )
+    baseline_row = baseline.receipt["execution"][0]
+    changed_row = changed.receipt["execution"][0]
+
+    assert baseline_row["input_surface_sha256"] == changed_row["input_surface_sha256"]
+    assert (
+        baseline_row["producer_receipt_sha256"]
+        == changed_row["producer_receipt_sha256"]
+    )
 
 
 def test_late_receipt_rejects_internally_consistent_forgery_against_authority(
@@ -3693,6 +3741,84 @@ def test_late_receipt_rejects_completed_absent_output(
         stacked_spine_module.validate_stacked_late_producer_receipt(
             forged,
             boundary="forged absent output",
+        )
+
+
+def test_late_receipt_rejects_rehashed_output_scope_cardinality_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    universe = forged["execution"][0]
+    output = next(item for item in universe["output_surface"] if "scope_rows" in item)
+    output["scope_rows"] = 0
+    universe["output_surface_sha256"] = stacked_spine_module._canonical_sha256(
+        universe["output_surface"]
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="scope cardinality"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged output scope rows",
+        )
+
+
+def test_late_receipt_rejects_rehashed_duplicate_physical_input_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    primary = next(
+        row
+        for row in forged["execution"]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+    hits = [
+        (declared_input, column)
+        for declared_input in primary["declared_inputs"]
+        for alternative in declared_input["evidence"]["alternatives"]
+        for column in alternative
+        if column["entity"] == "person" and column["column"] == "person_id"
+    ]
+    assert len(hits) > 1
+    declared_input, column = hits[1]
+    column["content_sha256"] = "0" * 64
+    declared_input["evidence"]["sha256"] = stacked_spine_module._canonical_sha256(
+        {"alternatives": declared_input["evidence"]["alternatives"]}
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="inconsistent physical input evidence"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged duplicate input evidence",
+        )
+
+
+def test_late_receipt_rejects_detached_source_receipt_output_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    source = next(
+        row for row in forged["execution"] if row["kind"] == "post_clone_source"
+    )
+    output = next(
+        item
+        for item in source["output_surface"]
+        if item["column"].startswith("@source_receipt:")
+    )
+    output["content_sha256"] = "0" * 64
+    source["output_surface_sha256"] = stacked_spine_module._canonical_sha256(
+        source["output_surface"]
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="source-receipt output digest"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged detached source receipt",
         )
 
 
