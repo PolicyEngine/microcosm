@@ -65,6 +65,7 @@ __all__ = [
     "US_LATE_PRIMARY_PUF_STAGE",
     "US_LATE_SOURCE_FINALIZER_STAGE",
     "US_LATE_SOURCE_EXECUTION_CONFIG_INPUT",
+    "US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT",
     "US_LATE_PRIMARY_PUF_INPUT_INVENTORY",
     "US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION",
     "US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION",
@@ -81,8 +82,10 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v10 completes the ACS PUMS earnings-universe input declaration with its
-# tax-unit link, clone role, and stable lineage fallback. v9 split that
+# v11 binds the complete packaged SourceStageSpec/default surface of every
+# source callback and the source finalizer's registry/exclusion/deferral
+# doctrine. v10 completed the ACS PUMS earnings-universe input declaration with
+# its tax-unit link, clone role, and stable lineage fallback. v9 split that
 # materializer into a declared pre-primary producer. v8 added the fixed
 # seed/period and operator switches consumed by every post-clone source callback.
 # v7 added the primary execution configuration and every late-transfer model
@@ -92,7 +95,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 10
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 11
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -105,6 +108,7 @@ US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT = (
 )
 US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT = "@acs_pums_earnings_universe_application"
 US_LATE_SOURCE_EXECUTION_CONFIG_INPUT = "@post_clone_source_execution_config"
+US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT = "@source_finalizer_execution_config"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
 
 _ASEC_SOURCE_SCOPE = "asec_source"
@@ -1660,14 +1664,22 @@ def _build_registry() -> dict[str, ProducerContract]:
     registry[US_LATE_SOURCE_FINALIZER_STAGE] = ProducerContract(
         name=US_LATE_SOURCE_FINALIZER_STAGE,
         kind="source_finalizer",
-        inputs=tuple(
+        inputs=(
+            *(
+                ProducerInput(
+                    "person",
+                    f"{_SOURCE_RECEIPT_PREFIX}{operator}",
+                    _WHOLE_POOL_SCOPE,
+                    source_producer_name(operator),
+                )
+                for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+            ),
             ProducerInput(
                 "person",
-                f"{_SOURCE_RECEIPT_PREFIX}{operator}",
+                US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT,
                 _WHOLE_POOL_SCOPE,
-                source_producer_name(operator),
-            )
-            for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                US_LATE_EXTERNAL_STAGES[0],
+            ),
         ),
         outputs=tuple(
             ProducerOutput(

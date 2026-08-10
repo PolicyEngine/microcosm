@@ -410,6 +410,13 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
         source_producer_name(operator)
         for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
     }
+    assert any(
+        item.column == "@source_finalizer_execution_config"
+        and item.producing_stage == US_LATE_EXTERNAL_STAGES[0]
+        for item in CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            US_LATE_SOURCE_FINALIZER_STAGE
+        ].inputs
+    )
     assert {
         (output.entity, output.column, output.coverage_scope)
         for output in CANONICAL_US_LATE_PRODUCER_REGISTRY[

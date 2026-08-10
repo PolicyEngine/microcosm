@@ -41,7 +41,8 @@ import pickle
 import struct
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
 
@@ -54,6 +55,7 @@ from microcosm.build.gates import (
     _sealed_stacked_gate_result,
 )
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
+from microcosm.build.source_manifest import load_source_manifest
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     AcsPumsEarningsUniverseApplication,
@@ -76,9 +78,14 @@ from microcosm.build.us_runtime.late_producer_dag import (
     run_producer_when_ready,
 )
 from microcosm.build.us_runtime.multispine_pool import (
+    POOL_DEFERRED_TRANSFER_INPUTS,
+    POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+    POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
     POOL_OPERATOR_CONTRACTS,
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_RANDOM_SEED,
+    POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE,
     POOL_SPINE_AGREEMENT_REGISTRY,
     POOL_TIME_PERIOD,
     pool_post_puf_puf_producer_target_families,
@@ -88,6 +95,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     pool_transfer_target_families,
 )
 from microcosm.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
@@ -153,6 +161,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
     US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+    US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT,
     US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
     US_LATE_TRANSFER_TARGET_BANK_INPUT,
@@ -4093,6 +4102,9 @@ def _late_virtual_resource_kind(column: str) -> str:
         ),
         US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT: "primary_puf_execution_config",
         US_LATE_SOURCE_EXECUTION_CONFIG_INPUT: ("post_clone_source_execution_config"),
+        US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT: (
+            "source_finalizer_execution_config"
+        ),
         US_LATE_TRANSFER_MODEL_CONFIG_INPUT: "late_transfer_model_config",
         US_LATE_TRANSFER_TARGET_BANK_INPUT: "late_transfer_target_bank",
     }
@@ -4104,6 +4116,15 @@ def _late_virtual_resource_kind(column: str) -> str:
         raise ValueError(
             f"Unknown US late-producer virtual resource input {column!r}."
         ) from exc
+
+
+def _late_resource_binding_schema_version(column: str) -> int:
+    """Return the independently versioned payload schema for one resource."""
+
+    kind = _late_virtual_resource_kind(column)
+    return {
+        "post_clone_source_execution_config": 2,
+    }.get(kind, 1)
 
 
 def _late_contract_available_input_keys(
@@ -4332,6 +4353,12 @@ def _validate_late_resource_binding(
             boundary=f"{boundary} source receipt",
         )
         return
+    if kind == "source_finalizer_execution_config":
+        expected = _late_source_finalizer_execution_binding()
+        require_keys(set(expected))
+        if _json_ready(binding) != _json_ready(expected):
+            raise ValueError(f"{boundary}: late source-finalizer config changed.")
+        return
     if kind == "post_clone_source_execution_config":
         require_keys(
             {
@@ -4340,7 +4367,10 @@ def _validate_late_resource_binding(
                 "seed",
                 "time_period",
                 "force_puf_imputation",
+                "allow_existing_without_source",
+                "housing_assistance_qrf",
                 "external_sidecars",
+                "source_stage_spec",
             }
         )
         expected_operator = producer.removeprefix("source:")
@@ -4379,6 +4409,37 @@ def _validate_late_resource_binding(
             expected_sidecars["asec_education_source"] = {"mode": "not_supplied"}
         if binding.get("external_sidecars") != expected_sidecars:
             raise ValueError(f"{boundary}: late source sidecar mode changed.")
+        allow_existing_operators = {
+            "with_us_child_support_inputs",
+            "with_us_disability_benefits",
+            "with_us_workers_compensation",
+            "with_us_childcare_inputs",
+            "with_us_adult_care_inputs",
+            "with_us_energy_subsidy_input",
+        }
+        expected_allow_existing = (
+            POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+            if expected_operator in allow_existing_operators
+            else None
+        )
+        if binding.get("allow_existing_without_source") is not expected_allow_existing:
+            raise ValueError(
+                f"{boundary}: late source existing-surface policy changed."
+            )
+        expected_housing_qrf = (
+            {
+                "n_estimators": POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
+                "max_train_samples": POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+            }
+            if expected_operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR
+            else None
+        )
+        if binding.get("housing_assistance_qrf") != expected_housing_qrf:
+            raise ValueError(f"{boundary}: late housing-assistance QRF config changed.")
+        if binding.get("source_stage_spec") != _late_source_stage_spec_binding(
+            expected_operator
+        ):
+            raise ValueError(f"{boundary}: late source-stage spec binding changed.")
         return
     if kind == "late_transfer_model_config":
         require_keys(
@@ -4464,10 +4525,11 @@ def _late_available_input_receipt(
             f"US late-producer resource {entity}.{column} requires "
             f"resource_kind={expected_kind!r}."
         )
-    if normalized_binding.get("schema_version") != 1:
+    expected_schema_version = _late_resource_binding_schema_version(column)
+    if normalized_binding.get("schema_version") != expected_schema_version:
         raise ValueError(
             f"US late-producer resource {entity}.{column} requires binding "
-            "schema_version=1."
+            f"schema_version={expected_schema_version}."
         )
     receipt = {
         "receipt_id": f"available_input:{producer}:{entity}.{column}",
@@ -4534,10 +4596,11 @@ def _validate_late_available_input_receipt(
         )
     binding = receipt.get("binding")
     expected_kind = _late_virtual_resource_kind(column)
+    expected_schema_version = _late_resource_binding_schema_version(column)
     if (
         not isinstance(binding, Mapping)
         or binding.get("resource_kind") != expected_kind
-        or binding.get("schema_version") != 1
+        or binding.get("schema_version") != expected_schema_version
     ):
         raise ValueError(
             f"{boundary}: late-producer available-input receipt "
@@ -4810,6 +4873,75 @@ def stacked_late_primary_checkpoint_input_binding(
     return payload
 
 
+_SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
+    {
+        "with_us_prior_year_income_inputs": "prior_year_income",
+        "with_us_medicare_take_up_input": "medicare_take_up_input",
+        "with_us_pregnancy_inputs": "pregnancy",
+        "with_us_wic_claim_input": "wic_claim_input",
+        "with_us_child_support_inputs": "child_support_inputs",
+        "with_us_disability_benefits": "disability_benefits_input",
+        "with_us_workers_compensation": "workers_compensation_input",
+        "with_us_weeks_unemployed": "weeks_unemployed_input",
+        "with_us_childcare_inputs": "childcare_inputs",
+        "with_us_adult_care_inputs": "adult_care_inputs",
+        "with_us_energy_subsidy_input": "energy_subsidy",
+        "with_us_retirement_contribution_inputs": "retirement_contributions",
+        "with_us_retirement_distribution_inputs": "retirement_distributions",
+        "with_us_immigration_inputs": "immigration_status",
+        "with_us_education_inputs": "education_inputs",
+    }
+)
+_DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR = (
+    "impute_us_housing_assistance_to_puf_support"
+)
+
+
+def _late_source_stage_spec_binding(
+    operator: str,
+    *,
+    resource: object | None = None,
+) -> dict[str, object] | None:
+    """Resolve the exact packaged SourceStageSpec consumed by a callback."""
+
+    if operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR:
+        return None
+    try:
+        stage_name = _SOURCE_MANIFEST_STAGE_BY_OPERATOR[operator]
+    except KeyError as exc:
+        raise ValueError(
+            f"US late source operator {operator!r} has no manifest-stage binding."
+        ) from exc
+    resolved_resource = (
+        files("microcosm.build.us").joinpath("source_stages.json")
+        if resource is None
+        else resource
+    )
+    if not hasattr(resolved_resource, "read_bytes"):
+        raise TypeError("US source-stage binding resource must expose read_bytes().")
+    manifest = load_source_manifest(resolved_resource)
+    stage_map = manifest.stage_map()
+    if stage_name not in stage_map:
+        raise ValueError(
+            f"US source manifest declares no bound stage {stage_name!r} for "
+            f"operator {operator!r}."
+        )
+    stage_spec = _json_ready(asdict(stage_map[stage_name]))
+    asset_bytes = resolved_resource.read_bytes()
+    return {
+        "asset": "microcosm.build.us/source_stages.json",
+        "asset_sha256": hashlib.sha256(asset_bytes).hexdigest(),
+        "manifest": {
+            "country": manifest.country,
+            "version": manifest.version,
+            "policy": manifest.policy,
+        },
+        "stage_name": stage_name,
+        "resolved_stage_spec": stage_spec,
+        "resolved_stage_spec_sha256": _canonical_sha256(stage_spec),
+    }
+
+
 def _late_source_resource_receipts(
     *,
     producer_name: str,
@@ -4823,7 +4955,7 @@ def _late_source_resource_receipts(
         )
     binding = {
         "resource_kind": "post_clone_source_execution_config",
-        "schema_version": 1,
+        "schema_version": 2,
         "operator": operator,
         "seed": POOL_RANDOM_SEED,
         "time_period": (
@@ -4834,6 +4966,27 @@ def _late_source_resource_receipts(
         "force_puf_imputation": (
             True if operator == "with_us_retirement_distribution_inputs" else None
         ),
+        "allow_existing_without_source": (
+            POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+            if operator
+            in {
+                "with_us_child_support_inputs",
+                "with_us_disability_benefits",
+                "with_us_workers_compensation",
+                "with_us_childcare_inputs",
+                "with_us_adult_care_inputs",
+                "with_us_energy_subsidy_input",
+            }
+            else None
+        ),
+        "housing_assistance_qrf": (
+            {
+                "n_estimators": POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
+                "max_train_samples": POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+            }
+            if operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR
+            else None
+        ),
         "external_sidecars": (
             {"asec_2023_source": {"mode": "not_supplied"}}
             if operator == "with_us_weeks_unemployed"
@@ -4841,6 +4994,7 @@ def _late_source_resource_receipts(
             if operator == "with_us_education_inputs"
             else {}
         ),
+        "source_stage_spec": _late_source_stage_spec_binding(operator),
     }
     return {
         f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}": (
@@ -4851,6 +5005,38 @@ def _late_source_resource_receipts(
                 rows=1,
                 binding=binding,
             )
+        )
+    }
+
+
+def _late_source_finalizer_execution_binding() -> dict[str, object]:
+    """Bind every doctrine input consumed by the source finalizer callback."""
+
+    return {
+        "resource_kind": "source_finalizer_execution_config",
+        "schema_version": 1,
+        "phase": "post_clone",
+        "source_operator_registry": list(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
+        "formula_owned_output_exclusions": {
+            entity: sorted(columns)
+            for entity, columns in sorted(FORMULA_OWNED_SOURCE_COLUMNS.items())
+        },
+        "deferred_transfer_inputs": _json_ready(POOL_DEFERRED_TRANSFER_INPUTS),
+        "deferred_status": "deferred_pending_source_donor",
+    }
+
+
+def _late_source_finalizer_resource_receipts() -> dict[str, dict[str, object]]:
+    """Bind the finalizer's phase, registry, exclusions, and deferral contract."""
+
+    column = US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT
+    return {
+        f"person.{column}": _late_available_input_receipt(
+            producer=US_LATE_SOURCE_FINALIZER_STAGE,
+            entity="person",
+            column=column,
+            rows=1,
+            binding=_late_source_finalizer_execution_binding(),
         )
     }
 
@@ -8378,26 +8564,29 @@ def run_stacked_late_producer_dag(
                 producer_name=producer_name,
             )
         elif producer_name == US_LATE_SOURCE_FINALIZER_STAGE:
-            node_available_inputs = {
-                f"person.@source_receipt:{operator}": (
-                    _late_available_input_receipt(
-                        producer=US_LATE_SOURCE_FINALIZER_STAGE,
-                        entity="person",
-                        column=f"@source_receipt:{operator}",
-                        rows=len(current.table("person")),
-                        binding={
-                            "resource_kind": "source_operator_receipt",
-                            "schema_version": 1,
-                            "source_operator": operator,
-                            "source_receipt_sha256": _canonical_sha256(
-                                _json_ready(source_receipts[operator])
-                            ),
-                        },
+            node_available_inputs = _late_source_finalizer_resource_receipts()
+            node_available_inputs.update(
+                {
+                    f"person.@source_receipt:{operator}": (
+                        _late_available_input_receipt(
+                            producer=US_LATE_SOURCE_FINALIZER_STAGE,
+                            entity="person",
+                            column=f"@source_receipt:{operator}",
+                            rows=len(current.table("person")),
+                            binding={
+                                "resource_kind": "source_operator_receipt",
+                                "schema_version": 1,
+                                "source_operator": operator,
+                                "source_receipt_sha256": _canonical_sha256(
+                                    _json_ready(source_receipts[operator])
+                                ),
+                            },
+                        )
                     )
-                )
-                for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
-                if operator in source_receipts
-            }
+                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                    if operator in source_receipts
+                }
+            )
         elif contract.kind == "late_transfer":
             group = group_by_name[producer_name]
             node_available_inputs = _late_transfer_resource_receipts(

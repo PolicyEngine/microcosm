@@ -3151,7 +3151,7 @@ def test_late_transfer_resources_bind_all_callback_controls() -> None:
     assert model["donor_selection"] == ("all_rows_from_post_puf_asec_origin_projection")
 
 
-def test_late_source_resources_bind_all_callback_controls() -> None:
+def test_late_source_resources_bind_all_callback_controls(tmp_path: Path) -> None:
     allow_existing_operators = {
         "with_us_child_support_inputs",
         "with_us_disability_benefits",
@@ -3198,6 +3198,57 @@ def test_late_source_resources_bind_all_callback_controls() -> None:
             if operator == "impute_us_housing_assistance_to_puf_support"
             else None
         )
+        source_stage = binding["source_stage_spec"]
+        if operator == "impute_us_housing_assistance_to_puf_support":
+            assert source_stage is None
+        else:
+            assert (
+                source_stage["stage_name"]
+                == (source_stage["resolved_stage_spec"]["stage"])
+            )
+            assert source_stage["resolved_stage_spec_sha256"] == (
+                stacked_spine_module._canonical_sha256(
+                    source_stage["resolved_stage_spec"]
+                )
+            )
+
+    source_asset = stacked_spine_module.files("microcosm.build.us").joinpath(
+        "source_stages.json"
+    )
+    changed_payload = json.loads(source_asset.read_text(encoding="utf-8"))
+    stage = next(
+        item
+        for item in changed_payload["stages"]
+        if item["stage"] == "adult_care_inputs"
+    )
+    stage["notes"] = f"{stage.get('notes', '')} identity-regression"
+    changed_asset = tmp_path / "source_stages.json"
+    changed_asset.write_text(json.dumps(changed_payload), encoding="utf-8")
+    baseline = stacked_spine_module._late_source_stage_spec_binding(
+        "with_us_adult_care_inputs"
+    )
+    changed = stacked_spine_module._late_source_stage_spec_binding(
+        "with_us_adult_care_inputs",
+        resource=changed_asset,
+    )
+    assert baseline["asset_sha256"] != changed["asset_sha256"]
+    assert (
+        baseline["resolved_stage_spec_sha256"]
+        != (changed["resolved_stage_spec_sha256"])
+    )
+
+
+def test_late_source_finalizer_resources_bind_all_callback_controls() -> None:
+    resources = stacked_spine_module._late_source_finalizer_resource_receipts()
+    assert set(resources) == {"person.@source_finalizer_execution_config"}
+    binding = resources["person.@source_finalizer_execution_config"]["binding"]
+    assert binding == stacked_spine_module._late_source_finalizer_execution_binding()
+    assert binding["source_operator_registry"] == list(
+        multispine_pool_module.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    )
+    assert binding["deferred_transfer_inputs"] == (
+        multispine_pool_module.POOL_DEFERRED_TRANSFER_INPUTS
+    )
 
 
 def test_primary_refuses_missing_universe_receipt_before_callback() -> None:

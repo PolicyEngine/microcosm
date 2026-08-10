@@ -30,13 +30,15 @@ and primary callback/resource coupling. It also found three undeclared ACS
 earnings-universe inputs and an out-of-scope ASEC value in the universe receipt
 hash. Seven focused regressions now reproduce all findings and fail on the
 pre-fix tree. Implementation and every proof gate remain pending; no readiness
-verdict has been issued. The follow-up audit found four final identity gaps:
-the outer checkpoint/manifest order double-counts the primary PUF callback
-already nested inside the late DAG; housing and six source wrappers consume
-unbound defaults; the transfer wrapper consumes unbound donor-selection
-defaults; and clone attachment plus capital-gains-tail spec defaults are not
-bound. Regressions now state the complete callback-control contract before the
-implementation is changed.
+verdict has been issued. The exhaustive follow-up audit expanded the remaining
+identity work: the outer checkpoint/manifest order double-counts the primary
+PUF callback already nested inside the late DAG; source callbacks consume
+unbound packaged stage specs and wrapper defaults; the finalizer consumes
+unbound registry/exclusion/deferral doctrine; transfer donor selection is
+implicit; and primary/tail callbacks have unbound data, asset, worker,
+finalization, gate, and audit-sink controls. Regressions now state the initial
+callback-control contract, and implementation has begun with the source and
+finalizer surfaces.
 
 ## Done
 
@@ -378,12 +380,21 @@ implementation is changed.
   `us_spine_agreement` gate. A fully stripped schema-6 stacked manifest can no
   longer pass as legacy. The H5-loader and exact-k downstream suites are green
   with canonical legacy fixtures.
+- Bound the complete source/finalizer runtime surface in registry schema 11.
+  Fifteen source producers now bind the exact resolved packaged
+  `SourceStageSpec` plus manifest bytes; housing assistance passes and binds
+  its direct-QRF estimator/sample controls; six wrappers pass and bind strict
+  existing-surface refusal; and both optional sidecars are explicitly `None`.
+  The finalizer now declares a virtual config input covering the post-clone
+  phase, exact source registry, formula-owned exclusions, full deferred-input
+  declarations, and deferred status. Source resource schema 2 and focused
+  callback/executor regressions are green.
 
 ## Next
 
-- Close the remaining receipt, legacy-envelope, primary-callback, and outer
-  order regressions; bump and publish the changed DAG/receipt
-  bindings, and request another independent review.
+- Close the remaining primary/tail, transfer, and outer-order identity gaps;
+  bump and publish the resulting bindings, and request another independent
+  review.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,

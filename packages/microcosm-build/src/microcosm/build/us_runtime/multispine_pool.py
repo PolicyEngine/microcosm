@@ -48,6 +48,8 @@ from microcosm.build.us_runtime.hours_worked import (
     with_us_hours_worked_inputs,
 )
 from microcosm.build.us_runtime.housing_inputs import (
+    US_HOUSING_ASSISTANCE_PUF_MAX_TRAIN_SAMPLES,
+    US_HOUSING_ASSISTANCE_PUF_N_ESTIMATORS,
     impute_us_housing_assistance_to_puf_support,
     with_us_housing_inputs,
 )
@@ -110,6 +112,8 @@ from microcosm.frame import Frame
 __all__ = [
     "POOL_CHECKPOINT_STAGE_ORDER",
     "POOL_HOUSEHOLD_MASS_SHARES",
+    "POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES",
+    "POOL_HOUSING_ASSISTANCE_N_ESTIMATORS",
     "POOL_DERIVE_OPERATOR_ORDER",
     "POOL_DEFERRED_TRANSFER_INPUTS",
     "POOL_OPERATOR_CONTRACTS",
@@ -120,6 +124,7 @@ __all__ = [
     "POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER",
     "POOL_SOURCE_OPERATOR_CONTRACTS",
     "POOL_SOURCE_OPERATOR_ORDER",
+    "POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE",
     "POOL_SPINE_AGREEMENT_REGISTRY",
     "POOL_TIME_PERIOD",
     "MultispinePoolCheckpoint",
@@ -205,6 +210,13 @@ POOL_RANDOM_SEED = 0
 
 POOL_TIME_PERIOD = 2024
 """PolicyEngine period of the 2024 source pool."""
+
+POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE = False
+"""Source construction never reuses an unreceipted pre-existing surface."""
+
+POOL_HOUSING_ASSISTANCE_N_ESTIMATORS = US_HOUSING_ASSISTANCE_PUF_N_ESTIMATORS
+POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES = US_HOUSING_ASSISTANCE_PUF_MAX_TRAIN_SAMPLES
+"""Exact direct-QRF controls for the housing-assistance source producer."""
 
 POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE = 5_000
 """Fixed household batch size for terminal formula-output evaluation."""
@@ -1029,42 +1041,51 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
             impute_us_housing_assistance_to_puf_support(
                 current,
                 seed=POOL_RANDOM_SEED,
+                n_estimators=POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
+                max_train_samples=POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
             )
         ),
         "with_us_child_support_inputs": lambda current: with_us_child_support_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_disability_benefits": lambda current: with_us_disability_benefits(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_workers_compensation": lambda current: with_us_workers_compensation(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_weeks_unemployed": lambda current: with_us_weeks_unemployed(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            asec_2023_source=None,
         ),
         "with_us_childcare_inputs": lambda current: with_us_childcare_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_adult_care_inputs": lambda current: with_us_adult_care_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_energy_subsidy_input": lambda current: with_us_energy_subsidy_input(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_retirement_contribution_inputs": lambda current: (
             with_us_retirement_contribution_inputs(
@@ -1090,6 +1111,7 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            asec_education_source=None,
         ),
     }
     return operators
