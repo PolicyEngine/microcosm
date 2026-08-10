@@ -10,7 +10,8 @@ available `origin/main` (`e9a352ca`). No fetch was performed because this task
 forbids network access. A shared-ref update outside this worktree has since made
 Git report the branch behind by one; the task remains on its required checkout
 without rebasing, resetting, or shelving. Focused verification is green; the
-exact #583 shard is green; the foreground workspace chunks are next.
+exact #583 shard and every foreground workspace chunk are green. Final
+independent review and report assembly are next.
 
 ## Done
 
@@ -115,10 +116,20 @@ exact #583 shard is green; the foreground workspace chunks are next.
   provenance owner, required both in the pool import graph, and moved the
   pinned graph size from 61 to 63. The complete shard then passed exactly 495
   tests.
+- Ran the full workspace in eight non-overlapping foreground chunks. Exact
+  results were: 795 passed/36 skipped; 1,446/26; 1,161/1; 460/0; 653/2;
+  480/0; 495/0; and 324/1. Total: 5,814 passed, 66 skipped, 5,880 collected,
+  with zero failures or errors. JUnit receipts independently carry those
+  counts and prove the partition covers all 190 build test files plus every
+  frame, fit, calibrate, and data test.
+- Ran repository-wide `ruff check .`: pass. Repository-wide
+  `ruff format --check .` reports 30 pre-existing files outside this branch's
+  diff; none was rewritten. The format check over all 19 Python files changed
+  since the task base passes, as do both the branch and worktree
+  `git diff --check` gates. The worktree is clean.
 
 ## Next
 
-- Run every full-workspace foreground chunk and the Ruff format/check/diff
-  gates, then commit the exact proof counts.
+- Run a final independent read-only review and close any actionable finding.
 - Write the final gradeable mechanism/edge/fix/proof report to the requested
   output file and stdout, commit it, and leave the worktree clean.
