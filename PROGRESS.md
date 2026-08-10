@@ -210,6 +210,13 @@ rerun are closed.
   v9. The canonical schedule payload now names the row, top-level, and
   immutable transition-authority contracts, so old identities cannot silently
   accept the stronger receipt semantics.
+- Updated the operator-ordering doctrine to publish the 46-requirement primary
+  inventory, the 15-requirement wrapper plus full kernel inventory for every
+  source, the finalizer's sixteen receipt inputs, the 32-item validation plus
+  12-item model bundle shared by all transfers, every per-group target-owner
+  delta, all 70 dependency edges, the five derived waves, content-binding
+  rules, version ledger, and canonical schedule/payload hashes. Extended the
+  existing #652 changelog fragment so both fixes ship together.
 
 ## Next
 
