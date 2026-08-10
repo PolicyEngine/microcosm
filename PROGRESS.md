@@ -175,6 +175,10 @@ and the complete proof rerun are closed.
   after-source callback. Registry schema v4 now has 37 producers, 70 edges,
   and wave sizes `(1, 17, 14, 3, 2)`; all 14 DAG tests plus the real executor
   regression pass.
+- Added a red 19-group registry audit for the exact common transfer-wrapper
+  surface: 28 physical provenance columns across six grains, household weight,
+  and the assembly/stacked/PUF-attachment metadata receipts. It fails on the
+  currently undeclared peer-grain inputs as expected.
 
 ## Next
 

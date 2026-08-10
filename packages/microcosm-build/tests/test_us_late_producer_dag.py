@@ -24,6 +24,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_PRIMARY_PUF_STAGE,
     US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_SOURCE_INPUT_INVENTORIES,
+    US_LATE_TRANSFER_INPUT_INVENTORIES,
     source_producer_name,
     transfer_producer_name,
     us_late_producer_schedule_receipt,
@@ -386,6 +387,55 @@ def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> N
         ].tolerated_absence_receipts == (
             f"optional_input:{group.name}:optional_investment_income",
         )
+
+
+def test_every_transfer_declares_complete_cross_grain_validation_surface() -> None:
+    entities = (
+        "person",
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    )
+    groups = entities[1:]
+    expected = {
+        *((entity, f"{entity}_support_channel") for entity in entities),
+        *((entity, f"{entity}_support_clone_index") for entity in entities),
+        *(("person", f"person_{entity}_id") for entity in groups),
+        *((entity, f"{entity}_id") for entity in groups),
+        ("person", "person_id"),
+        ("person", "person_spine_source_id"),
+        ("person", "person_source_id"),
+        ("household", "household_spine_source_id"),
+        ("household", "household_source_id"),
+        ("household", "TYPEHUGQ"),
+        ("household", "@resolved_weight"),
+        ("frame", "@us_spine_assembly_manifest"),
+        ("frame", "@us_stacked_spine_manifest"),
+        ("frame", "@us_puf_clone_attachment_manifest"),
+    }
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        inventory = US_LATE_TRANSFER_INPUT_INVENTORIES[group.name]
+        physical = {
+            (column.entity, column.column)
+            for requirement in inventory.requirements
+            for alternative in requirement.alternatives
+            for column in alternative
+        }
+        assert expected <= physical
+
+        clone_columns = {
+            (column.entity, column.column, column.value_kind)
+            for requirement in inventory.requirements
+            for alternative in requirement.alternatives
+            for column in alternative
+            if column.column.endswith("_support_clone_index")
+        }
+        assert clone_columns == {
+            (entity, f"{entity}_support_clone_index", "finite_numeric")
+            for entity in entities
+        }
 
 
 def test_production_registry_preserves_finite_numeric_input_kinds() -> None:
