@@ -23,10 +23,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from microcosm.build.us_runtime.acs_transfer import TargetFamilies
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
 )
+from microcosm.build.us_runtime.acs_transfer import TargetFamilies
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,

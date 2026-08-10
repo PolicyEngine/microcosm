@@ -333,6 +333,9 @@ tree.
   pre-stacked envelope. Pinned that fixture explicitly to the preserved legacy
   schema 4; it now exercises the intended downstream compatibility route
   without weakening the stacked-envelope downgrade fence.
+- Repository-wide Ruff found two import-order-only findings in the edited
+  stacked executor and registry. Canonically reordered those imports; the
+  repository-wide lint gate now passes.
 
 ## Next
 
