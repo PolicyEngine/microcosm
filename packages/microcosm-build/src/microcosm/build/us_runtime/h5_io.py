@@ -51,10 +51,11 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
-# 5 adds the import-validated late producer/input DAG receipt, its derived
-# schedule, and the exact nineteen-group completion proof to stacked pool
-# publication. Schema 4 cannot authenticate those execution semantics.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 5
+# 6 additionally binds the independently carried late-producer transition
+# authority and restores its immutable Frame-metadata anchor on H5 load.
+# Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
+# the published receipt is the one authorized by the generating transition.
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 6
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -360,7 +361,7 @@ def _validate_stacked_late_dag_manifest_binding(
     *,
     manifest_path: Path,
 ) -> None:
-    """Make schema-5 stacked consumers authenticate the published DAG proof."""
+    """Make schema-6 stacked consumers authenticate the published DAG proof."""
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
@@ -402,6 +403,10 @@ def _validate_stacked_late_dag_manifest_binding(
         dag,
         boundary=f"US stacked pool manifest {manifest_path}",
     )
+    _stacked_late_transition_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
     transfer_alias = impute.get("stacked_post_puf_transfer")
     source_chain = impute.get("source_operator_chain")
     source_alias = (
@@ -419,6 +424,47 @@ def _validate_stacked_late_dag_manifest_binding(
             f"US stacked pool manifest {manifest_path} source-completion alias "
             "differs from its late-DAG proof."
         )
+
+
+def _stacked_late_transition_binding(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> tuple[Mapping[str, object], Mapping[str, object], str] | None:
+    """Return the signed DAG, derived authority, and independent authority SHA."""
+
+    if manifest.get("pipeline") != "us-stacked-pool":
+        return None
+    stage_receipts = manifest.get("stage_receipts")
+    impute = (
+        stage_receipts.get("impute") if isinstance(stage_receipts, Mapping) else None
+    )
+    dag = (
+        impute.get("stacked_late_producer_dag") if isinstance(impute, Mapping) else None
+    )
+    if not isinstance(dag, Mapping):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} has no late-producer "
+            "DAG receipt."
+        )
+    from microcosm.build.us_runtime.stacked_spine import (
+        _late_producer_transition_authority_receipt,
+    )
+
+    derived_authority = _late_producer_transition_authority_receipt(dag)
+    expected_sha256 = derived_authority["sha256"]
+    observed_sha256 = manifest.get("late_producer_transition_authority_sha256")
+    if (
+        not isinstance(observed_sha256, str)
+        or _LOWERCASE_SHA256.fullmatch(observed_sha256) is None
+        or observed_sha256 != expected_sha256
+    ):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} independently carried "
+            "late-producer transition authority does not match its signed DAG "
+            f"receipt; expected={expected_sha256!r}, observed={observed_sha256!r}."
+        )
+    return dag, derived_authority, observed_sha256
 
 
 def load_simulation_ready_us_multispine_pool(
@@ -497,6 +543,18 @@ def load_simulation_ready_us_multispine_pool(
         )
     household_weights = household.pop("household_weight").to_numpy(dtype=np.float64)
     tables["household"] = household
+    late_transition = _stacked_late_transition_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    frame_metadata: dict[str, object] = {}
+    if late_transition is not None:
+        _dag, transition_authority, _transition_authority_sha256 = late_transition
+        from microcosm.build.us_runtime.stacked_spine import (
+            US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
+        )
+
+        frame_metadata[US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY] = transition_authority
     frame = Frame(
         tables,
         US_SCHEMA,
@@ -506,7 +564,20 @@ def load_simulation_ready_us_multispine_pool(
                 WeightKind.IMPORTANCE,
             )
         },
+        metadata=frame_metadata,
     )
+    if late_transition is not None:
+        dag, _transition_authority, transition_authority_sha256 = late_transition
+        from microcosm.build.us_runtime.stacked_spine import (
+            validate_stacked_late_producer_transition_authority,
+        )
+
+        validate_stacked_late_producer_transition_authority(
+            frame,
+            dag,
+            boundary=f"US stacked pool H5 {pool_path}",
+            expected_transition_authority_sha256=transition_authority_sha256,
+        )
 
     provenance_counts = _mapping(
         manifest.get("provenance_counts"),
