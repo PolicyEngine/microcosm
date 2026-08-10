@@ -14,12 +14,10 @@ from microcosm.build.uk_runtime import (
     SPI_INCOME_IMPUTATION_COLUMNS,
     SPI_PRIOR_MASS_CHANGE_REASON,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
-    area_support_summary,
     create_uk_spi_support_tables,
     fill_support_channel_from_source,
     replace_uk_spi_support_tables,
     spi_support,
-    stacked_weights_to_long,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -396,7 +394,7 @@ def test_replace_spi_support_refuses_to_discard_positive_spi_mass() -> None:
         )
 
 
-def test_spi_source_lineage_keeps_longwise_source_support_from_doubling() -> None:
+def test_spi_source_lineage_keeps_source_support_from_doubling() -> None:
     result = create_uk_spi_support_tables(
         person=person_frame(),
         benunit=benunit_frame(),
@@ -404,19 +402,16 @@ def test_spi_source_lineage_keeps_longwise_source_support_from_doubling() -> Non
         spi_household_count=None,
         source_year=2023,
     )
-    weights = np.ones(2 * len(result.household))
 
-    long = stacked_weights_to_long(
-        weights,
-        area_codes=["A", "B"],
-        household_ids=result.household["household_id"],
-        household_frame=result.household,
-        area_type="local_authority",
-    )
-    summary = area_support_summary(long)
-
-    assert summary["nonzero_households"].tolist() == [6, 6]
-    assert summary["nonzero_source_households"].tolist() == [3, 3]
+    # The SPI support stage duplicates each household (base + synthetic
+    # support clone), but the source lineage key must keep pointing at the
+    # original household so downstream per-area source-support counts do
+    # not double: 6 households, 3 distinct sources.
+    household = result.household
+    assert len(household) == 6
+    assert household["source_household_key"].nunique() == 3
+    counts = household.groupby("source_household_key").size()
+    assert counts.tolist() == [2, 2, 2]
 
 
 def test_spi_support_preserves_existing_rowwise_lineage_metadata() -> None:

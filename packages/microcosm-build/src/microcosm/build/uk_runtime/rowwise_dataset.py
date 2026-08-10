@@ -7,7 +7,7 @@ frames or H5 files and does not import an incumbent data package.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.national_build import (
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
+    uk_national_frame,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.rowwise_geography import (
@@ -60,6 +61,21 @@ PERSON_ID_COLUMNS = (
 BENUNIT_ID_COLUMNS = ("benunit_id",)
 HOUSEHOLD_ID_COLUMNS = ("household_id",)
 UK_SINGLE_YEAR_TABLES = ("person", "benunit", "household", "time_period")
+
+#: Clone-index column name in the written artifact (one name per table —
+#: the legacy single-year schema, unchanged by the Frame carrier).
+ARTIFACT_CLONE_INDEX_COLUMN = "clone_index"
+
+
+def ladder_clone_index_column(entity: str) -> str:
+    """The in-memory, per-entity clone-index column on the ladder frame.
+
+    Frame enforces globally unique column names across entity tables, so the
+    artifact's shared ``clone_index`` name cannot appear on all three tables
+    in memory; the writer renames these back at the export boundary.
+    """
+
+    return f"{entity}_{ARTIFACT_CLONE_INDEX_COLUMN}"
 
 
 @dataclass(frozen=True)
@@ -224,27 +240,28 @@ def clone_uk_dataset_tables_with_rowwise_geography(
 
 @dataclass(frozen=True)
 class UKLadderRowwiseDatasetResult:
-    """Cloned UK tables with OA-ladder geography and the passed release gate.
+    """Cloned UK ladder frame with the passed release gate.
 
     The ladder route is the release path (#495 increment 6a): geography comes
     from :func:`assign_uk_geography_ladder` under the artifact's vintage
-    discipline, the release-blocking :func:`uk_geography_ladder_gate` must
-    pass before a result exists, and the #501 weight-kind/mass-log fence
-    chain carries unchanged. Declared design delta vs the crosswalk route:
-    no cross-clone constituency collision avoidance — duplicate
-    (source, constituency) pairs are a reported diagnostic.
+    discipline, and the release-blocking :func:`uk_geography_ladder_gate`
+    must pass before a result exists. The clone travels as a microcosm
+    ``Frame`` (#612 increment 2): typed household weights carry the #501
+    weight-kind fence chain, the mass log and ``time_period`` live on the
+    frame, and clone indices are per-entity ``{entity}_clone_index`` columns
+    so Frame's global column-uniqueness holds. The written artifact keeps
+    the legacy single ``clone_index`` name per table — the writer renames at
+    the export boundary, so the published schema is unchanged. Declared
+    design delta vs the crosswalk route: no cross-clone constituency
+    collision avoidance — duplicate (source, constituency) pairs are a
+    reported diagnostic.
     """
 
-    person: pd.DataFrame
-    benunit: pd.DataFrame
-    household: pd.DataFrame
-    time_period: str
+    frame: Frame
     gate: GateResult
     n_clones: int
     id_multiplier: int
     output_path: Path | None = None
-    household_weight_kind: WeightKind = WeightKind.DESIGN
-    mass_log: tuple[MassChangeRecord, ...] = ()
 
 
 def clone_uk_dataset_tables_with_ladder_geography(
@@ -258,14 +275,17 @@ def clone_uk_dataset_tables_with_ladder_geography(
     time_period: int | str | None = None,
     source_year: int | None = None,
     id_multiplier: int | None = None,
-    clone_index_column: str | None = "clone_index",
     expected_constituency_vintage: str | None = None,
     region_column: str = "region",
     household_weight_kind: WeightKind = WeightKind.DESIGN,
     mass_log: tuple[MassChangeRecord, ...] = (),
     source_lineage_modulus: int | None = None,
 ) -> UKLadderRowwiseDatasetResult:
-    """Clone UK tables and assign geography through the OA ladder."""
+    """Clone UK tables and assign geography through the OA ladder.
+
+    The result carries a validated UK national frame; clone indices land on
+    the canonical per-entity :func:`ladder_clone_index_column` names.
+    """
 
     _validate_weight_metadata(household_weight_kind, mass_log)
     person_frame = person.copy()
@@ -278,6 +298,27 @@ def clone_uk_dataset_tables_with_ladder_geography(
         household_id_column="household_id",
         household_weight_column="household_weight",
     )
+    # The artifact's clone_index names the rowwise clone dimension. A
+    # candidate-tier clone_index inherited from the staging input (SPI/pool
+    # lineage) is replaced, exactly as the pre-Frame clone overwrote the
+    # column in place — dropped here so the per-entity in-memory names
+    # cannot collide with it at the writer's rename. The reserved
+    # {entity}_clone_index names have no legitimate producer and fail
+    # closed rather than being silently overwritten.
+    tables = {
+        "person": person_frame,
+        "benunit": benunit_frame,
+        "household": household_frame,
+    }
+    for entity, table in tables.items():
+        reserved = ladder_clone_index_column(entity)
+        if reserved in table.columns:
+            raise ValueError(
+                f"input {entity} table already carries the reserved in-memory "
+                f"clone column {reserved!r}; the ladder clone owns that name."
+            )
+        if ARTIFACT_CLONE_INDEX_COLUMN in table.columns:
+            table.drop(columns=[ARTIFACT_CLONE_INDEX_COLUMN], inplace=True)
     if source_lineage_modulus is not None:
         household_frame = apply_uk_source_lineage_modulus(
             household_frame,
@@ -314,7 +355,7 @@ def clone_uk_dataset_tables_with_ladder_geography(
         id_columns=HOUSEHOLD_ID_COLUMNS,
         n_clones=n_clones,
         id_multiplier=id_multiplier,
-        clone_index_column=clone_index_column,
+        clone_index_column=ladder_clone_index_column("household"),
     ).reset_index(drop=True)
     cloned_household["household_weight"] = (
         np.asarray(cloned_household["household_weight"], dtype=np.float64) / n_clones
@@ -324,22 +365,17 @@ def clone_uk_dataset_tables_with_ladder_geography(
         id_columns=PERSON_ID_COLUMNS,
         n_clones=n_clones,
         id_multiplier=id_multiplier,
-        clone_index_column=clone_index_column,
+        clone_index_column=ladder_clone_index_column("person"),
     ).reset_index(drop=True)
     cloned_benunit = clone_entity_frame(
         benunit_frame,
         id_columns=BENUNIT_ID_COLUMNS,
         n_clones=n_clones,
         id_multiplier=id_multiplier,
-        clone_index_column=clone_index_column,
+        clone_index_column=ladder_clone_index_column("benunit"),
     ).reset_index(drop=True)
 
-    if clone_index_column is not None:
-        _assert_clone_link_alignment(
-            cloned_person,
-            cloned_household,
-            clone_index_column=clone_index_column,
-        )
+    _assert_clone_link_alignment(cloned_person, cloned_household)
 
     assigned = assign_uk_geography_ladder(
         cloned_household,
@@ -376,27 +412,27 @@ def clone_uk_dataset_tables_with_ladder_geography(
             + "; ".join(gate.failures)
         )
 
-    result = UKLadderRowwiseDatasetResult(
+    validate_uk_ladder_rowwise_dataset_tables(cloned_person, cloned_benunit, assigned)
+    # The frame construction re-runs linkage validation and binds the typed
+    # household weights, the mass log, and the time period to the carrier.
+    frame = uk_national_frame(
         person=cloned_person,
         benunit=cloned_benunit,
         household=assigned,
         time_period=_normalise_time_period(time_period, source_year=source_year),
+        weight_kind=household_weight_kind,
+        mass_log=(*mass_log, clone_record),
+    )
+    return UKLadderRowwiseDatasetResult(
+        frame=frame,
         gate=gate,
         n_clones=n_clones,
         id_multiplier=id_multiplier,
-        household_weight_kind=household_weight_kind,
-        mass_log=(*mass_log, clone_record),
     )
-    validate_uk_ladder_rowwise_dataset_tables(
-        result.person,
-        result.benunit,
-        result.household,
-    )
-    return result
 
 
 def clone_uk_dataset_with_ladder_geography(
-    dataset: Any | str | Path,
+    dataset: Frame | str | Path,
     ladder: UkOaLadder,
     *,
     output_path: str | Path | None = None,
@@ -404,19 +440,26 @@ def clone_uk_dataset_with_ladder_geography(
     seed: int = 42,
     source_year: int | None = None,
     id_multiplier: int | None = None,
-    clone_index_column: str | None = "clone_index",
     expected_constituency_vintage: str | None = None,
     region_column: str = "region",
     source_lineage_modulus: int | None = None,
 ) -> UKLadderRowwiseDatasetResult:
-    """Clone a UK dataset object or H5 with OA-ladder geography.
+    """Clone a UK national frame or H5 with OA-ladder geography.
 
-    The declared weight kind and any mass log are carried from the input.
-    In-memory dataset objects must declare ``household_weight_kind``; only an
-    attr-less H5 defaults to the national loader's ``WeightKind.DESIGN``
-    semantics. Unknown stored kinds fail closed.
+    The weight kind and mass log are carried from the input: a frame
+    supplies them through its typed weights and mass log (nothing can be
+    absent or silently defaulted); only an attr-less H5 defaults to the
+    national loader's ``WeightKind.DESIGN`` semantics. Unknown stored kinds
+    fail closed. The duck-typed in-memory carrier retired with the #612
+    Frame migration — an in-memory input must be a microcosm ``Frame``.
     """
 
+    if not isinstance(dataset, Frame | str | Path):
+        raise TypeError(
+            "ladder clone requires a microcosm Frame or a UK single-year H5 "
+            f"path, got {type(dataset).__name__}; the duck-typed in-memory "
+            "carrier retired with the #612 Frame migration."
+        )
     tables = _dataset_tables(dataset, source_year=source_year)
     result = clone_uk_dataset_tables_with_ladder_geography(
         person=tables["person"],
@@ -428,7 +471,6 @@ def clone_uk_dataset_with_ladder_geography(
         time_period=tables["time_period"],
         source_year=source_year,
         id_multiplier=id_multiplier,
-        clone_index_column=clone_index_column,
         expected_constituency_vintage=expected_constituency_vintage,
         region_column=region_column,
         household_weight_kind=tables["household_weight_kind"],
@@ -438,18 +480,7 @@ def clone_uk_dataset_with_ladder_geography(
     if output_path is None:
         return result
     path = write_uk_rowwise_dataset(result, output_path)
-    return UKLadderRowwiseDatasetResult(
-        person=result.person,
-        benunit=result.benunit,
-        household=result.household,
-        time_period=result.time_period,
-        gate=result.gate,
-        n_clones=result.n_clones,
-        id_multiplier=result.id_multiplier,
-        output_path=path,
-        household_weight_kind=result.household_weight_kind,
-        mass_log=result.mass_log,
-    )
+    return replace(result, output_path=path)
 
 
 def validate_uk_ladder_rowwise_dataset_tables(
@@ -495,8 +526,6 @@ def validate_uk_ladder_rowwise_dataset_tables(
 def _assert_clone_link_alignment(
     person: pd.DataFrame,
     household: pd.DataFrame,
-    *,
-    clone_index_column: str,
 ) -> None:
     """Refuse cross-clone links an undersized explicit id_multiplier allows.
 
@@ -505,9 +534,13 @@ def _assert_clone_link_alignment(
     agree row by row.
     """
 
-    household_clone = household.set_index("household_id")[clone_index_column]
+    household_clone = household.set_index("household_id")[
+        ladder_clone_index_column("household")
+    ]
     mapped = person["person_household_id"].map(household_clone)
-    misaligned = mapped.to_numpy() != person[clone_index_column].to_numpy()
+    misaligned = (
+        mapped.to_numpy() != person[ladder_clone_index_column("person")].to_numpy()
+    )
     if misaligned.any():
         raise ValueError(
             f"{int(misaligned.sum())} person row(s) link across clone "
@@ -604,26 +637,16 @@ def clone_uk_dataset_with_rowwise_geography(
 
 
 def write_uk_rowwise_dataset(
-    result: UKRowwiseDatasetResult,
+    result: UKRowwiseDatasetResult | UKLadderRowwiseDatasetResult,
     output_path: str | Path,
 ) -> Path:
     """Write cloned UK row-wise tables as a valid single-year H5 dataset."""
 
+    if isinstance(result, UKLadderRowwiseDatasetResult):
+        return _write_uk_ladder_rowwise_dataset(result, output_path)
     # A frozen dataclass does not freeze DataFrames: re-verify the mass log
     # against the tables actually being written, so a post-clone mutation
-    # cannot ship under a stale conservation record — and for ladder results
-    # (which carry a gate), re-run the release gate on the frame actually
-    # written, so a post-gate geography mutation cannot ship either.
-    if isinstance(getattr(result, "gate", None), GateResult):
-        regate = uk_geography_ladder_gate(
-            result.household,
-            np.asarray(result.household["household_weight"], dtype=np.float64),
-        )
-        if not regate.passed:
-            raise ValueError(
-                "UK geography ladder gate failed on the frame being written "
-                "(mutated after the clone?): " + "; ".join(regate.failures)
-            )
+    # cannot ship under a stale conservation record.
     _assert_mass_log_current(
         result.mass_log,
         float(np.asarray(result.household["household_weight"], dtype=np.float64).sum()),
@@ -640,6 +663,60 @@ def write_uk_rowwise_dataset(
         time_period=result.time_period,
         weight_kind=result.household_weight_kind,
         mass_log=result.mass_log,
+        path=Path(output_path),
+    )
+
+
+def _write_uk_ladder_rowwise_dataset(
+    result: UKLadderRowwiseDatasetResult,
+    output_path: str | Path,
+) -> Path:
+    """Materialize the ladder frame into the legacy single-year H5 schema.
+
+    The export boundary is unchanged by the Frame carrier: typed weights are
+    authoritative (``engine_tables`` overwrites ``household_weight``), and
+    the per-entity in-memory clone-index columns are renamed back to the
+    artifact's single ``clone_index`` name per table, in place, so column
+    order is preserved.
+    """
+
+    frame = result.frame
+    tables = engine_tables(frame, weighted_entities=("household",))
+    renamed: dict[str, pd.DataFrame] = {}
+    for entity in ("person", "benunit", "household"):
+        table = tables[entity]
+        in_memory = ladder_clone_index_column(entity)
+        if in_memory not in table.columns:
+            raise ValueError(
+                f"ladder rowwise {entity} table is missing {in_memory!r}; "
+                "the clone-index lineage must reach the written artifact."
+            )
+        renamed[entity] = table.rename(columns={in_memory: ARTIFACT_CLONE_INDEX_COLUMN})
+    # The frame's typed weights are what a frozen dataclass cannot protect
+    # against table mutation, but re-run the release gate on the household
+    # table actually being written so a post-gate geography mutation cannot
+    # ship either.
+    household = renamed["household"]
+    regate = uk_geography_ladder_gate(
+        household,
+        np.asarray(household["household_weight"], dtype=np.float64),
+    )
+    if not regate.passed:
+        raise ValueError(
+            "UK geography ladder gate failed on the frame being written "
+            "(mutated after the clone?): " + "; ".join(regate.failures)
+        )
+    _assert_mass_log_current(
+        frame.mass_log,
+        float(np.asarray(household["household_weight"], dtype=np.float64).sum()),
+    )
+    return _write_uk_single_year_tables(
+        person=renamed["person"],
+        benunit=renamed["benunit"],
+        household=household,
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
         path=Path(output_path),
     )
 
