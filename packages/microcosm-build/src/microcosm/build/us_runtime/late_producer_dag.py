@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 __all__ = [
+    "ProducerInputColumn",
     "ProducerContract",
     "ProducerInput",
     "ProducerOutput",
@@ -30,6 +31,18 @@ def _nonempty(value: object, *, label: str) -> str:
 
 
 @dataclass(frozen=True, order=True)
+class ProducerInputColumn:
+    """One physical column participating in an effective input alternative."""
+
+    entity: str
+    column: str
+
+    def __post_init__(self) -> None:
+        _nonempty(self.entity, label="ProducerInputColumn.entity")
+        _nonempty(self.column, label="ProducerInputColumn.column")
+
+
+@dataclass(frozen=True, order=True)
 class ProducerInput:
     """One scoped input and the stage expected to make it ready."""
 
@@ -38,6 +51,7 @@ class ProducerInput:
     required_scope: str
     producing_stage: str
     tolerated_absence_receipts: tuple[str, ...] = ()
+    alternatives: tuple[tuple[ProducerInputColumn, ...], ...] = ()
 
     def __post_init__(self) -> None:
         for label, value in (
@@ -58,6 +72,25 @@ class ProducerInput:
                 "ProducerInput.tolerated_absence_receipts contains duplicates."
             )
         object.__setattr__(self, "tolerated_absence_receipts", tuple(sorted(receipts)))
+        alternatives = tuple(tuple(option) for option in self.alternatives)
+        if not alternatives:
+            alternatives = ((ProducerInputColumn(self.entity, self.column),),)
+        if any(not option for option in alternatives) or any(
+            not isinstance(item, ProducerInputColumn)
+            for option in alternatives
+            for item in option
+        ):
+            raise TypeError(
+                "ProducerInput.alternatives require nonempty tuples of "
+                "ProducerInputColumn values."
+            )
+        canonical_alternatives = tuple(
+            sorted(
+                {tuple(sorted(set(option))) for option in alternatives},
+                key=lambda option: tuple((item.entity, item.column) for item in option),
+            )
+        )
+        object.__setattr__(self, "alternatives", canonical_alternatives)
 
 
 @dataclass(frozen=True, order=True)
@@ -125,6 +158,13 @@ def _contract_payload(contract: ProducerContract) -> dict[str, object]:
                 "required_scope": item.required_scope,
                 "producing_stage": item.producing_stage,
                 "tolerated_absence_receipts": list(item.tolerated_absence_receipts),
+                "alternatives": [
+                    [
+                        {"entity": column.entity, "column": column.column}
+                        for column in alternative
+                    ]
+                    for alternative in item.alternatives
+                ],
             }
             for item in contract.inputs
         ],

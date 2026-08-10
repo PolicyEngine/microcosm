@@ -134,6 +134,9 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         "post_clone_source",
         "late_transfer",
     }
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 15
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].outputs) == 65
+    assert all(contract.inputs for contract in registry.values())
     assert {
         name
         for name, contract in registry.items()
@@ -155,6 +158,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
     edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
 
+    assert len(edges) == 48
     assert (
         source_producer_name("with_us_pregnancy_inputs"),
         source_producer_name("with_us_wic_claim_input"),
@@ -171,6 +175,48 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
         transfer_producer_name("person", "puf_tax_itemization__batch_2"),
         source_producer_name("with_us_education_inputs"),
     ) in edges
+    assert {
+        consumer
+        for producer, consumer in edges
+        if producer == US_LATE_PRIMARY_PUF_STAGE and consumer.startswith("transfer:")
+    } == {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+
+
+def test_production_adult_care_contract_refuses_missing_sstb_before_callback() -> None:
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        source_producer_name("with_us_adult_care_inputs")
+    ]
+    sstb_input = next(
+        item
+        for item in contract.inputs
+        if item.column == "sstb_self_employment_income_before_lsr"
+        and item.producing_stage
+        == transfer_producer_name("person", "puf_tax_itemization__batch_5")
+    )
+    invoked = False
+
+    def callback() -> None:
+        nonlocal invoked
+        invoked = True
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)source:with_us_adult_care_inputs.*"
+            r"person\.sstb_self_employment_income_before_lsr.*43260 unfilled.*"
+            r"asec_source.*transfer:person/puf_tax_itemization__batch_5"
+        ),
+    ):
+        run_producer_when_ready(
+            contract,
+            callback,
+            unfilled_rows={
+                item: 43_260 if item == sstb_input else 0 for item in contract.inputs
+            },
+            absence_receipts={},
+        )
+
+    assert invoked is False
 
 
 def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> None:
@@ -201,3 +247,24 @@ def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:
         assert inventory.operator == operator
         assert inventory.requirements
         assert all(requirement.alternatives for requirement in inventory.requirements)
+
+
+def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> None:
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name]
+        effective_inputs = {
+            item.column: item for item in contract.inputs if item.column.startswith("@")
+        }
+        assert {
+            "@effective:age",
+            "@effective:is_female",
+            "@effective:state_fips",
+            "@effective:resolved_person_weight",
+            "@effective:resolved_target_weight",
+            "@effective:optional_investment_income",
+        } <= set(effective_inputs)
+        assert effective_inputs[
+            "@effective:optional_investment_income"
+        ].tolerated_absence_receipts == (
+            f"optional_input:{group.name}:optional_investment_income",
+        )

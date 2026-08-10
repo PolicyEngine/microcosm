@@ -50,10 +50,16 @@ checkout without rebasing, resetting, or shelving.
 - Declared and import-validated the production late graph: one primary-PUF
   producer, all 16 post-clone source producers with full structured kernel
   input inventories, and the exact 19 bounded late-transfer groups covering
-  70 targets. Its 25 derived edges include pregnancy to WIC, childcare and
+  70 targets. Its derived edges include pregnancy to WIC, childcare and
   SSTB batch 5 to adult care, and tuition batch 2 to education. Seven graph
   and registry doctrine regressions pass, including reconstruction under
   reversed registry iteration.
+- Tightened every descriptive inventory into an executable contract gate:
+  primary PUF declares 15 effective requirements and all 65 outputs; all 16
+  source and 19 transfer nodes declare required alternatives and named
+  tolerated-absence receipts for optional availability predictors. The full
+  graph now derives 48 real edges, including primary-PUF dependencies into ten
+  source operators and all 19 transfer groups. Nine DAG regressions pass.
 - Split the post-clone source chain into a guarded single-producer entrypoint
   and an exact 16-receipt finalizer. The compatibility entrypoint now uses the
   same narrow API; deferred source inputs materialize only once after complete
