@@ -14,8 +14,9 @@ resource-checkpoint discovery all fail closed. Bounded transfer groups suppress
 the opportunistic Schedule-D write; the existing whole-pool derive operator
 remains its sole canonical owner. Focused regressions and targeted Ruff are
 green. The operator-ordering doctrine and changelog now match the live schema,
-counts, resource ledger, derived waves, and hashes. The final proof matrix and
-final report remain.
+counts, resource ledger, derived waves, and hashes. The fresh focused, #583,
+full-workspace, Ruff, format, and diff proof matrix is green. Only the final
+report remains.
 
 ## Done
 
@@ -419,11 +420,27 @@ final report remain.
   pool-stage materializer v5, and manifest v7; schedule SHA `dbae9f945966a58592915780be78137e011d060271af6c933870a55db297baab`;
   and payload SHA `95ee19cd1b4d1cf321a32910c234ebc460aa47f9cc30e03fa8560ea6ae5e2eb8`.
   An independent read-only audit found no other stale published claims.
+- Ran a 12-file focused foreground aggregate covering the DAG, stacked
+  executor, tool/H5 boundaries, tail, ACS transfer, capital-gain distribution,
+  pool, education, housing, primary-QRF, and PUF-support surfaces: exactly 676
+  passed, zero skipped, failed, or errored.
+- Reran the exact #583 source-spine-blindness file in the foreground: exactly
+  495 passed, zero skipped, failed, or errored. Its JUnit receipt also serves
+  as the seventh non-overlapping workspace chunk.
+- Proved the workspace partition selects all 225 test files exactly once: 225
+  selected, 225 unique, zero duplicate groups, and zero missing/extra files.
+  The eight foreground chunks completed with exact pass/skip counts of
+  `795/36`, `1,446/26`, `1,161/1`, `492/0`, `655/2`, `540/0`, `495/0`, and
+  `324/1`. The eight JUnit receipts independently report zero failures and
+  zero errors. Total: 5,908 passed, 66 skipped, 5,974 collected.
+- Ran repository-wide `ruff check .`: pass. All 27 Python files changed since
+  preserved #652 tip `54d2dee6` pass `ruff format --check`. The repository-wide
+  format audit names 29 pre-existing files and has zero overlap with this
+  branch's changed-file set. Both `git diff --check 54d2dee6..HEAD` and the
+  live-worktree `git diff --check` pass.
 
 ## Next
 
-- Rerun the focused aggregate, exact #583 shard, non-overlapping
-  foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,
   echo it to stdout, commit the final progress state, and leave the worktree
   clean.
