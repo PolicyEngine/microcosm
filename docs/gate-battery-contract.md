@@ -104,7 +104,7 @@ Canonical artifact keys today:
 
 | key | supplied by | consumed by |
 | --- | --- | --- |
-| `fit_weight_records` | any build with production fits | `weights_audit` (shared binding) |
+| `fit_weight_records` | any build with production fits | `weights_audit` (shared binding; the UK overrides it so an empty record set fails the audit instead of passing it vacuously) |
 | `candidate_input_mass_totals`, `reference_input_mass_totals` | data-only builds | `input_mass_parity` (shared binding; the UK overrides it) |
 | `tail_concentration_values`, `tail_concentration_weights` | data-only builds | `tail_concentration` (shared binding; the UK overrides it) |
 | `coverage_engine`, `coverage_manifest` (optional override) | UK national build | `release_input_coverage`, both phases |
@@ -231,6 +231,16 @@ pin, failing closed on drift. The export-surface entry declares its
 reviewed comparison registers the same way (the allowed-extra column list
 and the reviewed reference-side exclusion), with the two hard-required,
 never-waivable columns remaining a code-level guard noted in the entry.
+
+One migration-window caveat, stated rather than hidden: while the legacy
+battery and its module constants remain live, the export-surface exclusion
+register is *merged* with the legacy constant at runtime (constant ∪
+declared), and the input-mass `reference_identity` is inert at runtime
+(the digest pin is the enforced check). The spec-pin tests hold every
+declared register and pin equal to its module constant, so any divergence
+fails CI instead of shipping silently; when the constants retire with the
+orchestration swap, the bindings flip to replace-semantics and the
+declared values become solely load-bearing.
 
 ## The onboarding checklist: every input a new country supplies
 

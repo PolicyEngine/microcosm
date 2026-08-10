@@ -422,8 +422,14 @@ class GateSelectionSpec:
         raw = _require_mapping(raw, context="gates.json gate entry")
         unknown = sorted(set(raw) - _GATE_ENTRY_KEYS)
         if unknown:
+            label = raw.get("id")
+            entry_context = (
+                f"gates.json gate entry {label!r}"
+                if isinstance(label, str) and label
+                else "gates.json gate entry"
+            )
             raise ValueError(
-                "gates.json gate entry has unknown keys "
+                f"{entry_context} has unknown keys "
                 f"{unknown}; allowed: {sorted(_GATE_ENTRY_KEYS)}. A silently "
                 "dropped key would ship outside the policy hash."
             )

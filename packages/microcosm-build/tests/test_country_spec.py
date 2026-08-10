@@ -439,7 +439,9 @@ class TestRefusals:
         files = _minimal_package()
         files["gates.json"]["gates"][0]["paramters"] = {"within": 0.1}
         package_dir = _write_package(tmp_path, files)
-        with pytest.raises(ValueError, match=r"unknown keys \['paramters'\]"):
+        with pytest.raises(
+            ValueError, match=r"gate entry 'fit' has unknown keys \['paramters'\]"
+        ):
             load_country_spec(package_dir)
 
     def test_not_applicable_with_parameters_is_refused(self, tmp_path) -> None:

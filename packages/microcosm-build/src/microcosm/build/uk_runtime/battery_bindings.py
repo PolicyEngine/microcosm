@@ -39,7 +39,7 @@ from microcosm.build.gate_battery import (
     EvidenceContext,
     GateBinding,
 )
-from microcosm.build.gates import GateResult
+from microcosm.build.gates import GateResult, weights_audit_gate
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
+    _missing_fit_weight_evidence_gate,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_target_fit_gate,
@@ -241,6 +242,15 @@ def _evaluate_zero_weight_strata(
             "zero_weight_strata requires declared strata; an undeclared "
             "zero-weight surface is not a reviewed one."
         )
+    declaration_keys = {"name", "selector", "maximum_zero_weight_rows", "reason"}
+    for entry in declared:
+        unknown = sorted(set(entry) - declaration_keys)
+        if unknown:
+            raise ValueError(
+                f"zero_weight_strata declaration has unknown keys {unknown}; "
+                f"allowed: {sorted(declaration_keys)}. A silently ignored key "
+                "would sit in the policy hash while binding nothing."
+            )
     declarations = tuple(
         UKZeroWeightStratumDeclaration(
             name=entry["name"],
@@ -269,6 +279,18 @@ def _evaluate_weight_ratio(
 ) -> GateResult:
     weights = _household_weights(_uk_gate_surface(context.frame).household)
     return uk_weight_ratio_gate(weights, **dict(parameters))
+
+
+def _evaluate_weights_audit(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    # The shared binding would pass a present-but-empty record tuple to the
+    # gate, which audits it vacuously; the legacy battery's guard is that a
+    # fit stage which emitted nothing is a failed audit, not a passing one.
+    records = tuple(context.artifacts["fit_weight_records"])
+    if not records:
+        return _missing_fit_weight_evidence_gate()
+    return weights_audit_gate(records, **dict(parameters))
 
 
 def _evaluate_export_surface(
@@ -305,7 +327,10 @@ def _evaluate_input_mass_parity(
 ) -> GateResult:
     kwargs = dict(parameters)
     declared_sha256 = kwargs.pop("reference_sha256", None)
-    kwargs.pop("reference_identity", None)  # covered by the canonical digest
+    # Inert at runtime: the declared identity is held equal to the module
+    # constant by the spec-pin tests, and the canonical digest covers the
+    # reference's actual identity + totals.
+    kwargs.pop("reference_identity", None)
     register = kwargs.pop("reviewed_exclusions_resource", None)
     if declared_sha256 != UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256:
         raise ValueError(
@@ -365,14 +390,22 @@ def _evaluate_tail_concentration(
 # ---------------------------------------------------------------------------
 
 #: The UK consumer registry: the shared defaults plus a binding for every
-#: gate ``uk/gates.json`` declares. ``weights_audit`` rides the default
-#: binding unchanged; ``input_mass_parity`` and ``tail_concentration``
-#: override the generic data-in-artifacts bindings with UK ones that
-#: derive candidate evidence from the frame and hold the supplied
-#: reference to the spec-declared pin (the microcosm#327 rule: a parity
-#: gate's reference is a declared input, never implicit module state).
+#: gate ``uk/gates.json`` declares. ``weights_audit`` overrides the shared
+#: binding to keep the legacy guard the shared one lacks — a fit stage
+#: that emitted an empty record set is a failed audit, not a vacuous pass.
+#: ``input_mass_parity`` and ``tail_concentration`` override the generic
+#: data-in-artifacts bindings with UK ones that derive candidate evidence
+#: from the frame and hold the supplied reference to the spec-declared pin
+#: (the microcosm#327 rule: a parity gate's reference is a declared input,
+#: never implicit module state).
 UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     **DEFAULT_REGISTRY,
+    "weights_audit": UKGateBinding(
+        name="weights_audit",
+        evaluator=_evaluate_weights_audit,
+        artifact_keys=frozenset({"fit_weight_records"}),
+        needs_frame=False,
+    ),
     "release_input_coverage": UKGateBinding(
         name="release_input_coverage",
         evaluator=_evaluate_release_input_coverage,

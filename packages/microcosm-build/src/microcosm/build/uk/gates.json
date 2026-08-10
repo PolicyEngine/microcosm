@@ -157,7 +157,7 @@
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_target_surface",

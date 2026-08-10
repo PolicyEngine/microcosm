@@ -43,7 +43,10 @@ from microcosm.build.uk_runtime.battery_bindings import (
 from microcosm.build.uk_runtime.national_build import _uk_gate_evidence
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.release_input_coverage import (
+    UKReleaseInputColumn,
+    UKReleaseInputCoverageManifest,
     load_uk_release_input_coverage_manifest,
+    uk_release_input_coverage_gate,
 )
 from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassParityPolicy,
@@ -316,6 +319,20 @@ class TestDifferentialAgainstLegacyBattery:
             legacy.results[-1].failures  # qrf is the last legacy gate
         )
 
+    def test_empty_fit_records_fail_identically(self) -> None:
+        # Present-but-empty is not absent: a fit stage that ran and emitted
+        # nothing is a failed audit on both sides, never a vacuous pass
+        # (the shared binding alone would pass it; the UK override keeps
+        # the legacy guard).
+        legacy, battery = _run_both(_tables(), fit_records=())
+
+        _assert_identical_verdicts(legacy, battery)
+        audit = {o.entry.id: o for o in battery.outcomes}["uk_weights_audit"]
+        assert audit.status is GateStatus.FAILED
+        assert "an absent audit is not a passing audit" in (
+            audit.result.failures[0]
+        )
+
     def test_seeded_defects_fail_identically(self) -> None:
         blown = _tables(weights=[1.0, 1.0, 1.0, 1.0e9])
         seeded_parity = _parity(
@@ -422,6 +439,60 @@ class TestUnevidencedArms:
         assert audit.reason == "missing evidence: fit_weight_records"
 
 
+class _TerminalCoverageEngine:
+    """Minimal engine surface the coverage gate consults."""
+
+    def default_values(self, names):
+        return {name: 0.0 for name in names}
+
+    def variables(self):
+        return ["employment_income"]
+
+    def variable_entities(self, names):
+        return {name: "person" for name in names}
+
+
+class TestTerminalCoverageBinding:
+    def test_terminal_mode_threads_frame_engine_and_manifest(self) -> None:
+        # The differential test feeds fixture coverage to both sides (the
+        # real gate needs the committed licensed manifest), so this is the
+        # one place the binding's terminal branch runs the real gate: same
+        # frame surface, engine, and manifest as a direct call, re-minted
+        # onto the declared neutral name.
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        engine = _TerminalCoverageEngine()
+        manifest = UKReleaseInputCoverageManifest(
+            reference={"source": "test"},
+            candidate_evidence={"source": "test"},
+            columns=(UKReleaseInputColumn("employment_income", "required"),),
+            family_coverage={},
+        )
+        binding = UK_GATE_REGISTRY["release_input_coverage"]
+        result = binding.evaluate(
+            EvidenceContext(
+                frame=frame,
+                artifacts={
+                    "coverage_engine": engine,
+                    "coverage_manifest": manifest,
+                },
+            ),
+            {},
+        )
+        direct = uk_release_input_coverage_gate(
+            _uk_gate_surface(frame), engine, manifest=manifest
+        )
+
+        assert direct.name == "uk_release_input_coverage"
+        assert result.name == "release_input_coverage"
+        assert direct.passed is True
+        assert result.passed == direct.passed
+        assert result.failures == direct.failures
+        assert dict(result.details) == dict(direct.details)
+
+
 class TestPreflightBindings:
     def test_preflight_passes_with_the_committed_manifest(self, uk_gates) -> None:
         manifest = load_uk_release_input_coverage_manifest()
@@ -504,6 +575,26 @@ class TestBindingUnits:
             EvidenceContext(frame=frame), entry.parameters
         )
         assert result.passed is True
+
+    def test_unknown_declaration_key_fails_closed(self, uk_gates) -> None:
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = {e.id: e for e in uk_gates.gates}["uk_zero_weight_strata"]
+        seeded = {
+            "declarations": [
+                {**dict(declaration), "surprise": 1}
+                for declaration in entry.parameters["declarations"]
+            ]
+        }
+        binding = UK_GATE_REGISTRY["zero_weight_strata"]
+        result = _evaluate_gate(
+            "zero_weight_strata",
+            lambda: binding.evaluate(EvidenceContext(frame=frame), seeded),
+        )
+        assert result.passed is False
+        assert "unknown keys ['surprise']" in result.failures[0]
 
     def test_unknown_declared_parameter_fails_closed(self, uk_gates) -> None:
         person, benunit, household = _tables()
