@@ -101,7 +101,10 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     validate_puf_capital_gains_tail_terminal_support_receipt,
 )
 from microcosm.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_MANIFEST_FILENAME,
+    PRIMARY_QRF_TARGET_ORDER,
+    PRIMARY_QRF_TARGET_ORDER_SHA256,
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
     primary_puf_qrf_recipient_predictor_universe_receipt,
@@ -111,6 +114,7 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     US_PUF_SUPPORT_FIT_NAME,
     bind_puf_clone_attachment_tail_descendant,
@@ -133,12 +137,15 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
     US_LATE_PRIMARY_PUF_STAGE,
     US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
     US_LATE_SOURCE_FINALIZER_STAGE,
+    US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
+    US_LATE_TRANSFER_TARGET_BANK_INPUT,
     us_late_producer_schedule_receipt,
 )
 from microcosm.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
@@ -180,6 +187,7 @@ __all__ = [
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
     "stacked_gap_fill_producer_schedule_receipt",
+    "stacked_late_primary_resource_receipts",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
     "transfer_stacked_post_puf_group",
@@ -4059,6 +4067,653 @@ def _late_table_values_sha256(
     return digest.hexdigest()
 
 
+def _late_virtual_resource_kind(column: str) -> str:
+    """Return the exact semantic kind for one declared virtual input."""
+
+    kinds = {
+        "@puf_donor_tax_units": "puf_donor_tax_units",
+        "@primary_qrf_checkpoint": "primary_qrf_checkpoint",
+        US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT: "primary_puf_execution_config",
+        US_LATE_TRANSFER_MODEL_CONFIG_INPUT: "late_transfer_model_config",
+        US_LATE_TRANSFER_TARGET_BANK_INPUT: "late_transfer_target_bank",
+    }
+    if column.startswith("@source_receipt:"):
+        return "source_operator_receipt"
+    try:
+        return kinds[column]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown US late-producer virtual resource input {column!r}."
+        ) from exc
+
+
+def _late_contract_available_input_keys(
+    contract: ProducerContract,
+) -> set[str]:
+    """Return the exact external-receipt keys required by one contract."""
+
+    return {
+        f"{column.entity}.{column.column}"
+        for requirement in contract.inputs
+        for alternative in requirement.alternatives
+        for column in alternative
+        if column.column.startswith("@")
+        and column.column != "@resolved_weight"
+        and column.entity != "frame"
+    }
+
+
+def _validate_late_resource_binding(
+    binding: Mapping[str, object],
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    boundary: str,
+) -> None:
+    """Reject hash-consistent resource claims with incomplete semantics."""
+
+    kind = _late_virtual_resource_kind(column)
+
+    def require_keys(expected: set[str]) -> None:
+        if set(binding) != expected:
+            raise ValueError(
+                f"{boundary}: late resource {entity}.{column} {kind!r} binding "
+                f"schema drifted; missing={sorted(expected - set(binding))}, "
+                f"extra={sorted(set(binding) - expected)}."
+            )
+
+    def require_nonnegative_integer(value: object, *, label: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"{boundary}: late resource {entity}.{column} has invalid "
+                f"{label}={value!r}."
+            )
+        return value
+
+    def require_positive_integer(value: object, *, label: str) -> int:
+        result = require_nonnegative_integer(value, label=label)
+        if result == 0:
+            raise ValueError(
+                f"{boundary}: late resource {entity}.{column} requires positive "
+                f"{label}."
+            )
+        return result
+
+    common = {"resource_kind", "schema_version"}
+    if kind == "puf_donor_tax_units":
+        require_keys({*common, "table_content_sha256", "ordered_columns", "dtypes"})
+        _validate_sha256(
+            binding.get("table_content_sha256"),
+            boundary=f"{boundary} PUF donor content",
+        )
+        columns = binding.get("ordered_columns")
+        dtypes = binding.get("dtypes")
+        if (
+            not isinstance(columns, list)
+            or not columns
+            or any(not isinstance(value, str) or not value for value in columns)
+            or not isinstance(dtypes, list)
+            or len(dtypes) != len(columns)
+            or any(not isinstance(value, str) or not value for value in dtypes)
+        ):
+            raise ValueError(
+                f"{boundary}: late PUF donor binding has malformed columns/dtypes."
+            )
+        return
+    if kind == "primary_qrf_checkpoint":
+        require_keys(
+            {
+                *common,
+                "checkpoint_identity_sha256",
+                "checkpoint_schema_version",
+                "manifest_filename",
+                "mode",
+                "target_order",
+                "target_order_sha256",
+            }
+        )
+        _validate_sha256(
+            binding.get("checkpoint_identity_sha256"),
+            boundary=f"{boundary} primary-QRF checkpoint identity",
+        )
+        expected = {
+            "mode": "identity_bound_checkpoint",
+            "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
+            "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
+            "target_order": list(PRIMARY_QRF_TARGET_ORDER),
+            "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
+        }
+        if any(binding.get(key) != value for key, value in expected.items()):
+            raise ValueError(
+                f"{boundary}: late primary-QRF checkpoint semantics changed."
+            )
+        return
+    if kind == "primary_puf_execution_config":
+        require_keys(
+            {
+                *common,
+                "clone_attachment",
+                "qrf",
+                "doctrines",
+                "capital_gains_tail",
+                "audit_sinks",
+            }
+        )
+        clone = binding.get("clone_attachment")
+        qrf = binding.get("qrf")
+        doctrines = binding.get("doctrines")
+        tail = binding.get("capital_gains_tail")
+        audit_sinks = binding.get("audit_sinks")
+        if not isinstance(clone, Mapping) or set(clone) != {"fraction", "seed"}:
+            raise ValueError(f"{boundary}: late clone-attachment config is malformed.")
+        fraction = clone.get("fraction")
+        if (
+            isinstance(fraction, bool)
+            or not isinstance(fraction, (int, float))
+            or not np.isfinite(fraction)
+            or not 0 < float(fraction) <= 1
+        ):
+            raise ValueError(f"{boundary}: late clone-attachment fraction is invalid.")
+        require_nonnegative_integer(clone.get("seed"), label="clone seed")
+        qrf_keys = {
+            "seed",
+            "n_estimators",
+            "predictors",
+            "person_outputs",
+            "tax_unit_outputs",
+            "invocation_mode",
+        }
+        if not isinstance(qrf, Mapping) or set(qrf) != qrf_keys:
+            raise ValueError(f"{boundary}: late primary-QRF config is malformed.")
+        require_nonnegative_integer(qrf.get("seed"), label="QRF seed")
+        require_positive_integer(qrf.get("n_estimators"), label="QRF n_estimators")
+        invocation = qrf.get("invocation_mode")
+        if not isinstance(invocation, Mapping) or set(invocation) != {
+            "predictors",
+            "person_outputs",
+            "tax_unit_outputs",
+        }:
+            raise ValueError(
+                f"{boundary}: late primary-QRF invocation mode is invalid."
+            )
+        defaults = {
+            "predictors": list(PUF_TAX_DETAIL_DEFAULT_PREDICTORS),
+            "person_outputs": list(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
+            "tax_unit_outputs": list(PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
+        }
+        for field, default in defaults.items():
+            values = qrf.get(field)
+            mode = invocation.get(field)
+            if (
+                not isinstance(values, list)
+                or not values
+                or any(not isinstance(value, str) or not value for value in values)
+                or mode not in {"canonical_default", "explicit"}
+                or (mode == "canonical_default" and values != default)
+            ):
+                raise ValueError(
+                    f"{boundary}: late primary-QRF {field} binding is invalid."
+                )
+        if doctrines != {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        }:
+            raise ValueError(f"{boundary}: late primary-PUF doctrines changed.")
+        if audit_sinks != {
+            "fit_records": "enabled",
+            "tail_bound_diagnostics": "enabled",
+        }:
+            raise ValueError(f"{boundary}: late primary-PUF audit sinks changed.")
+        expected_tail_keys = {"enabled", "seed", "support_contract"}
+        if (
+            not isinstance(tail, Mapping)
+            or set(tail) != expected_tail_keys
+            or tail.get("enabled") is not True
+            or tail.get("seed") != qrf.get("seed")
+            or tail.get("support_contract")
+            != puf_capital_gains_tail_support_contract_identity()
+        ):
+            raise ValueError(f"{boundary}: late capital-gains-tail config changed.")
+        return
+    if kind == "source_operator_receipt":
+        require_keys({*common, "source_operator", "source_receipt_sha256"})
+        expected_operator = column.removeprefix("@source_receipt:")
+        if binding.get("source_operator") != expected_operator:
+            raise ValueError(f"{boundary}: late source receipt owner changed.")
+        _validate_sha256(
+            binding.get("source_receipt_sha256"),
+            boundary=f"{boundary} source receipt",
+        )
+        return
+    if kind == "late_transfer_model_config":
+        require_keys(
+            {
+                *common,
+                "producer",
+                "entity",
+                "family",
+                "ordered_targets",
+                "seed",
+                "n_estimators",
+                "max_targets_per_fit",
+            }
+        )
+        group = next(
+            (
+                item
+                for item in CANONICAL_US_LATE_TRANSFER_GROUPS
+                if item.name == producer
+            ),
+            None,
+        )
+        if group is None or any(
+            binding.get(key) != value
+            for key, value in {
+                "producer": group.name,
+                "entity": group.entity,
+                "family": group.family,
+                "ordered_targets": list(group.targets),
+            }.items()
+        ):
+            raise ValueError(f"{boundary}: late transfer model owner/targets changed.")
+        require_nonnegative_integer(binding.get("seed"), label="transfer seed")
+        require_positive_integer(
+            binding.get("n_estimators"), label="transfer n_estimators"
+        )
+        if (
+            require_positive_integer(
+                binding.get("max_targets_per_fit"),
+                label="transfer max_targets_per_fit",
+            )
+            != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+        ):
+            raise ValueError(
+                f"{boundary}: late transfer max_targets_per_fit is noncanonical."
+            )
+        return
+    if kind == "late_transfer_target_bank":
+        mode = binding.get("mode")
+        if mode == "ephemeral_no_checkpoint":
+            require_keys({*common, "mode"})
+            return
+        if mode == "identity_bound_checkpoint":
+            require_keys({*common, "mode", "identity_sha256"})
+            _validate_sha256(
+                binding.get("identity_sha256"),
+                boundary=f"{boundary} transfer target-bank identity",
+            )
+            return
+        raise ValueError(f"{boundary}: late transfer target-bank mode is invalid.")
+    raise AssertionError(f"Unhandled late virtual resource kind {kind!r}.")
+
+
+def _late_available_input_receipt(
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    rows: int,
+    binding: Mapping[str, object],
+) -> dict[str, object]:
+    """Create one exact, hash-bound virtual-resource availability receipt."""
+
+    if isinstance(rows, bool) or not isinstance(rows, int) or rows <= 0:
+        raise ValueError(
+            "US late-producer virtual-resource rows must be a positive integer; "
+            f"got {rows!r}."
+        )
+    normalized_binding = _json_ready(binding)
+    expected_kind = _late_virtual_resource_kind(column)
+    if normalized_binding.get("resource_kind") != expected_kind:
+        raise ValueError(
+            f"US late-producer resource {entity}.{column} requires "
+            f"resource_kind={expected_kind!r}."
+        )
+    if normalized_binding.get("schema_version") != 1:
+        raise ValueError(
+            f"US late-producer resource {entity}.{column} requires binding "
+            "schema_version=1."
+        )
+    receipt = {
+        "receipt_id": f"available_input:{producer}:{entity}.{column}",
+        "status": "available",
+        "producer": producer,
+        "entity": entity,
+        "column": column,
+        "rows": rows,
+        "binding": normalized_binding,
+        "binding_sha256": _canonical_sha256(normalized_binding),
+    }
+    _validate_late_available_input_receipt(
+        receipt,
+        producer=producer,
+        entity=entity,
+        column=column,
+        boundary="US late-producer resource construction",
+    )
+    return receipt
+
+
+def _validate_late_available_input_receipt(
+    receipt: object,
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    boundary: str,
+) -> None:
+    """Validate one virtual input receipt without trusting a row count alone."""
+
+    expected_keys = {
+        "receipt_id",
+        "status",
+        "producer",
+        "entity",
+        "column",
+        "rows",
+        "binding",
+        "binding_sha256",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != expected_keys:
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} does not carry its exact semantic binding."
+        )
+    expected = {
+        "receipt_id": f"available_input:{producer}:{entity}.{column}",
+        "status": "available",
+        "producer": producer,
+        "entity": entity,
+        "column": column,
+    }
+    if any(receipt.get(key) != value for key, value in expected.items()):
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} is misbound."
+        )
+    rows = receipt.get("rows")
+    if isinstance(rows, bool) or not isinstance(rows, int) or rows <= 0:
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} has invalid rows={rows!r}."
+        )
+    binding = receipt.get("binding")
+    expected_kind = _late_virtual_resource_kind(column)
+    if (
+        not isinstance(binding, Mapping)
+        or binding.get("resource_kind") != expected_kind
+        or binding.get("schema_version") != 1
+    ):
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} has a malformed semantic binding."
+        )
+    binding_sha256 = receipt.get("binding_sha256")
+    _validate_sha256(
+        binding_sha256,
+        boundary=f"{boundary} late resource {entity}.{column} binding",
+    )
+    if binding_sha256 != _canonical_sha256(_json_ready(binding)):
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} binding SHA-256 mismatch."
+        )
+    _validate_late_resource_binding(
+        binding,
+        producer=producer,
+        entity=entity,
+        column=column,
+        boundary=boundary,
+    )
+
+
+def _late_available_input_receipt_is_valid(
+    receipt: object,
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+) -> bool:
+    try:
+        _validate_late_available_input_receipt(
+            receipt,
+            producer=producer,
+            entity=entity,
+            column=column,
+            boundary="US late-producer readiness",
+        )
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _late_string_sequence(
+    values: Sequence[str] | None,
+    *,
+    label: str,
+) -> list[str] | None:
+    if values is None:
+        return None
+    if isinstance(values, (str, bytes)) or any(
+        not isinstance(value, str) or not value for value in values
+    ):
+        raise TypeError(f"{label} must be a sequence of non-empty strings or None.")
+    return list(values)
+
+
+def stacked_late_primary_resource_receipts(
+    donor_tax_units: pd.DataFrame,
+    *,
+    primary_qrf_checkpoint_identity_sha256: str,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    seed: int,
+    n_estimators: int,
+    predictors: Sequence[str] | None = None,
+    person_outputs: Sequence[str] | None = None,
+    tax_unit_outputs: Sequence[str] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Bind every non-Frame input consumed by the primary PUF producer."""
+
+    if not isinstance(donor_tax_units, pd.DataFrame) or donor_tax_units.empty:
+        raise ValueError("US late primary-PUF donor must be a nonempty DataFrame.")
+    _validate_sha256(
+        primary_qrf_checkpoint_identity_sha256,
+        boundary="US late primary-QRF checkpoint identity",
+    )
+    if (
+        isinstance(clone_attachment_fraction, bool)
+        or not isinstance(clone_attachment_fraction, (int, float))
+        or not np.isfinite(clone_attachment_fraction)
+        or not 0 < float(clone_attachment_fraction) <= 1
+    ):
+        raise ValueError(
+            "US late primary-PUF clone attachment fraction must be finite in "
+            f"(0, 1]; got {clone_attachment_fraction!r}."
+        )
+    for label, value in {
+        "clone_attachment_seed": clone_attachment_seed,
+        "seed": seed,
+    }.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"US late primary-PUF {label} must be non-negative.")
+    if (
+        isinstance(n_estimators, bool)
+        or not isinstance(n_estimators, int)
+        or n_estimators <= 0
+    ):
+        raise ValueError("US late primary-PUF n_estimators must be positive.")
+    resolved_predictors = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_PREDICTORS if predictors is None else predictors,
+        label="predictors",
+    )
+    resolved_person_outputs = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        if person_outputs is None
+        else person_outputs,
+        label="person_outputs",
+    )
+    resolved_tax_unit_outputs = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        if tax_unit_outputs is None
+        else tax_unit_outputs,
+        label="tax_unit_outputs",
+    )
+    normalized_donor = canonicalize_table_string_dtypes(
+        donor_tax_units,
+        boundary="late primary-PUF donor resource binding",
+        table_name="puf_donor_tax_units",
+    )
+    donor_binding = {
+        "resource_kind": "puf_donor_tax_units",
+        "schema_version": 1,
+        "table_content_sha256": _late_table_values_sha256(
+            normalized_donor,
+        ),
+        "ordered_columns": [str(column) for column in normalized_donor.columns],
+        "dtypes": [str(dtype) for dtype in normalized_donor.dtypes],
+    }
+    checkpoint_binding = {
+        "resource_kind": "primary_qrf_checkpoint",
+        "schema_version": 1,
+        "checkpoint_identity_sha256": primary_qrf_checkpoint_identity_sha256,
+        "mode": "identity_bound_checkpoint",
+        "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
+        "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
+        "target_order": list(PRIMARY_QRF_TARGET_ORDER),
+        "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
+    }
+    config_binding = {
+        "resource_kind": "primary_puf_execution_config",
+        "schema_version": 1,
+        "clone_attachment": {
+            "fraction": float(clone_attachment_fraction),
+            "seed": clone_attachment_seed,
+        },
+        "qrf": {
+            "seed": seed,
+            "n_estimators": n_estimators,
+            "predictors": resolved_predictors,
+            "person_outputs": resolved_person_outputs,
+            "tax_unit_outputs": resolved_tax_unit_outputs,
+            "invocation_mode": {
+                "predictors": (
+                    "canonical_default" if predictors is None else "explicit"
+                ),
+                "person_outputs": (
+                    "canonical_default" if person_outputs is None else "explicit"
+                ),
+                "tax_unit_outputs": (
+                    "canonical_default" if tax_unit_outputs is None else "explicit"
+                ),
+            },
+        },
+        "doctrines": {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        },
+        "capital_gains_tail": {
+            "enabled": True,
+            "seed": seed,
+            "support_contract": puf_capital_gains_tail_support_contract_identity(),
+        },
+        "audit_sinks": {
+            "fit_records": "enabled",
+            "tail_bound_diagnostics": "enabled",
+        },
+    }
+    return {
+        "tax_unit.@puf_donor_tax_units": _late_available_input_receipt(
+            producer=US_LATE_PRIMARY_PUF_STAGE,
+            entity="tax_unit",
+            column="@puf_donor_tax_units",
+            rows=int(len(donor_tax_units)),
+            binding=donor_binding,
+        ),
+        "tax_unit.@primary_qrf_checkpoint": _late_available_input_receipt(
+            producer=US_LATE_PRIMARY_PUF_STAGE,
+            entity="tax_unit",
+            column="@primary_qrf_checkpoint",
+            rows=1,
+            binding=checkpoint_binding,
+        ),
+        f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}": (
+            _late_available_input_receipt(
+                producer=US_LATE_PRIMARY_PUF_STAGE,
+                entity="tax_unit",
+                column=US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
+                rows=1,
+                binding=config_binding,
+            )
+        ),
+    }
+
+
+def _late_transfer_resource_receipts(
+    *,
+    group_name: str,
+    entity: str,
+    family: str,
+    targets: Sequence[str],
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+    target_bank: AcsTransferTargetBank | None,
+) -> dict[str, dict[str, object]]:
+    """Bind model controls and durable-bank identity for one transfer node."""
+
+    model_binding = {
+        "resource_kind": "late_transfer_model_config",
+        "schema_version": 1,
+        "producer": group_name,
+        "entity": entity,
+        "family": family,
+        "ordered_targets": list(targets),
+        "seed": seed,
+        "n_estimators": n_estimators,
+        "max_targets_per_fit": max_targets_per_fit,
+    }
+    if target_bank is None:
+        bank_binding: dict[str, object] = {
+            "resource_kind": "late_transfer_target_bank",
+            "schema_version": 1,
+            "mode": "ephemeral_no_checkpoint",
+        }
+    else:
+        identity_sha256 = getattr(target_bank, "identity_sha256", None)
+        _validate_sha256(
+            identity_sha256,
+            boundary=f"US late transfer {group_name!r} target-bank identity",
+        )
+        bank_binding = {
+            "resource_kind": "late_transfer_target_bank",
+            "schema_version": 1,
+            "mode": "identity_bound_checkpoint",
+            "identity_sha256": identity_sha256,
+        }
+    return {
+        f"{entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": (
+            _late_available_input_receipt(
+                producer=group_name,
+                entity=entity,
+                column=US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
+                rows=1,
+                binding=model_binding,
+            )
+        ),
+        f"{entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": (
+            _late_available_input_receipt(
+                producer=group_name,
+                entity=entity,
+                column=US_LATE_TRANSFER_TARGET_BANK_INPUT,
+                rows=1,
+                binding=bank_binding,
+            )
+        ),
+    }
+
+
 def _late_frame_content_sha256(frame: Frame) -> str:
     """Hash a live frame while excluding the self-referential authority key."""
 
@@ -4437,6 +5092,8 @@ def _validate_late_execution_row(
         )
     unfilled_rows: dict[ProducerInput, int] = {}
     invalid_rows: dict[ProducerInput, int] = {}
+    evidenced_available_keys: set[str] = set()
+    evidenced_available_sha256: dict[str, str] = {}
     for requirement, raw_input in zip(contract.inputs, declared_inputs, strict=True):
         if not isinstance(raw_input, Mapping):
             raise ValueError(
@@ -4561,6 +5218,17 @@ def _validate_late_execution_row(
                         f"{boundary} late producer {contract.name!r} input content"
                     ),
                 )
+                if (
+                    declared_column.column.startswith("@")
+                    and declared_column.column != "@resolved_weight"
+                    and declared_column.entity != "frame"
+                    and raw_column.get("status") == "present"
+                ):
+                    evidence_key = f"{declared_column.entity}.{declared_column.column}"
+                    evidenced_available_keys.add(evidence_key)
+                    evidenced_available_sha256[evidence_key] = str(
+                        raw_column["content_sha256"]
+                    )
 
     raw_absence = raw_row.get("declared_absence_receipts")
     if not isinstance(raw_absence, Mapping):
@@ -4607,16 +5275,15 @@ def _validate_late_execution_row(
             f"{boundary}: late producer {contract.name!r} available-input "
             "receipts are not an object."
         )
-    expected_available_keys = {
-        f"{column.entity}.{column.column}"
-        for requirement in contract.inputs
-        for alternative in requirement.alternatives
-        for column in alternative
-        if column.column.startswith("@")
-        and column.column != "@resolved_weight"
-        and column.entity != "frame"
-        and contract.kind in {"primary_puf", "source_finalizer"}
-    }
+    if contract.kind in {"primary_puf", "source_finalizer", "late_transfer"}:
+        expected_available_keys = _late_contract_available_input_keys(contract)
+        if evidenced_available_keys != expected_available_keys:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} virtual-input "
+                "evidence does not prove every mandatory available resource."
+            )
+    else:
+        expected_available_keys = evidenced_available_keys
     if set(available_inputs) != expected_available_keys:
         raise ValueError(
             f"{boundary}: late producer {contract.name!r} available-input "
@@ -4625,25 +5292,19 @@ def _validate_late_execution_row(
         )
     for key, receipt in available_inputs.items():
         entity, column = key.split(".", 1)
-        expected_receipt = {
-            "receipt_id": f"available_input:{contract.name}:{key}",
-            "status": "available",
-            "producer": contract.name,
-            "entity": entity,
-            "column": column,
-        }
-        if (
-            not isinstance(receipt, Mapping)
-            or any(
-                receipt.get(field) != value for field, value in expected_receipt.items()
-            )
-            or isinstance(receipt.get("rows"), bool)
-            or not isinstance(receipt.get("rows"), int)
-            or receipt["rows"] <= 0
+        _validate_late_available_input_receipt(
+            receipt,
+            producer=contract.name,
+            entity=entity,
+            column=column,
+            boundary=f"{boundary} late producer {contract.name!r}",
+        )
+        if evidenced_available_sha256.get(key) != _canonical_sha256(
+            _json_ready(receipt)
         ):
             raise ValueError(
                 f"{boundary}: late producer {contract.name!r} available-input "
-                f"receipt {key!r} is not canonical."
+                f"receipt {key!r} disagrees with its declared content evidence."
             )
 
     input_surface_sha256 = raw_row.get("input_surface_sha256")
@@ -4983,7 +5644,10 @@ def validate_stacked_late_producer_receipt(
         key = f"person.@source_receipt:{operator}"
         source_receipt = execution_by_name[f"source:{operator}"]["producer_receipt"]
         input_receipt = finalizer_inputs.get(key)
-        if not isinstance(input_receipt, Mapping) or input_receipt.get(
+        input_binding = (
+            input_receipt.get("binding") if isinstance(input_receipt, Mapping) else None
+        )
+        if not isinstance(input_binding, Mapping) or input_binding.get(
             "source_receipt_sha256"
         ) != _canonical_sha256(source_receipt):
             raise ValueError(
@@ -6846,24 +7510,11 @@ def _late_input_column_readiness_rows(
     if input_column.column.startswith("@"):
         receipt_key = f"{input_column.entity}.{input_column.column}"
         receipt = available_input_receipts.get(receipt_key)
-        expected_receipt = {
-            "receipt_id": (
-                f"available_input:{producer_name}:{input_column.entity}."
-                f"{input_column.column}"
-            ),
-            "status": "available",
-            "producer": producer_name,
-            "entity": input_column.entity,
-            "column": input_column.column,
-        }
-        if (
-            isinstance(receipt, Mapping)
-            and all(
-                receipt.get(key) == value for key, value in expected_receipt.items()
-            )
-            and isinstance(receipt.get("rows"), int)
-            and not isinstance(receipt.get("rows"), bool)
-            and receipt["rows"] > 0
+        if _late_available_input_receipt_is_valid(
+            receipt,
+            producer=producer_name,
+            entity=input_column.entity,
+            column=input_column.column,
         ):
             return 0, 0
         return max(1, int(scope.sum())), 0
@@ -7135,6 +7786,16 @@ def run_stacked_late_producer_dag(
         raise TypeError(
             "US late-producer DAG primary resource receipts must be a mapping."
         )
+    expected_primary_resources = _late_contract_available_input_keys(
+        CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    )
+    if set(primary_resource_receipts) != expected_primary_resources:
+        raise ValueError(
+            "US late-producer DAG primary resource receipts must exactly cover "
+            "the declared virtual inputs; "
+            f"missing={sorted(expected_primary_resources - set(primary_resource_receipts))}, "
+            f"extra={sorted(set(primary_resource_receipts) - expected_primary_resources)}."
+        )
     if US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY in frame.metadata:
         raise ValueError(
             "US late-producer DAG entry already carries a transition authority; "
@@ -7176,32 +7837,43 @@ def run_stacked_late_producer_dag(
         CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
     ):
         contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
-        node_available_inputs = (
-            dict(primary_resource_receipts)
-            if producer_name == US_LATE_PRIMARY_PUF_STAGE
-            else (
-                {
-                    f"person.@source_receipt:{operator}": {
-                        "receipt_id": (
-                            f"available_input:{US_LATE_SOURCE_FINALIZER_STAGE}:"
-                            f"person.@source_receipt:{operator}"
-                        ),
-                        "status": "available",
-                        "producer": US_LATE_SOURCE_FINALIZER_STAGE,
-                        "entity": "person",
-                        "column": f"@source_receipt:{operator}",
-                        "rows": len(current.table("person")),
-                        "source_receipt_sha256": _canonical_sha256(
-                            _json_ready(source_receipts[operator])
-                        ),
-                    }
-                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
-                    if operator in source_receipts
-                }
-                if producer_name == US_LATE_SOURCE_FINALIZER_STAGE
-                else {}
+        if producer_name == US_LATE_PRIMARY_PUF_STAGE:
+            node_available_inputs = dict(primary_resource_receipts)
+        elif producer_name == US_LATE_SOURCE_FINALIZER_STAGE:
+            node_available_inputs = {
+                f"person.@source_receipt:{operator}": (
+                    _late_available_input_receipt(
+                        producer=US_LATE_SOURCE_FINALIZER_STAGE,
+                        entity="person",
+                        column=f"@source_receipt:{operator}",
+                        rows=len(current.table("person")),
+                        binding={
+                            "resource_kind": "source_operator_receipt",
+                            "schema_version": 1,
+                            "source_operator": operator,
+                            "source_receipt_sha256": _canonical_sha256(
+                                _json_ready(source_receipts[operator])
+                            ),
+                        },
+                    )
+                )
+                for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                if operator in source_receipts
+            }
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            node_available_inputs = _late_transfer_resource_receipts(
+                group_name=group.name,
+                entity=group.entity,
+                family=group.family,
+                targets=group.targets,
+                seed=seed,
+                n_estimators=n_estimators,
+                max_targets_per_fit=max_targets_per_fit,
+                target_bank=banks.get(producer_name),
             )
-        )
+        else:
+            node_available_inputs = {}
         unfilled_rows, invalid_rows = _late_input_readiness_rows(
             current,
             contract,

@@ -2953,19 +2953,36 @@ def test_late_primary_resources_bind_donor_content_and_execution_config() -> Non
         "tax_unit.@primary_puf_execution_config",
     }
     donor_receipt = baseline["tax_unit.@puf_donor_tax_units"]
-    assert donor_receipt["binding"]["table_content_sha256"] != (
-        donor_variant["tax_unit.@puf_donor_tax_units"]["binding"][
-            "table_content_sha256"
-        ]
+    assert (
+        donor_receipt["binding"]["table_content_sha256"]
+        != (
+            donor_variant["tax_unit.@puf_donor_tax_units"]["binding"][
+                "table_content_sha256"
+            ]
+        )
     )
-    assert donor_receipt["rows"] == donor_variant[
-        "tax_unit.@puf_donor_tax_units"
-    ]["rows"]
-    assert baseline["tax_unit.@primary_puf_execution_config"][
-        "binding_sha256"
-    ] != config_variant["tax_unit.@primary_puf_execution_config"][
-        "binding_sha256"
-    ]
+    assert (
+        donor_receipt["rows"] == donor_variant["tax_unit.@puf_donor_tax_units"]["rows"]
+    )
+    assert (
+        baseline["tax_unit.@primary_puf_execution_config"]["binding_sha256"]
+        != config_variant["tax_unit.@primary_puf_execution_config"]["binding_sha256"]
+    )
+    qrf = baseline["tax_unit.@primary_puf_execution_config"]["binding"]["qrf"]
+    assert qrf["predictors"] == list(
+        stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+    )
+    assert qrf["person_outputs"] == list(
+        stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert qrf["tax_unit_outputs"] == list(
+        stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+    assert qrf["invocation_mode"] == {
+        "predictors": "canonical_default",
+        "person_outputs": "canonical_default",
+        "tax_unit_outputs": "canonical_default",
+    }
 
 
 def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None:
@@ -2985,11 +3002,14 @@ def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None
         seed=0,
         n_estimators=100,
     )
-    resources["tax_unit.@puf_donor_tax_units"] = {
-        key: value
-        for key, value in resources["tax_unit.@puf_donor_tax_units"].items()
-        if key not in {"binding", "binding_sha256"}
+    shallow = resources["tax_unit.@puf_donor_tax_units"]
+    shallow["binding"] = {
+        "resource_kind": "puf_donor_tax_units",
+        "schema_version": 1,
     }
+    shallow["binding_sha256"] = stacked_spine_module._canonical_sha256(
+        shallow["binding"]
+    )
 
     with pytest.raises(
         ValueError,
@@ -3009,6 +3029,8 @@ def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None
 
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    bank_identity_sha256: str | None = None,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
     primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
@@ -3139,25 +3161,30 @@ def _run_real_late_executor_fixture(
         "transfer_stacked_post_puf_group",
         transfer,
     )
-    resources = {
-        f"tax_unit.{column}": {
-            "receipt_id": (
-                f"available_input:{stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE}:"
-                f"tax_unit.{column}"
-            ),
-            "status": "available",
-            "producer": stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
-            "entity": "tax_unit",
-            "column": column,
-            "rows": 1,
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        pd.DataFrame({"fixture_donor": [1.0]}),
+        primary_qrf_checkpoint_identity_sha256="a" * 64,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+    )
+    target_banks = None
+    if bank_identity_sha256 is not None:
+
+        class IdentityBank:
+            identity_sha256 = bank_identity_sha256
+
+        target_banks = {
+            group.name: IdentityBank()
+            for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
         }
-        for column in ("@puf_donor_tax_units", "@primary_qrf_checkpoint")
-    }
 
     result = stacked_spine_module.run_stacked_late_producer_dag(
         initial,
         primary_puf_producer=primary,
         primary_resource_receipts=resources,
+        target_banks=target_banks,
     )
 
     return result, tuple(events), finalizer_calls
@@ -3186,6 +3213,39 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
         frame=result.frame,
         expected_transition_authority_sha256=result.transition_authority_sha256,
     )
+
+
+def test_late_executor_authority_binds_every_transfer_bank_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, _events, _finalizer_calls = _run_real_late_executor_fixture(
+        monkeypatch,
+        bank_identity_sha256="a" * 64,
+    )
+    second, _events, _finalizer_calls = _run_real_late_executor_fixture(
+        monkeypatch,
+        bank_identity_sha256="b" * 64,
+    )
+
+    assert first.transition_authority_sha256 != second.transition_authority_sha256
+    transfer_rows = [
+        row for row in first.receipt["execution"] if row["kind"] == "late_transfer"
+    ]
+    assert len(transfer_rows) == 19
+    for row in transfer_rows:
+        available = row["available_input_receipts"]
+        assert len(available) == 2
+        bank = next(
+            receipt
+            for key, receipt in available.items()
+            if key.endswith(".@late_transfer_target_bank")
+        )
+        assert bank["binding"] == {
+            "resource_kind": "late_transfer_target_bank",
+            "schema_version": 1,
+            "mode": "identity_bound_checkpoint",
+            "identity_sha256": "a" * 64,
+        }
 
 
 def test_late_receipt_rejects_internally_consistent_forgery_against_authority(

@@ -431,6 +431,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
             "declared_input_and_output_content_callback_receipt_and_"
             "previous_execution_sha256"
         ),
+        "virtual_resource_binding": ("exact_kind_specific_semantic_payload_and_sha256"),
         "top_binding": (
             "entry_and_output_frame_sha256_execution_chain_source_"
             "completion_and_nineteen_transfer_groups"
