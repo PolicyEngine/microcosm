@@ -3430,6 +3430,82 @@ def test_late_receipt_rejects_live_output_content_drift(
         )
 
 
+def _rehash_late_receipt_after_fixture_mutation(
+    receipt: dict[str, object],
+) -> None:
+    previous = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=receipt["producer_schedule"]["payload_sha256"],
+        input_frame_sha256=receipt["input_frame_sha256"],
+    )
+    for row in receipt["execution"]:
+        row["input_surface_sha256"] = stacked_spine_module._canonical_sha256(
+            row["declared_inputs"]
+        )
+        row["previous_execution_sha256"] = previous
+        row.pop("sha256", None)
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous = row["sha256"]
+    receipt["execution_chain_sha256"] = previous
+    receipt.pop("sha256", None)
+    receipt["sha256"] = stacked_spine_module._canonical_sha256(receipt)
+
+
+def test_late_receipt_rejects_forged_absent_required_virtual_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    primary = forged["execution"][0]
+    config_key = "tax_unit.@primary_puf_execution_config"
+    config_input = next(
+        item
+        for item in primary["declared_inputs"]
+        if item["column"] == "@effective:primary_puf_execution_config"
+    )
+    config_evidence = config_input["evidence"]
+    config_column = config_evidence["alternatives"][0][0]
+    config_column["status"] = "absent"
+    config_column["content_sha256"] = stacked_spine_module._canonical_sha256(
+        {"absent": True}
+    )
+    config_evidence["sha256"] = stacked_spine_module._canonical_sha256(
+        {"alternatives": config_evidence["alternatives"]}
+    )
+    del primary["available_input_receipts"][config_key]
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="every mandatory available resource"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged required virtual input",
+        )
+
+
+def test_late_receipt_rejects_virtual_evidence_receipt_digest_disagreement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    primary = forged["execution"][0]
+    donor_input = next(
+        item
+        for item in primary["declared_inputs"]
+        if item["column"] == "@effective:puf_donor"
+    )
+    donor_evidence = donor_input["evidence"]
+    donor_evidence["alternatives"][0][0]["content_sha256"] = "0" * 64
+    donor_evidence["sha256"] = stacked_spine_module._canonical_sha256(
+        {"alternatives": donor_evidence["alternatives"]}
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="disagrees with its declared content"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged virtual input digest",
+        )
+
+
 def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     frame = _post_puf_transfer_fixture()
     surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
