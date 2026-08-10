@@ -119,12 +119,31 @@ def _write_ready_pool(tmp_path: Path) -> Path:
                 "simulation_ready": True,
                 "publication_run_id": run_id,
                 "period": 2024,
+                "operator_order": [
+                    "assemble",
+                    "clone",
+                    "impute",
+                    "derive",
+                    "seed",
+                    "simulate",
+                    "agreement",
+                ],
+                "stage_receipts": {
+                    stage: {"operator": stage}
+                    for stage in ("impute", "derive", "seed", "simulate")
+                },
                 "stage_checkpoints": {
+                    "artifact_kind": (
+                        "populace_us_multispine_pool_checkpoint_provenance"
+                    ),
+                    "schema_version": 1,
+                    "materializer_version": 3,
+                    "enabled": False,
                     "agreement": {
                         "source": "always_fresh",
                         "cached": False,
                         "terminal_verdict_persisted": False,
-                    }
+                    },
                 },
                 "agreement_gate": agreement_gate,
                 "provenance_counts": {"household": {"rows": 8}},

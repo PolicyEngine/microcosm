@@ -409,12 +409,29 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         "simulation_ready": True,
         "publication_run_id": run_id,
         "period": 2024,
+        "operator_order": [
+            "assemble",
+            "clone",
+            "impute",
+            "derive",
+            "seed",
+            "simulate",
+            "agreement",
+        ],
+        "stage_receipts": {
+            stage: {"operator": stage}
+            for stage in ("impute", "derive", "seed", "simulate")
+        },
         "stage_checkpoints": {
+            "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
+            "schema_version": 1,
+            "materializer_version": 3 if not stacked else 9,
+            "enabled": False,
             "agreement": {
                 "source": "always_fresh",
                 "cached": False,
                 "terminal_verdict_persisted": False,
-            }
+            },
         },
         "agreement_gate": agreement_gate,
         "provenance_counts": {"household": {"rows": 3}},
@@ -698,6 +715,12 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         ]
         if contract.kind == "acs_earnings_universe":
             producer_receipt = {"fixture": "acs_earnings_universe"}
+        elif contract.kind == "primary_puf":
+            producer_receipt = {
+                "primary_resource_receipts_sha256": (
+                    stacked_spine_module._canonical_sha256(available)
+                )
+            }
         elif contract.kind == "post_clone_source":
             producer_receipt = source_receipts[producer_name.removeprefix("source:")]
         elif contract.kind == "source_finalizer":
@@ -706,6 +729,11 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             producer_receipt = group_receipts[group_by_name[producer_name].name]
         else:
             producer_receipt = {}
+        for output in output_surface:
+            if output["column"].startswith("@source_receipt:"):
+                output["content_sha256"] = stacked_spine_module._canonical_sha256(
+                    producer_receipt
+                )
         row = {
             "execution_index": index,
             "producer": producer_name,

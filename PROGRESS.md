@@ -365,6 +365,13 @@ verdict has been issued.
   reconstructs those receipts from the donor bytes and actual invocation
   parameters before executing. All five focused executor/forgery regressions
   are green.
+- Replaced the schema-4 loader's negative-only downgrade heuristic with a
+  positive frozen legacy identity: exact seven-operator order, required
+  impute/derive/seed/simulate receipt stages, checkpoint schema 1/materializer
+  3 identity (including every persisted stage), and the sole named
+  `us_spine_agreement` gate. A fully stripped schema-6 stacked manifest can no
+  longer pass as legacy. The H5-loader and exact-k downstream suites are green
+  with canonical legacy fixtures.
 
 ## Next
 

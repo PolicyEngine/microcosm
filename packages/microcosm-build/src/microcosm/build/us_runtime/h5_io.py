@@ -61,6 +61,21 @@ _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _STACKED_PIPELINE = "us-stacked-pool"
+_LEGACY_POOL_OPERATOR_ORDER = (
+    "assemble",
+    "clone",
+    "impute",
+    "derive",
+    "seed",
+    "simulate",
+    "agreement",
+)
+_LEGACY_POOL_CHECKPOINT_ARTIFACT_KIND = (
+    "populace_us_multispine_pool_checkpoint_provenance"
+)
+_LEGACY_POOL_CHECKPOINT_SCHEMA_VERSION = 1
+_LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION = 3
+_LEGACY_REQUIRED_STAGE_RECEIPTS = frozenset({"impute", "derive", "seed", "simulate"})
 _STACKED_ONLY_MANIFEST_FIELDS = frozenset(
     {
         "pipeline",
@@ -109,6 +124,54 @@ def _stacked_manifest_markers(manifest: Mapping[str, object]) -> set[str]:
     return markers
 
 
+def _validate_canonical_legacy_envelope(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> None:
+    """Require positive identity for the frozen schema-4 publication route."""
+
+    failures: list[str] = []
+    if manifest.get("operator_order") != list(_LEGACY_POOL_OPERATOR_ORDER):
+        failures.append("operator_order")
+    stage_receipts = manifest.get("stage_receipts")
+    if not isinstance(stage_receipts, Mapping) or not (
+        _LEGACY_REQUIRED_STAGE_RECEIPTS <= set(stage_receipts)
+    ):
+        failures.append("stage_receipts")
+    checkpoints = manifest.get("stage_checkpoints")
+    if not isinstance(checkpoints, Mapping):
+        failures.append("stage_checkpoints")
+    else:
+        expected_checkpoint_identity = {
+            "artifact_kind": _LEGACY_POOL_CHECKPOINT_ARTIFACT_KIND,
+            "schema_version": _LEGACY_POOL_CHECKPOINT_SCHEMA_VERSION,
+            "materializer_version": _LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION,
+        }
+        if any(
+            checkpoints.get(key) != value
+            for key, value in expected_checkpoint_identity.items()
+        ):
+            failures.append("stage_checkpoints.identity")
+        stages = checkpoints.get("stages")
+        if isinstance(stages, Mapping) and any(
+            not isinstance(receipt, Mapping)
+            or receipt.get("materializer_version")
+            != _LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION
+            for receipt in stages.values()
+        ):
+            failures.append("stage_checkpoints.stages")
+    agreement = manifest.get("agreement_gate")
+    gates = agreement.get("gates") if isinstance(agreement, Mapping) else None
+    if not isinstance(gates, Mapping) or set(gates) != {"us_spine_agreement"}:
+        failures.append("agreement_gate.us_spine_agreement")
+    if failures:
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} is not a canonical "
+            f"legacy envelope; invalid={sorted(failures)}."
+        )
+
+
 def _validated_pool_manifest_envelope(
     manifest: Mapping[str, object],
     *,
@@ -133,6 +196,7 @@ def _validated_pool_manifest_envelope(
                 f"US multispine pool manifest {manifest_path} legacy envelope "
                 f"carries stacked-only field(s) {sorted(markers)}."
             )
+        _validate_canonical_legacy_envelope(manifest, manifest_path=manifest_path)
         return "legacy"
     raise ValueError(
         f"US multispine pool manifest {manifest_path} has an unsupported "
