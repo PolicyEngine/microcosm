@@ -211,10 +211,11 @@ are allowed only when named by the ACS native-input receipt.
    and target checkpoint schema remains version 6. The capital-gains tail
    manifest uses schema version 2 and binds its support contract and receipt.
    The canonical stacked authority and outer stacked checkpoint materializer
-   use version 9, while the pool stage checkpoint materializer uses version 5.
+   use version 9, while the stacked pool stage checkpoint materializer uses
+   version 5.
    The outer base identity binds primary-QRF version 6, the ACS universe and
    QBI reconciliation contracts, the tail schema and support contract, and
-   late-producer registry schema version 7. The companion pool manifest uses
+   late-producer registry schema version 9. The companion pool manifest uses
    schema version 6.
    Older outer authority or materializer payloads are stale; primary-QRF
    version 6 remains current.
@@ -231,21 +232,23 @@ are allowed only when named by the ACS native-input receipt.
    transfer. The declared batch-5-to-adult-care edge below therefore derives
    the repair from data dependency rather than installing another manual
    ordering exception.
-5. One declared late-producer DAG schedules the primary PUF/tail pass, all 16
-   post-clone source operators, and all 19 bounded transfer groups. Each node
+5. One declared late-producer DAG schedules the ACS earnings-universe
+   materializer, primary PUF/tail pass, all 16 post-clone source operators,
+   their once-only finalizer, and all 19 bounded transfer groups. Each node
    declares every effective input and output. A callback cannot run until each
    input is filled on its required scope or has the exact counted
    declared-absence receipt which that input contract tolerates. Import
    validation rejects unknown producers, ambiguous ownership, uncovered
    targets, and cycles, naming a deterministic cycle path. Lexical Kahn waves
-   make the order independent of registry iteration. The resulting first wave
-   is the primary PUF pass alone; later waves interleave source and transfer
-   work. In particular, PUF batch 5 transfers
+   make the order independent of registry iteration. The universe node is the
+   unique first wave, the primary PUF pass is the unique second wave, and later
+   waves interleave source and transfer work. In particular, PUF batch 5 transfers
    `sstb_self_employment_income_before_lsr` before adult care consumes it, PUF
    batch 2 transfers `qualified_tuition_expenses` before education consumes it,
    pregnancy precedes WIC, and childcare precedes adult care. This order is
    derived from producer/input edges, never imposed as a second hand-written
-   list.
+   list. Thus the ACS structural-zero rule is also scheduled from declared
+   inputs rather than hidden inside the primary callback.
 
    The complete model donor is the ASEC-origin PUF-detail role. Authority is
    target-specific: every live positive-index clone must already observe a
@@ -256,11 +259,11 @@ are allowed only when named by the ACS native-input receipt.
    every producer cell stays byte-identical, and zero residual nulls are
    required.
 6. The transferred checkpoint records the early gap-fill banks, 19 distinct
-   late-transfer banks, the primary-QRF bank, the complete 37-node DAG receipt,
+   late-transfer banks, the primary-QRF bank, the complete 38-node DAG receipt,
    tail manifest and its per-status support receipt, weights audit,
    stack-manifest digest, fraction/seed, clone controls, and the channel-aware
-   producer-precedence schedule. The DAG receipt binds all 70 edges, all input
-   inventories, five derived waves, exact execution rows, the once-only source
+   producer-precedence schedule. The DAG receipt binds all 71 edges, all input
+   inventories, six derived waves, exact execution rows, the once-only source
    finalizer, and the 19-group/70-target aggregate. Every row hashes the live
    content of every declared alternative and output, the callback receipt, and
    the preceding row. The top receipt hashes the entry/output frames and chain
@@ -330,9 +333,10 @@ are allowed only when named by the ACS native-input receipt.
 ### Late producer/input DAG
 
 The late stage is a declared producer/input graph, not a fixed source loop
-followed by a fixed transfer loop. Its registry contains 37 producers: the
-primary PUF/tail producer, 16 post-clone source producers, their explicit
-once-only finalizer, and 19 bounded late-transfer producers. Import derives
+followed by a fixed transfer loop. Its registry contains 38 producers: the ACS
+earnings-universe producer, the primary PUF/tail producer, 16 post-clone source
+producers, their explicit once-only finalizer, and 19 bounded late-transfer
+producers. Import derives
 and validates the schedule. Unknown
 producers, duplicate ownership, uncovered transfer targets, and cycles fail at
 import; a cycle error prints its deterministic cycle path. Readiness is checked
@@ -340,7 +344,10 @@ again immediately before each callback. Every required input must be nonnull
 on its declared scope, finite when marked numeric, or carry one of that input's
 explicitly tolerated counted-absence receipts. A receipt tolerated by one
 input does not authorize another input, and no missing value is converted to
-zero.
+zero. Execution receipts do not trust their summarized readiness counts:
+validation recomputes them from the exact physical-alternative evidence,
+requires the exact kind-specific input/output schema, and rejects a completed
+producer whose declared output is absent.
 
 The notation below is executable-contract shorthand. `p`, `tu`, `s`, and `h`
 mean person, tax unit, SPM unit, and household. `F(x)` requires numeric finite
@@ -349,11 +356,36 @@ means that only the named, counted absence receipt may replace that optional
 input. `@weight` is the Frame-resolved entity weight and `@sidecar` or `@bank`
 is an authenticated resource receipt, not a physical column.
 
-The primary PUF producer has 47 logical requirements: the following 16-input
-QRF/tail kernel bundle `Q`, plus the 31-item validation bundle `V0` below.
+The first producer, `acs_pums_earnings_universe`, has this complete seven-row
+ACS-scoped inventory:
+
+```text
+F(p.age)
+p.person_support_channel
+F(p.WAGP) ?R
+F(p.SEMP) ?R
+F(p.employment_income_before_lsr) ?R
+F(p.self_employment_income_before_lsr) ?R
+p.@acs_pums_earnings_universe_execution_config
+```
+
+The four optional numeric rows tolerate only their producer- and
+requirement-specific `optional_input:acs_pums_earnings_universe:*` receipts.
+The execution config binds the ordered raw-to-mapped column pairs, ACS-only
+scope, and the complete universe-rule identity. The producer leaves raw
+`WAGP`/`SEMP` untouched, materializes mapped zero only for the declared
+under-15 structural universe, and emits both mapped earnings columns plus
+`frame.@acs_pums_earnings_universe_application`. Primary PUF consumes all
+three outputs directly, making the universe-to-primary edge unavoidable.
+
+The primary PUF producer has 47 external logical requirements: the following
+16-input QRF/tail kernel bundle `Q`, plus the 31-item validation bundle `V0`
+below.
 `V0` is the common 32-item late-transfer validation bundle `V` with only the
 post-PUF clone-attachment manifest removed, because primary PUF creates that
-manifest.
+manifest. Adding the two ACS-scoped mapped-earnings outputs and the application
+receipt from the universe producer gives the executable primary contract 50
+inputs.
 
 ```text
 filing status = tu.filing_status_input | tu.filing_status
@@ -381,13 +413,14 @@ tu.@primary_puf_execution_config
 
 ```text
 V0 = support channel + F(clone index) on p, h, tu, s, family, marital_unit
-   + p.person_id
-   + p.person_household_id + p.person_tax_unit_id + p.person_spm_unit_id
-   + p.person_family_id + p.person_marital_unit_id
-   + h.household_id + tu.tax_unit_id + s.spm_unit_id
-   + family.family_id + marital_unit.marital_unit_id
-   + p.person_spine_source_id + p.person_source_id
-   + h.household_spine_source_id + h.household_source_id
+   + F(p.person_id)
+   + F(p.person_household_id) + F(p.person_tax_unit_id)
+   + F(p.person_spm_unit_id) + F(p.person_family_id)
+   + F(p.person_marital_unit_id)
+   + F(h.household_id) + F(tu.tax_unit_id) + F(s.spm_unit_id)
+   + F(family.family_id) + F(marital_unit.marital_unit_id)
+   + F(p.person_spine_source_id) + F(p.person_source_id)
+   + F(h.household_spine_source_id) + F(h.household_source_id)
    + F(h.TYPEHUGQ) + h.@weight
    + frame.@us_spine_assembly_manifest
    + frame.@us_stacked_spine_manifest
@@ -411,13 +444,18 @@ resume refuses a missing or different sidecar, including a same-row-count
 donor with changed bytes. This closes stale-bank reuse under a newly claimed
 outer route.
 
-Every one of the 16 source producers consumes the following 15-requirement
+Every one of the 16 source producers consumes the following 16-requirement
 wrapper bundle `W`. It is added to the operator-specific kernel inventory in
 the table below, even where a kernel requirement names the same physical
-column again:
+column again. The execution config names the operator and binds its fixed
+random seed, fixed or absent period, retirement-distribution force-imputation
+switch, and explicit `not_supplied` mode for the education and
+weeks-unemployed sidecar arguments. Thus no callback control or unreachable
+sidecar alternative sits outside the registry:
 
 ```text
-W = frame.@us_spine_assembly_manifest + p.PERIDNUM
+W = p.@post_clone_source_execution_config
+  + frame.@us_spine_assembly_manifest + p.PERIDNUM
   + F(p.person_support_clone_index) + h.@weight
   + F(p.person_id) + F(p.person_household_id) + F(p.person_tax_unit_id)
   + F(p.person_spm_unit_id) + F(p.person_family_id)
@@ -430,43 +468,67 @@ The common role-aware kernel bundle `C`, used by the source rows marked with
 `C`, is:
 
 ```text
-p.person_id; p.@weight; p.person_support_channel;
-p.person_support_clone_index ?R;
+F(p.person_id); p.@weight; p.person_support_channel;
+F(p.person_support_clone_index) ?R;
 F(p.age) | F(p.A_AGE);
-p.is_male | p.is_female | p.A_SEX;
-p.has_esi; p.person_tax_unit_id; p.tax_unit_role_input;
+F(p.is_male) | F(p.is_female) | F(p.A_SEX);
+F(p.has_esi); F(p.person_tax_unit_id); p.tax_unit_role_input;
 F(p.employment_income_before_lsr) | F(p.WSAL_VAL);
 F(p.self_employment_income_before_lsr) | F(p.SEMP_VAL);
 [F(p.social_security_retirement) + F(p.social_security_disability)
  + F(p.social_security_survivors) + F(p.social_security_dependents)]
  | F(p.SS_VAL);
-tu.tax_unit_id; tu.filing_status_input | tu.filing_status
+F(tu.tax_unit_id); tu.filing_status_input | tu.filing_status
 ```
 
 The table gives every kernel input in addition to `W`; `C + ...` expands
 exactly to the kernel bundle above. All raw CPS codes and amounts shown in the
 table carry `F(...)` finite-numeric semantics unless they are explicitly
-domain-checked booleans or strings. A sidecar alternative is a receipted
-resource, not permission to excuse a present invalid raw value.
+domain-checked booleans or strings. An optional receipt is not permission to
+excuse a present invalid raw value.
 
 | Post-clone source producer | Complete effective kernel input set |
 |---|---|
-| `impute_us_housing_assistance_to_puf_support` | `C + p.person_spm_unit_id + s.spm_unit_id + s.receives_housing_assistance + s.takes_up_housing_assistance_if_eligible + s.spm_unit_support_channel + s.spm_unit_support_clone_index ?R` |
+| `impute_us_housing_assistance_to_puf_support` | `C + p.person_spm_unit_id + s.spm_unit_id + F(s.receives_housing_assistance) + F(s.takes_up_housing_assistance_if_eligible) + s.spm_unit_support_channel + s.spm_unit_support_clone_index ?R` |
 | `with_us_adult_care_inputs` | `F(p.age) + F(p.employment_income_before_lsr) + F(p.self_employment_income_before_lsr) + F(p.sstb_self_employment_income_before_lsr) + F(p.PEDISDRS) + F(p.is_full_time_college_student) + p.tax_unit_role_input + F(p.person_tax_unit_id) + F(p.person_spm_unit_id) + F(p.person_id) + [p.person_support_channel + F(p.person_support_clone_index)] + F(s.spm_unit_pre_subsidy_childcare_expenses) + F(s.spm_unit_id) + F(tu.tax_unit_id) + p.@weight + s.@weight + tu.@weight` |
 | `with_us_child_support_inputs` | `C + p.CSP_VAL + p.CHSP_VAL` |
-| `with_us_childcare_inputs` | `C + p.person_spm_unit_id + p.SPM_CHILDCAREXPNS + s.spm_unit_id` |
+| `with_us_childcare_inputs` | `C + F(p.person_spm_unit_id) + F(p.SPM_CHILDCAREXPNS) + s.spm_unit_id` |
 | `with_us_disability_benefits` | `C + p.DIS_VAL1 + p.DIS_SC1 + p.DIS_VAL2 + p.DIS_SC2` |
-| `with_us_education_inputs` | `(F(p.ED_VAL) | p.@education_assistance_sidecar) + F(p.qualified_tuition_expenses) + p.person_id + p.@weight` |
-| `with_us_energy_subsidy_input` | `C + p.person_spm_unit_id + p.SPM_ENGVAL + s.spm_unit_id` |
+| `with_us_education_inputs` | `F(p.ED_VAL) + F(p.qualified_tuition_expenses) + p.person_id + p.@weight` |
+| `with_us_energy_subsidy_input` | `C + F(p.person_spm_unit_id) + F(p.SPM_ENGVAL) + s.spm_unit_id` |
 | `with_us_immigration_inputs` | `p.PRCITSHP + p.PEINUSYR + p.PENATVTY + p.A_AGE + p.A_MARITL + p.A_SPOUSE + p.A_HSCOL + p.WSAL_VAL + p.SEMP_VAL + p.MCARE + p.CAID + p.IHSFLG + p.CHAMPVA + p.MIL + p.PEN_SC1 + p.PEN_SC2 + p.RESNSS1 + p.RESNSS2 + p.SS_YN + p.SSI_YN + p.PEIO1COW + p.A_MJOCC + p.PEAFEVER + p.SPM_CAPHOUSESUB + p.person_id + p.@weight + ([p.source_year + p.source_person_id] | p.person_id)` |
 | `with_us_medicare_take_up_input` | `p.MCARE + p.person_id + p.@weight` |
 | `with_us_pregnancy_inputs` | `p.A_SEX + p.A_AGE + p.person_id + p.@weight + ([p.source_year + p.source_household_id + p.source_person_id] | p.person_id)` |
-| `with_us_prior_year_income_inputs` | `C + p.source_year + p.PERIDNUM + p.WSAL_VAL + p.SEMP_VAL + p.I_ERNVAL + p.I_SEVAL` |
+| `with_us_prior_year_income_inputs` | `C + F(p.source_year) + F(p.PERIDNUM) + F(p.WSAL_VAL) + F(p.SEMP_VAL) + F(p.I_ERNVAL) + F(p.I_SEVAL) + F(p.employment_income_last_year) + F(p.self_employment_income_last_year)` |
 | `with_us_retirement_contribution_inputs` | `C + p.RETCB_VAL + p.WSAL_VAL + p.SEMP_VAL` |
 | `with_us_retirement_distribution_inputs` | `C + p.DST_SC1 + p.DST_VAL1 + p.DST_SC2 + p.DST_VAL2 + p.DST_SC1_YNG + p.DST_VAL1_YNG + p.DST_SC2_YNG + p.DST_VAL2_YNG + p.taxable_ira_distributions` |
-| `with_us_weeks_unemployed` | `p.source_year + p.PERIDNUM + (p.LKWEEKS | p.@weeks_unemployed_sidecar) + (p.age | p.A_AGE) + (p.is_male | p.is_female | p.A_SEX) + (p.tax_unit_is_joint | [p.person_tax_unit_id + tu.tax_unit_id + tu.filing_status_input] | [p.person_tax_unit_id + tu.tax_unit_id + tu.filing_status]) + (p.tax_unit_role_input | [p.is_tax_unit_head + p.is_tax_unit_spouse + p.is_tax_unit_dependent]) + (p.unemployment_compensation | p.UC_VAL) ?R + p.person_support_channel + p.@weight` |
-| `with_us_wic_claim_input` | `p.age + p.is_female + p.is_pregnant + p.own_children_in_household + p.person_family_id + p.@weight + ([p.source_year + p.source_household_id + p.source_person_id] | p.person_support_source_id | p.person_id)` |
+| `with_us_weeks_unemployed` | `F(p.source_year) + F(p.PERIDNUM) + F(p.LKWEEKS) + (F(p.age) | F(p.A_AGE)) + (F(p.is_male) | F(p.is_female) | F(p.A_SEX)) + (F(p.tax_unit_is_joint) | [p.person_tax_unit_id + tu.tax_unit_id + tu.filing_status_input] | [p.person_tax_unit_id + tu.tax_unit_id + tu.filing_status]) + (p.tax_unit_role_input | [F(p.is_tax_unit_head) + F(p.is_tax_unit_spouse) + F(p.is_tax_unit_dependent)]) + (F(p.unemployment_compensation) | F(p.UC_VAL)) ?R + p.person_support_channel + p.@weight` |
+| `with_us_wic_claim_input` | `F(p.age) + F(p.is_female) + F(p.is_pregnant) + F(p.own_children_in_household) + F(p.person_family_id) + p.@weight + ([p.source_year + p.source_household_id + p.source_person_id] | p.person_support_source_id | p.person_id)` |
 | `with_us_workers_compensation` | `C + p.WC_VAL` |
+
+The table plus `W` is the complete external logical inventory. The executable
+contract additionally carries direct evidence from every declared producer of
+an inventory column, plus the cross-source dependencies named in the edge
+table. These counts make that expansion auditable:
+
+| Source producer | External inventory rows | Executable contract inputs |
+|---|---:|---:|
+| `impute_us_housing_assistance_to_puf_support` | 36 | 59 |
+| `with_us_adult_care_inputs` | 33 | 54 |
+| `with_us_child_support_inputs` | 32 | 53 |
+| `with_us_childcare_inputs` | 33 | 54 |
+| `with_us_disability_benefits` | 34 | 55 |
+| `with_us_education_inputs` | 20 | 35 |
+| `with_us_energy_subsidy_input` | 33 | 54 |
+| `with_us_immigration_inputs` | 43 | 57 |
+| `with_us_medicare_take_up_input` | 19 | 33 |
+| `with_us_pregnancy_inputs` | 21 | 35 |
+| `with_us_prior_year_income_inputs` | 38 | 59 |
+| `with_us_retirement_contribution_inputs` | 33 | 54 |
+| `with_us_retirement_distribution_inputs` | 39 | 61 |
+| `with_us_weeks_unemployed` | 26 | 41 |
+| `with_us_wic_claim_input` | 23 | 38 |
+| `with_us_workers_compensation` | 31 | 52 |
 
 The 17th source-side node is the explicit `source_finalizer`. Its complete
 input set is the 16 virtual resources
@@ -477,19 +539,22 @@ the finalizer materialize the three deliberately deferred SCF columns
 absence receipts. This makes finalization a DAG node rather than a hidden
 mutation after the schedule.
 
-Every transfer consumes `V + T(E)` plus the target-owner requirements in the
-next table. `V` is the exact common validation surface: 28 physical columns,
-the resolved household weight, and three immutable metadata receipts.
+Every transfer consumes the 46-row external logical inventory `V + T(E)` plus
+direct producer evidence for every primary/source-owned physical input and
+target in the next table. `V` is the exact common validation surface: 28
+physical columns, the resolved household weight, and three immutable metadata
+receipts.
 
 ```text
 V = support channel + F(clone index) on p, h, tu, s, family, marital_unit
-  + p.person_id
-  + p.person_household_id + p.person_tax_unit_id + p.person_spm_unit_id
-  + p.person_family_id + p.person_marital_unit_id
-  + h.household_id + tu.tax_unit_id + s.spm_unit_id
-  + family.family_id + marital_unit.marital_unit_id
-  + p.person_spine_source_id + p.person_source_id
-  + h.household_spine_source_id + h.household_source_id
+  + F(p.person_id)
+  + F(p.person_household_id) + F(p.person_tax_unit_id)
+  + F(p.person_spm_unit_id) + F(p.person_family_id)
+  + F(p.person_marital_unit_id)
+  + F(h.household_id) + F(tu.tax_unit_id) + F(s.spm_unit_id)
+  + F(family.family_id) + F(marital_unit.marital_unit_id)
+  + F(p.person_spine_source_id) + F(p.person_source_id)
+  + F(h.household_spine_source_id) + F(h.household_source_id)
   + F(h.TYPEHUGQ) + h.@weight
   + frame.@us_spine_assembly_manifest
   + frame.@us_stacked_spine_manifest
@@ -500,7 +565,7 @@ For a transfer whose target entity is `E`, the complete 14-requirement model
 and weight bundle `T(E)` is:
 
 ```text
-T(E) = F(p.age) + p.is_female + p.@weight + E.@weight
+T(E) = F(p.age) + F(p.is_female) + p.@weight + E.@weight
      + E.@late_transfer_model_config + E.@late_transfer_target_bank
      + [F(p.state_fips)
         | (F(p.person_household_id) + F(h.household_id) + F(h.state_fips))]
@@ -520,19 +585,20 @@ T(E) = F(p.age) + p.is_female + p.@weight + E.@weight
          + F(p.non_qualified_dividend_income) + F(p.rental_income)
          + F(p.estate_income))
         | F(p.acs_interest_dividend_rental_income)] ?R
-     + (p.is_household_head | F(p.RELSHIPP) | F(p.A_EXPRRP)
+     + (F(p.is_household_head) | F(p.RELSHIPP) | F(p.A_EXPRRP)
         | F(p.A_LINENO)) ?R
      + (p.tenure_type | s.spm_unit_tenure_type | F(h.TEN)
         | F(h.H_TENURE)) ?R
 ```
 
-Every one of the 19 transfer nodes also requires PUF-clone producer evidence
-for `p.tax_exempt_interest_income` and `p.estate_income`, plus producer evidence
-for every target listed below. A target shown in both producer columns requires
-both scopes; that is the two-target PUF/source overlap. Thus the table is the
-complete per-node input delta over `T(E)`, as well as the exact 70-target
-partition. Transfer rows abbreviate the registry's leading `transfer:`; source
-names in these tables abbreviate the leading `source:`.
+Every one of the 19 transfer nodes also requires direct primary-PUF evidence
+for every primary-owned physical alternative in `V + T(E)`, including
+`p.tax_exempt_interest_income` and `p.estate_income`, plus direct producer
+evidence for every target listed below. A target shown in both producer columns
+requires both scopes; that is the two-target PUF/source overlap. Thus the table
+is the complete per-node producer delta over `V + T(E)`, as well as the exact
+70-target partition. Transfer rows abbreviate the registry's leading
+`transfer:`; source names in these tables abbreviate the leading `source:`.
 
 For every transfer, `@late_transfer_model_config` binds that node's name,
 entity, family, ordered targets, seed, estimator count, and canonical maximum
@@ -565,38 +631,84 @@ finalizer applies the same rule to each of its sixteen source-receipt inputs.
 | `tax_unit/puf_tax_itemization` | `domestic_production_ald`, `unrecaptured_section_1250_gain`, `first_home_mortgage_balance`, `first_home_mortgage_interest`, `first_home_mortgage_origination_year`, `health_savings_account_ald` | all targets | — |
 | `spm_unit/source_operator_energy_subsidy` | `spm_unit_energy_subsidy` | — | from `with_us_energy_subsidy_input` |
 
+The resulting executable transfer contracts contain 92–100 inputs; 46 is the
+common logical inventory, not the complete contract count:
+
+| Transfer producer | Executable contract inputs |
+|---|---:|
+| `person/adult_care` | 93 |
+| `person/model_required_boolean` | 92 |
+| `person/puf_tax_itemization__batch_1` | 98 |
+| `person/puf_tax_itemization__batch_2` | 100 |
+| `person/puf_tax_itemization__batch_3` | 99 |
+| `person/puf_tax_itemization__batch_4` | 99 |
+| `person/puf_tax_itemization__batch_5` | 96 |
+| `person/source_operator_child_support` | 93 |
+| `person/source_operator_disability_benefits` | 92 |
+| `person/source_operator_education_inputs` | 97 |
+| `person/source_operator_immigration` | 93 |
+| `person/source_operator_medicare_take_up` | 92 |
+| `person/source_operator_retirement_contributions` | 94 |
+| `person/source_operator_retirement_distributions` | 96 |
+| `person/source_operator_weeks_unemployed` | 92 |
+| `person/source_operator_wic_claim` | 92 |
+| `person/source_operator_workers_compensation` | 92 |
+| `spm_unit/source_operator_energy_subsidy` | 93 |
+| `tax_unit/puf_tax_itemization` | 98 |
+
 #### Complete dependency edges
 
-The following grouped tables enumerate all 70 unique producer-to-consumer edges.
+The following grouped tables enumerate all 71 unique producer-to-consumer edges.
 Multiple values on one row are the input reasons carried by that edge. Bare
 source names carry the registry prefix `source:` and transfer paths carry
 `transfer:`.
 
-The 16 primary-PUF-to-source edges are:
+The first edge is `acs_pums_earnings_universe -> primary_puf_qrf`, carried by
+the two ACS-scoped mapped earnings columns and the whole-frame universe
+application receipt.
 
-| Consumer source | Late/structural inputs supplied by primary PUF |
+Every primary-PUF-to-source edge carries the same 14-item ownership base `S14`:
+
+```text
+S14 = p.person_support_clone_index + p.person_id
+    + p.person_household_id + p.person_tax_unit_id + p.person_spm_unit_id
+    + p.person_family_id + p.person_marital_unit_id
+    + h.household_id + tu.tax_unit_id + s.spm_unit_id
+    + family.family_id + marital_unit.marital_unit_id
+    + p.@weight + h.@weight
+```
+
+The following table gives the complete additions to `S14` on each of the 16
+primary-PUF-to-source edges:
+
+| Consumer source | Additional inputs supplied by primary PUF |
 |---|---|
-| `impute_us_housing_assistance_to_puf_support` | clone index; employment; self-employment; four Social Security components |
-| `with_us_adult_care_inputs` | clone index; employment; self-employment |
-| `with_us_child_support_inputs` | clone index; employment; self-employment; four Social Security components |
-| `with_us_childcare_inputs` | clone index; employment; self-employment; four Social Security components |
-| `with_us_disability_benefits` | clone index; employment; self-employment; four Social Security components |
-| `with_us_education_inputs` | clone index |
-| `with_us_energy_subsidy_input` | clone index; employment; self-employment; four Social Security components |
-| `with_us_immigration_inputs` | clone index |
-| `with_us_medicare_take_up_input` | clone index |
-| `with_us_pregnancy_inputs` | clone index |
-| `with_us_prior_year_income_inputs` | clone index; employment; self-employment; four Social Security components |
-| `with_us_retirement_contribution_inputs` | clone index; employment; self-employment; four Social Security components |
-| `with_us_retirement_distribution_inputs` | clone index; employment; self-employment; four Social Security components; `taxable_ira_distributions` |
-| `with_us_weeks_unemployed` | clone index |
-| `with_us_wic_claim_input` | clone index |
-| `with_us_workers_compensation` | clone index; employment; self-employment; four Social Security components |
+| `impute_us_housing_assistance_to_puf_support` | person support channel; employment; self-employment; four Social Security components; SPM-unit support channel and clone index |
+| `with_us_adult_care_inputs` | person support channel; employment; self-employment; SPM-unit and tax-unit weights |
+| `with_us_child_support_inputs` | person support channel; employment; self-employment; four Social Security components |
+| `with_us_childcare_inputs` | person support channel; employment; self-employment; four Social Security components |
+| `with_us_disability_benefits` | person support channel; employment; self-employment; four Social Security components |
+| `with_us_education_inputs` | — |
+| `with_us_energy_subsidy_input` | person support channel; employment; self-employment; four Social Security components |
+| `with_us_immigration_inputs` | — |
+| `with_us_medicare_take_up_input` | — |
+| `with_us_pregnancy_inputs` | — |
+| `with_us_prior_year_income_inputs` | person support channel; employment; self-employment; four Social Security components |
+| `with_us_retirement_contribution_inputs` | person support channel; employment; self-employment; four Social Security components |
+| `with_us_retirement_distribution_inputs` | person support channel; employment; self-employment; four Social Security components; `taxable_ira_distributions` |
+| `with_us_weeks_unemployed` | person support channel |
+| `with_us_wic_claim_input` | — |
+| `with_us_workers_compensation` | person support channel; employment; self-employment; four Social Security components |
 
 There are also 19 primary-PUF-to-transfer edges: one to every row of the
-transfer table above. Each carries the shared PUF-clone investment predictors
-`tax_exempt_interest_income` and `estate_income`; a PUF-owned target in that
-row is an additional reason on the same edge.
+transfer table above. `B(E)` is the exact set of primary-owned physical
+alternatives in the published `V + T(E)` inventory plus the shared PUF-clone
+predictors `tax_exempt_interest_income` and `estate_income`. `B(person)` has 45
+inputs; `B(tax_unit)` and `B(spm_unit)` each have 46 because their target
+weight is distinct from the person weight. Every primary-to-transfer edge
+carries `B(E)` plus each PUF-owned target in that row which is not already in
+`B(E)`. The transfer target table and its contract counts therefore enumerate
+the complete input reasons for all 19 edges.
 
 The remaining 19 edges are:
 
@@ -625,30 +737,31 @@ The remaining 19 edges are:
 Finally, there are 16 source-to-finalizer edges: each of the 16 source
 producers in the source-input table has one edge to `source_finalizer`, carried
 by its exact `p.@source_receipt:<operator>` resource. Thus the exhaustive count
-is 16 primary-to-source + 19 primary-to-transfer + 19
-cross/source-to-transfer + 16 source-to-finalizer = 70.
+is 1 universe-to-primary + 16 primary-to-source + 19 primary-to-transfer + 19
+cross/source-to-transfer + 16 source-to-finalizer = 71.
 
-The lexically canonical waves have sizes `(1, 17, 14, 3, 2)`:
+The lexically canonical waves have sizes `(1, 1, 17, 14, 3, 2)`:
 
-1. `primary_puf_qrf`.
-2. Housing assistance; child support; childcare; disability; energy;
+1. `acs_pums_earnings_universe`.
+2. `primary_puf_qrf`.
+3. Housing assistance; child support; childcare; disability; energy;
    immigration; Medicare; pregnancy; prior-year income; retirement
    contributions; retirement distributions; weeks unemployed; workers'
    compensation; person PUF batches 1, 4, and 5; tax-unit PUF transfer.
-3. Adult care; WIC; pregnancy transfer; person PUF batches 2 and 3; child
+4. Adult care; WIC; pregnancy transfer; person PUF batches 2 and 3; child
    support, disability, immigration, Medicare, retirement-contribution,
    retirement-distribution, weeks-unemployed, workers'-compensation, and
    SPM-energy transfers.
-4. Education; adult-care transfer; WIC transfer.
-5. `source_finalizer` and education transfer.
+5. Education; adult-care transfer; WIC transfer.
+6. `source_finalizer` and education transfer.
 
-Registry schema version 7 and execution-receipt schema version 2 bind the
+Registry schema version 9 and execution-receipt schema version 2 bind the
 canonical input declarations, outputs, edges, waves, exact kind-specific
 virtual-resource bindings, content-hashed execution-row schema, and immutable
 transition authority. The schedule SHA-256 is
-`250ef9f0a4fed5ca69672db9e39c51fa3d987d3d4cc2a0850f4c446eb955c52a`;
+`070fdaac27446c7b367d24a160cb75a2df666c07135bd5d98961328b004ad303`;
 the full payload SHA-256 is
-`3144e82a11a4455a77541f135b06587e4cfe62cac62890e3fa026684a2dc684b`.
+`525c1f47698a6a6bd54db7a3a1eb39bd2647680455770cfaa6be3ec1ef9a2994`.
 Reversing registry iteration produces those same bytes.
 
 ### Downstream hard-completeness audit
@@ -667,9 +780,9 @@ and valid. Neither receipt authorizes an upstream null.
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
-| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v7/receipt schema v2, stacked checkpoint/authority v9, pool checkpoint materializer v5, pool manifest schema v6, and the ACS-universe, QBI-mutation, tail-support, and content-bound late-DAG identities must match exactly before any cached stage is discovered. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older outer materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
+| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v9/receipt schema v2, stacked checkpoint/authority v9, stacked pool checkpoint materializer v5, pool manifest schema v6, and the ACS-universe, QBI-mutation, tail-support, and content-bound late-DAG identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
-| Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | Primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in five derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
+| Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | ACS earnings-universe materialization, primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in six derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
 | Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 29 source targets, with two overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
 | Fit-weight audit | Every primary and post-PUF QRF fit receipts its resolved entity weight kind, and the collected fit records pass the weights audit before a transferred checkpoint can exist. | Calibrated household weights mapped by the frame to each modeled entity. | No. A missing, inconsistent, or manually substituted weight declaration fails before checkpoint emission. |
 | Tail preservation | Tail manifest, support decisions, attached descendants, IDs, weights, provenance, joint vector, and non-tail QRF cells remain exact after completion, transfer, derive, seed, and simulation. | The schema-v2 tail manifest and support receipt bound during the PUF pass and projected into both terminal gates. | A support receipt cannot authorize mutation. Any byte or identity change in an attached status, any descendant for a skipped status, or any receipt change fails. |
@@ -692,7 +805,10 @@ complete terminal comparison is testable.
 The explicit compatibility flag preserves the previous assemble-first pool
 path, including its publication bytes. It remains reproducible for lineage
 comparison but is not the production default. That path runs this fixed
-sequence:
+sequence under its preserved manifest schema 4/checkpoint materializer 3
+identity. The loader uses the complete schema/envelope surface and rejects a
+stacked artifact whose pipeline markers were stripped, so schema lowering
+cannot bypass late-DAG validation:
 
 1. `assemble_spines({"asec": ..., "acs": ...})` creates the first shared
    population state and binds the immutable assembly receipt.
@@ -827,8 +943,9 @@ source ingestion and faithful schema harmonization
     -> uniformly sample both survey arms and assemble one stack
     -> prepare native predictors
     -> banked cross-origin gap-fill
-    -> derived 37-node late producer DAG:
-       PUF QRF plus clone-2 capital-gains tail
+    -> derived 38-node late producer DAG:
+       ACS earnings-universe materialization
+       -> PUF QRF plus clone-2 capital-gains tail
        -> interleaved source completion and 19 bounded transfer groups
        -> exact source finalization and transfer aggregation
     -> derive

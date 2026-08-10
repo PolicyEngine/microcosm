@@ -20,9 +20,11 @@ physical input and virtual runtime resource is content-bound: donor bytes,
 resolved PUF/QRF/tail controls,
 the routed primary-QRF bank and stale-bank sidecar, source receipts, transfer
 controls, and target-bank identities. The legacy envelope is restored to its
-pre-#653 identity and cannot be selected by stripping stacked markers. Focused
-suites and all final proof gates will be rerun from the final tree after the
-documentation audit closes.
+pre-#653 identity and cannot be selected by stripping stacked markers. The
+operator-ordering doctrine and changelog now publish the final 38-node,
+71-edge, six-wave graph, complete inventories, schema ledger, and canonical
+hashes. Focused suites and all final proof gates will be rerun from this final
+tree.
 
 ## Done
 
@@ -248,8 +250,9 @@ documentation audit closes.
   are the ASEC clone-0 recipients, not ACS-origin rows.
 - Completed the final resource-identity audit and moved the registry to schema
   v7/receipt v2. The primary producer now declares 47 requirements, including
-  its execution config; each transfer declares 46, including exact model
-  config and target-bank resources. Kind-specific validators reject a shallow
+  its execution config; each transfer's common inventory declares 46,
+  including exact model config and target-bank resources. Kind-specific
+  validators reject a shallow
   or internally rehashed incomplete binding, forged missing mandatory virtual
   evidence, evidence/receipt digest disagreement, and an identityless bank.
 - Replaced the pandas 64-bit hash intermediate with domain-separated SHA-256
@@ -317,11 +320,16 @@ documentation audit closes.
   rejects stacked-only top-level/nested markers on the legacy route, and has a
   regression for stripping stacked pipeline/terminal fields, lowering both
   document schemas, and recomputing the diagnostics digest.
+- Reconciled the published ordering doctrine and changelog with the live
+  registry: seven ACS-universe inputs, 50 primary inputs, complete 16-source
+  inventories and 33–61-input expanded contracts, 46-row transfer inventories
+  and 92–100-input expanded contracts, all 71 grouped edges, six canonical
+  waves, registry schema 9/receipt schema 2, and the final schedule/payload
+  hashes. The version ledger distinguishes stacked materializer 5/manifest 6
+  from the byte-preserved legacy materializer 3/manifest 4.
 
 ## Next
 
-- Publish the final 38-node/71-edge doctrine, inventories, version ledger, and
-  hashes; extend the changelog and reconcile stale progress wording.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,
