@@ -13,8 +13,9 @@ transfer predictor/codec semantics, adult-care tax-unit role, and stale
 resource-checkpoint discovery all fail closed. Bounded transfer groups suppress
 the opportunistic Schedule-D write; the existing whole-pool derive operator
 remains its sole canonical owner. Focused regressions and targeted Ruff are
-green. Documentation, changelog/hash reconciliation, the final proof matrix,
-and final report remain.
+green. The operator-ordering doctrine and changelog now match the live schema,
+counts, resource ledger, derived waves, and hashes. The final proof matrix and
+final report remain.
 
 ## Done
 
@@ -410,11 +411,17 @@ and final report remain.
   binding now reads the explicit module output-family contract, so legitimate
   injected runners cannot erase `__kwdefaults__`; the full tool suite and a
   dedicated injection regression pass.
+- Reconciled the final ordering doctrine and changelog with the complete live
+  contract: exact ten-entry outer order; 10-input ACS universe; 114-logical/
+  119-executable primary inventory; 17-input finalizer; adult-care's 94 inputs;
+  all 38 producers, 71 edges, and six waves; kind-specific resource schemas
+  v1/v2/v3; registry v13/receipt v3; authority v9, outer materializer v10,
+  pool-stage materializer v5, and manifest v7; schedule SHA `dbae9f945966a58592915780be78137e011d060271af6c933870a55db297baab`;
+  and payload SHA `95ee19cd1b4d1cf321a32910c234ebc460aa47f9cc30e03fa8560ea6ae5e2eb8`.
+  An independent read-only audit found no other stale published claims.
 
 ## Next
 
-- Reconcile the ordering doctrine, changelog, graph hashes, and exact input/
-  edge tables with registry schema v13 and resource/checkpoint schema bumps.
 - Rerun the focused aggregate, exact #583 shard, non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,
