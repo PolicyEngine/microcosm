@@ -47,11 +47,19 @@ checkout without rebasing, resetting, or shelving.
   byte-for-byte; education owns only assistance plus five AOTC facts. The
   source-producer surface is now 29 targets with two PUF overlaps, and 30
   education/partition regressions pass.
+- Declared and import-validated the production late graph: one primary-PUF
+  producer, all 16 post-clone source producers with full structured kernel
+  input inventories, and the exact 19 bounded late-transfer groups covering
+  70 targets. Its 25 derived edges include pregnancy to WIC, childcare and
+  SSTB batch 5 to adult care, and tuition batch 2 to education. Seven graph
+  and registry doctrine regressions pass, including reconstruction under
+  reversed registry iteration.
 
 ## Next
 
-- Declare the production role-aware 16-source/19-transfer graph and drive the
-  late execution from its import-validated topology without changing nulls to
-  zeros.
-- Bind the DAG to authority/checkpoint identity, update doctrine and changelog,
-  then run the required focused, #583, full-workspace, and ruff proof gates.
+- Drive source and bounded-transfer execution from the import-validated graph
+  without changing nulls to zeros, using a distinct resumable target bank for
+  every atomic transfer group.
+- Bind the DAG to authority/checkpoint identity, update ordering doctrine and
+  changelog, then run the required focused, #583, full-workspace, and Ruff
+  proof gates.

@@ -13,6 +13,20 @@ from microcosm.build.us_runtime.late_producer_dag import (
     derive_producer_schedule,
     run_producer_when_ready,
 )
+from microcosm.build.us_runtime.multispine_pool import (
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+)
+from microcosm.build.us_runtime.us_late_producer_registry import (
+    CANONICAL_US_LATE_PRODUCER_REGISTRY,
+    CANONICAL_US_LATE_PRODUCER_SCHEDULE,
+    CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_EXTERNAL_STAGES,
+    US_LATE_PRIMARY_PUF_STAGE,
+    US_LATE_SOURCE_INPUT_INVENTORIES,
+    source_producer_name,
+    transfer_producer_name,
+    us_late_producer_schedule_receipt,
+)
 
 
 def _contract(name: str, *dependencies: str) -> ProducerContract:
@@ -106,3 +120,84 @@ def test_derived_schedule_is_byte_stable_under_registry_iteration_order() -> Non
     assert forward_schedule.edges == reverse_schedule.edges
     assert forward_schedule.canonical_json == reverse_schedule.canonical_json
     assert forward_schedule.sha256 == reverse_schedule.sha256
+
+
+def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
+    registry = CANONICAL_US_LATE_PRODUCER_REGISTRY
+    groups = CANONICAL_US_LATE_TRANSFER_GROUPS
+
+    assert len(registry) == 36
+    assert len(groups) == 19
+    assert sum(len(group.targets) for group in groups) == 70
+    assert {contract.kind for contract in registry.values()} == {
+        "primary_puf",
+        "post_clone_source",
+        "late_transfer",
+    }
+    assert {
+        name
+        for name, contract in registry.items()
+        if contract.kind == "post_clone_source"
+    } == {
+        source_producer_name(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    }
+    assert {
+        name for name, contract in registry.items() if contract.kind == "late_transfer"
+    } == {group.name for group in groups}
+    for group in groups:
+        assert {
+            (output.entity, output.column)
+            for output in CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name].outputs
+        } == {(group.entity, target) for target in group.targets}
+
+
+def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
+    edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
+
+    assert (
+        source_producer_name("with_us_pregnancy_inputs"),
+        source_producer_name("with_us_wic_claim_input"),
+    ) in edges
+    assert (
+        source_producer_name("with_us_childcare_inputs"),
+        source_producer_name("with_us_adult_care_inputs"),
+    ) in edges
+    assert (
+        transfer_producer_name("person", "puf_tax_itemization__batch_5"),
+        source_producer_name("with_us_adult_care_inputs"),
+    ) in edges
+    assert (
+        transfer_producer_name("person", "puf_tax_itemization__batch_2"),
+        source_producer_name("with_us_education_inputs"),
+    ) in edges
+
+
+def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> None:
+    reverse_registry = OrderedDict(
+        reversed(tuple(CANONICAL_US_LATE_PRODUCER_REGISTRY.items()))
+    )
+    reconstructed = derive_producer_schedule(
+        reverse_registry,
+        external_stages=US_LATE_EXTERNAL_STAGES,
+    )
+
+    assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
+    receipt = us_late_producer_schedule_receipt()
+    assert receipt["status"] == "derived_and_import_validated"
+    assert receipt["schedule_sha256"] == reconstructed.sha256
+    assert receipt["producer_count"] == 36
+    assert receipt["source_producer_count"] == 16
+    assert receipt["transfer_group_count"] == 19
+    assert receipt["transfer_target_count"] == 70
+    assert receipt["order"][0] == US_LATE_PRIMARY_PUF_STAGE
+
+
+def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:
+    assert set(US_LATE_SOURCE_INPUT_INVENTORIES) == set(
+        POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    )
+    for operator, inventory in US_LATE_SOURCE_INPUT_INVENTORIES.items():
+        assert inventory.operator == operator
+        assert inventory.requirements
+        assert all(requirement.alternatives for requirement in inventory.requirements)
