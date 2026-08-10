@@ -226,6 +226,28 @@ def _frame_digest(frame: Frame) -> str:
     return hashlib.sha256(pickle.dumps(payload, protocol=5)).hexdigest()
 
 
+def _pre_652_all_adequate_reference_frame() -> Frame:
+    """Run the pre-support-filter allocation path in the live test runtime."""
+
+    frame = _expanded_recipient_frame()
+    donor = _donor()
+    tail, _selection = select_puf_capital_gains_tail_donors(donor)
+    normalization = frame.weights_for("household").total / float(donor["weight"].sum())
+    assigned_weights = tail["weight"].to_numpy(dtype=np.float64) * normalization
+    candidates = tail_module._recipient_candidates(
+        frame,
+        maximum_transfer_weight=float(assigned_weights.max()),
+        seed=567,
+    )
+    assignments = tail_module._assign_tail_donors(
+        tail,
+        assigned_weights=assigned_weights,
+        candidates=candidates,
+    )
+    reference, _clone_receipt = tail_module._clone_and_transfer(frame, assignments)
+    return reference
+
+
 def _load_support_builder_module():
     root = Path(__file__).resolve().parents[3]
     path = root / "tools" / "build_us_puf_support_base.py"
@@ -585,8 +607,11 @@ def test_adequate_strata_match_pre_fix_frame_bytes() -> None:
         seed=567,
     )
 
-    assert _frame_digest(transferred) == (
-        "ce6457a535c83b71d17712a5dc214494f7d225c2d5071ed450e8447e99a66505"
+    # Pandas' pickle bytes vary across supported runtime versions, so compare
+    # against the exact pre-#652 path under the same runtime instead of blessing
+    # one environment's pickle digest.
+    assert _frame_digest(transferred) == _frame_digest(
+        _pre_652_all_adequate_reference_frame()
     )
     assert manifest["assignment_sha256"] == (
         "1b2262da65fa851e0a990ca9f04dee661de0145724f82aef679557bc92418937"

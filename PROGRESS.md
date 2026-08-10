@@ -2,13 +2,15 @@
 
 ## State
 
-The failure mechanism and complete late-producer/source-input inventory are
-confirmed on `tail-stratum-support-652`, based on the three preserved #652
-commits. The checkout was clean at the start and was three commits ahead of the
-locally available `origin/main` (`e9a352ca`). No fetch was performed because
-this task forbids network access. A shared-ref update outside this worktree has
-since made Git report the branch behind by one; the task remains on its required
-checkout without rebasing, resetting, or shelving.
+The failure mechanism, complete late-producer/source-input inventory, and
+36-node executable DAG are implemented and documented on
+`tail-stratum-support-652`, based on the three preserved #652 commits. The
+checkout was clean at the start and was three commits ahead of the locally
+available `origin/main` (`e9a352ca`). No fetch was performed because this task
+forbids network access. A shared-ref update outside this worktree has since made
+Git report the branch behind by one; the task remains on its required checkout
+without rebasing, resetting, or shelving. Focused verification is green; the
+exact #583 and foreground workspace chunks are next.
 
 ## Done
 
@@ -86,11 +88,32 @@ checkout without rebasing, resetting, or shelving.
   DAG proof. The combined DAG, stacked, tool, and H5 suites pass after an
   independent review exposed and the implementation closed the hidden
   clone-attachment and unauthenticated-receipt gaps.
+- Published the full primary-PUF, 16-source, and common/per-group transfer input
+  inventories in the operator-ordering doctrine, together with all 54 edges,
+  the five derived waves, schedule/payload hashes, readiness rule, cycle rule,
+  new schema versions, and corrected 43-PUF/29-source/two-overlap accounting.
+  Extended the #652 changelog fragment so the stacked tail and late-DAG fixes
+  ship as one local PR train.
+- A documentation-to-registry audit found that executable alternative columns
+  dropped their declared `finite_numeric` kind during contract construction.
+  Preserved the kind in the production registry and added a registry-level
+  regression covering primary PUF, adult-care SSTB, education tuition, and an
+  optional transfer predictor; the focused DAG file now passes all 10 tests.
+- Replaced a Python/Pandas-version-specific pickle golden in the #652 tail
+  preservation regression with an exact same-runtime comparison against the
+  pre-#652 allocation path. The assignment SHA remains pinned, and the live
+  pre-fix path and new all-adequate path have identical tables, dtypes, weights,
+  strata, mass log, and frame digest.
+- Ran the focused late-DAG, stacked, tool, H5, tail, adult-care, education, and
+  transfer suites in the foreground: exactly 518 tests passed. The only golden
+  changed by the finite-kind fix was the expected authority-bound legacy
+  manifest digest; pool H5 and agreement bytes remained unchanged. Targeted
+  Ruff check, format check, and diff check pass.
 
 ## Next
 
-- Publish the complete input and 54-edge inventory in the operator-ordering
-  doctrine, extend the #652 changelog fragment, and commit this integrated
-  executor/checkpoint step.
-- Run the required focused, #583-exact-495, full-workspace foreground chunks,
-  and Ruff proof gates; record exact counts and smoke/dev predictions.
+- Run the #583 suite and prove exactly 495 tests.
+- Run every full-workspace foreground chunk and the Ruff format/check/diff
+  gates, then commit the exact proof counts.
+- Write the final gradeable mechanism/edge/fix/proof report to the requested
+  output file and stdout, commit it, and leave the worktree clean.

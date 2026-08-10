@@ -285,3 +285,46 @@ def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> N
         ].tolerated_absence_receipts == (
             f"optional_input:{group.name}:optional_investment_income",
         )
+
+
+def test_production_registry_preserves_finite_numeric_input_kinds() -> None:
+    cases = (
+        (
+            US_LATE_PRIMARY_PUF_STAGE,
+            "@effective:employment_income",
+            "person",
+            "employment_income_before_lsr",
+        ),
+        (
+            source_producer_name("with_us_adult_care_inputs"),
+            "@effective:sstb_earned_income",
+            "person",
+            "sstb_self_employment_income_before_lsr",
+        ),
+        (
+            source_producer_name("with_us_education_inputs"),
+            "@effective:qualified_tuition",
+            "person",
+            "qualified_tuition_expenses",
+        ),
+        (
+            transfer_producer_name("person", "adult_care"),
+            "@effective:optional_employment_income",
+            "person",
+            "employment_income_before_lsr",
+        ),
+    )
+
+    for producer, input_name, entity, column in cases:
+        effective_input = next(
+            item
+            for item in CANONICAL_US_LATE_PRODUCER_REGISTRY[producer].inputs
+            if item.column == input_name
+        )
+        declared_column = next(
+            item
+            for alternative in effective_input.alternatives
+            for item in alternative
+            if (item.entity, item.column) == (entity, column)
+        )
+        assert declared_column.value_kind == "finite_numeric"

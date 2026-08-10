@@ -2618,7 +2618,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "ea28fd66c06511bafef0497e713b1db900ee121a76ccee257cea399b6cee4291",
-        "manifest": "4d3362133c1494cdc31e0cd65ccd1263352aac9a544047e2780bcecf10681cad",
+        "manifest": "055e0dfa43ba02f05f3629da9fea44d6e96dd5d86006ce7fdbe90cb40ccbcf53",
     }
 
 

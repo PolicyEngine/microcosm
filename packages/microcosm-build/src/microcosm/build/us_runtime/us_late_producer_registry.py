@@ -958,7 +958,11 @@ def _inventory_contract_inputs(
                 else (),
                 alternatives=tuple(
                     tuple(
-                        ProducerInputColumn(item.entity, item.column)
+                        ProducerInputColumn(
+                            item.entity,
+                            item.column,
+                            item.value_kind,
+                        )
                         for item in alternative
                     )
                     for alternative in requirement.alternatives
