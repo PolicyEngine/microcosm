@@ -32,7 +32,13 @@ UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
     "microcosm.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
+# The current reviewed policy digest (with the #630 source_year degenerate
+# exclusion in the committed register); the legacy digest is what the
+# grandfathered June release attests.
 UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "2dbd78bcf36b3092ff16eb67a9206b020d4e555527e5d7326e7a5340f2796b50"
+)
+UK_TERMINAL_GATE_POLICY_SHA256_LEGACY = (
     "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"

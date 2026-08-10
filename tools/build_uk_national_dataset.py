@@ -34,6 +34,7 @@ from microcosm.build.uk_runtime.national_sampling import (
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
@@ -281,6 +282,17 @@ def _parse_args() -> argparse.Namespace:
             "entries fail the gate; dormant entries are reported."
         ),
     )
+    parser.add_argument(
+        "--degenerate-exclusions",
+        type=Path,
+        help=(
+            "Reviewed degenerate-release-surface exclusion register "
+            f"overriding the committed {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE} "
+            "(#630). Stale entries fail the gate; dormant entries are "
+            "reported. The gate is always armed; the override changes the "
+            "run's policy digest away from the certified pin."
+        ),
+    )
     args = parser.parse_args()
     if args.sample_seed < 0:
         parser.error("sample seed must be a non-negative integer.")
@@ -409,6 +421,7 @@ def main() -> int:
         input_mass_reference_path=args.input_mass_reference_json,
         input_mass_exclusions_path=args.input_mass_exclusions,
         qrf_tail_exclusions_path=args.qrf_tail_exclusions,
+        degenerate_exclusions_path=args.degenerate_exclusions,
         rung_abort_path=rung_abort_path,
     )
     # Read-only gate inputs are materialized before any sidecar unlink so a
@@ -454,11 +467,20 @@ def main() -> int:
                     hmrc_transform=hmrc_transform,
                 ),
             }
+        reviewed_degenerate_exclusions = (
+            None
+            if args.degenerate_exclusions is None
+            else load_uk_reviewed_exclusion_register(
+                args.degenerate_exclusions,
+                resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+            )
+        )
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
             release_id=args.release_id,
             calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
+            reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
             stages=(
                 UKNationalStage(
                     name="frs_hmrc_retained_leaves",
@@ -856,6 +878,7 @@ def _validate_distinct_paths(
     input_mass_reference_path: Path | None,
     input_mass_exclusions_path: Path | None,
     qrf_tail_exclusions_path: Path | None,
+    degenerate_exclusions_path: Path | None,
     rung_abort_path: Path,
 ) -> None:
     paths = {
@@ -877,6 +900,7 @@ def _validate_distinct_paths(
             "--input-mass-reference-json": input_mass_reference_path,
             "--input-mass-exclusions": input_mass_exclusions_path,
             "--qrf-tail-exclusions": qrf_tail_exclusions_path,
+            "--degenerate-exclusions": degenerate_exclusions_path,
         }.items()
         if path is not None
     )

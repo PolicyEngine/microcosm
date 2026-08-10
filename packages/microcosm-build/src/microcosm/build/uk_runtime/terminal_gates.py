@@ -43,11 +43,13 @@ from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_PARITY_GATE_NAME,
     UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
+    load_uk_reviewed_exclusion_register,
     uk_dataset_input_mass_totals,
     uk_input_mass_parity_gate,
     uk_qrf_tail_concentration_columns,
@@ -428,10 +430,22 @@ def _terminal_gate_policy_payload(
     }
 
 
+#: The committed degenerate-release-surface exclusion register (#630) is the
+#: reviewed policy of record: a ``None`` argument to
+#: :func:`uk_terminal_gate_report` resolves to it, and the frozen policy
+#: digest below is computed over it, so deleting or editing an entry moves
+#: the pinned literal (the intended tripwire). Pass ``{}`` explicitly to run
+#: with no exclusions.
+UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS: dict[str, str] = (
+    load_uk_reviewed_exclusion_register(
+        None, resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
+    )
+)
+
 UK_TERMINAL_GATE_POLICY_SHA256 = _canonical_sha256(
     _terminal_gate_policy_payload(
         builtin_coverage_evaluator=True,
-        reviewed_degenerate_exclusions=None,
+        reviewed_degenerate_exclusions=UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS,
         zero_weight_declarations=UK_DEFAULT_ZERO_WEIGHT_STRATA,
         minimum_ess_fraction=UK_MIN_ESS_FRACTION,
         maximum_max_to_median_ratio=UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
@@ -1332,6 +1346,10 @@ def uk_terminal_gate_report(
     coverage = input_coverage_evaluator or (
         lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
     )
+    # None resolves to the committed register — the reviewed policy of
+    # record (#630); an explicit {} runs with no exclusions.
+    if reviewed_degenerate_exclusions is None:
+        reviewed_degenerate_exclusions = UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS
     fit_stage_present = fit_weight_records is not None or require_fit_weight_records
     materialized_fit_records: tuple[object, ...] | None = None
     fit_materialization_error: Exception | None = None

@@ -852,10 +852,12 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     )
     payload = json.loads(output.read_text(encoding="utf-8"))
 
-    # Increment 4 (#609) extended the sealed policy payload with the unarmed
-    # weighted-integrity slots, so the frozen digest moved with it.
+    # The #630 source_year reviewed exclusion entered the committed register
+    # (the policy of record), so the frozen digest moved with it — the
+    # intended tripwire; the pre-#630 digest stays pinned in microcosm-data
+    # for the grandfathered June release.
     assert UK_TERMINAL_GATE_POLICY_SHA256 == (
-        "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
+        "2dbd78bcf36b3092ff16eb67a9206b020d4e555527e5d7326e7a5340f2796b50"
     )
     assert payload["attestation"]["policy_sha256"] == (UK_TERMINAL_GATE_POLICY_SHA256)
     assert payload["attestation"]["evaluated_gates"] == [
@@ -899,3 +901,16 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     assert payload["attestation"]["evidence_sha256"]["release_dataset"] == (
         hashlib.sha256(encoded).hexdigest()
     )
+
+
+def test_committed_degenerate_register_is_the_policy_of_record() -> None:
+    """None resolves to the committed #630 register; the digest seals it."""
+
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS,
+    )
+
+    assert set(UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS) == {"household.source_year"}
+    reason = UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS["household.source_year"]
+    assert "microcosm#630" in reason
+    assert "lineage plumbing" in reason

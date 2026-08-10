@@ -236,6 +236,7 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
         assert spec.country == "uk"
         assert spec.resources == (
+            "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "hmrc_income_release_gate_report.json",

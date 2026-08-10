@@ -124,6 +124,7 @@ from microcosm.build.gates import (
 )
 
 __all__ = [
+    "UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
     "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
@@ -144,6 +145,7 @@ UK_INPUT_MASS_PARITY_GATE_NAME = "input_mass_parity"
 UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
 UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
+UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json"
 
 # Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
 # the 131-column weighted input surface emitted from the pinned enhanced-FRS

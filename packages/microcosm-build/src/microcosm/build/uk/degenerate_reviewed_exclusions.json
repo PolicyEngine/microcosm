@@ -1,0 +1,7 @@
+{
+ "schema_version": 1,
+ "description": "Reviewed degenerate-release-surface exclusions for the UK terminal battery (#630). Each entry maps an 'entity.column' name to a non-empty reason documenting why a constant or all-zero persisted release column is adjudicated as acceptable. The gate reports dormant entries and FAILS stale ones (columns that regain signal), so this register cannot rot. Interim schema-1 pending the #610 approval-identity/receipt/expiry design; upgrade together with the input-mass and QRF-tail registers.",
+ "exclusions": {
+  "household.source_year": "Single-year artifact: constant at the build vintage by construction. The column is lineage plumbing for the rowwise clone's source_household_key and documents the vintage at the row level, not signal. Reviewed exclusion adjudicated in microcosm#630."
+ }
+}

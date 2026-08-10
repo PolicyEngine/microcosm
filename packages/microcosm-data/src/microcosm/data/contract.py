@@ -129,6 +129,16 @@ _UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 # alongside the committed threshold constants — a threshold outside this hash
 # is not attested.
 _UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "2dbd78bcf36b3092ff16eb67a9206b020d4e555527e5d7326e7a5340f2796b50"
+)
+# The published June release attests the pre-#630 policy (no degenerate
+# reviewed exclusions). Its report is immutable, so the superseded digest
+# stays pinned for exactly the grandfathered release ids — a vintage-aware
+# pin, never a loosening: every release still matches exactly one reviewed
+# policy digest. Today the terminal-report checker only runs for exact-k
+# release ids, so this branch is defensive; it becomes load-bearing the day
+# grandfathered reports are checked.
+_UK_TERMINAL_GATE_POLICY_SHA256_LEGACY = (
     "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 _UK_ALWAYS_APPLICABLE_GATE_NAMES = (
@@ -942,9 +952,7 @@ def _check_release_manifest_package(
     )
     if expected_names is not None and name not in expected_names:
         rendered = " or ".join(repr(n) for n in expected_names)
-        failures.append(
-            f"release_manifest.json '{field}.name' must be {rendered}."
-        )
+        failures.append(f"release_manifest.json '{field}.name' must be {rendered}.")
     elif not name:
         failures.append(f"release_manifest.json '{field}.name' is required.")
     version = package.get("version")
@@ -1747,10 +1755,15 @@ def _check_uk_terminal_gate_report(
             "calibration_diagnostics_sha256 must match the local "
             "calibration_diagnostics.json bytes."
         )
-    if attestation.get("policy_sha256") != _UK_TERMINAL_GATE_POLICY_SHA256:
+    expected_policy_sha256 = (
+        _UK_TERMINAL_GATE_POLICY_SHA256_LEGACY
+        if release_id in _UK_LEGACY_RELEASE_IDS
+        else _UK_TERMINAL_GATE_POLICY_SHA256
+    )
+    if attestation.get("policy_sha256") != expected_policy_sha256:
         failures.append(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.policy_sha256 does "
-            "not match the certified UK gate policy."
+            "not match the certified UK gate policy for this release vintage."
         )
     if attestation.get("signature_algorithm") != _UK_TERMINAL_GATE_SIGNATURE_ALGORITHM:
         failures.append(
