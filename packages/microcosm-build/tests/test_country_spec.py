@@ -321,6 +321,13 @@ class TestRefusals:
         with pytest.raises(ValueError, match="duplicate phase"):
             load_country_spec(package_dir)
 
+    def test_unknown_gate_entry_key_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["paramters"] = {"within": 0.1}
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match=r"unknown keys \['paramters'\]"):
+            load_country_spec(package_dir)
+
     def test_not_applicable_with_parameters_is_refused(self, tmp_path) -> None:
         files = _minimal_package()
         files["gates.json"]["gates"][0]["not_applicable"] = "no surface yet"
