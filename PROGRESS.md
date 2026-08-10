@@ -54,6 +54,10 @@ checkout without rebasing, resetting, or shelving.
   SSTB batch 5 to adult care, and tuition batch 2 to education. Seven graph
   and registry doctrine regressions pass, including reconstruction under
   reversed registry iteration.
+- Split the post-clone source chain into a guarded single-producer entrypoint
+  and an exact 16-receipt finalizer. The compatibility entrypoint now uses the
+  same narrow API; deferred source inputs materialize only once after complete
+  execution. All 54 multispine-pool tests pass.
 
 ## Next
 

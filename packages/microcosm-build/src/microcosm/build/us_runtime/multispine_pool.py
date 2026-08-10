@@ -129,6 +129,7 @@ __all__ = [
     "SourceOperatorContract",
     "complete_multispine_source_inputs",
     "derive_multispine_pool_inputs",
+    "finalize_multispine_source_inputs",
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
     "pool_input_surface",
@@ -139,6 +140,7 @@ __all__ = [
     "pool_transfer_target_families",
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
+    "run_multispine_post_clone_source_operator",
     "run_multispine_pool_path",
     "seed_multispine_pool_inputs",
 ]
@@ -958,16 +960,32 @@ def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
 def complete_multispine_source_inputs(
     frame: Frame,
 ) -> PoolStageOutput:
-    """Run clone-safe or clone-required source work after primary imputation.
+    """Run the legacy post-clone source chain through the narrow public API.
 
-    The function is intentionally fixed-seed/fixed-period. Each operator runs
-    over the CPS-evidenced portion of the already assembled and cloned frame;
-    its declared output family alone is merged into the whole pool. This
-    retains ACS native measurements, leaves unavailable cells null for the
-    subsequent declared transfer, and keeps assembly metadata untouched. The
-    source chain then materializes every pool-local donor deferral as a typed
-    all-null column with an explicit receipt.
+    This compatibility entrypoint retains the historical source-only order for
+    callers whose late inputs are already complete. Production late-stage
+    orchestration invokes :func:`run_multispine_post_clone_source_operator`
+    according to the declared producer DAG, then calls
+    :func:`finalize_multispine_source_inputs` once all sixteen receipts exist.
     """
+
+    current = frame
+    operator_receipts: dict[str, Mapping[str, object]] = {}
+    for operator_name in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
+        completed = run_multispine_post_clone_source_operator(
+            current,
+            operator_name,
+        )
+        current = completed.frame
+        operator_receipts[operator_name] = completed.receipt
+    return finalize_multispine_source_inputs(
+        current,
+        operator_receipts=operator_receipts,
+    )
+
+
+def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
+    """Return the fixed-seed, fixed-period post-clone kernel mapping."""
 
     operators: Mapping[str, SourceFrameOperator] = {
         "with_us_prior_year_income_inputs": lambda current: (
@@ -1061,18 +1079,140 @@ def complete_multispine_source_inputs(
             time_period=POOL_TIME_PERIOD,
         ),
     }
-    completed = _run_source_operator_chain(
+    return operators
+
+
+def run_multispine_post_clone_source_operator(
+    frame: Frame,
+    operator_name: str,
+) -> PoolStageOutput:
+    """Run exactly one declared post-clone source producer.
+
+    Separating kernel execution from orchestration lets the late-stage DAG
+    interleave source producers with the transfer groups that fill their
+    declared inputs. The existing phase, projection, structure, and output
+    ownership checks remain centralized in the guarded source runner.
+    """
+
+    operators = _post_clone_source_operators()
+    if operator_name not in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
+        raise ValueError(
+            f"{operator_name!r} is not a declared post-clone source operator; "
+            f"expected one of {POOL_POST_CLONE_SOURCE_OPERATOR_ORDER}."
+        )
+    if set(operators) != set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER):
+        raise RuntimeError(
+            "Post-clone source operator mapping drifted from its declaration; "
+            f"missing={sorted(set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER) - set(operators))}, "
+            f"unexpected={sorted(set(operators) - set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER))}."
+        )
+    return _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
-        operator_names=POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
-        operators=operators,
+        operator_names=(operator_name,),
+        operators={operator_name: operators[operator_name]},
     )
-    _assert_formula_owned_source_outputs_absent(completed.frame)
-    deferred = materialize_pool_deferred_transfer_inputs(completed.frame)
+
+
+def finalize_multispine_source_inputs(
+    frame: Frame,
+    *,
+    operator_receipts: Mapping[str, Mapping[str, object]],
+) -> PoolStageOutput:
+    """Validate complete source execution and finalize its persisted surface.
+
+    ``operator_receipts`` must map each of the sixteen declared post-clone
+    source producers to its single-operator receipt. Mapping insertion order is
+    retained as the actual execution order, which may be interleaved with
+    transfer producers by the late-stage DAG. Formula-owned outputs are rejected
+    before the three explicitly deferred SCF inputs are materialized exactly
+    once.
+    """
+
+    if not isinstance(operator_receipts, Mapping):
+        raise TypeError("Post-clone source operator receipts must be a mapping.")
+    receipt_items = tuple(operator_receipts.items())
+    normalized: list[dict[str, object]] = []
+    operator_order: list[str] = []
+    evidence_receipts: list[object] = []
+    for receipt_index, (receipt_operator, receipt) in enumerate(receipt_items):
+        if not isinstance(receipt_operator, str):
+            raise TypeError(
+                "Post-clone source operator receipt keys must be strings; "
+                f"receipt {receipt_index} is keyed by "
+                f"{type(receipt_operator).__name__}."
+            )
+        if not isinstance(receipt, Mapping):
+            raise TypeError(
+                "Post-clone source operator receipts must be mappings; "
+                f"receipt {receipt_index} is {type(receipt).__name__}."
+            )
+        declared_order = receipt.get("operator_order")
+        if (
+            receipt.get("phase") != _POST_CLONE_PHASE
+            or not isinstance(declared_order, (list, tuple))
+            or len(declared_order) != 1
+            or not isinstance(declared_order[0], str)
+        ):
+            raise ValueError(
+                "Each post-clone source receipt must declare phase "
+                f"{_POST_CLONE_PHASE!r} and exactly one operator; receipt "
+                f"{receipt_index} was {dict(receipt)!r}."
+            )
+        operator_name = declared_order[0]
+        if operator_name != receipt_operator:
+            raise ValueError(
+                f"Post-clone source receipt key {receipt_operator!r} is "
+                f"misbound to operator {operator_name!r}."
+            )
+        suboperators = receipt.get("suboperators")
+        if (
+            not isinstance(suboperators, (list, tuple))
+            or len(suboperators) != 1
+            or not isinstance(suboperators[0], Mapping)
+            or suboperators[0].get("operator") != operator_name
+        ):
+            raise ValueError(
+                "Each post-clone source receipt must carry the matching single "
+                f"suboperator receipt for {operator_name!r}."
+            )
+        operator_order.append(operator_name)
+        normalized_suboperator = dict(suboperators[0])
+        normalized_suboperator["order_index"] = receipt_index
+        normalized.append(normalized_suboperator)
+        evidence_receipts.append(receipt.get("cps_source_evidence"))
+
+    expected = set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)
+    observed = set(operator_order)
+    if (
+        len(receipt_items) != len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)
+        or observed != expected
+    ):
+        raise ValueError(
+            "Post-clone source finalization requires exactly "
+            f"{len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)} one-operator receipts; "
+            f"missing={sorted(expected - observed)}, "
+            f"unexpected={sorted(observed - expected)}."
+        )
+    if evidence_receipts and any(
+        evidence != evidence_receipts[0] for evidence in evidence_receipts[1:]
+    ):
+        raise ValueError(
+            "Post-clone source receipts disagree on the CPS source-evidence projection."
+        )
+
+    _assert_formula_owned_source_outputs_absent(frame)
+    deferred = materialize_pool_deferred_transfer_inputs(frame)
     return PoolStageOutput(
         deferred.frame,
         {
-            **completed.receipt,
+            "phase": _POST_CLONE_PHASE,
+            "operator_order": operator_order,
+            "cps_source_evidence": (
+                evidence_receipts[0] if evidence_receipts else None
+            ),
+            "transient_outputs_carried_through_clone": {},
+            "suboperators": normalized,
             "deferred_transfer_inputs": deferred.receipt,
         },
     )

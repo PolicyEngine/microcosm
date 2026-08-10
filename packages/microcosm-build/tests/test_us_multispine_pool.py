@@ -40,6 +40,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     PoolInputSurfaceEntry,
     PoolStageOutput,
     _complete_schedule_d_input,
+    finalize_multispine_source_inputs,
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
     pool_input_surface,
@@ -51,6 +52,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
     run_multispine_pool_path,
+    run_multispine_post_clone_source_operator,
     seed_multispine_pool_inputs,
 )
 from microcosm.build.us_runtime.operator_boundary import (
@@ -1937,6 +1939,159 @@ def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
     } == set(POOL_DERIVE_OPERATOR_ORDER)
 
 
+def test_single_post_clone_source_entrypoint_dispatches_one_operator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+
+    def observe_guarded_chain(
+        frame: Frame,
+        *,
+        phase: str,
+        operator_names: tuple[str, ...],
+        operators: dict[str, Callable[[Frame], Frame]],
+        **_kwargs: object,
+    ) -> PoolStageOutput:
+        observed.append((phase, operator_names, tuple(operators)))
+        return PoolStageOutput(
+            frame,
+            {
+                "phase": phase,
+                "operator_order": list(operator_names),
+                "suboperators": [{"operator": operator_names[0], "order_index": 0}],
+            },
+        )
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        observe_guarded_chain,
+    )
+
+    result = run_multispine_post_clone_source_operator(
+        _source_frame(),
+        "with_us_adult_care_inputs",
+    )
+
+    assert result.receipt["operator_order"] == ["with_us_adult_care_inputs"]
+    assert observed == [
+        (
+            "post_clone",
+            ("with_us_adult_care_inputs",),
+            ("with_us_adult_care_inputs",),
+        )
+    ]
+
+
+def test_single_post_clone_source_entrypoint_rejects_unknown_operator_before_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        lambda *_args, **_kwargs: pytest.fail("runner must not be called"),
+    )
+
+    with pytest.raises(ValueError, match="declared post-clone source operator"):
+        run_multispine_post_clone_source_operator(
+            _source_frame(),
+            "with_us_housing_inputs",
+        )
+
+
+def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
+    return {
+        "phase": "post_clone",
+        "operator_order": [operator],
+        "cps_source_evidence": {"column": "PERIDNUM", "person_rows": 4},
+        "transient_outputs_carried_through_clone": {},
+        "suboperators": [
+            {
+                "operator": operator,
+                "order_index": 0,
+                "phase": "post_clone",
+            }
+        ],
+    }
+
+
+def test_source_finalizer_requires_all_16_receipts_and_preserves_run_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution_order = tuple(reversed(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER))
+    receipts = {
+        operator: _single_post_clone_source_receipt(operator)
+        for operator in execution_order
+    }
+    deferred_calls: list[Frame] = []
+
+    def materialize_once(frame: Frame) -> PoolStageOutput:
+        deferred_calls.append(frame)
+        return PoolStageOutput(frame, {"inputs": {"fixture": {"status": "pending"}}})
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        materialize_once,
+    )
+
+    finalized = finalize_multispine_source_inputs(
+        _source_frame(),
+        operator_receipts=receipts,
+    )
+
+    assert deferred_calls == [finalized.frame]
+    assert finalized.receipt["operator_order"] == list(execution_order)
+    assert [item["order_index"] for item in finalized.receipt["suboperators"]] == list(
+        range(16)
+    )
+    assert finalized.receipt["deferred_transfer_inputs"] == {
+        "inputs": {"fixture": {"status": "pending"}}
+    }
+
+
+def test_source_finalizer_rejects_incomplete_receipts_before_deferred_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        lambda _frame: pytest.fail("deferred inputs must not be materialized"),
+    )
+    receipts = {
+        operator: _single_post_clone_source_receipt(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER[:-1]
+    }
+
+    with pytest.raises(ValueError, match=r"exactly.*16.*missing=.*education"):
+        finalize_multispine_source_inputs(
+            _source_frame(),
+            operator_receipts=receipts,
+        )
+
+
+def test_source_finalizer_rejects_formula_owned_outputs_before_deferred_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _source_frame()
+    frame.table("person")["weeks_worked"] = 52.0
+    receipts = {
+        operator: _single_post_clone_source_receipt(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    }
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        lambda _frame: pytest.fail("deferred inputs must not be materialized"),
+    )
+
+    with pytest.raises(ValueError, match="formula-owned source"):
+        finalize_multispine_source_inputs(
+            frame,
+            operator_receipts=receipts,
+        )
+
+
 def test_production_operator_invocations_are_total_and_guarded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1952,14 +2107,9 @@ def test_production_operator_invocations_are_total_and_guarded(
             {"_run_source_operator_chain"},
         ),
         (
-            multispine_pool_module.complete_multispine_source_inputs,
+            multispine_pool_module._post_clone_source_operators,
             POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
-            {
-                "_assert_formula_owned_source_outputs_absent",
-                "_run_source_operator_chain",
-                "materialize_pool_deferred_transfer_inputs",
-                "PoolStageOutput",
-            },
+            set(),
         ),
         (
             multispine_pool_module.derive_multispine_pool_inputs,
@@ -2056,7 +2206,10 @@ def test_production_operator_invocations_are_total_and_guarded(
 
     assert observed == [
         ("pre_clone", POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER),
-        ("post_clone", POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
+        *(
+            ("post_clone", (operator,))
+            for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        ),
         ("post_clone", POOL_DERIVE_OPERATOR_ORDER),
     ]
     observed_placements = {
