@@ -378,6 +378,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
             }
         },
     }
+    schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 5
     write_nullable_us_h5(
         _pool_frame_with_object_strings_on_every_entity(),
         pool_path,
@@ -387,7 +388,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     )
     diagnostics = {
         "artifact_kind": (US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND),
-        "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "simulation_ready": True,
         "publication_run_id": run_id,
         "agreement_gate": agreement_gate,
@@ -402,7 +403,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
     manifest = {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
-        "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "status": "simulation_ready",
         "simulation_ready": True,
         "publication_run_id": run_id,
@@ -675,7 +676,7 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         previous_sha256 = row["sha256"]
         execution.append(row)
     receipt = {
-        "version": 1,
+        "version": stacked_spine_module.US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
         "producer_schedule": schedule_receipt,
         "input_frame_sha256": input_frame_sha256,
         "output_frame_sha256": "4" * 64,
@@ -742,6 +743,43 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     assert json.loads(manifest_path.read_text())["publication_run_id"] == (
         "replacement-publication"
     )
+
+
+def test_ready_legacy_pool_loader_accepts_schema_five_envelope(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    written_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(written_manifest["agreement_diagnostics"]["path"])
+    written_diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+
+    frame, loaded_manifest, _authenticated_h5 = (
+        load_simulation_ready_us_multispine_pool(manifest_path)
+    )
+
+    assert written_manifest["schema_version"] == 5
+    assert written_diagnostics["schema_version"] == 5
+    assert loaded_manifest["schema_version"] == 5
+    assert frame.n("household") == 3
+
+
+def test_ready_legacy_pool_loader_rejects_schema_six_envelope(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    diagnostics["schema_version"] = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported artifact binding"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 def test_ready_pool_loader_rejects_a_false_h5_size_receipt(tmp_path: Path) -> None:
@@ -866,6 +904,24 @@ def test_ready_stacked_pool_loader_requires_schema_six_late_dag_proof(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ValueError, match="has no late-producer DAG receipt"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_rejects_schema_five_envelope(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 5
+    diagnostics["schema_version"] = 5
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported artifact binding"):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
