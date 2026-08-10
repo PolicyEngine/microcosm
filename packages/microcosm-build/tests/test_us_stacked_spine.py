@@ -2919,6 +2919,94 @@ def test_late_table_content_digest_binds_dtype_index_and_order() -> None:
     )
 
 
+def test_late_primary_resources_bind_donor_content_and_execution_config() -> None:
+    donor = pd.DataFrame(
+        {"income": np.array([10.0, 20.0], dtype=np.float64)},
+        index=pd.Index([3, 9], name="donor_id"),
+    )
+    common = {
+        "primary_qrf_checkpoint_identity_sha256": "a" * 64,
+        "clone_attachment_fraction": 1.0,
+        "clone_attachment_seed": 578,
+        "seed": 0,
+        "n_estimators": 100,
+    }
+
+    baseline = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        **common,
+    )
+    changed_donor = donor.copy()
+    changed_donor.iloc[0, 0] = 11.0
+    donor_variant = stacked_spine_module.stacked_late_primary_resource_receipts(
+        changed_donor,
+        **common,
+    )
+    config_variant = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        **{**common, "clone_attachment_seed": 579},
+    )
+
+    assert set(baseline) == {
+        "tax_unit.@puf_donor_tax_units",
+        "tax_unit.@primary_qrf_checkpoint",
+        "tax_unit.@primary_puf_execution_config",
+    }
+    donor_receipt = baseline["tax_unit.@puf_donor_tax_units"]
+    assert donor_receipt["binding"]["table_content_sha256"] != (
+        donor_variant["tax_unit.@puf_donor_tax_units"]["binding"][
+            "table_content_sha256"
+        ]
+    )
+    assert donor_receipt["rows"] == donor_variant[
+        "tax_unit.@puf_donor_tax_units"
+    ]["rows"]
+    assert baseline["tax_unit.@primary_puf_execution_config"][
+        "binding_sha256"
+    ] != config_variant["tax_unit.@primary_puf_execution_config"][
+        "binding_sha256"
+    ]
+
+
+def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    ]
+    initial = _fill_late_contract_surface(
+        _stacked_gap_fixture(),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        pd.DataFrame({"income": [10.0]}),
+        primary_qrf_checkpoint_identity_sha256="a" * 64,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+    )
+    resources["tax_unit.@puf_donor_tax_units"] = {
+        key: value
+        for key, value in resources["tax_unit.@puf_donor_tax_units"].items()
+        if key not in {"binding", "binding_sha256"}
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)primary_puf_qrf.*@effective:puf_donor.*"
+            r"post_clone_input_surface"
+        ),
+    ):
+        stacked_spine_module.run_stacked_late_producer_dag(
+            initial,
+            primary_puf_producer=lambda _frame: pytest.fail(
+                "shallow resource receipt reached primary callback"
+            ),
+            primary_resource_receipts=resources,
+        )
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
