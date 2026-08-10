@@ -576,7 +576,11 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
             producer_name
         ]
-        if contract.kind == "primary_puf":
+        if contract.kind == "acs_earnings_universe":
+            available = (
+                stacked_spine_module._late_acs_earnings_universe_resource_receipts()
+            )
+        elif contract.kind == "primary_puf":
             available = stacked_spine_module.stacked_late_primary_resource_receipts(
                 pd.DataFrame({"fixture_donor": [1.0]}),
                 primary_qrf_checkpoint_identity_sha256="5" * 64,
@@ -681,7 +685,9 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             }
             for output in contract.outputs
         ]
-        if contract.kind == "post_clone_source":
+        if contract.kind == "acs_earnings_universe":
+            producer_receipt = {"fixture": "acs_earnings_universe"}
+        elif contract.kind == "post_clone_source":
             producer_receipt = source_receipts[producer_name.removeprefix("source:")]
         elif contract.kind == "source_finalizer":
             producer_receipt = source_completion

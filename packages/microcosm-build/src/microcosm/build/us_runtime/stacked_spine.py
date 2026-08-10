@@ -55,7 +55,11 @@ from microcosm.build.gates import (
 )
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
 from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
+    AcsPumsEarningsUniverseApplication,
+    acs_pums_earnings_universe_contract_identity,
     apply_acs_pums_earnings_universe_zeros,
+    resolve_acs_pums_earnings_universe,
 )
 from microcosm.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
@@ -139,6 +143,9 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT,
+    US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT,
+    US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
     US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
     US_LATE_PRIMARY_PUF_STAGE,
     US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
@@ -4081,6 +4088,9 @@ def _late_virtual_resource_kind(column: str) -> str:
     kinds = {
         "@puf_donor_tax_units": "puf_donor_tax_units",
         "@primary_qrf_checkpoint": "primary_qrf_checkpoint",
+        US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT: (
+            "acs_pums_earnings_universe_execution_config"
+        ),
         US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT: "primary_puf_execution_config",
         US_LATE_SOURCE_EXECUTION_CONFIG_INPUT: ("post_clone_source_execution_config"),
         US_LATE_TRANSFER_MODEL_CONFIG_INPUT: "late_transfer_model_config",
@@ -4196,6 +4206,33 @@ def _validate_late_resource_binding(
         if any(binding.get(key) != value for key, value in expected.items()):
             raise ValueError(
                 f"{boundary}: late primary-QRF checkpoint semantics changed."
+            )
+        return
+    if kind == "acs_pums_earnings_universe_execution_config":
+        require_keys(
+            {
+                *common,
+                "ordered_mapped_columns",
+                "person_scope_mode",
+                "contract_identity",
+            }
+        )
+        if binding.get("ordered_mapped_columns") != list(
+            ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+        ):
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe target order changed."
+            )
+        if binding.get("person_scope_mode") != "whole_frame_acs_channel":
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe scope mode changed."
+            )
+        if (
+            binding.get("contract_identity")
+            != acs_pums_earnings_universe_contract_identity()
+        ):
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe contract changed."
             )
         return
     if kind == "primary_puf_execution_config":
@@ -4814,6 +4851,27 @@ def _late_source_resource_receipts(
                 rows=1,
                 binding=binding,
             )
+        )
+    }
+
+
+def _late_acs_earnings_universe_resource_receipts() -> dict[str, dict[str, object]]:
+    """Bind the exact rules and scope consumed by the universe producer."""
+
+    column = US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT
+    return {
+        f"person.{column}": _late_available_input_receipt(
+            producer=US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+            entity="person",
+            column=column,
+            rows=1,
+            binding={
+                "resource_kind": ("acs_pums_earnings_universe_execution_config"),
+                "schema_version": 1,
+                "ordered_mapped_columns": list(ACS_PUMS_EARNINGS_SOURCE_COLUMNS),
+                "person_scope_mode": "whole_frame_acs_channel",
+                "contract_identity": (acs_pums_earnings_universe_contract_identity()),
+            },
         )
     }
 
@@ -5443,7 +5501,12 @@ def _validate_late_execution_row(
             f"{boundary}: late producer {contract.name!r} available-input "
             "receipts are not an object."
         )
-    if contract.kind in {"primary_puf", "source_finalizer", "late_transfer"}:
+    if contract.kind in {
+        "acs_earnings_universe",
+        "primary_puf",
+        "source_finalizer",
+        "late_transfer",
+    }:
         mandatory_available_keys = _late_contract_available_input_keys(contract)
     elif contract.kind == "post_clone_source":
         mandatory_available_keys = {f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}"}
@@ -5454,7 +5517,12 @@ def _validate_late_execution_row(
             f"{boundary}: late producer {contract.name!r} virtual-input "
             "evidence does not prove every mandatory available resource."
         )
-    if contract.kind in {"primary_puf", "source_finalizer", "late_transfer"}:
+    if contract.kind in {
+        "acs_earnings_universe",
+        "primary_puf",
+        "source_finalizer",
+        "late_transfer",
+    }:
         if evidenced_available_keys != mandatory_available_keys:
             raise ValueError(
                 f"{boundary}: late producer {contract.name!r} virtual-input "
@@ -7586,6 +7654,12 @@ def _late_required_scope_mask(
             .astype(str)
             .eq(BASE_ASEC_SUPPORT_CHANNEL)
         )
+    if required_scope == "acs_source":
+        return (
+            table[support_channel_column(entity)]
+            .astype(str)
+            .eq(ACS_STACKED_SUPPORT_CHANNEL)
+        )
     if required_scope == "puf_clone":
         return pd.to_numeric(
             table[support_clone_index_column(entity)],
@@ -7806,6 +7880,39 @@ def _assert_primary_puf_stage_complete(frame: Frame) -> None:
         )
 
 
+def _materialize_stacked_acs_earnings_universe(
+    frame: Frame,
+) -> AcsPumsEarningsUniverseApplication:
+    """Run and bind the declared pre-primary ACS earnings-universe producer."""
+
+    application = apply_acs_pums_earnings_universe_zeros(
+        frame,
+        boundary="late ACS PUMS earnings-universe producer",
+    )
+    receipt = _json_ready(application.receipt)
+    metadata_key = US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT.removeprefix("@")
+    if metadata_key in application.frame.metadata:
+        raise ValueError(
+            "Late ACS PUMS earnings-universe producer found a pre-existing "
+            "application receipt."
+        )
+    bound = Frame(
+        {
+            entity: application.frame.table(entity)
+            for entity in application.frame.entities
+        },
+        application.frame.schema,
+        {
+            entity: application.frame.weights_for(entity)
+            for entity in application.frame.weighted_entities
+        },
+        application.frame.strata,
+        mass_log=application.frame.mass_log,
+        metadata={**application.frame.metadata, metadata_key: receipt},
+    )
+    return AcsPumsEarningsUniverseApplication(bound, receipt)
+
+
 def _aggregate_late_transfer_result(
     frame: Frame,
     *,
@@ -8014,7 +8121,9 @@ def run_stacked_late_producer_dag(
         CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
     ):
         contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
-        if producer_name == US_LATE_PRIMARY_PUF_STAGE:
+        if producer_name == US_LATE_ACS_EARNINGS_UNIVERSE_STAGE:
+            node_available_inputs = _late_acs_earnings_universe_resource_receipts()
+        elif producer_name == US_LATE_PRIMARY_PUF_STAGE:
             node_available_inputs = dict(primary_resource_receipts)
         elif contract.kind == "post_clone_source":
             node_available_inputs = _late_source_resource_receipts(
@@ -8088,7 +8197,9 @@ def run_stacked_late_producer_dag(
             bound_frame: Frame = current,
             bound_outcome: dict[str, object] = outcome,
         ) -> None:
-            if bound_contract.kind == "primary_puf":
+            if bound_contract.kind == "acs_earnings_universe":
+                result = _materialize_stacked_acs_earnings_universe(bound_frame)
+            elif bound_contract.kind == "primary_puf":
                 result = primary_puf_producer(bound_frame)
             elif bound_contract.kind == "post_clone_source":
                 operator = bound_producer_name.removeprefix("source:")
@@ -8158,6 +8269,9 @@ def run_stacked_late_producer_dag(
         execution_row["sha256"] = _canonical_sha256(execution_row)
         previous_execution_sha256 = str(execution_row["sha256"])
         execution_receipts.append(execution_row)
+        if contract.kind == "acs_earnings_universe":
+            execution_order.append(producer_name)
+            continue
         if contract.kind == "primary_puf":
             if not isinstance(result, StackedPufPassResult):
                 raise TypeError(
@@ -8329,12 +8443,30 @@ def _run_stacked_puf_pass_evaluate(
             "The stacked PUF pass owns clone attachment; found nonzero person "
             "support clone indices on its input."
         )
-    universe_application = apply_acs_pums_earnings_universe_zeros(
-        frame,
-        boundary="stacked PUF pass ACS earnings universe",
+    universe_metadata_key = US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT.removeprefix(
+        "@"
     )
+    universe_application_receipt = frame.metadata.get(universe_metadata_key)
+    if not isinstance(universe_application_receipt, Mapping):
+        raise ValueError(
+            "Stacked PUF pass requires the declared "
+            f"{US_LATE_ACS_EARNINGS_UNIVERSE_STAGE!r} producer receipt before "
+            "the primary callback may run."
+        )
+    resolved_universe = resolve_acs_pums_earnings_universe(
+        frame,
+        columns=tuple(ACS_PUMS_EARNINGS_SOURCE_COLUMNS),
+        boundary="stacked PUF pass ACS earnings-universe receipt",
+    )
+    if _json_ready(universe_application_receipt) != _json_ready(
+        resolved_universe.receipt
+    ):
+        raise ValueError(
+            "Stacked PUF pass ACS earnings-universe receipt does not match "
+            "the live produced frame."
+        )
     cloned = clone_us_frame_for_puf_support(
-        universe_application.frame,
+        frame,
         clone_attachment_fraction=clone_attachment_fraction,
         clone_attachment_seed=clone_attachment_seed,
     )
@@ -8528,7 +8660,7 @@ def _run_stacked_puf_pass_evaluate(
         frame=output,
         receipt={
             "acs_earnings_universe_application": _json_ready(
-                universe_application.receipt
+                universe_application_receipt
             ),
             "clone_attachment": _json_ready(attachment),
             "doctrines": {

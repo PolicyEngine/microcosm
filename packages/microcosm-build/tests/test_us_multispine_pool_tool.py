@@ -1010,7 +1010,11 @@ def _canonical_late_dag_receipt(
             producer_name
         ]
         declared_inputs = []
-        if contract.kind == "primary_puf":
+        if contract.kind == "acs_earnings_universe":
+            available = (
+                stacked_spine_module._late_acs_earnings_universe_resource_receipts()
+            )
+        elif contract.kind == "primary_puf":
             available: dict[str, object] = (
                 stacked_spine_module.stacked_late_primary_resource_receipts(
                     pd.DataFrame({"fixture_donor": [1.0]}),
@@ -1111,7 +1115,9 @@ def _canonical_late_dag_receipt(
                     "evidence": evidence,
                 }
             )
-        if contract.kind == "primary_puf":
+        if contract.kind == "acs_earnings_universe":
+            producer_receipt = {"fixture": "acs_earnings_universe"}
+        elif contract.kind == "primary_puf":
             producer_receipt: Mapping[str, object] = {"fixture": "primary_puf"}
         elif contract.kind == "post_clone_source":
             producer_receipt = source_receipts[producer_name.removeprefix("source:")]

@@ -30,8 +30,9 @@ __all__ = [
 # stage receipt satisfies the source finalizer's whole-pool readiness gate.
 # Unlisted extension scopes are deliberately exact-match only.
 _PRODUCER_SCOPE_COVERAGE: Mapping[str, frozenset[str]] = {
-    "whole_pool": frozenset({"whole_pool", "asec_source", "puf_clone"}),
+    "whole_pool": frozenset({"whole_pool", "asec_source", "acs_source", "puf_clone"}),
     "asec_source": frozenset({"asec_source"}),
+    "acs_source": frozenset({"acs_source"}),
     "puf_clone": frozenset({"puf_clone"}),
     "receipt": frozenset({"whole_pool"}),
 }

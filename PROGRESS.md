@@ -14,8 +14,8 @@ the top receipt is bound to entry/output frame content and independently carried
 transition authority. That authority is propagated through cold/resumed pool
 checkpoints, H5 schema 6, manifest construction, simulation, and publication.
 The independent audit found additional hidden inputs in the source callbacks
-and primary-PUF wrapper. Source execution controls are now declared; the ACS
-earnings-universe materializer is the current implementation step. Every
+and primary-PUF wrapper. Source execution controls and the ACS earnings-
+universe materializer are now declared DAG nodes/resources. Every
 physical input and virtual runtime resource is content-bound: donor bytes,
 resolved PUF/QRF/tail controls,
 the routed primary-QRF bank and stale-bank sidecar, source receipts, transfer
@@ -281,12 +281,24 @@ the final tree after those findings close.
   switch, and explicit `not_supplied` mode for the only two optional sidecar
   arguments. Removed unreachable sidecar alternatives from the executable
   inventories, so every declared alternative can actually reach its kernel.
+- Split the ACS PUMS earnings-universe-zero materializer out of the primary
+  callback as registry-schema-v9 producer `acs_pums_earnings_universe`. It
+  declares age, WAGP, SEMP, both mapped earnings columns, channel scope, and
+  the exact rule/config identity; explicitly tolerates its structural input
+  absences; emits the live application receipt; and gates primary QRF on both
+  ACS earnings outputs plus that receipt. The derived graph is now 38 nodes,
+  71 edges, and six waves `(1, 1, 17, 14, 3, 2)` with schedule SHA
+  `070fdaac27446c7b367d24a160cb75a2df666c07135bd5d98961328b004ad303`
+  and payload SHA
+  `5f62351fe0d2d85d9d4a09fa699298e75e1bb82609ce657a102746c8477864b4`.
+  A real-entry-shape regression starts with ACS under-15 raw and mapped nulls,
+  proves the universe producer runs first, and proves primary sees explicit
+  receipted zeros; a missing universe receipt refuses primary before callback
+  and names its producing stage.
 
 ## Next
 
-- Add the ACS PUMS earnings-universe materializer as an explicit pre-primary
-  DAG producer, then close the persisted-receipt and legacy-envelope audit
-  findings.
+- Close the persisted-receipt and legacy-envelope audit findings.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,

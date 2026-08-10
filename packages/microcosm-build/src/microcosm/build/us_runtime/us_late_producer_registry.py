@@ -24,6 +24,9 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from microcosm.build.us_runtime.acs_transfer import TargetFamilies
+from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
+)
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -54,6 +57,10 @@ __all__ = [
     "SourceInputInventory",
     "TransferProducerGroup",
     "US_LATE_EXTERNAL_STAGES",
+    "US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT",
+    "US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY",
+    "US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT",
+    "US_LATE_ACS_EARNINGS_UNIVERSE_STAGE",
     "US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT",
     "US_LATE_PRIMARY_PUF_STAGE",
     "US_LATE_SOURCE_FINALIZER_STAGE",
@@ -74,24 +81,31 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v8 adds the fixed seed/period and operator switches consumed by every
-# post-clone source callback. v7 added the primary execution configuration and
+# v9 splits the ACS PUMS earnings-universe materializer into a declared
+# pre-primary producer. v8 added the fixed seed/period and operator switches
+# consumed by every post-clone source callback. v7 added the primary execution configuration and
 # every late-transfer model
 # configuration/target-bank identity to the declared external-resource surface.
 # Version 6 content-bound physical Frame inputs but left those callback inputs
 # implicit. Receipt v2 requires every virtual-resource receipt to carry an exact
 # hash-bound semantic payload.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 8
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 9
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 2
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
+US_LATE_ACS_EARNINGS_UNIVERSE_STAGE = "acs_pums_earnings_universe"
 US_LATE_SOURCE_FINALIZER_STAGE = "source_finalizer"
+US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT = (
+    "@acs_pums_earnings_universe_execution_config"
+)
+US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT = "@acs_pums_earnings_universe_application"
 US_LATE_SOURCE_EXECUTION_CONFIG_INPUT = "@post_clone_source_execution_config"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
 
 _ASEC_SOURCE_SCOPE = "asec_source"
+_ACS_SOURCE_SCOPE = "acs_source"
 _PUF_CLONE_SCOPE = "puf_clone"
 _WHOLE_POOL_SCOPE = "whole_pool"
 _DEFAULT_MAX_TARGETS_PER_FIT = 8
@@ -1035,6 +1049,38 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
 )
 
 
+US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY = _inventory(
+    US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+    _single("age", "person", "age", value_kind="finite_numeric"),
+    _single("support_channel", "person", "person_support_channel"),
+    *(
+        _single(
+            f"raw_source:{source}",
+            "person",
+            source,
+            optional=True,
+            value_kind="finite_numeric",
+        )
+        for source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values()
+    ),
+    *(
+        _single(
+            f"mapped_earnings:{mapped}",
+            "person",
+            mapped,
+            optional=True,
+            value_kind="finite_numeric",
+        )
+        for mapped in ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+    ),
+    _single(
+        "execution_config",
+        "person",
+        US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT,
+    ),
+)
+
+
 def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInventory:
     structural = [
         *_CROSS_GRAIN_VALIDATION_REQUIREMENTS,
@@ -1426,13 +1472,53 @@ def _build_registry() -> dict[str, ProducerContract]:
         )
 
     registry: dict[str, ProducerContract] = {}
+    registry[US_LATE_ACS_EARNINGS_UNIVERSE_STAGE] = ProducerContract(
+        name=US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+        kind="acs_earnings_universe",
+        inputs=_inventory_contract_inputs(
+            US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+            US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY,
+            required_scope=_ACS_SOURCE_SCOPE,
+        ),
+        outputs=(
+            *(
+                ProducerOutput("person", mapped, _ACS_SOURCE_SCOPE)
+                for mapped in ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+            ),
+            ProducerOutput(
+                "frame",
+                US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT,
+                _WHOLE_POOL_SCOPE,
+            ),
+        ),
+    )
     registry[US_LATE_PRIMARY_PUF_STAGE] = ProducerContract(
         name=US_LATE_PRIMARY_PUF_STAGE,
         kind="primary_puf",
-        inputs=_inventory_contract_inputs(
-            US_LATE_PRIMARY_PUF_STAGE,
-            US_LATE_PRIMARY_PUF_INPUT_INVENTORY,
-            required_scope=_WHOLE_POOL_SCOPE,
+        inputs=(
+            *_inventory_contract_inputs(
+                US_LATE_PRIMARY_PUF_STAGE,
+                US_LATE_PRIMARY_PUF_INPUT_INVENTORY,
+                required_scope=_WHOLE_POOL_SCOPE,
+            ),
+            *(
+                ProducerInput(
+                    "person",
+                    mapped,
+                    _ACS_SOURCE_SCOPE,
+                    US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+                    alternatives=(
+                        (ProducerInputColumn("person", mapped, "finite_numeric"),),
+                    ),
+                )
+                for mapped in ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+            ),
+            ProducerInput(
+                "frame",
+                US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT,
+                _WHOLE_POOL_SCOPE,
+                US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+            ),
         ),
         outputs=primary_outputs,
     )
@@ -1782,6 +1868,9 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
         ],
         "primary_puf_input_inventory": _inventory_payload(
             US_LATE_PRIMARY_PUF_INPUT_INVENTORY
+        ),
+        "acs_earnings_universe_input_inventory": _inventory_payload(
+            US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY
         ),
         "transfer_input_inventories": [
             _inventory_payload(US_LATE_TRANSFER_INPUT_INVENTORIES[name])

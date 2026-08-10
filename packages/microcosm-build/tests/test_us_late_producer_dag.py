@@ -20,6 +20,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
     US_LATE_EXTERNAL_STAGES,
     US_LATE_PRIMARY_PUF_STAGE,
     US_LATE_SOURCE_FINALIZER_STAGE,
@@ -275,16 +276,17 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     registry = CANONICAL_US_LATE_PRODUCER_REGISTRY
     groups = CANONICAL_US_LATE_TRANSFER_GROUPS
 
-    assert len(registry) == 37
+    assert len(registry) == 38
     assert len(groups) == 19
     assert sum(len(group.targets) for group in groups) == 70
     assert {contract.kind for contract in registry.values()} == {
         "primary_puf",
+        "acs_earnings_universe",
         "post_clone_source",
         "late_transfer",
         "source_finalizer",
     }
-    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 47
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 50
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
     assert len(primary_outputs) == 100
     assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
@@ -321,7 +323,11 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
     edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
 
-    assert len(edges) == 70
+    assert len(edges) == 71
+    assert (
+        US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+        US_LATE_PRIMARY_PUF_STAGE,
+    ) in edges
     assert (
         source_producer_name("with_us_pregnancy_inputs"),
         source_producer_name("with_us_wic_claim_input"),
@@ -351,7 +357,10 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
         source_producer_name(operator)
         for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
     }
-    assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[0] == (US_LATE_PRIMARY_PUF_STAGE,)
+    assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[:2] == (
+        (US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,),
+        (US_LATE_PRIMARY_PUF_STAGE,),
+    )
     assert (
         US_LATE_SOURCE_FINALIZER_STAGE
         in (CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[-1])
@@ -424,7 +433,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 8
+    assert receipt["schema_version"] == 9
     assert receipt["execution_receipt_contract"] == {
         "version": 2,
         "row_binding": (
@@ -445,11 +454,14 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     }
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
-    assert receipt["producer_count"] == 37
+    assert receipt["producer_count"] == 38
     assert receipt["source_producer_count"] == 16
     assert receipt["transfer_group_count"] == 19
     assert receipt["transfer_target_count"] == 70
-    assert receipt["order"][0] == US_LATE_PRIMARY_PUF_STAGE
+    assert receipt["order"][:2] == [
+        US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+        US_LATE_PRIMARY_PUF_STAGE,
+    ]
 
 
 def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:

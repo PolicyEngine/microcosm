@@ -852,10 +852,13 @@ def _cloned_acs_earnings_universe_fixture() -> Frame:
         "SEMP",
     ):
         person.loc[structural, column] = np.nan
-    return apply_acs_pums_earnings_universe_zeros(
-        cloned,
-        boundary="stacked ACS earnings-universe fixture",
-    ).frame
+    return stacked_spine_module._materialize_stacked_acs_earnings_universe(cloned).frame
+
+
+def _late_primary_entry(frame: Frame) -> Frame:
+    """Materialize the declared DAG predecessor for direct primary tests."""
+
+    return stacked_spine_module._materialize_stacked_acs_earnings_universe(frame).frame
 
 
 def test_strict_recipient_predictors_apply_exact_acs_age_universe() -> None:
@@ -3079,7 +3082,7 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
         )
 
     stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
-        _stacked_gap_fixture(),
+        _late_primary_entry(_stacked_gap_fixture()),
         donor,
         clone_attachment_fraction=1.0,
         clone_attachment_seed=578,
@@ -3092,7 +3095,7 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
     changed_donor.iloc[0, 0] = 2.0
     with pytest.raises(ValueError, match="refusing stale predictions"):
         stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
-            _stacked_gap_fixture(),
+            _late_primary_entry(_stacked_gap_fixture()),
             changed_donor,
             clone_attachment_fraction=1.0,
             clone_attachment_seed=578,
@@ -3145,6 +3148,60 @@ def test_late_source_resources_bind_all_callback_controls() -> None:
         assert binding["external_sidecars"] == expected_sidecars
 
 
+def test_primary_refuses_missing_universe_receipt_before_callback() -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    ]
+    initial = _fill_late_contract_surface(
+        _stacked_gap_fixture(),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        pd.DataFrame({"fixture_donor": [1.0]}),
+        primary_qrf_checkpoint_identity_sha256="a" * 64,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+    )
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        initial,
+        contract,
+        available_input_receipts=resources,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)primary_puf_qrf.*"
+            r"frame\.@acs_pums_earnings_universe_application.*1 unfilled.*"
+            r"acs_pums_earnings_universe"
+        ),
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: pytest.fail("universe-less frame reached primary callback"),
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts={},
+        )
+
+
+def test_universe_resource_binds_exact_contract_and_scope() -> None:
+    resources = stacked_spine_module._late_acs_earnings_universe_resource_receipts()
+    receipt = resources["person.@acs_pums_earnings_universe_execution_config"]
+    binding = receipt["binding"]
+    assert binding["ordered_mapped_columns"] == [
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ]
+    assert binding["person_scope_mode"] == "whole_frame_acs_channel"
+    assert binding["contract_identity"] == (
+        stacked_spine_module.acs_pums_earnings_universe_contract_identity()
+    )
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -3158,8 +3215,30 @@ def _run_real_late_executor_fixture(
         contracts=(primary_contract,),
         include_outputs=False,
     )
+    initial_person = initial.table("person")
+    structural_row = initial_person.index[
+        initial_person[support_channel_column("person")].eq("acs")
+    ][0]
+    initial_person.loc[structural_row, "age"] = 12.0
+    initial_person.loc[
+        structural_row,
+        [
+            "WAGP",
+            "SEMP",
+            "employment_income_before_lsr",
+            "self_employment_income_before_lsr",
+        ],
+    ] = np.nan
     events: list[str] = []
     finalizer_calls = 0
+
+    materialize_universe = (
+        stacked_spine_module._materialize_stacked_acs_earnings_universe
+    )
+
+    def universe(frame: Frame):
+        events.append(stacked_spine_module.US_LATE_ACS_EARNINGS_UNIVERSE_STAGE)
+        return materialize_universe(frame)
 
     def primary(frame: Frame):
         events.append(stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE)
@@ -3266,6 +3345,11 @@ def _run_real_late_executor_fixture(
         )
 
     monkeypatch.setattr(
+        stacked_spine_module,
+        "_materialize_stacked_acs_earnings_universe",
+        universe,
+    )
+    monkeypatch.setattr(
         multispine_pool_module,
         "run_multispine_post_clone_source_operator",
         source,
@@ -3317,6 +3401,27 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
 
     assert events == schedule.order
     assert finalizer_calls == 1
+    universe_row = result.receipt["execution"][0]
+    assert universe_row["producer"] == (
+        stacked_spine_module.US_LATE_ACS_EARNINGS_UNIVERSE_STAGE
+    )
+    assert universe_row["declared_absence_receipts"]
+    produced_person = result.primary_puf_result.frame.table("person")
+    produced_child = produced_person[
+        produced_person[support_channel_column("person")].eq("acs")
+        & produced_person["age"].lt(15)
+    ]
+    assert (
+        produced_child[
+            [
+                "employment_income_before_lsr",
+                "self_employment_income_before_lsr",
+            ]
+        ]
+        .eq(0.0)
+        .all()
+        .all()
+    )
     assert events.index("transfer:person/puf_tax_itemization__batch_5") < events.index(
         "source:with_us_adult_care_inputs"
     )
@@ -3481,7 +3586,11 @@ def test_late_receipt_rejects_forged_absent_required_virtual_input(
 ) -> None:
     result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
     forged = deepcopy(dict(result.receipt))
-    primary = forged["execution"][0]
+    primary = next(
+        row
+        for row in forged["execution"]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
     config_key = "tax_unit.@primary_puf_execution_config"
     config_input = next(
         item
@@ -3512,7 +3621,11 @@ def test_late_receipt_rejects_virtual_evidence_receipt_digest_disagreement(
 ) -> None:
     result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
     forged = deepcopy(dict(result.receipt))
-    primary = forged["execution"][0]
+    primary = next(
+        row
+        for row in forged["execution"]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
     donor_input = next(
         item
         for item in primary["declared_inputs"]
@@ -4045,6 +4158,7 @@ def test_run_stacked_puf_pass_imputes_only_the_attached_arm() -> None:
         seed=578,
         n_estimators=10,
     ).frame
+    gap_filled = _late_primary_entry(gap_filled)
     donor = pd.DataFrame(
         {
             "employment_income": [45_000.0, 8_000.0, 70_000.0, 22_000.0],
@@ -4123,6 +4237,7 @@ def test_run_stacked_puf_pass_receipts_raw_child_universe_application() -> None:
         }
     )
 
+    gap_filled = _late_primary_entry(gap_filled)
     result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
         gap_filled,
         donor,
@@ -4170,6 +4285,7 @@ def test_run_stacked_puf_pass_fraction_one_receipts_out_of_frame_identity() -> N
         seed=578,
         n_estimators=10,
     ).frame
+    gap_filled = _late_primary_entry(gap_filled)
     donor = pd.DataFrame(
         {
             "employment_income": [45_000.0, 8_000.0, 70_000.0, 22_000.0],
@@ -4226,6 +4342,7 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
         mass_log=gap_filled.mass_log,
         metadata=gap_filled.metadata,
     )
+    gap_filled = _late_primary_entry(gap_filled)
     donor = pd.DataFrame(
         {
             "tax_unit_id": [10, 20, 1_000_001],
@@ -4541,7 +4658,7 @@ def test_tail_preservation_pairs_clones_by_assembly_unique_source_id() -> None:
         }
     )
     result = run_stacked_puf_pass(
-        stacked,
+        _late_primary_entry(stacked),
         donor,
         clone_attachment_fraction=1.0,
         clone_attachment_seed=578,
@@ -5161,7 +5278,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     component = receipt["components"]["late_producer_schedule"]
 
     assert receipt["version"] == 9
-    assert component["producer_count"] == 37
+    assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
     )
@@ -6465,7 +6582,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
         }
     )
     passed = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
-        gap_filled.frame,
+        _late_primary_entry(gap_filled.frame),
         donor,
         clone_attachment_fraction=0.5,
         clone_attachment_seed=578,
@@ -6483,7 +6600,7 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
     # zero-fill: without gap-fill the strict doctrine refuses the PUF pass.
     with pytest.raises(ValueError, match="puf_predictor_taxable_interest_income"):
         stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
-            stacked,
+            _late_primary_entry(stacked),
             donor,
             clone_attachment_fraction=0.5,
             clone_attachment_seed=578,
