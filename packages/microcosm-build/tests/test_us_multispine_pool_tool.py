@@ -1010,48 +1010,90 @@ def _canonical_late_dag_receipt(
             producer_name
         ]
         declared_inputs = []
-        available: dict[str, object] = {}
+        if contract.kind == "primary_puf":
+            available: dict[str, object] = (
+                stacked_spine_module.stacked_late_primary_resource_receipts(
+                    pd.DataFrame({"fixture_donor": [1.0]}),
+                    primary_qrf_checkpoint_identity_sha256="c" * 64,
+                    clone_attachment_fraction=1.0,
+                    clone_attachment_seed=578,
+                    seed=0,
+                    n_estimators=100,
+                )
+            )
+        elif contract.kind == "source_finalizer":
+            available = {
+                f"person.@source_receipt:{operator}": (
+                    stacked_spine_module._late_available_input_receipt(
+                        producer=producer_name,
+                        entity="person",
+                        column=f"@source_receipt:{operator}",
+                        rows=1,
+                        binding={
+                            "resource_kind": "source_operator_receipt",
+                            "schema_version": 1,
+                            "source_operator": operator,
+                            "source_receipt_sha256": (
+                                stacked_spine_module._canonical_sha256(
+                                    source_receipts[operator]
+                                )
+                            ),
+                        },
+                    )
+                )
+                for operator in source_order
+            }
+        elif contract.kind == "late_transfer":
+            group = next(
+                group
+                for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS
+                if group.name == producer_name
+            )
+            available = stacked_spine_module._late_transfer_resource_receipts(
+                group_name=group.name,
+                entity=group.entity,
+                family=group.family,
+                targets=group.targets,
+                seed=0,
+                n_estimators=100,
+                max_targets_per_fit=(
+                    stacked_spine_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+                ),
+                target_bank=None,
+            )
+        else:
+            available = {}
         for item in contract.inputs:
             alternatives = []
             for alternative in item.alternatives:
-                alternatives.append(
-                    [
+                physical_evidence = []
+                for column in alternative:
+                    is_virtual = (
+                        column.column.startswith("@")
+                        and column.column != "@resolved_weight"
+                        and column.entity != "frame"
+                    )
+                    key = f"{column.entity}.{column.column}"
+                    resource_receipt = available.get(key) if is_virtual else None
+                    present = not is_virtual or resource_receipt is not None
+                    physical_evidence.append(
                         {
                             "entity": column.entity,
                             "column": column.column,
                             "value_kind": column.value_kind,
                             "required_scope": item.required_scope,
                             "scope_rows": 1,
-                            "missing_rows": 0,
+                            "missing_rows": 0 if present else 1,
                             "invalid_rows": 0,
-                            "content_sha256": "a" * 64,
+                            "status": "present" if present else "absent",
+                            "content_sha256": (
+                                stacked_spine_module._canonical_sha256(resource_receipt)
+                                if resource_receipt is not None
+                                else "a" * 64
+                            ),
                         }
-                        for column in alternative
-                    ]
-                )
-                for column in alternative:
-                    if (
-                        column.column.startswith("@")
-                        and column.column != "@resolved_weight"
-                        and column.entity != "frame"
-                        and contract.kind in {"primary_puf", "source_finalizer"}
-                    ):
-                        key = f"{column.entity}.{column.column}"
-                        available[key] = {
-                            "receipt_id": f"available_input:{producer_name}:{key}",
-                            "status": "available",
-                            "producer": producer_name,
-                            "entity": column.entity,
-                            "column": column.column,
-                            "rows": 1,
-                        }
-                        if contract.kind == "source_finalizer":
-                            operator = column.column.removeprefix("@source_receipt:")
-                            available[key]["source_receipt_sha256"] = (
-                                stacked_spine_module._canonical_sha256(
-                                    source_receipts[operator]
-                                )
-                            )
+                    )
+                alternatives.append(physical_evidence)
             evidence = {"alternatives": alternatives}
             evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
             declared_inputs.append(
@@ -1292,12 +1334,20 @@ def _install_stacked_entrypoint_stubs(
         lambda _manifest: None,
     )
 
+    observed_primary_qrf_binding: dict[str, object] = {}
+
     def puf_pass(frame: Frame, donor: pd.DataFrame, **kwargs):
         order.append("puf")
         assert donor is puf_donor
         assert len(donor) == 7
         assert kwargs["clone_attachment_fraction"] == 1.0
         assert kwargs["clone_attachment_seed"] == 579
+        primary_binding = kwargs["primary_qrf_input_binding"]
+        stacked_spine_module._validate_stacked_late_primary_checkpoint_input_binding(
+            primary_binding,
+            boundary="tool wiring fixture",
+        )
+        observed_primary_qrf_binding.update(primary_binding)
         if terminal == "error":
             raise RuntimeError("fixture stacked error")
         checkpoint_dir = Path(kwargs["primary_qrf_checkpoint_dir"])
@@ -1325,7 +1375,23 @@ def _install_stacked_entrypoint_stubs(
         assert set(kwargs["primary_resource_receipts"]) == {
             "tax_unit.@puf_donor_tax_units",
             "tax_unit.@primary_qrf_checkpoint",
+            "tax_unit.@primary_puf_execution_config",
         }
+        assert (
+            observed_primary_qrf_binding["primary_resource_receipts"]
+            == kwargs["primary_resource_receipts"]
+        )
+        primary_config = kwargs["primary_resource_receipts"][
+            "tax_unit.@primary_puf_execution_config"
+        ]["binding"]
+        assert primary_config["clone_attachment"] == {
+            "fraction": 1.0,
+            "seed": 579,
+        }
+        assert primary_config["qrf"]["seed"] == pool_tool.POOL_RANDOM_SEED
+        assert (
+            primary_config["qrf"]["n_estimators"] == pool_tool._PRIMARY_QRF_N_ESTIMATORS
+        )
         target_banks = kwargs["target_banks"]
         assert isinstance(target_banks, Mapping)
         assert set(target_banks) == {

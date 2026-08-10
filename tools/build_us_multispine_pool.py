@@ -165,6 +165,8 @@ from microcosm.build.us_runtime.stacked_spine import (
     stacked_completeness_gate,
     stacked_gap_fill_plan,
     stacked_gap_fill_producer_schedule_receipt,
+    stacked_late_primary_checkpoint_input_binding,
+    stacked_late_primary_resource_receipts,
     stacked_spine_authority_receipt,
     validate_stacked_late_producer_receipt,
     validate_stacked_late_producer_transition_authority,
@@ -3007,6 +3009,7 @@ def build_stacked_pool(
                 fit_records=fit_records,
                 tail_bound_diagnostics=tail_bound_diagnostics,
                 primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+                primary_qrf_input_binding=primary_qrf_input_binding,
             )
             produced_tail = produced.receipt.get("puf_capital_gains_tail_transfer")
             if not isinstance(produced_tail, Mapping):
@@ -3017,28 +3020,17 @@ def build_stacked_pool(
             mark_phase("puf_passed")
             return produced
 
-        primary_resource_receipts = {
-            "tax_unit.@puf_donor_tax_units": {
-                "receipt_id": (
-                    "available_input:primary_puf_qrf:tax_unit.@puf_donor_tax_units"
-                ),
-                "status": "available",
-                "producer": "primary_puf_qrf",
-                "entity": "tax_unit",
-                "column": "@puf_donor_tax_units",
-                "rows": int(len(puf_donor)),
-            },
-            "tax_unit.@primary_qrf_checkpoint": {
-                "receipt_id": (
-                    "available_input:primary_puf_qrf:tax_unit.@primary_qrf_checkpoint"
-                ),
-                "status": "available",
-                "producer": "primary_puf_qrf",
-                "entity": "tax_unit",
-                "column": "@primary_qrf_checkpoint",
-                "rows": 1,
-            },
-        }
+        primary_resource_receipts = stacked_late_primary_resource_receipts(
+            puf_donor,
+            primary_qrf_checkpoint_identity_sha256=(current_base_identity_sha256),
+            clone_attachment_fraction=clone_attachment_fraction,
+            clone_attachment_seed=clone_attachment_seed,
+            seed=POOL_RANDOM_SEED,
+            n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+        )
+        primary_qrf_input_binding = stacked_late_primary_checkpoint_input_binding(
+            primary_resource_receipts
+        )
         late_stage = run_stacked_late_producer_dag(
             gap_filled.frame,
             primary_puf_producer=primary_puf_producer,

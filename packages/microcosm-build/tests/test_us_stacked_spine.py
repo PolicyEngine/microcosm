@@ -3027,10 +3027,103 @@ def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None
         )
 
 
+def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkpoint_dir = tmp_path / "primary-qrf"
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+
+    def initialize(_frame: Frame, _donor: pd.DataFrame, root: Path, **_kwargs) -> None:
+        root.mkdir(parents=True)
+        (root / stacked_spine_module.PRIMARY_QRF_MANIFEST_FILENAME).write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "initialize_primary_puf_qrf_chain",
+        initialize,
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "primary_puf_qrf_recipient_predictor_universe_receipt",
+        lambda _root: {"fixture": "recipient-universe"},
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "run_primary_puf_qrf_chain",
+        lambda _root: None,
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, _root, **_kwargs: (
+            frame,
+            frame.resolve_weights("tax_unit").kind,
+        ),
+    )
+
+    def binding(bound_donor: pd.DataFrame) -> dict[str, object]:
+        resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+            bound_donor,
+            primary_qrf_checkpoint_identity_sha256="a" * 64,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            seed=0,
+            n_estimators=100,
+        )
+        return stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
+            resources
+        )
+
+    stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+        _stacked_gap_fixture(),
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        primary_qrf_checkpoint_dir=checkpoint_dir,
+        primary_qrf_input_binding=binding(donor),
+    )
+    assert (checkpoint_dir / "late-producer-input-binding.json").is_file()
+
+    changed_donor = donor.copy()
+    changed_donor.iloc[0, 0] = 2.0
+    with pytest.raises(ValueError, match="refusing stale predictions"):
+        stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+            _stacked_gap_fixture(),
+            changed_donor,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            primary_qrf_checkpoint_dir=checkpoint_dir,
+            primary_qrf_input_binding=binding(changed_donor),
+        )
+
+
+def test_late_transfer_rejects_identityless_bank_before_dispatch() -> None:
+    group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+
+    with pytest.raises(ValueError, match="target-bank identity"):
+        stacked_spine_module._late_transfer_resource_receipts(
+            group_name=group.name,
+            entity=group.entity,
+            family=group.family,
+            targets=group.targets,
+            seed=0,
+            n_estimators=100,
+            max_targets_per_fit=(
+                stacked_spine_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+            ),
+            target_bank=object(),
+        )
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,
     bank_identity_sha256: str | None = None,
+    bound_clone_attachment_seed: int = 578,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
     primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
@@ -3165,7 +3258,7 @@ def _run_real_late_executor_fixture(
         pd.DataFrame({"fixture_donor": [1.0]}),
         primary_qrf_checkpoint_identity_sha256="a" * 64,
         clone_attachment_fraction=1.0,
-        clone_attachment_seed=578,
+        clone_attachment_seed=bound_clone_attachment_seed,
         seed=0,
         n_estimators=100,
     )
@@ -3226,8 +3319,17 @@ def test_late_executor_authority_binds_every_transfer_bank_identity(
         monkeypatch,
         bank_identity_sha256="b" * 64,
     )
+    changed_primary_config, _events, _finalizer_calls = _run_real_late_executor_fixture(
+        monkeypatch,
+        bank_identity_sha256="a" * 64,
+        bound_clone_attachment_seed=579,
+    )
 
     assert first.transition_authority_sha256 != second.transition_authority_sha256
+    assert (
+        first.transition_authority_sha256
+        != changed_primary_config.transition_authority_sha256
+    )
     transfer_rows = [
         row for row in first.receipt["execution"] if row["kind"] == "late_transfer"
     ]

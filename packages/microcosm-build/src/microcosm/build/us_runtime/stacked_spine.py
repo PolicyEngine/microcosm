@@ -187,6 +187,7 @@ __all__ = [
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
     "stacked_gap_fill_producer_schedule_receipt",
+    "stacked_late_primary_checkpoint_input_binding",
     "stacked_late_primary_resource_receipts",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
@@ -3812,6 +3813,10 @@ def validate_stacked_post_puf_transfer_receipt(
 
 
 _LATE_TABLE_DIGEST_CODEC = "canonical_scalar_v1"
+_LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND = (
+    "populace_us_stacked_late_primary_qrf_input_binding"
+)
+_LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME = "late-producer-input-binding.json"
 _LATE_TABLE_DIGEST_CHUNK_ROWS = 65_536
 
 
@@ -4648,6 +4653,72 @@ def stacked_late_primary_resource_receipts(
             )
         ),
     }
+
+
+def _validate_stacked_late_primary_checkpoint_input_binding(
+    binding: object,
+    *,
+    boundary: str,
+) -> None:
+    """Authenticate the sidecar that prevents stale primary-QRF bank reuse."""
+
+    expected_keys = {
+        "artifact_kind",
+        "schema_version",
+        "primary_resource_receipts",
+        "sha256",
+    }
+    if not isinstance(binding, Mapping) or set(binding) != expected_keys:
+        raise ValueError(f"{boundary}: primary-QRF input binding schema drifted.")
+    if (
+        binding.get("artifact_kind") != _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND
+        or binding.get("schema_version") != 1
+    ):
+        raise ValueError(f"{boundary}: primary-QRF input binding identity changed.")
+    resources = binding.get("primary_resource_receipts")
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    expected_resources = _late_contract_available_input_keys(contract)
+    if not isinstance(resources, Mapping) or set(resources) != expected_resources:
+        raise ValueError(
+            f"{boundary}: primary-QRF input binding does not cover its exact "
+            "declared resource surface."
+        )
+    for key, receipt in resources.items():
+        entity, column = key.split(".", 1)
+        _validate_late_available_input_receipt(
+            receipt,
+            producer=US_LATE_PRIMARY_PUF_STAGE,
+            entity=entity,
+            column=column,
+            boundary=boundary,
+        )
+    unsigned = dict(binding)
+    sha256 = unsigned.pop("sha256")
+    _validate_sha256(sha256, boundary=f"{boundary} primary-QRF input binding")
+    if sha256 != _canonical_sha256(_json_ready(unsigned)):
+        raise ValueError(f"{boundary}: primary-QRF input binding SHA-256 mismatch.")
+
+
+def stacked_late_primary_checkpoint_input_binding(
+    primary_resource_receipts: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """Build the durable input sidecar for the primary-QRF checkpoint bank."""
+
+    resources = {
+        key: _json_ready(receipt)
+        for key, receipt in sorted(primary_resource_receipts.items())
+    }
+    payload: dict[str, object] = {
+        "artifact_kind": _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND,
+        "schema_version": 1,
+        "primary_resource_receipts": resources,
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    _validate_stacked_late_primary_checkpoint_input_binding(
+        payload,
+        boundary="US stacked late primary-QRF input-binding construction",
+    )
+    return payload
 
 
 def _late_transfer_resource_receipts(
@@ -8076,6 +8147,7 @@ def run_stacked_puf_pass(
     fit_records: list[FitWeightRecord] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     primary_qrf_checkpoint_dir: str | Path | None = None,
+    primary_qrf_input_binding: Mapping[str, object] | None = None,
 ) -> StackedPufPassResult:
     """Run the resumable primary QRF and clone-2 tail over the stacked spine.
 
@@ -8101,6 +8173,7 @@ def run_stacked_puf_pass(
         fit_records=fit_records,
         tail_bound_diagnostics=tail_bound_diagnostics,
         primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        primary_qrf_input_binding=primary_qrf_input_binding,
         apply_capital_gains_tail=True,
     )
 
@@ -8134,6 +8207,7 @@ def _run_stacked_puf_pass_evaluate(
     fit_records: list[FitWeightRecord] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     primary_qrf_checkpoint_dir: str | Path | None = None,
+    primary_qrf_input_binding: Mapping[str, object] | None = None,
     apply_capital_gains_tail: bool,
 ) -> StackedPufPassResult:
     """Internal evaluator with one explicit fixture-only tail seam."""
@@ -8169,6 +8243,11 @@ def _run_stacked_puf_pass_evaluate(
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
     if primary_qrf_checkpoint_dir is None:
+        if primary_qrf_input_binding is not None:
+            raise ValueError(
+                "Stacked monolithic primary QRF cannot carry a checkpoint-input "
+                "binding without a checkpoint directory."
+            )
         predictor_universe_receipts: list[dict[str, object]] = []
         imputed = impute_us_puf_tax_detail_support(
             cloned,
@@ -8193,9 +8272,40 @@ def _run_stacked_puf_pass_evaluate(
             "recipient_predictor_universe": predictor_universe_receipts[0],
         }
     else:
+        _validate_stacked_late_primary_checkpoint_input_binding(
+            primary_qrf_input_binding,
+            boundary="stacked primary-QRF checkpoint entry",
+        )
+        assert isinstance(primary_qrf_input_binding, Mapping)
+        normalized_input_binding = _json_ready(primary_qrf_input_binding)
         checkpoint_dir = Path(primary_qrf_checkpoint_dir)
         manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
+        input_binding_path = checkpoint_dir / _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME
         if manifest_path.exists():
+            if not input_binding_path.is_file():
+                raise ValueError(
+                    "Stacked primary QRF checkpoint has no late-producer input "
+                    f"binding: {input_binding_path}."
+                )
+            try:
+                observed_input_binding = json.loads(
+                    input_binding_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "Stacked primary QRF checkpoint input binding is unreadable: "
+                    f"{input_binding_path}."
+                ) from exc
+            _validate_stacked_late_primary_checkpoint_input_binding(
+                observed_input_binding,
+                boundary="stacked primary-QRF checkpoint resume",
+            )
+            if observed_input_binding != normalized_input_binding:
+                raise ValueError(
+                    "Stacked primary QRF checkpoint input binding differs from "
+                    "the live late-producer donor/config resources; refusing "
+                    "stale predictions."
+                )
             resume_status = "resumed"
         else:
             if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
@@ -8213,6 +8323,17 @@ def _run_stacked_puf_pass_evaluate(
                 absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
                 **kwargs,
             )
+            input_binding_bytes = json.dumps(
+                normalized_input_binding,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            temporary_binding_path = input_binding_path.with_name(
+                f".{input_binding_path.name}.tmp"
+            )
+            temporary_binding_path.write_bytes(input_binding_bytes)
+            temporary_binding_path.replace(input_binding_path)
             resume_status = "initialized"
         predictor_universe_receipt = (
             primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
@@ -8229,6 +8350,7 @@ def _run_stacked_puf_pass_evaluate(
             "mode": "checkpoint_chain",
             "resume_status": resume_status,
             "checkpoint_manifest": str(manifest_path.resolve()),
+            "input_binding_sha256": normalized_input_binding["sha256"],
             "recipient_predictor_universe": predictor_universe_receipt,
         }
 
