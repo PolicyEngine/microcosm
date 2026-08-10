@@ -3818,6 +3818,7 @@ def _validate_late_execution_row(
             f"exact {len(contract.inputs)}-input readiness surface."
         )
     unfilled_rows: dict[ProducerInput, int] = {}
+    invalid_rows: dict[ProducerInput, int] = {}
     for requirement, raw_input in zip(contract.inputs, declared_inputs, strict=True):
         if not isinstance(raw_input, Mapping):
             raise ValueError(
@@ -3843,6 +3844,14 @@ def _validate_late_execution_row(
                 f"unfilled_rows={rows!r}."
             )
         unfilled_rows[requirement] = rows
+        invalid = raw_input.get("invalid_rows")
+        if isinstance(invalid, bool) or not isinstance(invalid, int) or invalid < 0:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} has invalid "
+                f"invalid_rows={invalid!r}."
+            )
+        invalid_rows[requirement] = invalid
 
     raw_absence = raw_row.get("declared_absence_receipts")
     if not isinstance(raw_absence, Mapping):
@@ -3853,7 +3862,7 @@ def _validate_late_execution_row(
     expected_absence_ids = {
         receipt_id
         for requirement, rows in unfilled_rows.items()
-        if rows > 0
+        if rows > 0 and invalid_rows[requirement] == 0
         for receipt_id in requirement.tolerated_absence_receipts
     }
     if set(raw_absence) != expected_absence_ids:
@@ -3931,6 +3940,7 @@ def _validate_late_execution_row(
         contract,
         lambda: None,
         unfilled_rows=unfilled_rows,
+        invalid_rows=invalid_rows,
         absence_receipts=raw_absence,
     )
 
@@ -5715,45 +5725,71 @@ def _late_required_scope_mask(
     raise ValueError(f"Unknown US late-producer scope {required_scope!r}.")
 
 
+def _late_input_readiness_rows(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
+) -> tuple[dict[ProducerInput, int], dict[ProducerInput, int]]:
+    """Count missing rows and invalid values as distinct readiness states."""
+
+    available = (
+        {} if available_input_receipts is None else dict(available_input_receipts)
+    )
+    unfilled: dict[ProducerInput, int] = {}
+    invalid: dict[ProducerInput, int] = {}
+    for requirement in contract.inputs:
+        column_states = {
+            input_column: _late_input_column_readiness_rows(
+                frame,
+                input_column=input_column,
+                required_scope=requirement.required_scope,
+                producer_name=contract.name,
+                available_input_receipts=available,
+            )
+            for alternative in requirement.alternatives
+            for input_column in alternative
+        }
+        alternative_missing_counts = [
+            sum(column_states[input_column][0] for input_column in alternative)
+            for alternative in requirement.alternatives
+        ]
+        # Invalid finite-numeric values never become absence merely because a
+        # different spelling is absent.  Callbacks select alternatives by
+        # physical availability, so every present declared numeric column must
+        # be valid before the callback may inspect it.
+        unfilled[requirement] = min(alternative_missing_counts)
+        invalid[requirement] = sum(
+            column_states[input_column][1] for input_column in column_states
+        )
+    return unfilled, invalid
+
+
 def _late_unfilled_input_rows(
     frame: Frame,
     contract: ProducerContract,
     *,
     available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
 ) -> dict[ProducerInput, int]:
-    """Count null or nonfinite cells on every graph-declared input scope."""
+    """Compatibility projection of the distinct late-input readiness state."""
 
-    available = (
-        {} if available_input_receipts is None else dict(available_input_receipts)
+    unfilled, _invalid = _late_input_readiness_rows(
+        frame,
+        contract,
+        available_input_receipts=available_input_receipts,
     )
-    unfilled: dict[ProducerInput, int] = {}
-    for requirement in contract.inputs:
-        alternative_counts = [
-            sum(
-                _late_input_column_unfilled_rows(
-                    frame,
-                    input_column=input_column,
-                    required_scope=requirement.required_scope,
-                    producer_name=contract.name,
-                    available_input_receipts=available,
-                )
-                for input_column in alternative
-            )
-            for alternative in requirement.alternatives
-        ]
-        unfilled[requirement] = min(alternative_counts)
     return unfilled
 
 
-def _late_input_column_unfilled_rows(
+def _late_input_column_readiness_rows(
     frame: Frame,
     *,
     input_column: ProducerInputColumn,
     required_scope: str,
     producer_name: str,
     available_input_receipts: Mapping[str, Mapping[str, object]],
-) -> int:
-    """Count one physical or resolved input without coercing its absence."""
+) -> tuple[int, int]:
+    """Return ``(missing_rows, invalid_values)`` for one declared column."""
 
     table = frame.table(input_column.entity)
     scope = _late_required_scope_mask(
@@ -5767,8 +5803,8 @@ def _late_input_column_unfilled_rows(
             dtype=np.float64,
         )
         if weights.shape != (len(table),):
-            return int(scope.sum())
-        return int((~np.isfinite(weights) & scope.to_numpy(dtype=bool)).sum())
+            return 0, int(scope.sum())
+        return 0, int((~np.isfinite(weights) & scope.to_numpy(dtype=bool)).sum())
     if input_column.column.startswith("@"):
         receipt_key = f"{input_column.entity}.{input_column.column}"
         receipt = available_input_receipts.get(receipt_key)
@@ -5791,27 +5827,37 @@ def _late_input_column_unfilled_rows(
             and not isinstance(receipt.get("rows"), bool)
             and receipt["rows"] > 0
         ):
-            return 0
-        return max(1, int(scope.sum()))
+            return 0, 0
+        return max(1, int(scope.sum())), 0
     if input_column.column not in table:
-        return int(scope.sum())
+        return int(scope.sum()), 0
     values = table[input_column.column]
     missing = values.isna()
+    invalid = pd.Series(False, index=values.index, dtype=bool)
     if input_column.value_kind == "finite_numeric":
-        numeric = pd.to_numeric(values, errors="coerce").to_numpy(dtype=np.float64)
-        missing |= ~np.isfinite(numeric)
-    return int((missing & scope).sum())
+        numeric = pd.to_numeric(values, errors="coerce").to_numpy(
+            dtype=np.float64,
+            na_value=np.nan,
+        )
+        invalid = (~missing) & ~np.isfinite(numeric)
+    return int((missing & scope).sum()), int((invalid & scope).sum())
 
 
 def _late_declared_absence_receipts(
     contract: ProducerContract,
     unfilled_rows: Mapping[ProducerInput, int],
+    *,
+    invalid_rows: Mapping[ProducerInput, int],
 ) -> dict[str, Mapping[str, object]]:
     """Materialize only absences explicitly tolerated by the contract."""
 
     receipts: dict[str, Mapping[str, object]] = {}
     for requirement, rows in unfilled_rows.items():
-        if rows <= 0 or not requirement.tolerated_absence_receipts:
+        if (
+            rows <= 0
+            or invalid_rows.get(requirement, 0) > 0
+            or not requirement.tolerated_absence_receipts
+        ):
             continue
         for receipt_id in requirement.tolerated_absence_receipts:
             receipts[receipt_id] = {
@@ -6056,7 +6102,7 @@ def run_stacked_late_producer_dag(
             if producer_name == US_LATE_PRIMARY_PUF_STAGE
             else {}
         )
-        unfilled_rows = _late_unfilled_input_rows(
+        unfilled_rows, invalid_rows = _late_input_readiness_rows(
             current,
             contract,
             available_input_receipts=node_available_inputs,
@@ -6064,6 +6110,7 @@ def run_stacked_late_producer_dag(
         node_absence_receipts = _late_declared_absence_receipts(
             contract,
             unfilled_rows,
+            invalid_rows=invalid_rows,
         )
         for receipt_id, receipt in node_absence_receipts.items():
             previous = declared_absence.setdefault(receipt_id, receipt)
@@ -6108,6 +6155,7 @@ def run_stacked_late_producer_dag(
             contract,
             execute,
             unfilled_rows=unfilled_rows,
+            invalid_rows=invalid_rows,
             absence_receipts=declared_absence,
         )
         result = outcome["result"]
@@ -6124,6 +6172,7 @@ def run_stacked_late_producer_dag(
                         "required_scope": item.required_scope,
                         "producing_stage": item.producing_stage,
                         "unfilled_rows": unfilled_rows[item],
+                        "invalid_rows": invalid_rows[item],
                     }
                     for item in contract.inputs
                 ],

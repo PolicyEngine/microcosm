@@ -155,6 +155,11 @@ and the complete proof rerun are closed.
   One exercises the generic fence and one poisons a canonical adult-care
   transfer predictor; both fail because the implementation does not yet expose
   separate missing and invalid counts.
+- Split readiness into independent missing-row and invalid-value maps. Missing
+  optional cells alone can mint the named absence receipt; present nonnumeric,
+  infinite, or nonfinite values always refuse the callback and name both the
+  logical input and declared producing stage. The generic and canonical
+  transfer regressions pass, as does the real 36-node executor regression.
 
 ## Next
 

@@ -363,9 +363,15 @@ def run_producer_when_ready[ResultT](
     callback: Callable[[], ResultT],
     *,
     unfilled_rows: Mapping[ProducerInput, int],
+    invalid_rows: Mapping[ProducerInput, int],
     absence_receipts: Mapping[str, Mapping[str, object]],
 ) -> ResultT:
-    """Fence one producer callback on exact input or absence evidence."""
+    """Fence one producer callback on exact input or absence evidence.
+
+    Missing values and invalid values are separate states.  Only missing
+    values can be authorized by a declared-absence receipt; nonnumeric or
+    nonfinite values always fail closed.
+    """
 
     if not isinstance(contract, ProducerContract):
         raise TypeError("Producer readiness requires a ProducerContract.")
@@ -385,6 +391,20 @@ def run_producer_when_ready[ResultT](
             f"Late producer {contract.name!r} readiness named undeclared "
             f"input(s): {unexpected}."
         )
+    unexpected_invalid = sorted(
+        set(invalid_rows) - set(contract.inputs),
+        key=lambda item: (
+            item.entity,
+            item.column,
+            item.required_scope,
+            item.producing_stage,
+        ),
+    )
+    if unexpected_invalid:
+        raise ValueError(
+            f"Late producer {contract.name!r} invalid-value readiness named "
+            f"undeclared input(s): {unexpected_invalid}."
+        )
     failures: list[str] = []
     for requirement in contract.inputs:
         rows = unfilled_rows.get(requirement, 0)
@@ -393,6 +413,20 @@ def run_producer_when_ready[ResultT](
                 f"Late producer {contract.name!r} unfilled count for "
                 f"{requirement.entity}.{requirement.column} must be a "
                 f"non-negative integer; got {rows!r}."
+            )
+        invalid = invalid_rows.get(requirement, 0)
+        if isinstance(invalid, bool) or not isinstance(invalid, int) or invalid < 0:
+            raise ValueError(
+                f"Late producer {contract.name!r} invalid count for "
+                f"{requirement.entity}.{requirement.column} must be a "
+                f"non-negative integer; got {invalid!r}."
+            )
+        if invalid:
+            failures.append(
+                f"{requirement.entity}.{requirement.column}: {invalid} invalid "
+                f"value(s) in required scope {requirement.required_scope!r}; "
+                f"declared producing stage is {requirement.producing_stage!r}; "
+                "declared absence cannot authorize invalid values."
             )
         if rows == 0:
             continue

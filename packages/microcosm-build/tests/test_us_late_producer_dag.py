@@ -82,6 +82,7 @@ def test_unfilled_late_input_refuses_before_producer_runs() -> None:
             consumer,
             callback,
             unfilled_rows={requirement: 1},
+            invalid_rows={requirement: 0},
             absence_receipts={},
         )
 
@@ -271,6 +272,7 @@ def test_production_adult_care_contract_refuses_missing_sstb_before_callback() -
             unfilled_rows={
                 item: 43_260 if item == sstb_input else 0 for item in contract.inputs
             },
+            invalid_rows={item: 0 for item in contract.inputs},
             absence_receipts={},
         )
 

@@ -2545,9 +2545,13 @@ def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
         (),
     )
 
-    unfilled = stacked_spine_module._late_unfilled_input_rows(poisoned, contract)
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        poisoned,
+        contract,
+    )
 
-    assert unfilled[requirement] == int(
+    assert unfilled[requirement] == 0
+    assert invalid[requirement] == int(
         person[support_channel_column("person")].astype(str).eq("asec").sum()
     )
     with pytest.raises(
@@ -2558,6 +2562,7 @@ def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
             contract,
             lambda: pytest.fail("invalid numeric input reached callback"),
             unfilled_rows=unfilled,
+            invalid_rows=invalid,
             absence_receipts={},
         )
 
