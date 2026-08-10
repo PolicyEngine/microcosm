@@ -328,6 +328,11 @@ tree.
   hashes. The version ledger distinguishes outer stacked materializer/authority
   9 and stacked pool-stage materializer 5/manifest 6 from the byte-preserved
   legacy materializer 3/manifest 4.
+- The foreground workspace sweep exposed an exact-k end-to-end fixture that
+  inherited the live schema-6 constant while still constructing the minimal
+  pre-stacked envelope. Pinned that fixture explicitly to the preserved legacy
+  schema 4; it now exercises the intended downstream compatibility route
+  without weakening the stacked-envelope downgrade fence.
 
 ## Next
 
