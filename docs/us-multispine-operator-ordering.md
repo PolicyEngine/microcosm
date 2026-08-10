@@ -343,8 +343,10 @@ import; a cycle error prints its deterministic cycle path. Readiness is checked
 again immediately before each callback. Every required input must be nonnull
 on its declared scope, finite when marked numeric, or carry one of that input's
 explicitly tolerated counted-absence receipts. A receipt tolerated by one
-input does not authorize another input, and no missing value is converted to
-zero. Execution receipts do not trust their summarized readiness counts:
+input does not authorize another input. The readiness fence never converts a
+missing value to zero; the separately declared ACS universe producer is the
+only named structural-zero materializer. Execution receipts do not trust their
+summarized readiness counts:
 validation recomputes them from the exact physical-alternative evidence,
 requires the exact kind-specific input/output schema, and rejects a completed
 producer whose declared output is absent.
@@ -447,11 +449,11 @@ outer route.
 Every one of the 16 source producers consumes the following 16-requirement
 wrapper bundle `W`. It is added to the operator-specific kernel inventory in
 the table below, even where a kernel requirement names the same physical
-column again. The execution config names the operator and binds its fixed
-random seed, fixed or absent period, retirement-distribution force-imputation
-switch, and explicit `not_supplied` mode for the education and
-weeks-unemployed sidecar arguments. Thus no callback control or unreachable
-sidecar alternative sits outside the registry:
+column again. The execution config names the operator and binds seed `0`;
+period `2024`, except housing's `None`; `force_puf_imputation=True` only for
+retirement distributions; and explicit `not_supplied` mode for the education
+and weeks-unemployed sidecar arguments. Thus no callback control or
+unreachable sidecar alternative sits outside the registry:
 
 ```text
 W = p.@post_clone_source_execution_config

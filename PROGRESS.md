@@ -325,8 +325,9 @@ tree.
   inventories and 33–61-input expanded contracts, 46-row transfer inventories
   and 92–100-input expanded contracts, all 71 grouped edges, six canonical
   waves, registry schema 9/receipt schema 2, and the final schedule/payload
-  hashes. The version ledger distinguishes stacked materializer 5/manifest 6
-  from the byte-preserved legacy materializer 3/manifest 4.
+  hashes. The version ledger distinguishes outer stacked materializer/authority
+  9 and stacked pool-stage materializer 5/manifest 6 from the byte-preserved
+  legacy materializer 3/manifest 4.
 
 ## Next
 
