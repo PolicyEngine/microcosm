@@ -367,7 +367,13 @@ def main() -> int:
         ".build.json"
     )
     retained_leaves_transform = (
-        UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(args.frs_raw_dir)
+        UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(
+            args.frs_raw_dir,
+            # A rung build's base deliberately carries a sampled subset of
+            # source families; the stage receipts the dropped raw surface
+            # instead of failing its completeness fence (#627).
+            sampled_rung=args.sample_fraction != 1.0,
+        )
     )
     _validate_distinct_paths(
         evidence_path=evidence_path,

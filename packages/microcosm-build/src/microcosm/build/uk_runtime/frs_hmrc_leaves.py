@@ -174,6 +174,10 @@ class UKFRSHMRCRetainedLeavesResult:
     structural_zero_columns: tuple[str, ...]
     input_content_identity: str
     output_content_identity: str
+    #: Raw-survey people outside the candidate base. Zero on a full-scale
+    #: build (the completeness fence raises otherwise); on a #627 rung
+    #: sample it receipts how much of the raw surface the rung dropped.
+    source_people_outside_candidate: int = 0
 
     def evidence(self) -> dict[str, object]:
         """Return aggregate, JSON-safe evidence for a national build driver."""
@@ -197,6 +201,9 @@ class UKFRSHMRCRetainedLeavesResult:
                 "capital_gains_person_id_offset": (self.capital_gains_person_id_offset),
                 "raw_source_people": self.raw_source_people,
                 "candidate_people": self.candidate_people,
+                "source_people_outside_candidate": (
+                    self.source_people_outside_candidate
+                ),
             },
             "retained_leaves": {
                 column: {
@@ -215,6 +222,9 @@ class UKFRSHMRCRetainedLeavesStageTransform:
 
     adult_tab_path: Path
     benefits_tab_path: Path
+    #: Declared #627 rung build: relaxes the raw-surface completeness fence
+    #: into a receipted count. Never set on a release build.
+    sampled_rung: bool = False
     last_result: UKFRSHMRCRetainedLeavesResult | None = field(
         default=None,
         init=False,
@@ -224,6 +234,8 @@ class UKFRSHMRCRetainedLeavesStageTransform:
     def from_raw_frs_directory(
         cls,
         raw_frs_directory: str | Path,
+        *,
+        sampled_rung: bool = False,
     ) -> UKFRSHMRCRetainedLeavesStageTransform:
         """Resolve the two permitted tables from a CLI-supplied directory."""
 
@@ -231,6 +243,7 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         return cls(
             adult_tab_path=directory / "adult.tab",
             benefits_tab_path=directory / "benefits.tab",
+            sampled_rung=sampled_rung,
         )
 
     def __call__(self, frame: Frame) -> Frame:
@@ -242,6 +255,7 @@ class UKFRSHMRCRetainedLeavesStageTransform:
             frame,
             adult_tab_path=self.adult_tab_path,
             benefits_tab_path=self.benefits_tab_path,
+            sampled_rung=self.sampled_rung,
         )
         return self.last_result.frame
 
@@ -345,8 +359,17 @@ def retain_uk_frs_hmrc_leaves(
     *,
     adult_tab_path: str | Path,
     benefits_tab_path: str | Path,
+    sampled_rung: bool = False,
 ) -> UKFRSHMRCRetainedLeavesResult:
-    """Read two raw FRS tables and retain the adjudicated HMRC constituents."""
+    """Read two raw FRS tables and retain the adjudicated HMRC constituents.
+
+    ``sampled_rung`` declares a #627 scale-ladder build: the candidate base
+    deliberately carries only a sampled subset of source families, so the
+    completeness fence (every raw-survey person present in the base) cannot
+    hold. The raw surface is restricted to surviving canonicals and the
+    dropped count is receipted instead — never silently. Full-scale builds
+    keep the strict fence.
+    """
 
     validate_uk_national_frame(frame)
     input_content_identity = uk_frame_content_identity(frame)
@@ -372,11 +395,18 @@ def retain_uk_frs_hmrc_leaves(
     unknown_source_ids = sorted(
         set(source_leaves.index) - lineage.canonical_raw_person_ids
     )
-    if unknown_source_ids:
+    if unknown_source_ids and not sampled_rung:
         raise ValueError(
             "Raw FRS retained leaves contain person identity value(s) absent "
             f"from the certified candidate base: {unknown_source_ids[:5]}."
         )
+    source_people_outside_candidate = len(unknown_source_ids)
+    if unknown_source_ids:
+        # A rung sample deliberately drops most source families; restrict the
+        # raw surface to the surviving canonicals and receipt the count.
+        source_leaves = source_leaves.loc[
+            source_leaves.index.isin(list(lineage.canonical_raw_person_ids))
+        ]
 
     person = frame.table("person").copy()
     aligned = source_leaves.reindex(lineage.source_person_ids, fill_value=0.0)
@@ -424,6 +454,7 @@ def retain_uk_frs_hmrc_leaves(
         capital_gains_person_id_offset=lineage.capital_gains_person_id_offset,
         raw_source_people=len(source_leaves),
         candidate_people=len(person),
+        source_people_outside_candidate=source_people_outside_candidate,
         source_signal_rows=source_signal_rows,
         structural_zero_columns=structural_zero_columns,
         input_content_identity=input_content_identity,
