@@ -10,8 +10,12 @@ available `origin/main` (`e9a352ca`). No fetch was performed because this task
 forbids network access. A shared-ref update outside this worktree has since made
 Git report the branch behind by one; the task remains on its required checkout
 without rebasing, resetting, or shelving. Focused verification is green; the
-exact #583 shard and every foreground workspace chunk are green. Final
-independent review and report assembly are next.
+exact #583 shard and every foreground workspace chunk were green, but final
+independent review found additional doctrine gaps. Implementation is reopened:
+optional absence must not excuse invalid numerics, every transfer's cross-grain
+validation inputs must be declared, and persisted readiness/source/transfer
+proofs need content binding. Final report assembly is paused until those gaps
+and the complete proof rerun are closed.
 
 ## Done
 
@@ -127,9 +131,20 @@ independent review and report assembly are next.
   diff; none was rewritten. The format check over all 19 Python files changed
   since the task base passes, as do both the branch and worktree
   `git diff --check` gates. The worktree is clean.
+- Final independent review found that adult-care support role should require
+  clone index plus channel; several callback-numeric inputs were declared only
+  nonnull; optional absence receipts currently conflate missing cells with
+  invalid nonfinite cells; transfer wrappers consume undeclared all-entity
+  cross-grain provenance; and schema-5 execution rows trust persisted counts
+  rather than a hash-linked live transition proof. Reopened the implementation
+  rather than issuing a premature ready verdict.
 
 ## Next
 
-- Run a final independent read-only review and close any actionable finding.
+- Add red production-level regressions for the final-review findings, implement
+  the strengthened input/readiness/transition contracts, and commit each
+  coherent step.
+- Rerun focused, exact #583, all foreground chunks, and Ruff/diff gates after
+  the final fixes.
 - Write the final gradeable mechanism/edge/fix/proof report to the requested
   output file and stdout, commit it, and leave the worktree clean.
